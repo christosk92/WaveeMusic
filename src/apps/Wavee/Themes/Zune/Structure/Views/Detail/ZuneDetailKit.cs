@@ -155,7 +155,11 @@ internal static class ZuneDetailKit
     /// band (a short window) draws the plain title, hidden: the identity column leads with the editor there. The editor and the plain title are two
     /// trees, each under its own keyed host: a short window moves the editor to the identity column (`rail:title`), so the 700 crossing cross-fades
     /// them (the swap's family; <paramref name="enter"/> is the view's <see cref="ZuneMotion.SwapEnter"/>).</summary>
-    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, EnterExit? enter = null)
+    /// <param name="motion">The band's height ease: <see cref="ZuneDetailRules.PanoramaFold"/> (a flow reveal: what follows rides its presented extent) where
+    /// none is given. A band inside a virtual list's item (the one-tree hero, audit B9) eases through real layout instead (<see cref="ZuneMotion.HeightResize"/>):
+    /// the list places the items after it by their laid-out extents, which a flow reveal lands at once.</param>
+    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, EnterExit? enter = null,
+        LayoutTransition? motion = null)
     {
         float lead = gutter + lay.PanoramaNudgeX;
         bool editor = slots.Title is not null && lay.PanoramaH > 0f;
@@ -173,7 +177,7 @@ internal static class ZuneDetailKit
         {
             Key = Z.PanoramaKey, Direction = 0, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
             Height = inside ? float.NaN : lay.PanoramaH, MinHeight = inside && id.Title.Length == 0 ? lay.PanoramaH : 0f,
-            Animate = Z.PanoramaFold, HitTestVisible = editor,
+            Animate = motion ?? Z.PanoramaFold, HitTestVisible = editor,
             // The editor and the title wrap inside the page (the editor's words and pencil must stay on screen).
             Padding = new Edges4(MathF.Max(0f, lead), 0f, gutter, 0f),
             Margin = new Edges4(MathF.Min(0f, lead), 0f, 0f, 0f),

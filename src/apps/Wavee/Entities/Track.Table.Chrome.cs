@@ -220,6 +220,7 @@ public readonly partial struct Track
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
             else _searchOpenFit = (pane, fit);
+            fit = HoldThroughCrossing(fit, available);
             _toolbarFit = fit;
 
             var left = new List<Element>(3);
@@ -272,6 +273,47 @@ public readonly partial struct Track
         }
 
         Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
+
+        // ── the fit across a crossing (audit B9) ──
+        global::Wavee.Theming.TierFacts _fitTiers;
+        global::Wavee.Theming.Contracts.DetailForm _fitForm;
+        float _fitAvail = -1f;
+        bool _refitPosted;
+        Action? _refit;
+
+        /// <summary>A crossing re-builds this bar on its commit frame with the width it measured BEFORE the commit (the bar measures again only after that
+        /// frame's layout). A fit against that stale width can evict a command the new width keeps, and a command evicted and promoted again a frame later
+        /// is rebuilt (it left on its exit, so the next one is a new node). So until the bar has measured again, a crossing only ADDS what the new fit
+        /// promotes, and the frame after re-fits for real (a genuine eviction then leaves on its own motion). Tracked: the tiers and the form are this
+        /// bar's inputs anyway.</summary>
+        CommandBarFit HoldThroughCrossing(CommandBarFit fit, float available)
+        {
+            var tiers = TiersNow();
+            var form = _args.Value!.Form;
+            bool crossed = _fitAvail >= 0f && (tiers.Window != _fitTiers.Window || tiers.Content != _fitTiers.Content || form != _fitForm);
+            if (crossed && MathF.Abs(available - _fitAvail) < 0.5f && _toolbarFit is { } held)
+            {
+                fit = fit with { Inline = fit.Inline | held.Inline };
+                if (!_refitPosted && _post is { } post)
+                {
+                    _refitPosted = true;
+                    post(_refit ??= () =>
+                    {
+                        _refitPosted = false;
+                        _fitTiers = (_facts ?? global::Wavee.Theming.ThemeHost.Facts).Peek().Tiers;
+                        _fitForm = _latest.Form;
+                        _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
+                    });
+                }
+            }
+            else
+            {
+                _fitTiers = tiers;
+                _fitForm = form;
+            }
+            _fitAvail = available;
+            return fit;
+        }
 
         /// <summary>The pane the bar's fit last resolved against, and the hold that pins it while the filter card is open: a resize that
         /// would evict the Filter button (the card's anchor) re-fits only after the card closes, so the card is never closed by its own

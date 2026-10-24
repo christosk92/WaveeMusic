@@ -458,7 +458,7 @@ public readonly partial struct Track
             if (a.Vertical is null || a.Embedded) return default;
             float page = ConfigOf(a).HasTrailing || ShellPolicy.Tracked.Lists.InsetHeroList ? PageInsetNow() : 0f;
             var side = _heroStyle?.ListInsets is { } insets
-                ? insets(new global::Wavee.Theming.Contracts.DetailInsetQuery(a.Form, TiersNow(), a.Columns))
+                ? insets(new global::Wavee.Theming.Contracts.DetailInsetQuery(a.Form, TiersNow(), a.Columns, _tableW.Value))
                 : default;
             return new global::Wavee.Theming.Contracts.DetailListInsets(page + side.Lead, page + side.Trail);
         }
@@ -510,6 +510,8 @@ public readonly partial struct Track
         readonly Signal<int> _relief = new(0);
         readonly Signal<bool> _tierMeasured = new(false);
         readonly Signal<float> _colW = new(0f);
+        /// <summary>The table's laid-out width, exact: what the structure's list insets yield against (<c>DetailInsetQuery.TableWidth</c>).</summary>
+        readonly Signal<float> _tableW = new(0f);
         readonly Signal<bool> _rowFlow = new(false);
         float _lastW;
         bool _flowInit;
@@ -786,6 +788,7 @@ public readonly partial struct Track
             if (r.W <= 0f) return;
             _lastW = r.W;
             if (MathF.Abs(_colW.Peek() - r.W) > 4f) _colW.Value = r.W;
+            if (r.W != _tableW.Peek()) _tableW.Value = r.W;
             if (VerticalArm)
             {
                 bool flow = Detail.VerticalLayout.RowFlow(r.W, _rowFlow.Peek(), _flowInit);

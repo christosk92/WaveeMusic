@@ -90,7 +90,11 @@ internal static class ZuneDetailHero
         var c = q.Columns;
         float lead = 0f;
         if (c?.TwoColumn is { } tc) lead = (tc.Collapsed ? tc.CompactWidth : lay.RailW) + lay.ColumnGap;
-        return new DetailListInsets(lead, AsideWidth(c, lay));
+        float trail = AsideWidth(c, lay);
+        // The list column keeps the two-column arm's floor: inside a crossing's hold band the aside yields a few DIP rather than squeeze the list under
+        // it (the hero's list head carries the same floor, so the bar and the rows keep one column).
+        if (q.TableWidth > 0f) trail = MathF.Min(trail, MathF.Max(0f, q.TableWidth - lead - Detail.Breakpoints.TwoColumnContentMinW));
+        return new DetailListInsets(lead, trail);
     }
 
     /// <summary>Does the columns form dock the aside (Zune lays it out by the CONTENT tier: where a docked panel leaves the page Small the aside folds and
@@ -184,8 +188,11 @@ internal static class ZuneDetailHero
             Prop<float> headingH = !songs ? 0f : shown is null ? Z.HeadingRowH : Prop.Of(() => shown.Value.EmptyLead ? 0f : Z.HeadingRowH);
             Element listHead = new BoxEl
             {
-                // Laid out at its final place and size from the commit (the list bar inside fits once), its picture sliding and revealing there.
-                Key = "hero:list-head", Direction = 1, Grow = columns ? 1f : 0f, Shrink = 1f, Basis = columns ? 0f : float.NaN, MinWidth = 0f,
+                // Laid out at its final place and size from the commit (its siblings' widths land at once and only their pictures ease), so the list bar inside
+                // fits once instead of re-fitting through every frame of an ease (a command it evicted and promoted again would be rebuilt); its picture
+                // slides and reveals there.
+                Key = "hero:list-head", Direction = 1, Grow = columns ? 1f : 0f, Shrink = 1f, Basis = columns ? 0f : float.NaN,
+                MinWidth = columns ? Detail.Breakpoints.TwoColumnContentMinW : 0f,
                 Layout = ZuneMotion.GroupResize,
                 Children =
                 [
@@ -207,7 +214,7 @@ internal static class ZuneDetailHero
                 Children =
                 [
                     identity,
-                    new BoxEl { Key = Z.ColumnGapKey, Width = columns && hasRail ? lay.ColumnGap : 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Animate = Z.ColumnReflow },
+                    new BoxEl { Key = Z.ColumnGapKey, Width = columns && hasRail ? lay.ColumnGap : 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Animate = Z.SlotReveal },
                     listHead,
                     AsideSlot(cols, lay, dock, enter, AsideHeight(parts.ViewportHeight)),
                 ],
@@ -222,7 +229,7 @@ internal static class ZuneDetailHero
                     Padded(new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, OnBoundsChanged = _measureBand,
-                        Children = [K.PanoramaBand(id, slots, lay, 0f, enter)],
+                        Children = [K.PanoramaBand(id, slots, lay, 0f, enter, ZuneMotion.HeightResize)],
                     }, columns ? 0f : pad),
                     body,
                 ],
@@ -481,7 +488,8 @@ internal static class ZuneDetailHero
 
         Element column = new BoxEl
         {
-            Key = Z.RailKey + ":column", Direction = 1, Gap = gap, MinWidth = 0f, Width = columns ? lay.RailW : float.NaN,
+            // Its width eases (a tier that changes the record's column, 160 / 240 / 320 / 400, and the hero form's full width); the slot around it lands at once.
+            Key = Z.RailKey + ":column", Direction = 1, Gap = gap, MinWidth = 0f, Width = columns ? lay.RailW : float.NaN, Layout = Z.ColumnReflow,
             Padding = new Edges4(0f, 0f, 0f, columns ? Z.SectionBottom : 0f),
             Children = kids.ToArray(),
         };
@@ -490,7 +498,7 @@ internal static class ZuneDetailHero
         Func<bool> pending = columns && rail is not null ? rail.Pending : K.Never;
         Element region = new SkelRegionEl(
             Pending: pending, Failed: K.Never,
-            Content: () => column,
+            Content: () => new BoxEl { Direction = 1, MinWidth = 0f, Children = [column] },
             ShimmerSource: () => ColumnSkeleton(spec, lay, lay.RailW),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         // The slot: the record's width laid out 0 tall at the columns form (the column hangs beside the rows), the full width on the gutter at the hero form.
@@ -572,7 +580,7 @@ internal static class ZuneDetailHero
     static Element AsideSlot(DetailColumnsProps? cols, ZuneDetailLayout lay, bool dock, EnterExit? enter, Func<float>? height)
     {
         if (!dock || cols?.Aside is not { } aside)
-            return new BoxEl { Key = Z.AsideKey, Width = 0f, Height = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.ColumnReflow };
+            return new BoxEl { Key = Z.AsideKey, Width = 0f, Height = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.SlotReveal };
         var insights = cols.Sheet is { Facts: not null } sheet ? sheet : null;
         var kids = new List<Element>(2);
         if (aside.Body is { } body) kids.Add(Ctx.Provide(ZuneDetailFrame.InAside, true, body));
@@ -587,8 +595,10 @@ internal static class ZuneDetailHero
         }
         return new BoxEl
         {
+            // Laid out at its final width at once (the list head beside it fits its bar once), its picture revealing; the rows beside it in the list ease
+            // their own trail.
             Key = Z.AsideKey, Direction = 1, Width = width, Height = 0f, Shrink = 1f, MinWidth = 0f, ClipToBounds = false,
-            Animate = Z.ColumnReflow,
+            Animate = Z.SlotReveal,
             Children =
             [
                 new BoxEl

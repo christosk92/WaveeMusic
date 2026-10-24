@@ -69,7 +69,9 @@ public readonly record struct DetailListInsets(float Lead, float Trail);
 /// <param name="Form">The page's arrangement.</param>
 /// <param name="Tiers">The window tiers the table is drawn in.</param>
 /// <param name="Columns">The columns form's parts (the rail's live width, the aside), or null.</param>
-public readonly record struct DetailInsetQuery(DetailForm Form, TierFacts Tiers, DetailColumnsProps? Columns);
+/// <param name="TableWidth">The table's laid-out width, exact (0 before its first layout): what a structure that keeps the list column above a floor
+/// (the two-column arm's 300, <c>Detail.Breakpoints.TwoColumnContentMinW</c>) yields its side columns against.</param>
+public readonly record struct DetailInsetQuery(DetailForm Form, TierFacts Tiers, DetailColumnsProps? Columns, float TableWidth = 0f);
 
 /// <summary>The props of <see cref="ViewKeys.DetailFrame"/>: one detail page's scaffold, for the arm the host decided.</summary>
 public sealed record DetailFrameProps
