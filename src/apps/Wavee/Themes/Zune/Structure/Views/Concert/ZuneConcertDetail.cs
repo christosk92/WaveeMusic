@@ -580,7 +580,9 @@ internal static class ZuneConcertDetail
         void Spy()
         {
             var cell = _p!.Cell;
-            _ = cell.Scroll.Offset.Value;
+            // How far the page has scrolled: the shared spy's line descends with it from the viewport's top (B6), so a short first section is
+            // current at scroll 0 instead of handing the fixed quarter line to the next one.
+            float scrolled = (float)cell.Scroll.Offset.Value;
             var scene = Context.Scene;
             if (scene is null || !_shown || cell.Viewport.IsNull || !scene.IsLive(cell.Viewport)) return;
             RectF vp = scene.AbsoluteRect(cell.Viewport);
@@ -592,7 +594,7 @@ internal static class ZuneConcertDetail
                 var node = cell.Anchors[sections[i]];
                 tops[i] = node.IsNull || !scene.IsLive(node) ? float.NaN : scene.AbsoluteRect(node).Y - vp.Y;
             }
-            int at = Detail.ScrollSpy.ActiveSectionOf(tops[..n], 0f, vp.H);
+            int at = Detail.ScrollSpy.ActiveSectionOf(tops[..n], 0f, vp.H, scrolled);
             if (at >= 0) cell.Active.SetIfChanged(sections[at]);
         }
 

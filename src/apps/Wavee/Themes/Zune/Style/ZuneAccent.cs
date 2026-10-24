@@ -1,9 +1,12 @@
 // ── Themes/Zune/Style/ZuneAccent.cs — the accent of the Zune style: five swatches, a light step, the ramp (themes plan 6.3, Z1) ──
 //
 // `style.accent` is one of five swatches (Z-Tokens, Z-Theme-Options): pink (the default), orange, blue, green, purple. On the LIGHT
-// ground the accent darkens one step (Z-Light-*: pink #ff3ca6 becomes #e0197f), so every swatch is a PAIR, light and dark, both
-// written as the boards draw them. A colour that is not a swatch (the option is a colour, a later picker may hand one in) takes the
-// engine's own "one step darker" (`AccentRamp.Derive(c).Dark1`) for its light arm.
+// ground the accent darkens one step (Z-Light-*: pink #ff3ca6 becomes #e0197f), so every swatch is a PAIR, light and dark. The dark
+// arm is the board's swatch. The light arm starts from the board's step and keeps going down in LIGHTNESS alone (hue and saturation
+// kept) until accent text on the light ground reads 4.5 : 1 (owner decision 2026-10-24, audit B5a): the board's step reads 3.6 to
+// 4.2 : 1 there, and the accent draws words (links, "#362 in the world", the lit pivot, the caption) as well as fills. Purple already
+// reads, so it stays the board's. A colour that is not a swatch (the option is a colour, a later picker may hand one in) takes the
+// engine's own "one step darker" (`AccentRamp.Derive(c).Dark1`) as its step, floored the same way.
 //
 // `style.useWindowsAccent` replaces the swatch with the OS ramp the composition is handed (`IStyleLayer.Definition(values, osAccent)`).
 //
@@ -19,8 +22,9 @@ namespace Wavee.Themes.Zune;
 
 /// <summary>One accent of the Zune style: the colour on the dark ground, the FILL on the light ground, and the INK on the light ground.</summary>
 /// <param name="Dark">The accent on the dark ground (the swatch as Z-Tokens draws it), as fill and as ink.</param>
-/// <param name="Light">The accent FILL on the light ground, one step darker, as Z-Light-* draws it (the play disc, a selected chip, the progress line,
-/// an accent ring). White on it is 3.9 : 1 or better, which is what a glyph on a disc needs.</param>
+/// <param name="Light">The accent on the light ground as FILL and as a word on the ground itself (the play disc, a selected chip, the progress
+/// line, an accent ring, a link): the board's step, darkened in lightness to 4.5 : 1 on the ground (<see cref="ZuneAccent.Floored"/>). White on
+/// it reads 4.9 : 1 or better.</param>
 /// <param name="LightInk">The accent INK on the light ground, for accent-coloured text and thin glyphs: the fill darkened (one factor on all three
 /// channels) to 4.5 : 1 on the ground, the well (#ebebeb), a selected row and its own wash. The board's step reads 3.3 to 4.2 : 1 as text.</param>
 public readonly record struct ZuneAccentPair(ColorF Dark, ColorF Light, ColorF LightInk);
@@ -28,20 +32,23 @@ public readonly record struct ZuneAccentPair(ColorF Dark, ColorF Light, ColorF L
 /// <summary>The accent swatches of the Zune style and the ramp the definition carries.</summary>
 public static class ZuneAccent
 {
-    /// <summary>Pink, the default (Z-Tokens: #ff3ca6; light fill #e0197f, ink #bd156b).</summary>
-    public static ZuneAccentPair Pink { get; } = new(ColorF.FromRgba(0xFF, 0x3C, 0xA6), ColorF.FromRgba(0xE0, 0x19, 0x7F), ColorF.FromRgba(0xBD, 0x15, 0x6B));
+    /// <summary>Pink, the default (Z-Tokens: #ff3ca6; the board's light step #e0197f floors to about #d51878; ink #bd156b).</summary>
+    public static ZuneAccentPair Pink { get; } = Of(ColorF.FromRgba(0xFF, 0x3C, 0xA6), ColorF.FromRgba(0xE0, 0x19, 0x7F), ColorF.FromRgba(0xBD, 0x15, 0x6B));
 
-    /// <summary>Orange (#ff7a1a; light fill #d65a00, ink #a94700).</summary>
-    public static ZuneAccentPair Orange { get; } = new(ColorF.FromRgba(0xFF, 0x7A, 0x1A), ColorF.FromRgba(0xD6, 0x5A, 0x00), ColorF.FromRgba(0xA9, 0x47, 0x00));
+    /// <summary>Orange (#ff7a1a; light step #d65a00 floors to about #bc4f00; ink #a94700).</summary>
+    public static ZuneAccentPair Orange { get; } = Of(ColorF.FromRgba(0xFF, 0x7A, 0x1A), ColorF.FromRgba(0xD6, 0x5A, 0x00), ColorF.FromRgba(0xA9, 0x47, 0x00));
 
-    /// <summary>Blue (#60cdff; light fill #0a7fb5, ink #086b99).</summary>
-    public static ZuneAccentPair Blue { get; } = new(ColorF.FromRgba(0x60, 0xCD, 0xFF), ColorF.FromRgba(0x0A, 0x7F, 0xB5), ColorF.FromRgba(0x08, 0x6B, 0x99));
+    /// <summary>Blue (#60cdff; light step #0a7fb5 floors to about #0977a9; ink #086b99).</summary>
+    public static ZuneAccentPair Blue { get; } = Of(ColorF.FromRgba(0x60, 0xCD, 0xFF), ColorF.FromRgba(0x0A, 0x7F, 0xB5), ColorF.FromRgba(0x08, 0x6B, 0x99));
 
-    /// <summary>Green (#8fd14f; light fill #4f8f1a, ink #3e7115).</summary>
-    public static ZuneAccentPair Green { get; } = new(ColorF.FromRgba(0x8F, 0xD1, 0x4F), ColorF.FromRgba(0x4F, 0x8F, 0x1A), ColorF.FromRgba(0x3E, 0x71, 0x15));
+    /// <summary>Green (#8fd14f; light step #4f8f1a floors to about #457e17; ink #3e7115).</summary>
+    public static ZuneAccentPair Green { get; } = Of(ColorF.FromRgba(0x8F, 0xD1, 0x4F), ColorF.FromRgba(0x4F, 0x8F, 0x1A), ColorF.FromRgba(0x3E, 0x71, 0x15));
 
-    /// <summary>Purple (#b983ff; light fill #8a4fd6, ink #7e48c3).</summary>
-    public static ZuneAccentPair Purple { get; } = new(ColorF.FromRgba(0xB9, 0x83, 0xFF), ColorF.FromRgba(0x8A, 0x4F, 0xD6), ColorF.FromRgba(0x7E, 0x48, 0xC3));
+    /// <summary>Purple (#b983ff; light step #8a4fd6, which already reads 4.6 : 1; ink #7e48c3).</summary>
+    public static ZuneAccentPair Purple { get; } = Of(ColorF.FromRgba(0xB9, 0x83, 0xFF), ColorF.FromRgba(0x8A, 0x4F, 0xD6), ColorF.FromRgba(0x7E, 0x48, 0xC3));
+
+    // A swatch: the board's dark swatch, the board's light step floored on the ground, and the ink.
+    private static ZuneAccentPair Of(ColorF dark, ColorF boardStep, ColorF ink) => new(dark, Floored(boardStep), ink);
 
     /// <summary>The five swatches in the order the option lists them (Z-Theme-Options): pink, orange, blue, green, purple.</summary>
     public static IReadOnlyList<ZuneAccentPair> Swatches { get; } = [Pink, Orange, Blue, Green, Purple];
@@ -53,8 +60,19 @@ public static class ZuneAccent
         var opaque = swatch with { A = 1f };
         foreach (var pair in Swatches)
             if (Same(pair.Dark, opaque)) return pair;
-        var fill = AccentRamp.Derive(opaque).Dark1;
+        var fill = Floored(AccentRamp.Derive(opaque).Dark1);
         return new ZuneAccentPair(opaque, fill, InkOf(fill));
+    }
+
+    /// <summary>The light-ground accent for the step <paramref name="step"/>: its lightness lowered (hue and saturation kept) until it reads
+    /// <see cref="InkFloor"/> : 1 as text on the light ground. A step that already does is returned as it is.</summary>
+    public static ColorF Floored(ColorF step)
+    {
+        var c = step with { A = 1f };
+        var (h, s, l) = ColorScience.ToHsl(c);
+        for (int i = 1; i <= 200 && ColorContrast.Ratio(c, ZuneTokens.LightGround) < InkFloor; i++)
+            c = ColorScience.FromHsl(h, s, l - 0.005f * i);
+        return c;
     }
 
     /// <summary>The ink of a light-ground accent FILL: the fill darkened by one factor until it reads <see cref="InkFloor"/> : 1 on the light plates

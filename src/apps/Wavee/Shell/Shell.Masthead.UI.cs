@@ -77,13 +77,22 @@ public static partial class Shell
     public static PageChrome ChromeFor(string title, IReadOnlyList<Crumb> trail, MastheadPublication? published,
         PageHeadForm form = PageHeadForm.Title)
     {
+        return new PageChrome(title, CrumbsOf(trail), published is { ToolsVisible: true }, published is { ToolsLoading: true }, form);
+    }
+
+    /// <summary>A trail as the page chrome's crumbs: a crumb with a route navigates to it; the current page (no route) is not clickable. A crumb
+    /// is a <see cref="PageCrumb.Word"/> when it names a destination (a route with no subject and no argument) or is a fixed head before the
+    /// current page (a search's "Search"); names stay names.</summary>
+    public static PageCrumb[] CrumbsOf(IReadOnlyList<Crumb> trail)
+    {
         var crumbs = new PageCrumb[trail.Count];
         for (int i = 0; i < crumbs.Length; i++)
         {
             var crumb = trail[i];
-            crumbs[i] = new PageCrumb(crumb.Label, crumb.Route is { } target ? () => GoTo(target) : null);
+            bool word = crumb.Route is { } r ? !r.Subject.IsValid && r.Arg.IsEmpty : i < crumbs.Length - 1;
+            crumbs[i] = new PageCrumb(crumb.Label, crumb.Route is { } target ? () => GoTo(target) : null) { Word = word };
         }
-        return new PageChrome(title, crumbs, published is { ToolsVisible: true }, published is { ToolsLoading: true }, form);
+        return crumbs;
     }
 
     // ══ 2. THE MATERIAL LAYER (ch 00 §material, ch 18 W12) ════════════════════════════════════════════════════════

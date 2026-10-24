@@ -285,13 +285,16 @@ public static class ZuneSettingsRules
     /// <summary>A Compact chip's side padding (its plate is the target tall).</summary>
     public const float ChipPadX = 16f;
 
+    /// <summary>A chip above Compact (Z-Theme-Options, Z-Settings-Appearance): 32 tall, 12 in on each side.</summary>
+    public const float ChipH = 32f, ChipPadXRow = 12f;
+
     /// <summary>The Compact sections page's row and chevron, the crumb's height, the gap inside them, and the lines a section's page title may wrap to.</summary>
     public const float SectionRowH = 56f, SectionChevron = 14f, CrumbH = 40f, SectionRowGap = 8f;
 
     /// <inheritdoc cref="SectionRowH"/>
     public const int SectionTitleLines = 2;
 
-    /// <summary>The gap between a hit-target chip and the next, in the wrapping row that stands in for the segmented control at Compact.</summary>
+    /// <summary>The gap between a chip and the next, in their wrapping row.</summary>
     public const float ChipGap = 8f;
 
     /// <summary>How many topic rows the Notifications tab sizes its list for.</summary>
@@ -366,12 +369,40 @@ public static class ZuneSettingsRules
     /// <summary>The miniature: the title line's, the lines' proportions (fill : rest), the bar under it and the skeleton ink's alpha.</summary>
     public const float MiniTitleFill = 40f, MiniTitleRest = 60f, MiniLineFill = 80f, MiniLineRest = 20f, MiniLine2Fill = 55f, MiniLine2Rest = 45f, MiniBarHeight = 12f, SkeletonAlpha = 0.3f;
 
+    /// <summary>The miniature's parts (Z-Settings-Appearance's thumbnails): the sidebar's and the rail's share of the width against the page's, the page's tile, the
+    /// rail's accent mark, the card plate, the pill, the corners, the zune title's thickness, the small tile and the tiles' ink.</summary>
+    public const float MiniSidebarGrow = 26f, MiniRailGrow = 10f, MiniPageGrow = 74f, MiniTile = 28f, MiniRailMark = 3f, MiniCardH = 28f, MiniPillW = 32f, MiniRound = 3f,
+        MiniBigTitle = 12f, MiniSmallTile = 14f, MiniTileA = 0.55f;
+
+    /// <summary>The miniature a theme's card draws (its frame's shape), by the theme's id: Zune's band, WinUI's rail, else the sidebar (wavee, and any theme the
+    /// picker has no picture for).</summary>
+    public static ZuneMiniature MiniatureOf(string themeId) => themeId switch
+    {
+        ZuneTheme.Id => ZuneMiniature.Band,
+        "winui" => ZuneMiniature.Rail,
+        _ => ZuneMiniature.Sidebar,
+    };
+
     /// <summary>The free colour picker's starting colour (Zune's pink).</summary>
     public static readonly ColorF FreePickerSeed = ColorF.FromRgba(0xFF, 0x3C, 0xA6);
 
     // ── the options' preview ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The preview's height, its bar's, a track row's, the number lane, the play disc, the open pivot and the playing row.</summary>
-    public const float PreviewHeight = 220f, PreviewBarHeight = 26f, PreviewRowHeight = 22f, PreviewNumberWidth = 28f, PreviewDisc = 18f;
+    /// <summary>The preview's height (the board's 300 frame: the pivots, the panorama, the cover with "play" under it beside the rows, then the bar), its bar's,
+    /// a track row's, the number lane, the play disc, the cover, the open pivot and the playing row.</summary>
+    public const float PreviewHeight = 300f, PreviewBarHeight = 26f, PreviewRowHeight = 22f, PreviewNumberWidth = 28f, PreviewDisc = 18f, PreviewCover = 72f;
     public const int PreviewOpenPivot = 2, PreviewPlayingRow = 3;
+}
+
+/// <summary>The shape of a theme card's miniature (<see cref="ZuneSettingsRules.MiniatureOf"/>).</summary>
+public enum ZuneMiniature : byte
+{
+    /// <summary>A sidebar beside the page (wavee).</summary>
+    Sidebar,
+
+    /// <summary>A slim navigation rail beside the page (winui).</summary>
+    Rail,
+
+    /// <summary>Pivot words over a big title (zune).</summary>
+    Band,
 }

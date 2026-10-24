@@ -434,7 +434,12 @@ internal static class ClassicArtistHero
             // reveal and the image fade were two animations over the same pixels (stillwrong.mp4). One owner, one
             // entrance, keyed on the ready EDGE so it plays once per photo and never re-runs on a plain re-render.
             var image = UseImage(p.Url, dw, dh, ImagePriority.Visible, blurHash: null, transition: ImageTransition.None);
-            bool ready = image.State is ImageState.Ready or ImageState.Failed;
+            // The crop waits for the photograph's subject (faces place it; it always settles), so the entrance plays once, at the final crop;
+            // until then the slot draws no bitmap (the decode above runs meanwhile).
+            PhotoSubject? subject = Palette.Subject(p.Url);
+            bool settled = subject is not null;
+            bool faces = subject is { Faces: true };
+            bool ready = settled && image.State is ImageState.Ready or ImageState.Failed;
             var zoom = UseRef(false);
             if (!zoom.Value && ready) zoom.Value = true;
             UseKeyframes(AnimChannel.ScaleX, zoom.Value ? s_enterScale : s_restScale,
@@ -461,10 +466,17 @@ internal static class ClassicArtistHero
                         ZStack = true, ScaleX = FrameScale, ScaleY = FrameScale, OffsetY = -height * FrameLiftFraction,
                         Children =
                         [
-                            // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design.
-                            Ui.Image(p.Url, ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
+                            // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design. Until the subject settles
+                            // the slot shows that neutral alone (no source), as it does while the bitmap decodes.
+                            Ui.Image(settled ? p.Url : "", ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
                                      placeholder: R.Layer.ArtPlaceholder, blurHash: null, transition: ImageTransition.None)
-                                with { FocusX = 0.62f, FocusY = 0.34f },
+                                with
+                                {
+                                    FocusX = faces ? subject!.Value.X : ClassicArtistRules.PhotoFocusX,
+                                    FocusY = faces ? subject!.Value.Y : ClassicArtistRules.PhotoFocusY,
+                                    FocusFrameX = faces ? ClassicArtistRules.PhotoFacesAtX : 0.5f,
+                                    FocusFrameY = faces ? ClassicArtistRules.PhotoFacesAtY : 0.5f,
+                                },
                         ],
                     },
                 ],

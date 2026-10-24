@@ -214,15 +214,12 @@ internal static partial class WinUiPlayerBar
         };
     }
 
-    /// <summary>"⋯": the level's overflow rows in the board's order. Keyed over its command set (the rows are built at open time, so a check
-    /// mark is always fresh).</summary>
+    /// <summary>"⋯": the level's overflow rows in the board's order. One button at every level and form (its props are re-pushed, and the rows
+    /// are built at open time from them, so a check mark and a level's set are always fresh): it keeps its node across a crossing.</summary>
     static Element MoreMenu(PlayerBarProps props, PlayerBarView v, bool mini)
     {
-        var commands = v.Overflow;
         bool addPrevious = mini && v.OwnsTransport && !v.Episode && v.ShowPrevNext;
-        int key = commands.Length * 2 + (addPrevious ? 1 : 0);
-        for (int i = 0; i < commands.Length; i++) key = key * 11 + (int)commands[i] + 1;
-        return Embed.Comp(new MoreProps(props, commands, mini, addPrevious, v.PrevEnabled), static () => new WinUiMoreMenu()) with { Key = "more#" + key };
+        return Embed.Comp(new MoreProps(props, v.Overflow, mini, addPrevious, v.PrevEnabled), static () => new WinUiMoreMenu());
     }
 }
 
@@ -331,16 +328,18 @@ internal sealed class WinUiMoreMenu : Component
         var overlay = UseContext(Overlay.Service);
         var begin = UseContext(SharedTransition.Begin);
         var props = p.Bar;
-        int request = p.Mini ? props.DevicePickerRequest.Value : 0;
+        // The device picker request is read in every form, so the button that survives into the Mini bar answers only a request made there
+        // (the full bar's devices button answers it otherwise).
+        int request = props.DevicePickerRequest.Value;
         var lastRequest = UseRef(request);
 
         void Devices() => props.ToggleDevicePicker(overlay, anchor, picker);
 
         UseEffect(() =>
         {
-            if (!p.Mini || request == lastRequest.Value) return;
+            if (request == lastRequest.Value) return;
             lastRequest.Value = request;
-            if (picker.Value is not { IsOpen: true }) Devices();
+            if (p.Mini && picker.Value is not { IsOpen: true }) Devices();
         }, request);
 
         void Toggle()

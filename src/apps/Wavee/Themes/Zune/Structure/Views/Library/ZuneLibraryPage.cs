@@ -194,12 +194,16 @@ internal static partial class ZuneLibraryPage
             return Section with
             {
                 Key = p.HasSelection ? LR.PaneKey : LR.EmptyKey, Grow = 1f, Basis = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize,
-                Children = [p.HasSelection ? p.Pane() : EmptyCompact(Loc.Get(Strings.Library.SelectShow))],
+                Children = [p.HasSelection ? p.Pane() : EmptyCompact(Loc.Get(PickKey(p)))],
             };
-        if (!p.HasSelection) return PaneSection(LR.EmptyKey, l) with { Children = [EmptyCompact(Loc.Get(p.Entity == EntityKind.Show ? Strings.Library.SelectShow : Strings.Library.SelectAlbum))] };
+        if (!p.HasSelection) return PaneSection(LR.EmptyKey, l) with { Children = [EmptyCompact(Loc.Get(PickKey(p)))] };
         // NO `Key` on the pane: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
         return PaneSection(LR.PaneKey, l) with { Children = [p.Pane()] };
     }
+
+    /// <summary>What the empty pane asks for: a show (Podcasts), an audiobook (Audiobooks, the show entity's other library page), an album.</summary>
+    static string PickKey(LibraryPageProps p) => p.Entity != EntityKind.Show ? Strings.Library.SelectAlbum
+        : p.IsPodcasts ? Strings.Library.SelectShow : Strings.Library.SelectAudiobook;
 
     /// <summary>The artists view's ONE right-hand column: the reader. There is no third pane: the reader is the leaf.</summary>
     static Element ReaderColumn(LibraryPageProps p, ZuneLibraryLayout l)

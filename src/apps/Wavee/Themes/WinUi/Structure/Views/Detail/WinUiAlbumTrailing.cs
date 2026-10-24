@@ -173,28 +173,23 @@ internal static class WinUiAlbumTrailing
     static readonly SurfaceShape s_fanShape = Shape.Shelf(captionLines: 1);
 
     /// <summary>"Fans also like" (W-Album-Huge): up to seven columns 24 apart of a 56 portrait with the name over "Artist", the click opening the artist; as many
-    /// columns as the measured width keeps at 130 each.</summary>
+    /// columns as the measured width keeps at 130 each: the grid's own auto-fill. ONE grid of keyed cells: a width that changes the column count re-flows
+    /// the same cells, each sliding to its new cell (a line box per row re-mounted every fan that changed rows).</summary>
     static Element FansRow(IReadOnlyList<TrailCardData> fans)
-        => Responsive.Of("album:fans", w =>
-        {
-            float gap = WinUiDetailRules.FansGap;
-            int columns = Math.Clamp((int)MathF.Floor((w + gap) / (WinUiDetailRules.FansItemMin + gap)), 1, WinUiDetailRules.FansColumns);
-            float cell = MathF.Max(1f, (w - (columns - 1) * gap) / columns);
-            var rows = new List<Element>((fans.Count + columns - 1) / columns);
-            for (int start = 0; start < fans.Count; start += columns)
-            {
-                int n = Math.Min(columns, fans.Count - start);
-                var line = new Element[columns];
-                for (int i = 0; i < columns; i++)
-                    line[i] = i < n ? Fan(fans[start + i], cell) : new BoxEl { Width = cell, Shrink = 0f, HitTestVisible = false };
-                rows.Add(new BoxEl { Direction = 0, Gap = gap, MinWidth = 0f, Children = line });
-            }
-            return new BoxEl { Direction = 1, Gap = WinUiDetailRules.FansRowGap, MinWidth = 0f, Children = rows.ToArray() };
-        }, fallback: WinUiDetailRules.AsideWidth);
-
-    static Element Fan(TrailCardData c, float width) => new BoxEl
     {
-        Key = c.Key, Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.FansNameGap, Width = width, Shrink = 0f, MinWidth = 0f,
+        var cells = new Element[fans.Count];
+        for (int i = 0; i < fans.Count; i++) cells[i] = Fan(fans[i]);
+        return new GridEl
+        {
+            MinColWidth = WinUiDetailRules.FansItemMin, MaxColumns = WinUiDetailRules.FansColumns,
+            ColGap = WinUiDetailRules.FansGap, RowGap = WinUiDetailRules.FansRowGap, Children = cells,
+        };
+    }
+
+    static Element Fan(TrailCardData c) => new BoxEl
+    {
+        Key = c.Key, Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.FansNameGap, Shrink = 0f, MinWidth = 0f,
+        Layout = WinUiDiscoveryMotion.Reflow,
         Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = c.OnClick,
         Corners = Radii.ControlAll, FocusVisualMargin = Design.FocusInsetRow,
         Children =
@@ -412,26 +407,22 @@ internal static class WinUiAlbumTrailing
         };
     }
 
-    /// <summary>The cards in equal columns of the measured width: two in the aside, else as many as keep each between the shelf's 150 and 200.</summary>
+    /// <summary>The cards in equal columns of the measured width: two in the aside, else as many as keep each between the shelf's 150 and 200. ONE grid of
+    /// keyed cards whose column count is a live prop: a width that changes it re-flows the same cards, each sliding to its new cell (a line box per row
+    /// re-mounted every card that changed rows).</summary>
     static Element CardGrid(IReadOnlyList<TrailCardData> cards, float width, bool aside)
     {
         float gap = aside ? WinUiDetailRules.MoreGap : WinUiDetailRules.ShelfGap;
         int columns = aside
             ? (int)WinUiDetailRules.MoreColumns
             : Math.Max(1, (int)MathF.Ceiling((width + gap) / (WinUiDetailRules.ShelfMaxCard + gap)));
-        float cell = MathF.Max(1f, (width - (columns - 1) * gap) / columns);
-        var rows = new List<Element>((cards.Count + columns - 1) / columns);
-        for (int start = 0; start < cards.Count; start += columns)
-        {
-            int n = Math.Min(columns, cards.Count - start);
-            var line = new Element[columns];
-            for (int i = 0; i < columns; i++)
-                line[i] = i < n
-                    ? Controls.Surface(CardOf(cards[start + i]), s_gridShape, cell) with { Key = cards[start + i].Key }
-                    : new BoxEl { Width = cell, Shrink = 0f, HitTestVisible = false };
-            rows.Add(new BoxEl { Direction = 0, Gap = gap, MinWidth = 0f, Children = line });
-        }
-        return new BoxEl { Direction = 1, Gap = gap, MinWidth = 0f, Children = rows.ToArray() };
+        float cell = MathF.Max(1f, (width - (columns - 1) * gap) / columns);   // the track's width: the shelf shape sizes its cover from it
+        var tracks = new TrackSize[columns];
+        Array.Fill(tracks, TrackSize.Star());
+        var cells = new Element[cards.Count];
+        for (int i = 0; i < cards.Count; i++)
+            cells[i] = Controls.Surface(CardOf(cards[i]), s_gridShape, cell) with { Key = cards[i].Key, Layout = WinUiDiscoveryMotion.Reflow };
+        return new GridEl { Columns = tracks, ColGap = gap, RowGap = gap, Children = cells };
     }
 
     /// <summary>A merch listing: not a media row — nothing to play, and its call to action is the PRICE, trailing in accent ink ("Buy" when the wire gave

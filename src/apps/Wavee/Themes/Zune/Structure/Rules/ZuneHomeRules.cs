@@ -49,8 +49,13 @@ public static class ZuneHomeRules
     public const float HeadToolsGap = 14f;
 
     /// <summary>A shelf's heading row takes the header's room before the shelf's own spacer does (the engine's header row is title, spacer, pager:
-    /// two grow factors would split the room), so "see all" stands at the row's right edge as the board draws it.</summary>
-    public const float HeadFillGrow = 1000f;
+    /// two grow factors would split the room; at this ratio the spacer's share is under a thousandth of a DIP), so "see all" stands at the row's
+    /// right edge as the board draws it.</summary>
+    public const float HeadFillGrow = 1_000_000f;
+
+    /// <summary>The gap between the items of a shelf's header row (the engine's <c>PagedShelf</c> header: title, spacer, the chevrons), which a
+    /// dormant chevron cancels.</summary>
+    public const float ShelfHeadGap = 8f;
 
     /// <summary>The busy bar's height (a switch in flight), over the top of the content.</summary>
     public const float BusyH = 2f;
@@ -158,6 +163,19 @@ public static class ZuneHomeRules
 
     /// <summary>The lowest contrast the on-media white word may have on a plate's own colour before the plate takes the dark ink (a pale category colour).</summary>
     public const float PlateInkFloor = 3f;
+
+    /// <summary>A category's plate colour as the boards mute it (Z-Browse: "flat colour tiles, the category's own colour as the plate", drawn at
+    /// saturation 0.3-0.5 and lightness 0.30-0.37): Spotify's tile colour keeps its hue, its saturation capped at <see cref="PlateMaxS"/> and its
+    /// lightness held between <see cref="PlateMinL"/> and <see cref="PlateMaxL"/>, so a hot pink or a #0D72EA blue sits in the board's quiet range
+    /// and the white word reads on every plate.</summary>
+    public static ColorF MutedPlate(ColorF colour)
+    {
+        var (h, s, l) = ColorScience.ToHsl(colour);
+        return ColorScience.FromHsl(h, MathF.Min(s, PlateMaxS), Math.Clamp(l, PlateMinL, PlateMaxL));
+    }
+
+    /// <inheritdoc cref="MutedPlate"/>
+    public const float PlateMaxS = 0.5f, PlateMinL = 0.30f, PlateMaxL = 0.37f;
 
     /// <summary>A colour plate on hover: lifted toward white a step.</summary>
     public static ColorF PlateHover(ColorF plate) => ColorF.Lerp(plate, ColorF.FromRgba(255, 255, 255), PlateStep);

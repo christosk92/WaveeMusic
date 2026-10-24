@@ -13,7 +13,8 @@
 // The tab form is the engine strip's (`TabStripForm`, Chrome appearance), resolved against the bar's measured tab lane. From Small up the
 // search sits on the window's centre line (the Small field fills the widest centred span up to 520): one toolbar shape, so the 1008 and 1920
 // crossings never re-mount the toolbar's buttons. Compact has no field and, tabs off, ends in the caption buttons: its clusters sit at the
-// edges (BetweenClusters), so the 641 crossing re-mounts the toolbar's buttons (it re-sizes them for touch anyway). COMPACT IS THE TOUCH TIER (owner rule, W-Tiers "Compact hit targets are 40 minimum"): the board's 36
+// edges (BetweenClusters); the engine bar keeps one toolbar shape for both, so the 641 crossing keeps the toolbar's buttons and the strip's
+// tabs (their touch sizes are live props that ease). COMPACT IS THE TOUCH TIER (owner rule, W-Tiers "Compact hit targets are 40 minimum"): the board's 36
 // icon tabs, 36 tabs and 40 x 36 buttons grow to 40 (the icon tabs 40 wide, the tabs and "+" the 40 row, the buttons 40 x 40).
 
 using FluentGpu.Controls;
@@ -72,4 +73,10 @@ public sealed record WinUiTitleBarLayout(WidthTier Tier, TabStripForm TabForm, T
 
     /// <summary>The Compact strip: the tabs and "+" fill the 40 row (the touch floor) instead of the 36 tab under a 4 gap.</summary>
     public bool TouchStrip => Tier == WidthTier.Compact;
+
+    /// <summary>The tab plate's height: the 40 row at Compact (the touch floor), else the 36 tab under a 4 gap.</summary>
+    public float TabH => TouchStrip ? WinUiFrameRules.CompactTabH : WinUiFrameRules.TabH;
+
+    /// <summary>The "+": the 40 row at Compact, else the 32 square (the hit floor above Compact).</summary>
+    public float AddTarget => TouchStrip ? WinUiFrameRules.CompactTabH : WinUiFrameRules.AddTarget;
 }

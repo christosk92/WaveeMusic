@@ -291,6 +291,8 @@ public readonly partial struct Browse
             {
                 Load = _known ? BrowseLoad.Ready : _failed ? BrowseLoad.Failed : BrowseLoad.Pending,
                 Title = _title,
+                Color = !b.IsValid ? null : b.Accent != 0u ? b.Accent : b.Color != 0u ? b.Color : null,
+                Parent = Shell.Origins.For(p.Route) is { } origin && origin.Route.Kind is not Shell.RouteKind.Browse ? origin.Label : null,
                 PageUri = _uri,
                 ScrollKey = _scrollScope + "browse:" + _uri,
                 Mode = _layout.Mode,

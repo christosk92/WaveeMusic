@@ -181,6 +181,20 @@ public static class WinUiPlayerLayout
     public static readonly LayoutTransition MoveMotion = new(
         TransitionChannels.Bounds, TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentPopOpen), SizeMode.Reveal);
 
+    /// <summary>The seek row coming or going with the Mini bar (the 641 crossing): it moves like a structural node and fades in or out in place, and
+    /// the transport above it glides to the bar's middle.</summary>
+    public static readonly LayoutTransition SeekRowMotion = MoveMotion with
+    {
+        Channels = TransitionChannels.Bounds | TransitionChannels.Opacity,
+        Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
+    };
+
+    /// <summary>The Mini bar's progress edge coming or going with the form: a fade in place.</summary>
+    public static readonly EnterExit EdgeFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The edge's fade timing (the shared ~160 ms fade).</summary>
+    public static MotionTokenDef EdgeFadeMotion => MotionTok.ControlFast;
+
     /// <summary>A control entering or leaving on a crossing ("player controls fade out and in during a tier change"): fade + size, the
     /// neighbours slide over.</summary>
     public static readonly LayoutTransition ItemMotion = new(

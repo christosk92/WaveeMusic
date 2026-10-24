@@ -8,11 +8,14 @@
 //             glow, the edge) lies under the transparent panel; a card (floating, the sheet, sliding out) paints the same picture itself, opaque.
 //             Floating it carries the flyout shadow and no ring, docked no shadow. Square everywhere.
 //   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show.
-//   head      (round G: the words are 44-tall hit boxes and sit in a horizontal scroller under an edge fade, never clipped mid-word; the current
-//             word is brought into view) the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case): queue · lyrics ·
-//             now playing · friends (where the capabilities offer the friends panel) and video while the video body is up; the current one
-//             in the primary ink, the rest tertiary. A word shows its body in the same panel (`PanelProps.ShowMode`); a pane that offers none
-//             (a docked pane beside the primary: the queue, friends at Huge 4K) draws its one word. The close glyph (40 x 40) ends the row.
+//   head      the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case), 44-tall hit boxes, on ONE line
+//             (the owner, 2026-10-24: never wrapped, never shrunk): queue · lyrics · now playing · friends (where the capabilities offer the friends
+//             panel) and video while the video body is up, as a CAROUSEL: the current word leads on the gutter in the primary ink, the rest follow
+//             round the cycle in the tertiary ink and run off under a soft right fade (`ZunePanelPivots`). A word shows its body in the same panel
+//             (`PanelProps.ShowMode`); a pane that offers none (a docked pane beside the primary: the queue, friends at Huge 4K) draws its one word.
+//             The close glyph (40 x 40) ends the row.
+//   pivoting  a change slides the words like a Zune / Windows Phone pivot (the strip moves the new lead to the gutter; the words that pass it wrap
+//             round) and the new pane slides in from the side of travel while the old one slides out the other way (`ZunePanelPivots`).
 //   docked    (ZT2, Z-Part-Panel "docked2" / "docked3") where panes dock beside the primary, the primary's head leaves out the bodies they
 //             show (`PanelView.Beside`: lyrics · now playing · friends at Huge, lyrics · now playing at Huge 4K), and a LINKED pane draws no
 //             close (it closes with the panel; the board draws none on the docked columns, the primary keeps its one, as inline).
@@ -34,7 +37,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -49,7 +51,7 @@ internal static class ZunePanel
     /// <summary>The registered template of <see cref="ViewKeys.ShellPanel"/>.</summary>
     public static Element Template(PanelProps props, in ViewContext ctx) => Embed.Comp(props, static () => new ZunePanelFrame());
 
-    /// <summary>The pivots in their fixed order (Z-Part-Panel inline: the words never rotate on the desktop tiers).</summary>
+    /// <summary>The pivots' cycle (the head draws it from the selected word on, `Rotated`).</summary>
     internal static readonly PanelMode[] PivotOrder = [PanelMode.Queue, PanelMode.Lyrics, PanelMode.NowPlaying, PanelMode.Friends];
 
     internal static string Word(PanelMode mode) => mode switch
@@ -61,47 +63,55 @@ internal static class ZunePanel
         _ => Loc.Get(Strings.Player.NowPlaying),
     };
 
-    /// <summary>The pivot head: the words (but the bodies the linked panes beside it show), then the close glyph (none on a linked pane). Where the
-    /// words on one line each outgrow the lane a panel <paramref name="paneWidth"/> wide leaves them, every word of two or more parts sets on two
-    /// lines, broken at a space (Z-Frame-Panel: "now" over "playing"), never shrunk and never cut mid-word; what still does not fit runs under
-    /// the scroller's edge fade (round G). Not where panes dock beside each other (their heads line up). NaN width: one line each.</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, PanelHeadNodes? nodes = null, ZunePanelInk? ink = null,
-        float paneWidth = float.NaN)
+    /// <summary>The words the head offers, in the panel's cyclic order (<see cref="PivotOrder"/>, then video while the video body is up), but the
+    /// bodies the linked panes beside it show; a pane that offers none (no <see cref="PanelProps.ShowMode"/>) draws its one word.</summary>
+    internal static PanelMode[] Modes(PanelProps props, PanelView view, PanelMode body, bool friends)
     {
+        if (props.ShowMode is null) return [body];
         var modes = new List<PanelMode>(5);
-        var show = props.ShowMode;
-        if (show is not null)
+        foreach (var mode in PivotOrder)
         {
-            foreach (var mode in PivotOrder)
-            {
-                if (mode == PanelMode.Friends && !friends) continue;
-                if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
-                modes.Add(mode);
-            }
-            if (body == PanelMode.Video) modes.Add(PanelMode.Video);
+            if (mode == PanelMode.Friends && !friends) continue;
+            if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
+            modes.Add(mode);
         }
-        else modes.Add(body);
-        float lane = paneWidth - ZuneFrameRules.PanelHeadPadding.Left - ZuneFrameRules.PanelHeadPadding.Right - (view.Linked ? 0f : ZuneFrameRules.Button);
-        // Where panes dock side by side (Z-Frame-Huge) their heads line up, one line each: the words that do not fit run under the fade there.
-        bool wrap = !view.Linked && view.Beside.IsEmpty && WordsOverflow(modes, lane);
-        var words = new List<Element>(modes.Count);
-        foreach (var mode in modes) words.Add(Pivot(mode, mode == body, show, nodes, ink, wrap));
+        if (body == PanelMode.Video) modes.Add(PanelMode.Video);
+        return modes.ToArray();
+    }
+
+    /// <summary><paramref name="modes"/> as the head draws them: the selected one first, then the rest in their cyclic order (the carousel).</summary>
+    internal static PanelMode[] Rotated(PanelMode[] modes, PanelMode body)
+    {
+        int lead = Array.IndexOf(modes, body);
+        if (lead <= 0) return modes;
+        var order = new PanelMode[modes.Length];
+        for (int i = 0; i < modes.Length; i++) order[i] = modes[(lead + i) % modes.Length];
+        return order;
+    }
+
+    /// <summary>The pivot head: the words on ONE line in <paramref name="pivots"/>' order (the selected one on the gutter), then the close glyph (none
+    /// on a linked pane). Every word keeps its size: the ones that do not fit the strip of a panel <paramref name="paneWidth"/> wide run off under its
+    /// right edge fade, never wrapped, shrunk or cut mid-word (the owner, 2026-10-24). The strip reaches the panel's left edge and carries the gutter
+    /// as its own inset, so a word that slides out to the left fades over the empty gutter while the lead never stands under the fade.</summary>
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePanelPivots pivots, ZunePanelInk? ink, float paneWidth)
+    {
+        var order = pivots.Order;
+        var words = new Element[order.Length];
+        // A closed panel (laid out off-canvas) offers no tab stop.
+        for (int i = 0; i < order.Length; i++) words[i] = Pivot(order[i], order[i] == body, props.ShowMode is not null, view.Open, pivots, ink);
+        float strip = paneWidth - ZuneFrameRules.PanelHeadPadding.Right - (view.Linked ? 0f : ZuneFrameRules.Button);
+        var fade = WordsOverflow(order, strip - ZuneFrameRules.PanelGutter) ? EdgeMask.Left | EdgeMask.Right : EdgeMask.Left;
 
         var row = new List<Element>(2)
         {
-            // The words scroll under an edge fade when they outgrow the head (Compact's sheet, the 340 panel with "friend activity"), never clip.
-            new ScrollEl
+            new BoxEl
             {
-                // As tall as its words: the head's 44, or the two lines of a word set on two (their natural line boxes, never squeezed).
-                Key = ZuneFrameRules.PanelPivotsKey, Horizontal = true, MinHeight = ZuneFrameRules.PanelHeadH,
-                Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                AutoEdgeFade = true, AutoEdgeFadeBand = ZuneFrameRules.PanelEdgeFade, SuppressScrollBar = true,
-                OnRealized = h => { if (nodes is not null) nodes.Viewport = h; },
-                Content = new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.PanelPivotGap, MinHeight = ZuneFrameRules.PanelHeadH,
-                    Children = words.ToArray(),
-                },
+                Key = ZuneFrameRules.PanelPivotsKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.PanelPivotGap,
+                MinHeight = ZuneFrameRules.PanelHeadH, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
+                Padding = new Edges4(ZuneFrameRules.PanelGutter, 0f, 0f, 0f),
+                EdgeFade = new EdgeFadeSpec(fade, ZuneFrameRules.PanelGutter, 0f, ZuneFrameRules.PanelEdgeFade, 0f),
+                OnKeyDown = pivots.OnKey, OnRealized = pivots.OnStrip,
+                Children = words,
             },
         };
         if (!view.Linked) row.Add(Close(props.Close));
@@ -109,18 +119,15 @@ internal static class ZunePanel
         {
             Key = ZuneFrameRules.PanelHeadKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
             Padding = ZuneFrameRules.PanelHeadPadding,
-            // A head that sets a word on two lines is taller: the change (a crossing that widens the pane, a pane docking beside it) eases, the body
-            // riding it.
-            Animate = Design.Reduced ? null : ZuneMotion.HeightResize,
             Children = row.ToArray(),
         };
     }
 
-    /// <summary>A pivot word as drawn (the heading voice, the navigation case); <paramref name="text"/> is the word or one of its two lines.</summary>
+    /// <summary>A pivot word as drawn (the heading voice, the navigation case); the selection's ink change cross-fades on the pivot slide.</summary>
     private static TextEl WordRun(string text, bool current, ZunePanelInk? ink) => R.Type.Heading(text) with
     {
         Color = current ? Tok.TextPrimary : ink?.Tertiary ?? Tok.TextTertiary, HoverColor = Tok.TextPrimary,
-        Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
+        Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f, BrushTransitionMs = ZuneMotion.PivotSlideMs,
     };
 
     /// <summary>A word's width on one line, in its drawn case (NaN with no text seam).</summary>
@@ -131,57 +138,33 @@ internal static class ZunePanel
         return Controls.NaturalWidth(drawn, run);
     }
 
-    /// <summary>The space that breaks <paramref name="word"/> into its two narrowest lines (the wider line the least), or -1 for a one-part word.</summary>
-    private static int BreakAt(string word)
-    {
-        int best = -1;
-        float bestW = float.PositiveInfinity;
-        for (int i = word.IndexOf(' '); i > 0 && i < word.Length - 1; i = word.IndexOf(' ', i + 1))
-        {
-            float w = MathF.Max(OneLine(word[..i]), OneLine(word[(i + 1)..]));
-            if (w < bestW) { bestW = w; best = i; }
-        }
-        return best;
-    }
-
-    /// <summary>The words on one line each, 18 apart, are wider than <paramref name="lane"/> (false where the lane or a width is unknown).</summary>
-    private static bool WordsOverflow(List<PanelMode> modes, float lane)
+    /// <summary>The words on one line each, 18 apart, run past <paramref name="lane"/> (false where the lane or a width is unknown).</summary>
+    private static bool WordsOverflow(PanelMode[] modes, float lane)
     {
         if (!float.IsFinite(lane)) return false;
         float total = 0f;
-        for (int i = 0; i < modes.Count; i++)
+        for (int i = 0; i < modes.Length; i++)
         {
             float w = OneLine(Word(modes[i]));
             if (float.IsNaN(w)) return false;
             total += (i > 0 ? ZuneFrameRules.PanelPivotGap : 0f) + w;
         }
-        return total > lane + 0.5f;
+        return total > lane + ZuneFrameRules.PanelPivotStill;
     }
 
-    private static Element Pivot(PanelMode mode, bool current, Action<PanelMode>? show, PanelHeadNodes? nodes, ZunePanelInk? ink, bool wrap)
+    /// <summary>One word: a tab (the selected one is the open head's one tab stop; Left / Right on it move the selection and the focus follows the
+    /// selection to the front), the head's whole height (the
+    /// touch floor of 40 holds at every tier). A click on a trailing word brings it to the front. One element shape for every state, so a word
+    /// keeps its node as the carousel moves it.</summary>
+    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePanelPivots carousel, ZunePanelInk? ink) => new BoxEl
     {
-        string word = Word(mode);
-        int at = wrap ? BreakAt(word) : -1;
-        // One line, or the two lines of a word the head sets on two (left-aligned, the heading voice's own line pitch).
-        Element text = at > 0
-            ? new BoxEl { Direction = 1, Shrink = 0f, Children = [WordRun(word[..at], current, ink), WordRun(word[(at + 1)..], current, ink)] }
-            : WordRun(word, current, ink);
-        // The word's box is the head's whole height (44, or its two lines): the touch floor of 40 holds at every tier, the word centred in it.
-        Action<NodeHandle>? realized = nodes is null ? null : h => nodes.Pivot(mode, h);
-        if (show is null || current)
-            return new BoxEl
-            {
-                Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, MinHeight = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
-                OnRealized = realized, Children = [text],
-            };
-        return new BoxEl
-        {
-            Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, MinHeight = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            OnClick = () => show(mode), OnRealized = realized,
-            Children = [text],
-        };
-    }
+        Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, MinHeight = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
+        Role = AutomationRole.Tab, Focusable = pivots && open, TabStop = pivots && open && current, AllowFocusOnInteraction = false,
+        Cursor = pivots && !current ? CursorId.Hand : CursorId.Arrow,
+        OnClick = pivots && !current ? carousel.ClickOf(mode) : null,
+        OnRealized = carousel.RealizedOf(mode),
+        Children = [WordRun(Word(mode), current, ink)],
+    };
 
     /// <summary>✕ closes the panel whatever it shows (a docked video is demoted by the coupling).</summary>
     private static Element Close(Action close) => ToolTip.Wrap(new BoxEl
@@ -201,8 +184,9 @@ internal static class ZunePanel
         ],
     }, Loc.Get(Strings.Theme.Zune.Frame.ClosePanel));
 
-    /// <summary>The body of <paramref name="body"/>.</summary>
-    internal static Element Body(PanelProps props, PanelView view, PanelMode body) => body switch
+    /// <summary>The body of <paramref name="body"/>; <paramref name="leaving"/>: the pane a pivot change replaced, sliding out (it never mounts a
+    /// second docked video card: the column holds the one card again).</summary>
+    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool leaving = false) => body switch
     {
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Lyrics => new BoxEl
@@ -212,17 +196,20 @@ internal static class ZunePanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new ZunePanelVideoArm()),
-        _ => NowPlaying(props, view),
+        _ => NowPlaying(props, view, leaving),
     };
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
-    /// <summary>The now-playing arm: the pinned slot (the hero, or the docked video in its place) over "up next".</summary>
-    private static Element NowPlaying(PanelProps props, PanelView view)
+    /// <summary>The now-playing arm: the pinned slot (the hero, or the docked video in its place: its height alone while the pane slides out) over
+    /// "up next".</summary>
+    private static Element NowPlaying(PanelProps props, PanelView view, bool leaving)
     {
-        Element pinned = view.Pinned == PanelPinned.DockedVideo
-            ? DockedCap(props, docked: true, view.Width)
-            : Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
+        Element pinned = view.Pinned != PanelPinned.DockedVideo
+            ? Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying)
+            : leaving
+                ? new BoxEl { Shrink = 0f, Height = props.DockedVideoHeight, HitTestVisible = false }
+                : DockedCap(props, docked: true, view.Width);
         return ScrollView(new BoxEl
         {
             Direction = 1,
@@ -269,21 +256,6 @@ internal static class ZunePanel
     ];
 }
 
-/// <summary>The head's realized nodes (the pivots' scroller and each word), kept by the frame so the current word can be brought into view.</summary>
-internal sealed class PanelHeadNodes
-{
-    readonly Dictionary<PanelMode, NodeHandle> _pivots = new();
-
-    /// <summary>The scroller's viewport.</summary>
-    public NodeHandle Viewport;
-
-    /// <summary>The word for <paramref name="mode"/> was realized.</summary>
-    public void Pivot(PanelMode mode, NodeHandle node) => _pivots[mode] = node;
-
-    /// <summary>The word for <paramref name="mode"/>, or null while it is not realized.</summary>
-    public NodeHandle PivotOf(PanelMode mode) => _pivots.TryGetValue(mode, out var node) ? node : NodeHandle.Null;
-}
-
 /// <summary>The panel's frame: the surface, the slide, the head and the body on show. A component because the slide targets the rendered
 /// root and keeps its seeded-once flag across renders.</summary>
 internal sealed class ZunePanelFrame : Component
@@ -295,7 +267,28 @@ internal sealed class ZunePanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     bool _escapes;
-    readonly PanelHeadNodes _headNodes = new();
+    readonly ZunePanelPivots _pivots = new();
+    readonly Dictionary<PanelMode, NodeHandle> _panes = new();
+    readonly Dictionary<PanelMode, Action<NodeHandle>> _paneRealized = new();
+    PanelMode? _shown;     // the body last drawn on the open panel
+    PanelMode? _leaving;   // the pane a pivot change replaced, sliding out
+    int _paneGen, _paneSeeded;
+
+    NodeHandle PaneOf(PanelMode mode) => _panes.TryGetValue(mode, out var node) ? node : NodeHandle.Null;
+
+    Action<NodeHandle> PaneRealized(PanelMode mode)
+    {
+        if (!_paneRealized.TryGetValue(mode, out var realized)) _paneRealized[mode] = realized = h => _panes[mode] = h;
+        return realized;
+    }
+
+    /// <summary>The pane of <paramref name="mode"/>: its body, full width, keyed per mode (each pane is a different tree); a leaving pane takes no input.</summary>
+    Element Pane(PanelProps props, PanelView view, PanelMode mode, bool leaving) => new BoxEl
+    {
+        Key = ZuneFrameRules.PanelPaneKeyPrefix + mode, Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, HitTestVisible = !leaving,
+        OnRealized = PaneRealized(mode),
+        Children = [ZunePanel.Body(props, view, mode, leaving)],
+    };
 
     public override Element Render()
     {
@@ -346,16 +339,36 @@ internal sealed class ZunePanelFrame : Component
             anim.Animate(Context.HostNode, channel, from, target, Design.Reduced ? 1f : ZuneFrameRules.PanelSlideMs, ZuneFrameRules.PanelSlideEasing);
         }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
-        // The word of the body on show is brought into view in the head's scroller (nearest edge, clear of the fade), when the body changes or the
-        // panel opens.
+        // THE PIVOTS (ZunePanelPivots): the selected word leads, the rest follow round the cycle; after the commit's layout the words slide from where
+        // they were drawn and, on a change of body, the new pane slides in from the side of travel while the old one slides out the other way. The
+        // old pane is dropped once its slide has run.
+        _pivots.Show = props.ShowMode;
+        _pivots.Order = ZunePanel.Rotated(ZunePanel.Modes(props, view, body, friends), body);
+        int orderKey = 0;
+        foreach (var mode in _pivots.Order) orderKey = orderKey * ZuneFrameRules.PanelModeRadix + (int)mode + 1;
+        var dropped = UseSignal(0);
+        _ = dropped.Value;
+        if (open && bodyLive && _shown is { } shown && shown != body) { _leaving = shown; _paneGen++; }
+        else if (!open) _leaving = null;
+        _shown = open ? body : null;
+        UseTimeout(() =>
+        {
+            if (_leaving is null) return;
+            _leaving = null;
+            dropped.Value = dropped.Peek() + 1;
+        }, ZuneMotion.PivotSlideMs, DepKey.From(_paneGen));
+        var input = UseContext(InputHooks.Current);
         UseLayoutEffect(() =>
         {
-            if (!open || Context.Scene is not { } scene) return;
-            var viewport = _headNodes.Viewport;
-            var word = _headNodes.PivotOf(body);
-            if (viewport.IsNull || word.IsNull || !scene.IsLive(viewport) || !scene.IsLive(word)) return;
-            scene.BringIntoView(viewport, word, align: float.NaN, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide, margin: ZuneFrameRules.PanelEdgeFade);
-        }, DepKey.From((int)body, open ? 1 : 0));
+            if (Context.Scene is not { } scene || Context.Anim is not { } anim) return;
+            int travel = _pivots.Slide(scene, anim, open, Design.Reduced);
+            // A change made from the keyboard: the focus follows the selection to the front (the head's one tab stop).
+            if (_pivots.TakeRefocus() && _pivots.Order.Length > 0 && _pivots.WordOf(_pivots.Order[0]) is { IsNull: false } lead && scene.IsLive(lead))
+                (input?.MoveFocusVisual ?? input?.RestoreFocus)?.Invoke(lead);
+            if (_paneSeeded == _paneGen) return;
+            _paneSeeded = _paneGen;
+            if (_leaving is { } gone) ZunePanelPivots.SlidePanes(scene, anim, PaneOf(body), PaneOf(gone), travel, Design.Reduced);
+        }, DepKey.From(orderKey, open ? 1 : 0, _paneGen, 0));
 
         _onBounds ??= r => props.BodyHeightChanged(r.H);
         // Design B: docked and open, the frame's full-height surface lies under the panel (it stays transparent); a card (floating, the sheet, a docked
@@ -371,16 +384,19 @@ internal sealed class ZunePanelFrame : Component
         // The inks are judged where the head lies: docked, the full-height surface's top (the window's top: the strongest wash, the glow's peak).
         var ink = ZunePanelInk.For(ZunePanelWash.HeadColour(pageWash, top, peak));
 
+        // The panes overlay each other while a pivot change slides them (a z-stack), and the slot clips them to the panel.
         Element bodySlot = new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Padding = ZuneFrameRules.PanelBodyPadding,
-            Children = [bodyLive ? ZunePanel.Body(props, view, body) : new BoxEl { Grow = 1f, HitTestVisible = false }],
+            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Padding = ZuneFrameRules.PanelBodyPadding,
+            Children = !bodyLive ? [new BoxEl { Grow = 1f, HitTestVisible = false }]
+                : _leaving is { } leaving ? [Pane(props, view, leaving, leaving: true), Pane(props, view, body, leaving: false)]
+                : [Pane(props, view, body, leaving: false)],
         };
         var column = new List<Element>(3);
         // The docked card mounts unconditionally outside the now-playing arm (its own gate hides it); the now-playing arm pins it in place
         // of the hero instead.
         if (body != PanelMode.NowPlaying) column.Add(ZunePanel.DockedCap(props, view.DockedHere, width));
-        column.Add(ZunePanel.Head(props, view, body, friends, _headNodes, ink, sheet ? vp.Value.Width : width));
+        column.Add(ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width));
         column.Add(bodySlot);
 
         return Ctx.Provide(ZunePanelInk.Current, ink, new BoxEl
@@ -407,7 +423,8 @@ internal sealed class ZuneNowPlayingArm : Component
         var props = UseProps<NowPlayingHeroProps>();
         var track = props.NowTrack();
         if (!track.IsValid)
-            return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: "");
+            return ZunePanelBodies.OnGutter(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
+                title: Loc.Get(Strings.Player.NothingPlaying), subtitle: ""));
         props.SubscribeEntities();
         return new BoxEl
         {

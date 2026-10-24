@@ -171,6 +171,10 @@
 // `ConcertDetailProps.Failed` / `.Retry` (a concert row whose ask failed is the error vacancy with Retry, never the skeleton forever);
 // `LibraryPageProps.CountKnown` and `LibraryGroupSet.Known` (no count beside a loading library); `NotificationsProps.Loading` (a feed still loading
 // draws its skeleton, not "Loading...").
+// 1.62 (audit B5a): `BandProps.Section` (the destination a detail page lives under, from its trail: the band lights "library" over an album);
+// `PageCrumb.Word` (a crumb that is the core's word, not a name: a theme may re-case it); `StyleKeys.LibraryPlaylistHead` with `LibraryPlaylistHeadStyle` /
+// `LibraryPlaylistHeadArgs` (the library playlists reader's head as a theme draws it); `AlbumTrailStackProps.Name` (the name a stack's title carries);
+// `BrowseCategoryProps.Color` / `.Parent` (a category page's own colour and the page it was opened from).
 // 1.66 (audit B11): `PlayerCredits.Line(separator)` (the credits line as plain words: what the bar's credits marquee restarts on and shows as its
 // tooltip). `StageIdentityProps.Marquee` stays as it is: the marquee control behind it now rests at the start and passes a bounded number of times.
 //

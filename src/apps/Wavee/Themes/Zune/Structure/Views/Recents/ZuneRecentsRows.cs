@@ -159,7 +159,7 @@ internal static class ZuneRecentsRows
             Trailing = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f, Children = trail.ToArray() },
             Height = RecentsLayout.RowHeight,
         };
-        Element primary = Controls.Surface(data, global::Wavee.Shape.Row(Z.CardArt) with { MinHeight = RecentsLayout.RowHeight });
+        Element primary = Controls.Surface(data, global::Wavee.Shape.Row(Z.CardArt) with { MinHeight = RecentsLayout.RowHeight, PadX = Z.RowPadX });
         Element line = new BoxEl
         {
             Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center,

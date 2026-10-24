@@ -89,13 +89,15 @@ internal static class WinUiTitleBar
 
     // ── the strip ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static TabStrip BuildStrip(ShellTitleBarProps props, Func<TierFacts> tiers, bool touch) => new()
+    private static TabStrip BuildStrip(ShellTitleBarProps props, Func<TierFacts> tiers) => new()
     {
-        Parts = touch ? s_touchParts : s_ladderParts,
+        // The Compact touch sizes are live parts, so the 641 crossing keeps every tab, the "+" and the close button and eases them to the
+        // touch floor (the plates' height in the engine, the "+" and the close button here).
+        Parts = StripParts(tiers),
         // WinUI's TabView: Chrome tabs (the selected tab joins the toolbar's Mica), the tier's form against the bar's tab lane.
         Appearance = TabStripAppearance.Chrome,
         Form = () => WinUiTiers.TitleBarOf(tiers()).TabForm,
-        TabHeight = touch ? WinUiFrameRules.CompactTabH : WinUiFrameRules.TabH,
+        TabHeight = Prop.Of(() => WinUiTiers.TitleBarOf(tiers()).TabH),
         TextFontSize = WinUiFrameRules.MarkTextSize,
         SelectedFill = Prop.Of(static () => Tok.FillSolidBase),
         // Shell-Top: only the selected tab carries its close button at rest (the others show it under the pointer).
@@ -111,41 +113,34 @@ internal static class WinUiTitleBar
         ScrollMetricsChanged = m => props.OnTabExtent(m.ContentExtent),
     };
 
-    /// <summary>The tabs island's child: nothing while the strip is hidden (a one-row bar would seat the island in the toolbar), the Compact
-    /// touch strip (its tabs and "+" fill the 40 row: a crossing of 641 re-mounts it), or the ladder strip.</summary>
+    /// <summary>The tabs island's child: nothing while the strip is hidden (a one-row bar would seat the island in the toolbar), else the one
+    /// strip of every tier (its form, its plates' height and its touch parts are live).</summary>
     private sealed class StripHost(ShellTitleBarProps props, Func<TierFacts> tiers) : Component
     {
         public override Element Render()
         {
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value;
             if (!facts.Capabilities.ShowsTabStrip) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-            // A keyed child of a box (a component's root is matched by type, never by key): the swap re-mounts the strip.
-            Element strip = WinUiTiers.TitleBarOf(facts.Tiers).TouchStrip
-                ? Embed.Comp(() => BuildStrip(props, tiers, touch: true)) with { Key = WinUiFrameRules.StripKey + ":touch" }
-                : Embed.Comp(() => BuildStrip(props, tiers, touch: false)) with { Key = WinUiFrameRules.StripKey };
+            Element strip = Embed.Comp(() => BuildStrip(props, tiers)) with { Key = WinUiFrameRules.StripKey };
             return new BoxEl { Direction = 0, AlignItems = FlexAlign.Stretch, Shrink = 1f, MinWidth = 0f, Children = [strip] };
         }
     }
 
-    /// <summary>The Compact strip's "+" and the selected tab's close button: the 40 x 40 touch target (the engine's close plate is 32 x 24, and the
-    /// selected tab rides 1 DIP up its row, so a smaller box's slop was cut by the strip's clip to 40 x 39).</summary>
-    private static readonly TemplateParts s_touchParts = TouchParts();
-
-    /// <summary>The ladder strip's "+": a 32 square, the hit floor above Compact.</summary>
-    private static readonly TemplateParts s_ladderParts = LadderParts();
-
-    private static TemplateParts TouchParts()
+    /// <summary>The strip's "+" and the selected tab's close button, read per render from the tier: the Compact touch target (40 x 40: the
+    /// engine's close plate is 32 x 24, and the selected tab rides 1 DIP up its row, so a smaller box's slop was cut by the strip's clip to
+    /// 40 x 39), the ladder's 32 "+" (the hit floor above Compact) and the engine's close plate. Both ease between their sizes
+    /// (<see cref="WinUiFrameRules.TabPartMotion"/>).</summary>
+    private static TemplateParts StripParts(Func<TierFacts> tiers)
     {
         var p = new TemplateParts();
-        p[TabStrip.PartAddButton] = static b => b with { Width = WinUiFrameRules.CompactTabH, Height = WinUiFrameRules.CompactTabH };
-        p[TabStrip.PartTabCloseButton] = static b => b with { Width = WinUiFrameRules.CompactTabH, Height = WinUiFrameRules.CompactTabH, Margin = default };
-        return p;
-    }
-
-    private static TemplateParts LadderParts()
-    {
-        var p = new TemplateParts();
-        p[TabStrip.PartAddButton] = static b => b with { Width = WinUiFrameRules.AddTarget, Height = WinUiFrameRules.AddTarget };
+        p[TabStrip.PartAddButton] = b =>
+        {
+            float add = WinUiTiers.TitleBarOf(tiers()).AddTarget;
+            return b with { Width = add, Height = add, Animate = WinUiFrameRules.TabPartMotion };
+        };
+        p[TabStrip.PartTabCloseButton] = b => WinUiTiers.TitleBarOf(tiers()).TouchStrip
+            ? b with { Width = WinUiFrameRules.CompactTabH, Height = WinUiFrameRules.CompactTabH, Margin = default, Animate = WinUiFrameRules.TabPartMotion }
+            : b with { Animate = WinUiFrameRules.TabPartMotion };
         return p;
     }
 

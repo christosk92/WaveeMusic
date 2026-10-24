@@ -12,7 +12,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Roles;
-using H = Wavee.Themes.Zune.ZuneHomeRules;
+using H = Wavee.Themes.Zune.ZuneHomeRules;
+
 using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
@@ -78,10 +79,13 @@ internal static class ZuneDiscoveryKit
         {
             new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = words.ToArray() },
         };
+        // The tools end the row, so a link's word ends on the column's right edge (Z-Search, Z-Browse-Category: "see all" flush at 1392), its target
+        // reaching left of it, never centred 9 DIP in.
         if (tools is not null)
             kids.Add(new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Margin = new Edges4(H.HeadToolsGap, 0f, 0f, 0f), Children = [tools],
+                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Margin = new Edges4(H.HeadToolsGap, 0f, 0f, 0f),
+                Children = [tools is BoxEl box ? box with { Justify = FlexJustify.End } : tools],
             });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
@@ -117,12 +121,12 @@ internal static class ZuneDiscoveryKit
     private static TemplateParts MakeChevronTargets()
     {
         var parts = new TemplateParts();
-        parts[PagedShelf.PartChevronPrev] = static circle => ChevronTarget(circle);
-        parts[PagedShelf.PartChevronNext] = static circle => ChevronTarget(circle);
+        parts[PagedShelf.PartChevronPrev] = static circle => ChevronTarget(circle, DormantPrev);
+        parts[PagedShelf.PartChevronNext] = static circle => ChevronTarget(circle, DormantNext);
         return parts;
     }
 
-    private static BoxEl ChevronTarget(BoxEl circle) => circle.OnClick is null ? DormantChevron : new()
+    private static BoxEl ChevronTarget(BoxEl circle, BoxEl dormant) => circle.OnClick is null ? dormant : new()
     {
         Width = H.ChevronTarget, Height = H.ChevronTarget, Shrink = 0f, Margin = Edges4.All(-(H.ChevronTarget - H.ChevronCircle) / 2f),
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -131,9 +135,14 @@ internal static class ZuneDiscoveryKit
         Children = [circle with { OnClick = null, Opacity = 1f, Cursor = CursorId.Arrow }],
     };
 
-    /// <summary>A chevron with nowhere to go takes no room (the board's shelves have none: their eight covers fill the page and "see all" ends the row):
-    /// zero wide, its margin cancelling the header row's item gap. One node either way (a box), so it never remounts when paging wakes it.</summary>
-    private static readonly BoxEl DormantChevron = new() { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-8f, 0f, 0f, 0f), HitTestVisible = false };
+    /// <summary>A chevron with nowhere to go takes no room (the board's shelves have none: their eight covers fill the page and "see all" ends the row
+    /// on the column's right edge): zero wide, its margin cancelling the header row's item gap before it, and the previous one's also the gap before
+    /// the row's spacer (the engine's header row is title, spacer, prev, next, <see cref="H.ShelfHeadGap"/> apart). One node either way (a box), so it
+    /// never remounts when paging wakes it.</summary>
+    private static readonly BoxEl DormantPrev = new() { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-2f * H.ShelfHeadGap, 0f, 0f, 0f), HitTestVisible = false };
+
+    /// <inheritdoc cref="DormantPrev"/>
+    private static readonly BoxEl DormantNext = new() { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-H.ShelfHeadGap, 0f, 0f, 0f), HitTestVisible = false };
 
     /// <summary>A ring action: the disc and its lowercase word (none for a glyph-only action, which is named for assistive tech instead).</summary>
     public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize,
@@ -169,7 +178,7 @@ internal static class ZuneDiscoveryKit
         bool hasArt = !hasColour && art is { Length: > 0 };
         // A pale category colour takes the dark ink (white on a light plate was the white-on-white tile label): the on-media white holds
         // wherever it reads at 3:1 or better, so the board's saturated plates keep their white word.
-        ColorF plate = hasColour ? ColorScience.ToColor(colour!.Value) : default;
+        ColorF plate = hasColour ? H.MutedPlate(ColorScience.ToColor(colour!.Value)) : default;
         Prop<ColorF> labelInk = hasColour && H.PlateWantsDarkInk(plate)
             ? ColorContrast.NearBlackInk
             : Prop.Of(static () => R.OnMedia.Ink);
