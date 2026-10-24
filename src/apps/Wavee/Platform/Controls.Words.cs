@@ -78,8 +78,12 @@ public static partial class Controls
         public const float BigSize = 20f, BigLine = 26f, BigGap = 22f, BigHeight = 40f;
         /// <summary>The two stacked runs' weights: 400 → 600 standard, 300 → 400 Big (plan §5.5).</summary>
         public const ushort LightWeight = 400, HeavyWeight = 600, BigLightWeight = 300, BigHeavyWeight = 400;
-        /// <summary>An inactive word's ink, and any word's ink under the pointer (W8: 50 % / 85 % / 100 %).</summary>
-        public const float RestInk = 0.5f, HoverInk = 0.85f;
+        /// <summary>An inactive word's ink, and any word's ink under the pointer (W8: 50 % / 85 % / 100 %). On the light ground half the ink read
+        /// 3.3 : 1, so the light rest is <see cref="RestInkLight"/> (Zune measured it first: about 5 : 1 on the light page; audit B8).</summary>
+        public const float RestInk = 0.5f, HoverInk = 0.85f, RestInkLight = 0.68f;
+
+        /// <summary>An inactive word's ink on the active kind's ground.</summary>
+        public static float RestInkNow => R.IsLight ? RestInkLight : RestInk;
         /// <summary>The underline: 2 DIP, 3 DIP under the run.</summary>
         public const float UnderlineThickness = 2f, UnderlineGap = 3f;
         /// <summary>A word's count badge ("unplayed 41"): 11 on a 14 line, 4 DIP after the word.</summary>
@@ -223,8 +227,8 @@ public static partial class Controls
         /// every other callback here.</para>
         /// <para><paramref name="fit"/> (instead of <paramref name="fill"/>): the leading words that fit whole, the rest folded behind a trailing "more ▾" word
         /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para>
-        /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInk"/>): a theme whose ground needs a heavier rest
-        /// for the words' contrast states its own.</para></summary>
+        /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInkNow"/>, the kind's): a theme whose ground needs a
+        /// heavier rest for the words' contrast states its own.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
                                    Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
@@ -232,7 +236,7 @@ public static partial class Controls
             => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit, onMeasured,
                                              fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk));
 
-        static readonly Func<float> s_restInk = static () => RestInk;
+        static readonly Func<float> s_restInk = static () => RestInkNow;
 
         sealed class RailHost : Component
         {
@@ -409,14 +413,15 @@ public static partial class Controls
                 };
             }
 
-            /// <summary>The word plus its count badge and/or its chevron, on one centred row.</summary>
+            /// <summary>The word plus its count badge and/or its chevron, on one centred row. The count wears the word's own primary ink: it rests
+            /// with the word at the rest opacity, and the secondary ink under it read 2.8-3.5 : 1 at 11 DIP (audit B8); its size tells it apart.</summary>
             static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron)
             {
                 var kids = new List<Element>(3) { ink };
                 if (count is { } c)
                     kids.Add(new TextEl(c)
                     {
-                        Size = CountSize, LineHeight = CountLine, Color = Tok.TextSecondary, MaxLines = 1,
+                        Size = CountSize, LineHeight = CountLine, Color = Tok.TextPrimary, MaxLines = 1,
                         Visible = Prop.Of(() => c.Current() is { Length: > 0 }),
                     });
                 if (chevron is not null)

@@ -90,13 +90,15 @@ internal static class WinUiEpisodeRow
         IReadSignal<RowItem> it = item.Item;
         Func<ColorF> tone = ctx.Tone;
         Prop<ColorF> toneInk = Prop.Of(tone);
+        // Text and glyphs wear the tone READABLE on the page (a light page's orange read 2.6 : 1, audit B8); the bar and the rule keep the tone.
+        Prop<ColorF> textInk = Prop.Of(() => Design.Palette.ReadableInk(tone()));
         Action<Episode> open = ctx.Open ?? Episode.OpenPageAction;
 
         var copy = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = WinUiEpisodeRowLayout.CopyGap,
             Opacity = item.Opacity(static r => Episode.PlayedOf(r.Episode) ? Episode.PlayedInk : 1f),
-            Children = [TitleLine(in item, it, tone, seed), Description(in item, seed), MetaLine(in item, toneInk, seed), Rule(in item, toneInk)],
+            Children = [TitleLine(in item, it, tone, seed), Description(in item, seed), MetaLine(in item, textInk, seed), Rule(in item, toneInk)],
         };
         var grid = RowGrid(Art(in item, narrow ? Episode.RowArtNarrow : Episode.RowArt), copy, Cluster(in item, it, ctx, narrow, seed));
         var root = new BoxEl
@@ -186,7 +188,7 @@ internal static class WinUiEpisodeRow
             {
                 Size = WinUiEpisodeRowLayout.TitleSize, LineHeight = WinUiEpisodeRowLayout.TitleLine, Weight = 600, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                 MinWidth = 0f, Grow = 1f, Basis = 0f, Shrink = 1f,
-                Color = Prop.Of(() => Episode.IsNowPlaying(it.Value.Episode) ? tone() : Tok.TextPrimary),
+                Color = Prop.Of(() => Episode.IsNowPlaying(it.Value.Episode) ? Design.Palette.ReadableInk(tone()) : Tok.TextPrimary),
             },
         ],
     };
@@ -204,7 +206,7 @@ internal static class WinUiEpisodeRow
     }
 
     /// <summary>NEW · "23 min left" (in progress) · date · length (not in progress) · ✓ played · the transcript mark.</summary>
-    static Element MetaLine(in BoundItemScope<RowItem> item, Prop<ColorF> toneInk, bool seed = false) => new BoxEl
+    static Element MetaLine(in BoundItemScope<RowItem> item, Prop<ColorF> textInk, bool seed = false) => new BoxEl
     {
         Direction = 0, Wrap = true, Gap = WinUiEpisodeRowLayout.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, 2f, 0f, 0f),
         Children =
@@ -223,13 +225,13 @@ internal static class WinUiEpisodeRow
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
             R.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
             {
-                Weight = 700, CharSpacing = 60f, Color = toneInk, MaxLines = 1,
+                Weight = 700, CharSpacing = 60f, Color = textInk, MaxLines = 1,
                 Visible = item.Show(static r => Episode.IsNew(in r)),
             },
             new TextEl(item.Text(static r => Episode.LeftOf(r.Episode)))
             {
                 Size = Ui.Caption("").Size, LineHeight = Ui.Caption("").LineHeight,
-                Weight = 600, Color = toneInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Weight = 600, Color = textInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
                 Visible = item.Show(static r => Episode.InProgressOf(r.Episode)),
             },
             MetaText(seed ? Episode.s_dates.Get(Episode.SeedDateKey, Episode.s_dateFormat) : item.Text(static r => Episode.DateKeyOf(r.Episode), Episode.s_dates, Episode.s_dateFormat))
@@ -239,7 +241,7 @@ internal static class WinUiEpisodeRow
             {
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
                 Visible = item.Show(static r => Episode.PlayedOf(r.Episode)),
-                Children = [Icon(Icons.Check, 12f) with { Color = toneInk }, MetaText(Loc.Get(Strings.Podcast.Played))],
+                Children = [Icon(Icons.Check, 12f) with { Color = textInk }, MetaText(Loc.Get(Strings.Podcast.Played))],
             },
             Icon(Icons.Document, 12f) with
             {

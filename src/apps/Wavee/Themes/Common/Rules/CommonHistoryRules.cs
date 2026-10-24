@@ -47,8 +47,6 @@ public static class CommonHistoryRules
     /// <summary>The gap between a row's title and its meta line.</summary>
     public const float TitleMetaGap = 2f;
 
-    /// <summary>The delete button at rest.</summary>
-    public const float DeleteRestOpacity = 0.5f;
 
     /// <summary>A row this build has no page for (retired, or developer-gated): dimmed, inert.</summary>
     public const float InertRowOpacity = 0.6f;

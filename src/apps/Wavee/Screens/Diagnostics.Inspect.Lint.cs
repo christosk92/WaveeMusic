@@ -345,6 +345,9 @@ public static partial class Diagnostics
             /// <summary>The edges it feathers (an edge fade, or a scroller's auto fade): <see cref="EdgeMask"/> bits.</summary>
             public byte FadeEdges { get; init; }
 
+            /// <summary>How deep its widest feather reaches in from the edge, DIP (0: unknown or none).</summary>
+            public float FadeBand { get; init; }
+
             /// <summary>An authored clip on its children in window DIP (a sticky or collapse cut, a reveal box); <see cref="RectF.Infinite"/> when none.</summary>
             public RectF ClipRect { get; init; } = RectF.Infinite;
 
@@ -1726,6 +1729,26 @@ public static partial class Diagnostics
             return t with { Ground = ground, GroundShare = share };
         }
 
+        /// <summary>Is the run's visible box inside the feather of its nearest scroller's edge fade, on an edge that fades now (content beyond it): a
+        /// run sliding under the fade is on its way out of view and is read once it is scrolled in (audit B8: WinUI's concert "Buy tickets" read
+        /// 1.05 : 1 half-dissolved under the list's foot fade). A scroller with no recorded band is never skipped.</summary>
+        static bool UnderScrollFade(Snapshot s, Node n)
+        {
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                Node up = s.Nodes[a];
+                if (up.ScrollAxis == 0) continue;
+                if (up.FadeBand <= 0f || up.Visible.IsEmpty) return false;
+                RectF v = n.Visible, sv = up.Visible;
+                if (up.ScrollAxis == 2)
+                    return (Fades(up, EdgeMask.Bottom) && up.ScrollOffset < up.ScrollMax - Slack && v.Bottom > sv.Bottom - up.FadeBand)
+                        || (Fades(up, EdgeMask.Top) && up.ScrollOffset > Slack && v.Y < sv.Y + up.FadeBand);
+                return (Fades(up, EdgeMask.Right) && up.ScrollOffset < up.ScrollMax - Slack && v.Right > sv.Right - up.FadeBand)
+                    || (Fades(up, EdgeMask.Left) && up.ScrollOffset > Slack && v.X < sv.X + up.FadeBand);
+            }
+            return false;
+        }
+
         /// <summary>Under this declared contrast against the colour holding a run's box, that colour may be the run's own ink (a filled glyph covers
         /// most of its box): <see cref="InkCanPaint"/> decides.</summary>
         const double InkGroundRatio = 1.5;
@@ -2405,6 +2428,7 @@ public static partial class Diagnostics
                 if (t.Color.A * n.Opacity < 0.02f || !framed || n.Visible.IsEmpty) continue;
                 if (n.Opacity < o.IncidentalOpacity) continue;   // faded on purpose (a lyric's distance fade): incidental, not read
                 if (IsGlowCopy(s, n, t)) continue;                // a bloom or shadow drawn under the same words: the readable copy is judged
+                if (UnderScrollFade(s, n)) continue;              // passing under a scroller's edge fade: on its way out of view, read once scrolled in
                 looked++;
                 float need = ContrastNeeded(t, o);
                 string ink = HexA(t.Color) + (n.Opacity < 0.995f ? "@" + F(n.Opacity) : "");

@@ -320,10 +320,11 @@ internal static class CommonHistory
         kids.Add(new BoxEl
         {
             Width = deleteBox, Height = deleteBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f,
-            Corners = CornerRadius4.All(Radii.Control), Opacity = CommonHistoryRules.DeleteRestOpacity,
+            Corners = CornerRadius4.All(Radii.Control),
             Role = AutomationRole.Button,
             OnClick = e.Remove,
-            Children = [Ui.Icon(Icons.Cancel, CommonHistoryRules.DeleteGlyphSize, Tok.TextSecondary)],
+            // Quiet at rest in the tertiary ink itself, not the secondary at half opacity (2.2 : 1 on the light page, under a glyph's 3 : 1; audit B8).
+            Children = [Ui.Icon(Icons.Cancel, CommonHistoryRules.DeleteGlyphSize, Tok.TextTertiary)],
         }.Interactive(Interaction.Subtle));
 
         bool reachable = e.Reachable;
