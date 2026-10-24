@@ -64,7 +64,7 @@ internal static partial class ZuneShow
             BlocksDragArm = true, IsEnabled = enabled, Opacity = enabled ? 1f : ZuneBandRules.DisabledOpacity,
             OnClick = click, Children = kids.ToArray(),
         };
-        return written ? box : Controls.Named(box, name);
+        return K.StableNamed(box, name, written);
     }
 
     /// <summary>A ring's words: the label voice lowered as a command, and under it (when there is one) a quiet line.</summary>

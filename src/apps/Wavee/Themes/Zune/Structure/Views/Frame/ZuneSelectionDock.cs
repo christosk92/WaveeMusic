@@ -150,7 +150,7 @@ internal static class ZuneSelectionDock
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = c.Enabled, AllowFocusOnInteraction = false, BlocksDragArm = true,
             OnClick = c.Invoke, Children = kids.ToArray(),
         };
-        return word ? box : Controls.Named(box, c.Label);
+        return ZuneDetailKit.StableNamed(box, c.Label, word);
     }
 
     /// <summary>The Compact column: the 36 disc over its word, the whole column the target.</summary>
