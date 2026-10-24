@@ -49,8 +49,13 @@ public static class ZuneHomeRules
     public const float HeadToolsGap = 14f;
 
     /// <summary>A shelf's heading row takes the header's room before the shelf's own spacer does (the engine's header row is title, spacer, pager:
-    /// two grow factors would split the room), so "see all" stands at the row's right edge as the board draws it.</summary>
-    public const float HeadFillGrow = 1000f;
+    /// two grow factors would split the room; at this ratio the spacer's share is under a thousandth of a DIP), so "see all" stands at the row's
+    /// right edge as the board draws it.</summary>
+    public const float HeadFillGrow = 1_000_000f;
+
+    /// <summary>The gap between the items of a shelf's header row (the engine's <c>PagedShelf</c> header: title, spacer, the chevrons), which a
+    /// dormant chevron cancels.</summary>
+    public const float ShelfHeadGap = 8f;
 
     /// <summary>The busy bar's height (a switch in flight), over the top of the content.</summary>
     public const float BusyH = 2f;
