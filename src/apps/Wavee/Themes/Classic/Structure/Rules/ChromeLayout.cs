@@ -73,6 +73,10 @@ internal static class ClassicChromeLayout
     public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
         TransitionDynamics.Tween(Design.Motion.Standard, Easing.FluentStandard), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
 
+    /// <summary>The field's width when it SNAPS (a rest-width change without a focus flip or a tier crossing: a resize step, a tab added): the
+    /// same reflow at no duration, so the box keeps a transition the engine measures it for and the next eased change has its "before".</summary>
+    public static readonly LayoutTransition FieldWidthSnap = FieldWidthMotion with { Dynamics = TransitionDynamics.Tween(0f, Easing.Linear) };
+
     // ── the suggestions popup ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The popup's width before the anchor reports one.</summary>
