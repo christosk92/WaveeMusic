@@ -8,7 +8,7 @@
 // (`DefaultImageFetcher`, disk-first over the app's image cache directory, so a photograph already on screen is a disk hit and no
 // second download), WIC decodes them to a small map (`ToneImage`), and the map is posted back through the plane's own UI poster
 // (`Palette.Post`). A failure leaves the row null: the surface keeps its floor veil. The rows are bounded (`ToneRows`); past it the
-// measured ones are forgotten and measure again on their next ask.
+// measured ones no surface reads any more are forgotten and measure again on their next ask.
 //
 // THE SUBJECT (lane B10) is read in the same pass from the same decode (`ToneImage.Read`: the OS's face detector over a grey copy):
 // `Subject(url)` returns where the photograph's subject stands (`PhotoSubject`), or null until the measurement settles. It always settles: a
@@ -66,8 +66,9 @@ public static partial class Palette
     static void ForgetMeasuredTones()
     {
         var done = new List<string>();
+        // A row a mounted surface still reads stays (its photograph's crop and scrim would otherwise drop and come back on its next render).
         foreach (var (key, row) in s_tones)
-            if (row.Map.Peek() is not null || row.Subject.Peek() is not null) done.Add(key);
+            if ((row.Map.Peek() is not null || row.Subject.Peek() is not null) && !row.Map.HasSubscribers && !row.Subject.HasSubscribers) done.Add(key);
         foreach (string key in done) s_tones.Remove(key);
     }
 
