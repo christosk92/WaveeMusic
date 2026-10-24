@@ -109,6 +109,7 @@ public static partial class Entities
         h.Title[slot] = StringId.Empty;
         h.Table.Known[slot] &= ~h.Bit;
         h.Table.Version[slot]++;
+        h.Table.MarkDirty();   // a publication carries only the tables marked
         s.PublishAll();
         return true;
     }
@@ -121,6 +122,7 @@ public static partial class Entities
         h.Title[h.Slot] = h.Value;
         h.Table.Known[h.Slot] |= h.Bit;
         h.Table.Version[h.Slot]++;
+        h.Table.MarkDirty();
         Current.PublishAll();
     }
 

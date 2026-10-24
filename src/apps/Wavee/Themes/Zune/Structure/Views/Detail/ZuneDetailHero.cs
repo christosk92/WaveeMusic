@@ -624,20 +624,23 @@ internal static class ZuneDetailHero
                     },
                 ],
             },
-            new BoxEl { Height = Z.HeroActionsTop },
+            Air(Z.HeroActionsTop),
             new BoxEl { Height = lay.RingSize, Children = [K.RingsSkeleton("hero-skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay)] },
         };
         if (g.Description)
         {
-            kids.Add(new BoxEl { Height = Z.HeroDescriptionTop });
+            kids.Add(Air(Z.HeroDescriptionTop));
             kids.Add(new BoxEl
             {
                 Direction = 1, Height = Z.DescriptionLines * Z.DescriptionLine,
                 Children = [K.Bar(inner, Z.DescriptionSize), K.Bar(inner * Z.SkelMetaFraction, Z.DescriptionSize)],
             });
         }
-        kids.Add(new BoxEl { Height = Z.HeroBottom });
+        kids.Add(Air(Z.HeroBottom));
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
+
+        // Air, never a bar: a childless box of a declared height is a bar to the deriver.
+        static Element Air(float h) => new BoxEl { Height = h, Shrink = 0f }.Skeletonized(false);
     }
 
     sealed record MetaProps(Detail.Identity Id, float Width, ZuneDetailLayout Layout, int Lines);
