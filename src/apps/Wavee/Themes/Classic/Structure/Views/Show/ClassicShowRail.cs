@@ -29,18 +29,22 @@ internal static partial class ClassicShow
         // Reports 11c/11d: the APP accent (never the show tone) and a label that WRAPS — Workstream B's
         // Controls.PrimaryButton(wrap: true), not a bespoke pill (was Show.PrimaryPill).
         // The size is the host's ask (the library pane's 40-DIP Compact targets, contract 1.22); the stock Medium everywhere else.
+        // A show with no episodes keeps its play verbs in place, disabled (sh8: "Latest" offered nothing to play).
+        bool playable = !a.Empty;
         Element pill = a.Primary switch
         {
             ShowReaderRules.Primary.Follow => Controls.PrimaryButton(Loc.Get(Strings.Artist.Follow), a.Follow, Tok.AccentDefault, Icons.Add, wrap: true, size: a.Size),
             ShowReaderRules.Primary.Resume => Controls.PrimaryButton(
-                Loc.Get(Strings.Podcast.Resume) + " · " + Strings.Podcast.Left(Episode.DurationWords(a.ResumeLeft)), a.Resume, Tok.AccentDefault, wrap: true, size: a.Size),
-            ShowReaderRules.Primary.PlayFirst => Controls.PrimaryButton(Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)), a.First, Tok.AccentDefault, wrap: true, size: a.Size),
-            _ => Controls.PrimaryButton(Loc.Get(Strings.Podcast.Latest), a.Latest, Tok.AccentDefault, wrap: true, size: a.Size),
+                Loc.Get(Strings.Podcast.Resume) + " · " + Strings.Podcast.Left(Episode.DurationWords(a.ResumeLeft)), a.Resume, Tok.AccentDefault, wrap: true, size: a.Size,
+                isEnabled: playable),
+            ShowReaderRules.Primary.PlayFirst => Controls.PrimaryButton(Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)), a.First, Tok.AccentDefault, wrap: true,
+                size: a.Size, isEnabled: playable),
+            _ => Controls.PrimaryButton(Loc.Get(Strings.Podcast.Latest), a.Latest, Tok.AccentDefault, wrap: true, size: a.Size, isEnabled: playable),
         };
         if (a.Primary != ShowReaderRules.Primary.Follow) return pill;
         Element ghost = a.Ghost == ShowReaderRules.Primary.PlayFirst
-            ? Button.Create(Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)), a.First, ButtonAppearance.Standard, a.Size, glyph: Icons.Play)
-            : Button.Create(Loc.Get(Strings.Podcast.Latest), a.Latest, ButtonAppearance.Standard, a.Size, glyph: Icons.Play);
+            ? Button.Create(Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)), a.First, ButtonAppearance.Standard, a.Size, glyph: Icons.Play, isEnabled: playable)
+            : Button.Create(Loc.Get(Strings.Podcast.Latest), a.Latest, ButtonAppearance.Standard, a.Size, glyph: Icons.Play, isEnabled: playable);
         return new BoxEl
         {
             Direction = 0, Wrap = true, Gap = Detail.RailLayout.SatelliteGap, AlignItems = FlexAlign.Center, Children = [pill, ghost],
