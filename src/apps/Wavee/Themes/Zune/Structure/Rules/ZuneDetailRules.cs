@@ -164,6 +164,11 @@ public static class ZuneDetailRules
     public static readonly LayoutTransition ColumnReflow = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
+    /// <summary>A block the one-tree page re-arranges across its narrow edge (audit B9: the identity column, the cover row, the list head): it moves and
+    /// resizes through real layout on the gutters' clock, anchored at its top-left, so what follows it rides the re-solve and nothing jumps.</summary>
+    public static readonly LayoutTransition Arrange = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width | SizeAxes.Height);
+
     /// <summary>The panorama band's height ease (a crossing to a short window folds it; a wrapping title or the editor grows it): the layout lands once and
     /// everything below RIDES the presented extent (ZT5: the flow reveal, as the chapters of the discovery pages do), so the columns under the band never
     /// jump when it folds. The title scales with its size step on its own box (`ZuneMotion.TitleScale`).</summary>

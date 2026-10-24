@@ -356,15 +356,17 @@ internal static class ZuneDetailKit
 
     /// <summary>The ring row: play (its word where the tier writes it), the save ring, shuffle (4K), share and "..." in the tier's order, wrapping
     /// one by one (a localisation longer than the board's words never overflows the column). <paramref name="spring"/> pushes share and "..." to
-    /// the row's end (the vertical hero's row, Z-Album-Compact).</summary>
+    /// the row's end (the vertical hero's row, Z-Album-Compact). <paramref name="swapEnter"/>: the row re-arranges with its page (the one-tree hero,
+    /// audit B9), so the rings one arrangement draws and the other leaves to the band's row 2 (play, saved, shuffle) and the spring enter and leave on
+    /// the swap's cross-fade while the rest keep their nodes and glide.</summary>
     public static Element Rings(string key, Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots,
-        Func<ColorF> accent, Action play, ZuneDetailLayout lay, bool spring)
+        Func<ColorF> accent, Action play, ZuneDetailLayout lay, bool spring, EnterExit? swapEnter = null)
     {
         // One home per verb (audit A4): from Small up the band's row 2 carries play, shuffle and saved, so the record leaves them out here. A page's
         // own primary (a show's or an episode's) is not a band verb and stays.
         var kids = new List<Element>(6);
         if (slots.Primary is { } primary) kids.Add(primary(accent));
-        else if (lay.PrimaryInHero) kids.Add(Ring("play", Icons.Play, Loc.Get(Strings.Detail.Play), lay.PlayWord, accent, play, lay));
+        else if (lay.PrimaryInHero) kids.Add(Swap(Ring("play", Icons.Play, Loc.Get(Strings.Detail.Play), lay.PlayWord, accent, play, lay), swapEnter));
         if (slots.Satellites is { } satellites)
             kids.AddRange(satellites());
         else
@@ -372,11 +374,11 @@ internal static class ZuneDetailKit
             if (lay.PrimaryInHero && cfg.Heart != HeartMode.None)
             {
                 var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
-                kids.Add(SaveRing(target.Text, id.Title, lay.SaveWord, accent, lay));
+                kids.Add(Swap(SaveRing(target.Text, id.Title, lay.SaveWord, accent, lay), swapEnter));
             }
             if (lay.PrimaryInHero && lay.ShuffleRing && acts.Shuffle is { } shuffle)
-                kids.Add(Ring("shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, null, shuffle, lay));
-            if (spring) kids.Add(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f });
+                kids.Add(Swap(Ring("shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, null, shuffle, lay), swapEnter));
+            if (spring) kids.Add(Swap(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f }, swapEnter));
             if (lay.ShareRing && ShareActionFor(id) is { } share)
                 kids.Add(Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), false, null, share, lay));
             if (lay.MoreRing && acts.More is { } more) kids.Add(MoreRing(more, lay));
@@ -387,6 +389,10 @@ internal static class ZuneDetailKit
             Layout = Shove, Children = kids.ToArray(),
         };
     }
+
+    /// <summary>A ring only one arrangement of a re-arranging row draws: it enters on <paramref name="enter"/> (the swap's fade once the view has rendered)
+    /// and leaves on the swap's fade. Unchanged where the row never re-arranges (<paramref name="enter"/> null and never rendered before).</summary>
+    static Element Swap(Element ring, EnterExit? enter) => enter is null ? ring with { Exit = ZuneMotion.SwapFade } : ring with { Enter = enter, Exit = ZuneMotion.SwapFade };
 
     /// <summary>How many rings <see cref="Rings"/> lays out for this page (the skeleton reserves exactly these discs).</summary>
     public static int RingCount(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, ZuneDetailLayout lay)

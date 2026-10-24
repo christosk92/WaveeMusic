@@ -205,6 +205,12 @@ public static class ZuneListRules
         Enter: new EnterExit(Dx: 10f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: -8f, Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
 
+    /// <summary>A row cell a crossing moves or resizes (the one-tree page's lanes, audit B9: a list's number lane leaving the Compact row, the time folding into
+    /// the subline, the trailing lanes swapping): it glides to its new lane on the pivot clock, laid out at its final size from the commit (a reveal, so the
+    /// rows never relayout per frame); a lane only one form draws fades in or out.</summary>
+    public static readonly LayoutTransition CellArrange = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut), SizeMode.Reveal, Enter: ZuneMotion.ColumnFade, Exit: ZuneMotion.ColumnFade);
+
     /// <summary>The header shifting over for the check lane.</summary>
     public static readonly LayoutTransition HeaderShift = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));

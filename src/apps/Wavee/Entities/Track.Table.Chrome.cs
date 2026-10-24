@@ -155,9 +155,14 @@ public readonly partial struct Track
                 stack.Add(Gutter(chips) with { Key = "chrome:chips" });
             if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
             stack.Add(header);
-            Element[] children = toolbar
-                ? [new BoxEl { Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, Spacing.XS), Children = stack.ToArray() }]
-                : stack.ToArray();
+            // The air under the header follows the bar above it: the two-column arm's, and the hero list's columns form, which draws the bar in its hero
+            // (audit B9). An easing spacer (a margin cannot ease) in one wrapper in every form, so the form never re-parents the header.
+            stack.Add(new BoxEl
+            {
+                Key = "chrome:air", Height = toolbar || ColumnsForm ? Spacing.XS : 0f, Shrink = 0f, HitTestVisible = false,
+                Animate = MotionRecipes.CardResizeHeight,
+            });
+            Element[] children = [new BoxEl { Direction = 1, MinWidth = 0f, Children = stack.ToArray() }];
             // The 8 DIP above the header is AIR UNDER THE TOOLBAR, so an arm with no toolbar must not pay it: the
             // embedded pane's shimmer draws its own header shim (`ClassicLibraryAlbumPane`, compact), which states none, and the 8 the real
             // chrome used to add anyway moved every row down by that much on the frame the shimmer released.

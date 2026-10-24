@@ -64,7 +64,10 @@ internal static class ZuneDetailFrame
         IReadSignal<Design.PageAccent>? accent = p.PageAccent;
         bool coreDocked = ctx.Hooks.UseContext(Detail.AsideDocked);   // the core's answer by the window tier, read before any early return
 
-        // ── the vertical / hero system ──
+        // ── a TRACK page: one tree at every width (audit B9) ──
+        if (p.Vertical && p.VerticalTracks) return OneTree(p, ctx, lay, gutter, accent, coreDocked);
+
+        // ── the vertical arm of a show or an episode (its fixed header over the episodes) ──
         if (p.Vertical)
         {
             Element content = new BoxEl
@@ -159,6 +162,61 @@ internal static class ZuneDetailFrame
         // ALWAYS provided (a value, never a wrapper that comes and goes): a conditional wrapper made the frame's outermost element differ across the
         // 1008 edge, remounting the whole page on the crossing.
         return Ctx.Provide(Detail.AsideDocked, p.Aside is not null && !dock ? false : coreDocked, root);
+    }
+
+    /// <summary>A track page's frame, ONE tree at every width (audit B9): the notice over the page column, in which the table stands with the insights layer over
+    /// its list column. The table hosts the hero as its item 0 in both forms, and the hero arranges the panorama, the identity column, the list head and the
+    /// aside (`ZuneDetailHero`); the frame only eases the page column's gutters (none at the hero form, where the rows run full bleed and the hero stands on
+    /// the gutter itself) and lays the insights over the list column (beside the identity column at the columns form). Nothing here is keyed by the form.</summary>
+    static Element OneTree(DetailFrameProps p, in ViewContext ctx, ZuneDetailLayout lay, float gutter, IReadSignal<Design.PageAccent>? accent, bool coreDocked)
+    {
+        bool columns = p.Form == DetailForm.Columns;
+        bool dock = columns && ZuneDetailHero.Docks(p.Aside, lay);
+        // The insights sheet's layer over the list column (a pass-through layer while the aside holds the insights): the same children either way, so the
+        // list never re-parents. At the columns form it starts beside the identity column, as the list does.
+        Element layer;
+        if (p.Sheet is { } sheet && !dock)
+        {
+            var open = sheet.Toggle.Open;
+            layer = new BoxEl
+            {
+                Key = "insights:layer", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                HitTestVisible = Prop.Of(() => open.Value),
+                Children = [ctx.View(ViewKeys.DetailInsights, sheet with { Page = new BoxEl { Grow = 1f, HitTestVisible = false } })],
+            };
+        }
+        else
+            layer = new BoxEl { Key = "insights:layer", Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, HitTestVisible = false };
+        float lead = columns && p.TwoColumn is { } tc ? (tc.Collapsed ? tc.CompactWidth : lay.RailW) + lay.ColumnGap : 0f;
+        Element host = new BoxEl
+        {
+            Key = "insights:host", ZStack = true, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            Children =
+            [
+                p.Content,
+                new BoxEl
+                {
+                    Key = "insights:layer-row", Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
+                    Children = [ZuneFrameRules.Gutter(lead), layer],
+                },
+            ],
+        };
+        Element page = new BoxEl
+        {
+            Key = "detail:page", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+            Children =
+            [
+                p.Notice,
+                K.CentredPage(new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, DropTarget = p.Drop,
+                    Children = [Right(p, host)],
+                }, columns ? gutter : 0f) with { Grow = 1f, Shrink = 1f, MinHeight = 0f },
+            ],
+        };
+        // The core docked the aside by the window tier; the content tier is narrower here (a docked panel's page): the aside folds and what it held returns
+        // to the band under the rows. Always provided (a value, never a wrapper that comes and goes).
+        return Ctx.Provide(Detail.AsideDocked, p.Aside is not null && !dock ? false : coreDocked, Root(p, accent, "page", page));
     }
 
     /// <summary>The frame's root: the tint claim, the tone plane (the art wash) and the arm, the page's accent provided around them.</summary>
