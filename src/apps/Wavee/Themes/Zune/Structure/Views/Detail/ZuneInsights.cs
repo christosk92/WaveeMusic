@@ -36,14 +36,14 @@ internal static class ZuneInsights
     public static Element SheetTemplate(DetailInsightsProps p, in ViewContext ctx)
         => p.Docked ? Docked(p.Toggle, p.Facts, p.RouteKey) : Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, p.PageWidth, p.RouteKey, p.OnClosed);
 
-    /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the bar's glyph (the tier's target edge, in the key so a
-    /// crossing re-mounts the one button at its size) or the band's word.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the bar's glyph (the tier's target edge, a re-pushed prop: a
+    /// crossing resizes the one button and keeps its node, its focus and its hover) or the band's word.</summary>
     public static Element ToggleTemplate(DetailInsightsToggleProps p, in ViewContext ctx)
     {
         var toggle = p.Toggle;
         if (p.Form == DetailInsightsToggleForm.BandWord) return Embed.Comp(() => new BandWord(toggle));
         float edge = MathF.Max(Z.ToggleEdge, ZuneDetailTiers.For(ctx.Tier().Window).Target);
-        return Controls.Named(Embed.Comp(() => new BarButton(toggle, edge)) with { Key = "insights:toggle:" + edge },
+        return Controls.Named(Embed.Comp(new BarProps(toggle, edge), static () => new BarButton()) with { Key = "insights:toggle:bar" },
             Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 
@@ -150,28 +150,39 @@ internal static class ZuneInsights
     static readonly PathData s_mark = PathDataParser.Parse("M4 20h16M7.5 20v-7M12 20V6M16.5 20v-4", PathContentEpoch.Mint(), FillRule.NonZero);
 
     /// <summary>The list bar's toggle: the bar-chart mark, the accent ink while open (a toggle button: pressed IS its meaning).</summary>
-    sealed class BarButton(InsightsToggle toggle, float edge) : Component
+    sealed record BarProps(InsightsToggle Toggle, float Edge);
+
+    sealed class BarButton : Component
     {
         public override Element Render()
         {
+            var (toggle, edge) = UseProps<BarProps>();
             bool open = toggle.Open.Value;
+            // The tier's edge (36, 40 at Compact and Huge 4K) eases on the button's own box; it is not the component's root, whose size would land at once.
             return new BoxEl
             {
-                Key = "insights:toggle", Width = edge, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
-                Role = AutomationRole.ToggleButton, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = toggle.Toggle, OnRealized = toggle.CaptureButton,
-                Children =
-                [
-                    new PathEl
-                    {
-                        Geometry = s_mark, Width = Z.ToggleGlyph, Height = Z.ToggleGlyph, ViewBoxW = F.GlyphViewBox, ViewBoxH = F.GlyphViewBox, Shrink = 0f,
-                        StrokeColor = open ? Tok.AccentTextPrimary : Tok.TextSecondary,
-                        Stroke = new StrokeStyle(F.ToggleStroke, LineCap.Square, LineJoin.Miter),
-                    },
-                ],
+                Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children = [Button(toggle, edge, open)],
             };
         }
+
+        static BoxEl Button(InsightsToggle toggle, float edge, bool open) => new()
+        {
+            Key = "insights:toggle", Width = edge, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Layout = Design.Reduced ? null : Z.ToggleResize,
+            HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
+            Role = AutomationRole.ToggleButton, Focusable = true, Cursor = CursorId.Hand,
+            OnClick = toggle.Toggle, OnRealized = toggle.CaptureButton,
+            Children =
+            [
+                new PathEl
+                {
+                    Geometry = s_mark, Width = Z.ToggleGlyph, Height = Z.ToggleGlyph, ViewBoxW = F.GlyphViewBox, ViewBoxH = F.GlyphViewBox, Shrink = 0f,
+                    StrokeColor = open ? Tok.AccentTextPrimary : Tok.TextSecondary,
+                    Stroke = new StrokeStyle(F.ToggleStroke, LineCap.Square, LineJoin.Miter),
+                },
+            ],
+        };
     }
 
     /// <summary>The stuck band's toggle: the lowercase word, the accent ink while open.</summary>

@@ -72,10 +72,21 @@ internal static class ZunePanelWash
         if (wash?.Below(top) is { } part)
             kids.Add(new BoxEl
             {
-                Key = ZunePanelWashRules.CardWashKey + ":" + wash.Tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-                Height = part.Height, AlignSelf = FlexAlign.Start, HitTestVisible = false,
-                Gradient = GradientDown(part.Stops),
-                Enter = ZuneBandRules.MaterialFade, Exit = ZuneBandRules.MaterialFade,
+                // The card's top moves on a crossing (floating under the band, docked from the window's top: the 1008 edge) while the host's top spacer
+                // eases (`ZunePanelTiers.TopMotion`): the wash's slot eases its height with it. The keyed wash inside cross-fades on a cover change,
+                // as before (an enter on the slot itself would grow every new wash from nothing).
+                Key = ZunePanelWashRules.CardWashKey, Height = part.Height, AlignSelf = FlexAlign.Start, ZStack = true, HitTestVisible = false,
+                Animate = Design.Reduced ? null : ZunePanelTiers.TopMotion,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = ZunePanelWashRules.CardWashKey + ":" + wash.Tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+                        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+                        Gradient = GradientDown(part.Stops),
+                        Enter = ZuneBandRules.MaterialFade, Exit = ZuneBandRules.MaterialFade,
+                    },
+                ],
             });
         kids.Add(Scrim());
         if (glow is not null) kids.Add(glow);

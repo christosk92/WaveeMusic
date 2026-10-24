@@ -261,10 +261,12 @@ public readonly partial struct Episode
                 About: ViewSlots.View(Contracts.ViewKeys.EpisodeAbout, AboutProps(e)),
                 Related: Embed.Comp(new PodcastReaderUI.RecommendationProps(p.Subject.Text, false),
                     static () => new PodcastReaderUI.Recommendations()) with { Key = "related:" + key },
-                Chapters: Embed.Comp(p, static () => new ChapterReader()) with { Key = "chapters:" + key },
+                // The sections' shapes for a loading page's derived shimmer (audit B7): the chapter rows and the placeholder comments at their size,
+                // never the deriver's one default bar for an opaque component.
+                Chapters: Embed.Comp(p, static () => new ChapterReader()) with { Key = "chapters:" + key, SkeletonProxy = ChapterReader.Shape },
                 Transcript: Embed.Comp(p, static () => new TranscriptReader()) with { Key = "transcript:" + key },
                 Comments: Embed.Comp(new PodcastReaderUI.DiscussionProps(p.Subject.Text, false),
-                    static () => new PodcastReaderUI.Discussion()) with { Key = "comments:" + key },
+                    static () => new PodcastReaderUI.Discussion()) with { Key = "comments:" + key, SkeletonProxy = s_commentsShape },
                 Key: key, ScrollKey: UseContext(Shell.PageScrollScope) + key, CaptureViewport: _captureViewport, Scroll: _scroll));
         }
 
@@ -334,8 +336,15 @@ public readonly partial struct Episode
         }
     }
 
+    static readonly Func<Element> s_commentsShape = static () => PodcastReaderUI.CommentSeedView(false);
+
     sealed class ChapterReader : Component
     {
+        static readonly Action s_noop = static () => { };
+
+        /// <summary>The section's shape for a derived shimmer: its content over the seed chapters (what its own region shimmers).</summary>
+        internal static readonly Func<Element> Shape = static () => Content(ChapterResources.Seed, default, s_noop);
+
         ChapterResources.Lease? _lease;
         ChapterResources.Identity _identity;
         public override Element Render()
@@ -368,7 +377,8 @@ public readonly partial struct Episode
                 // titles from kind 178) shows its start time alone rather than inventing a label the wire never sent.
                 rows[i] = new Contracts.EpisodeChapterRow(chapter.Uri, chapter.StartMs, chapter.Title, activeIndex == i);
             }
-            return ViewSlots.View(Contracts.ViewKeys.EpisodeChapters, new Contracts.EpisodeChaptersProps(
+            // Derivable: the region's shimmer is the theme's chapter rows over the seed's, at their size, not one default bar (audit B7).
+            return ViewSlots.DerivableView(Contracts.ViewKeys.EpisodeChapters, new Contracts.EpisodeChaptersProps(
                 rows, ms => StartAt(e, Playback.EpisodeStartKind.Position, ms), Playback.IsPlaying));
         }
     }

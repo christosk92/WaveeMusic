@@ -111,7 +111,9 @@ internal static partial class ClassicLibraryPage
         {
             OnBounds ??= Measured;
             NavContent ??= _ => NavList(this);
-            NavNoMatch ??= (static () => EmptyCompact(Loc.Get(Strings.Library.NoMatch)));
+            // An empty navigator says WHY: a typed filter that matched nothing is the no-match vacancy; with no filter the kind itself is empty, the Empty voice
+            // with the kind's own words ("No podcasts yet"), never "Nothing matches your filter" (audit B7, A2's finding).
+            NavNoMatch ??= () => Props.Filter().Value.Length > 0 ? EmptyCompact(Loc.Get(Strings.Library.NoMatch)) : EmptyKind(Props);
             // The persisted view cell, never the mount: a pending navigator is never asked for its mount. The grid's cell floor is the tier record's (the host's
             // mount floor for the same tier: 96 at Small), read off the cache's current record.
             NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin, Layout.GridGaps);
@@ -184,6 +186,17 @@ internal static partial class ClassicLibraryPage
 
     static Element EmptyCompact(string text)
         => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact, title: text, subtitle: "");
+
+    /// <summary>A library kind with nothing in it (no filter typed): the Empty voice, in the kind's own words where the app has them.</summary>
+    static Element EmptyKind(LibraryPageProps p)
+    {
+        (string? title, string? body) = p.Entity == EntityKind.Show
+            ? p.IsPodcasts
+                ? (Loc.Get(Strings.Home.Empty.PodcastsTitle), Loc.Get(Strings.Home.Empty.PodcastsBody))
+                : (Loc.Get(Strings.Home.Empty.AudiobooksTitle), Loc.Get(Strings.Home.Empty.AudiobooksBody))
+            : (null, null);
+        return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: title, subtitle: body);
+    }
 
     // ══ THE RIGHT COLUMN (BROWSE) ════════════════════════════════════════════════════════════════════════════════════
 

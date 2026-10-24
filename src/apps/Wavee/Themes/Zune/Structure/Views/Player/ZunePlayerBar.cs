@@ -21,7 +21,8 @@
 //
 // One element tree for every level and both forms: the identity, the art, the disc and each tool keep their keys, so a level crossing FLIPs
 // them (MoveMotion) and a tool that lights or dims fades in place (FaceMotion); a line that comes or goes (the "playing on" line, a time)
-// enters and leaves with a fade. No key names a level or a form.
+// enters and leaves with a fade. No key names a level or a form; the transport stands in the same "centre" column in both forms. The one swap
+// is the title's tree (the desktop bar's marquee, the mini bar's trimmed run with its tip): one keyed host per tree, cross-faded in place.
 //
 // THE CORE HALF RUNS FIRST: `props.Host.Use(ctx.Hooks)` runs the bar's bookkeeping hooks and answers the decided `PlayerBarView`; every hook
 // below runs in every form, in the same order. The bar root is the layout firewall (`IsolateLayout`). The seek rail and the time labels are
@@ -166,6 +167,25 @@ internal static partial class ZunePlayerBar
             Height = look.Disc, Animate = L.MoveMotion, Children = transport.ToArray(),
         };
 
+        // The transport stands in the "centre" column in BOTH forms (the mini bar's hugs it at the row's end, the desktop bar's fills the room
+        // between the identity and the tools), so the 640 crossing keeps the disc's and next's nodes: a crossing never re-parents them.
+        var centreKids = new List<Element>(2) { transportRow };
+        if (!mini && !ends && v.OwnsTransport && (v.ShowTimesElapsed || v.ShowTimesRemaining)) centreKids.Add(TimesRow(props, v, look));
+        var centre = new BoxEl
+        {
+            // No gap: the times row under the transport carries its own (its top padding), so it eases out whole on a level change.
+            Key = "centre", Grow = mini ? 0f : 1f, Shrink = mini ? 0f : 1f, MinWidth = 0f, Direction = 1, AlignItems = FlexAlign.Center,
+            Justify = FlexJustify.Center, Animate = L.MoveMotion,
+            // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
+            DropTarget = Drop.Target<DragPayload>(Drag.Resource,
+                accepts: static p => p.CanCopyTracks,
+                onDrop: (p, session) => verbs.DropPlayNext(p),
+                caption: static _ => Loc.Get(Strings.Drag.PlayNext),
+                refusalCaption: static p => Loc.Get(p.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd),
+                visualPolicy: DropTargetVisualPolicy.Spotlight),
+            Children = centreKids.ToArray(),
+        };
+
         Element row;
         if (mini)
         {
@@ -173,27 +193,11 @@ internal static partial class ZunePlayerBar
             {
                 Key = RowKey, Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = look.RowGap,
                 Animate = L.MoveMotion,
-                Children = [left, transportRow],
+                Children = [left, centre],
             };
         }
         else
         {
-            var centreKids = new List<Element>(2) { transportRow };
-            if (!ends && v.OwnsTransport && (v.ShowTimesElapsed || v.ShowTimesRemaining)) centreKids.Add(TimesRow(props, v, look));
-            var centre = new BoxEl
-            {
-                // No gap: the times row under the transport carries its own (its top padding), so it eases out whole on a level change.
-                Key = "centre", Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Animate = L.MoveMotion,
-                // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
-                DropTarget = Drop.Target<DragPayload>(Drag.Resource,
-                    accepts: static p => p.CanCopyTracks,
-                    onDrop: (p, session) => verbs.DropPlayNext(p),
-                    caption: static _ => Loc.Get(Strings.Drag.PlayNext),
-                    refusalCaption: static p => Loc.Get(p.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd),
-                    visualPolicy: DropTargetVisualPolicy.Spotlight),
-                Children = centreKids.ToArray(),
-            };
 
             var tools = new List<Element>(10);
             for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
@@ -274,8 +278,18 @@ internal static partial class ZunePlayerBar
 
         // The slot (72, 88 at Huge 4K) and the bar in it (the mini 64 at Compact) change height on a crossing: both ease through real layout (a
         // size channel), so the page above yields frame by frame and the bar's top edge rises with no position slide (ZT2; the engine's
-        // reflow-shove rule snaps a position slide while the title bar reflows on the same crossing).
+        // reflow-shove rule snaps a position slide while the title bar reflows on the same crossing). The slot is NOT the view's root: a component's
+        // root lands its size at once on a crossing (its anchor is laid out at the final size), so the frame's column snapped by 16 at 3200 while the
+        // bar eased inside; under a plain root the slot's reflow drives the column frame by frame.
         return new BoxEl
+        {
+            Direction = 1, Shrink = 0f,
+            Children = [Slot(tier, reduced, layers, barNode, input, props)],
+        };
+    }
+
+    static BoxEl Slot(ZunePlayerBarTier tier, bool reduced, List<Element> layers, Ref<NodeHandle> barNode, InputHooks input, PlayerBarProps props)
+        => new()
         {
             Direction = 1, Justify = FlexJustify.End, Height = tier.SlotH, Shrink = 0f, IsolateLayout = true,
             Animate = reduced ? null : ZunePlayerTiers.SlotMotion,
@@ -293,7 +307,6 @@ internal static partial class ZunePlayerBar
                 },
             ],
         };
-    }
 
     /// <summary>One of the row's insets: a fixed width that eases through real layout when the tier changes it.</summary>
     static Element Inset(string key, float width, bool reduced) => new BoxEl
@@ -302,6 +315,9 @@ internal static partial class ZunePlayerBar
     };
 
     /// <summary>"playing on …" (the accent, above the title), the title (a link to the album or the show) and the artists.</summary>
+    /// <summary>The title's host per tree (the marquee, the trimmed run): the swap's family.</summary>
+    const string TitleHostKey = "np-title-host:";
+
     static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
@@ -336,7 +352,14 @@ internal static partial class ZunePlayerBar
                 Key = "remote-device-line", Animate = L.ItemMotion, MinWidth = 0f,
                 Children = [Embed.Comp(new RemoteProps(props, look.FromSize, look.FromLine), static () => new ZuneRemoteLine())],
             });
-        kids.Add(marquee ? title : Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey });
+        // The marquee (the desktop bar's, by the core's preference) and the trimmed title with its tip (the mini bar's) are two different trees: a
+        // crossing between them cross-fades one keyed host per tree in place, the shared swap fade (never a bare remount of the title).
+        kids.Add(new BoxEl
+        {
+            Key = marquee ? TitleHostKey + "marquee" : TitleHostKey + "trim", Direction = 1, MinWidth = 0f,
+            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+            Children = [marquee ? title : Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey }],
+        });
         if (v.ShowArtistLine)
         {
             var credits = new CreditsProps(props, look.SubSize, look.SubLine, Linked: !mini);

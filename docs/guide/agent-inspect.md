@@ -435,11 +435,15 @@ state kind=loading page=show
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
 (`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:
 the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, then either `state cold-rows` (the membership lands, rows 1
-and 4 know their face, the rest in flight) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
+and 4 know their face, the rest in flight: the hero arm (Compact, and Classic/Zune's vertical page) paints rows 1 and 4 over the
+others' placeholders; the two-column arm keeps the whole first page on its shimmer until the first page's faces are in,
+`TableRules.RowsPending`'s hot-row gate, by design) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
 credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). Pass `trace=N` on a `state` command to trace its
 frames. **To catch the meta-loading step** (the header known, the meta line and the rows on their shimmer), let the goto settle on the
 skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons` (it replies `loops:["rail:meta", "list:pl:..."]`);
-`settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
+`settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. Without `loops=skeletons` the goto waits on the
+shimmer up to `max`, and nothing answers the staged list, so a long enough wait ends on its error row ("Couldn't load these songs" +
+Retry: the product's answer to a list that never comes, not a skeleton fault). A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
 `goto uri=spotify:playlist:pl2` from another playlist with `trace=200` catches the hold's release (the frame its rows land) inside the trace.
 
 ### `theme {id}`

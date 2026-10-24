@@ -139,6 +139,7 @@ internal static class ClassicLyricsLines
         return new ScrollEl
         {
             Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, SuppressScrollBar = true,
+            AutoEdgeFadeBand = Lyrics.Surface.StageEdgeFade(host.OnStage, host.Large, host.IsPodcast, host.TypeScale),
             ScrollKey = "lyrics:unsynced:" + doc.TrackId,
             Content = new BoxEl { Direction = 1, Padding = new Edges4(0f, pad, 0f, pad), Children = rows },
         };
@@ -169,6 +170,7 @@ internal static class ClassicLyricsLines
             // Realize the WHOLE document: every row must be measured before follow geometry is trusted.
             MeasureAll = lines.Count <= Lyrics.Surface.MeasureAllCap,
             AutoEdgeFade = true,
+            AutoEdgeFadeBand = Lyrics.Surface.StageEdgeFade(host.OnStage, host.Large, host.IsPodcast, host.TypeScale),
             SuppressScrollBar = true,
             Handle = host.Scroll,
             OnRealized = host.SetViewport,

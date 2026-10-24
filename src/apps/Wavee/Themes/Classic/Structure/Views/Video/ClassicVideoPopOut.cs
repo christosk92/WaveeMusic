@@ -40,6 +40,8 @@ internal static class ClassicVideoPopOut
                 [
                     props.Stage(),
                     props.Join == Video.JoinVisual.Video ? new BoxEl { HitTestVisible = false } : props.Poster(props.Join),
+                    // the transport over the poster: a poster waiting for the first frame covers the picture, never the controls
+                    props.Strip is { } strip ? strip() : new BoxEl { HitTestVisible = false },
                     TitleBand(props),
                 ],
             }

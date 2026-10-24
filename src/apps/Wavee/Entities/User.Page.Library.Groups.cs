@@ -87,7 +87,7 @@ public readonly partial struct User
         /// <summary>The artists that have a saved album, a-z, with their album counts (first billed artist). Pure of the pick: the memo moves with the library and the names only.</summary>
         LibraryGroupSet ComputeGroups()
         {
-            var none = new LibraryGroupSet(Array.Empty<LibraryGroupRow>(), "", "", 0, 0);
+            var none = new LibraryGroupSet(Array.Empty<LibraryGroupRow>(), "", "", 0, 0) { Known = false };
             if (!GroupingOn) return none;
             _ = Entities.ScopeEpoch.Value;
             var scope = Entities.Current;
@@ -120,7 +120,8 @@ public readonly partial struct User
                 rows[i] = new LibraryGroupRow(KeyOf(EntityKind.Artist, named[i].Slot), named[i].Name, named[i].Count, letter == last ? "" : letter);
                 last = letter;
             }
-            return new LibraryGroupSet(rows, "", "", albums.Length, albums.Length);
+            // Unanswered, the column's counts are not known: it draws none (audit B7).
+            return new LibraryGroupSet(rows, "", "", albums.Length, albums.Length) { Known = relation.State(scope.MeSlot) != EdgeState.Unknown };
         }
 
         /// <summary>The albums whose first billed artist is the picked one; every album when the pick is unknown or holds none (never an empty page).</summary>

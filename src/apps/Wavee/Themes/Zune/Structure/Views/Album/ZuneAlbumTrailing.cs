@@ -61,17 +61,23 @@ internal static class ZuneAlbumTrailing
     /// <summary>The registered template of <see cref="ViewKeys.AlbumSections"/>: the sections the host decided are present, each in its place.</summary>
     public static Element SectionsTemplate(AlbumSectionsProps p, in ViewContext ctx)
     {
+        // About, fans also like and "more by" move between this band and the docked aside on the 1008 crossing (a different parent: they cross-fade, the
+        // swap's family); the sections that stay here keep their nodes (each list's wrapper is keyed by its list, never by its position).
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         if (!p.Any) return new BoxEl();
         var sections = new List<Element>(7);
         if (p.Videos.Count > 0) sections.Add(Section("section:videos", null, Videos(p.Videos, p.CustomVideo, p.Overlay)));
         if (p.About is { } lead)
             sections.Add(Section("section:about", K.Heading(Loc.Get(Strings.Detail.AboutTheArtist)),
-                Controls.ArtistAboutCard(lead, AboutLayout.Page) with { Key = "about:" + lead.Uri.Text }));
-        if (p.Fans.Count > 0) sections.Add(Section(Z.FansKey, K.Heading(Loc.Get(Strings.Detail.FansAlsoLike)), FansRow(p.Fans)));
+                Controls.ArtistAboutCard(lead, AboutLayout.Page) with { Key = "about:" + lead.Uri.Text }) with { Enter = enter, Exit = ZuneMotion.SwapFade });
+        if (p.Fans.Count > 0)
+            sections.Add(Section(Z.FansKey, K.Heading(Loc.Get(Strings.Detail.FansAlsoLike)), FansRow(p.Fans)) with { Enter = enter, Exit = ZuneMotion.SwapFade });
         for (int i = 0; i < p.Lists.Count; i++)
             sections.Add(new BoxEl
             {
-                Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(Z.SectionInset, Z.SectionTop, Z.SectionInset, 0f),
+                Key = "section:" + p.Lists[i].Key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Padding = new Edges4(Z.SectionInset, Z.SectionTop, Z.SectionInset, 0f),
+                Enter = enter, Exit = ZuneMotion.SwapFade,
                 Children = [p.Lists[i]],
             });
         return new BoxEl
@@ -179,21 +185,28 @@ internal static class ZuneAlbumTrailing
     /// also like, at the aside's measure. The release facts stay in the identity column.</summary>
     public static Element AsideTemplate(AlbumAsideProps p, in ViewContext ctx)
     {
+        // Each section returns to the band under the rows when the aside folds (and back): the swap's family, cross-faded (see SectionsTemplate).
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var lay = ZuneDetailTiers.Of(ctx.Tier());
         float w = lay.AsideW > 0f ? lay.AsideW : ZuneDetailRules.Standard.AsideW;
         var kids = new List<Element>(3);
         if (p.About is { } artist)
             kids.Add(new BoxEl
             {
-                Key = Z.AboutKey, Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f,
+                Key = Z.AboutKey, Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, Enter = enter, Exit = ZuneMotion.SwapFade,
                 Children =
                 [
                     K.HeadingRow(Z.AboutKey + ":head", K.Heading(Loc.Get(Strings.Detail.AboutTheArtist)), null, Z.AsideHeadingH),
                     AboutCard(artist, lay) with { Key = "aside:about:" + artist.Uri.Text },
                 ],
             });
-        if (p.MoreBy is { } moreBy) kids.Add(moreBy);
-        if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, w));
+        if (p.MoreBy is { } moreBy)
+            kids.Add(new BoxEl
+            {
+                Key = "aside:" + moreBy.Key, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Enter = enter, Exit = ZuneMotion.SwapFade,
+                Children = [moreBy],
+            });
+        if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, w) with { Enter = enter, Exit = ZuneMotion.SwapFade });
         return new BoxEl { Key = Z.AlbumAsideKey, Direction = 1, Gap = Z.AsideSectionGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 
@@ -313,10 +326,14 @@ internal static class ZuneAlbumTrailing
     public static Element StackTemplate(AlbumTrailStackProps p, in ViewContext ctx)
     {
         bool aside = ctx.Hooks.UseContext(ZuneDetailFrame.InAside);
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var lay = ZuneDetailTiers.Of(ctx.Tier());
         Element? link = p.Count > p.Shown ? K.Link("stack:all", Strings.Home.ShowAllCount(p.Count), p.Expand, Z.AsideHeadingH) : null;
         Element body;
-        if (aside && lay.MoreByGrid)
+        // The Huge aside's grid of covers and the rows are two arrangements (the column count changes): one keyed tree each, cross-faded inside the
+        // body, whose height eases as before (ZuneMotion: "grids reflow by fading").
+        bool grid = aside && lay.MoreByGrid;
+        if (grid)
         {
             float cell = MathF.Max(0f, (lay.AsideW - (Z.MoreByColumns - 1) * Z.MoreByGridGap) / Z.MoreByColumns);
             var rows = new List<Element>((p.Rows.Count + 1) / Z.MoreByColumns + 1);
@@ -333,14 +350,19 @@ internal static class ZuneAlbumTrailing
                 }
                 rows.Add(new BoxEl { Direction = 0, Gap = Z.MoreByGridGap, MinWidth = 0f, Children = cells });
             }
-            body = new BoxEl { Direction = 1, Gap = Z.MoreByGridGap, MinWidth = 0f, Animate = Z.SlotReveal, Children = rows.ToArray() };
+            body = new BoxEl { Key = Z.StackKey + ":grid", Direction = 1, Gap = Z.MoreByGridGap, MinWidth = 0f, Children = rows.ToArray() };
         }
         else
         {
             var rows = new Element[p.Rows.Count];
             for (int i = 0; i < rows.Length; i++) rows[i] = TrailRow(p.Rows[i]);
-            body = new BoxEl { Direction = 1, Gap = Z.SkelRowGap, MinWidth = 0f, Animate = Z.SlotReveal, Children = rows };
+            body = new BoxEl { Key = Z.StackKey + ":rows", Direction = 1, Gap = Z.SkelRowGap, MinWidth = 0f, Children = rows };
         }
+        body = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Animate = Z.SlotReveal,
+            Children = [body with { Enter = enter, Exit = ZuneMotion.SwapFade }],
+        };
         // In the aside the heading carries a name in a narrow column: the 22/28 step over at most two lines, the row a floor of the heading height (audit B).
         Element heading = aside
             ? new BoxEl

@@ -162,8 +162,12 @@ public sealed record VideoPopOutProps
     /// nothing else moved.</summary>
     public required long Generation { get; init; }
 
-    /// <summary>The stage (the core's keyed player stage: the engine element and the on-media transport).</summary>
+    /// <summary>The stage (the core's keyed player stage: the engine element; the transport is <see cref="Strip"/>).</summary>
     public required Func<Element> Stage { get; init; }
+
+    /// <summary>The pop-out's on-media transport, for the template to stack OVER the poster (a poster waiting for the first frame covers the
+    /// picture, never the transport). The core always hands it. Appended (contract 1.57, audit B3).</summary>
+    public Func<Element>? Strip { get; init; }
 
     /// <summary>The poster for a join verdict (<see cref="ViewKeys.VideoJoinPoster"/>, mounted by the core).</summary>
     public required Func<Video.JoinVisual, Element> Poster { get; init; }

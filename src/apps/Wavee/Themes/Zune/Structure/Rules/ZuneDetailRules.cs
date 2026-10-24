@@ -70,7 +70,7 @@ public static class ZuneDetailRules
         CompactRailKey = "zune.detail.compact-rail", SongsHeadingKey = "zune.detail.songs", AsideKey = "zune.detail.aside",
         AsideColumnKey = "zune.detail.aside-column", HeroKey = "zune.detail.hero", HeroBandKey = "zune.detail.hero-band",
         ShowHeaderKey = "zune.detail.show-header", NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
-        HeadKey = "zune.detail.head";
+        HeadKey = "zune.detail.head", ColumnGapKey = "zune.detail.column-gap";
 
     /// <summary>The album's pieces: the artist line, the release facts, the countdown, the trailing band's sections, one list stack, the aside.</summary>
     public const string ArtistLineKey = "zune.album.artist", ReleaseKey = "zune.album.release", CountdownKey = "zune.album.countdown",
@@ -169,6 +169,11 @@ public static class ZuneDetailRules
     /// jump when it folds. The title scales with its size step on its own box (`ZuneMotion.TitleScale`).</summary>
     public static readonly LayoutTransition PanoramaFold = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+
+    /// <summary>The list bar's insights toggle when the tier changes its edge (36 ↔ 40 at 3200 and 640): its box eases through real layout on both axes,
+    /// so the bar's trailing group keeps its height and its neighbours ride the width.</summary>
+    public static readonly LayoutTransition ToggleResize = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Both);
 
     /// <summary>A mode crossing's arm cross-fade (the vertical arm ↔ the two-column arm).</summary>
     public static readonly EnterExit ArmFade = new(Opacity: 0f, Active: true);

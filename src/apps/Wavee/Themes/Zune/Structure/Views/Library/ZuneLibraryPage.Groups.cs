@@ -57,8 +57,8 @@ internal static partial class ZuneLibraryPage
             ColorF ink = Design.PlaceholderFor(set.SelectedArt.Length > 0 ? set.SelectedArt : set.Selected);
             ColorF tint = LR.HeroTint(ink, Tok.FillSolidBase, R.IsLight);
             string name = all ? Loc.Get(Strings.Theme.Zune.Collection.Library.AllArtists) : set.SelectedName;
-            string line = Loc.Get(Strings.Theme.Zune.Collection.Library.ArtistKind) + " · " + Strings.Theme.Zune.Collection.Library.CountAlbums(set.SelectedAlbums)
-                          + " " + Loc.Get(Strings.Theme.Zune.Collection.Library.InYourLibrary);
+            string line = Loc.Get(Strings.Theme.Zune.Collection.Library.ArtistKind)
+                          + (set.Known ? " · " + Strings.Theme.Zune.Collection.Library.CountAlbums(set.SelectedAlbums) + " " + Loc.Get(Strings.Theme.Zune.Collection.Library.InYourLibrary) : "");
             Element plate = new BoxEl
             {
                 ZStack = true, Height = LR.HeroColPlateH, Shrink = 0f, ClipToBounds = true,
@@ -167,7 +167,7 @@ internal static partial class ZuneLibraryPage
                         Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                         Case = all ? R.Case.For(LabelKind.Label) : TextCase.AsWritten,
                     },
-                    R.Type.DenseMeta(Strings.Theme.Zune.Collection.Library.AlbumsInLibrary(set.SelectedAlbums)) with
+                    R.Type.DenseMeta(set.Known ? Strings.Theme.Zune.Collection.Library.AlbumsInLibrary(set.SelectedAlbums) : "") with
                     {
                         Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f, Case = R.Case.For(LabelKind.Label),
                     },
@@ -199,7 +199,7 @@ internal static partial class ZuneLibraryPage
                     {
                         Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 1f, MinWidth = 0f,
                     },
-                    R.Type.MicroMeta(FormatCache.Int(set.Rows.Count)) with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
+                    R.Type.MicroMeta(set.Known ? FormatCache.Int(set.Rows.Count) : "") with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
                 ],
             };
             return new BoxEl

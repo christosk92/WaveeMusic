@@ -2019,6 +2019,9 @@ public static partial class Diagnostics
                     }
                     if (hOver > Slack)
                     {
+                        // A box whose cut side feathers (an EdgeFade: a marquee's overflow cue, a title that bleeds out under a fade) dissolves the
+                        // text there by design, as a scroll edge with a fade does: no finding (audit B3: the stage's marquee and Large art titles).
+                        if (Fades(anc, leftSide ? EdgeMask.Left : EdgeMask.Right)) break;
                         into.Add(new Finding(Rules.TextClip, Severity.Warn,
                             $"text {Q(t.String)} is clipped by {anc.Ref}: it runs {F(hOver)} past the {(leftSide ? "left" : "right")} edge ({F(ink.X)}..{F(ink.Right)} in {F(c.X)}..{F(c.Right)})",
                             [n.Ref, anc.Ref])

@@ -128,7 +128,7 @@ internal static class ZuneArtistPage
             Element body = ZuneArtistSections.Body(slot.Section, p, lay);
             // The gap above every section but the first is an easing spacer keyed by the section, not the magazine's Gap: a gap cannot ease, and
             // a tier step that changes it (Huge 4K's 44 to Huge's 28 when the panes dock) would shove every section by its count of gaps at once.
-            if (sections.Count > 0) sections.Add(ZuneArtistHero.Air(Rules.AirPrefix + "gap:" + key, lay.ZoneGap));
+            if (sections.Count > 0) sections.Add(ZuneMotion.Air(Rules.AirPrefix + "gap:" + key, lay.ZoneGap));
             sections.Add(new BoxEl
             {
                 Key = (slot.Anchor is null ? Rules.SectionPrefix : Rules.AnchorPrefix) + key, Direction = 1, MinWidth = 0f,
@@ -145,8 +145,19 @@ internal static class ZuneArtistPage
         // the option itself.
         Element wash = Palette.ArtistBlendWash(p.PaletteUrl, washH, lay.HeroH / washH, key: Rules.WashKey + uri, payloadAccent: a.HeaderAccent);
 
-        var column = new List<Element>(4) { hero };
-        if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(ZuneArtistHero.BelowRow(a.Name, uri, lay, in acts));
+        // The Compact row under the hero (play · shuffle · follow) stands in a slot that is ALWAYS mounted: crossing 640 its room opens and closes as an
+        // easing height while the row fades in it, so the magazine under it glides instead of stepping 48 on the commit frame.
+        bool below = lay.Actions == ZuneArtistActions.BelowHero;
+        var column = new List<Element>(4)
+        {
+            hero,
+            new BoxEl
+            {
+                Key = Rules.ActionsKey + ":below-slot", Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
+                Height = below ? lay.Target + Rules.BelowRowTop : 0f, Layout = ZuneMotion.HeightResize,
+                Children = below ? [ZuneArtistHero.BelowRow(a.Name, uri, lay, in acts)] : [],
+            },
+        };
         column.Add(BodyAir(lay));
         column.Add(Magazine(sections.ToArray(), lay));
 
@@ -163,7 +174,7 @@ internal static class ZuneArtistPage
 
     /// <summary>The body's top under the hero (or the Compact actions row): an easing spacer, not the magazine's padding, so a tier step (a docked
     /// panel narrowing the content) moves no section.</summary>
-    static Element BodyAir(ZuneArtistLayout lay) => ZuneArtistHero.Air(Rules.AirPrefix + "body", lay.BodyTop);
+    static Element BodyAir(ZuneArtistLayout lay) => ZuneMotion.Air(Rules.AirPrefix + "body", lay.BodyTop);
 
     /// <summary>The magazine: the sections in the system page column (the frame's gutter, the 2400 cap, centred), 28 apart (the easing gap spacers
     /// <see cref="Compose"/> puts between them), the player dock's reserve under the last one.</summary>
@@ -191,7 +202,17 @@ internal static class ZuneArtistPage
             : chart.Skeleton(ArtistChartSkeletonArgs.For(0, classic: false, showArtwork: true, lay.ChartColumns, lay.ChartRows,
                 new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
         var column = new List<Element>(3) { hero };
-        if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(new BoxEl { Height = lay.Target + Rules.BelowRowTop });
+        // Compact's actions row (Z-State-Loading-Compact): the row's own rings in the gutter, drawn as is at the band's pending opacity (the band's
+        // row-2 actions wait the same way), never a derived bar: a childless spacer derived to one page-wide bar out of the gutter (audit B7, V11).
+        if (lay.Actions == ZuneArtistActions.BelowHero)
+        {
+            Element pending = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Opacity = ZuneBandRules.DisabledOpacity, HitTestVisible = false, IsEnabled = false,
+                Children = [ZuneArtistHero.BelowRow(known, "", lay, in none)],
+            };
+            column.Add(pending.Skel(pending));
+        }
         column.Add(BodyAir(lay));
         column.Add(Magazine([ZuneArtistSections.PopularSkeleton(chartShape, lay)], lay));
         return new BoxEl { Direction = 1, Children = column.ToArray() };

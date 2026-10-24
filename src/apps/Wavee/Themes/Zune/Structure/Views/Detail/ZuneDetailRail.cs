@@ -41,6 +41,7 @@ internal static class ZuneDetailRail
     /// last resort once a long description has given), grown to the row's height.</summary>
     public static Element RailTemplate(DetailRailProps p, in ViewContext ctx)
     {
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var facts = ctx.Tier();
         var lay = ZuneDetailTiers.ColumnOf(facts);
         float w = p.RailWidth > 0f ? p.RailWidth : lay.RailW;
@@ -50,7 +51,7 @@ internal static class ZuneDetailRail
         bool shortWindow = facts.Policy is not null && facts.Height == HeightTier.Short;
         Element region = new SkelRegionEl(
             Pending: p.Pending, Failed: K.Never,
-            Content: () => Column(spec, p, lay, w, shortWindow),
+            Content: () => Column(spec, p, lay, w, shortWindow, enter),
             ShimmerSource: () => Skeleton(spec, lay, w),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         return new BoxEl
@@ -63,7 +64,7 @@ internal static class ZuneDetailRail
     /// <summary>The loaded column (see the file header), every row keyed: a row that arrives late fades up, the rows under it glide. On a Short window
     /// (<paramref name="shortWindow"/>) a playlist's description closes the column instead of leading it and the status rows follow the rings (the same
     /// keyed rows, moved), so the rings stand above the play bar at rest.</summary>
-    static Element Column(Detail.FrameSpec spec, DetailRailProps p, ZuneDetailLayout lay, float w, bool shortWindow)
+    static Element Column(Detail.FrameSpec spec, DetailRailProps p, ZuneDetailLayout lay, float w, bool shortWindow, EnterExit? enter)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -71,8 +72,12 @@ internal static class ZuneDetailRail
         var acts = p.Actions;
         var kids = new List<Element>(14);
 
+        // A short window's title leads the column (the panorama folds): the editor arrives from the panorama, a cross-fade of the swap's family.
         if (lay.RailTitle)
-            kids.Add(K.Row("rail:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? Title(id.Title, w)));
+            kids.Add(K.Row("rail:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? Title(id.Title, w)) with
+            {
+                Enter = enter, Exit = ZuneMotion.SwapFade,
+            });
         kids.Add(K.Row("rail:cover", K.Cover("rail:cover-art", id, acts, slots, w)));
         // A playlist's description leads its column under the cover (Z-Playlist-Owned-Followed-Huge: description, owner, meta, rings); every other kind's
         // closes it.

@@ -62,6 +62,10 @@ public sealed record NotificationsProps
     /// <summary>The empty line (resolved), shown when no row passes.</summary>
     public required string EmptyText { get; init; }
 
+    /// <summary>No row passes YET: a remote feed this filter shows is still loading (contract 1.59, audit B7). A structure draws the feed's skeleton at
+    /// its loaded size instead of the <see cref="EmptyText"/> line ("Loading…"), so the rows landing replace bars in place.</summary>
+    public bool Loading { get; init; }
+
     /// <summary>"Clear" for the activity filter, or null (no link).</summary>
     public Action? Clear { get; init; }
 

@@ -110,6 +110,10 @@ public sealed record LibraryPageProps
     /// <summary>The same count as a number (a bound read), for a structure that words it through a plural ("1 album", "18 albums"). Contract addition after 1.22.</summary>
     public Prop<int> Count { get; init; }
 
+    /// <summary>The count is known: the library's relation has answered (a bound read). While it has not, <see cref="CountText"/> is empty and a structure
+    /// that words <see cref="Count"/> draws nothing: the list beside it is a skeleton, and "0" would state an empty library (contract 1.59, audit B7).</summary>
+    public Prop<bool> CountKnown { get; init; } = true;
+
     // ── slots the core mounts ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The selected row's pane: the album pane, the show pane or the artists' reader, mounted without a key so a selection re-skins it in place.</summary>
@@ -231,6 +235,9 @@ public sealed record LibraryGroupsProps(Func<LibraryGroupSet> Read, Action<strin
 /// album count (the whole library's count when none is picked).</summary>
 public sealed record LibraryGroupSet(IReadOnlyList<LibraryGroupRow> Rows, string Selected, string SelectedName, int SelectedAlbums, int TotalAlbums)
 {
+    /// <summary>The counts are known: the library's relation has answered. False while it loads: the column draws no count (contract 1.59, audit B7).</summary>
+    public bool Known { get; init; } = true;
+
     /// <summary>The picked artist's picture (an art url; "" for none or while every artist is shown) and how many songs of theirs the library holds. Contract addition after 1.33.</summary>
     public string SelectedArt { get; init; } = "";
 

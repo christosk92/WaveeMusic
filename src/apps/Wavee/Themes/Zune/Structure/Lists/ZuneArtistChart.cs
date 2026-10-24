@@ -125,12 +125,15 @@ internal static class ZuneArtistChart
         var cells = new ChartCells("Top track title", null, "3:30", "1.2M", "1,234,567", false, false);
         var state = default(Track.RowState);
         var columns = new Element[cols];
+        // Zune's two-column chart is balanced (ZuneArtistTierPolicy.ChartBalanced): the loaded page stands in reading order, 1 3 5 | 2 4 6, so the
+        // skeleton numbers its rows the same way, never down the columns (audit B7, V11: 1-5 | 6-10 turned into 1 3 5 | 2 4 6 on load).
+        bool across = cols == 2 && s.Total >= 3;
         for (int c = 0; c < cols; c++)
         {
             int rows = Math.Min(s.PerColumn, Math.Max(0, s.Total - c * s.PerColumn));
             var kids = new Element[rows];
             for (int r = 0; r < rows; r++)
-                kids[r] = ChartRow(cells, c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead, skeleton: true);
+                kids[r] = ChartRow(cells, across ? r * cols + c : c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead, skeleton: true);
             columns[c] = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.ChartCellGap, Children = kids };
         }
         return new BoxEl
@@ -210,8 +213,10 @@ internal static class ZuneArtistChart
         Element subLine = sub.Count > 0
             ? new BoxEl { Direction = 0, Gap = ZuneListRules.ChartSubGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = sub.ToArray() }
             : new BoxEl();
+        // The stacked third line is the narrow cell's (under 340): the compact count with the exact one in its tip, as on the sub line (the core's rule:
+        // the format is never the tier's). The exact "480,010,000 plays" ran past the cell at 1016.
         Element[] mid = stacked
-            ? [title, subLine, R.Type.TrackMeta(c.PlaysExact) with { Color = tertiary, MaxLines = 1, Shrink = 0f }]
+            ? [title, subLine, ToolTip.Wrap(R.Type.TrackMeta(c.PlaysCompact) with { Color = tertiary, MaxLines = 1, Shrink = 0f }, c.PlaysExact)]
             : [title, subLine];
 
         bool saved = st.Saved;

@@ -29,7 +29,6 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicConcertDetail
 {
     static readonly Action s_goHub = static () => ConcertVerbs.OpenHub();
-    static readonly Func<Element> s_never = static () => new BoxEl();
 
     static readonly Func<ConcertShelfItem, int, string> s_itemKey = static (item, _) => item.Slot.ToString(CultureInfo.InvariantCulture);
 
@@ -61,8 +60,9 @@ internal static class ClassicConcertDetail
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Detail.NotAvailable),
                 subtitle: Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle))
             : Responsive.Of("concert-detail", build, fallback: firstW);
-        Element region = Cells.Region(props.Pending, static () => false, content, () => Responsive.Of("concert-detail", buildSeed, fallback: firstW),
-            s_never, "concert-detail:" + props.RouteKey);
+        // A failed ask is the error vacancy with Retry (contract 1.59), never the skeleton forever (audit B7, V30).
+        Element region = Cells.Region(props.Pending, props.Failed, content, () => Responsive.Of("concert-detail", buildSeed, fallback: firstW),
+            () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "concert-detail:" + props.RouteKey);
         return Cells.SubPageScroll(props.ScrollScope + "concert-detail:" + props.RouteKey, region, ClassicTiers.PageOf(ctx.Tier()).Gutter);
     }
 

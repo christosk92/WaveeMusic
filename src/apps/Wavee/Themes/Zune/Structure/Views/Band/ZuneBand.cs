@@ -99,7 +99,8 @@ internal sealed class ZuneBand : Component
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;
-        bool hasRow2 = views.Count > 0 || actions.Count > 0;
+        // A page whose views are still loading (contract 1.59) keeps row 2's place: the row arriving with the data moves nothing (audit B7).
+        bool hasRow2 = views.Count > 0 || actions.Count > 0 || chrome is { ViewsPending: true };
         bool row2 = ZuneBandRules.Row2Shown(hasRow2, collapsed);
         // SCROLL-TIED (Compact): row 2 scrolls away with the page: the band gives back clamp(offset, 0, row 2) of its height and row 2 fades by the same
         // share, continuously, in step with the scroll position (bound channels: no re-render, no timed fade, nothing to toggle or snap).
@@ -502,7 +503,7 @@ internal sealed class ZuneBand : Component
             [
                 new BoxEl
                 {
-                    Key = ZuneBandRules.Row2Key + ":" + RowSignature(views, actions), Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center,
+                    Key = ZuneBandRules.Row2Key + ":" + RowSignature(views), Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center,
                     Height = rec.Row2H, MinWidth = 0f, Gap = rec.Row2Gap,
                     Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                     Children = kids.ToArray(),
@@ -511,13 +512,12 @@ internal sealed class ZuneBand : Component
         };
     }
 
-    /// <summary>What makes one row 2 a different row from another: the ids of its views and of its actions, in order.</summary>
-    static string RowSignature(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions)
+    /// <summary>What makes one row 2 a different row from another: the ids of its views, in order. Never its actions: the 640 crossing takes them
+    /// out of the band (Compact draws none) and they fade on their own (<see cref="Actions"/>), so the views, which survive, keep their nodes.</summary>
+    static string RowSignature(IReadOnlyList<PageView> views)
     {
         var sb = new System.Text.StringBuilder(48);
         for (int i = 0; i < views.Count; i++) sb.Append(views[i].Id).Append(',');
-        sb.Append('|');
-        for (int i = 0; i < actions.Count; i++) sb.Append(actions[i].Id).Append(',');
         return sb.ToString();
     }
 
@@ -606,13 +606,7 @@ internal sealed class ZuneBand : Component
                 Height = h, Corners = round, Padding = ZuneBandRules.PillPadding,
                 BorderWidth = ZuneBandRules.PillBorder, BorderColor = Tok.AccentDefault,
                 HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
-                Children =
-                [
-                    new TextEl(a.Label)
-                    {
-                        Size = ZuneBandRules.PillText, Color = R.Ink.AccentDecor, MaxLines = 1, Case = R.Case.For(LabelKind.Command),
-                    },
-                ],
+                Children = [PillWord(a)],
             },
         };
         box = box with
@@ -624,6 +618,23 @@ internal sealed class ZuneBand : Component
             OnClick = a.Enabled ? a.Invoke : null,
         };
         return a.Kind == PageActionKind.Word ? box : ToolTip.Wrap(box, a.Label);
+    }
+
+    /// <summary>A word action's word. With a reserve (contract 1.59: "following" beside "follow") both words stand in one ZStack, the reserve
+    /// unseen, so the pill is as wide as the wider of the two and a toggle, or the state landing with the page, never moves its neighbours.</summary>
+    static Element PillWord(PageAction a)
+    {
+        TextEl Word(string text) => new(text) { Size = ZuneBandRules.PillText, Color = R.Ink.AccentDecor, MaxLines = 1, Case = R.Case.For(LabelKind.Command) };
+        if (a.Reserve is not { Length: > 0 } reserve) return Word(a.Label);
+        return new BoxEl
+        {
+            ZStack = true, Direction = 0,
+            Children =
+            [
+                new BoxEl { JustifySelf = FlexAlign.Center, AlignSelf = FlexAlign.Center, Children = [Word(a.Label)] },
+                new BoxEl { Opacity = 0f, HitTestVisible = false, JustifySelf = FlexAlign.Center, Children = [Word(reserve)] },
+            ],
+        };
     }
 }
 

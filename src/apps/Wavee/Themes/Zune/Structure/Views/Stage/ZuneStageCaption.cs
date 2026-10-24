@@ -6,7 +6,8 @@
 //   · the active line carries the karaoke WIPE and the accent BLOOM following the same split; a line-synced line fades in whole;
 //   · a break shows the three breathing dots in the active slot;
 //   · every slot is keyed by role + line index + the document's generation, so a hand-off plays the exit (up and out) and the enter (up
-//     from below) - the stage's production recipe.
+//     from below) - the stage's production recipe, SEQUENCED (`Stage.CaptionSlot`: the enter waits the exit out, so two lines never
+//     share a slot).
 // In the Card arrangement (Z-NowPlaying-Card) the block rises above the card instead of sitting above a plate.
 
 using FluentGpu.Animation;
@@ -79,20 +80,16 @@ internal static class ZuneStageCaption
 
     static ColorF Shade(float a) => Ink.Veil with { A = a };
 
-    static EnterExit SlotEnter => new(Dy: Design.Reduced ? 0f : Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
-
-    static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
-
     static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl
     {
         Key = key, Direction = 1, AlignItems = FlexAlign.Center, MaxWidth = p.Width, HitTestVisible = false,
-        Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
+        Enter = Stage.CaptionSlot.Enter, Exit = Stage.CaptionSlot.Exit, Layout = Stage.CaptionSlot.Motion,
         Children =
         [
             new TextEl(text)
             {
                 Size = p.ContextSize, LineHeight = p.ContextLineHeight, Weight = G.CaptionWeight, FontFamily = R.Type.DisplayFace,
-                Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = G.ContextMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, TextAlign = TextAlign.Center, MaxLines = G.ContextMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
         ],
     };
@@ -119,9 +116,9 @@ internal static class ZuneStageCaption
         return new BoxEl
         {
             Key = key, Direction = 1, AlignItems = FlexAlign.Center, Gap = G.SecondaryGap, MaxWidth = p.Width, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
+            Enter = Stage.CaptionSlot.Enter, Exit = Stage.CaptionSlot.Exit, Layout = Stage.CaptionSlot.Motion,
             Children = p.Secondary is { Length: > 0 } secondary
-                ? [stack, new TextEl(secondary) { Size = p.ContextSize, LineHeight = p.ContextLineHeight, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = G.SecondaryMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
+                ? [stack, new TextEl(secondary) { Size = p.ContextSize, LineHeight = p.ContextLineHeight, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, TextAlign = TextAlign.Center, MaxLines = G.SecondaryMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
                 : [stack],
         };
     }
@@ -129,7 +126,7 @@ internal static class ZuneStageCaption
     static TextEl LineText(string text, float size, float line, ColorF color) => new(text)
     {
         Size = size, LineHeight = line, Weight = G.CaptionWeight, FontFamily = R.Type.DisplayFace, Color = color,
-        Wrap = TextWrap.Wrap, MaxLines = Stage.Layout.CaptionActiveMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        Wrap = TextWrap.Wrap, TextAlign = TextAlign.Center, MaxLines = Stage.Layout.CaptionActiveMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
     };
 
     static Element DotsSlot(string key, StageCaptionProps p)
@@ -139,7 +136,7 @@ internal static class ZuneStageCaption
         return new BoxEl
         {
             Key = key, Height = p.ActiveLineHeight, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
+            Enter = Stage.CaptionSlot.Enter, Exit = Stage.CaptionSlot.Exit, Layout = Stage.CaptionSlot.Motion,
             Children =
             [
                 new BoxEl

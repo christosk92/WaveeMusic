@@ -15,8 +15,10 @@
 //     "see all", tile blocks as six-across 96 plates.
 
 using System.Collections.Immutable;
+using FluentGpu.Animation;
 using FluentGpu.Foundation;
-using Wavee.Theming;
+using Wavee.Theming;
+
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
@@ -39,6 +41,12 @@ public static class ZuneBrowseRules
 
     /// <summary>The narrowest list column and plate.</summary>
     public const float ListMinCol = 120f, PlateMinCol = 120f;
+
+    /// <summary>A link of a list grid when a crossing changes the grid's columns or row height (2 / 4 / 8 columns, 32 / 40 rows): it keeps its node
+    /// and moves to its new cell, its box easing there (position and size, the words laid out at the cell's final width under an easing clip),
+    /// instead of every link stepping on the commit frame.</summary>
+    public static readonly LayoutTransition CellMove = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), SizeMode.Reveal);
 
     /// <summary>The category banner: the title's inset from the top left, the kind's inset from the bottom right.</summary>
     public const float BannerTitleInset = 40f, BannerTitleInsetY = 26f, BannerMetaInsetX = 48f, BannerMetaInsetY = 24f;

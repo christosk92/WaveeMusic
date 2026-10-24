@@ -65,15 +65,18 @@ internal static class ZuneArtistHero
         // The name stands NameNudge left of the column's gutter, so the light face's glyph edge lines up with the copy under it. A tier step (a docked
         // panel narrowing the content, a crossing) changes its size: the SLOT's height eases with the name riding its foot, and the name itself hugs
         // its words and scales from its bottom-left, so it never leaves the caption and nothing around it jumps.
+        // The slot is a ZStack over the tier's reserve (NameReserveLines of the name's own type, unseen): a name of up to that many lines lands in
+        // the box the skeleton held, and the name rides the slot's foot (audit B7, V11).
         Element nameBox = new BoxEl
         {
             Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(-Rules.NameNudge, 0f, 0f, Rules.NameCaptionGap),
-            Layout = ZuneMotion.TitleSlot,
+            Layout = ZuneMotion.TitleSlot, ZStack = true,
             Children =
             [
+                Controls.LineReserve(name, lay.NameReserveLines),
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Start, Animate = ZuneMotion.TitleScale,
+                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Animate = ZuneMotion.TitleScale,
                     TransformOriginX = ZuneMotion.TitleOriginX, TransformOriginY = ZuneMotion.TitleOriginY,
                     Children = [Lines(name, shimmer)],
                 },
@@ -86,7 +89,7 @@ internal static class ZuneArtistHero
         // The spring is empty space, never a shimmer block (the deriver would paint a page-wide bar there while the page loads).
         var kids = new List<Element>(7)
         {
-            Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer),
+            ZuneMotion.Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer),
         };
         // Huge's secondary row stands in a slot that is ALWAYS mounted: its room (the gap above the rings and the rings) opens and closes as an
         // easing height while the row fades, so the name and the caption over it glide when Huge comes or goes (two docked panes take the content
@@ -115,7 +118,7 @@ internal static class ZuneArtistHero
                 ]
                 : [],
         }.Skeletonized(false));
-        kids.Add(Air(Rules.AirPrefix + "foot", lay.CaptionBottom));
+        kids.Add(ZuneMotion.Air(Rules.AirPrefix + "foot", lay.CaptionBottom));
 
         // The copy in the page column (the band's x); it fills the hero's height, so the spring parks the name and the caption at its foot.
         Element column = ZuneDetailKit.CentredPage(new BoxEl
@@ -126,7 +129,7 @@ internal static class ZuneArtistHero
 
         // The record's height is a FLOOR strut under the copy (the ZStack is as tall as its tallest layer), not the hero's MinHeight: a MinHeight
         // would clamp the eased height on a grow (Small 140 to Standard 340 when a panel undocks), the strut eases both ways.
-        var layers = new List<Element>(3) { Air(Rules.AirPrefix + "floor", lay.HeroH), column };
+        var layers = new List<Element>(3) { ZuneMotion.Air(Rules.AirPrefix + "floor", lay.HeroH), column };
         if (lay.Secondary == ZuneArtistSecondary.Corner && !shimmer)
             layers.Add(new BoxEl
             {
@@ -144,10 +147,6 @@ internal static class ZuneArtistHero
             Key = Rules.HeroKey, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true, Children = layers.ToArray(),
         };
     }
-
-    /// <summary>A run of vertical air whose height a tier step changes: a spacer that eases (padding cannot).</summary>
-    internal static Element Air(string key, float height)
-        => new BoxEl { Key = key, Height = height, MinHeight = 0f, Shrink = 0f, Layout = ZuneMotion.HeightResize }.Skeletonized(false);
 
     /// <summary>The Compact row under the hero: play · shuffle · follow, the more ring at the end (40 targets).</summary>
     public static Element BelowRow(string name, string uri, ZuneArtistLayout lay, in Acts acts)
@@ -183,15 +182,15 @@ internal static class ZuneArtistHero
         Color = color, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
     };
 
-    /// <summary>A text run as the loaded hero lays it out, for the skeleton arm: one line box of the run's own line height, so the deriver's
-    /// bar stands where the words will. The live arm is the run itself.</summary>
+    /// <summary>A text run for the skeleton arm: one line (the deriver gives it the run's own line box, the bar centred in it) that gives way to its
+    /// line's room, so the name's estimated bar stays in the column. The live arm is the run itself.</summary>
     static Element Lines(TextEl run, bool shimmer)
     {
-        if (!shimmer || !(run.LineHeight > 0f)) return run;
+        if (!shimmer) return run;
         return new BoxEl
         {
-            Height = run.LineHeight, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children = [run with { MaxLines = 1, Wrap = TextWrap.NoWrap }],
+            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = [run with { MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 1f, MinWidth = 0f }],
         };
     }
 
@@ -311,14 +310,26 @@ internal static class ZuneArtistHero
                 HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
                 Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
                 OnClick = () => lib.ToggleSaved(uri, name),
+                // Both words stand in one ZStack, the other one unseen: the pill is as wide as "following" in either state, so a toggle (or the
+                // saved state landing with the page) never moves the rings beside it (audit B7).
                 Children =
                 [
-                    R.Type.TrackTitle(Loc.Get(on ? Strings.Artist.Following : Strings.Artist.Follow)) with
+                    new BoxEl
                     {
-                        Color = ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        ZStack = true, Direction = 0,
+                        Children =
+                        [
+                            new BoxEl { JustifySelf = FlexAlign.Center, AlignSelf = FlexAlign.Center, Children = [Word(on ? Strings.Artist.Following : Strings.Artist.Follow, ink)] },
+                            new BoxEl { Opacity = 0f, HitTestVisible = false, JustifySelf = FlexAlign.Center, Children = [Word(on ? Strings.Artist.Follow : Strings.Artist.Following, ink)] },
+                        ],
                     },
                 ],
             };
         }
+
+        static TextEl Word(string id, Prop<ColorF> ink) => R.Type.TrackTitle(Loc.Get(id)) with
+        {
+            Color = ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+        };
     }
 }

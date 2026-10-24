@@ -365,8 +365,9 @@ internal static partial class ZuneShow
             new BoxEl { Height = a.Air },
             R.Type.SheetTitle("") with
             {
-                Text = a.Month, LineHeight = ShowReaderRules.GroupLine, Height = ShowReaderRules.GroupLine, Color = Tok.TextPrimary,
-                MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+                // On its exact 24 line (block stacking): the 22 light face's natural line box is 29, which the core's stated line clipped (text.trim).
+                Text = a.Month, LineHeight = ShowReaderRules.GroupLine, LineStacking = LineStacking.BlockLineHeight, Height = ShowReaderRules.GroupLine,
+                Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
             },
             new BoxEl { Height = ShowReaderRules.GroupFoot },
         ],

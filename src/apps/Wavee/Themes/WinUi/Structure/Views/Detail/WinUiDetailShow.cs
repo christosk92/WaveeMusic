@@ -8,6 +8,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -59,10 +60,32 @@ internal static partial class WinUiDetailFrame
         rows.Add(Block("hero-actions", Actions(id, spec.Config, p.Actions, slots, p.Play, tier, form, words: !form.Stacked, center: form.Stacked)));
 
         Element cover = Cover(id, slots, p.Actions, form);
+        Element header = Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap }, center: form.Stacked);
+        // A header whose show or episode has not been read yet is its own DERIVED shimmer: the same rows, the title and the meta as bars in their line
+        // boxes, the verbs as quiet shapes, never an empty title over a lone "·" with a live Play (audit B7, A2's finding). One region at every state,
+        // so the read landing swaps the shimmer for the rows in place.
+        var cell = ctx.Hooks.UseRef<PendingCell?>(null);
+        var pending = cell.Value ??= new PendingCell();
+        pending.Now = id.HeaderPending;
         return new BoxEl
         {
             Key = "detail:show-header", Direction = 1, Shrink = 0f,
-            Children = [Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap }, center: form.Stacked)],
+            Children =
+            [
+                new SkelRegionEl(
+                    Pending: pending.Read, Failed: s_never, Content: () => header, ShimmerSource: () => header, OnFailed: null,
+                    Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+            ],
         };
     }
+
+    /// <summary>The show header's pending flag for its region: one stable reader per mounted header, written each render.</summary>
+    sealed class PendingCell
+    {
+        public bool Now;
+        public readonly Func<bool> Read;
+        public PendingCell() => Read = () => Now;
+    }
+
+    static readonly Func<bool> s_never = static () => false;
 }

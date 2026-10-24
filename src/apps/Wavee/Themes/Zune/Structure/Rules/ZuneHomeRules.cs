@@ -32,7 +32,7 @@ public static class ZuneHomeRules
     /// a zone's chapter (`zune-home-zone:<zone key>`), a side-by-side pair, the charts list and the customize word.</summary>
     public const string ColumnKey = "zune-home-column", QuickplayKey = "zune-home-quickplay", QuickGroupPrefix = "zune-home-quick:",
         PinTilePrefix = "zune-home-pin:", DaylistKey = "zune-home-daylist", ZonePrefix = "zune-home-zone:", PairPrefix = "zune-home-pair:",
-        ChartsKey = "zune-home-charts", CustomizeKey = "zune-home-customize", FailureKey = "zune-home-failure", BusyKey = "zune-home-busy";
+        ChartsKey = "zune-home-charts", CustomizeKey = "zune-home-customize", ZoneAirPrefix = "zune-home-air:", FailureKey = "zune-home-failure", BusyKey = "zune-home-busy";
 
     /// <summary>The quickplay groups' ids.</summary>
     public const string PinsGroup = "pins", HistoryGroup = "history", FreshGroup = "new";
@@ -215,7 +215,7 @@ public static class ZuneHomeRules
     /// page, and the engine's reflow-shove rule snaps a POSITION slide that commits beside a live reflow (ZT1's lesson): a chapter that only
     /// slid would pop under the reveal that is still easing above it. A size channel has no such snap. Shared by Home, Browse and Search.</summary>
     public static readonly LayoutTransition ChapterResize = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
     /// <summary>The daylist strip's own height across a crossing (176 / 168 / 112 / 56): a reflow on the height axis. A FlowReveal would snap here, since the
     /// engine snaps flow reveals on the frame an interactive resize ends, and a height-rung crossing is exactly that frame.</summary>

@@ -129,9 +129,16 @@ public static partial class Stage
     /// <summary>The caption's playhead and its one-shot wake. UI thread only; one per mounted caption.</summary>
     public sealed class CaptionClock
     {
+        /// <summary>How far a report may land behind the clock and still be jitter (ms): the report's own latency, a position timer that
+        /// fired late. Within it the caption never steps back (audit B3, V2: a report a frame behind the extrapolated playhead flipped the
+        /// view back over a line edge and forward again, replaying the hand-off, so the outgoing and the incoming line drew together); a
+        /// seek back further than this moves it.</summary>
+        public const long BackJitterMs = 500L;
+
         Deck.PositionInterpolator _pos;
         bool _anchored, _advancing;
         int _lastReport = int.MinValue;
+        long _floor = long.MinValue;   // the latest instant Now() answered while advancing: a jitter-sized correction holds it, never undoes it
         Caption.EdgeWake _edge;
 
         /// <summary>A host report has anchored the clock at least once: before that, <see cref="Now"/> would extrapolate machine
@@ -150,6 +157,9 @@ public static partial class Stage
             bool reanchor = positionMs != _lastReport || advancing != _advancing || !_anchored;
             if (reanchor)
             {
+                // the floor survives only a report a little behind it while the transport keeps advancing; a pause, a resume and a real
+                // seek back start the clock afresh
+                if (!advancing || !_advancing || _floor - positionMs > BackJitterMs) _floor = long.MinValue;
                 _pos.Anchor(frameNowMs, positionMs);
                 _anchored = true;
                 _lastReport = positionMs;
@@ -158,8 +168,16 @@ public static partial class Stage
             return reanchor;
         }
 
-        /// <summary>The media position now, extrapolated from the last report (clamped to the duration).</summary>
-        public long Now(long frameNowMs, long durationMs) => _pos.Estimate(frameNowMs, _advancing, null, null, durationMs);
+        /// <summary>The media position now, extrapolated from the last report (clamped to the duration). While the transport advances it
+        /// never runs backwards by less than <see cref="BackJitterMs"/>: after a report a little behind it, it holds until the media catches up.</summary>
+        public long Now(long frameNowMs, long durationMs)
+        {
+            long now = _pos.Estimate(frameNowMs, _advancing, null, null, durationMs);
+            if (!_advancing) return now;
+            if (now < _floor) return _floor;
+            _floor = now;
+            return now;
+        }
 
         /// <summary>Arm (or clear) the one-shot wake at media instant <paramref name="atMs"/> (<see cref="long.MaxValue"/> =
         /// none), in the frame clock's one domain. True = publish a new one-shot (<paramref name="delayMs"/> &lt; 0 = cancel).</summary>
