@@ -57,10 +57,14 @@ public static class ZuneShowRules
     // ── the toolbar ──
 
     /// <summary>The toolbar's body (the core's plane is <c>ShowReaderRules.RailExtent</c>, the body centres in it), a glyph control's edge (the stage
-    /// rule's own <c>ShowToolbarLayout.Glyph</c>: it sums the controls' widths — a Compact target above 30 is the core stage rule's to widen), the glyph,
-    /// the hairline between find and sort, the folded filter's chevron, the find box's floor and its open-field width.</summary>
+    /// rule's own <c>ShowToolbarLayout.Glyph</c>: it sums the controls' widths), the glyph, the hairline between find and sort, the folded filter's
+    /// chevron, the find box's floor and its open-field width.</summary>
     public const float ToolbarHeight = 40f, ControlEdge = ShowToolbarLayout.Glyph, ToggleGlyph = 14f, DividerHeight = 16f, FilterChevron = 10f,
                        FindMinHeight = 32f, FindFillMax = 9999f;
+
+    /// <summary>A glyph control's edge under the reader's narrow arm: the Compact 40 target (a 30 glyph's slop met the list's scroll bar lane at the
+    /// row's end: MultiSelect 30 x 30). The style states it (<c>ShowReaderStyle.NarrowToolbarGlyph</c>), so the stage rule sums 40 there too.</summary>
+    public const float NarrowControlEdge = ZuneListRules.CompactTarget;
 
     // ── the visit head ──
 
