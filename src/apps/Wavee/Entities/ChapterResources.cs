@@ -17,7 +17,7 @@ public sealed class ChapterResources(
     public static readonly ChapterPage Seed = new(
         Enumerable.Range(0, 5).Select(i => new Spotify.Podcasts.Chapter("seed:" + i, "Chapter title", i * 90000, 0)).ToArray(), "", 5, "", 200);
     public static readonly ChapterResources Shared = new(
-        static (key, ct) => Platform.Args.Fake ? Task.FromResult(PodcastReaderFixtures.Chapters)
+        static (key, ct) => Platform.Args.Fake ? PodcastReaderFixtures.Answer(key.Episode.Text, PodcastReaderFixtures.Chapters, ct)
             : Spotify.Podcasts.ChaptersAsync(key.Episode.Text, key.Account, ct),
         static action => Store.Post(action),
         static key => key.Epoch == Entities.ScopeEpoch.Peek()
