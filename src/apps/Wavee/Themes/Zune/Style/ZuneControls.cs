@@ -68,7 +68,16 @@ public static class ZuneControls
         .With(ControlStyles.ProgressRingStyle, Ring)
         .With(ControlStyles.ProgressBarStyle, LineProgress)
         .With(ControlStyles.SelectorBarStyle, SubPivots)
-        .With(ControlStyles.ToastLaneStyle, Toasts);
+        .With(ControlStyles.ToastLaneStyle, Toasts)
+        .With(ControlStyles.PersonPictureStyle, Avatar);
+
+    /// <summary>The least initials size of an imageless avatar: the type floor (a 24 owner disc's 42 % is 10.08, under it).</summary>
+    public const float InitialsFloor = 11f;
+
+    static readonly PersonPicture.Style s_avatar = new() { InitialsFloor = InitialsFloor };
+
+    /// <summary>The PersonPicture: the stock avatar, its initials never under <see cref="InitialsFloor"/> (where that fits in half the circle).</summary>
+    public static PersonPicture.Style Avatar() => s_avatar;
 
     // ── the live inks every provider shares ─────────────────────────────────────────────────────────────────────────────────
 

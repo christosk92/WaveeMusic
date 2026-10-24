@@ -147,6 +147,14 @@ internal static partial class ZunePlaylist
         if (!p.Editable) return run;
 
         int status = p.Status;
+        // The hairline is the run's underline (the boards: a text decoration, faint at rest, raised on hover), not a rule across the column: the run
+        // hugs its words (it still wraps at the column) and the hairline takes the run's width, offset clear of its descenders.
+        Element words = run switch
+        {
+            TextEl t => t with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f },
+            SpanTextEl s => s with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f },
+            _ => run,
+        };
         return new BoxEl
         {
             Key = Z.EditorReadKey, Direction = 1, MinWidth = 0f,
@@ -161,7 +169,20 @@ internal static partial class ZunePlaylist
                     Direction = 0, Gap = Spacing.S, MinWidth = 0f, AlignItems = description ? FlexAlign.Start : FlexAlign.Center,
                     Children =
                     [
-                        run,
+                        new BoxEl
+                        {
+                            Direction = 1, Shrink = 1f, MinWidth = 0f,
+                            Children =
+                            [
+                                words,
+                                new BoxEl
+                                {
+                                    Height = Z.UnderlineH, Margin = new Edges4(0f, Z.UnderlineGapFor(description ? Z.DescriptionSize : p.Size), 0f, 0f),
+                                    Fill = Tok.TextPrimary, HitTestVisible = false,
+                                    Opacity = (Func<float>)(() => hovered.Value ? 1f : Z.UnderlineRest), Transition = MotionTok.ControlFast,
+                                },
+                            ],
+                        },
                         new BoxEl
                         {
                             Width = Z.PencilBox, Height = Z.PencilBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
@@ -169,11 +190,6 @@ internal static partial class ZunePlaylist
                             Children = [Ui.Icon(Icons.Edit, Z.PencilGlyph, Tok.TextSecondary)],
                         },
                     ],
-                },
-                new BoxEl
-                {
-                    Height = Z.UnderlineH, Margin = new Edges4(0f, Z.UnderlineGap, 0f, 0f), Fill = Tok.TextPrimary, HitTestVisible = false,
-                    Opacity = (Func<float>)(() => hovered.Value ? 1f : Z.UnderlineRest), Transition = MotionTok.ControlFast,
                 },
             ],
         };

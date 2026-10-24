@@ -425,10 +425,13 @@ public readonly partial struct Playlist
             else
             {
                 var owner = p.Owner;
-                ownerName = NameOf(owner);
-                ownerImage = Controls.ArtUrl(owner.ImageId);
+                // The local-files playlist is owned by this computer, not by a person: it states "On this device" (the page's own owner words)
+                // with no portrait and no profile to open, whatever user row the store holds for it.
+                bool local = p.Slot == LocalFiles.Slot;
+                ownerName = local ? Loc.Get("localFile.onThisDevice") : NameOf(owner);
+                ownerImage = local ? null : Controls.ArtUrl(owner.ImageId);
                 // The owner opens their profile (#161): an owner row that cannot route (an invalid handle) stays the plain, inert run it was.
-                var profile = ProfileRoute.For(owner);
+                var profile = local ? Shell.Route.None : ProfileRoute.For(owner);
                 openOwner = profile.IsNone ? null : () => Shell.GoTo(profile);
             }
             return ViewSlots.View(ViewKeys.PlaylistOwner, new PlaylistOwnerProps(props.Width, pile, faces, overflow, label, ownerName, ownerImage, openOwner,

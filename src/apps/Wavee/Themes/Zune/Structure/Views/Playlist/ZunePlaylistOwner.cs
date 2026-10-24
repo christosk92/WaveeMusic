@@ -46,7 +46,10 @@ internal static partial class ZunePlaylist
         {
             Key = Z.OwnerKey, Direction = 0, Gap = Z.OwnerGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Height = MathF.Max(lay.RingSize, MathF.Max(lay.ArtistLine, Controls.FaceOuter)),   // RESERVED: the tallest arm, always
-            MaxWidth = float.IsFinite(p.Width) && p.Width > 0f ? p.Width : float.NaN,
+            // The slot's width, stated: the lead is a Basis-0 grown box (so the ring never moves), which measures at 0, so a row that only hugged its
+            // children was 0 wide inside the rail's and the hero's rows and the name had no room ("christos" and "Spotify" went missing). Where the
+            // slot gives no width (the show header's column) the column stretches it.
+            Width = float.IsFinite(p.Width) && p.Width > 0f ? p.Width : float.NaN,
             Children = kids.ToArray(),
         };
     }
@@ -55,17 +58,19 @@ internal static partial class ZunePlaylist
     static Element OwnerRun(PlaylistOwnerProps p, ZuneDetailLayout lay)
     {
         bool go = p.OpenOwner is not null;
+        Element name = K.ArtistText(p.OwnerName, float.NaN, lay) with { Grow = 1f, Basis = 0f, HoverColor = go ? Tok.AccentTextPrimary : default };
+        // The portrait is a person's: an owner with no profile to open and no picture (a local playlist's "on this device") is a place, not a person,
+        // so it draws its name alone rather than initials made of its words ("OD").
+        bool person = go || !string.IsNullOrEmpty(p.OwnerImageUrl);
         return new BoxEl
         {
             // Grow / Basis 0 is load-bearing: the name is Basis 0, and a row with a finite width measures a Basis-0 child at exactly 0.
             Direction = 0, Gap = Z.OwnerGap, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
             Role = go ? AutomationRole.Hyperlink : AutomationRole.None, Focusable = go, AllowFocusOnInteraction = false,
             Cursor = go ? CursorId.Hand : null, OnClick = p.OpenOwner,
-            Children =
-            [
-                PersonPicture.Create("", Z.OwnerAvatar, displayName: p.OwnerName, imageSourcePath: p.OwnerImageUrl),
-                K.ArtistText(p.OwnerName, float.NaN, lay) with { Grow = 1f, Basis = 0f, HoverColor = go ? Tok.AccentTextPrimary : default },
-            ],
+            Children = person
+                ? [PersonPicture.Create("", Z.OwnerAvatar, displayName: p.OwnerName, imageSourcePath: p.OwnerImageUrl), name]
+                : [name],
         };
     }
 
