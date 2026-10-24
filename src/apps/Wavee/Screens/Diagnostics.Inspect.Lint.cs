@@ -539,6 +539,10 @@ public static partial class Diagnostics
             public string Playing { get; init; } = "";
             public string PlayingTitle { get; init; } = "";
 
+            /// <summary>The player plays from a context the source line can name (a playlist, an album: <c>Queue.ContextName</c> answers). A
+            /// context-less play (a lone track) has nothing to say there, so an empty source line is then no finding.</summary>
+            public bool PlayingFromContext { get; init; }
+
             /// <summary>The inspector holds the transport chrome shown (`chrome=shown`): a stage or a video's transport must be on screen.</summary>
             public bool ChromeHeld { get; init; }
 
