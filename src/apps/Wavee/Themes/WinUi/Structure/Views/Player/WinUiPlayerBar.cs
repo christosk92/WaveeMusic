@@ -112,7 +112,8 @@ internal static partial class WinUiPlayerBar
         Element heart = HeartSlot(props, v, likeNode);
 
         // The bar's slot: its height (the Mini's 64 at Compact, 72 elsewhere; it eases through real layout on the 641 crossing, anchored at the
-        // foot), the layout firewall, the bar's focus and key map, the Mica layer and the 1-px divider on top.
+        // foot), the layout firewall, the bar's focus and key map, the Mica layer, the 1-px divider on top and, in the Mini bar, the 2-px accent
+        // progress edge over the divider (it fades in and out with the form).
         Element Bar(Element body) => new BoxEl
         {
             // The slot changes height on the 641 crossing (64 <-> 72) through real layout (a size channel, anchored at the foot): the page above
@@ -130,27 +131,39 @@ internal static partial class WinUiPlayerBar
                     // its top divider); Tab still lands on it with the keyboard focus visual.
                     OnClick = () => input.FocusNode?.Invoke(barNode.Value, false),
                     OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
-                    Children =
-                    [
-                        new BoxEl { Key = "body", Grow = 1f, Direction = 0, MinWidth = 0f, Children = [body] },
-                        new BoxEl
-                        {
-                            Key = "divider", Grow = 1f, Direction = 1, HitTestVisible = false,
-                            Children = [new BoxEl { Height = PL.DividerH, Shrink = 0f, Fill = Tok.StrokeDividerDefault }],
-                        },
-                    ],
+                    Children = mini
+                        ? [Body(body), Divider(), ProgressEdge(props, v)]
+                        : [Body(body), Divider()],
                 },
             ],
         };
 
-        if (mini) return Bar(MiniRow(props, v, art, meta, heart, overlay));
+        // ── THE FORM. ONE tree in every form: the Mini bar is the same row as the full bar with the identity turned into the door to the sheet,
+        // the transport cut to play and next, the seek row gone and the tools cut to ⋯, so what survives the 641 crossing (the cover, the lines,
+        // the heart, play, next, ⋯) keeps its node and glides into its new place, and what comes or goes fades in place. The two forms were two
+        // trees: the cover, the lines, the heart, play, next and ⋯ re-mounted on every crossing.
 
-        var leftKids = new List<Element>(3) { art };
-        if (v.ShowTitleBlock) leftKids.Add(meta);
+        // ── the identity: the cover and the lines (the Mini bar's door to the sheet), then the heart ─────────────────────────────────────────
+        var identityKids = new List<Element>(2) { art };
+        if (v.ShowTitleBlock) identityKids.Add(meta);
+        var identity = new BoxEl
+        {
+            Key = PL.DoorKey, Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f, Height = mini ? PL.DoorH : float.NaN,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.IdGap,
+            Padding = mini ? new Edges4(0f, 0f, PL.DoorPadRight, 0f) : default, Corners = CornerRadius4.All(PL.ButtonCorner), ClipToBounds = true,
+            HoverFill = mini ? Tok.FillSubtleSecondary : ColorF.Transparent, PressedFill = mini ? Tok.FillSubtleTertiary : ColorF.Transparent,
+            BrushTransitionMs = Design.Motion.Faster,
+            Role = mini ? AutomationRole.Button : AutomationRole.None, Focusable = mini, AllowFocusOnInteraction = false,
+            Cursor = mini ? CursorId.Hand : null, OnClick = mini ? props.OpenNowPlaying : null,
+            Animate = PL.MoveMotion,
+            Children = identityKids.ToArray(),
+        };
+        var leftKids = new List<Element>(2) { identity };
         if (v.ShowLikeSlot) leftKids.Add(heart);
         BoxEl left = new BoxEl
         {
-            Key = PL.LeftKey, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.IdGap,
+            Key = PL.LeftKey, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Gap = mini ? PL.MiniGap : PL.IdGap,
             Animate = PL.MoveMotion, ClipToBounds = true,
             Draggable = v.Draggable ? Drag.Source(props.DragPayload) : null,
             Children = leftKids.ToArray(),
@@ -158,28 +171,156 @@ internal static partial class WinUiPlayerBar
         // Right-click / Menu key / long-press: the track menu over the now-playing target (the stage shares the seam).
         left = left.WithContextMenu(overlay, () => verbs.NowPlayingMenu());
 
-        // ── the centre: the transport over the seek row ──────────────────────────────────────────────────────────────
+        // ── the centre: the transport over the seek row (the Mini bar: play and next alone) ───────────────────────────────────────────────
+        // The touch tier: the Mini bar's circle and next are the 40 floor (the board's 36 grows, owner rule).
+        float transportH = mini ? PL.ToolBox : PL.TransportH;
         var transport = new List<Element>(7);
         if (v.OwnsTransport)
         {
-            if (!v.Episode && (v.Slots & RightSlot.Shuffle) != 0)
+            if (!mini && !v.Episode && (v.Slots & RightSlot.Shuffle) != 0)
                 transport.Add(Lit(PL.ShuffleKey, (v.Lit & RightSlot.Shuffle) != 0, ToolTip.Wrap(
                     Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
                     Loc.Get(Strings.Player.Shuffle))));
-            if (v.ShowPrevNext)
+            if (!mini && v.ShowPrevNext)
                 transport.Add(Item(PL.PrevKey, ToolTip.Wrap(
                     Button(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, PL.TransportW, PL.TransportH, PL.Glyph), Loc.Get(Strings.Player.Previous))));
-            if (v.Episode) transport.Add(Item("seek-back-10", StepButton(props, -PL.SeekStepMs, v.SeekStepEnabled, PL.TransportH)));
-            transport.Add(PlayCircle(props, v) with { Key = PL.PlayKey });
-            if (v.Episode) transport.Add(Item("seek-forward-10", StepButton(props, PL.SeekStepMs, v.SeekStepEnabled, PL.TransportH)));
-            if (v.ShowPrevNext)
+            if (!mini && v.Episode) transport.Add(Item("seek-back-10", StepButton(props, -PL.SeekStepMs, v.SeekStepEnabled, PL.TransportH)));
+            transport.Add(PlayCircle(props, v, mini ? PL.ToolBox : PL.Play) with { Key = PL.PlayKey });
+            if (v.Episode) transport.Add(Item("seek-forward-10", StepButton(props, PL.SeekStepMs, v.SeekStepEnabled, transportH)));
+            if (!v.Episode && (mini || v.ShowPrevNext))
                 transport.Add(Item(PL.NextKey, ToolTip.Wrap(
-                    Button(Icons.Next, () => verbs.Next(), v.NextEnabled, false, PL.TransportW, PL.TransportH, PL.Glyph), Loc.Get(Strings.Player.Next))));
-            if (!v.Episode && (v.Slots & RightSlot.Repeat) != 0)
+                    Button(Icons.Next, () => verbs.Next(), v.NextEnabled, false, mini ? PL.ToolBox : PL.TransportW, transportH, PL.Glyph),
+                    Loc.Get(Strings.Player.Next))));
+            if (!mini && !v.Episode && (v.Slots & RightSlot.Repeat) != 0)
                 transport.Add(Lit(PL.RepeatKey, (v.Lit & RightSlot.Repeat) != 0, ToolTip.Wrap(
                     Button(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, PL.TransportW, PL.TransportH, PL.Glyph),
                     Loc.Get(Strings.Player.Repeat))));
         }
+        var centreKids = new List<Element>(2)
+        {
+            new BoxEl
+            {
+                Key = PL.TransportKey, Height = mini ? PL.ToolBox : PL.TransportRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Justify = FlexJustify.Center, Gap = mini ? PL.MiniGap : PL.TransportGap, Animate = PL.MoveMotion, Children = transport.ToArray(),
+            },
+        };
+        if (!mini) centreKids.Add(SeekRow(props, v, look));
+        var centre = new BoxEl
+        {
+            Key = PL.CentreKey, Width = mini ? float.NaN : look.SeekW, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center, Animate = PL.MoveMotion,
+            // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
+            DropTarget = Drop.Target<DragPayload>(Drag.Resource,
+                accepts: static p => p.CanCopyTracks,
+                onDrop: (p, session) => verbs.DropPlayNext(p),
+                caption: static _ => Loc.Get(Strings.Drag.PlayNext),
+                refusalCaption: static p => Loc.Get(p.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd),
+                visualPolicy: DropTargetVisualPolicy.Spotlight),
+            Children = centreKids.ToArray(),
+        };
+
+        // ── the tools (the Mini bar: ⋯ alone, which lists what the bar no longer shows) ─────────────────────────────────────────────────
+        var tools = new List<Element>(10);
+        float toolsW = 0f;
+        void AddTool(Element tool, float width)
+        {
+            if (tools.Count > 0) toolsW += PL.ToolGap;
+            tools.Add(tool);
+            toolsW += width;
+        }
+        if (mini) AddTool(Lit(PL.MoreKey, true, MoreMenu(props, v, mini: true)), PL.ToolBox);
+        else
+        {
+            if (v.Episode && look.Speed && v.OwnsTransport)
+                AddTool(Item(PL.SpeedKey, Embed.Comp(props, static () => new WinUiEpisodeSpeed())), PL.SpeedW);
+            foreach (var slot in s_toolOrder)
+            {
+                if ((v.Slots & slot) == 0) continue;
+                switch (slot)
+                {
+                    case RightSlot.Devices:
+                        AddTool(Lit(PL.DevicesKey, (v.Lit & slot) != 0, Embed.Comp(new DevicesProps(props, look.DeviceLabel), static () => new WinUiDevicesButton())
+                            with { Key = look.DeviceLabel ? "devices-label" : "devices-icon" }), look.DeviceLabel ? WinUiDevicesButton.LabelledW : PL.ToolBox);
+                        break;
+                    case RightSlot.VolumeSlider:
+                        AddTool(Lit(PL.VolumeSliderKey, (v.Lit & slot) != 0, new BoxEl
+                        {
+                            Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(PL.VolumeLead, 0f, 0f, 0f),
+                            Children = [Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                                length: look.VolumeW, thickness: PL.VolumeThickness)],
+                        }), look.VolumeW + PL.VolumeLead);
+                        break;
+                    case RightSlot.Video:
+                        AddTool(Lit(PL.VideoKey, (v.Lit & slot) != 0, VideoSplit(props, v, (v.Lit & slot) != 0, overlay, videoAnchor, videoMenu)),
+                            PL.SplitMainW + 1f + PL.SplitChevronW + 2f);
+                        break;
+                    case RightSlot.More:
+                        AddTool(Lit(PL.MoreKey, (v.Lit & slot) != 0, MoreMenu(props, v, mini: false)), PL.ToolBox);
+                        break;
+                    default:
+                        AddTool(Tool(props, v, slot, begin), PL.ToolBox);
+                        break;
+                }
+            }
+        }
+        var right = new BoxEl
+        {
+            Key = PL.RightKey, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = PL.ToolGap,
+            Animate = PL.MoveMotion, Children = tools.ToArray(),
+        };
+        // From Medium the identity and the tools share the room either side of the centred column, the tools keeping theirs (the identity
+        // shrinks first); at Compact and in the Mini bar the tools are `auto` and the identity takes the rest. One column box at every level
+        // (its share is the level's), so the tools keep their nodes across a level change.
+        bool centred = look.Level is not (WinUiBarLevel.Compact or WinUiBarLevel.Mini);
+        var rightColumn = new BoxEl
+        {
+            Key = "right-column", Grow = centred ? 1f : 0f, Shrink = 0f, Basis = centred ? toolsW : float.NaN, MinWidth = centred ? toolsW : 0f,
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Animate = PL.MoveMotion, Children = [right],
+        };
+
+        // The two flexible columns start from the tools' width (the identity shrinks first, below it) so the free room splits evenly and the
+        // centre stays centred in the window.
+        if (centred) left = left with { Basis = toolsW };
+        var row = new BoxEl
+        {
+            Key = PL.RowKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = look.ColumnGap,
+            Padding = mini ? PL.MiniPadding : PL.RowPadding,
+            Children = [left, centre, rightColumn],
+        };
+        return Bar(row);
+    }
+
+    /// <summary>The bar's row layer.</summary>
+    private static BoxEl Body(Element row) => new() { Key = "body", Grow = 1f, Direction = 0, MinWidth = 0f, Children = [row] };
+
+    /// <summary>The 1-px divider along the bar's top edge.</summary>
+    private static BoxEl Divider() => new()
+    {
+        Key = "divider", Grow = 1f, Direction = 1, HitTestVisible = false,
+        Children = [new BoxEl { Height = PL.DividerH, Shrink = 0f, Fill = Tok.StrokeDividerDefault }],
+    };
+
+    /// <summary>The Mini bar's 2-px accent progress edge over the bar's top edge (on the divider), the whole width; it fades in and out with the
+    /// form.</summary>
+    private static BoxEl ProgressEdge(PlayerBarProps props, PlayerBarView v) => new()
+    {
+        Key = PL.EdgeKey, Direction = 1, Grow = 1f, HitTestVisible = false, Enter = PL.EdgeFade, Exit = PL.EdgeFade, Transition = PL.EdgeFadeMotion,
+        Children =
+        [
+            new BoxEl
+            {
+                Height = WinUiTransportLayout.MiniProgressH, Shrink = 0f, Direction = 0, ClipToBounds = true,
+                Children = v.TopEdgeSweeps
+                    ? [ProgressBar.Indeterminate(v.Metrics.TopEdgeWidth)]
+                    : [props.ProgressLine is { } progress ? progress() : new BoxEl { Grow = 1f }],
+            },
+        ],
+    };
+
+    /// <summary>The seek row under the transport: the elapsed time, the rail and the remaining time; a load past the core's sweep delay fades
+    /// the rail and runs the indeterminate sweep over its row (keeping the scrub state). It fades in and out with the form (the Mini bar has
+    /// none), its height easing so the transport glides to the bar's middle.</summary>
+    private static BoxEl SeekRow(PlayerBarProps props, PlayerBarView v, WinUiBarLook look)
+    {
         var seekKids = new List<Element>(3);
         if (v.OwnsTransport)
         {
@@ -192,11 +333,10 @@ internal static partial class WinUiPlayerBar
             if (v.ShowTimesRemaining) seekKids.Add(new BoxEl { Key = "remaining", Shrink = 0f, Animate = PL.ItemMotion, Children = [props.TimeText(true)] });
             if (v.TopEdgeSweeps) seekKids.Add(new BoxEl { Key = "sweep", Grow = 1f, HitTestVisible = false });
         }
-        Element seekRow = v.TopEdgeSweeps
+        return v.TopEdgeSweeps
             ? new BoxEl
             {
-                // A load past the core's sweep delay: the rail fades and the indeterminate sweep runs over its row (keeping the scrub state).
-                Key = PL.SeekRowKey, Height = PL.SeekRowH, Shrink = 0f, ZStack = true, Animate = PL.MoveMotion,
+                Key = PL.SeekRowKey, Height = PL.SeekRowH, Shrink = 0f, ZStack = true, Animate = PL.SeekRowMotion,
                 Children =
                 [
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.SeekGap, Children = seekKids.ToArray() },
@@ -210,93 +350,8 @@ internal static partial class WinUiPlayerBar
             : new BoxEl
             {
                 Key = PL.SeekRowKey, Height = PL.SeekRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.SeekGap,
-                Animate = PL.MoveMotion, Children = seekKids.ToArray(),
+                Animate = PL.SeekRowMotion, Children = seekKids.ToArray(),
             };
-        var centre = new BoxEl
-        {
-            Key = PL.CentreKey, Width = look.SeekW, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center, Animate = PL.MoveMotion,
-            // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
-            DropTarget = Drop.Target<DragPayload>(Drag.Resource,
-                accepts: static p => p.CanCopyTracks,
-                onDrop: (p, session) => verbs.DropPlayNext(p),
-                caption: static _ => Loc.Get(Strings.Drag.PlayNext),
-                refusalCaption: static p => Loc.Get(p.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd),
-                visualPolicy: DropTargetVisualPolicy.Spotlight),
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = PL.TransportKey, Height = PL.TransportRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Gap = PL.TransportGap, Animate = PL.MoveMotion, Children = transport.ToArray(),
-                },
-                seekRow,
-            ],
-        };
-
-        // ── the tools ─────────────────────────────────────────────────────────────────────────────────────────────────
-        var tools = new List<Element>(10);
-        float toolsW = 0f;
-        void AddTool(Element tool, float width)
-        {
-            if (tools.Count > 0) toolsW += PL.ToolGap;
-            tools.Add(tool);
-            toolsW += width;
-        }
-        if (v.Episode && look.Speed && v.OwnsTransport)
-            AddTool(Item(PL.SpeedKey, Embed.Comp(props, static () => new WinUiEpisodeSpeed())), PL.SpeedW);
-        foreach (var slot in s_toolOrder)
-        {
-            if ((v.Slots & slot) == 0) continue;
-            switch (slot)
-            {
-                case RightSlot.Devices:
-                    AddTool(Lit(PL.DevicesKey, (v.Lit & slot) != 0, Embed.Comp(new DevicesProps(props, look.DeviceLabel), static () => new WinUiDevicesButton())
-                        with { Key = look.DeviceLabel ? "devices-label" : "devices-icon" }), look.DeviceLabel ? WinUiDevicesButton.LabelledW : PL.ToolBox);
-                    break;
-                case RightSlot.VolumeSlider:
-                    AddTool(Lit(PL.VolumeSliderKey, (v.Lit & slot) != 0, new BoxEl
-                    {
-                        Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(PL.VolumeLead, 0f, 0f, 0f),
-                        Children = [Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
-                            length: look.VolumeW, thickness: PL.VolumeThickness)],
-                    }), look.VolumeW + PL.VolumeLead);
-                    break;
-                case RightSlot.Video:
-                    AddTool(Lit(PL.VideoKey, (v.Lit & slot) != 0, VideoSplit(props, v, (v.Lit & slot) != 0, overlay, videoAnchor, videoMenu)),
-                        PL.SplitMainW + 1f + PL.SplitChevronW + 2f);
-                    break;
-                case RightSlot.More:
-                    AddTool(Lit(PL.MoreKey, (v.Lit & slot) != 0, MoreMenu(props, v, mini: false)), PL.ToolBox);
-                    break;
-                default:
-                    AddTool(Tool(props, v, slot, begin), PL.ToolBox);
-                    break;
-            }
-        }
-        var right = new BoxEl
-        {
-            Key = PL.RightKey, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = PL.ToolGap,
-            Animate = PL.MoveMotion, Children = tools.ToArray(),
-        };
-        // From Medium the identity and the tools share the room either side of the centred column, the tools keeping theirs (the identity
-        // shrinks first); at Compact the tools are `auto` and the identity takes the rest.
-        Element rightColumn = look.Level == WinUiBarLevel.Compact
-            ? right
-            : new BoxEl
-            {
-                Key = "right-column", Grow = 1f, Shrink = 0f, Basis = toolsW, MinWidth = toolsW, Direction = 0, AlignItems = FlexAlign.Center,
-                Justify = FlexJustify.End, Animate = PL.MoveMotion, Children = [right],
-            };
-
-        // The two flexible columns start from the tools' width (the identity shrinks first, below it) so the free room splits evenly and the
-        // centre stays centred in the window.
-        if (look.Level != WinUiBarLevel.Compact) left = left with { Basis = toolsW };
-        var row = new BoxEl
-        {
-            Key = PL.RowKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = look.ColumnGap, Padding = PL.RowPadding,
-            Children = [left, centre, rightColumn],
-        };
-        return Bar(row);
     }
 
     /// <summary>The tools in the board's order (the core's slot bits are the presence; shuffle and repeat ride the transport).</summary>
@@ -304,67 +359,6 @@ internal static partial class WinUiPlayerBar
     [
         RightSlot.Lyrics, RightSlot.Queue, RightSlot.Devices, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Video, RightSlot.Expand, RightSlot.More,
     ];
-
-    /// <summary>The Mini bar's row: the door (cover and lines; it opens the sheet), the heart, play, next (+10 for an episode), ⋯; over it, the
-    /// 2-px accent progress edge.</summary>
-    private static Element MiniRow(PlayerBarProps props, PlayerBarView v, Element art, Element meta, Element heart, IOverlayService overlay)
-    {
-        var verbs = props.Verbs;
-        var doorKids = new List<Element>(2) { art };
-        if (v.ShowTitleBlock) doorKids.Add(meta);
-        var door = new BoxEl
-        {
-            Key = PL.DoorKey, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = PL.DoorH, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.IdGap,
-            Padding = new Edges4(0f, 0f, PL.DoorPadRight, 0f), Corners = CornerRadius4.All(PL.ButtonCorner), ClipToBounds = true,
-            HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            OnClick = props.OpenNowPlaying,
-            Draggable = v.Draggable ? Drag.Source(props.DragPayload) : null,
-            Animate = PL.MoveMotion,
-            Children = doorKids.ToArray(),
-        }.WithContextMenu(overlay, () => verbs.NowPlayingMenu());
-
-        var kids = new List<Element>(6) { door };
-        if (v.ShowLikeSlot) kids.Add(heart);
-        if (v.OwnsTransport)
-        {
-            // The touch tier: the Mini bar's circle is the 40 floor (the board's 36 grows, owner rule).
-            kids.Add(PlayCircle(props, v, PL.ToolBox) with { Key = PL.PlayKey });
-            kids.Add(v.Episode
-                ? Item("seek-forward-10", StepButton(props, PL.SeekStepMs, v.SeekStepEnabled, PL.ToolBox))
-                : Item(PL.NextKey, ToolTip.Wrap(Button(Icons.Next, () => verbs.Next(), v.NextEnabled, false, PL.ToolBox, PL.ToolBox, PL.Glyph),
-                    Loc.Get(Strings.Player.Next))));
-        }
-        kids.Add(Item(PL.MoreKey, MoreMenu(props, v, mini: true)));
-        var row = new BoxEl
-        {
-            Key = PL.RowKey, Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = PL.MiniGap, Padding = PL.MiniPadding,
-            Children = kids.ToArray(),
-        };
-        // The progress edge lies over the bar's top edge (on the divider), the whole width.
-        return new BoxEl
-        {
-            Key = "mini", Grow = 1f, ZStack = true,
-            Children =
-            [
-                row,
-                new BoxEl
-                {
-                    Key = PL.EdgeKey, Direction = 1, Grow = 1f, HitTestVisible = false,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Height = WinUiTransportLayout.MiniProgressH, Shrink = 0f, Direction = 0, ClipToBounds = true,
-                            Children = v.TopEdgeSweeps
-                                ? [ProgressBar.Indeterminate(v.Metrics.TopEdgeWidth)]
-                                : [props.ProgressLine is { } progress ? progress() : new BoxEl { Grow = 1f }],
-                        },
-                    ],
-                },
-            ],
-        };
-    }
 
     /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).
     /// Each line is one slot of the column's width: a line that does not fit ends in an ellipsis with its full text in a tooltip, or, with

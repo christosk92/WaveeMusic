@@ -76,9 +76,10 @@ internal static class WinUiFrame
                                 ContentRegion(props, in ctx, tiers, dock),
                                 new BoxEl
                                 {
-                                    // The bar's slot is the box the page above yields to: its 64 <-> 72 change at the 641 crossing eases through real layout.
+                                    // The bar's slot is the box the page above yields to. It hugs the bar: the bar's own root eases its 64 <-> 72 change at the
+                                    // 641 crossing through real layout, and the view's anchor follows that live height, so the page above yields frame by frame.
                                     Key = WinUiFrameLayout.PlayerBarKey, Direction = 1, Shrink = 0f, Visible = Prop.Of(props.ChromeMounted),
-                                    Animate = reduced ? null : WinUiPlayerTiers.SlotMotion, Children = [ctx.View(ViewKeys.PlayerBar, props.PlayerBar)],
+                                    Children = [ctx.View(ViewKeys.PlayerBar, props.PlayerBar)],
                                 },
                             ],
                         },
