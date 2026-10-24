@@ -56,8 +56,8 @@ internal static class ClassicTrackChrome
         var g = ClassicDetailTiers.Of(a.Tiers).Unavailable;
         Element bar = new BoxEl
         {
-            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f,
-            Height = g.Height, Shrink = 0f, Padding = g.Padding, Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
+            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f, Grow = 1f, Basis = 0f,
+            Height = g.Height, Shrink = 1f, Padding = g.Padding, Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
             Corners = Radii.ControlAll, BorderWidth = 1f,
             Fill = Prop.Of(static () => Tok.FillCardDefault), BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
             Children =
@@ -71,15 +71,27 @@ internal static class ClassicTrackChrome
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
             ],
         };
+        // The bar stands between two easing gutters (not a padding: a padding cannot ease), so a crossing that moves the rows' inset (the detail page's
+        // hero form ↔ its columns form, audit B9) glides the bar with them.
         return new BoxEl
         {
             Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
             Height = a.Shown ? g.Extent : 0f,
-            Padding = new Edges4(a.InsetX, 0f, a.InsetX, 0f),
             Animate = Design.Reduced ? null : ClassicUnavailableBar.Motion,
-            Children = [bar],
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Start,
+                    Children = [InsetGutter("unavailable:lead", a.InsetX), bar, InsetGutter("unavailable:trail", a.InsetX)],
+                },
+            ],
         };
     }
+
+    /// <summary>The unavailable bar's side gutter: the rows' inset, easing its width when a crossing moves it.</summary>
+    static Element InsetGutter(string key, float width)
+        => new BoxEl { Key = key, Width = width, Shrink = 0f, HitTestVisible = false, Layout = ClassicTierMotion.SizeReflow };
 
     // ══ THE PLACEHOLDER ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -483,34 +495,29 @@ internal static class ClassicTrackChrome
                 left = lead.ToArray();
                 view = rest.ToArray();
             }
+            // ONE row of keyed commands (audit B9): the sort word that leads the Compact bar is reordered in place, never re-parented into another
+            // group's box (which rebuilt it). The groups are the order: [left] [gap or chips] [view] [find] [tail]; an empty left group keeps its slot.
+            var kids = new List<Element>(left.Length + view.Length + tail.Length + 3);
+            if (left.Length == 0) kids.Add(new BoxEl { Key = "bar:left", Shrink = 0f });
+            kids.AddRange(left);
+            kids.Add(middle is null
+                ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                : new BoxEl
+                {
+                    Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                });
+            kids.AddRange(view);
+            kids.Add(new BoxEl
+            {
+                Key = "bar:find", Direction = 1, Shrink = 0f,
+                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+            });
+            kids.AddRange(tail);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
-                    middle is null
-                        ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
-                        : new BoxEl
-                        {
-                            Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                            Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
-                        },
-                    new BoxEl
-                    {
-                        Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        Children =
-                        [
-                            .. view,
-                            new BoxEl
-                            {
-                                Key = "bar:find", Direction = 1, Shrink = 0f,
-                                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
-                            },
-                            .. tail,
-                        ],
-                    },
-                ],
+                Children = kids.ToArray(),
             };
         }
 

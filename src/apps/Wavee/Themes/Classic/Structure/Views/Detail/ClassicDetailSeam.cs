@@ -52,9 +52,20 @@ internal static class ClassicDetailSeam
     /// the album trailing band.</summary>
     public static Element VerticalTrailingTemplate(DetailVerticalTrailingProps p, in ViewContext ctx)
     {
+        // The countdown and the release facts stand here only in the hero form; the columns form holds them in its rail (the one-tree page, audit B9):
+        // two places, so they cross-fade (the swap's family) when a crossing moves them, and the rows under them glide.
+        var enter = ClassicTierMotion.SwapEnter(ClassicTierMotion.Rendered(ctx.Hooks));
         var kids = new List<Element>(3);
-        if (p.PreRelease is { } pre) kids.Add(ClassicDetailKit.LateRow("vtrail:prerelease", pre));
-        if (p.Release is { } release) kids.Add(ClassicDetailKit.Row("vtrail:release", release));
+        if (p.PreRelease is { } pre)
+            kids.Add(ClassicDetailKit.LateRow("vtrail:prerelease", pre) with
+            {
+                Enter = enter ?? ClassicDetailKit.FadeUp, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            });
+        if (p.Release is { } release)
+            kids.Add(ClassicDetailKit.Row("vtrail:release", release) with
+            {
+                Enter = enter, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            });
         if (p.Trailing is { } trailing) kids.Add(ClassicDetailKit.Row("vtrail:trailing", trailing));
         return new BoxEl { Direction = 1, Children = kids.ToArray() };
     }

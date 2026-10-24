@@ -156,31 +156,17 @@ public static partial class Controls
         // that REBINDS to a new cover — or to the SAME cover at a new decode target (a hero's unmeasured→measured
         // bucket jump, a shelf↔grid mismatch) — UPDATES the mounted CoverShimmer in place, which re-arms its settle
         // latch for the new (url, size) itself. Keying by url used to force a REMOUNT on every recycle (hook cells,
-        // effects, the keyframe track) and allocated a four-part key string per render; the key is now the decode size
-        // alone, one cached instance per size.
+        // effects, the keyframe track) and allocated a four-part key string per render; keying by the decode size remounted it
+        // whenever a tier crossing resized the cover (audit B9: a key is never built from a size). One constant key: the props
+        // carry the url and the size.
         //
         // Skeletonized(false): inside a derived skeleton this opaque component would otherwise map to the deriver's
         // default BAR — a stray stripe across the cover. Dropping it lets the paired image's own derived placeholder BE
         // the cover square, so every loading cover reads the same.
         return (Embed.Comp(new ShimmerProps(u, decodeW, decodeH, width, height, corners), static () => new CoverShimmer())
-                with { Key = ShimmerKey(decodeW, decodeH) })
+                with { Key = "shim" })
             .Skeletonized(false);
     }
-
-    /// <summary>The shimmer's per-decode-size key, cached: the distinct sizes in a session are a handful (the 8-px
-    /// buckets under the ceiling plus a few literals), so the table is bounded by the app's own vocabulary; past the cap
-    /// it stops caching rather than growing.</summary>
-    static string ShimmerKey(int decodeW, int decodeH)
-    {
-        long k = ((long)decodeW << 32) | (uint)decodeH;
-        if (s_shimmerKeys.TryGetValue(k, out var key)) return key;
-        key = "shim:" + decodeW + "x" + decodeH;
-        if (s_shimmerKeys.Count < ShimmerKeyCap) s_shimmerKeys[k] = key;
-        return key;
-    }
-
-    const int ShimmerKeyCap = 256;
-    static readonly System.Collections.Concurrent.ConcurrentDictionary<long, string> s_shimmerKeys = new();
 
     /// <summary>An ARTWORK slot: a neutral <see cref="Shimmer"/> tile under the async image, which cross-fades in over
     /// it once decoded. The tile shares ONE decode handle with the image (matched W×H, any aspect).

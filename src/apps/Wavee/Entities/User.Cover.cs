@@ -36,9 +36,9 @@ public readonly partial struct User
     // ══ 1. THE CONTRACT SURFACE (§2.3) ═══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The dynamic Liked Songs cover. <paramref name="picker"/> mounts the "Cover style" pill + flyout (the rail
-    /// cover, the vertical hero); false for strips, cards, chips and rows. GEOMETRY FREEZES AT MOUNT, so all three are in
-    /// the Key and a rail drag REMOUNTS (ch 07 §0.15). The two arms key under DIFFERENT prefixes so a page switching arms
-    /// never position-matches one onto the other.</summary>
+    /// cover, the vertical hero); false for strips, cards, chips and rows. The geometry is a RE-PUSHED prop (audit B9: never a
+    /// key built from a size): a rail drag or a tier crossing that resizes the cover keeps its nodes and re-lays the same
+    /// treatment. The two arms key under DIFFERENT prefixes so a page switching arms never position-matches one onto the other.</summary>
     public static Element LikedCover(float size, float radius, bool picker, string? morphKey = null)
         => picker
             ? ViewSlots.View(Contracts.ViewKeys.LikedCoverPicker, new Contracts.LikedCoverPickerProps
@@ -48,12 +48,15 @@ public readonly partial struct User
                 Flyout = static () => Embed.Comp(static () => new LikedCoverStyleFlyout()),
             }) with
             {
-                Key = "liked-cover-pick:" + (int)size + ":" + (int)radius + ":" + (morphKey ?? ""),
+                Key = "liked-cover-pick:" + (morphKey ?? ""),
             }
-            : Embed.Comp(() => new LikedCoverArt(size, radius, morphKey)) with
+            : Embed.Comp(new LikedArtProps(size, radius, morphKey), static () => new LikedCoverArt()) with
             {
-                Key = "liked-cover:" + (int)size + ":" + (int)radius + ":" + (morphKey ?? ""),
+                Key = "liked-cover:" + (morphKey ?? ""),
             };
+
+    /// <summary>The cover's geometry, re-pushed on every parent render (equal values coalesce).</summary>
+    sealed record LikedArtProps(float Size, float Radius, string? MorphKey);
 
     /// <summary><c>Drag.LikedChipArt</c>: the 40-DIP art box's cover — below the treatment floor, so the flat 2×2 mosaic
     /// of the newest likes (or the stock PNG). A live component element: build it ONCE at install, never per frame.</summary>
@@ -165,29 +168,27 @@ public readonly partial struct User
     /// are the structure's view (<c>Liked.Cover</c>), so the hook order inside it is the view's own.</summary>
     sealed class LikedCoverArt : Component
     {
-        readonly float _size, _radius;
-        readonly string? _morphKey;
         readonly string[] _scratch = new string[LikedCoverRules.MaxTiles];
         LikedSnapshot? _last;
         Memo<LikedSnapshot>? _snapshot;
         readonly Func<LikedSnapshot> _compute;
         readonly Action _demand;
 
-        public LikedCoverArt(float size, float radius, string? morphKey)
+        public LikedCoverArt()
         {
-            _size = size; _radius = radius; _morphKey = morphKey;
             _compute = () => _last = ReadLikedSnapshot(_last, _scratch);
             _demand = () => { if (_snapshot!.Value.WantsArt) DemandLikedCover(); };
         }
 
         public override Element Render()
         {
+            var geometry = UseProps<LikedArtProps>();
             _snapshot = UseComputed(_compute);
             var snap = _snapshot.Value;
             UseEffect(_demand);
             return ViewSlots.View(Contracts.ViewKeys.LikedCover, new Contracts.LikedCoverProps
             {
-                Size = _size, Radius = _radius, MorphKey = _morphKey,
+                Size = geometry.Size, Radius = geometry.Radius, MorphKey = geometry.MorphKey,
                 Style = snap.Effective, Tiles = snap.Tiles, TileKey = snap.TileKey, TrackCount = snap.TrackCount,
             });
         }

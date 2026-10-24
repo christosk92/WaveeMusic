@@ -33,6 +33,23 @@ public static class WinUiDetailRules
     /// <inheritdoc cref="ArmFade"/>
     public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;
 
+    /// <summary>A hero piece only one form draws (audit B9: the billed avatars the stacked hero drops, the eyebrow and the description the short form drops):
+    /// it enters and leaves on its opacity alone while the rest of the hero re-arranges.</summary>
+    public static readonly EnterExit FormSwap = SwapFamilies.Declare("WinUi.Detail.FormSwap", new(Opacity: 0f, Active: true));
+
+    /// <summary>A swap piece's Enter: <see cref="FormSwap"/> once its view has rendered before (a crossing mounts the other place's piece, which fades in), none
+    /// on the view's first render (the page's own entrance owns that).</summary>
+    public static EnterExit? SwapEnter(bool rendered) => rendered ? FormSwap : null;
+
+    /// <summary>Has this view rendered before (false on its first render, true after)? Call it once per template, unconditionally, before any branch.</summary>
+    public static bool Rendered(FluentGpu.Hooks.RenderContext hooks)
+    {
+        var seen = hooks.UseRef(false);
+        bool was = seen.Value;
+        seen.Value = true;
+        return was;
+    }
+
     /// <summary>The docked slot easing its width open and closed (350 ms open, 120 ms close, the WinUI sheet spline), the column inside keeping its full width.
     /// The width eases through REAL layout, so the page column beside it (the list, the hero) yields frame by frame: revealed, the slot was laid out at its
     /// new width at once and the page column snapped its whole width (488 at the 1920 crossing) under the easing edge.</summary>

@@ -53,9 +53,12 @@ internal static class WinUiDetailSeam
     /// the album trailing band.</summary>
     public static Element VerticalTrailingTemplate(DetailVerticalTrailingProps p, in ViewContext ctx)
     {
+        // About this release stands here below Huge and in the docked aside at Huge (audit B9): two places, so it cross-fades on the form swap when a
+        // crossing moves it, and the band under it glides.
+        var enter = WinUiDetailRules.SwapEnter(WinUiDetailRules.Rendered(ctx.Hooks));
         var kids = new List<Element>(3);
-        if (p.PreRelease is { } pre) kids.Add(WinUiDetailKit.LateRow("vtrail:prerelease", pre));
-        if (p.Release is { } release) kids.Add(WinUiDetailKit.Row("vtrail:release", release));
+        if (p.PreRelease is { } pre) kids.Add(WinUiDetailKit.LateRow("vtrail:prerelease", pre) with { Enter = enter ?? WinUiDetailKit.FadeUp, Exit = WinUiDetailRules.FormSwap });
+        if (p.Release is { } release) kids.Add(WinUiDetailKit.Row("vtrail:release", release) with { Enter = enter, Exit = WinUiDetailRules.FormSwap });
         if (p.Trailing is { } trailing) kids.Add(WinUiDetailKit.Row("vtrail:trailing", trailing));
         return new BoxEl { Direction = 1, Children = kids.ToArray() };
     }

@@ -69,8 +69,8 @@ public static class ZuneDetailRules
     public const string FrameKey = "zune.detail.frame", PanoramaKey = "zune.detail.panorama", RailKey = "zune.detail.rail",
         CompactRailKey = "zune.detail.compact-rail", SongsHeadingKey = "zune.detail.songs", AsideKey = "zune.detail.aside",
         AsideColumnKey = "zune.detail.aside-column", HeroKey = "zune.detail.hero", HeroBandKey = "zune.detail.hero-band",
-        ShowHeaderKey = "zune.detail.show-header", NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
-        HeadKey = "zune.detail.head", ColumnGapKey = "zune.detail.column-gap";
+        NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
+        ColumnGapKey = "zune.detail.column-gap";
 
     /// <summary>The album's pieces: the artist line, the release facts, the countdown, the trailing band's sections, one list stack, the aside.</summary>
     public const string ArtistLineKey = "zune.album.artist", ReleaseKey = "zune.album.release", CountdownKey = "zune.album.countdown",
@@ -161,14 +161,27 @@ public static class ZuneDetailRules
     /// <summary>The columns' WIDTH ease (the identity column, the aside and the docked insights when a crossing moves them): REAL layout on the width axis,
     /// so the list beside them yields smoothly instead of jumping to its final width while the column's clip window eases (ZT5: `SizeMode.Reveal` lays the
     /// neighbours out at the final size at once). The content stays anchored to the leading edge (a wipe); the width alone animates.</summary>
+    /// <summary>The hero body's height ease at the columns form (audit B9): its identity column and aside hang below it beside the rows on purpose, so it
+    /// eases without clipping them away (<see cref="ZuneMotion.HeightResize"/> clips while it reflows: the hero form's identity is revealed as it grows).</summary>
+    public static readonly LayoutTransition HangingResize = ZuneMotion.HeightResize with { ReflowUnclipped = true };
+
     public static readonly LayoutTransition ColumnReflow = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>A block the one-tree page re-arranges across its narrow edge (audit B9: the identity column, the cover row, the list head): it moves and
+    /// resizes through real layout on the gutters' clock, anchored at its top-left, so what follows it rides the re-solve and nothing jumps.</summary>
+    public static readonly LayoutTransition Arrange = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width | SizeAxes.Height);
 
     /// <summary>The panorama band's height ease (a crossing to a short window folds it; a wrapping title or the editor grows it): the layout lands once and
     /// everything below RIDES the presented extent (ZT5: the flow reveal, as the chapters of the discovery pages do), so the columns under the band never
     /// jump when it folds. The title scales with its size step on its own box (`ZuneMotion.TitleScale`).</summary>
     public static readonly LayoutTransition PanoramaFold = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+
+    /// <summary><see cref="PanoramaFold"/> that also slides (audit B9): a show's band moves between the frame's gutter (the stacked header's) and the page
+    /// column's (the two-column form's) across the mode edge.</summary>
+    public static readonly LayoutTransition PanoramaShift = PanoramaFold with { Channels = TransitionChannels.Position | TransitionChannels.Size };
 
     /// <summary>The list bar's insights toggle when the tier changes its edge (36 ↔ 40 at 3200 and 640): its box eases through real layout on both axes,
     /// so the bar's trailing group keeps its height and its neighbours ride the width.</summary>
@@ -300,6 +313,9 @@ public static class ZuneDetailRules
     /// row with 8 of air above and 8 between (about 96 tall), so the fixed header leaves the episodes the room a 126-tall page has.</summary>
     public const float ShowCover = 120f, ShowGap = 16f, ShowPadTop = 16f, ShowPadBottom = 8f, ShowRowsGap = 12f,
         ShowPadTopShort = 8f, ShowRowsGapShort = 8f;
+
+    /// <summary>The header's meta line: two lines beside the cover.</summary>
+    public const int ShowMetaLines = 2;
 
     // ── the notice ────────────────────────────────────────────────────────────────────────────────────────────────────
 

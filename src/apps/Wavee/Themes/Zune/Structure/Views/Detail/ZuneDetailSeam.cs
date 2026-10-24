@@ -13,7 +13,8 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneDetailKit;
-using Z = Wavee.Themes.Zune.ZuneDetailRules;
+using Z = Wavee.Themes.Zune.ZuneDetailRules;
+
 using FluentGpu.Theming;
 
 namespace Wavee.Themes.Zune;
@@ -50,9 +51,12 @@ internal static class ZuneDetailSeam
     /// on the gutter, then the trailing band.</summary>
     public static Element VerticalTrailingTemplate(DetailVerticalTrailingProps p, in ViewContext ctx)
     {
+        // The countdown and the release facts stand here only in the hero form; the columns form holds them in its identity column (the one-tree page,
+        // audit B9): two places, so they cross-fade (the swap's family) when a crossing moves them, and the rows under them glide.
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var kids = new List<Element>(3);
-        if (p.PreRelease is { } pre) kids.Add(K.LateRow("vtrail:prerelease", pre));
-        if (p.Release is { } release) kids.Add(K.Row("vtrail:release", release));
+        if (p.PreRelease is { } pre) kids.Add(K.LateRow("vtrail:prerelease", pre) with { Enter = enter ?? K.FadeUp, Exit = ZuneMotion.SwapFade });
+        if (p.Release is { } release) kids.Add(K.Row("vtrail:release", release) with { Enter = enter, Exit = ZuneMotion.SwapFade });
         if (p.Trailing is { } trailing) kids.Add(K.Row("vtrail:trailing", trailing));
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
     }

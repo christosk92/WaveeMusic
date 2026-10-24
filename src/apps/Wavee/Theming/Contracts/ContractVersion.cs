@@ -183,6 +183,12 @@
 // 1.68 (audit B5b): `DevicePickerEntry.Word` (the picker's "System default" is the core's word, not a device's name: a theme may re-case it);
 // `DevicePickerEntry.IsChecked` is set on a this-computer output too (the one playing), where it was always false; `StageDeviceFacts.Word` (the same
 // word on the stage's device button).
+// 1.69 (audit B9): the one-tree detail page. `DetailForm` (Hero | Columns) and `DetailColumnsProps` (the columns form's rail, head, aside and sheet), carried
+// by `DetailFrameProps.Form` / `.Columns` and `DetailHeroProps.Parts.Form` / `.Columns` (the hero draws both forms; the form is a live prop, never a key);
+// `DetailHeroStyle.ListInsets` (`DetailInsetQuery` -> `DetailListInsets`: the width the hero's side columns take beside the rows) and `.InsetMotion`; the
+// hero style's `Skeleton` takes the form and the columns (a theme built against an older minor supplies the hero form only and keeps the two-arm frame).
+// A show's or an episode's vertical arm also carries `DetailFrameProps.TwoColumn` (the rail's props) and `DetailRailProps.Stacked`, so a structure can draw
+// one identity at every width (the fixed header and the column as one arrangement); the `ShowHeader` props stay for one that does not.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -198,7 +204,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 68;
+    public const int Minor = 69;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -32,6 +32,11 @@ internal static partial class ClassicDetailKit
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut));
 
+    /// <summary>The one-tree hero's keyed rows (audit B9): the row shove's position FLIP on the same clock, and the row's height eased through real
+    /// layout where the page's form re-measures it (the title's size, the actions' wrap, the description's measure), so the rows under it ride it.</summary>
+    public static readonly LayoutTransition GrowShove = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>A keyed row that exists in BOTH models: it only ever gets pushed, so it takes the position-only FLIP.</summary>
     public static BoxEl Row(string key, Element child) => new() { Key = key, Direction = 1, Layout = Shove, Children = [child] };
 

@@ -19,7 +19,7 @@
 // a branch swap into the remount a bind needs.
 //
 // THE PLACE. A crossing between the arms keeps the user's place: the host captures the navigator's first visible item on the render that swaps the arms and brings
-// the arriving list to it (`ApplyNavPlace`, the Track.ListPlace hand-over); this view only keeps the navigator's mount keyed ("nav:list") and its two arms cross-fading
+// the arriving list to it (`ApplyNavPlace`); this view only keeps the navigator's mount keyed ("nav:list") and its two arms cross-fading
 // (`s_arm`), so the arriving list is the host's to place.
 
 using FluentGpu.Animation;

@@ -71,7 +71,7 @@ internal static partial class ClassicDetailFrame
         return RailFrame(p.RailWidth, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
             Content: () => RailColumn(spec, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
-            ShimmerSource: () => RailSkeletonColumn(spec, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines),
+            ShimmerSource: () => RailSkeletonColumn(spec.Identity, spec.Config, spec.Slots, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
     }
 
@@ -80,10 +80,10 @@ internal static partial class ClassicDetailFrame
     public static Element CompactRailTemplate(DetailCompactRailProps p, in ViewContext ctx)
     {
         float cover = CompactCover(p.StripWidth);
-        return CompactRailStrip(p.Spec, p.StripWidth, p.Expand, new SkelRegionEl(
+        return CompactRailStrip(p.Spec.Identity.Title, p.StripWidth, p.Expand, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
-            Content: () => CompactRailIdentity(p.Spec, cover, p.Expand),
-            ShimmerSource: () => CompactRailSkeleton(p.Spec, cover),
+            Content: () => CompactRailIdentity(p.Spec.Identity, p.Spec.Slots, cover, p.Expand),
+            ShimmerSource: () => CompactRailSkeleton(p.Spec.Identity.CoverUrl, cover),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
     }
 
@@ -291,11 +291,9 @@ internal static partial class ClassicDetailFrame
     /// is painted for real and exempted from the deriver, as the hero's skeleton does. The CTA reserves exactly the buttons
     /// <see cref="ClassicDetailKit.FixedActions"/> will lay out (<see cref="ClassicDetailKit.FixedActionCount"/>, tuned Classic X2): a page with no
     /// web link (a local album or playlist) gets no Share square, one without a heart or a menu none for those.</summary>
-    static Element RailSkeletonColumn(FrameSpec spec, FrameActions acts, float railW, ClassicDetailRail rail, float titleSize, int descMaxLines)
+    static Element RailSkeletonColumn(Identity id, in Config cfg, FrameSlots slots, FrameActions acts, float railW, ClassicDetailRail rail, float titleSize,
+        int descMaxLines)
     {
-        var id = spec.Identity;
-        var cfg = spec.Config;
-        var slots = spec.Slots;
         float cover = RailCoverEdge(railW, rail);
         // Satellites are COUNTED (the builder only makes elements; they are dropped here) so the CTA wraps as the reveal will.
         int satelliteCount = slots.Satellites is { } satellitesOf ? satellitesOf().Length : 0;
@@ -399,23 +397,22 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>The strip's loading identity: the reserved cover square (or the known preview) over two short title
     /// runs — what <see cref="CompactRailIdentity"/> lays out, unfilled.</summary>
-    static Element CompactRailSkeleton(FrameSpec spec, float cover) => new BoxEl
+    static Element CompactRailSkeleton(string? coverUrl, float cover) => new BoxEl
     {
         Direction = 1, Gap = Spacing.S, Width = cover,
-        Children = [SkeletonCover(spec.Identity.CoverUrl, cover), Lines(cover, 16f, Skeleton.RailTitleLines, Skeleton.TitleLastLineFraction)],
+        Children = [SkeletonCover(coverUrl, cover), Lines(cover, 16f, Skeleton.RailTitleLines, Skeleton.TitleLastLineFraction)],
     };
 
     /// <summary>The strip's identity: the cover (a hit target that expands) and the two-line title.</summary>
-    static Element CompactRailIdentity(FrameSpec spec, float cover, Action expand)
+    static Element CompactRailIdentity(Identity id, FrameSlots slots, float cover, Action expand)
     {
-        var id = spec.Identity;
         Element coverHit = new BoxEl
         {
             Key = "compact:cover",
             Width = cover, Height = cover, Corners = CornerRadius4.All(Radii.Card),
             Shadow = Elevation.Card, ClipToBounds = true, Shrink = 0f,
             Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = expand,
-            Children = [spec.Slots.CompactCover?.Invoke(cover)
+            Children = [slots.CompactCover?.Invoke(cover)
                 ?? Controls.Artwork(id.CoverUrl, cover, cover, Radii.Card, decodePx: RailCoverDecodePx, saturation: 1.18f)],
         };
         Element title = new BoxEl
@@ -435,8 +432,9 @@ internal static partial class ClassicDetailFrame
     }
 
     /// <summary>The 96-DIP strip around its identity (loaded, or the skeleton boundary that swaps to it): the layer fill,
-    /// the spacer and the expand chevron — the chevron is chrome and stays real while the identity loads.</summary>
-    static Element CompactRailStrip(FrameSpec spec, float stripW, Action expand, Element identity)
+    /// the spacer and the expand chevron — the chevron is chrome and stays real while the identity loads. A one-tree page's frame paints the rail's
+    /// fill under the strip itself (<paramref name="fill"/> false: one ground for the rail and the strip).</summary>
+    static Element CompactRailStrip(string title, float stripW, Action expand, Element identity, bool fill = true)
     {
         float pad = Spacing.S;
         float cover = CompactCover(stripW);
@@ -454,7 +452,7 @@ internal static partial class ClassicDetailFrame
             Key = "detail-rail-compact",
             Direction = 1, Width = stripW, Shrink = 0f, Gap = Spacing.S,
             Padding = new Edges4(pad, Spacing.L, pad, Spacing.L),
-            Fill = Tok.FillLayerDefault, ClipToBounds = true,
+            Fill = fill ? Tok.FillLayerDefault : ColorF.Transparent, ClipToBounds = true,
             Children =
             [
                 identity,
@@ -464,7 +462,7 @@ internal static partial class ClassicDetailFrame
         };
         // Grown to the column's height for the same reason as RailFrame (the slot's nested anchor is a column): the spacer can then
         // push the expand chevron to the strip's foot.
-        return ToolTip.Wrap(strip, spec.Identity.Title, grow: 1f);
+        return ToolTip.Wrap(strip, title, grow: 1f);
     }
 
     /// <summary>W25: the VERTICAL show header — the third composition, never the hero system. Cover 140 at saturation
@@ -563,7 +561,7 @@ internal static partial class ClassicDetailFrame
     static Element MetaRow(Identity id, float width, int maxLines)
         => MetaLine(id, width, maxWidth: float.NaN, maxLines);
 
-    sealed record RailMetaProps(Identity Id, float Width);
+    sealed record RailMetaProps(Identity Id, float Width, float MaxWidth = float.NaN, int Lines = 2);
 
     /// <summary>The rail's count line (tuned Classic D4): the page's meta, or — while the list's find or filter narrows it — "3 of 48 songs ·
     /// 11 min" and the quiet "(filtered)" mark (<see cref="Detail.Text.FilteredMeta"/>), in the same slot at the same width.</summary>
@@ -573,10 +571,10 @@ internal static partial class ClassicDetailFrame
         {
             var p = UseProps<RailMetaProps>();
             var count = shown.Value;
-            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return MetaLine(p.Id, p.Width, maxWidth: float.NaN, maxLines: 2);
+            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return MetaLine(p.Id, p.Width, maxWidth: p.MaxWidth, maxLines: p.Lines);
             return new BoxEl
             {
-                Direction = 0, Wrap = true, Width = p.Width, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
+                Direction = 0, Wrap = true, Width = p.Width, MaxWidth = p.MaxWidth, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
                 Children =
                 [
                     R.Type.TrackMeta(filtered.Count) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },

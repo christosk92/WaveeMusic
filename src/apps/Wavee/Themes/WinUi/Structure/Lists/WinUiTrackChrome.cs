@@ -89,6 +89,8 @@ internal static class WinUiTrackChrome
         {
             Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiListRules.UnavailableGap, MinWidth = 0f,
             Height = compact ? WinUiListRules.UnavailableCompactHeight : WinUiListRules.UnavailableHeight, Shrink = 0f,
+            // The Compact bar's taller target eases through real layout (audit B9), the rows under it riding it.
+            Animate = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
             Padding = WinUiListRules.UnavailablePadding, Margin = new Edges4(0f, 0f, 0f, WinUiListRules.UnavailableBelow),
             Corners = CornerRadius4.All(WinUiListRules.CommandRadius), BorderWidth = 1f,
             Fill = Prop.Of(static () => Tok.FillCardDefault), BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
@@ -167,7 +169,8 @@ internal static class WinUiTrackChrome
         var set = a.Set;
         var sort = a.Sort;
         var cells = new List<Element>(a.Tracks.Length);
-        void Add(string key, Element cell) => cells.Add(cell with { Key = key });
+        // The header's cells glide with the rows' (audit B9): a lane that comes or goes moves the others to their new places on the rows' clock.
+        void Add(string key, Element cell) => cells.Add(cell with { Key = key, Layout = Design.Reduced ? null : WinUiListRules.CellArrange });
 
         if (!set.IndexHidden) Add(CellKey.Num, IndexSortCell(a, sort));
         if (set.Heart) Add(CellKey.Heart, new BoxEl());
@@ -195,9 +198,9 @@ internal static class WinUiTrackChrome
         if (set.Expand) Add(CellKey.Expand, new BoxEl());
 
         float padX = WinUiListRules.RowPad;
-        var rule = new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) };
-        if (set.Compact)
-            return new BoxEl { Key = HeaderKey, Direction = 1, MinWidth = 0f, Children = [rule] };
+        float headerH = TableRules.HeaderHeightFor(set.Classic);
+        // ONE tree in every form (audit B9): the Compact row form draws no column header, only its hairline, so the header's band eases to nothing
+        // there (the rows under it ride the reflow) and back, instead of the header being rebuilt around its hairline.
         return new BoxEl
         {
             Key = HeaderKey, Direction = 1, MinWidth = 0f,
@@ -205,20 +208,28 @@ internal static class WinUiTrackChrome
             [
                 new BoxEl
                 {
-                    Direction = 1, ClipToBounds = true,
-                    Padding = new Edges4(a.Checks ? WinUiListRules.CheckLaneShift : 0f, 0f, 0f, 0f),
-                    Animate = WinUiListRules.HeaderShift,
+                    Key = "winui.list.header-band", Direction = 1, ClipToBounds = true, MinWidth = 0f, Shrink = 0f,
+                    Height = set.Compact ? 0f : headerH, Animate = WinUiDiscoveryMotion.HeightReflow,
                     Children =
                     [
-                        new GridEl
+                        new BoxEl
                         {
-                            Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
-                            Padding = new Edges4(padX, 0f, padX, 0f),
-                            RowHeight = TableRules.HeaderHeightFor(set.Classic), Children = cells.ToArray(),
+                            Direction = 1, Shrink = 0f,
+                            Padding = new Edges4(a.Checks ? WinUiListRules.CheckLaneShift : 0f, 0f, 0f, 0f),
+                            Animate = WinUiListRules.HeaderShift,
+                            Children =
+                            [
+                                new GridEl
+                                {
+                                    Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
+                                    Padding = new Edges4(padX, 0f, padX, 0f),
+                                    RowHeight = headerH, Children = cells.ToArray(),
+                                },
+                            ],
                         },
-                        rule,
                     ],
                 },
+                new BoxEl { Key = "winui.list.header-rule", Height = 1f, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
             ],
         };
     }
@@ -434,29 +445,27 @@ internal static class WinUiTrackChrome
                 left = lead.ToArray();
                 view = rest.ToArray();
             }
+            // ONE row of keyed commands (audit B9): the sort word that leads the Compact bar is reordered in place, never re-parented into another
+            // group's box (which rebuilt it). The groups are the order: [find] [left] [gap or chips] [view] [tail]; an empty right group keeps its slot.
+            var kids = new List<Element>(left.Length + view.Length + tail.Length + 3)
+            {
+                new BoxEl { Key = "bar:find", Direction = 1, Shrink = 0f, Children = [search] },
+            };
+            kids.AddRange(left);
+            kids.Add(middle is null
+                ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                : new BoxEl
+                {
+                    Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                });
+            if (view.Length + tail.Length == 0) kids.Add(new BoxEl { Key = "bar:right", Shrink = 0f });
+            kids.AddRange(view);
+            kids.AddRange(tail);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        Children = [new BoxEl { Key = "bar:find", Direction = 1, Shrink = 0f, Children = [search] }, .. left],
-                    },
-                    middle is null
-                        ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
-                        : new BoxEl
-                        {
-                            Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                            Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
-                        },
-                    new BoxEl
-                    {
-                        Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        Children = [.. view, .. tail],
-                    },
-                ],
+                Children = kids.ToArray(),
             };
         }
 

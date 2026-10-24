@@ -110,6 +110,9 @@ internal static class ZuneTrackTable
             : Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused);
         if (set.Expand) cells[i++] = ExpandCell(r);
 
+        // One row in every form (audit B9): a crossing that changes the lanes re-lays the same cells, each gliding to its new lane.
+        for (int c = 0; c < i; c++) cells[c] = cells[c] with { Layout = ZuneListRules.CellArrange };
+
         // Zune's rows are full-width plates (no inset): the grid pays the whole gutter.
         float padX = RowMetrics.PadXFor(set.Tier);
         var grid = new GridEl

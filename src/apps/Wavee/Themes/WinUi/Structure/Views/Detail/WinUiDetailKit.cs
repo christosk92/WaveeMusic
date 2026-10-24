@@ -44,10 +44,10 @@ internal static partial class WinUiDetailKit
 
     /// <summary>The detail header's Play split for <paramref name="subject"/>: <paramref name="play"/> on the left half (Play, or Pause while this subject plays),
     /// the "More ways to play" menu on the chevron half; <paramref name="height"/> is the tier's target (32, 40 at Compact). The accent is the system's. Keyed on
-    /// the subject and the height: the props freeze at mount.</summary>
+    /// the subject alone (audit B9: never on a size): a tier crossing keeps the control and reflows it to its new height.</summary>
     public static Element PlaySplit(EntityUri subject, Action play, float height, bool enabled = true)
         => Embed.Comp(new PlaySplitProps(subject, play, height, enabled), static () => new PlaySplitHost())
-            with { Key = "ctxplay:" + subject.Text + ":" + height.ToString(CultureInfo.InvariantCulture) };
+            with { Key = "ctxplay:" + subject.Text };
 
     /// <summary>The split's inputs: <see cref="Enabled"/> false (a list known to hold nothing) greys both halves, never hides them. Equality is the
     /// values a render reads (the verb is the page's latest).</summary>
@@ -120,6 +120,8 @@ internal static partial class WinUiDetailKit
             return new BoxEl
             {
                 ZStack = true, Shrink = 0f, Height = h, AlignSelf = FlexAlign.Start,
+                // A tier's target changes its height (32 ↔ the Compact 40): the same control reflows to it.
+                Layout = WinUiDiscoveryMotion.Reflow,
                 OnRealized = _capture, OnKeyDown = _keys,
                 Children =
                 [
@@ -185,8 +187,9 @@ internal static partial class WinUiDetailKit
         {
             string saveUri = SaveTargetOf(id).Text;
             string saveName = id.Title;
-            actions.Add(Embed.Comp(() => new SaveAction { Uri = saveUri, Name = saveName, Target = target, Word = words })
-                with { Key = keyPrefix + "save:" + saveUri + ":" + (words ? "w" : "g") });
+            // Keyed on the target alone (audit B9: never on the form): the word and the glyph-only form are props of the one control.
+            actions.Add(Embed.Comp(new SaveProps(saveUri, saveName, target, words), static () => new SaveAction())
+                with { Key = keyPrefix + "save:" + saveUri });
         }
         if (invite is not null)
             actions.Add(Controls.Named(BorderedAction(Icons.Friends, Loc.Get(Strings.Detail.Edit.Invite), invite, target, words) with { Key = keyPrefix + "invite:button" },
@@ -237,15 +240,19 @@ internal static partial class WinUiDetailKit
 
     /// <summary>The save toggle: the heart and "Save" (W-Album), "Saved" with the filled heart once it is; the glyph alone at Compact. A stock ToggleButton tinted
     /// by the system accent while it is on.</summary>
+    sealed record SaveProps(string Uri, string Name, float Target, bool Word);
+
     sealed class SaveAction : Component
     {
-        public required string Uri { get; init; }
-        public required string Name { get; init; }
-        public required float Target { get; init; }
-        public required bool Word { get; init; }
+        SaveProps _p = null!;
+        string Uri => _p.Uri;
+        string Name => _p.Name;
+        float Target => _p.Target;
+        bool Word => _p.Word;
 
         public override Element Render()
         {
+            _p = UseProps<SaveProps>();
             var lib = Controls.Library;
             if (lib is null) return new BoxEl();
             bool on = lib.IsSaved(Uri);
@@ -402,38 +409,16 @@ internal static partial class WinUiDetailKit
         return spans;
     }
 
-    /// <summary>The attribution row of a horizontal hero (W-Album): the avatars (ringed, overlapping) then one line, "Artist, Artist · 15 songs · 57 min", the names
-    /// links in the accent. <paramref name="avatar"/> 0 draws no portraits (the short hero).</summary>
-    public static Element AttributionLine(IReadOnlyList<Controls.Face>? artists, string? meta, float avatar, float measure)
-    {
-        var kids = new List<Element>(2);
-        if (avatar > 0f && artists is { Count: > 0 }) kids.Add(AvatarPile(artists, avatar));
-        var spans = new List<TextSpan>(artists is { Count: > 0 } ? artists.Count * 2 + 1 : 1);
-        if (artists is { Count: > 0 }) spans.AddRange(ArtistSpans(artists));
-        if (meta is { Length: > 0 })
-            spans.Add(new TextSpan((spans.Count > 0 ? WinUiDetailRules.MetaLead : "") + meta, Weight: 400, Color: Tok.TextSecondary));
-        if (spans.Count > 0)
-            kids.Add(new SpanTextEl(spans.ToArray())
-            {
-                Size = WinUiDetailRules.AttributionSize, LineHeight = WinUiDetailRules.AttributionLine, Color = Tok.TextSecondary,
-                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-            });
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.AvatarGap, MinWidth = 0f, MaxWidth = measure, Children = kids.ToArray(),
-        };
-    }
-
-    /// <summary>The stacked hero's attribution: the names alone, centred (the meta is its own line).</summary>
-    public static Element NamesLine(IReadOnlyList<Controls.Face> artists, float measure)
-        => new SpanTextEl(ArtistSpans(artists))
+    /// <summary>The billed names as one run of links (the hero's facts line, in either form: after the avatars, or centred over the meta).</summary>
+    public static SpanTextEl Names(IReadOnlyList<Controls.Face> artists)
+        => new(ArtistSpans(artists))
         {
             Size = WinUiDetailRules.AttributionSize, LineHeight = WinUiDetailRules.AttributionLine, Color = Tok.TextSecondary,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = measure, MinWidth = 0f,
-            AlignSelf = FlexAlign.Center,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
         };
 
-    static Element AvatarPile(IReadOnlyList<Controls.Face> artists, float avatar)
+    /// <summary>The billed artists' portraits, ringed and overlapping.</summary>
+    public static BoxEl AvatarPile(IReadOnlyList<Controls.Face> artists, float avatar)
     {
         int shown = Math.Min(artists.Count, WinUiDetailRules.AvatarMax);
         var kids = new Element[shown];

@@ -14,7 +14,8 @@
 // THE COLLAPSED STRIP. Zune draws no grip (the column is the tier's width), so it never collapses the column itself; a collapse stored by another
 // theme reaches it, and the strip (`Detail.CompactRail`) is the cover and a 40 expand target, so the stored state is one click from undone.
 //
-// THE SHOW HEADER (`Detail.ShowHeader`): a show's or an episode's vertical arm, built from the same parts (no board draws it under Zune, Q18).
+// THE SHOW HEADER (`Detail.ShowHeader`): a show's or an episode's vertical arm, built from the same parts (no board draws it under Zune, Q18). Since audit
+// B9 it IS the rail drawn stacked (`DetailRailProps.Stacked`): one identity at every width, so a crossing glides the cover, the facts and the rings.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -38,84 +39,140 @@ internal static class ZuneDetailRail
     // ── the identity column ──────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailRail"/>: the column behind one skeleton boundary, in its own scroller (the
-    /// last resort once a long description has given), grown to the row's height.</summary>
+    /// last resort once a long description has given), grown to the row's height; or, STACKED (<see cref="DetailRailProps.Stacked"/>: a show's or an
+    /// episode's page below the mode edge, audit B9), the same identity as the fixed header across the page. ONE tree in both forms: the cover, the
+    /// facts, the ledger and the rings keep their nodes and glide between the arrangements; what only the column draws (the topics, About, the
+    /// description) fades on the swap.</summary>
     public static Element RailTemplate(DetailRailProps p, in ViewContext ctx)
     {
         var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var facts = ctx.Tier();
-        var lay = ZuneDetailTiers.ColumnOf(facts);
-        float w = p.RailWidth > 0f ? p.RailWidth : lay.RailW;
+        bool stacked = p.Stacked;
+        var column = ZuneDetailTiers.ColumnOf(facts);
+        var lay = stacked ? ZuneDetailTiers.Hero : column;
+        float gutter = ZuneTiers.FrameOf(facts).Gutter;
+        float w = stacked ? float.NaN : p.RailWidth > 0f ? p.RailWidth : lay.RailW;
         var spec = p.Spec;
         // A Short window gives the column little height: a playlist's description closes it there, as every other kind's does, so the rings (play, saved)
-        // stand above the play bar at rest (V4: Z-Playlist-Owned-Followed-Small) and the description scrolls under them.
+        // stand above the play bar at rest (V4: Z-Playlist-Owned-Followed-Small) and the description scrolls under them. The stacked header folds to the
+        // name over the rings there.
         bool shortWindow = facts.Policy is not null && facts.Height == HeightTier.Short;
+        // The column's loading state: the header shimmers it whole until it has answered (the stacked header never shimmered; one boundary in both forms,
+        // so the identity never re-parents).
         Element region = new SkelRegionEl(
-            Pending: p.Pending, Failed: K.Never,
-            Content: () => Column(spec, p, lay, w, shortWindow, enter),
-            ShimmerSource: () => Skeleton(spec, lay, w),
+            Pending: stacked ? K.Never : p.Pending, Failed: K.Never,
+            Content: () => Column(spec, p, lay, w, shortWindow, enter, stacked, gutter),
+            ShimmerSource: () => Skeleton(spec, column, stacked ? column.RailW : w),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         return new BoxEl
         {
-            Direction = 1, Width = w, Shrink = 0f, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
-            Children = [Ui.ScrollView(region) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = w }],
+            Direction = 1, Width = w, Shrink = 0f, Grow = stacked ? 0f : 1f, MinHeight = 0f, ClipToBounds = true,
+            Children = [Ui.ScrollView(region) with { ContentSized = true, Grow = stacked ? 0f : 1f, Shrink = 1f, MinHeight = 0f, Width = w }],
         };
     }
 
-    /// <summary>The loaded column (see the file header), every row keyed: a row that arrives late fades up, the rows under it glide. On a Short window
-    /// (<paramref name="shortWindow"/>) a playlist's description closes the column instead of leading it and the status rows follow the rings (the same
-    /// keyed rows, moved), so the rings stand above the play bar at rest.</summary>
-    static Element Column(Detail.FrameSpec spec, DetailRailProps p, ZuneDetailLayout lay, float w, bool shortWindow, EnterExit? enter)
+    /// <summary>The loaded identity (see the file header), every row keyed: a row that arrives late fades up, the rows under it glide. The column: the cover
+    /// over the facts, the status rows, the rings, then the courtesy rows; on a Short window (<paramref name="shortWindow"/>) a playlist's description
+    /// closes the column instead of leading it and the status rows follow the rings (the same keyed rows, moved), so the rings stand above the play bar at
+    /// rest. STACKED (the fixed header): the cover BESIDE the facts (bottom-aligned), the ledger, the rings across the page, the countdown and the release
+    /// facts, on the frame's gutter; a Short window folds it to the name over the rings.</summary>
+    static Element Column(Detail.FrameSpec spec, DetailRailProps p, ZuneDetailLayout lay, float w, bool shortWindow, EnterExit? enter, bool stacked, float gutter)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
         var slots = spec.Slots;
         var acts = p.Actions;
         var kids = new List<Element>(14);
+        bool fold = stacked && shortWindow;
 
-        // A short window's title leads the column (the panorama folds): the editor arrives from the panorama, a cross-fade of the swap's family.
-        if (lay.RailTitle)
+        // A short window's title leads (the panorama folds): the editor arrives from the panorama, a cross-fade of the swap's family.
+        if (stacked ? fold : lay.RailTitle)
             kids.Add(K.Row("rail:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? Title(id.Title, w)) with
             {
                 Enter = enter, Exit = ZuneMotion.SwapFade,
             });
-        kids.Add(K.Row("rail:cover", K.Cover("rail:cover-art", id, acts, slots, w)));
-        // A playlist's description leads its column under the cover (Z-Playlist-Owned-Followed-Huge: description, owner, meta, rings); every other kind's
-        // closes it.
-        bool descriptionLeads = id.Kind == DetailKind.Playlist && !shortWindow;
-        if (descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } lead) kids.Add(K.LateRow("rail:desc", lead));
-        if (id.OwnerName is { Length: > 0 } && id.Kind != DetailKind.Album && slots.Attribution is null)
-            kids.Add(K.LateRow("rail:owner", K.ArtistText(id.OwnerName, w, lay)));
-        kids.Add(K.LateRow("rail:artists", new BoxEl
+
+        // ── the cover row: the cover OVER the facts (the column), BESIDE them (the stacked header) ──
+        bool descriptionLeads = !stacked && id.Kind == DetailKind.Playlist && !shortWindow;
+        if (!fold)
         {
-            Direction = 0, AlignItems = FlexAlign.Center, MinHeight = lay.ArtistLine, Width = w, MinWidth = 0f,
-            Children = [slots.Attribution?.Invoke(w) ?? K.Artists(id, w, lay)],
-        }));
-        if (slots.Badges is { } badges) kids.Add(K.LateRow("rail:badges", badges()));
-        if (slots.Rating is { } rating) kids.Add(K.LateRow("rail:rating", rating(w)));
-        kids.Add(K.LateRow("rail:meta", p.Shown is { } shown
-            ? Embed.Comp(new MetaProps(id, w, lay), () => new MetaLine(shown))
-            : K.Meta(id, w, lay, lay.MetaLines)));
-        // The status rows (a show's played ledger, the daylist's pulse, the chart's news) stand between the meta and the rings; on a Short window they
-        // follow the rings, so the verbs and their state stay above the play bar at rest (V4).
+            var info = new List<Element>(6);
+            // The stacked header leads its facts with the badges; the column states them after the artists.
+            if (stacked && slots.Badges is { } badgesLead) info.Add(K.LateRow("rail:badges", badgesLead()));
+            if (id.OwnerName is { Length: > 0 } && id.Kind != DetailKind.Album && slots.Attribution is null)
+                info.Add(K.LateRow("rail:owner", K.ArtistText(id.OwnerName, w, lay)));
+            // The artists' line: the column's always (the page's attribution, else the billed artists); the stacked header's only where the page has an
+            // attribution of its own (a show's publisher).
+            if (!stacked || slots.Attribution is not null)
+                info.Add(K.LateRow("rail:artists", new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, MinHeight = stacked ? 0f : lay.ArtistLine, Width = w, MinWidth = 0f,
+                    Children = [slots.Attribution?.Invoke(w) ?? K.Artists(id, w, lay)],
+                }) with { Enter = enter ?? K.FadeUp, Exit = ZuneMotion.SwapFade });
+            if (!stacked && slots.Badges is { } badges) info.Add(K.LateRow("rail:badges", badges()));
+            if (slots.Rating is { } rating) info.Add(K.LateRow("rail:rating", rating(w)));
+            int metaLines = stacked ? Z.ShowMetaLines : lay.MetaLines;
+            info.Add(K.LateRow("rail:meta", p.Shown is { } shown
+                ? Embed.Comp(new MetaProps(id, w, lay, metaLines), () => new MetaLine(shown))
+                : K.Meta(id, w, lay, metaLines)));
+
+            var coverKids = new List<Element>(3)
+            {
+                // The page's anchor: its bounds tween from the top-left, so its corner stays pinned across a re-arrangement.
+                K.Cover("rail:cover-art", id, acts, slots, stacked ? Z.ShowCover : w) with
+                {
+                    Animate = Z.HeroGeometry, TransformOriginX = 0f, TransformOriginY = 0f,
+                },
+            };
+            // A playlist's description leads its column under the cover (Z-Playlist-Owned-Followed-Huge: description, owner, meta, rings).
+            if (descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } lead)
+                coverKids.Add(K.LateRow("rail:desc", lead) with { Exit = ZuneMotion.SwapFade });
+            coverKids.Add(new BoxEl
+            {
+                Key = "rail:info", Direction = 1, MinWidth = 0f, Layout = Z.Arrange,
+                Grow = stacked ? 1f : 0f, Shrink = 1f, Basis = stacked ? 0f : float.NaN, Width = w,
+                Gap = stacked ? Z.HeroIdentityGap : lay.RailGap,
+                Children = info.ToArray(),
+            });
+            kids.Add(new BoxEl
+            {
+                Key = "rail:cover-row", Direction = (byte)(stacked ? 0 : 1), MinWidth = 0f, Shrink = 0f, Layout = Z.Arrange,
+                Gap = stacked ? Z.ShowGap : lay.RailGap, AlignItems = stacked ? FlexAlign.End : FlexAlign.Stretch,
+                Children = coverKids.ToArray(),
+            });
+        }
+
+        // The status rows (a show's played ledger, the daylist's pulse, the chart's news) stand between the facts and the rings; on a Short window the
+        // column's follow the rings, so the verbs and their state stay above the play bar at rest (V4). The stacked header draws the ledger alone.
         var status = new List<Element>(3);
-        if (slots.Ledger is { } ledger) status.Add(K.LateRow("rail:ledger", ledger(w)));
-        if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()));
-        if (id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()));
-        if (!shortWindow) kids.AddRange(status);
-        // The ring row eases its height (a Short window's play and saved can wrap it onto a second line), so the rows under it glide.
-        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: false)) with { Layout = K.GrowShove });
-        if (shortWindow) kids.AddRange(status);
-        if (slots.Topics is { } topics) kids.Add(K.LateRow("rail:topics", topics(w)));
-        if (slots.About is { } about) kids.Add(K.LateRow("rail:about", about(w)));
-        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("rail:prerelease", pre()));
-        if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
-            kids.Add(new BoxEl { Key = "rail:release", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = K.GrowShove, Enter = K.FadeUp, Margin = new Edges4(0f, Z.NotesTop - lay.RailGap, 0f, 0f), Children = [release(false)] });
-        if (!descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } description) kids.Add(K.LateRow("rail:desc", description));
+        if (!fold && slots.Ledger is { } ledger) status.Add(K.LateRow("rail:ledger", ledger(w)));
+        if (!stacked && id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()));
+        if (!stacked && id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()));
+        bool statusAfter = !stacked && shortWindow;
+        if (!statusAfter) kids.AddRange(status);
+        // The ring row eases its height (a Short window's play and saved can wrap it onto a second line), so the rows under it glide. Across the page
+        // (stacked) it springs its trailing rings to the far edge.
+        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: stacked)) with { Layout = K.GrowShove });
+        if (statusAfter) kids.AddRange(status);
+        if (!stacked && slots.Topics is { } topics) kids.Add(K.LateRow("rail:topics", topics(w)) with { Exit = ZuneMotion.SwapFade });
+        if (!stacked && slots.About is { } about) kids.Add(K.LateRow("rail:about", about(w)) with { Exit = ZuneMotion.SwapFade });
+        if (!fold && id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("rail:prerelease", pre()));
+        if (!fold && cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
+            kids.Add(new BoxEl
+            {
+                Key = "rail:release", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = K.GrowShove, Enter = K.FadeUp,
+                Margin = new Edges4(0f, stacked ? 0f : Z.NotesTop - lay.RailGap, 0f, 0f), Children = [release(false)],
+            });
+        if (!stacked && !descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } description)
+            kids.Add(K.LateRow("rail:desc", description) with { Exit = ZuneMotion.SwapFade });
 
         return new BoxEl
         {
-            Key = Z.RailKey + ":column", Direction = 1, Gap = lay.RailGap, Width = w, Shrink = 0f, MinWidth = 0f,
-            Padding = new Edges4(0f, 0f, 0f, Z.SectionBottom),
+            Key = Z.RailKey + ":column", Direction = 1, Width = w, Shrink = 0f, MinWidth = 0f,
+            Gap = stacked ? (fold ? Z.ShowRowsGapShort : Z.ShowRowsGap) : lay.RailGap,
+            Padding = stacked
+                ? new Edges4(gutter, fold ? Z.ShowPadTopShort : Z.ShowPadTop, gutter, Z.ShowPadBottom)
+                : new Edges4(0f, 0f, 0f, Z.SectionBottom),
             Children = kids.ToArray(),
         };
     }
@@ -139,7 +196,7 @@ internal static class ZuneDetailRail
         return new BoxEl { Direction = 1, Gap = lay.RailGap, Width = w, Shrink = 0f, Children = kids.ToArray() };
     }
 
-    sealed record MetaProps(Detail.Identity Id, float Width, ZuneDetailLayout Layout);
+    sealed record MetaProps(Detail.Identity Id, float Width, ZuneDetailLayout Layout, int Lines);
 
     /// <summary>The meta line, or, while a find or a filter narrows the list, "3 of 48 songs · 11 min" and the quiet "(filtered)" mark in the same
     /// slot (its own component: a keystroke re-renders one line).</summary>
@@ -149,11 +206,11 @@ internal static class ZuneDetailRail
         {
             var p = UseProps<MetaProps>();
             var count = shown.Value;
-            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return K.Meta(p.Id, p.Width, p.Layout, p.Layout.MetaLines);
+            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return K.Meta(p.Id, p.Width, p.Layout, p.Lines);
             var lay = p.Layout;
             return new BoxEl
             {
-                Direction = 0, Width = p.Width, Height = lay.MetaLine * Math.Max(1, lay.MetaLines), Gap = Spacing.XS, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                Direction = 0, Width = p.Width, Height = lay.MetaLine * Math.Max(1, p.Lines), Gap = Spacing.XS, AlignItems = FlexAlign.Start, MinWidth = 0f,
                 Children =
                 [
                     R.Type.DenseMeta(filtered.Count) with
@@ -206,67 +263,15 @@ internal static class ZuneDetailRail
 
     // ── the show header ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the panorama (the vertical record's 64/72, wrapped over two lines
-    /// with its band hugging the name; Z-Show-Compact, Z-Episode-Compact), the 120 cover beside the meta (the publisher or the show, the rating, the meta line), the ledger, then the ring row
-    /// full width; the prerelease card and the release facts under it. ONE HOME PER VERB (audit A4): the rings' own gates read the WINDOW's band, so a
-    /// show's follow and save leave the row where the band's row 2 carries "follow". A SHORT window (under 700 tall, 330 at the least) folds the panorama
-    /// (eased), the cover row, the ledger and the facts: the fixed header is then the show's name in the heading voice (wrapping over two lines) over the ring row.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the identity drawn STACKED (<see cref="RailTemplate"/>; Zune's own frame
+    /// draws the rail stacked at every show and episode page below the mode edge, audit B9, and the panorama in its band). The cover beside the facts
+    /// (the publisher or the show, the rating, the meta line), the ledger, then the ring row full width; the prerelease card and the release facts under
+    /// it. ONE HOME PER VERB (audit A4): the rings' own gates read the WINDOW's band, so a show's follow and save leave the row where the band's row 2
+    /// carries "follow". A SHORT window folds it to the show's name in the heading voice over the ring row.</summary>
     public static Element ShowHeaderTemplate(DetailShowHeaderProps p, in ViewContext ctx)
-    {
-        var facts = ctx.Tier();
-        bool fold = facts.Policy is not null && facts.Height == HeightTier.Short;
-        var lay = ZuneDetailTiers.Hero;
-        float gutter = ZuneTiers.FrameOf(facts).Gutter;
-        var spec = p.Spec;
-        var id = spec.Identity;
-        var slots = spec.Slots;
-        var panorama = fold ? lay with { PanoramaH = 0f, RailTitle = true } : lay;
-
-        var kids = new List<Element>(6);
-        if (fold)
-            kids.Add(K.LateRow("hdr:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? (R.Type.Heading(id.Title) with
-            {
-                Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = Z.RailTitleLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
-            })));
-        else
+        => RailTemplate(new DetailRailProps
         {
-            var info = new List<Element>(5);
-            if (slots.Badges is { } badges) info.Add(K.LateRow("hdr:badges", badges()));
-            if (slots.Attribution is { } attribution) info.Add(K.LateRow("hdr:lead", attribution(float.NaN)));
-            else if (id.OwnerName is { Length: > 0 } owner) info.Add(K.LateRow("hdr:owner", K.ArtistText(owner, float.NaN, lay)));
-            if (slots.Rating is { } rating) info.Add(K.LateRow("hdr:rating", rating(float.NaN)));
-            info.Add(K.LateRow("hdr:meta", K.Meta(id, float.NaN, lay, lines: 2)));
-            kids.Add(new BoxEl
-            {
-                Key = "hdr:cover", Direction = 0, Gap = Z.ShowGap, AlignItems = FlexAlign.End, MinWidth = 0f,
-                Children =
-                [
-                    K.Cover("hdr:cover-art", id, p.Actions, slots, Z.ShowCover),
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Z.HeroIdentityGap, Children = info.ToArray() },
-                ],
-            });
-            if (slots.Ledger is { } ledger) kids.Add(K.LateRow("hdr:ledger", ledger(float.NaN)));
-        }
-        kids.Add(K.Row("hdr:actions", K.Rings(Z.ActionsKey, id, spec.Config, p.Actions, slots, p.Accent, p.Play, lay, spring: true)));
-        if (!fold)
-        {
-            if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("hdr:prerelease", pre()));
-            if (spec.Config.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
-                kids.Add(new BoxEl { Key = "hdr:release", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = K.GrowShove, Enter = K.FadeUp, Children = [release(false)] });
-        }
-        return new BoxEl
-        {
-            Key = Z.ShowHeaderKey, Direction = 1, Shrink = 0f, MinWidth = 0f,
-            Children =
-            [
-                K.PanoramaBand(id, slots, panorama, gutter),
-                new BoxEl
-                {
-                    Key = "hdr:body", Direction = 1, Gap = fold ? Z.ShowRowsGapShort : Z.ShowRowsGap, Shrink = 0f, MinWidth = 0f,
-                    Padding = new Edges4(gutter, fold ? Z.ShowPadTopShort : Z.ShowPadTop, gutter, Z.ShowPadBottom),
-                    Children = kids.ToArray(),
-                },
-            ],
-        };
-    }
+            Spec = p.Spec, Actions = p.Actions, RailWidth = 0f, TitleSize = 0f, DescriptionLines = 0, Accent = p.Accent, Play = p.Play,
+            Pending = K.Never, Stacked = true,
+        }, ctx);
 }

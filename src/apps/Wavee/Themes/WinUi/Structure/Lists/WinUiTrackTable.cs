@@ -116,6 +116,10 @@ internal static class WinUiTrackTable
             : Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused);
         if (set.Expand) cells[i++] = ExpandCell(r);
 
+        // One row in every form (audit B9): a crossing that changes the lanes re-lays the same cells, each gliding to its new lane.
+        if (!Design.Reduced)
+            for (int c = 0; c < i; c++) cells[c] = cells[c] with { Layout = WinUiListRules.CellArrange };
+
         // The plate is full width: the grid pays only the small inset that puts the "#" 14 in and the art 46 in (the boards' 14 / 48).
         float padX = WinUiListRules.RowPad;
         var grid = new GridEl

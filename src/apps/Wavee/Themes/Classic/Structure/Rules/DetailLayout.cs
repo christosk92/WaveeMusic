@@ -80,6 +80,10 @@ public static class ClassicDetailLayout
     /// <summary>The title's line (the 40/52 display face) and the meta line, one 16-DIP line (a loading meta shimmers in the same slot).</summary>
     public const float HeadTitleLine = 52f, HeadMetaLine = 16f;
 
+    /// <summary>The head's loading bars (audit B9: the one-tree head shimmers with the list while the page has not answered): the measure the bars take
+    /// their fractions of, and the title bar's height inside its 52 line box.</summary>
+    public const float HeadSkeletonMeasure = 400f, HeadSkeletonTitleBar = 28f;
+
     /// <summary>The list's inset under the head: the page <paramref name="gutter"/> less the row plates' 8, so the plates start 8 before the
     /// head's words.</summary>
     public static float HeadListInset(float gutter) => gutter - Track.RowMetrics.RowInset;

@@ -31,22 +31,28 @@ internal static partial class ClassicDetailKit
 
     /// <summary>The detail header's Play split for <paramref name="subject"/>: <paramref name="play"/> on the left half, the "More
     /// ways to play" menu on the ⌄. <paramref name="accent"/> is read every render (a palette that lands later re-tints it).
-    /// Keyed on the subject: the props freeze at mount.
+    /// Keyed on the subject alone (audit B9: never on a size): the props re-push, so the latest verb and accent are the ones a press reads.
     /// <para><paramref name="height"/> above the tuned 32 (the Compact hero's 40 targets, board C-Album-Compact: [Play 96 │ ⌄ 40]) grows both halves
-    /// by the difference; it is in the key, so a tier crossing re-mounts the one control at its new size.</para></summary>
+    /// by the difference; a tier crossing keeps the one control and reflows it to its new size.</para></summary>
     public static Element PlaySplit(EntityUri subject, Func<ColorF> accent, Action play, float height = 0f)
+        => Embed.Comp(new PlaySplitProps(subject, accent, play, MathF.Max(Controls.ButtonHeight, height)), static () => new PlaySplitHost())
+            with { Key = "ctxplay:" + subject.Text };
+
+    /// <summary>The split's inputs. Equality is the values a render reads by value (the subject and the height); the accent and the verb are read
+    /// through the latest props, so a re-push with a fresh delegate costs no render.</summary>
+    sealed record PlaySplitProps(EntityUri Subject, Func<ColorF> Accent, Action Play, float Height)
     {
-        float h = MathF.Max(Controls.ButtonHeight, height);
-        return Embed.Comp(() => new PlaySplitHost { Subject = subject, Accent = accent, Play = play, Height = h })
-            with { Key = "ctxplay:" + subject.Text + (h > Controls.ButtonHeight ? ":" + h.ToString(System.Globalization.CultureInfo.InvariantCulture) : "") };
+        public bool Equals(PlaySplitProps? o) => o is not null && Subject.Equals(o.Subject) && Height == o.Height;
+        public override int GetHashCode() => HashCode.Combine(Subject, Height);
     }
 
     sealed class PlaySplitHost : Component
     {
-        public required EntityUri Subject { get; init; }
-        public required Func<ColorF> Accent { get; init; }
-        public required Action Play { get; init; }
-        public float Height { get; init; } = Controls.ButtonHeight;
+        PlaySplitProps _p = null!;
+        Action? _play;
+        EntityUri Subject => _p.Subject;
+        Func<ColorF> Accent => _p.Accent;
+        float Height => _p.Height;
 
         readonly Signal<bool> _open = new(false);
         IOverlayService? _overlay;
@@ -58,7 +64,9 @@ internal static partial class ClassicDetailKit
 
         public override Element Render()
         {
+            _p = UseProps<PlaySplitProps>();
             _overlay = UseContext(Overlay.Service);
+            _play ??= () => _p.Play();
             _toggle ??= ToggleMenu;
             _capture ??= h => _anchor = h;
             _keys ??= OnKey;
@@ -71,7 +79,7 @@ internal static partial class ClassicDetailKit
             float r = Radii.Control;
             float h = Height, grow = MathF.Max(0f, h - Controls.ButtonHeight);
 
-            BoxEl playHalf = Controls.PrimaryButton(Loc.Get(pause ? Strings.Home.Pause : Strings.Detail.Play), Play, fill,
+            BoxEl playHalf = Controls.PrimaryButton(Loc.Get(pause ? Strings.Home.Pause : Strings.Detail.Play), _play, fill,
                 pause ? Icons.Pause : Icons.Play) with
             {
                 Key = "split:play", MinWidth = RailLayout.PlayHalf + grow, Height = h, Shrink = 0f,
@@ -116,6 +124,8 @@ internal static partial class ClassicDetailKit
             {
                 ZStack = true, Shrink = 0f, Height = h,
                 Margin = new Edges4(0f, 0f, RailLayout.SplitTrail, 0f),
+                // A tier's target changes its height (32 ↔ the Compact 40): the same control reflows to it.
+                Layout = ClassicTierMotion.Reflow,
                 OnRealized = _capture, OnKeyDown = _keys,
                 Children =
                 [

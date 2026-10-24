@@ -76,7 +76,8 @@ internal static class ZuneTrackChrome
         Element bar = new BoxEl
         {
             Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneListRules.UnavailableGap, MinWidth = 0f,
-            Height = compact ? ZuneListRules.UnavailableCompactHeight : ZuneListRules.UnavailableHeight, Shrink = 0f,
+            Height = compact ? ZuneListRules.UnavailableCompactHeight : ZuneListRules.UnavailableHeight, Shrink = 0f, Grow = 1f, Basis = 0f,
+            Animate = Design.Reduced ? null : ZuneMotion.HeightResize,
             Padding = ZuneListRules.UnavailablePadding, Margin = new Edges4(0f, 0f, 0f, ZuneListRules.UnavailableBelow),
             Fill = Prop.Of(static () => R.Layer.FloatingPane),
             Children =
@@ -90,13 +91,13 @@ internal static class ZuneTrackChrome
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
             ],
         };
+        // The list's inset either side is a pair of easing spacers (a crossing moves it: the hero list's gutter ↔ the plates' inset), never padding.
         return new BoxEl
         {
-            Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
+            Key = "unavailable", Direction = 0, AlignItems = FlexAlign.Start, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
             Height = a.Shown ? ZuneListRules.UnavailableExtent(tier) : 0f,
-            Padding = new Edges4(a.InsetX, 0f, a.InsetX, 0f),
             Animate = Design.Reduced ? null : Design.Reveal.Resize,
-            Children = [bar],
+            Children = [ZuneFrameRules.Gutter(a.InsetX), bar, ZuneFrameRules.Gutter(a.InsetX)],
         };
     }
 
@@ -158,7 +159,8 @@ internal static class ZuneTrackChrome
         var sort = a.Sort;
         bool vertical = a.Vertical;
         var cells = new List<Element>(a.Tracks.Length);
-        void Add(string key, Element cell) => cells.Add(cell with { Key = key });
+        // The header's cells glide between lanes with the rows' (ZuneListRules.CellArrange: a crossing that changes the lanes re-lays the same cells).
+        void Add(string key, Element cell) => cells.Add(cell with { Key = key, Layout = ZuneListRules.CellArrange });
 
         if (!set.IndexHidden) Add(CellKey.Num, IndexSortCell(a, sort));
         if (set.Heart) Add(CellKey.Heart, new BoxEl());
@@ -186,9 +188,9 @@ internal static class ZuneTrackChrome
         if (set.Expand) Add(CellKey.Expand, new BoxEl());
 
         float padX = RowMetrics.PadXFor(set.Tier);
-        var rule = new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) };
-        if (set.Compact)
-            return new BoxEl { Key = HeaderKey, Direction = 1, MinWidth = 0f, Children = [rule] };
+        float headerH = TableRules.HeaderHeightFor(set.Classic);
+        // ONE tree in every form (audit B9): the Compact row form draws no column header, only its hairline, so the header's band eases to nothing
+        // there (the rows under it ride the reflow) and back, instead of the header being rebuilt around its hairline.
         return new BoxEl
         {
             Key = HeaderKey, Direction = 1, MinWidth = 0f,
@@ -196,20 +198,28 @@ internal static class ZuneTrackChrome
             [
                 new BoxEl
                 {
-                    Direction = 1, ClipToBounds = true,
-                    Padding = new Edges4(a.Checks ? ZuneListRules.CheckLaneShift : 0f, 0f, 0f, 0f),
-                    Animate = ZuneListRules.HeaderShift,
+                    Key = "zune.list.header-band", Direction = 1, ClipToBounds = true, MinWidth = 0f, Shrink = 0f,
+                    Height = set.Compact ? 0f : headerH, Animate = ZuneMotion.HeightResize,
                     Children =
                     [
-                        new GridEl
+                        new BoxEl
                         {
-                            Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
-                            Padding = new Edges4(padX, 0f, padX, 0f),
-                            RowHeight = TableRules.HeaderHeightFor(set.Classic), Children = cells.ToArray(),
+                            Direction = 1, Shrink = 0f,
+                            Padding = new Edges4(a.Checks ? ZuneListRules.CheckLaneShift : 0f, 0f, 0f, 0f),
+                            Animate = ZuneListRules.HeaderShift,
+                            Children =
+                            [
+                                new GridEl
+                                {
+                                    Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
+                                    Padding = new Edges4(padX, 0f, padX, 0f),
+                                    RowHeight = headerH, Children = cells.ToArray(),
+                                },
+                            ],
                         },
-                        rule,
                     ],
                 },
+                new BoxEl { Key = "zune.list.header-rule", Height = 1f, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
             ],
         };
     }
@@ -405,41 +415,34 @@ internal static class ZuneTrackChrome
                 left = lead.ToArray();
                 view = rest.ToArray();
             }
+            // ONE row of keyed commands (audit B9): a command that changes group across a tier (the sort word leads the Compact bar) is reordered in place,
+            // never re-parented into another group's box (which rebuilt it). The groups are the order: [left] [gap or chips] [view] [find] [tail].
+            float leadShift = ZuneListRules.BarLeadShift(left.Length > 0 && left[0].Key is { } k0 && k0.StartsWith(ZuneListRules.PageLeadKeyPrefix, StringComparison.Ordinal),
+                RowMetrics.RowInset - DetailLayout.ToolbarSurfacePadX);
+            var kids = new List<Element>(left.Length + view.Length + tail.Length + 3);
+            // The first command's own left pad (and the page bar's inset) are drawn outside the list's x, so its glyph lands on it; an empty left group
+            // keeps its slot (and the gap after it) as an empty box.
+            if (left.Length == 0) kids.Add(new BoxEl { Key = "bar:left", Shrink = 0f, Margin = new Edges4(leadShift, 0f, 0f, 0f) });
+            for (int i = 0; i < left.Length; i++)
+                kids.Add(i == 0 && left[0] is BoxEl first ? first with { Margin = new Edges4(leadShift, 0f, 0f, 0f) } : left[i]);
+            kids.Add(middle is null
+                ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                : new BoxEl
+                {
+                    Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                });
+            kids.AddRange(view);
+            kids.Add(new BoxEl
+            {
+                Key = "bar:find", Direction = 1, Shrink = 0f,
+                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+            });
+            kids.AddRange(tail);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        // The first command's own left pad (and the page bar's inset) are drawn outside the list's x, so its glyph lands on it.
-                        Margin = new Edges4(ZuneListRules.BarLeadShift(left.Length > 0 && left[0].Key is { } k0 && k0.StartsWith(ZuneListRules.PageLeadKeyPrefix, StringComparison.Ordinal),
-                                                                         RowMetrics.RowInset - DetailLayout.ToolbarSurfacePadX), 0f, 0f, 0f),
-                        Children = left,
-                    },
-                    middle is null
-                        ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
-                        : new BoxEl
-                        {
-                            Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                            Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
-                        },
-                    new BoxEl
-                    {
-                        Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        Children =
-                        [
-                            .. view,
-                            new BoxEl
-                            {
-                                Key = "bar:find", Direction = 1, Shrink = 0f,
-                                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
-                            },
-                            .. tail,
-                        ],
-                    },
-                ],
+                Children = kids.ToArray(),
             };
         }
 

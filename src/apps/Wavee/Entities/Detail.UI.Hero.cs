@@ -90,8 +90,14 @@ public static partial class Detail
         IReadSignal<bool> SearchExpanded,
         float ColumnWidth,                        // measured (or seeded) list width — bucketed ONCE inside (BucketW)
         float CompactLeft,                        // gutter: RowMetrics.PadXFor(tier) (+48 chips, +36 lens)
-        float HeroHeight,                         // the band height the table's Collapse bind uses (measured, else HeroBandHeight)
-        Action<float>? OnHeroMeasured);
+        float HeroHeight,                         // the band height the table's Collapse bind uses (measured, else HeroBandHeight); the columns form's pinned head
+        Action<float>? OnHeroMeasured,            // the hero form reports its whole height; the columns form its PINNED HEAD (what stands above the chrome:
+                                                  // its list bar's foot, at once, while the body it shares with the hanging columns eases), audit B9
+        // ── the one-tree page (audit B9): the arrangement, the columns form's parts, and the height of the list's viewport (what the columns form's
+        //    side columns, which hang below the hero beside the rows, fill) ──
+        Contracts.DetailForm Form = Contracts.DetailForm.Hero,
+        Contracts.DetailColumnsProps? Columns = null,
+        IReadSignal<double>? ViewportHeight = null);
 
     // ══ 2. THE PRESENCE FLAGS — one set for the hero, its skeleton and its reserved height ═══════════════════════════
 

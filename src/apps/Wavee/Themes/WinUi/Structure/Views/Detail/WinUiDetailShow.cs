@@ -69,7 +69,9 @@ internal static partial class WinUiDetailFrame
         pending.Now = id.HeaderPending;
         return new BoxEl
         {
-            Key = "detail:show-header", Direction = 1, Shrink = 0f,
+            // Its height eases through real layout across a tier (the cover 168 / 232, the short form, the stacked form; audit B9): the episodes under it
+            // ride it instead of stepping.
+            Key = "detail:show-header", Direction = 1, Shrink = 0f, Animate = HeroHeightMotion,
             Children =
             [
                 new SkelRegionEl(

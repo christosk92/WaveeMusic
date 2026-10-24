@@ -21,11 +21,68 @@ using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
+/// <summary>The arrangement a ONE-TREE track page shows at this width (audit B9). The page is the same tree in both: the table hosts the
+/// structure's hero as its item 0 at every width and the hero view arranges the same identity block, verbs and toolbar for the form; the form
+/// is a live prop, never a key, so a crossing is a relayout (FLIPs and reflows), not a rebuild.</summary>
+public enum DetailForm : byte
+{
+    /// <summary>The collapsing hero over the rows (the narrow page, and every width of the Hero page layout).</summary>
+    Hero = 0,
+
+    /// <summary>The columns: the identity column (or, on a page with no rail, the page head) beside the rows, the hero's item pinned above them.</summary>
+    Columns = 1,
+}
+
+/// <summary>What the hero view draws its COLUMNS form from (<see cref="DetailForm.Columns"/>, audit B9): the rail the host decided (its cell's
+/// width, the grip, the collapsed strip), the page head of a page with no rail, and the aside where the structure lays it in the hero. The
+/// host builds it at every width (its fields at the hero form are the widest arm's), so the hero's tree never changes shape with the form.</summary>
+public sealed record DetailColumnsProps
+{
+    /// <summary>The rail, its grip and the collapsed strip (null on a page with no rail, <see cref="Head"/>).</summary>
+    public DetailTwoColumnProps? TwoColumn { get; init; }
+
+    /// <summary>The head of a page with no rail (Liked Songs): the title and meta over the list.</summary>
+    public DetailHeadProps? Head { get; init; }
+
+    /// <summary>The right aside where the window tier docks one (null: none docks). A structure that draws it in the hero lays it beside the
+    /// list head; one that draws it in the frame reads <see cref="DetailFrameProps.Aside"/> instead.</summary>
+    public DetailAsideProps? Aside { get; init; }
+
+    /// <summary>The insights sheet's props (null on a page without them): an aside that holds the insights alone follows its toggle.</summary>
+    public DetailInsightsProps? Sheet { get; init; }
+
+    /// <inheritdoc />
+    public bool Equals(DetailColumnsProps? other) => ReferenceEquals(this, other);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
+}
+
+/// <summary>What the rows, the chrome and the list's tail stand between in the hero list (audit B9): the width the hero's side columns take
+/// beside them (the identity column and its gap; the aside and its gap). 0 | 0 in the hero form.</summary>
+/// <param name="Lead">Left of the list column.</param>
+/// <param name="Trail">Right of the list column.</param>
+public readonly record struct DetailListInsets(float Lead, float Trail);
+
+/// <summary>What a structure's <see cref="DetailHeroStyle.ListInsets"/> reads. Called inside the table's binds: a signal the structure reads
+/// here (the insights toggle of an aside that holds them alone) is tracked, so the insets follow it.</summary>
+/// <param name="Form">The page's arrangement.</param>
+/// <param name="Tiers">The window tiers the table is drawn in.</param>
+/// <param name="Columns">The columns form's parts (the rail's live width, the aside), or null.</param>
+/// <param name="TableWidth">The table's laid-out width, exact (0 before its first layout): what a structure that keeps the list column above a floor
+/// (the two-column arm's 300, <c>Detail.Breakpoints.TwoColumnContentMinW</c>) yields its side columns against.</param>
+public readonly record struct DetailInsetQuery(DetailForm Form, TierFacts Tiers, DetailColumnsProps? Columns, float TableWidth = 0f);
+
 /// <summary>The props of <see cref="ViewKeys.DetailFrame"/>: one detail page's scaffold, for the arm the host decided.</summary>
 public sealed record DetailFrameProps
 {
-    /// <summary>The vertical (hero / stacked) arm: no rail; the table hosts the hero. False: the two-column arm.</summary>
+    /// <summary>The vertical (hero / stacked) arm: no rail; the table hosts the hero. False: the two-column arm. A ONE-TREE track page is
+    /// always the hero system (<see cref="Form"/> says how it is arranged).</summary>
     public required bool Vertical { get; init; }
+
+    /// <summary>The one-tree track page's arrangement (audit B9): the hero, or the columns its hero lays out beside the rows. A live value: the
+    /// view keeps one tree and only re-arranges.</summary>
+    public DetailForm Form { get; init; }
 
     /// <summary>The vertical arm of a TRACK page (the hero system); false for a show's vertical arm (the fixed show header).</summary>
     public required bool VerticalTracks { get; init; }
@@ -184,6 +241,10 @@ public sealed record DetailRailProps
     /// reads "3 of 48 songs · 11 min (filtered)" (<c>Detail.Text.FilteredMeta</c>; tuned Classic D4). Null: the page's meta only. Appended (contract 1.5).</summary>
     public IReadSignal<Detail.ListCount>? Shown { get; init; }
 
+    /// <summary>The identity drawn STACKED, full width over the content (audit B9: a show's or an episode's page below the mode edge, where a structure
+    /// that keeps one tree draws its rail as the fixed header instead of the column). False: the column. Appended (contract 1.69).</summary>
+    public bool Stacked { get; init; }
+
     /// <inheritdoc />
     public bool Equals(DetailRailProps? other) => ReferenceEquals(this, other);
 
@@ -256,11 +317,12 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
             && ReferenceEquals(a.SelectionVisible, b.SelectionVisible)
             && ReferenceEquals(a.CompactInteractive, b.CompactInteractive)
             && ReferenceEquals(a.SearchExpanded, b.SearchExpanded)
-            && (a.OnHeroMeasured is null) == (b.OnHeroMeasured is null);
+            && (a.OnHeroMeasured is null) == (b.OnHeroMeasured is null)
+            && a.Form == b.Form && ReferenceEquals(a.Columns, b.Columns) && ReferenceEquals(a.ViewportHeight, b.ViewportHeight);
     }
 
     /// <inheritdoc />
-    public override int GetHashCode() => HashCode.Combine(Spec, Parts.ColumnWidth, Parts.HeroHeight);
+    public override int GetHashCode() => HashCode.Combine(Spec, Parts.ColumnWidth, Parts.HeroHeight, Parts.Form);
 }
 
 /// <summary>The style behind <see cref="StyleKeys.DetailHero"/>: the hero's LOADING band as a pure builder. The table mounts it as the
@@ -268,9 +330,20 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
 /// table reads through the ambient registry, the way it reads <see cref="TrackListStyle"/>.</summary>
 public sealed class DetailHeroStyle
 {
-    /// <summary>The reserved band: the same parts at the same sizes as the loaded hero, from the bucketed width, unfilled. The last argument is the
-    /// window tiers the calling table is drawn in (its root's facts, never the process's last window), the tiers the loaded hero reads too.</summary>
-    public required Func<Detail.VerticalSpec, float, float, TierFacts, Element> Skeleton { get; init; }
+    /// <summary>The reserved band: the same parts at the same sizes as the loaded hero, from the bucketed width, unfilled. The last arguments are the
+    /// window tiers the calling table is drawn in (its root's facts, never the process's last window), the tiers the loaded hero reads too, the
+    /// page's arrangement and the columns form's parts (audit B9: the columns form reserves the columns the hero lays out there, at the rail's live
+    /// width).</summary>
+    public required Func<Detail.VerticalSpec, float, float, TierFacts, DetailForm, DetailColumnsProps?, Element> Skeleton { get; init; }
+
+    /// <summary>The ONE-TREE capability (audit B9): the hero draws the COLUMNS form too (the identity column beside the rows), and this answers the
+    /// width its side columns take beside the list in each form, so the table insets its rows, chrome and tail by exactly that. Null: the hero draws
+    /// only the hero form, and a page in the Automatic layout keeps the core's two-arm frame.</summary>
+    public Func<DetailInsetQuery, DetailListInsets>? ListInsets { get; init; }
+
+    /// <summary>How the list's insets ease when the form or the tier changes them (the structure's column reflow, so the rows move in step with
+    /// the identity column). Null: they land at once.</summary>
+    public LayoutTransition? InsetMotion { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.DetailInsights"/>: the insights sheet over a track page's list (either arm).</summary>

@@ -495,7 +495,7 @@ public static partial class Controls
     ///
     /// <para>The url and the decode target are RE-PUSHED PROPS (<see cref="ShimmerProps"/>), not constructor fields: a
     /// recycled virtual row that rebinds to another cover UPDATES this component in place instead of remounting it (hook
-    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> keys it by decode size only). The settle
+    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> gives it one constant key). The settle
     /// latch is therefore keyed to WHAT it settled for — a rebind re-arms the breathe for the new cover exactly as the
     /// old per-url remount did.</para></summary>
     public sealed class CoverShimmer : Component

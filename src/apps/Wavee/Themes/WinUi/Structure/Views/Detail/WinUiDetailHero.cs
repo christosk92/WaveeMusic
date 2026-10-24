@@ -47,8 +47,9 @@ internal static partial class WinUiDetailFrame
     static readonly LayoutTransition HeroHeightMotion = new(
         TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
-    /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>).</summary>
-    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton };
+    /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>); the list's page inset eases through real layout when
+    /// a tier changes it (audit B9: the rows, the chrome and the tail ride it instead of stepping).</summary>
+    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton, InsetMotion = WinUiDiscoveryMotion.WidthReflow };
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailHero"/>.</summary>
     public static Element HeroTemplate(DetailHeroProps p, in ViewContext ctx) => Embed.Comp(p, static () => new HeroHost());
@@ -104,19 +105,19 @@ internal static partial class WinUiDetailFrame
             if (form.Eyebrow && EyebrowOf(id, form, description) is { Length: > 0 } eyebrow)
                 rows.Add(Block("hero-eyebrow", ChipRow(id, spec.Config)
                     ? WinUiDetailKit.EyebrowWithChip(eyebrow, form, WinUiDetailKit.SaveTargetOf(id).Text, center)
-                    : WinUiDetailKit.EyebrowRun(eyebrow, form) with { AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto }, late: true));
+                    : WinUiDetailKit.EyebrowRun(eyebrow, form) with { AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto }, late: true, formPiece: true));
             // An album not read yet holds its eyebrow's line ("Album · 2020" lands into it), as the names and the meta below (audit B7).
             else if (form.Eyebrow && id.HeaderPending && id.Kind == DetailKind.Album)
-                rows.Add(Block("hero-eyebrow", Reserved(null, form.EyebrowLine, center)));
+                rows.Add(Block("hero-eyebrow", Reserved(form.EyebrowLine, center)));
             rows.Add(Block("hero-title", TitleOf(spec, form, center)));
             // The description under the title (W-Playlist: the owner's own list edits it in place, "Add an optional description" while empty; W-PlaylistFollowed: the
             // list's own words). It lands with the header, as the title does.
             if (form.Description && id.Kind == DetailKind.Playlist)
             {
                 if (id.EditableMetadata && spec.Slots.Description is { } editDescription)
-                    rows.Add(Block("hero-description", editDescription(measure), late: true));
+                    rows.Add(Block("hero-description", editDescription(measure), late: true, formPiece: true));
                 else if (description.Length > 0)
-                    rows.Add(Block("hero-description", WinUiDetailKit.DescriptionRun(description, center), late: true));
+                    rows.Add(Block("hero-description", WinUiDetailKit.DescriptionRun(description, center), late: true, formPiece: true));
             }
             // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
             // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
@@ -130,18 +131,8 @@ internal static partial class WinUiDetailFrame
             bool kindLines = id.HeaderPending && id.Kind is DetailKind.Album or DetailKind.Playlist;
             bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 } || kindLines;
             bool settled = !id.MetaSettling && !id.MetaLoading;
-            if (center)
-            {
-                if (faces is { Count: > 0 }) rows.Add(Block("hero-attribution", WinUiDetailKit.NamesLine(faces, measure), late: true));
-                else if (kindLines) rows.Add(Block("hero-attribution", Reserved(null, WinUiDetailRules.AttributionLine, center)));
-                if (metaLine) rows.Add(Block("hero-meta", Reserved(settled && id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, center)));
-            }
-            else if (faces is { Count: > 0 } || metaLine)
-            {
-                bool filled = settled && (faces is { Count: > 0 } || id.Meta is { Length: > 0 });
-                rows.Add(Block("hero-attribution", Reserved(filled ? WinUiDetailKit.AttributionLine(faces, id.Meta, avatar, measure) : null,
-                    WinUiDetailRules.AttributionRow(avatar), center)));
-            }
+            if (faces is { Count: > 0 } || metaLine)
+                rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, kindLines, metaLine, avatar, measure, form, center)));
             // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
             if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
             rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
@@ -188,11 +179,68 @@ internal static partial class WinUiDetailFrame
 
     // ══ 2. THE PARTS ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A keyed block: a position-only FLIP always, a fade-up entrance when it can arrive late.</summary>
-    static BoxEl Block(string key, Element child, bool late = false) => new()
+    /// <summary>A keyed block: a position-only FLIP always, a fade-up entrance when it can arrive late; a piece only some forms draw
+    /// (<paramref name="formPiece"/>) leaves on the form swap's fade.</summary>
+    static BoxEl Block(string key, Element child, bool late = false, bool formPiece = false) => new()
     {
-        Key = key, Direction = 1, Layout = WinUiDetailKit.Shove, Enter = late ? WinUiDetailKit.FadeUp : (EnterExit?)null, Children = [child],
+        Key = key, Direction = 1, Layout = WinUiDetailKit.Shove, Enter = late ? WinUiDetailKit.FadeUp : (EnterExit?)null,
+        Exit = formPiece ? WinUiDetailRules.FormSwap : (EnterExit?)null, Children = [child],
     };
+
+    /// <summary>The facts under the title, ONE tree in every form (audit B9): the billed names and the meta are the same keyed nodes whether the horizontal hero
+    /// runs them on one line after the avatars ("Artist, Artist · 15 songs · 57 min", W-Album) or the stacked hero centres them on two (W-Album-Compact), so a
+    /// crossing glides them between the arrangements instead of rebuilding the line. The avatars are the horizontal form's alone and fade with it.
+    /// <para>THE RESERVED LINES: each line holds its fixed box from the first frame while the page can still fill it (the horizontal row until its facts have
+    /// settled, then whole; the stacked names line as soon as there are names, its meta line once the meta has settled); the words fade up inside.</para></summary>
+    static Element Facts(IReadOnlyList<Controls.Face>? faces, string? meta, bool settled, bool kindLines, bool metaLine, float avatar, float measure,
+        WinUiHeroForm form, bool center)
+    {
+        bool hasFaces = faces is { Count: > 0 };
+        bool hasMeta = meta is { Length: > 0 };
+        bool filled = settled && (hasFaces || hasMeta);
+        bool showNames = hasFaces && (center || filled);
+        bool showMeta = hasMeta && settled && (center ? metaLine : filled);
+        bool namesLine = !center || hasFaces || kindLines;   // the stacked hero reserves its names line for an album or a list not read yet
+        var kids = new List<Element>(3);
+        if (!center && avatar > 0f && hasFaces && filled)
+            kids.Add(WinUiDetailKit.AvatarPile(faces!, avatar) with
+            {
+                Key = "hero-avatars", Margin = new Edges4(0f, 0f, WinUiDetailRules.AvatarGap, 0f),
+                Enter = WinUiDetailRules.FormSwap, Exit = WinUiDetailRules.FormSwap,
+            });
+        kids.Add(new BoxEl
+        {
+            Key = "hero-names-line", Direction = 0, AlignItems = FlexAlign.Center, Justify = center ? FlexJustify.Center : FlexJustify.Start,
+            Height = center ? (namesLine ? WinUiDetailRules.AttributionLine : 0f) : float.NaN, Shrink = 1f, MinWidth = 0f, MaxWidth = measure,
+            Layout = HeroReflowMotion,
+            Children = showNames ? [WinUiDetailKit.Names(faces!) with { Key = "hero-names", Enter = WinUiDetailKit.FadeUp }] : [],
+        });
+        Element[] metaRun = showMeta
+            ? [new TextEl((center || !hasFaces ? "" : WinUiDetailRules.MetaLead) + meta)
+                {
+                    Key = "hero-meta-run", Enter = WinUiDetailKit.FadeUp,
+                    Size = center ? WinUiDetailRules.MetaSize : WinUiDetailRules.AttributionSize,
+                    LineHeight = center ? WinUiDetailRules.MetaLine : WinUiDetailRules.AttributionLine,
+                    Color = center ? Tok.TextTertiary : Tok.TextSecondary,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                }]
+            : [];
+        kids.Add(new BoxEl
+        {
+            Key = "hero-meta-line", Direction = 0, AlignItems = FlexAlign.Center, Justify = center ? FlexJustify.Center : FlexJustify.Start,
+            Height = center ? (metaLine ? WinUiDetailRules.MetaLine : 0f) : float.NaN, Shrink = 1f, MinWidth = 0f, MaxWidth = measure,
+            Margin = new Edges4(0f, center && metaLine && namesLine ? form.InfoGap : 0f, 0f, 0f),
+            Layout = HeroReflowMotion,
+            Children = metaRun,
+        });
+        return new BoxEl
+        {
+            Key = "hero-facts", Direction = center ? (byte)1 : (byte)0, AlignItems = FlexAlign.Center,
+            Height = center ? float.NaN : WinUiDetailRules.AttributionRow(avatar), Shrink = 0f, MinWidth = 0f, MaxWidth = measure,
+            Layout = HeroReflowMotion,
+            Children = kids.ToArray(),
+        };
+    }
 
     /// <summary>Are the stacked hero's words centred? An album's, a show's, an episode's (W-Album-Compact); a list's start at the gutter under the centred cover
     /// (W-Playlist-Compact). The horizontal forms never centre.</summary>
@@ -212,13 +260,11 @@ internal static partial class WinUiDetailFrame
     /// list says it with its Saved toggle instead (W-PlaylistFollowed), so the chip never repeats it.</summary>
     static bool ChipRow(Detail.Identity id, Detail.Config cfg) => id.Kind == DetailKind.Playlist && cfg.Heart == HeartMode.None && id.Subject.Provider == EntityProvider.Spotify;
 
-    /// <summary>A reserved line: a FIXED box of <paramref name="height"/> whether or not its words have landed; the words (keyed) fade up inside it when they arrive,
-    /// and a later change of them (a fact appended) fills in place.</summary>
-    static BoxEl Reserved(Element? words, float height, bool center) => new()
+    /// <summary>A reserved line: a FIXED box of <paramref name="height"/> the page's words land into later (an album's eyebrow not read yet).</summary>
+    static BoxEl Reserved(float height, bool center) => new()
     {
         Direction = 1, Height = height, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
         AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch,
-        Children = words is null ? [] : [new BoxEl { Key = "hero-line:words", Direction = 1, MinWidth = 0f, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, Enter = WinUiDetailKit.FadeUp, Children = [words] }],
     };
 
     /// <summary>The faces the attribution line leads with: the billed artists, or a playlist's owner (W-Playlist: the owner's portrait and name, a link, before the
@@ -252,13 +298,6 @@ internal static partial class WinUiDetailFrame
         Direction = 0, MinHeight = Controls.FlipCompactRowHeight, AlignItems = FlexAlign.Center, MinWidth = 0f,
         AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto,
         Children = [strip],
-    };
-
-    /// <summary>The stacked hero's meta line: Caption in Text 3, centred.</summary>
-    static Element MetaRun(string meta, WinUiHeroForm form) => new TextEl(meta)
-    {
-        Size = WinUiDetailRules.MetaSize, LineHeight = WinUiDetailRules.MetaLine, Color = Tok.TextTertiary, AlignSelf = FlexAlign.Center,
-        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
     };
 
     /// <summary>The cover: the page's own (a slot) or the artwork, r8 with the card shadow, a click where the page gives one.</summary>
@@ -408,7 +447,8 @@ internal static partial class WinUiDetailFrame
 
     /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes as the loaded hero, unfilled boxes the deriver paints as bones; a usable
     /// preview cover is painted for real.</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers)
+    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm pageForm = DetailForm.Hero,
+        DetailColumnsProps? columns = null)
     {
         var tier = WinUiDetailTiers.Of(in tiers);
         var form = WinUiDetailTiers.HeroOf(in tiers);

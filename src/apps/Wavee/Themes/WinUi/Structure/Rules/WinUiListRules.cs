@@ -116,6 +116,13 @@ public static class WinUiListRules
     public static readonly LayoutTransition CheckShift = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
 
+    /// <summary>A row cell a crossing moves or resizes (the one-tree page's lanes, audit B9: the Compact row folding its lanes into the subline, the 860 edge
+    /// adding Album, Date and Plays): it glides to its new lane, laid out at its final size from the commit (a reveal, so the rows never relayout per
+    /// frame); a lane only one form draws fades in or out.</summary>
+    public static readonly LayoutTransition CellArrange = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(WinUiDiscoveryMotion.ReflowMs, Easing.SmoothOut), SizeMode.Reveal,
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
+
     // ── the chrome (header, command bar, filter card, group head, unavailable bar) ───────────────────────────────────────
 
     /// <summary>The header's sort caret and the sort glyph; the caret's pop-in seed scale and the title word's rise on a swap.</summary>
