@@ -59,7 +59,7 @@ internal static class ClassicStageIdentity
             marquee
                 ? new BoxEl
                 {
-                    Height = tl, Direction = 0, MinWidth = 0f,
+                    Direction = 0, MinWidth = 0f,   // the row is the text's own height: its line box holds the descenders
                     Children =
                     [
                         Marquee.Of(shown, new Marquee.Style

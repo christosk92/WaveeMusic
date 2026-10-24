@@ -186,7 +186,7 @@ internal static class ZuneStageIdentity
     static Element Scrolling(StageIdentityProps props, string title, float size, float line, ushort weight, float tracking)
         => props.Marquee?.Invoke() != true ? Title(title, size, line, weight, tracking) : new BoxEl
         {
-            Height = line, Direction = 0, MinWidth = 0f,
+            Direction = 0, MinWidth = 0f,   // the row is the text's own height: its line box holds the descenders
             Children =
             [
                 Marquee.Of(title, new Marquee.Style
