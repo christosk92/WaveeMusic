@@ -278,6 +278,7 @@ public static partial class Diagnostics
         [
             Arg("save", ArgType.Path, "write the snapshot the rules saw to this JSON file"),
             Arg("replay", ArgType.Path, "lint a saved snapshot instead of the mount (needs no mount)"),
+            Arg("frame", ArgType.Path, "with replay: a PNG render of the same frame, the pixels the contrast and picture rules read"),
         ];
         static readonly ArgSpec[] s_lintArgs =
         [
@@ -294,6 +295,7 @@ public static partial class Diagnostics
             Arg("allowTrim", ArgType.List, "trim: keys or key prefixes whose text may be trimmed"),
             Arg("allowDuplicate", ArgType.List, "duplicate: labels that may appear twice"),
             Arg("ignoreUnder", ArgType.List, "duplicate: key prefixes it does not look inside", "shell.titlebar,shell.playerbar"),
+            Arg("moving", ArgType.Enum, "review: a node in an animating subtree is a review (\"lint again once it settles\"); judge: this frame is the verdict (looping text: lyrics, stage captions)", "review", "review|judge"),
         ];
         // ── end of the lint args ──
 

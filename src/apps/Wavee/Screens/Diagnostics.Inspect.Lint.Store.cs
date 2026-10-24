@@ -107,26 +107,13 @@ public static partial class Diagnostics
             w.WriteEndObject();
             w.WriteString("trimSource", s.TrimSource);
             w.WriteString("devices", s.Devices);
+            if (s.Playing.Length > 0) w.WriteString("playing", s.Playing);
+            if (s.PlayingTitle.Length > 0) w.WriteString("playingTitle", s.PlayingTitle);
+            if (s.ChromeHeld) w.WriteBoolean("chromeHeld", true);
+            if (s.Reserved > 0f) Num(w, "reserved", s.Reserved);
             w.WriteString("guide", s.GuideId);
-            w.WriteStartArray("edges");
-            foreach (LintEdge e in s.Edges)
-            {
-                w.WriteStartObject();
-                w.WriteString("rule", e.Rule);
-                w.WriteString("id", e.Id);
-                w.WriteString("what", e.What);
-                w.WriteString("side", e.Side == LintSide.Right ? "right" : "left");
-                Num(w, "expected", e.Expected);
-                Num(w, "tolerance", e.Tolerance);
-                Strings(w, "keys", e.Keys);
-                Strings(w, "prefixes", e.Prefixes);
-                if (e.UnderKey.Length > 0) w.WriteString("underKey", e.UnderKey);
-                if (e.GlyphsOnly) w.WriteBoolean("glyphsOnly", true);
-                if (e.Advisory) w.WriteBoolean("advisory", true);
-                if (e.Column) w.WriteBoolean("column", true);
-                w.WriteEndObject();
-            }
-            w.WriteEndArray();
+            WriteEdges(w, "edges", s.Edges);
+            if (s.MirrorEdges.Count > 0) WriteEdges(w, "mirrorEdges", s.MirrorEdges);
             w.WriteStartArray("policies");
             foreach (LintPolicy p in s.Policies)
             {
@@ -164,6 +151,30 @@ public static partial class Diagnostics
             foreach (InspectLint.Node n in s.Nodes) WriteNode(w, n);
             w.WriteEndArray();
             w.WriteEndObject();
+        }
+
+        /// <summary>A list of guide edges under <paramref name="name"/> (`edges`, `mirrorEdges`).</summary>
+        static void WriteEdges(Utf8JsonWriter w, string name, IReadOnlyList<LintEdge> edges)
+        {
+            w.WriteStartArray(name);
+            foreach (LintEdge e in edges)
+            {
+                w.WriteStartObject();
+                w.WriteString("rule", e.Rule);
+                w.WriteString("id", e.Id);
+                w.WriteString("what", e.What);
+                w.WriteString("side", e.Side == LintSide.Right ? "right" : "left");
+                Num(w, "expected", e.Expected);
+                Num(w, "tolerance", e.Tolerance);
+                Strings(w, "keys", e.Keys);
+                Strings(w, "prefixes", e.Prefixes);
+                if (e.UnderKey.Length > 0) w.WriteString("underKey", e.UnderKey);
+                if (e.GlyphsOnly) w.WriteBoolean("glyphsOnly", true);
+                if (e.Advisory) w.WriteBoolean("advisory", true);
+                if (e.Column) w.WriteBoolean("column", true);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
         }
 
         static void WriteNode(Utf8JsonWriter w, InspectLint.Node n)
@@ -282,6 +293,7 @@ public static partial class Diagnostics
             if (t.GlyphName.Length > 0) w.WriteString("glyphName", t.GlyphName);
             if (t.Spans) w.WriteBoolean("spans", true);
             if (t.Color.A > 0f) w.WriteString("color", Color(t.Color));
+            if (t.Copy) w.WriteBoolean("copy", true);
             if (t.Align != "Start") w.WriteString("align", t.Align);
             if (t.Ground.A > 0f)
             {
@@ -352,8 +364,13 @@ public static partial class Diagnostics
                     Navigating = head.Str(root, "navigating", ""),
                     TrimSource = head.Str(root, "trimSource", "dwrite"),
                     Devices = head.Str(root, "devices", ""),
+                    Playing = head.Str(root, "playing", ""),
+                    PlayingTitle = head.Str(root, "playingTitle", ""),
+                    ChromeHeld = head.Bool(root, "chromeHeld"),
+                    Reserved = head.Finite(root, "reserved", 0f, 0f),
                     GuideId = head.Str(root, "guide", ""),
                     Edges = ReadEdges(root, head),
+                    MirrorEdges = ReadEdges(root, head, "mirrorEdges"),
                     Policies = ReadPolicies(root, head),
                     TopBleeds = head.Strings(root, "topBleeds") ?? [],
                     HitBlockers = ReadRects(root, "hitBlockers", head),
@@ -616,6 +633,7 @@ public static partial class Diagnostics
                 OverflowX = r.Bool(e, "ox"),
                 OverflowY = r.Bool(e, "oy"),
                 Glyph = r.Bool(e, "glyph"),
+                Copy = r.Bool(e, "copy"),
                 GlyphName = r.Str(e, "glyphName", ""),
                 Spans = r.Bool(e, "spans"),
                 Color = r.Color(e, "color"),
@@ -628,11 +646,11 @@ public static partial class Diagnostics
             };
         }
 
-        static IReadOnlyList<LintEdge> ReadEdges(JsonElement root, Strict r)
+        static IReadOnlyList<LintEdge> ReadEdges(JsonElement root, Strict r, string name = "edges")
         {
             var edges = new List<LintEdge>();
-            if (!root.TryGetProperty("edges", out JsonElement list) || list.ValueKind == JsonValueKind.Null) return edges;
-            if (list.ValueKind != JsonValueKind.Array) { r.Fail("edges", "is an array, not " + list.GetRawText()); return edges; }
+            if (!root.TryGetProperty(name, out JsonElement list) || list.ValueKind == JsonValueKind.Null) return edges;
+            if (list.ValueKind != JsonValueKind.Array) { r.Fail(name, "is an array, not " + list.GetRawText()); return edges; }
             foreach (JsonElement e in list.EnumerateArray())
             {
                 if (e.ValueKind != JsonValueKind.Object) { r.Fail("edges", "holds objects, not " + e.GetRawText()); break; }

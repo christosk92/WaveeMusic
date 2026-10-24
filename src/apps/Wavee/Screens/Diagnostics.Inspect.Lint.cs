@@ -59,6 +59,12 @@ public static partial class Diagnostics
                 SpaceDead = "space.dead";
 
             public const string PictureBlank = "picture.blank", PictureUnpainted = "picture.unpainted", OverlayOpen = "overlay.open";
+
+            // lane A3 (2026-10-24), report-only: Diagnostics.Inspect.Lint.Audit.cs and Diagnostics.Inspect.Picture.cs
+            public const string StageOverlap = "stage.overlap", TextCopies = "text.copies", OverlayTranslucent = "overlay.translucent",
+                OverlayNarrow = "overlay.narrow", TextRuled = "text.ruled", EdgeGutter = "edge.gutter", EdgeHuge = "edge.huge",
+                TypeVoice = "type.voice", StateRest = "state.rest", PlayingStatus = "playing.status", ControlRequired = "control.required",
+                EdgeWindow = "edge.window", SpaceHuge = "space.huge", PictureText = "picture.text";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -101,6 +107,20 @@ public static partial class Diagnostics
             new(Rules.TextDuplicate, "", Level.Todo, "the same visible words twice in one column within a glance (a heading repeated as an eyebrow)"),
             new(Rules.TargetInk, "", Level.Todo, "a click target that paints nothing at rest"),
             new(Rules.SpaceDead, "", Level.Todo, "an empty slot that keeps its room beside content, with no plate (a report)"),
+            new(Rules.StageOverlap, "", Level.Todo, "now-playing stage layers whose plates collide, or text straddling another layer's plate edge"),
+            new(Rules.TextCopies, "", Level.Todo, "two different lines of one text family drawn over each other (a crossfade stacking both)"),
+            new(Rules.OverlayTranslucent, "", Level.Todo, "a popup plate the page bleeds through (its empty plate is not one colour)"),
+            new(Rules.OverlayNarrow, "", Level.Todo, "an overlay narrower than its content: most of its rows trimmed to a few letters"),
+            new(Rules.TextRuled, "", Level.Todo, "a rule or line crossing a text's glyph box (an underline through descenders)"),
+            new(Rules.EdgeGutter, "", Level.Todo, "page text leading left of the theme guide's gutter on a column the guide does not list"),
+            new(Rules.EdgeHuge, "", Level.Todo, "right edges at Huge and Huge4K, mirrored from the guide's left lead (the guide declares them at Small and Standard)"),
+            new(Rules.TypeVoice, "", Level.Todo, "UI copy in another theme's voice (Title Case on Zune; light lowercase heads on Classic)"),
+            new(Rules.StateRest, "", Level.Todo, "a detail page whose subject shows no saved or following state at rest"),
+            new(Rules.PlayingStatus, "", Level.Todo, "now-playing surfaces disagreeing with the player (Nothing playing while a track plays, an empty source line)"),
+            new(Rules.ControlRequired, "", Level.Todo, "a surface without a control it must offer (a held-open transport with no play/pause or seek)"),
+            new(Rules.EdgeWindow, "", Level.Todo, "content laid out past the window's right edge, outside any rail"),
+            new(Rules.SpaceHuge, "", Level.Todo, "a band of the page at Huge or Huge4K with nothing in it, as wide as a column"),
+            new(Rules.PictureText, "", Level.Todo, "text the scene shows that never reaches the frame (its box paints one colour), less edge fades and sticky plates"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>
@@ -236,6 +256,10 @@ public static partial class Diagnostics
 
             /// <summary>An icon glyph (a private-use character), not words: out of the type scale and the clip rule.</summary>
             public bool Glyph { get; init; }
+
+            /// <summary>The words are the app's own copy: a base-culture loc string, compared case-folded (Zune lowercases on screen), not data (a
+            /// title, a name). What <c>type.voice</c> judges.</summary>
+            public bool Copy { get; init; }
 
             /// <summary>The glyph's icon name (<c>Icons.TryGetName</c>: <c>Play</c>), "" for words or an unnamed glyph.</summary>
             public string GlyphName { get; init; } = "";
@@ -498,6 +522,25 @@ public static partial class Diagnostics
 
             /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
             public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
+
+            /// <summary>The player's phase as `play` names it (<c>playing</c>, <c>paused</c>, <c>idle</c>, <c>loading</c>, <c>ended</c>; "" when not
+            /// read) and the title of what it holds ("" when nothing): what <c>playing.status</c> holds the now-playing surfaces to.</summary>
+            public string Playing { get; init; } = "";
+            public string PlayingTitle { get; init; } = "";
+
+            /// <summary>The inspector holds the transport chrome shown (`chrome=shown`): a stage or a video's transport must be on screen.</summary>
+            public bool ChromeHeld { get; init; }
+
+            /// <summary>The page band (DIP, at the bottom of the content host) the active theme RESERVES for the floating video card while it sits
+            /// at its home: <c>Video.FloatingSurfaceReserve</c>, which the card writes from the theme's <c>PanelPolicy.Pip</c> (a theme whose card
+            /// floats over the page, <c>PipBounds.OverlaysContent</c>, reserves 0). Classic's 0.2.9 design ends the page above the card on
+            /// purpose; <c>picture.unpainted</c> does not call that band a page that stopped painting. 0 when nothing is reserved, and in a
+            /// snapshot saved before the field existed.</summary>
+            public float Reserved { get; init; }
+
+            /// <summary>The right edges the guide declares at Standard, moved by how far this tier's left lead sits from Standard's (<c>edge.huge</c>):
+            /// filled at Huge and Huge4K only, where the guide declares none.</summary>
+            public IReadOnlyList<LintEdge> MirrorEdges { get; init; } = [];
 
             /// <summary>The scope <see cref="Prepare"/> derived the node fields for (null: not prepared).</summary>
             public InspectVisible.Scope? PreparedFor { get; init; }
@@ -795,6 +838,10 @@ public static partial class Diagnostics
             /// <summary>The most findings one rule lists.</summary>
             public int MaxPerRule { get; init; } = 100;
 
+            /// <summary>`moving=judge`: judge the frame as it is, animating subtrees included (looping text, the stage's captions, which never
+            /// settle): no node counts as mid-flight, so contrast and the geometry rules give verdicts instead of "still animating" reviews.</summary>
+            public bool JudgeMoving { get; init; }
+
             /// <summary>Findings below this severity are left out of the report.</summary>
             public Severity Min { get; init; } = Severity.Info;
 
@@ -981,6 +1028,8 @@ public static partial class Diagnostics
         public static Report Run(Snapshot snapshot, Options? options = null)
         {
             Options o = options ?? new Options();
+            if (o.JudgeMoving)   // `moving=judge`: this frame is the verdict, whatever still animates
+                snapshot = snapshot with { Nodes = snapshot.Nodes.Select(static n => n.Animating ? n with { Animating = false } : n).ToList() };
             Snapshot s = Prepare(snapshot, o.Scope);
             var all = new List<Finding>();
             var every = new List<Finding>();
@@ -1023,6 +1072,20 @@ public static partial class Diagnostics
                     Rules.TextDuplicate => DuplicateTextRule(s, o, found),
                     Rules.TargetInk => TargetInkRule(s, o, found),
                     Rules.SpaceDead => DeadSpaceRule(s, found),
+                    Rules.StageOverlap => StageOverlapRule(s, found),
+                    Rules.TextCopies => TextCopiesRule(s, found),
+                    Rules.OverlayTranslucent => TranslucentRule(s, found),
+                    Rules.OverlayNarrow => OverlayNarrowRule(s, found),
+                    Rules.TextRuled => TextRuledRule(s, found),
+                    Rules.EdgeGutter => GutterRule(s, found),
+                    Rules.EdgeHuge => HugeEdgeRule(s, found),
+                    Rules.TypeVoice => VoiceRule(s, found),
+                    Rules.StateRest => StateRestRule(s, found),
+                    Rules.PlayingStatus => PlayingStatusRule(s, found),
+                    Rules.ControlRequired => ControlRequiredRule(s, found),
+                    Rules.EdgeWindow => PastWindowRule(s, found),
+                    Rules.SpaceHuge => HugeSpaceRule(s, found),
+                    Rules.PictureText => UnpaintedTextRule(s, found),
                     _ => 0,
                 };
                 checks[spec.Id] = looked;

@@ -25,6 +25,7 @@ using FluentGpu.Input;
 using FluentGpu.Scene;
 using FluentGpu.Text;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 
 namespace Wavee;
@@ -128,8 +129,8 @@ public static partial class Diagnostics
         /// `replay`.</summary>
         public static readonly string[] ArgNames =
         [
-            "rules", "scope", "root", "nth", "min", "limit", "outcomes", "baseline", "save", "replay", "typeFloor", "targetFloor",
-            "targetFloorCompact", "gapMin", "allowTrim", "allowDuplicate", "ignoreUnder",
+            "rules", "scope", "root", "nth", "min", "limit", "outcomes", "baseline", "save", "replay", "frame", "typeFloor", "targetFloor",
+            "targetFloorCompact", "gapMin", "allowTrim", "allowDuplicate", "ignoreUnder", "moving",
         ];
 
         /// <summary>The lint options an args bag spells: <c>rules</c> (ids, today's names, families: <c>align</c>, <c>all</c>), <c>scope</c>
@@ -214,6 +215,12 @@ public static partial class Diagnostics
                 || (a.Has("allowDuplicate") && !TryListOf(a, "allowDuplicate", out allowDuplicate, out error, allowEmpty: true))
                 || (a.Has("ignoreUnder") && !TryListOf(a, "ignoreUnder", out ignoreUnder, out error, allowEmpty: true)))
                 return false;
+            string moving = a.Str("moving", "review").ToLowerInvariant();
+            if (moving is not ("review" or "judge"))
+            {
+                error = "moving is review or judge";
+                return false;
+            }
             List<InspectLint.BaselineEntry> baseline = [];
             if (!TryPath(a, "baseline", out string baselineFile, out error)) return false;
             if (baselineFile.Length > 0 && !InspectLintStore.TryReadBaseline(baselineFile, out baseline, out error)) return false;
@@ -233,6 +240,7 @@ public static partial class Diagnostics
                 Outcomes = outcomes,
                 Baseline = baseline,
                 BaselineFile = baselineFile,
+                JudgeMoving = moving == "judge",
             };
             return true;
         }
@@ -290,11 +298,119 @@ public static partial class Diagnostics
                 OverflowX = overflow.HorizontalOverflow,
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = glyph,
+                Copy = !glyph && IsCopy(value),
                 GlyphName = glyph ? GlyphNameOf(value, InspectDump.FamilyOf(strings, in style)) : "",
                 Spans = spans,
                 Color = paint.TextColor,
                 Align = style.Align.ToString(),
             };
+        }
+
+        /// <summary>The base culture's strings, case-folded (assets/loc/en-US.json beside the exe, read once): what makes a run the app's own copy
+        /// (<see cref="InspectLint.TextRun.Copy"/>). Empty when the file cannot be read: no run is copy, and <c>type.voice</c> judges nothing.</summary>
+        static HashSet<string>? s_copy;
+
+        static bool IsCopy(string text)
+        {
+            if (text.Length is 0 or > 80) return false;
+            s_copy ??= LoadCopy();
+            return s_copy.Contains(text.Trim().ToLowerInvariant());
+        }
+
+        static HashSet<string> LoadCopy()
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            try
+            {
+                string file = Path.Combine(AppContext.BaseDirectory, "assets", "loc", "en-US.json");
+                using JsonDocument doc = JsonDocument.Parse(File.ReadAllBytes(file));
+                var stack = new Stack<JsonElement>();
+                stack.Push(doc.RootElement);
+                while (stack.Count > 0)
+                {
+                    JsonElement e = stack.Pop();
+                    if (e.ValueKind == JsonValueKind.Object)
+                        foreach (JsonProperty p in e.EnumerateObject())
+                        {
+                            if (p.Name.StartsWith('$')) continue;   // $culture, $comment, $unusedAllow: the file's own notes
+                            stack.Push(p.Value);
+                        }
+                    else if (e.ValueKind == JsonValueKind.String && e.GetString() is { Length: > 0 and <= 80 } v && v.IndexOf('{') < 0)
+                        set.Add(v.Trim().ToLowerInvariant());
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+            return set;
+        }
+
+        /// <summary>`lint replay=<snapshot> frame=<png>`: the pixels of a `render` of the same frame, so the rules that read the rendered frame
+        /// (contrast, the picture rules) judge a saved snapshot too: an older exe's capture with its render, or a page you can no longer mount.
+        /// The PNG is decoded with WIC at its own size; its scale is its width over the snapshot's width in DIP.</summary>
+        public static bool TryReadFrame(string path, float widthDip, out InspectLint.Pixels? pixels, out string error)
+        {
+            pixels = null;
+            error = "";
+            string full = Path.GetFullPath(path);
+            byte[] png;
+            try { png = File.ReadAllBytes(full); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                error = "frame: " + ex.Message;
+                return false;
+            }
+            // the PNG's own size: the IHDR chunk follows the 8-byte signature (width and height are big-endian at 16 and 20)
+            if (png.Length < 24 || png[12] != 'I' || png[13] != 'H' || png[14] != 'D' || png[15] != 'R')
+            {
+                error = "frame: '" + full + "' is not a PNG";
+                return false;
+            }
+            int w = (png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19];
+            int h = (png[20] << 24) | (png[21] << 16) | (png[22] << 8) | png[23];
+            if (w <= 0 || h <= 0 || (long)w * h > 64L * 1024 * 1024)
+            {
+                error = "frame: '" + full + "' has an unusable size " + w + " x " + h;
+                return false;
+            }
+            var bgra = new byte[w * h * 4];
+            using var codec = new FluentGpu.Media.Codecs.Wic.WicImageCodec();
+            if (!codec.DecodeConstrained(png, w, h, bgra, out int dw, out int dh) || dw != w || dh != h)
+            {
+                error = "frame: '" + full + "' did not decode";
+                return false;
+            }
+            pixels = new InspectLint.Pixels(bgra, w, h, widthDip > 0f ? w / widthDip : 1f);
+            return true;
+        }
+
+        /// <summary>The right edges the active guide declares at Standard, moved by how far this tier's left lead sits from Standard's: a right
+        /// edge per left lead the guide mirrors at Standard (band.last-action against band.first-pivot, page.column against itself). Empty below
+        /// Huge, or when the guide declares right edges at this tier itself.</summary>
+        static IReadOnlyList<LintEdge> MirrorEdges(IThemeLintGuide guide, in LintContext here, IReadOnlyList<LintEdge> edges)
+        {
+            if (here.Window is not (WidthTier.Huge or WidthTier.Huge4K)) return [];
+            foreach (LintEdge e in edges)
+                if (e.Side == LintSide.Right && !e.Advisory) return [];
+            IReadOnlyList<LintEdge> standard = guide.Edges(here with { Window = WidthTier.Standard });
+            float LeftOf(IReadOnlyList<LintEdge> list, string id)
+            {
+                foreach (LintEdge e in list)
+                    if (e.Side == LintSide.Left && string.Equals(e.Id, id, StringComparison.Ordinal)) return e.Expected;
+                return float.NaN;
+            }
+            var mirrored = new List<LintEdge>();
+            foreach (LintEdge e in standard)
+            {
+                if (e.Side != LintSide.Right || e.Advisory) continue;
+                string pair = float.IsFinite(LeftOf(standard, e.Id)) ? e.Id : "band.first-pivot";
+                float shift = LeftOf(edges, pair) - LeftOf(standard, pair);
+                if (!float.IsFinite(shift)) continue;
+                mirrored.Add(e with
+                {
+                    Expected = e.Expected - shift,
+                    What = e.What + " (mirrored from " + pair + ": " + (here.Window == WidthTier.Huge ? "Huge" : "Huge4K") + " leads " + shift.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + " past Standard)",
+                });
+            }
+            return mirrored;
         }
 
         static InspectLint.Declared DeclaredOf(in LayoutInput l) => new(l.Gap, l.Padding, l.Margin)
@@ -562,6 +678,7 @@ public static partial class Diagnostics
                 route = seen;
             }
             IReadOnlyList<LintEdge> edges = [];
+            IReadOnlyList<LintEdge> mirror = [];
             IReadOnlyList<LintPolicy> policies = [];
             string guideId = "";
             IReadOnlyList<string> bleeds = ThemeInspection.ActiveLintGuide?.DesignedTopBleeds ?? [];
@@ -574,6 +691,7 @@ public static partial class Diagnostics
                 }
                 var context = new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey) { Route = InspectLint.RouteNameOf(route) };
                 edges = guide.Edges(context);
+                mirror = MirrorEdges(guide, context, edges);
                 policies = guide.Policies(context);
                 guideId = InspectKit.ActiveThemeId;
             }
@@ -591,7 +709,19 @@ public static partial class Diagnostics
                 TrimSource = InspectDump.TrimSource(shell),
                 Devices = devices,
                 Backdrop = pixels,
+                MirrorEdges = mirror,
+                Playing = Playback.PhaseSignal.Peek().ToString().ToLowerInvariant(),
+                PlayingTitle = PlayingTitle(),
+                ChromeHeld = InspectSwitches.HoverChromeAtRest,
+                Reserved = Video.FloatingSurfaceReserve.Peek(),
             };
+        }
+
+        /// <summary>The title of what the player holds ("" when nothing).</summary>
+        static string PlayingTitle()
+        {
+            EntityRef current = Playback.Current.Peek();
+            return current.IsNone ? "" : LibraryRows.TitleOf(current.Kind, current.Slot);
         }
 
         // ── the report ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -846,6 +976,12 @@ public static partial class Diagnostics
             {
                 if (a.Has("root") || a.Has("nth")) return Inspect.Reply.Fail(id, name, "replay lints the whole saved snapshot: root= and nth= pick nodes of a mounted page (save a root= lint instead)");
                 if (!InspectLintStore.TryLoad(replay, out snapshot, out error)) return Inspect.Reply.Fail(id, name, error);
+                if (!InspectLintScene.TryPath(a, "frame", out string frame, out error)) return Inspect.Reply.Fail(id, name, error);
+                if (frame.Length > 0)
+                {
+                    if (!InspectLintScene.TryReadFrame(frame, snapshot.Width, out InspectLint.Pixels? framePixels, out error)) return Inspect.Reply.Fail(id, name, error);
+                    snapshot = snapshot with { Backdrop = framePixels };
+                }
             }
             else
             {

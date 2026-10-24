@@ -105,6 +105,25 @@ public static partial class Diagnostics
                     if (part.W > 0f && part.H > 0f) skip.Add(part);
                 }
                 if (!px.TryEmpty(band, skip, EmptyShare, out ColorF colour, out float judged) || judged < 0.5f) continue;
+                // A band the active theme reserves for the floating video card (its PanelPolicy.Pip keeps the page clear of the card at its
+                // home: Classic's 0.2.9 design, kept by owner decision) is the layout's, not a page that stopped painting: the reservation is
+                // as tall as the band. A theme whose card floats over the page reserves nothing, so the same band there is a fault.
+                if (s.Reserved > 0f && MathF.Abs(band.H - s.Reserved) <= 2f * Slack)
+                {
+                    into.Add(new Finding(Rules.PictureUnpainted, Severity.Info,
+                        $"{sc.Ref} ends at y={F(bottom)}, {F(band.H)} above the bottom of {frame.Ref}: the band is the {F(s.Reserved)} DIP the theme reserves for the floating video card", [sc.Ref, frame.Ref])
+                    {
+                        Measured = [M("band", band.H), M("reserved", s.Reserved)],
+                        Pattern = PatternOfKey(sc.Key ?? sc.Pattern),
+                        Cause = "reserved",
+                        Rects = [band],
+                        Nodes = [sc.Index],
+                        Outcome = Outcome.Suppressed,
+                        SuppressedBy = "intent",
+                        Reason = "the theme's PanelPolicy.Pip reserves this band for the floating card (PipBounds.OverlaysContent false): a designed reservation",
+                    });
+                    continue;
+                }
                 into.Add(new Finding(Rules.PictureUnpainted, Severity.Error,
                     $"the page stops painting short of its frame: {sc.Ref} ends at y={F(bottom)} with {F(sc.ScrollMax - sc.ScrollOffset)} DIP more to show, " +
                     $"{F(band.H)} above the bottom of {frame.Ref}, and the band {F(band.X)},{F(band.Y)} {F(band.W)} x {F(band.H)} under it paints only #{Hex(colour)}",
@@ -116,6 +135,129 @@ public static partial class Diagnostics
                     Cause = "band",
                     Rects = [band, Where(sc)],
                     Nodes = [sc.Index],
+                });
+            }
+            return looked;
+        }
+
+        // ── overlay.translucent and picture.text (lane A3, report-only) ─────────────────────────────────────────────────
+
+        /// <summary>How far in (DIP) from a popup plate's edge its ground is judged: past its rounded corners, its stroke and its shadow.</summary>
+        public const float PlateInset = 6f;
+
+        /// <summary>The share of a popup plate's empty pixels one colour must hold for the plate to be opaque.</summary>
+        public const float OpaqueShare = 0.9f;
+
+        /// <summary>overlay.translucent (visual.md 16, 24): a popup plate the page bleeds through. An overlay layer's plate (its largest box with
+        /// an opaque fill or an Acrylic material, 80 x 60 DIP or more, under 90 % of the window: not a scrim) is judged where nothing of its own
+        /// draws (its text, art, separators and their boxes skipped, <see cref="PlateInset"/> in from its edge): an opaque plate is one colour
+        /// there; the search suggestions' and the notifications' Acrylic show the page's covers through. One finding per plate.</summary>
+        static int TranslucentRule(Snapshot s, List<Finding> into)
+        {
+            if (s.Backdrop is not { } px) return 0;
+            IReadOnlyList<Node> nodes = s.Nodes;
+            float big = 0.9f * s.Width * s.Height;
+            int looked = 0;
+            foreach (Node layer in nodes)
+            {
+                if (layer.Key is not { } key || !key.StartsWith("overlay:", StringComparison.Ordinal) || layer.Covered) continue;
+                Node? plate = null;
+                foreach (Node n in nodes)
+                {
+                    if (n.Index <= layer.Index || !IsUnder(nodes, n, layer.Index) || n.Visible.IsEmpty) continue;
+                    bool fills = n.Fill.A * n.Opacity >= 0.5f || n.Visual == "Acrylic";
+                    float area = n.Visible.W * n.Visible.H;
+                    if (!fills || n.Visible.W < 80f || n.Visible.H < 60f || area >= big) continue;
+                    if (plate is null || area > plate.Visible.W * plate.Visible.H) plate = n;
+                }
+                if (plate is null) continue;
+                RectF judged = new(plate.Visible.X + PlateInset, plate.Visible.Y + PlateInset, plate.Visible.W - 2f * PlateInset, plate.Visible.H - 2f * PlateInset);
+                if (judged.W <= 0f || judged.H <= 0f) continue;
+                var skip = new List<RectF>();
+                foreach (Node n in nodes)
+                {
+                    if (n.Index <= plate.Index || !IsUnder(nodes, n, layer.Index) || n.Visible.IsEmpty) continue;
+                    bool draws = n.Image || n.Text is not null || n.Gradient || n.Fill.A * n.Opacity >= 0.03f || n.Visual.Length > 0
+                        || (n.BorderWidth > 0f && n.BorderColor.A > 0.03f);
+                    if (draws) skip.Add(new RectF(n.Visible.X - 2f, n.Visible.Y - 2f, n.Visible.W + 4f, n.Visible.H + 4f));
+                }
+                looked++;
+                if (px.TryEmpty(judged, skip, OpaqueShare, out ColorF colour, out float share) || share < 0.1f) continue;
+                string material = plate.Visual == "Acrylic" ? "an Acrylic material" : "a fill of alpha " + F(plate.Fill.A * plate.Opacity);
+                into.Add(new Finding(Rules.OverlayTranslucent, Severity.Warn,
+                    $"the popup plate {plate.Ref} ({layer.Ref}, {F(plate.Visible.W)} x {F(plate.Visible.H)}, {material}) lets the page through: where nothing of its own draws " +
+                    $"({F(100f * share)} % of it) it is not one colour (the most common, #{Hex(colour)}, holds under {F(100f * OpaqueShare)} %)", [plate.Ref])
+                {
+                    Measured = [M("judged", share)],
+                    Expected = [M("oneColour", OpaqueShare)],
+                    Pattern = plate.Pattern,
+                    Cause = plate.Visual == "Acrylic" ? "acrylic" : "alpha",
+                    Rects = [plate.Visible],
+                    Nodes = [plate.Index],
+                    Fix = "give the popup the opaque plate its board draws (the theme's flyout ground role), or keep the material where the board asks for it; never hide the popup",
+                });
+            }
+            return looked;
+        }
+
+        /// <summary>How far (DIP) from a scroller's faded edge text may fade out on purpose.</summary>
+        public const float FadeReach = 64f;
+
+        /// <summary>picture.text (A1's dropped text branch, with a cover model): a words run the scene says is on screen (in scope, opaque, at rest,
+        /// not under an overlay's plate) whose ink box paints one colour in the frame: text that never reaches the screen (a layer or a clip the
+        /// snapshot does not see covers it, or a pass stops painting). Not judged: a run within <see cref="FadeReach"/> of a scroller's faded edge,
+        /// one under a sticky node painted after it, one whose ink barely differs from its ground (contrast.text's), and glyphs.</summary>
+        static int UnpaintedTextRule(Snapshot s, List<Finding> into)
+        {
+            if (s.Backdrop is not { } px) return 0;
+            IReadOnlyList<Node> nodes = s.Nodes;
+            int looked = 0;
+            var groups = new Dictionary<string, List<(Node N, ColorF Colour)>>(StringComparer.Ordinal);
+            foreach (Node n in nodes)
+            {
+                if (n.Text is not { } t || !IsWords(n) || !n.InScope || n.Covered || n.Moving || n.Occluded >= 0.2f || n.Opacity < 0.6f || t.Color.A < 0.6f) continue;
+                if (t.Ground.A > 0f && ContrastOf(t.Color, t.Ground, n.Opacity) < 1.5) continue;
+                RectF ink = GlyphBox(n, t).Intersect(n.Visible);
+                if (ink.W < 6f || ink.H < 6f) continue;
+                bool excused = false;
+                for (int a = n.Parent; a >= 0 && !excused; a = nodes[a].Parent)
+                {
+                    Node up = nodes[a];
+                    if (up.FadeEdges == 0 || up.ScrollAxis == 0 && up.FadeEdges == 0) continue;
+                    RectF r = up.Rect;
+                    if ((up.FadeEdges & (byte)EdgeMask.Top) != 0 && ink.Y < r.Y + FadeReach) excused = true;
+                    if ((up.FadeEdges & (byte)EdgeMask.Bottom) != 0 && ink.Bottom > r.Bottom - FadeReach) excused = true;
+                    if ((up.FadeEdges & (byte)EdgeMask.Left) != 0 && ink.X < r.X + FadeReach) excused = true;
+                    if ((up.FadeEdges & (byte)EdgeMask.Right) != 0 && ink.Right > r.Right - FadeReach) excused = true;
+                }
+                if (excused) continue;
+                foreach (Node m in nodes)
+                {
+                    if (!m.Sticky || m.Index == n.Index || IsUnder(nodes, n, m.Index) || m.Visible.IsEmpty) continue;
+                    if (m.Visible.Overlaps(ink)) { excused = true; break; }
+                }
+                if (excused) continue;
+                looked++;
+                if (!px.TryEmpty(ink, [], 0.999f, out ColorF colour, out float judged) || judged < 0.9f) continue;
+                string pattern = n.Family.Length > 0 ? n.Family : n.Pattern;
+                if (!groups.TryGetValue(pattern, out var list)) groups[pattern] = list = [];
+                list.Add((n, colour));
+            }
+            foreach (var (pattern, list) in groups)
+            {
+                var (n, colour) = list[0];
+                var (refs, rects) = Members(list.Select(static e => e.N));
+                into.Add(new Finding(Rules.PictureText, Severity.Warn,
+                    $"{TextName(n.Text!)} is on screen in the scene (#{Hex(n.Text!.Color)} at opacity {F(n.Opacity)}) but its ink box paints only #{Hex(colour)}: it never reaches the frame" +
+                    (list.Count > 1 ? $" ({list.Count} runs of {pattern})" : ""), refs)
+                {
+                    Measured = [M("count", list.Count)],
+                    Pattern = pattern,
+                    Cause = "no-ink",
+                    Count = list.Count,
+                    Rects = rects,
+                    Nodes = Ids(list.Select(static e => e.N)),
+                    Fix = "look at the render: find what covers the text or stops the pass (a layer, a clip, an opaque plate drawn after it); fix the paint, never move the text",
                 });
             }
             return looked;
