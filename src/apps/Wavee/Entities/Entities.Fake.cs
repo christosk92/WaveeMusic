@@ -178,6 +178,12 @@ public static partial class Entities
     /// <c>Platform.cs</c>'s <c>--fake</c> arm must set <c>CatalogScope.Account</c> to this same literal (reported).</summary>
     public const string FakeAccount = "wavee-listener";
 
+    /// <summary>The own account's PROFILE address. A real account's row is keyed `spotify:user:&lt;username&gt;` (<c>Entities.ResolveMe</c>), so
+    /// <c>ProfileRoute.For(User.Me)</c> routes to it; the fake's "me" row is keyed by the bare <see cref="FakeAccount"/> (every library relation
+    /// hangs off it, and the scope names the account so), which no route can address. The seed adds this row beside it, the same identity and
+    /// profile facts with the CurrentUser flag, so `goto uri=spotify:user:wavee-listener` opens the own profile.</summary>
+    public const string FakeProfileUri = "spotify:user:" + FakeAccount;
+
     static partial void SeedAlbumSurfaces(long now0);
     static partial void SeedArtistSurfaces(long now0);
     static partial void SeedLibrarySurfaces(long now0);
@@ -222,13 +228,14 @@ public static partial class Entities
 
     static void SeedRows(Staging s)
     {
-        // ── users: me + three owners ────────────────────────────────────────────────────────────────────────────────
-        for (int i = 0; i < 4; i++)
+        // ── users: me + three owners, and me's profile address (FakeProfileUri) ───────────────────────────────────
+        for (int i = 0; i < 5; i++)
         {
-            ref var row = ref s.Users.RowFor(s.AddText(Utf8(UserUri(i))), Authority.Seed, (uint)UserFields.Identity);
-            row.Name = s.AddText(Utf8(i == 0 ? "Wavee Listener" : s_artistNames[i - 1]));
-            row.Image = s.AddText(Utf8(Cover(i)));
-            row.Color = s_userColors[i];
+            int u = i < 4 ? i : 0;   // the profile address is me again
+            ref var row = ref s.Users.RowFor(s.AddText(Utf8(i < 4 ? UserUri(i) : FakeProfileUri)), Authority.Seed, (uint)UserFields.Identity);
+            row.Name = s.AddText(Utf8(u == 0 ? "Wavee Listener" : s_artistNames[u - 1]));
+            row.Image = s.AddText(Utf8(Cover(u)));
+            row.Color = s_userColors[u];
         }
 
         // ── tracks: the 166-row liked pool, reused (via Wrap) as album and playlist membership ─────────────────────

@@ -941,3 +941,12 @@ dump root=<the page's root key> depth=3
   findings with no engine and no host; [`agent-lint.md`](agent-lint.md) is its reference.
   `Diagnostics.InspectLintScene` reads the mounted scene into that snapshot and writes the report.
 - **No reflection.** JSON is parsed with `JsonDocument` and written with `Utf8JsonWriter`, so the server is AOT-safe.
+- **Fixtures for the pages agents ask about** (`Entities.Fake*.cs`; the full list is the skill's `reference/fixtures.md`):
+  - the own profile: `goto uri=spotify:user:wavee-listener` (`Entities.FakeProfileUri`, the own account's profile address with
+    its CurrentUser flag: "Open account", "Only visible to you"); the account chip's Profile row still finds no route under
+    `--fake`, because the fake's "me" row is keyed by the bare account name;
+  - the longest album title, `spotify:album:2x6LWti2bjYS6AllSomoV7` (`LongTitleAlbumUri`), carries 12 rows (it read "Couldn't
+    load these songs" before);
+  - `spotify:track:tr26` (al2's first row) and al3's first row have a music video (`HasVideo`): the `video=` mounts play tr26;
+  - fake covers paint the same in every process: the fake decoder's hue follows the image source, not the order images were
+    requested in, so two servers render one page pixel for pixel alike.
