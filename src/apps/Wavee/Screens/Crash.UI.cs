@@ -129,9 +129,11 @@ public static partial class Crash
         Directory.CreateDirectory(dir);
         File.WriteAllLines(Path.Combine(dir, Files.ReportName), ["Wavee crash report (fake)", "kind: " + kind]);
         File.WriteAllLines(Path.Combine(dir, Files.TailName), ["info playback started", "warn lyrics provider timed out"]);
+        // A hang bundle is shaped as the watchdog writes one (no exception, the silent seconds in the message); a crash carries its exception.
+        bool hang = kind == Kind.Hang;
         var summary = new Summary("fake0001", "fake-install", kind, DateTime.UtcNow.AddMinutes(-3).ToString("o", CultureInfo.InvariantCulture),
             "1.6.0", "1.6.0.0", "0000000", "dev", "x64", "26340", "adapter", "", false, false, "en-US", "fake-session", 120_000, false, "home",
-            "System.InvalidOperationException", "fake", [], 0, 0, "", 1, true, 12L * 1_048_576);
+            hang ? "" : "System.InvalidOperationException", hang ? "no UI heartbeat for 12 s" : "fake", [], 0, 0, "", 1, true, 12L * 1_048_576);
         var bundle = new BundleInfo(dir, summary, DateTime.Now.AddMinutes(-3), new SendRecord(SendState.NotSent, null, null, 0, false), true, summary.DumpBytes);
         OpenPrompt(overlay, bundle);
     }
@@ -202,12 +204,19 @@ public static partial class Crash
     static CrashDialogProps PromptProps(BundleInfo bundle, bool fromList, PromptSession session)
     {
         var s = bundle.Summary;
+        bool hang = s.Kind == Kind.Hang;
+        string time = bundle.StampLocal.ToString("t", CultureInfo.CurrentCulture);
         string when = fromList
             ? bundle.StampLocal.ToString("g", CultureInfo.CurrentCulture)
-            : Strings.Crash.PromptWhen(bundle.StampLocal.ToString("t", CultureInfo.CurrentCulture));
-        string message = s.ExceptionType.Length > 0
-            ? when + " · " + s.ExceptionType + (s.ExceptionMessage.Length > 0 ? ": " + s.ExceptionMessage : "")
-            : when;
+            : hang ? Strings.Crash.PromptHangWhen(time) : Strings.Crash.PromptWhen(time);
+        // A hang is no crash: the run went on, and it carries no exception, only how long the UI thread was silent ("stopped responding at 19:50 for 12 s").
+        string message = hang
+            ? !fromList && Settings.PrivacyRules.HangSeconds(s.ExceptionMessage) is { } seconds
+                ? Strings.Crash.PromptHangFor(time, seconds.ToString(CultureInfo.InvariantCulture))
+                : when
+            : s.ExceptionType.Length > 0
+                ? when + " · " + s.ExceptionType + (s.ExceptionMessage.Length > 0 ? ": " + s.ExceptionMessage : "")
+                : when;
         return new CrashDialogProps
         {
             FromList = fromList,

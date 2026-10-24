@@ -290,19 +290,32 @@ internal static class ZuneFeedback
                 case Feedback.ReportKind.Crash:
                     body.Add(Choice(form.Whens, when, l.When, layout, width));
                     body.Add(Choice(form.Reproduces, repro, l.Reproduces, layout, width));
-                    body.Add(MultiLine(f1, l.WhatWereYouDoing, Z.FieldHeight, width));
+                    body.Add(MultiLine(f1, l.WhatWereYouDoing, layout.FreeTextHeight, width));
                     break;
                 case Feedback.ReportKind.Bug:
-                    body.Add(MultiLine(f1, l.WhatHappened, Z.FieldHeight, width));
-                    body.Add(MultiLine(f2, l.Steps, Z.FieldHeight, width));
-                    body.Add(MultiLine(f3, l.Expected, Z.FieldHeight, width));
+                    body.Add(MultiLine(f1, l.WhatHappened, layout.FreeTextHeight, width));
+                    if (layout.PairFields)
+                    {
+                        // Z-Dialogs: steps and expected side by side, each half the column.
+                        float half = MathF.Floor((width - Z.PairGap) / 2f);
+                        body.Add(new BoxEl
+                        {
+                            Direction = 0, Gap = Z.PairGap, Width = width, Shrink = 0f, AlignItems = FlexAlign.Start,
+                            Children = [MultiLine(f2, l.Steps, layout.FreeTextHeight, half), MultiLine(f3, l.Expected, layout.FreeTextHeight, half)],
+                        });
+                    }
+                    else
+                    {
+                        body.Add(MultiLine(f2, l.Steps, layout.FreeTextHeight, width));
+                        body.Add(MultiLine(f3, l.Expected, layout.FreeTextHeight, width));
+                    }
                     body.Add(Choice(form.Areas, area, l.Area, layout, width));
                     break;
                 case Feedback.ReportKind.Feature:
-                    body.Add(MultiLine(f1, l.Problem, Z.FieldHeight, width));
-                    body.Add(MultiLine(f2, l.Proposal, Z.FieldHeight, width));
+                    body.Add(MultiLine(f1, l.Problem, layout.FreeTextHeight, width));
+                    body.Add(MultiLine(f2, l.Proposal, layout.FreeTextHeight, width));
                     body.Add(Choice(form.Areas, area, l.Area, layout, width));
-                    body.Add(MultiLine(f3, l.Alternatives, Z.FieldHeight, width));
+                    body.Add(MultiLine(f3, l.Alternatives, layout.FreeTextHeight, width));
                     break;
                 default:   // Question, Idea
                     body.Add(MultiLine(f1, l.Body, Z.BodyFieldHeight, width));

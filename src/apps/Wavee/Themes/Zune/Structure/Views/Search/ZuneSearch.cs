@@ -173,11 +173,8 @@ internal static class ZuneSearch
                         ],
                     },
                     FlyoutPlacement.BottomEdgeAlignedRight,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                    {
-                        ConstrainToRootBounds = true,
-                        Plate = ZuneControls.SuggestionsPlate(),   // the suggestions' own solid square plate, as the pill's popup draws it
-                    });
+                    // The theme's popup plate (ZuneControls.PanelPlate): solid and square, as the pill's suggestions draw it.
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = true });
                 handle.Value = h;
                 OverlayService.Track(h);
                 model.FlyoutOpen.SetIfChanged(true);
