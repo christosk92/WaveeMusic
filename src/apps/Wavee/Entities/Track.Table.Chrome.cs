@@ -264,13 +264,17 @@ public readonly partial struct Track
                 view.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
 
             var overflow = (InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
-            Element more = Embed.Comp(() => new TableMoreButton(this, overflow))
-                with { Key = "cmd:more:" + (int)overflow + ":" + _contextText };
+            _moreOverflow = overflow;
+            if (_latest.MenuBridge is { } bridge) bridge.List = _bridgeList ??= BridgeListItems;
             var tailList = new List<Element>(3);
             if (insights is not null) tailList.Add(Detail.InsightsBarButton(insights));
             if (select is not null)
                 tailList.Add(Kit.Command("cmd:select", select, w => MeasureExtra(ref _selectW, w)));
-            tailList.Add(more);
+            // Where the tier gives the page ONE "…" in the hero (Zune and WinUI Compact), the bar draws none: the hero's carries the list options. The
+            // button is keyed on the page alone (the evicted commands are a re-pushed prop, never a key), and it fades in and out across the edge.
+            if (PageMenuNow() != global::Wavee.Theming.DetailPageMenu.Hero)
+                tailList.Add(Embed.Comp(new MoreProps(overflow), () => new TableMoreButton(this))
+                    with { Key = "cmd:more:" + _contextText, Enter = MoreFade, Exit = MoreFade, Transition = MoreFadeMotion });
             Element[] tail = tailList.ToArray();
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
@@ -279,7 +283,7 @@ public readonly partial struct Track
             // gives Find its word or takes it keeps the search host's node (and a typed query) instead of re-parenting it.
             search = new BoxEl
             {
-                Key = "search-host:slot", Direction = 1, Shrink = 0f,
+                Key = "search-host:slot", Direction = 1, Shrink = 0f, OnRealized = _anchorFilter ??= h => _filterAnchor.Value = h,
                 OnBoundsChanged = findWord ? _measureFindWord ??= r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); } : null,
                 Children = [search],
             };
@@ -287,6 +291,11 @@ public readonly partial struct Track
         }
 
         Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
+
+        /// <summary>The list bar's "…" coming or going where a tier moves the page's ONE "…" to the hero: an opacity fade, never a cut.</summary>
+        static readonly EnterExit MoreFade = new(Opacity: 0f, Active: true);
+        static global::FluentGpu.Animation.MotionTokenDef MoreFadeMotion => global::FluentGpu.Animation.MotionTok.ControlFast;
+        Action<NodeHandle>? _anchorFilter;
 
         // ── the fit across a crossing (audit B9) ──
         global::Wavee.Theming.TierFacts _fitTiers;
@@ -710,14 +719,19 @@ public readonly partial struct Track
             }
         }
 
+        /// <summary>The list bar's "…" props: the commands the bar's fit evicted (a re-pushed prop, never a key: the button keeps its node as the fit moves).</summary>
+        sealed record MoreProps(InlineCommand Overflow);
+
         /// <summary>"…": the evicted commands first (Shuffle · Sort ▸ · Filter…), then what the bar never carries (tuned Classic D3):
         /// Row size ▸, the two column opt-ins and the Select toggle; then a separator and the playlist deposit ("Copy to playlist" on a
-        /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21).</summary>
-        sealed class TableMoreButton(TableHost host, InlineCommand overflow) : Component
+        /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21). Where the tier gives the page ONE "…" in the bar
+        /// (<see cref="global::Wavee.Theming.DetailPageMenu.ListBar"/>), the page menu's items follow after a separator (<see cref="PageMenuRows"/>).</summary>
+        sealed class TableMoreButton(TableHost host) : Component
         {
             public override Element Render()
             {
                 var h = host;
+                InlineCommand overflow = UseProps<MoreProps>().Overflow;
                 var overlay = UseContext(Overlay.Service);
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
@@ -732,8 +746,28 @@ public readonly partial struct Track
 
                 List<MenuFlyoutItem> Items()
                 {
+                    var items = h.ListMenuItems(overflow, overlay, OpenFilter);
+                    if (h.PageMenuNow() == global::Wavee.Theming.DetailPageMenu.ListBar) h.AppendPageMenu(items);
+                    return items;
+                }
+
+                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                Element more = h.Kit.IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
+                return ToolTip.Wrap(h.Kit.MoreSlot(more, activeFilters), Loc.Get(Strings.Common.More));
+            }
+        }
+
+        /// <summary>The list options the bar's "…" holds (see <see cref="TableMoreButton"/>), for <paramref name="overflow"/>: the bar's own menu, and the
+        /// hero's where the tier gives the page ONE "…" there (<see cref="HeroPageMenu"/>).</summary>
+        List<MenuFlyoutItem> ListMenuItems(InlineCommand overflow, IOverlayService? overlay, Action openFilter)
+        {
+            var h = this;
+            bool filterInMore = (overflow & InlineCommand.Filter) != 0;
+            void OpenFilter() => openFilter();
+            {
+                {
                     var cfg = h.Cfg;
-                    var items = new List<MenuFlyoutItem>(10);
+                    var items = new List<MenuFlyoutItem>(16);
                     if ((overflow & InlineCommand.Shuffle) != 0)
                         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Shuffle), Icons.Shuffle, true, h.Shuffle));
                     if ((overflow & InlineCommand.Sort) != 0)
@@ -771,11 +805,72 @@ public readonly partial struct Track
                     });
                     return items;
                 }
-
-                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
-                Element more = h.Kit.IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
-                return ToolTip.Wrap(h.Kit.MoreSlot(more, activeFilters), Loc.Get(Strings.Common.More));
             }
+        }
+
+        /// <summary>Where the page's "…" lives at the committed window tier (the structure's table record, <see cref="global::Wavee.Theming.DetailTableTier.PageMenu"/>),
+        /// for a table that hosts the hero; two "…" (Both) anywhere else. Tracked.</summary>
+        internal global::Wavee.Theming.DetailPageMenu PageMenuNow()
+            => _args.Value is { Embedded: false } a && (a.Vertical is not null || a.Columns is not null)
+                ? ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.PageMenu
+                : global::Wavee.Theming.DetailPageMenu.Both;
+
+        /// <summary>The page menu's rows after the list options (the bar's ONE "…", Classic Compact): a separator, then the hero's page menu as it would open
+        /// there (C-Album-Compact's "More list options" carries both groups).</summary>
+        void AppendPageMenu(List<MenuFlyoutItem> items)
+        {
+            if (_latest.Vertical?.Actions.More?.Invoke() is not { } page || page.Rows.Count == 0) return;
+            // The page's own "Add to playlist" says what the list's deposit says (an album's tracks): one row of it, the page's.
+            DropSaidBy(items, page.Rows);
+            items.Add(MenuFlyoutItem.Separator);
+            items.AddRange(page.Rows);
+        }
+
+        /// <summary>Drops from <paramref name="list"/> each row whose words a row of <paramref name="page"/> already says (the merged "…" offers a verb once),
+        /// and any separator left leading, trailing or doubled.</summary>
+        static void DropSaidBy(List<MenuFlyoutItem> list, IReadOnlyList<MenuFlyoutItem> page)
+        {
+            list.RemoveAll(r => r.Kind != MenuItemKind.Separator && r.Label.Length > 0
+                && page.Any(p => p.Kind != MenuItemKind.Separator && string.Equals(p.Label, r.Label, StringComparison.CurrentCultureIgnoreCase)));
+            for (int i = list.Count - 1; i >= 0; i--)
+                if (list[i].Kind == MenuItemKind.Separator && (i == 0 || i == list.Count - 1 || list[i - 1].Kind == MenuItemKind.Separator)) list.RemoveAt(i);
+        }
+
+        /// <summary>The hero's ONE "…" (Zune and WinUI Compact): the page menu's own items, then a separator and the list options the bar's "…" held (the
+        /// commands its fit evicts included), so no option is lost when the bar draws none. Opened by the hero; the filter card anchors to the bar's search
+        /// slot, the bar's "…" being gone.</summary>
+        ContextMenuModel? HeroPageMenu() => MergePageMenu(_latest.Vertical?.Actions.More?.Invoke(), BridgeListItems());
+
+        /// <summary>The list options as the page's ONE "…" lists them (the commands the bar's fit evicted included); published on the frame's bridge.</summary>
+        List<MenuFlyoutItem> BridgeListItems() => ListMenuItems(_moreOverflow, _overlay, _openFilterFromHero ??= OpenFilterFromHero);
+        Func<List<MenuFlyoutItem>>? _bridgeList;
+
+        /// <summary>The page's ONE "…": its own items, then a separator and the list options (each said once: a list row whose words the page already says
+        /// is dropped). Null where neither has anything.</summary>
+        internal static ContextMenuModel? MergePageMenu(ContextMenuModel? page, List<MenuFlyoutItem>? list)
+        {
+            var rows = new List<MenuFlyoutItem>(24);
+            if (page is { } p) rows.AddRange(p.Rows);
+            if (list is { Count: > 0 })
+            {
+                DropSaidBy(list, rows);
+                if (rows.Count > 0 && list.Count > 0) rows.Add(MenuFlyoutItem.Separator);
+                rows.AddRange(list);
+            }
+            return rows.Count == 0 && page is null ? null : new ContextMenuModel(page?.Primary ?? [], rows, page?.Header);
+        }
+
+        /// <summary>The commands the bar's fit evicted at its last render (what the hero's ONE "…" lists as list options).</summary>
+        InlineCommand _moreOverflow;
+        Action? _openFilterFromHero;
+        readonly Ref<NodeHandle> _filterAnchor = new(default);
+        readonly Ref<OverlayHandle?> _heroFilterHandle = new(null);
+
+        void OpenFilterFromHero()
+        {
+            if (_overlay is not { } overlay) return;
+            // Next tick (the menu closes first), anchored to the bar's search slot: the bar's own "…" is not drawn at this tier.
+            _post?.Invoke(() => ToggleFilterCard(overlay, _filterAnchor, _heroFilterHandle));
         }
 
         // ══ 6. THE FILTER ═══════════════════════════════════════════════════════════════════════════════════════════

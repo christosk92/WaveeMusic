@@ -100,13 +100,16 @@ public static class DetailLadders
 /// core's. Appended (P6 playlist-load lane).</param>
 /// <param name="TuneInHero">A playlist's Tune is the HERO's action at this tier (WinUI, W-Playlist: Play · Shuffle · Invite · Tune · Share), so the list bar leaves
 /// it out (false: the list bar keeps it, as it always has). Appended (P6 playlist-load lane).</param>
+/// <param name="PageMenu">Where the page's "…" lives at this tier (<see cref="DetailPageMenu"/>): both the hero's page menu and the list bar's "…" (the
+/// default), or ONE that carries the other's items (Classic Compact keeps the list bar's "More list options", Zune and WinUI Compact the hero's, as their
+/// boards draw them; Zune and WinUI at every size, their boards drawing one "…" throughout). Appended (contract 1.76, audit B8 r2).</param>
 /// <param name="ListRowAir">The air a LIST's two-line rows add to the density's row (a playlist, Liked Songs; never an album's one-line rows nor the Classic skin):
 /// WinUI's 2 at Small and Standard (W-Playlist, W-PlaylistFollowed, W-LikedSongs: a 48 row 2 under the last, a 50 pitch), so every density keeps its own step;
 /// 0 leaves the density's row. Appended (P6 playlist-load lane).</param>
 public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool PlaysColumn, bool DateColumn,
     float ModernRow = 0f, float ClassicRow = 0f, float Art = 0f, bool ListIndex = true, bool HoverActions = false, float OneLineTrim = 0f,
     bool HeartTrailing = false, bool KeepDuration = false, bool VersionsLane = true, float DurationWidth = 0f, bool ListVersionsLane = true,
-    float HeartWidth = 0f, bool TuneInHero = false, float ListRowAir = 0f)
+    float HeartWidth = 0f, bool TuneInHero = false, float ListRowAir = 0f, DetailPageMenu PageMenu = DetailPageMenu.Both)
 {
     /// <summary>Every lane the width admits, the density's rows.</summary>
     public static DetailTableTier Standard { get; } = new(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true);
@@ -195,4 +198,15 @@ public sealed record DetailTierPolicy(DetailTierLayout Compact, DetailTierLayout
 
     /// <summary>The rail description's clamp at height rung <paramref name="rung"/>.</summary>
     public int DescriptionFor(int rung) => rung <= 0 ? DescriptionShort : DescriptionRegular;
+}
+
+/// <summary>Where a detail page's "…" lives at a tier (<see cref="DetailTableTier.PageMenu"/>). Appended (contract 1.76, audit B8 r2).</summary>
+public enum DetailPageMenu : byte
+{
+    /// <summary>Two: the hero's page menu (share, go to artist, …) and the list bar's "…" (the list options: row size, select, sort when folded, …).</summary>
+    Both,
+    /// <summary>One, the list bar's: the hero draws no "…" and the bar's menu carries the page menu's items after its own.</summary>
+    ListBar,
+    /// <summary>One, the hero's: the list bar draws no "…" and the hero's menu carries the list options after the page's own items.</summary>
+    Hero,
 }

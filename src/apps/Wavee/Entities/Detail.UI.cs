@@ -242,6 +242,14 @@ public static partial class Detail
 
     // ══ 2. THE SPEC ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>Where a page's ONE "…" (a tier's <see cref="Theming.DetailTableTier.PageMenu"/>) meets the list options: the table publishes its list menu here,
+    /// and the columns form's rail, whose "…" is the page's there, merges it (audit B8 r2). One per frame host.</summary>
+    public sealed class PageMenuBridge
+    {
+        /// <summary>The table's list options as the page's "…" lists them; null until the table's bar has rendered.</summary>
+        public Func<List<MenuFlyoutItem>>? List;
+    }
+
     /// <summary>The page-level verbs the frame wires. Equality is PRESENCE only (a null verb ⇒ its affordance is absent);
     /// the frame always invokes the newest delegate the page pushed.</summary>
     public sealed record FrameActions
@@ -809,6 +817,9 @@ public static partial class Detail
 
             bool episodes = cfg.Content == DetailContent.Episodes;
             var acts = TrampolineActions(spec.Actions);
+            // The columns form's rail draws the page's "…" there: where the tier gives the page ONE, it is the bar's (none here) or this one, carrying the
+            // list options (the hero form's is the table's own, Track.Table HeroSpec). A track page only: the bridge's list is its table's.
+            var railActs = cfg.Content == DetailContent.Tracks ? PageMenuActs(acts, tierLayout.Table.PageMenu) : acts;
             DropTargetSpec? drop = PageDropTarget(cfg);
 
             // ── the rail the columns hold (the two-column arm's, and the one-tree page's columns form) and the ASIDE (contract 1.21): docked where the
@@ -818,7 +829,7 @@ public static partial class Detail
             // A show's or an episode's vertical arm carries them too (audit B9): a structure may draw the rail stacked as its fixed header, one identity at
             // every width.
             Contracts.DetailTwoColumnProps? twoColumn = cfg.Rail && (oneTree || !heroForm || episodes)
-                ? TwoColumnFor(spec, cfg, acts, mode, uniform, pageWidthEstimate, tierLayouts, in tierFacts, heroForm)
+                ? TwoColumnFor(spec, cfg, railActs, mode, uniform, pageWidthEstimate, tierLayouts, in tierFacts, heroForm)
                 : null;
             bool asideOn = tierLayout.AsideDocked && !episodes && (spec.Slots.Aside is not null || _sheetHosts)
                 && (!heroForm || (verticalTracks && tierLayout.AsideInHero));
@@ -1022,6 +1033,7 @@ public static partial class Detail
                 ScrollKey = routeKey,
                 Form = form,
                 Columns = columns,
+                MenuBridge = _menuBridge,
             };
             // A route is a new scroll/hero identity. A ONE-TREE page's table is the same at every width (audit B9): its key is the route alone, and
             // the form is a prop. Elsewhere the arm is in the key (a hero-system list must never reconcile against a standard one). The tier is NOT
@@ -1058,6 +1070,18 @@ public static partial class Detail
         }
 
         // ── trampolines ──
+
+        readonly PageMenuBridge _menuBridge = new();
+        Func<ContextMenuModel?>? _railMenu;
+
+        /// <summary>The rail's actions under a tier's <see cref="Theming.DetailPageMenu"/>: no "…" where the bar holds the page's ONE, the merged menu where
+        /// the rail's is it.</summary>
+        FrameActions PageMenuActs(FrameActions a, Theming.DetailPageMenu home) => a.More is null ? a : home switch
+        {
+            Theming.DetailPageMenu.ListBar => a with { More = null },
+            Theming.DetailPageMenu.Hero => a with { More = _railMenu ??= () => Track.MergePageMenu(_latest?.Actions.More?.Invoke(), _menuBridge.List?.Invoke()) },
+            _ => a,
+        };
 
         FrameActions TrampolineActions(FrameActions a)
         {

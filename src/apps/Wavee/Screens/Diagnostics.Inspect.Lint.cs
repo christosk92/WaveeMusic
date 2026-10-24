@@ -2736,6 +2736,16 @@ public static partial class Diagnostics
             // A target not wholly in its scroller's view is judged as if scrolled in: that scroller, and every ancestor above it, cut only across
             // its axis. A target in view meets every clip as the hit test does (a pager at the end of a paged shelf is cut at the shelf's edge).
             bool scrollsH = false, scrollsV = false;
+            // A hit rect (the box grown by its slop) that crosses its scroller's view on an axis is judged as if scrolled in on that axis, by every clip
+            // on the way (a row at the list's foot whose slop pokes 0.8 under the view read 39.2 tall; audit B8 r2): the pass finds it before the clips.
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                Node anc = s.Nodes[a];
+                // Only where scrolling can bring it in (content past that edge): a pager at the end of a paged shelf stays cut at the shelf's edge.
+                bool before = anc.ScrollOffset > Slack, after = anc.ScrollOffset < anc.ScrollMax - Slack;
+                if (anc.ScrollAxis == 1 && ((l < anc.Rect.X - Slack && before) || (rr > anc.Rect.Right + Slack && after))) scrollsH = true;
+                if (anc.ScrollAxis == 2 && ((t < anc.Rect.Y - Slack && before) || (b > anc.Rect.Bottom + Slack && after))) scrollsV = true;
+            }
             for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
             {
                 Node anc = s.Nodes[a];
@@ -2861,10 +2871,24 @@ public static partial class Diagnostics
                 if (EntityIn(m.Key) is { Length: > 0 } entity) return entity;
                 if (i != n.Index && m.Instance == i && (m.Interactive || m.ImageCount > 0))
                     return "the row " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
+                // A row cell (`c.heart`, `c.more`: Track.CellKey) acts on its row's track, never on the list's container (audit B8 r2: a pane's track
+                // heart read as the pane album's save).
+                if (m.Key is { } cell && cell.StartsWith("c.", StringComparison.Ordinal) && m.Parent >= 0)
+                    return "the row of " + m.Ref + " #" + m.Parent.ToString(CultureInfo.InvariantCulture);
+                // A card that is a click target of its own and carries art (an episode card, the artist's pick) acts on what it shows (audit B8 r2).
+                if (i != n.Index && m.Interactive && m.ImageCount > 0 && !string.Equals(m.Label, n.Label, StringComparison.Ordinal))
+                    return "the card " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
+                // A library page's detail pane acts on the item it shows, never on the library page around it (audit B8 r2).
+                if (m.Key is { } pane && PaneKey(pane)) return "the pane " + m.Ref;
             }
             if (paged && !KeyedUnder(s, n, ContentCard)) return "the window";
             return s.PageEntity.Length > 0 ? s.PageEntity : "page";
         }
+
+        /// <summary>A library page's detail pane: the keys the structures give it (`pane`, `pane:<slot>`, Classic's and WinUI's `lib:detail` region) and Zune's
+        /// pane verbs (`lib-pane-*`).</summary>
+        static bool PaneKey(string key)
+            => key is "pane" or "lib:detail" || key.StartsWith("pane:", StringComparison.Ordinal) || key.StartsWith("lib-pane", StringComparison.Ordinal);
 
         /// <summary>The content card: the frame that hosts the page and what speaks for it (Zune's band); outside it is window chrome.</summary>
         static readonly string[] ContentCard = ["shell.content.card"];

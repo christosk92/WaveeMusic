@@ -68,7 +68,9 @@ internal static class WinUiRowCells
         if (!set.IndexHidden)
             cells[i++] = NumberCell(displayIndex, in st, withheld ? null : o.OnPlay, o.HoverPaused, o.ChartStatus, CellKey.Num);
         if (set.Heart)
-            cells[i++] = Track.RowCenterCell(HeartReveal(Heart(st.Saved, o.OnLike, o.LikePop, isNow), LikedNow(t)), CellKey.Heart);
+            // The control cell (no clip), as Classic's (B6b): the 28 heart fills its 28 lane, so a clipping cell cut the Compact hit slop to 28 wide
+            // (Recents at the W641 crossing, 28 x 40 under the 40 floor; audit B8 r2).
+            cells[i++] = Track.RowControlCell(HeartReveal(Heart(st.Saved, o.OnLike, o.LikePop, isNow), LikedNow(t)), CellKey.Heart);
         if (set.Thumb)
             cells[i++] = Track.RowCenterCell(Controls.Artwork(Track.RowArtUrl(d), art, art, R.Shape.Control,
                                                         decodePx: Track.RowArtDecodePx), CellKey.Art);
