@@ -2,7 +2,8 @@
 //
 // Board Z-PlayBar-Huge ("play on"): the body of the picker the bar's device word and its "playing on" line open (the core owns the overlay:
 // upward, light dismiss, the picker-opened side effect). A 340 column: the "play on" head, then the core's decided entries as Zune rows,
-// a device row 52 tall with an 8 dot (the accent on the device in use), its name (14/20, the accent in use; a name keeps its own casing) over
+// a device row 52 tall with an 8 dot (the accent on the device in use), its name (14/20, the accent in use; a name keeps its own casing, the core's
+// "system default" takes Zune's) over
 // its note (12/16), an information row (a section's header, the quality echo, "no devices") as a small cased line, a divider between the
 // sections. It scrolls well before the window edge (`props.MaxHeight`) and re-renders while open, so a transfer landing moves the accent in
 // place. Choosing a row runs its verb and closes the picker.
@@ -73,7 +74,7 @@ internal static class ZuneDevicePicker
     /// <summary>A device or an output: the dot, the name over its note; the accent while it is the one in use.</summary>
     static BoxEl Device(DevicePickerEntry e, Action close)
     {
-        bool on = e.Kind == DevicePickerEntryKind.Radio && e.IsChecked;
+        bool on = e.Kind is DevicePickerEntryKind.Radio or DevicePickerEntryKind.Command && e.IsChecked;   // the device, or this computer's output, playing
         bool enabled = e.Enabled && e.Invoke is not null;
         var invoke = e.Invoke;
         var text = new List<Element>(2)
@@ -81,7 +82,7 @@ internal static class ZuneDevicePicker
             new TextEl(e.Label)
             {
                 Size = P.PickerNameSize, LineHeight = P.PickerNameLine, Color = !e.Enabled ? Tok.TextDisabled : on ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Case = e.Word ? R.Case.For(LabelKind.Label) : TextCase.AsWritten, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
         };
         if (e.Accelerator is { Length: > 0 } note)

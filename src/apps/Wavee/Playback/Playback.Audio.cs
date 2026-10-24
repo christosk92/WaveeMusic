@@ -213,7 +213,7 @@ public static partial class Playback
         public static readonly Signal<string?> SelectedOutputId = new(null);
 
         /// <summary>Can this process play audio locally at all? False when the WASAPI leaf never opened — a Connect
-        /// viewer session, a machine with no render endpoint, a `--fake` run.</summary>
+        /// viewer session, a machine with no render endpoint (a `--fake` run reads true: its silent endpoint plays, <see cref="UseFake"/>).</summary>
         public static readonly Signal<bool> Supported = new(false);
 
         /// <summary>The local output's mute, separate from volume: the player bar's speaker glyph reads it and a
@@ -279,6 +279,22 @@ public static partial class Playback
         /// change (`WasapiAudioDevice` must accept a device id); when it lands, this seam is where the real
         /// enumeration attaches and `SelectAsync` starts routing instead of only persisting.</summary>
         public static Func<LocalAudioDevice[]>? EnumerateEndpoints { get; set; }
+
+        /// <summary>`--fake`'s outputs (B4's device-picker fixture): the roster reads <paramref name="outputs"/>, local playback reads as possible (the
+        /// silent endpoint does play, paced to the wall clock) and every silent open echoes <see cref="FakeFormat"/>, so the picker draws what a
+        /// session playing on this computer draws: its outputs and the quality echo. Call it once at boot, before the first load.</summary>
+        public static void UseFake(LocalAudioDevice[] outputs)
+        {
+            s_fakeOutputs = true;
+            EnumerateEndpoints = () => outputs;
+            RefreshDevices();
+            ToUi(static () => Supported.Value = true);
+        }
+
+        /// <summary>The format a `--fake` silent open echoes (<see cref="UseFake"/>): the Very high rung.</summary>
+        public const Spotify.Audio.Format FakeFormat = Spotify.Audio.Format.OggVorbis320;
+
+        static bool s_fakeOutputs;
 
         /// <summary>Refresh the roster. Called at boot and on the engine's default-device change.</summary>
         public static void RefreshDevices()
@@ -1070,7 +1086,9 @@ public static partial class Playback
                 s_session = session;
                 s_silent = true;
                 s_bytes = null;
-                s_opened = new Opened(Spotify.Audio.Format.Unknown, durMs, 0f, "", 0, false);
+                s_opened = s_fakeOutputs
+                    ? new Opened(FakeFormat, durMs, 0f, LabelFor(FakeFormat, 0, 0), 320, false)
+                    : new Opened(Spotify.Audio.Format.Unknown, durMs, 0f, "", 0, false);
                 s_activeDurMs = durMs;
                 s_activeStartMs = -start.PositionOffsetMs;   // the position reads from where the load asked (SilentStart)
                 s_activePrimaryId = session.PrimaryVoiceIdValue;

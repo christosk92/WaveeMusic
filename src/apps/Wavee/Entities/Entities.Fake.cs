@@ -209,6 +209,13 @@ public static partial class Entities
         foreach (char c in id.Text) h = (h ^ c) * 16777619u;
         return h % 3u == 0u;
     }
+    /// <summary>The demo's outputs (<c>Playback.Audio.UseFake</c>): the machine's speakers, the default, and a headset, as a stock Windows laptop lists them.</summary>
+    internal static Playback.Audio.LocalAudioDevice[] FakeOutputs() =>
+    [
+        new("fake:out:speakers", "Speakers (Realtek Audio)", 0, IsDefault: true),
+        new("fake:out:headphones", "Headphones (Realtek Audio)", 1, IsDefault: false),
+    ];
+
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);
     static string ArtistUri(int i) => "spotify:artist:ar" + Wrap(i, ArtistCount);
     static string PlaylistUri(int i) => "spotify:playlist:pl" + Wrap(i, PlaylistCount);

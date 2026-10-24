@@ -106,13 +106,14 @@ public static partial class Stage
         int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
         string name = slot >= 0 ? rows[slot].Name ?? "" : Loc.Get(Strings.Player.SystemDefault);
         string glyph = slot >= 0 ? Icons.Devices : Icons.ThisPc;
+        bool word = slot < 0;
         if (slot < 0)
         {
             string? selected = Playback.Audio.SelectedOutputId.Value;
             foreach (var d in Playback.Audio.Devices.Value)
-                if (selected is { Length: > 0 } && string.Equals(d.Id, selected, StringComparison.OrdinalIgnoreCase)) { name = d.Name; break; }
+                if (selected is { Length: > 0 } && string.Equals(d.Id, selected, StringComparison.OrdinalIgnoreCase)) { name = d.Name; word = false; break; }
         }
-        return new StageDeviceFacts(glyph, name);
+        return new StageDeviceFacts(glyph, name) { Word = word };
     }
 
     /// <summary>The two-section device picker over the SAME items the player bar builds (Shell.DevicePickerMenuItems), built when it opens.</summary>

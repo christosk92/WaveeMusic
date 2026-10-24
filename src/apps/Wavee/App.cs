@@ -155,6 +155,7 @@ public static class App
         Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
         if (gui) WireMaterialPolicy();   // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
         if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
+        if (Platform.Args.Fake) Playback.Audio.UseFake(Entities.FakeOutputs());  // --fake: a stable outputs roster and a format echo for the device picker (audit B5b)
         Modules.Boot(startIdleTimer: gui);   // the headless host sweeps nothing: its idle timer would outlive a test
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
         Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
