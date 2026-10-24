@@ -129,7 +129,10 @@ public static class ClassicHomeRules
     /// <summary>Compact's stacked daylist: its vertical veil peaks where the copy rises over the art band (<see cref="StackedOverlap"/> above its foot,
     /// less a line of slack) and holds to the foot, so the eyebrow is on the full veil. NaN for a band with no height.</summary>
     public static float StackedVeilHold(float artH) => artH <= StackedOverlap ? float.NaN : (artH - 2f * StackedOverlap) / artH;
-    public static ColorF ClockPlateFill => ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
+    /// <summary>The Huge clock plate's fill. The plate lies mostly on the card's veil, which follows the kind (graded from the art toward the page's
+    /// ground), so the plate follows the kind too and its inks stay the page's: the board's dark plate (black 26 %, C-Home-Huge) in dark, the card's
+    /// frosted fill in light, where black 26 % over the light veil left a mid-grey that neither ink read on (2.4 : 1).</summary>
+    public static ColorF ClockPlateFill => Tok.Theme == ThemeKind.Light ? Tok.FillCardDefault : ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
     public static Edges4 ClockPlatePadding => new(14f, 12f, 14f, 12f);
 
     /// <summary>At most this many tag links on the description line.</summary>
