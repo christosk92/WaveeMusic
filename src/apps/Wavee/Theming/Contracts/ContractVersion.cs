@@ -175,6 +175,8 @@
 // `PageCrumb.Word` (a crumb that is the core's word, not a name: a theme may re-case it); `StyleKeys.LibraryPlaylistHead` with `LibraryPlaylistHeadStyle` /
 // `LibraryPlaylistHeadArgs` (the library playlists reader's head as a theme draws it); `AlbumTrailStackProps.Name` (the name a stack's title carries);
 // `BrowseCategoryProps.Color` / `.Parent` (a category page's own colour and the page it was opened from).
+// 1.66 (audit B11): `PlayerCredits.Line(separator)` (the credits line as plain words: what the bar's credits marquee restarts on and shows as its
+// tooltip). `StageIdentityProps.Marquee` stays as it is: the marquee control behind it now rests at the start and passes a bounded number of times.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -190,7 +192,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 62;
+    public const int Minor = 66;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

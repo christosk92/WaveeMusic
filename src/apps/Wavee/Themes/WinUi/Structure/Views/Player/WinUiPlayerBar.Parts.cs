@@ -531,10 +531,8 @@ internal sealed class WinUiCredits : WinUiCreditsLine
     public override Element Render() => Line(UseProps<WinUiPlayerBar.CreditsProps>(), fit: true);
 }
 
-/// <summary>The credits line at its full width: the marquee's content.</summary>
-internal sealed class WinUiCreditsRun(WinUiPlayerBar.CreditsProps props) : WinUiCreditsLine
+/// <summary>The credits line at its full width: the marquee's content (its props re-pushed per render).</summary>
+internal sealed class WinUiCreditsRun : WinUiCreditsLine
 {
-    readonly WinUiPlayerBar.CreditsProps _props = props;
-
-    public override Element Render() => Line(_props, fit: false);
+    public override Element Render() => Line(UseProps<WinUiPlayerBar.CreditsProps>(), fit: false);
 }

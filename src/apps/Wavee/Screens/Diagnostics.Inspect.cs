@@ -441,6 +441,7 @@ public static partial class Diagnostics
                 case Inspect.Verb.Frames:
                     {
                         int n = Math.Clamp(a.Int("n", 1), 0, 100_000);
+                        _hotAlloc = 0; _paintedFrames = 0;
                         RunFrames(Math.Max(0, n - 1));
                         int epoch = Tok.Epoch;
                         RunFrames(Math.Min(n, 1));
@@ -448,6 +449,8 @@ public static partial class Diagnostics
                         return Inspect.Reply.Ok(id, name, w =>
                         {
                             w.WriteNumber("frames", n);
+                            w.WriteNumber("painted", _paintedFrames);
+                            w.WriteNumber("hotAllocBytes", _hotAlloc);
                             w.WriteBoolean("animating", shell.Host.Animation.HasActive);
                             w.WriteBoolean("scrolling", shell.Host.AnyUserScrollMoving);
                             FluentGpu.Hosting.WakeReasons wake = shell.Host.CurrentWakeReasons;
@@ -1456,8 +1459,16 @@ public static partial class Diagnostics
                 _shell!.Host.RunFrame();
                 _ms += 16;
                 _frames++;
+                var stats = _shell.Host.LastStats;
+                _hotAlloc += stats.HotPhaseAllocBytes;
+                if (stats.Rendered) _paintedFrames++;
             }
         }
+
+        // The `frames` verb's allocation census: the engine's hot-phase bytes (frame phases 6-13, FrameStats.HotPhaseAllocBytes) summed over
+        // the frames it ran, and how many of them painted (a steady animation must read 0 bytes over many painted frames).
+        long _hotAlloc;
+        int _paintedFrames;
 
         InspectKit.SettleResult Settle(int max, InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
         {

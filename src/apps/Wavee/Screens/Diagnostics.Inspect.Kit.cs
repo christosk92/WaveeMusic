@@ -89,12 +89,27 @@ public static partial class Diagnostics
         /// programmatic scroll, crossfades, exit orphans...). The reasons outside the ambient set, or None.</summary>
         public static FluentGpu.Hosting.WakeReasons BusyWake(Shell.HeadlessShell shell) => shell.Host.CurrentWakeReasons & ~AmbientWake;
 
-        /// <summary>Every live, unparked animation row is a LOOP (<c>AnimFlags.Loop</c>: a marquee's ping-pong, a looping indicator), so the
-        /// tracks that keep the frame awake never end by design. The settle treats them as ambient: it does not wait for them, and the
-        /// <see cref="FluentGpu.Hosting.WakeReasons.Anim"/> they raise is theirs. A row of any other kind (a FLIP, a fade, a spring) is busy
-        /// as before. (A connected-animation flight raises Anim with no row of its own: <c>AppHost.HasConnectedFlight</c> keeps it busy.)</summary>
+        /// <summary>Every live, unparked animation row is a LOOP (<c>AnimFlags.Loop</c>: a looping indicator, a playing row) or a marquee's pass
+        /// (<see cref="MarqueePassesOnly"/>), so the tracks that keep the frame awake are ambient by design. The settle treats them as ambient: it
+        /// does not wait for them, and the <see cref="FluentGpu.Hosting.WakeReasons.Anim"/> they raise is theirs. A row of any other kind (a FLIP,
+        /// a fade, a spring) is busy as before. (A connected-animation flight raises Anim with no row of its own: <c>AppHost.HasConnectedFlight</c>
+        /// keeps it busy.)</summary>
         public static bool LoopsOnly(Shell.HeadlessShell shell)
-            => shell.Host.Animation.HasActive && shell.Host.Animation.ActiveNonLoopCount == 0 && !shell.Host.HasConnectedFlight;
+            => shell.Host.Animation.HasActive && !shell.Host.HasConnectedFlight
+               && (shell.Host.Animation.ActiveNonLoopCount == 0 || MarqueePassesOnly(shell));
+
+        /// <summary>Every live non-loop row is a marquee's pass (a one-shot row on a strip keyed <see cref="FluentGpu.Controls.Marquee.StripKey"/>):
+        /// bounded, but ambient as a loop is (a few passes after a change, more under the pointer, one pass up to ~15 s), so a settle no more waits
+        /// for it than it did for the endless ticker it replaced. Only a handful of rows is checked (a navigation's FLIPs are busy anyway).</summary>
+        static bool MarqueePassesOnly(Shell.HeadlessShell shell)
+        {
+            int nonLoop = shell.Host.Animation.ActiveNonLoopCount;
+            if (nonLoop > 4) return false;
+            int passes = 0;
+            foreach (var (node, _) in shell.FindPrefix(FluentGpu.Controls.Marquee.StripKey))
+                if (shell.Host.Animation.HasTracks(node)) passes++;
+            return passes >= nonLoop;
+        }
 
         /// <summary>How a settle treats looping tracks (the settling verbs' `loops=` arg).</summary>
         public enum LoopMode : byte

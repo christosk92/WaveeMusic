@@ -5,7 +5,7 @@
 // the look of the parts:
 //
 //   ZunePlayerLayout     the bar's motion (a level crossing FLIPs every structural node, a line enters or leaves with a fade, a tool word
-//                        lights by opacity only, the face cross-fades), the marquee's cadence, the solid transport glyphs and the parts
+//                        lights by opacity only, the face cross-fades), the marquee's look, the solid transport glyphs and the parts
 //                        a level does not size (the words' inset, the volume line and its popup, the podcast speed panel)
 //   ZuneTransportLayout  the seek rail (the 2-px line in a 12 hit box, the 12 round thumb on hover), the chapter ticks and tip, the scrub
 //                        readout and the time labels (Z-PlayBar, Z-Part-PlayBar)
@@ -59,8 +59,16 @@ public static class ZunePlayerLayout
     public static readonly MotionTokenDef FaceSwap =
         MotionTokenDef.Eased(Design.Motion.Standard, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade);
 
-    /// <summary>The marquee's cadence (the production one: a slow pass every 14 s, 3 s rests, 2 s before the first).</summary>
-    public const float MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f, MarqueeSpeed = 18f;
+    /// <summary>The marquee's look (the behaviour, its pauses and passes are the engine control's, the same in every theme): Zune's large type
+    /// travels a little faster than the other themes' (DIP per second) and fades deeper at a cut edge.</summary>
+    public const float MarqueeSpeed = 34f, MarqueeFade = 16f;
+
+    /// <summary>The stage's display titles pass at the bar lines' reading rate in ems (34 DIP/s over 13-15 DIP type is about 2.4 em/s), a
+    /// little calmer for the large face: 1.8 em per second of the title's own size, so a 44 DIP title travels about 80 DIP/s.</summary>
+    public const float StageMarqueeEmRate = 1.8f;
+
+    /// <summary>Between two credited names on the artists line (and in its plain words: the marquee's restart key and tooltip).</summary>
+    public const string CreditSeparator = ", ";
 
     // ── the identity ─────────────────────────────────────────────────────────────────────────────────────────────────
 
