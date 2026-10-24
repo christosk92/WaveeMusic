@@ -111,10 +111,11 @@ internal static class ZuneHomePage
         bool all = ZuneHomePlan.HasQuickplay(m.Facet);
         var rows = ZuneHomePlan.Rows(kinds, all);
 
-        var kids = new List<Element>(rows.Length + 1);
+        var kids = new List<Element>(rows.Length * 2 + 1);
         for (int r = 0; r < rows.Length; r++)
         {
             var row = rows[r];
+            if (r > 0) kids.Add(ZoneAir(r, lay));
             switch (row.Kind)
             {
                 case ZuneHomeRowKind.Quickplay:
@@ -129,13 +130,22 @@ internal static class ZuneHomePage
             }
         }
         if (all)
-            kids.Add(new BoxEl
+        {
+            if (rows.Length > 0) kids.Add(ZoneAir(rows.Length, lay));
+            // A chapter like the zones: its link's target grows to 40 at Compact, and the row's height eases with it.
+            kids.Add(Box(H.CustomizeKey, new BoxEl
             {
-                Key = H.CustomizeKey, Direction = 0, MinWidth = 0f, Animate = Design.Entrance.Row(rows.Length),
+                Direction = 0, MinWidth = 0f,
                 Children = [K.Link("zune-home-customize-link", Loc.Get(Strings.Home.Customizer.Title), HomeVerbs.OpenCustomize, lay.LinkTarget)],
-            });
-        return new BoxEl { Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
+            }, rows.Length));
+        }
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
+
+    /// <summary>The air between two rows: the tier's zone gap (18 / 22 / 28 / 36) as a spacer whose height eases, never the column's Gap (a gap cannot
+    /// ease: every crossing moved every chapter below the first by the difference at once).</summary>
+    static Element ZoneAir(int row, ZuneHomeLayout lay)
+        => ZuneMotion.Air(H.ZoneAirPrefix + row.ToString(System.Globalization.CultureInfo.InvariantCulture), lay.ZoneGap);
 
     /// <summary>The quickplay strip's chapter: its core host (pins, the Recents zone's host as the history, the release zone), its skeleton the view's
     /// own static tree.</summary>
@@ -159,8 +169,8 @@ internal static class ZuneHomePage
             Layout = H.ChapterResize,
             Children =
             [
-                Chapter(a, overlay, lay, index, reveal: false) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
-                Chapter(b, overlay, lay, index, reveal: false) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+                Chapter(a, overlay, lay, index) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+                Chapter(b, overlay, lay, index) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
             ],
         };
     }

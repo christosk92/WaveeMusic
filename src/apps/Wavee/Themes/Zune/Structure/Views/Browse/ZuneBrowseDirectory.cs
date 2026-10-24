@@ -30,7 +30,8 @@ using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using B = Wavee.Themes.Zune.ZuneBrowseRules;
 using H = Wavee.Themes.Zune.ZuneHomeRules;
-using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+
 using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
@@ -98,7 +99,14 @@ internal static class ZuneBrowseDirectory
         if (ItemsOf(groups, BrowseGroup.MoodActivity) is { Count: > 0 } moods)
             kids.Add(Band(BrowseGroup.MoodActivity, band++, Plates(moods, live, lay.MoodCols, lay.MoodH, big: false, "mood", lay.PlateGap)));
         if (ItemsOf(groups, BrowseGroup.More) is { Count: > 0 } more) kids.Add(Band(BrowseGroup.More, band++, Links(more, live, lay, "more")));
-        return new BoxEl { Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
+        // The air between the bands is the tier's zone gap as easing spacers, never the column's Gap (a gap cannot ease: a crossing stepped every band).
+        var column = new List<Element>(kids.Count * 2);
+        for (int i = 0; i < kids.Count; i++)
+        {
+            if (i > 0) column.Add(ZuneMotion.Air(B.BandPrefix + "air:" + i.ToString(CultureInfo.InvariantCulture), lay.ZoneGap));
+            column.Add(kids[i]);
+        }
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = column.ToArray() };
     }
 
     static IReadOnlyList<BrowseCategory>? ItemsOf(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups, BrowseGroup g)
@@ -218,6 +226,7 @@ internal static class ZuneBrowseDirectory
             cells[i] = new BoxEl
             {
                 Key = "zune-link:" + m.Uri, Height = rowH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Layout = Design.Reduced ? null : B.CellMove,
                 Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = m.Open,
                 Children =
                 [

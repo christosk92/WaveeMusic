@@ -86,7 +86,7 @@ internal static class ZuneArtistHero
         // The spring is empty space, never a shimmer block (the deriver would paint a page-wide bar there while the page loads).
         var kids = new List<Element>(7)
         {
-            Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer),
+            ZuneMotion.Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer),
         };
         // Huge's secondary row stands in a slot that is ALWAYS mounted: its room (the gap above the rings and the rings) opens and closes as an
         // easing height while the row fades, so the name and the caption over it glide when Huge comes or goes (two docked panes take the content
@@ -115,7 +115,7 @@ internal static class ZuneArtistHero
                 ]
                 : [],
         }.Skeletonized(false));
-        kids.Add(Air(Rules.AirPrefix + "foot", lay.CaptionBottom));
+        kids.Add(ZuneMotion.Air(Rules.AirPrefix + "foot", lay.CaptionBottom));
 
         // The copy in the page column (the band's x); it fills the hero's height, so the spring parks the name and the caption at its foot.
         Element column = ZuneDetailKit.CentredPage(new BoxEl
@@ -126,7 +126,7 @@ internal static class ZuneArtistHero
 
         // The record's height is a FLOOR strut under the copy (the ZStack is as tall as its tallest layer), not the hero's MinHeight: a MinHeight
         // would clamp the eased height on a grow (Small 140 to Standard 340 when a panel undocks), the strut eases both ways.
-        var layers = new List<Element>(3) { Air(Rules.AirPrefix + "floor", lay.HeroH), column };
+        var layers = new List<Element>(3) { ZuneMotion.Air(Rules.AirPrefix + "floor", lay.HeroH), column };
         if (lay.Secondary == ZuneArtistSecondary.Corner && !shimmer)
             layers.Add(new BoxEl
             {
@@ -144,10 +144,6 @@ internal static class ZuneArtistHero
             Key = Rules.HeroKey, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true, Children = layers.ToArray(),
         };
     }
-
-    /// <summary>A run of vertical air whose height a tier step changes: a spacer that eases (padding cannot).</summary>
-    internal static Element Air(string key, float height)
-        => new BoxEl { Key = key, Height = height, MinHeight = 0f, Shrink = 0f, Layout = ZuneMotion.HeightResize }.Skeletonized(false);
 
     /// <summary>The Compact row under the hero: play · shuffle · follow, the more ring at the end (40 targets).</summary>
     public static Element BelowRow(string name, string uri, ZuneArtistLayout lay, in Acts acts)

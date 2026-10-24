@@ -128,7 +128,7 @@ internal static class ZuneArtistPage
             Element body = ZuneArtistSections.Body(slot.Section, p, lay);
             // The gap above every section but the first is an easing spacer keyed by the section, not the magazine's Gap: a gap cannot ease, and
             // a tier step that changes it (Huge 4K's 44 to Huge's 28 when the panes dock) would shove every section by its count of gaps at once.
-            if (sections.Count > 0) sections.Add(ZuneArtistHero.Air(Rules.AirPrefix + "gap:" + key, lay.ZoneGap));
+            if (sections.Count > 0) sections.Add(ZuneMotion.Air(Rules.AirPrefix + "gap:" + key, lay.ZoneGap));
             sections.Add(new BoxEl
             {
                 Key = (slot.Anchor is null ? Rules.SectionPrefix : Rules.AnchorPrefix) + key, Direction = 1, MinWidth = 0f,
@@ -174,7 +174,7 @@ internal static class ZuneArtistPage
 
     /// <summary>The body's top under the hero (or the Compact actions row): an easing spacer, not the magazine's padding, so a tier step (a docked
     /// panel narrowing the content) moves no section.</summary>
-    static Element BodyAir(ZuneArtistLayout lay) => ZuneArtistHero.Air(Rules.AirPrefix + "body", lay.BodyTop);
+    static Element BodyAir(ZuneArtistLayout lay) => ZuneMotion.Air(Rules.AirPrefix + "body", lay.BodyTop);
 
     /// <summary>The magazine: the sections in the system page column (the frame's gutter, the 2400 cap, centred), 28 apart (the easing gap spacers
     /// <see cref="Compose"/> puts between them), the player dock's reserve under the last one.</summary>

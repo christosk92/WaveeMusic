@@ -98,6 +98,11 @@ public static class ZuneMotion
     /// <summary>Each leg of <see cref="SwapThrough"/>: the grid cross-fade's 160 ms, its fade kept under reduced motion.</summary>
     public static MotionTokenDef SwapThroughMotion => MotionTokenDef.Eased(GridCrossFadeMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
 
+    /// <summary>A run of vertical air whose height a tier step changes (the gap between a page's zones, the air above or below a block): a spacer
+    /// that eases its height (<see cref="HeightResize"/>), since padding, margins and a box's Gap cannot ease. Empty space on a skeleton, never a bar.</summary>
+    public static Element Air(string key, float height)
+        => new BoxEl { Key = key, Height = height, MinHeight = 0f, Shrink = 0f, HitTestVisible = false, Layout = HeightResize }.Skeletonized(false);
+
     /// <summary>A swap host's Enter: <see cref="SwapFade"/> once its view has rendered before (a crossing mounts the other tree, which fades in over
     /// the leaving one), none on the view's first render (a part that arrives with its page arrives with the page's own entrance, as before). Its
     /// Exit is always <see cref="SwapFade"/>. <paramref name="rendered"/> is <see cref="Rendered"/>'s answer.</summary>
