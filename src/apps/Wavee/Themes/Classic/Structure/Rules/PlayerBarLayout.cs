@@ -78,6 +78,10 @@ internal static class ClassicPlayerBarLayout
     /// passes after a track change, a pass on hover, one line moving at a time) is the engine control's, the same in every theme.</summary>
     public const float MarqueeSpeed = 30f, MarqueeFade = 12f;
 
+    /// <summary>The stage's display title passes at the bar's reading rate in ems, a little calmer for the large face: 1.8 em per second of the
+    /// title's own size (the bar's 30 DIP/s over its 13-14 DIP type is about 2.2 em/s).</summary>
+    public const float StageMarqueeEmRate = 1.8f;
+
     /// <summary>The title line's size.</summary>
     public const float TitleSize = 14f;
 

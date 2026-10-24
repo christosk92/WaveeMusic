@@ -192,7 +192,7 @@ internal static class ZuneStageIdentity
                 Marquee.Of(title, new Marquee.Style
                 {
                     FontSize = size, LineHeight = line, CharSpacing = tracking, Weight = weight, FontFamily = R.Type.DisplayFace, Foreground = Ink.Ink,
-                    Speed = ZunePlayerLayout.MarqueeSpeed, FadeBand = ZunePlayerLayout.MarqueeFade,
+                    Speed = size * ZunePlayerLayout.StageMarqueeEmRate, FadeBand = ZunePlayerLayout.MarqueeFade,
                 }),
             ],
         };

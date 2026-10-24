@@ -331,11 +331,12 @@ internal static partial class ZunePlayerBar
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         bool marquee = v.Marquee && !mini;
+        long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the lines' passes
         BoxEl title = marquee
             ? Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
             {
                 FontSize = look.TitleSize, Weight = L.TitleWeight, Foreground = titleInk, Speed = L.MarqueeSpeed, FadeBand = L.MarqueeFade,
-            }, marquees, order: 0)
+            }, marquees, order: 0, identity: face)
             : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
         title = title with { Key = titleKey };
         if (v.TitleNav && !mini)
@@ -366,7 +367,8 @@ internal static partial class ZunePlayerBar
             var credits = new CreditsProps(props, look.SubSize, look.SubLine, Linked: !mini);
             kids.Add(marquee
                 ? Marquee.Content(Embed.Comp(credits, static () => new ZuneCredits()), Prop.Of(() => props.Credits().Line(L.CreditSeparator)),
-                    new Marquee.Style { FontSize = look.SubSize, Speed = L.MarqueeSpeed, FadeBand = L.MarqueeFade }, marquees, order: 1) with { Key = artistsKey }
+                    new Marquee.Style { FontSize = look.SubSize, Speed = L.MarqueeSpeed, FadeBand = L.MarqueeFade }, marquees, order: 1, identity: face)
+                    with { Key = artistsKey }
                 : new BoxEl { Key = artistsKey, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new ZuneCredits())] });
         }
 

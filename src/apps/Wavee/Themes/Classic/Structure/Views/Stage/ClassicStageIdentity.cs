@@ -65,7 +65,7 @@ internal static class ClassicStageIdentity
                         Marquee.Of(shown, new Marquee.Style
                         {
                             FontSize = ts, LineHeight = tl, Weight = titleWeight, FontFamily = G.DisplayFace, Foreground = Ink.Ink,
-                            Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
+                            Speed = ts * ClassicPlayerBarLayout.StageMarqueeEmRate, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
                         }),
                     ],
                 }

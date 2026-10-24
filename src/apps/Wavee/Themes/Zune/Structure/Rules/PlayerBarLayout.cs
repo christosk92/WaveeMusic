@@ -62,6 +62,10 @@ public static class ZunePlayerLayout
     /// travels a little faster than the other themes' (DIP per second) and fades deeper at a cut edge.</summary>
     public const float MarqueeSpeed = 34f, MarqueeFade = 16f;
 
+    /// <summary>The stage's display titles pass at the bar lines' reading rate in ems (34 DIP/s over 13-15 DIP type is about 2.4 em/s), a
+    /// little calmer for the large face: 1.8 em per second of the title's own size, so a 44 DIP title travels about 80 DIP/s.</summary>
+    public const float StageMarqueeEmRate = 1.8f;
+
     /// <summary>Between two credited names on the artists line (and in its plain words: the marquee's restart key and tooltip).</summary>
     public const string CreditSeparator = ", ";
 

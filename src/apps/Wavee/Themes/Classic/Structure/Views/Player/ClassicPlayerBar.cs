@@ -116,12 +116,13 @@ internal static partial class ClassicPlayerBar
         };
         if (mini) titleRun = titleRun with { LineHeight = ClassicPlayerTiers.MiniTitleLine };
         // The mini bar's title never scrolls and is no link: the whole identity is ONE door there.
+        long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the marquees' passes
         BoxEl titleEl = v.Marquee && !mini
             ? Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
             {
                 FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
                 Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
-            }, marquees.Value, order: 0)
+            }, marquees.Value, order: 0, identity: face)
             : new BoxEl
             {
                 ClipToBounds = true, MinWidth = 0f,
@@ -176,7 +177,7 @@ internal static partial class ClassicPlayerBar
                         new Marquee.Style
                         {
                             FontSize = ClassicTransportLayout.CreditSize, Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
-                        }, marquees.Value, order: 1) with { Key = artistsKey }
+                        }, marquees.Value, order: 1, identity: face) with { Key = artistsKey }
                     : new BoxEl
                     {
                         Key = artistsKey, ClipToBounds = true, MinWidth = 0f,

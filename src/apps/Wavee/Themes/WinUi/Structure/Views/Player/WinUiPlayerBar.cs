@@ -382,12 +382,13 @@ internal static partial class WinUiPlayerBar
             Size = PL.TitleSize, LineHeight = PL.TitleLine, Weight = PL.TitleWeight, Color = titleInk,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
+        long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the marquees' passes
         // A column of the slot's width (never wider: Shrink), so the run is cut by its own ellipsis, not by the column's clip.
         BoxEl title = v.Marquee
             ? new BoxEl
             {
                 Key = titleKey, Height = PL.TitleLine, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f,
-                Children = [Marquee.Of(Prop.Of<string>(props.TitleText), MarqueeStyle(PL.TitleSize, PL.TitleWeight, titleInk), marquees, order: 0)],
+                Children = [Marquee.Of(Prop.Of<string>(props.TitleText), MarqueeStyle(PL.TitleSize, PL.TitleWeight, titleInk), marquees, order: 0, identity: face)],
             }
             : new BoxEl { Key = titleKey, Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [titleRun] };
         if (v.TitleNav && !mini)
@@ -418,7 +419,7 @@ internal static partial class WinUiPlayerBar
                     Children =
                     [
                         Marquee.Content(Embed.Comp(credits, static () => new WinUiCreditsRun()), Prop.Of(() => props.Credits().Line(PL.CreditSeparator)),
-                                        MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)), marquees, order: 1),
+                                        MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)), marquees, order: 1, identity: face),
                     ],
                 }
                 : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] };
