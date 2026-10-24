@@ -180,9 +180,12 @@ internal static class ZuneTransport
         bool right = props.Remaining;
         bool onMedia = props.Ink is not null;
         ColorF ink = props.Ink ?? Tok.TextSecondary;
+        // The remaining time is a button (it flips to the duration): on a Compact window it takes the 40 x 40 touch floor (owner: Compact targets >= 40).
+        float floor = right ? TouchTargetPolicy.FloorFor(ctx.Tier().Window) : 0f;
         return new BoxEl
         {
-            Width = props.IsLive || onMedia ? float.NaN : T.TimeSlotW, MinWidth = onMedia ? T.TimeSlotMediaMinW : T.TimeSlotW, Shrink = 0f,
+            Width = props.IsLive || onMedia ? float.NaN : T.TimeSlotW, MinWidth = MathF.Max(onMedia ? T.TimeSlotMediaMinW : T.TimeSlotW, floor), Shrink = 0f,
+            MinHeight = floor,
             // the stage's labels (an ink is handed) sit on the stage's gutter edges (Z-Lyrics: "1:14" on the 48, "-3:04" ending on the 1392); the bar's hug the line
             Direction = 0, AlignItems = FlexAlign.Center, Justify = onMedia ? (right ? FlexJustify.End : FlexJustify.Start) : right ? FlexJustify.Start : FlexJustify.End,
             OnClick = right ? props.ToggleRemaining : null, Cursor = right ? CursorId.Hand : null,

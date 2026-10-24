@@ -441,6 +441,11 @@ public static partial class Video
                 $"scale={s:0.##} key={Show(source?.Key)}");
         }
 
+        /// <summary>The strip's reveal: the idle machine's, while this presenter OWNS the transport (`State.Transport`, the placement's owner). In
+        /// fullscreen the main window's presenter is Docked by identity and the fullscreen surface owns it (its chrome draws the strip), so this
+        /// one stands down.</summary>
+        IReadSignal<bool> OwnedChrome() => UseComputed(() => chromeVisible.Value && State.Transport.Value == host.Identity);
+
         public override Element Render()
         {
             _scale = UseContext(Viewport.Scale);
@@ -492,7 +497,7 @@ public static partial class Video
                     {
                         Key = "player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     },
-                    OnMedia.Transport(chromeVisible, feed),
+                    OnMedia.Transport(OwnedChrome(), feed),
                 ]);
         }
     }
@@ -1262,6 +1267,9 @@ public static partial class Video
         {
             Title = s_currentTitle, Exit = static () => State.ExitFullscreen(),
             Artists = static () => CurrentArtists(), SwitchToAudio = static () => State.TurnOff(),
+            // The fullscreen owner's transport (TransportOwnerFor(Fullscreen) = Fullscreen): the main window's presenter keeps running the idle
+            // machine and the feed; the theme's chrome draws the strip over them, the presenter's own strip stands down (PlayerStage).
+            Transport = RailWiring.OnMediaProps(s_mainChrome, s_mainFeed),
         };
     }
 }

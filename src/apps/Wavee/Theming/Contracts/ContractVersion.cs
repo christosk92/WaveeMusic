@@ -160,6 +160,7 @@
 // 1.53 (P6 wave 3 + fixes): `HomePageProps.Greeting` (W5); `DetailTierLayout.PageInsetX`/`BandHeight`/`AsideInHero`/`FansInBand`/`BandOf`, `AlbumAsideProps.Artists`/`AlbumTitle`, `ArtistTierPolicy.SplitDetailTabs` (W6a); `DialogFit.ReportWidth`/`PlateRadius` and the `report` parameter on `FormCardWidthFor`/`FormBodyWidth`/`OverlayFit.ShowForm` (W8a); `PanelTierRule.DockContentFloor`/`DockHold`/`PlacementAt` (W4a); `SurfaceShape.Flush`, `SurfaceGeometry.ShelfHeight(.., flush)`/`PlateInsetX`, `SurfaceParts.InnerOf(.., flush)`, `HomeCards.ShelfCell(.., flush)`; `ITrackCommandKit.FindCommand`/`SelectCommand`, `NavRowKit.AdoptiveRoute` and `SidebarPillAnchor.Adopted`, `Controls.ArtistAboutCard(.., follow:)`; `LyricsHeaderFacts.TrackTitle`/`SyncLine`, `LyricsLinesStyle.Rail`/`LyricsRailForm`, `ILyricsHost.OnRail`; `LyricsLinesStyle.StageRows`/`LyricsStageRows`; `PanelPolicy.DockGap`/`PaneGap` (the gaps the frame lays beside the docked panes, which the content-width estimate counts).
 // `Settings.PartsOf` / `AreaSlugs` / `AreaFromSlug` / `HomeArea` / `FirstTab`, the document tabs `Tab.Account` / `.Devices` / `.Keyboard` / `.Feedback` (with their rows and
 // `Settings.Shortcuts`), and the document section "Playback" of the Playback tab. `SettingsPageProps.Tab` / `.TabCell` / `.OpenTab` stay as superseded adapters over the area.
+// 1.55 (audit B4): `VideoFullscreenProps.Transport` (the fullscreen surface owns the transport: the theme draws the on-media strip in its chrome).
 // 1.54 (audit C0): `VideoPipProps.ToDocked` / `ToSeparateWindow` (the mini player's own placement buttons, W-Video: "Dock in rail" where the rail fits, else "Play in a separate window"); `ShowPrimaryArgs.Empty` (a show with no episodes draws its play verbs disabled).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
@@ -176,7 +177,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 54;
+    public const int Minor = 55;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

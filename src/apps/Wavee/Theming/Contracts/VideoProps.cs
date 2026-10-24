@@ -195,6 +195,11 @@ public sealed record VideoFullscreenProps
 
     /// <summary>"Switch to audio": turn the video off for this track and fall back to the song (the same verb as the placement menu's "Turn off video"). Null: no such word. Contract addition after 1.40.</summary>
     public Action? SwitchToAudio { get; init; }
+
+    /// <summary>The transport the fullscreen surface owns (<c>Video.TransportOwner.Fullscreen</c>: the bar is unmounted and the presenter's own strip
+    /// stands down): the on-media strip's props over the main window's idle machine and chrome feed, for the theme to draw (Z-Video's seek line,
+    /// previous · play · next, the volume and the "..." menu). Null: a core with no transport to hand. Appended (contract 1.55).</summary>
+    public OnMediaTransportProps? Transport { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.VideoPlacementMenu"/>. Built per open (it carries that open's close verb).</summary>

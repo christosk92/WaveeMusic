@@ -46,6 +46,10 @@ internal static class ZuneStageVideoPip
         bool floating = props.Placement == Video.SurfacePlacement.Floating;
         // The chrome's targets are the window tier's: a Compact window shows 40 x 40 buttons at rest on a 40 strip.
         var tier = VR.OfFacts(ctx.Tier());
+        // Fullscreen's PAGE form (Z-Video-Compact): the picture is the page's 16:9 head under the bar, not the whole window.
+        bool page = props.Placement == Video.SurfacePlacement.Fullscreen && tier.PageForm;
+        var viewport = ctx.Hooks.UseContextSignal(Viewport.Size);
+        float barH = tier.BarH;
         var kids = new List<Element>(4) { props.Area() };
         if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
         if (floating) { kids.Add(Chrome(props, tier)); kids.Add(ResizeBands(props.Gestures)); }
@@ -60,9 +64,9 @@ internal static class ZuneStageVideoPip
             // Docked: the engine places this box over the reservation's painted rect in the same frame and the three binds below
             // stand down; every other placement is driven by them.
             FollowRect = props.FollowRect,
-            Width = props.Width,
-            Height = props.Height,
-            Transform = props.Transform,
+            Width = page ? Prop.Of(() => viewport.Value.Width) : props.Width,
+            Height = page ? Prop.Of(() => viewport.Value.Width * VR.PageAspect) : props.Height,
+            Transform = page ? (Prop<Affine2D>)Affine2D.Translation(0f, barH) : props.Transform,
             Fill = ColorF.Transparent,
             Corners = floating ? R.Shape.All(ShapeRole.Overlay) : default,
             Shadow = floating ? Elevation.Flyout : default,
