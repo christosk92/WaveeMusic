@@ -267,7 +267,7 @@ internal static class ZuneEpisodeRow
             Direction = (byte)(narrow ? 1 : 0), Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
             Children =
             [
-                seed ? more : ToolTip.Wrap(((BoxEl)more) with { ClickRequestsContext = true, OnFocusChanged = focus }, Loc.Get(Strings.Common.More)),
+                seed ? more : ToolTip.Wrap(more.As<BoxEl>() with { ClickRequestsContext = true, OnFocusChanged = focus }, Loc.Get(Strings.Common.More)),
                 disc,
             ],
         };

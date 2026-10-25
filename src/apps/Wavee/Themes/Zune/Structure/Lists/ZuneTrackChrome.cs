@@ -427,7 +427,7 @@ internal static class ZuneTrackChrome
             // keeps its slot (and the gap after it) as an empty box.
             if (left.Length == 0) kids.Add(new BoxEl { Key = "bar:left", Shrink = 0f, Margin = new Edges4(leadShift, 0f, 0f, 0f) });
             for (int i = 0; i < left.Length; i++)
-                kids.Add(i == 0 && left[0] is BoxEl first ? first with { Margin = new Edges4(leadShift, 0f, 0f, 0f) } : left[i]);
+                kids.Add(i == 0 && left[0].Is(out BoxEl first) ? first with { Margin = new Edges4(leadShift, 0f, 0f, 0f) } : left[i]);
             kids.Add(middle is null
                 ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
                 : new BoxEl

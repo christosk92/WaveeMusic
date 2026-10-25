@@ -278,7 +278,7 @@ internal sealed class ClassicArtistAbout : Component
         if (facts.Bio.Length > 0)
         {
             Element text = Controls.RichText(facts.Bio, size, Ink.Ink, set.Text, textW, clamps && !open ? Stage.ArtistRules.BioLines : 0, _nav);
-            kids.Add(text is SpanTextEl span ? span with { LineHeight = line } : text);
+            kids.Add(text.Is(out SpanTextEl span) ? span with { LineHeight = line } : text);
             if (clamps)
                 kids.Add(new BoxEl
                 {

@@ -378,8 +378,8 @@ internal static partial class ClassicPlayerBar
             kids.Add(transport);
             kids.Add(seekRow);
             float lead = rowGap + slack;
-            if (shuffleSlot is BoxEl s) { kids.Add(s with { Margin = new Edges4(lead, 0f, 0f, 0f) }); lead = m.RightGap; }
-            if (repeatSlot is BoxEl r) kids.Add(r with { Margin = new Edges4(lead, 0f, 0f, 0f) });
+            if (shuffleSlot.Is(out BoxEl s)) { kids.Add(s with { Margin = new Edges4(lead, 0f, 0f, 0f) }); lead = m.RightGap; }
+            if (repeatSlot.Is(out BoxEl r)) kids.Add(r with { Margin = new Edges4(lead, 0f, 0f, 0f) });
             return kids.ToArray();
         }
 

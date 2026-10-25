@@ -124,7 +124,7 @@ internal sealed class WinUiNavRow : Component
     /// <c>ToolTip.Wrap(grow: 1f)</c> (the reconciler mirrors a component anchor's grow), so it is never applied twice.
     /// MinWidth 0 keeps a long title eliding instead of pushing the row past the pane.</summary>
     static Element FillSlot(Element content)
-        => content is BoxEl box ? box with { Grow = 1f, Shrink = 1f, MinWidth = 0f } : content;
+        => content.Is(out BoxEl box) ? box with { Grow = 1f, Shrink = 1f, MinWidth = 0f } : content;
 
     (Reorderable Ro, int Start)? ReorderBand(in SidebarRow row, int index)
     {

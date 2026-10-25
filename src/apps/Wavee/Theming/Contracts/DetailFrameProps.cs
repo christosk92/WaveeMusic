@@ -312,8 +312,8 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
         var a = Parts;
         var b = o.Parts;
         return a.ColumnWidth == b.ColumnWidth && a.CompactLeft == b.CompactLeft && a.HeroHeight == b.HeroHeight
-            && ReferenceEquals(a.Toolbar, b.Toolbar) && ReferenceEquals(a.BandActions, b.BandActions)
-            && ReferenceEquals(a.SelectionBar, b.SelectionBar) && ReferenceEquals(a.SearchField, b.SearchField)
+            && a.Toolbar.SameAs(b.Toolbar) && a.BandActions.SameAs(b.BandActions)
+            && a.SelectionBar.SameAs(b.SelectionBar) && a.SearchField.SameAs(b.SearchField)
             && ReferenceEquals(a.SelectionVisible, b.SelectionVisible)
             && ReferenceEquals(a.CompactInteractive, b.CompactInteractive)
             && ReferenceEquals(a.SearchExpanded, b.SearchExpanded)

@@ -237,7 +237,7 @@ internal static class WinUiAlbumTrailing
     {
         var card = Controls.ArtistAboutCard(artist, AboutLayout.Page,
             follow: WinUiDetailRules.TargetOf(tier) > WinUiDetailRules.Target ? s_followCompact : s_follow);
-        if (card is BoxEl box) card = box with { MinHeight = PageRules.SkelAboutH };
+        if (card.Is(out BoxEl box)) card = box with { MinHeight = PageRules.SkelAboutH };
         return new BoxEl
         {
             Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,

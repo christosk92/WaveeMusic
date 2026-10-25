@@ -73,7 +73,7 @@ internal static class ZuneSurface
 
     // The host wraps the body in one non-keyed box (`within`); a shelf stack body is that box's only child and carries ShelfBodyKey.
     static bool IsShelfBody(Element content)
-        => content is BoxEl { Children: { Length: 1 } kids } && kids[0] is BoxEl { Key: ZuneListRules.ShelfBodyKey };
+        => content.Is(out BoxEl box) && box.Children is { Length: 1 } kids && kids[0].Is(out BoxEl body) && body.Key == ZuneListRules.ShelfBodyKey;
 
     /// <summary>The selected skin: the 2-DIP accent border (<paramref name="accent"/> read now; null is the style's accent) over the accent wash.
     /// A static border (no shape selects a tile, so no static ↔ bound flip on a reused node).</summary>

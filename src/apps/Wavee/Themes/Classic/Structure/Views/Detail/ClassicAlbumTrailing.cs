@@ -171,7 +171,7 @@ internal static class ClassicAlbumTrailing
     static Element AboutSection(Artist artist)
     {
         var card = Controls.ArtistAboutCard(artist, AboutLayout.Page);
-        if (card is BoxEl box) card = box with { MinHeight = PageRules.SkelAboutH };
+        if (card.Is(out BoxEl box)) card = box with { MinHeight = PageRules.SkelAboutH };
         return new BoxEl
         {
             Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,

@@ -445,9 +445,9 @@ public static partial class Queue
 
         /// <summary>Wrap a row as a lane item (the wrapper must be a column, or the hover plate collapses to the text).</summary>
         public Element Lane(int item, Element row, string key)
-            => Viewer ? row : (BoxEl)Reorder.Item(item, row, key: key) with { Direction = 1 };
+            => Viewer ? row : Reorder.Item(item, row, key: key).As<BoxEl>() with { Direction = 1 };
 
-        public Element List(Element body, string key) => (BoxEl)Reorder.List(body) with { Grow = 0f, Key = key };
+        public Element List(Element body, string key) => Reorder.List(body).As<BoxEl>() with { Grow = 0f, Key = key };
 
         public DragSource? OwnDrag(ulong itemId, int index, EntityRef row)
             => QueueRowRules.RowDrags(Viewer) ? Drag.Source(() => PayloadFor(itemId, row)) : null;

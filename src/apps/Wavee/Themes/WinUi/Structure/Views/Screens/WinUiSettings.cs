@@ -205,7 +205,7 @@ internal static partial class WinUiSettings
     /// section header that opens the tab drops its top space (the gap above a section separates it from the one before; the first has none).</summary>
     static Element TabStack(params Element[] children)
     {
-        if (children.Length > 0 && children[0] is BoxEl first)
+        if (children.Length > 0 && children[0].Is(out BoxEl first))
         {
             if (first.Margin.Top > 0f) first = first with { Margin = first.Margin with { Top = 0f } };
             if (first.Padding.Top > 0f && first.Key is { } key && key.StartsWith(SectionKeyPrefix, StringComparison.Ordinal))
