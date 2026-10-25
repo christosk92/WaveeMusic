@@ -45,6 +45,8 @@ public static partial class Diagnostics
             readonly double[] _pos;          // finger position (DIP) at 1 ms steps over [0, Dur]
             readonly double _vEnd;
             const double StepS = 0.001;
+            /// <summary>The touchpad's report interval (DM's velocity estimate spans one report).</summary>
+            public const double ReportS = 0.008;
 
             TouchpadGesture(double startS, double sign, bool flick, Func<double, double> v, double durS)
             {
@@ -68,6 +70,16 @@ public static partial class Diagnostics
             public static TouchpadGesture Drag(double startS, double sign, double v, double ramp, double hold, double rampDown)
                 => new(startS, sign, false, t => t < ramp ? v * Smooth(t / ramp) : t < ramp + hold ? v : v * Smooth(1 - (t - ramp - hold) / rampDown),
                        ramp + hold + rampDown);
+
+            /// <summary>An abrupt stop: up to <paramref name="v"/> over <paramref name="ramp"/>, held, stopped dead over <paramref name="stop"/>
+            /// (linear), then the finger rests on the pad for <paramref name="still"/> and lifts at rest. The overshoot probe.</summary>
+            public static TouchpadGesture StopDrag(double startS, double sign, double v, double ramp, double hold, double stop, double still)
+                => new(startS, sign, false, t => t < ramp ? v * Smooth(t / ramp) : t < ramp + hold ? v
+                       : t < ramp + hold + stop ? v * (1 - (t - ramp - hold) / stop) : 0.0, ramp + hold + stop + still)
+                   { StopAtS = ramp + hold + stop };
+
+            /// <summary>When an abrupt-stop gesture's finger comes to rest (s after its start; NaN = not a stop gesture).</summary>
+            public double StopAtS { get; private init; } = double.NaN;
 
             /// <summary>A flick: an ease-in to <paramref name="v"/> over <paramref name="dur"/>; the finger lifts at that speed.</summary>
             public static TouchpadGesture Flicked(double startS, double sign, double v, double dur)
@@ -136,9 +148,7 @@ public static partial class Diagnostics
             public void Pump(in FrameClock clock, long nowQpc, Win32Window window)
             {
                 if (_t0 == 0) return;
-                double refreshMs = clock.RefreshQpc > 0 ? clock.RefreshQpc * 1000.0 / _freq : 0.0;
-                double leadMs = (clock.Flags & FrameClockFlags.Unpaced) != 0 ? 0.0 : Math.Clamp((clock.PresentQpc - nowQpc) * 1000.0 / _freq, 0.0, refreshMs);
-                leadMs = Math.Round(leadMs);   // DM is told whole milliseconds (Win32DirectManipulation.PumpOnce)
+                double leadMs = Math.Round(ContactStamp.LeadMs(in clock, nowQpc));   // DM's rule (F1-aware), told in whole ms (PumpOnce)
                 long target = nowQpc + (long)(leadMs * _freq / 1000.0);
                 long stamp = ContactStamp.ForFrame(in clock, nowQpc);
                 char emitted = '-';
@@ -185,9 +195,12 @@ public static partial class Diagnostics
                     {
                         // DM reports the finger it predicts for the composition target (extrapolated past the lift while the
                         // finger is still down at `now`).
-                        double tTarget = (target - _activeStartQpc) / (double)_freq;
-                        fingerTarget = _fingerBase + ge.Sign * ge.Pos(tTarget);
-                        double pos = ge.Pos(tTarget);
+                        // DM has seen the finger up to `now` (HID reports every ~8 ms) and extrapolates it to the target along the
+                        // latest report interval's velocity: a predictor, not an oracle — it overshoots when the finger stops.
+                        double lead = (target - nowQpc) / (double)_freq;
+                        double vNow = (ge.Pos(tNow) - ge.Pos(tNow - TouchpadGesture.ReportS)) / TouchpadGesture.ReportS;
+                        double pos = ge.Pos(tNow) + vNow * lead;
+                        fingerTarget = _fingerBase + ge.Sign * pos;
                         double d = pos - _activeEmitted;
                         if (Math.Abs(d) > 1e-6)
                         {
@@ -286,19 +299,22 @@ public static partial class Diagnostics
                 TouchpadGesture.Drag(0.00, +1, 900 * x, 0.12, 0.50, 0.25),
                 TouchpadGesture.Flicked(1.10, +1, 6000 * x, 0.18),
                 TouchpadGesture.Flicked(2.00, +1, 4500 * x, 0.16),
-                TouchpadGesture.Drag(3.40, -1, 900 * x, 0.12, 0.50, 0.25),
-                TouchpadGesture.Flicked(4.50, -1, 6000 * x, 0.18),
-                TouchpadGesture.Flicked(5.40, -1, 4500 * x, 0.16),
+                TouchpadGesture.StopDrag(3.40, +1, 2500 * x, 0.10, 0.25, 0.03, 0.30),
+                TouchpadGesture.Drag(4.40, -1, 900 * x, 0.12, 0.50, 0.25),
+                TouchpadGesture.Flicked(5.50, -1, 6000 * x, 0.18),
+                TouchpadGesture.Flicked(6.40, -1, 4500 * x, 0.16),
+                TouchpadGesture.StopDrag(7.80, -1, 2500 * x, 0.10, 0.25, 0.03, 0.30),
             ];
             double Excursion(double x)
             {
                 var p = Program(x);
                 double coast1 = 6000 * x / k * (1 - Math.Exp(-k * (2.00 - 1.10 - 0.18)));
-                return p[0].Travel + p[1].Travel + coast1 + p[2].Travel + 4500 * x / k;
+                double coast2 = 4500 * x / k * (1 - Math.Exp(-k * (3.40 - 2.00 - 0.16)));
+                return p[0].Travel + p[1].Travel + coast1 + p[2].Travel + coast2 + p[3].Travel;
             }
             double room = Math.Max(0, s.MaxOffset) * 0.85;
             if (Excursion(speed) > room && room > 0) speed *= room / Excursion(speed);
-            var tp = new SyntheticTouchpad(Program(speed), 6.8, liftFrames, new Point2(vi.X + vi.W * 0.5f, vi.Y + vi.H * 0.5f));
+            var tp = new SyntheticTouchpad(Program(speed), 8.8, liftFrames, new Point2(vi.X + vi.W * 0.5f, vi.Y + vi.H * 0.5f));
             var tap = new ProbeTap(vi.NodeIndex);
             ProbeLevel level0 = ScrollProbe.Level;
             ScrollProbe.Level = ProbeLevel.Trace;
@@ -336,6 +352,12 @@ public static partial class Diagnostics
             extra.Add(new("tpContacts", tp.Ends));
             extra.Add(new("tpSamples", tp.Samples));
             extra.Add(new("tpProbeLost", tap.Lost));
+            var (pumpWaits, pumpTimeouts) = host.ContactPumpWaits;   // F2's bounded render wait (0 unless --fg tp-sametick)
+            extra.Add(new("tpPumpWaits", pumpWaits));
+            extra.Add(new("tpPumpTimeouts", pumpTimeouts));
+            extra.Add(new("tpLead", FluentGpu.Hosting.EngineSwitches.TouchpadLead ? 1 : 0));
+            extra.Add(new("tpSameTick", FluentGpu.Hosting.EngineSwitches.TouchpadSameTick ? 1 : 0));
+            extra.Add(new("tpRelease", FluentGpu.Hosting.EngineSwitches.TouchpadRelease ? 1 : 0));
             return r with { Note = r.Note + " tpSpeed=" + speed.ToString("0.###", CultureInfo.InvariantCulture) + " contacts=" + tp.Ends, Extra = extra };
         }
 
