@@ -421,14 +421,14 @@ internal static class ZuneAlbumTrailing
             {
                 Key = Z.StackKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, Height = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
                 Gap = Z.SectionGap,
-                Children = [K.Heading(Loc.Get(Strings.Detail.MoreByHeading)), link!],
+                Children = [K.Heading(Loc.Get(Strings.Detail.MoreByHeading)), link!.Value],
             }
             : aside
             ? new BoxEl
             {
                 Key = Z.StackKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
                 Gap = Z.SectionGap,
-                Children = link is null ? [AsideNamedHeading(StackTitle(p))] : [AsideNamedHeading(StackTitle(p)), link],
+                Children = link is null ? [AsideNamedHeading(StackTitle(p))] : [AsideNamedHeading(StackTitle(p)), link.Value],
             }
             : K.HeadingRow(Z.StackKey + ":head", K.NamedHeading(StackTitle(p)), link, Z.AsideHeadingH);
         return new BoxEl

@@ -184,7 +184,7 @@ internal static class ZuneSurface
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children = [trailing.Value, MenuLane(chrome)],
             };
-        Element column = (text ?? RowText(d, in s)).Value;
+        Element column = text is { } textCol ? textCol : RowText(d, in s)!.Value;
         var flow = new BoxEl
         {
             Direction = 0, Gap = s.ArtGap, AlignItems = FlexAlign.Center, Grow = 1f,

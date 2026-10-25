@@ -218,7 +218,7 @@ internal static class WinUiSurface
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children = [trailing.Value, MenuLane(chrome)],
             };
-        Element column = (text ?? RowText(d, in s)).Value;
+        Element column = text is { } textCol ? textCol : RowText(d, in s)!.Value;
         var flow = new BoxEl
         {
             Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, Grow = 1f,

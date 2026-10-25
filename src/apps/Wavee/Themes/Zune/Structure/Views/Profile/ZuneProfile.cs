@@ -292,7 +292,7 @@ internal static class ZuneProfile
             Direction = 0, Wrap = true, Gap = Z.StatGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray(),
         };
         if (own is null) return line;
-        return kids.Count == 0 ? own : new BoxEl { Direction = 1, MinWidth = 0f, Children = [line, own.Value] };
+        return kids.Count == 0 ? own.Value : new BoxEl { Direction = 1, MinWidth = 0f, Children = [line, own.Value] };
     }
 
     /// <summary>"12 followers": a word (the style's label case). A cell that links (never Public playlists, never a zero) is a hyperlink into its list.</summary>
