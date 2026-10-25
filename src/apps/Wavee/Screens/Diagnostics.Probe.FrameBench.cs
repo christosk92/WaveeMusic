@@ -595,20 +595,25 @@ public static partial class Diagnostics
             int n = d.CopyCompositeItemCensus(items);
             if (n == 0) return;
             const char T = '\t';
-            var sb = new StringBuilder("item\tkind\tslice\tnode\tfootPx\tps\tpsPerFoot\tdraws\tinline\topaque\n");
+            var sb = new StringBuilder("item\tkind\tslice\tnode\tfootPx\tps\tpsPerFoot\tdraws\tinline\topaque\tfoot\tclip\topaqueRect\n");
+            static string R(float x, float y, float w, float h) => w <= 0f && h <= 0f ? "-" : string.Create(CultureInfo.InvariantCulture, $"{x:0},{y:0} {w:0}x{h:0}");
             foreach (var it in items.AsSpan(0, n))
                 sb.Append(it.Item).Append(T).Append(it.Kind).Append(T).Append(it.SliceId).Append(T)
                   .Append(it.NodeIndex >= 0 ? host.DescribeNode(it.NodeIndex, it.Gen) : "-").Append(T).Append(it.FootPx).Append(T)
                   .Append(it.PsInvocations).Append(T).Append(it.FootPx > 0 ? (it.PsInvocations / (double)it.FootPx).ToString("0.00", CultureInfo.InvariantCulture) : "-")
-                  .Append(T).Append(it.Draws).Append(T).Append(it.Inline ? 1 : 0).Append(T).Append(it.Opaque ? 1 : 0).Append('\n');
+                  .Append(T).Append(it.Draws).Append(T).Append(it.Inline ? 1 : 0).Append(T).Append(it.Opaque ? 1 : 0)
+                  .Append(T).Append(R(it.Foot.Left, it.Foot.Top, it.Foot.Right - it.Foot.Left, it.Foot.Bottom - it.Foot.Top))
+                  .Append(T).Append(R(it.Clip.X, it.Clip.Y, it.Clip.W, it.Clip.H)).Append(T).Append(R(it.OpaqueRect.X, it.OpaqueRect.Y, it.OpaqueRect.W, it.OpaqueRect.H)).Append('\n');
             WriteArtifact(OutDir(), name + "-items.tsv", sb.ToString());
             var ops = new D3D12Device.CompositeItemOp[D3D12Device.ItemOpsMax];
             int no = d.CopyCompositeItemOps(ops);
-            var so = new StringBuilder("item\top\tx\ty\tw\th\tareaPx\n");
+            var so = new StringBuilder("item\top\tx\ty\tw\th\tareaPx\talpha\tfillKind\tclipDepth\tclipDip\n");
             foreach (var op in ops.AsSpan(0, no))
                 so.Append(op.Item).Append(T).Append(op.Op).Append(T).Append(op.X.ToString("0", CultureInfo.InvariantCulture)).Append(T)
                   .Append(op.Y.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(op.W.ToString("0", CultureInfo.InvariantCulture)).Append(T)
-                  .Append(op.H.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(((long)(op.W * op.H)).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                  .Append(op.H.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(((long)(op.W * op.H)).ToString(CultureInfo.InvariantCulture))
+                  .Append(T).Append(op.Alpha.ToString("0.###", CultureInfo.InvariantCulture)).Append(T).Append(op.FillKind).Append(T).Append(op.ClipDepth)
+                  .Append(T).Append(R(op.Clip.X, op.Clip.Y, op.Clip.W, op.Clip.H)).Append('\n');
             WriteArtifact(OutDir(), name + "-itemops.tsv", so.ToString());
         }
 
