@@ -159,11 +159,13 @@ public static class WinUiListRules
     /// <summary>The date group head: 40 tall, the words on its floor 6 up, 8 between the name and the count (Body Strong 14/20 over the count's 14/20).</summary>
     public const float GroupHeadSize = 14f, GroupHeadLine = 20f, GroupHeadHeight = 40f, GroupHeadPadBottom = 6f, GroupHeadGap = 8f;
 
-    /// <summary>A command entering and leaving the bar.</summary>
+    /// <summary>A command entering and leaving the bar.
+    /// <para>No size axes: the motion has no size channel, and a command whose box NARROWS (a refit folding its word) would otherwise take
+    /// the exit's accelerating curve for its slide too, ending in one big step (audit FU2c).</para></summary>
     public static readonly LayoutTransition CommandMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
         TransitionDynamics.Tween(220f, Easing.SmoothOut),
         Enter: new EnterExit(Dx: 8f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: 8f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
+        ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate), Axes: SizeAxes.None);
 
     /// <summary>The bar's browse / selection swap.</summary>
     public static readonly LayoutTransition ModeMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
