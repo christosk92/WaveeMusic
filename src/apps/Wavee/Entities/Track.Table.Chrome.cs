@@ -231,6 +231,16 @@ public readonly partial struct Track
             // The bar this build draws shimmers (the page's head is unread): its commands are bars of guessed widths, so they report none to the fit and
             // anchor nothing. Untracked: the region swaps the bar when the head lands, and the live bar is a fresh build.
             bool live = !Reactive.Untrack(_barPending);
+            // The insights toggle ARRIVES when the page's facts settle, which can be after this bar has drawn (a playlist's facts are a scan of its
+            // rows): a live bar that drew without it fades it in as its slot opens (see below). One that has it from its first live build shows it
+            // as it always did, and a bar that shimmers again (the head pending once more) starts over.
+            if (live)
+            {
+                if (BarInsights is not null && !_barHadInsights && _barLiveBuilt) _insightsArrives = true;
+                _barHadInsights = BarInsights is not null;
+                _barLiveBuilt = true;
+            }
+            else _barLiveBuilt = _barHadInsights = _insightsArrives = false;
 
             // The hero list's columns form (audit B9) draws the two-column arm's bar; the read is tracked, so a crossing that flips the form rebuilds it.
             bool vertical = VerticalArm && HeroFormLive;
@@ -293,7 +303,19 @@ public readonly partial struct Track
             _moreOverflow = overflow;
             if (_latest.MenuBridge is { } bridge) bridge.List = _bridgeList ??= BridgeListItems;
             var tailList = new List<Element>(3);
-            if (insights is not null) tailList.Add(BarPart(Detail.InsightsBarButton(insights)));
+            // The toggle sits in a slot that is in EVERY build: empty (0 wide, its leading gap taken back) until the page's facts settle. A toggle
+            // that arrives late opens the slot through real layout, so the commands before it slide over to make room instead of moving 42 at once
+            // (audit FU2c), and fades in as it opens. The slot is there before the toggle on purpose: a slot that mounted WITH it would be an
+            // entering reflow, which the commit does not lay out at its start before the other commands' FLIPs are measured (AppHost.SeedReflowsFirst
+            // seeds the nodes that were there), so each command counted the room twice (drawn 42 to the right, sliding back). The arrival is often a
+            // frame-clock timer's commit (the list's hold running out of its budget), which the engine captures for since FU2c.
+            tailList.Add(new BoxEl
+            {
+                Key = "cmd:insights-slot", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
+                Margin = s_insightsSlotMargin, Padding = insights is null ? default : s_insightsSlotPad,
+                Animate = Design.Reduced ? null : s_insightsSlotMotion,
+                Children = insights is null ? [] : [ArrivingToggle(BarPart(Detail.InsightsBarButton(insights)))],
+            });
             if (select is not null)
                 tailList.Add(Kit.Command("cmd:select", select, live ? w => MeasureExtra(ref _selectW, w) : s_noWidth));
             // Where the tier gives the page ONE "…" in the hero (Zune and WinUI Compact), the bar draws none: the hero's carries the list options. The
@@ -321,6 +343,26 @@ public readonly partial struct Track
 
         /// <summary>The list bar's "…" coming or going where a tier moves the page's ONE "…" to the hero: an opacity fade, never a cut.</summary>
         static readonly EnterExit MoreFade = new(Opacity: 0f, Active: true);
+
+        /// <summary>The insights toggle's slot opening (closing) through real layout when the toggle arrives late (leaves), so the commands before it
+        /// ride the re-solve. Size only: the toggle fades itself (<see cref="ArrivingToggle"/>). On the commands' own motion (every theme's
+        /// <c>CommandMotion</c> is a 220 ms SmoothOut slide): a command the same commit refits (a Filter folding its word) slides on its FLIP while the
+        /// slot shoves it, and the two sum to one glide only on the same curve (on the 260 ms disclosure it dipped 24 left and came back).</summary>
+        static readonly LayoutTransition s_insightsSlotMotion = new(TransitionChannels.Size, TransitionDynamics.Tween(InsightsSlotMs, Easing.SmoothOut),
+            Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Width);
+
+        const float InsightsSlotMs = 220f;
+
+        /// <summary>The slot takes the bar's gap before it back (an empty slot adds no room) and carries it inside once it holds the toggle.</summary>
+        static readonly Edges4 s_insightsSlotMargin = new(-CommandBarLayout.Gap, 0f, 0f, 0f), s_insightsSlotPad = new(CommandBarLayout.Gap, 0f, 0f, 0f);
+
+        /// <summary>A toggle that arrives after the bar's first live build fades in (and out) with the "…" button's fade; one the bar has from its first
+        /// live build lands with the bar.</summary>
+        Element ArrivingToggle(Element toggle)
+            => _insightsArrives ? toggle with { Enter = MoreFade, Exit = MoreFade, Transition = MoreFadeMotion } : toggle;
+
+        /// <summary>The bar has had a live build, it held the insights toggle at its last one, and the toggle has arrived after the first (its slot eases).</summary>
+        bool _barLiveBuilt, _barHadInsights, _insightsArrives;
         static global::FluentGpu.Animation.MotionTokenDef MoreFadeMotion => global::FluentGpu.Animation.MotionTok.ControlFast;
         Action<NodeHandle>? _anchorFilter;
 
