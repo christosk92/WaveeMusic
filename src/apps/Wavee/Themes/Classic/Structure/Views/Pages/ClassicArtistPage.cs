@@ -70,7 +70,7 @@ internal static class ClassicArtistPage
 
         // ONE visual swap: overview + measured width + chart settled. Snap, not FadeOnly: waiting for the bitmap then fading the whole tree from 0 hid the
         // photo again (stillwrong.mp4).
-        Element? body = p.BodyReady ? Compose(p, latch, surface, layout, form) : null;
+        Element? body = p.BodyReady ? Compose(p, latch, surface, layout, form).Freeze() : null;   // PERF r3 MODEL M4b: the region reads it later
 
         // ONE region, and the shimmer is DERIVED — `Shimmer` is a ShimmerSource (a representative tree at the loaded page's geometry), never a tree to mount.
         // Rendering it directly painted its own placeholder copy as if it were data: "Artist name", "A first sentence of the biography stands in this line.",

@@ -361,9 +361,10 @@ internal static partial class WinUiDetailFrame
             Direction = 1, Gap = form.InfoGap, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, MinWidth = 0f,
             AlignSelf = FlexAlign.Stretch, Children = kids,
         };
+        var frozenWords = words.Freeze();   // PERF r3 MODEL M4b: the region reads them after this render
         return new SkelRegionEl(
             Pending: pending, Failed: s_never,
-            Content: () => Column(words),
+            Content: () => Column(frozenWords),
             ShimmerSource: () => Column(shimmer()),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
     }

@@ -24,7 +24,7 @@ public static class CommonNothing
     public const string IdPrefix = "common.nothing.";
 
     /// <summary>The one element every Nothing slot renders: a zero box, not hit-testable, that neither grows nor shrinks.</summary>
-    private static readonly BoxEl s_nothing = new() { Width = 0f, Height = 0f, Grow = 0f, Shrink = 0f, HitTestVisible = false };
+    private static readonly BoxEl s_nothing = FluentGpu.Dsl.Ui.Static(() => new BoxEl { Width = 0f, Height = 0f, Grow = 0f, Shrink = 0f, HitTestVisible = false });
 
     /// <summary>Registers Nothing for <paramref name="key"/> under the id <c>common.nothing.&lt;key id&gt;</c> (the key's version suffix,
     /// if any, is dropped from the id).</summary>

@@ -159,7 +159,7 @@ internal static class ClassicLikedLeaves
         static readonly float[] RadiusFactors = [0.9f, 0.8f, 0.85f, 0.75f, 0.6f];
         const float RadiusScale = 0.62f;
         const float SpotAlpha = 0.55f;
-        static readonly Element Empty = new BoxEl { HitTestVisible = false };
+        static readonly Element Empty = FluentGpu.Dsl.Ui.Static<Element>(() => new BoxEl { HitTestVisible = false });
 
         public override Element Render()
         {

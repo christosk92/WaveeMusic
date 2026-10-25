@@ -283,8 +283,9 @@ internal static class ClassicSearch
                         Close = context.Close,
                     });
                     // The field form's list holds the field at its focused width while it is open (a row press may take focus).
+                    var frozenBody = body.Freeze();   // PERF r3 MODEL M4b: the factory may run after this render
                     return presentation == AutoSuggestBoxSuggestionPresentation.Popup
-                        ? Embed.Comp(() => new SuggestionsOpenMark(model, body))
+                        ? Embed.Comp(() => new SuggestionsOpenMark(model, frozenBody))
                         : body;
                 },
                 MoveSelection: delta => model.MoveHighlight(delta),

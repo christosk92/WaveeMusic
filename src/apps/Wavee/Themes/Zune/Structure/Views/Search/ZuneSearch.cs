@@ -275,7 +275,8 @@ internal static class ZuneSearch
                         Close = context.Close,
                     });
                     // The pill's list holds it at its focused width while it is open (a row press may take focus).
-                    Element body = presentation == AutoSuggestBoxSuggestionPresentation.Popup ? Embed.Comp(() => new SuggestionsOpenMark(model, rows)) : rows;
+                    var frozenRows = rows.Freeze();   // PERF r3 MODEL M4b: the factory may run after this render
+                    Element body = presentation == AutoSuggestBoxSuggestionPresentation.Popup ? Embed.Comp(() => new SuggestionsOpenMark(model, frozenRows)) : rows;
                     // Z-Overlays: the plate closes on "see all results for <query>", the typed query's results page (what Enter submits).
                     return Ctx.Provide(RowsTop, rowsTop, new BoxEl
                     {

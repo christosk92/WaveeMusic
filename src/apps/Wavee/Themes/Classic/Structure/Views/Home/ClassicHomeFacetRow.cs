@@ -112,6 +112,9 @@ internal static class ClassicHomeFacetRow
                 Transition = s_fade,
             };
 
+        // PERF r3 MODEL M4b: the row builder runs when the box measures, after this render.
+        var frozenFollowing = following.Freeze();
+        var frozenFriends = friends.Freeze();
         // The band (a column) cross-stretches the Responsive box, so it measures the row's full width and builds the row
         // in the form that width holds (a Compact tier keeps the 20/28 words at every width: `C-Home-Compact`).
         bool compactWords = layout.CompactFacets;
@@ -134,8 +137,8 @@ internal static class ClassicHomeFacetRow
                         with { Key = "home:facet:words" },
                     // The spacer pushes the trailing buttons to the row's end; where the words yield, their own line fills that room instead.
                     new BoxEl { Grow = yieldWords ? 0f : 1f, MinWidth = 0f },
-                    Flow.Show(() => hasFollowing, following),
-                    Flow.Show(() => showFriends, friends),
+                    Flow.Show(() => hasFollowing, frozenFollowing),
+                    Flow.Show(() => showFriends, frozenFriends),
                 ],
             };
         }, fallback: firstWidth);

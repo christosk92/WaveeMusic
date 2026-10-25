@@ -86,7 +86,7 @@ internal sealed class WinUiNavFilterBox(INavRowHost owner) : Component
 internal static class WinUiNavEmpty
 {
     /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head.</summary>
-    static readonly BoxEl s_railSpacer = new() { Key = "empty", Grow = 1f };
+    static readonly BoxEl s_railSpacer = FluentGpu.Dsl.Ui.Static(() => new BoxEl { Key = "empty", Grow = 1f });
 
     /// <summary>The registered template of <see cref="ViewKeys.ShellNavEmpty"/>.</summary>
     public static Element Template(NavEmptyProps props, in FluentGpu.Theming.ViewContext ctx)

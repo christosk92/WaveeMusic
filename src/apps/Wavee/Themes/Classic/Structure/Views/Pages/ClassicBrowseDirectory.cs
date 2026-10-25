@@ -46,8 +46,8 @@ internal static class ClassicBrowseDirectory
         // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
         Element region = new SkelRegionEl(
             Pending: () => props.Load == BrowseLoad.Pending, Failed: () => props.Load == BrowseLoad.Failed,
-            Content: () => body ??= Content(props.Groups, layout, firstW),
-            ShimmerSource: () => skeleton.Value.Tree is { } tree && skeleton.Value.Tier == layout.Tier ? tree : (skeleton.Value = (layout.Tier, Skeleton(layout, firstW))).Tree!.Value,
+            Content: () => body ??= Content(props.Groups, layout, firstW).Freeze(),
+            ShimmerSource: () => skeleton.Value.Tree is { } tree && skeleton.Value.Tier == layout.Tier ? tree : (skeleton.Value = (layout.Tier, Skeleton(layout, firstW).Freeze())).Tree!.Value,
             // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` — a row the planner has already sealed
             // Asked-and-unanswered is exactly a no-op for `Ensure` (P4's dedupe: `wanted & ~known & ~asked`), so a
             // failed directory's Retry button did nothing until it un-asks first (root cause of the failure card).

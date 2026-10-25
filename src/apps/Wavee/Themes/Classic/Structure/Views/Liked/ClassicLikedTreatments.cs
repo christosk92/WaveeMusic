@@ -212,7 +212,7 @@ internal static class ClassicLikedTreatments
 
     /// <summary>A zero-extent, hit-transparent child, so a conditional chip/badge is an EMPTY child rather than a
     /// varying child COUNT — the ZStack's other children keep their positions across a size change.</summary>
-    static readonly Element Nothing = new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+    static readonly Element Nothing = FluentGpu.Dsl.Ui.Static<Element>(() => new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false });
 
     static string? At(string[] tiles, int i) => tiles.Length == 0 ? null : tiles[i % tiles.Length];
 

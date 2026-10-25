@@ -202,11 +202,11 @@ public static partial class Stage
     /// only as tall as its content (the hero's titles slot collapsed to 0 and took the artist line with it). Stretch fills
     /// the anchor's width, Grow + Basis 0 its height; the PLACED box is this layer's direct child, where vertical = AlignSelf,
     /// horizontal = JustifySelf and the Margin is the offset (FlexLayout.ArrangeZStack). Decorative layers turn hit-testing off.</summary>
-    internal static readonly BoxEl Layer = new()
+    internal static readonly BoxEl Layer = FluentGpu.Dsl.Ui.Static(() => new BoxEl
     {
         AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
         ZStack = true, HitTestPassThrough = true,
-    };
+    });
 
     // ══ 1. THE SURFACE ══════════════════════════════════════════════════════════════════════════════════════════════
 

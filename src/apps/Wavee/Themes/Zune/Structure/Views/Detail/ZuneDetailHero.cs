@@ -545,9 +545,10 @@ internal static class ZuneDetailHero
         // B7 r2), and the swap EASES its height (SmoothResize): the description's lines the data brings open with the list riding them. One boundary in
         // both forms, so the column never re-parents.
         Func<bool> pending = rail?.Pending ?? K.Never;
+        var frozenColumn = column.Freeze();   // PERF r3 MODEL M4b: the region reads it after this render
         Element region = new SkelRegionEl(
             Pending: pending, Failed: K.Never,
-            Content: () => new BoxEl { Direction = 1, MinWidth = 0f, Children = [column] },
+            Content: () => new BoxEl { Direction = 1, MinWidth = 0f, Children = [frozenColumn] },
             ShimmerSource: columns ? () => ColumnSkeleton(spec, lay, lay.RailW) : () => HeroFormSkeleton(spec, lay, g),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
         // The slot: the record's width laid out 0 tall at the columns form (the column hangs beside the rows), the full width on the gutter at the hero form.

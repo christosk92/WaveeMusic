@@ -362,5 +362,5 @@ internal static partial class ClassicDetailFrame
         Children = [new BoxEl { Key = "detail-rail-seam-spacer", Width = railW, Shrink = 0f, HitTestVisible = false }, grip],
     };
 
-    static readonly Element SeamOff = new BoxEl { Key = "detail-rail-seam", HitTestVisible = false };
+    static readonly Element SeamOff = FluentGpu.Dsl.Ui.Static<Element>(() => new BoxEl { Key = "detail-rail-seam", HitTestVisible = false });
 }

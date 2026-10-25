@@ -226,7 +226,7 @@ public static partial class Shell
 
     /// <summary>The fifteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
     /// DOES is <see cref="FrameVerbs"/>), built once; the structure's frame places them (<c>ShellFrameProps.Chords</c>).</summary>
-    static readonly IReadOnlyList<Element> s_chords =
+    static readonly IReadOnlyList<Element> s_chords = FluentGpu.Dsl.Ui.Static<IReadOnlyList<Element>>(() =>
     [
         Chord(NewTabChord, static () => FrameVerbs.Shared.NewTab()),
         Chord(PaletteChord, static () => FrameVerbs.Shared.TogglePalette()),
@@ -243,7 +243,7 @@ public static partial class Shell
         Chord(ZoomOutPadChord, static () => FrameVerbs.Shared.Zoom(-1)),
         Chord(ZoomResetChord, static () => FrameVerbs.Shared.Zoom(0)),
         Chord(ZoomResetPadChord, static () => FrameVerbs.Shared.Zoom(0)),
-    ];
+    ]);
 
     /// <summary>The window's core host (T4a): every hook, effect and state machine of the frame, and ONE props record for the
     /// structure's <c>Shell.Frame</c> view. It builds no element and reads no token: the picture is the theme's.</summary>
@@ -989,7 +989,7 @@ public static partial class Shell
         }
     }
 
-    static readonly BoxEl s_pendingPage = new() { Key = "page-pending", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f };
+    static readonly BoxEl s_pendingPage = FluentGpu.Dsl.Ui.Static(() => new BoxEl { Key = "page-pending", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f });
 
     /// <summary>`--inspect state`: the vacancy kind the page region shows in place of the page ("" = the page). A developer's probe, never set by the app.</summary>
     static readonly Signal<string> s_inspectState = new("");

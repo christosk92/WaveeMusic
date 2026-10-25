@@ -51,7 +51,7 @@ internal static class WinUiBrowseCategory
         // under real content (must-not-simplify 12). smoothResize false (must-not-simplify 2).
         Element region = new SkelRegionEl(
             Pending: () => props.Load == BrowseLoad.Pending, Failed: () => props.Load == BrowseLoad.Failed,
-            Content: () => body ??= props.Load == BrowseLoad.Ready ? Body(props, layout, firstW) : new BoxEl(),
+            Content: () => body ??= (props.Load == BrowseLoad.Ready ? Body(props, layout, firstW) : new BoxEl()).Freeze(),
             ShimmerSource: () => Shimmer(layout),
             // W22 + 0.3's Retry (§9 gap 9): the error arm offers Retry AND the Explore link, inside the scroll frame.
             OnFailed: () => Framed(props, Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry)),

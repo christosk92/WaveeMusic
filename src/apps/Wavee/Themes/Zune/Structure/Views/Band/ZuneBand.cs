@@ -45,7 +45,7 @@ namespace Wavee.Themes.Zune;
 /// <summary>Zune's band: the registered template of <see cref="ViewKeys.ShellNavPane"/>.</summary>
 internal static class ZuneBandView
 {
-    private static readonly BoxEl s_none = new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+    private static readonly BoxEl s_none = Ui.Static(() => new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false });
 
     /// <summary>The registered template: the band, or nothing where the core hands no band data (a fixture).</summary>
     public static Element Template(NavPaneProps props, in ViewContext ctx)
@@ -634,7 +634,7 @@ internal sealed class ZuneBand : Component
     {
         var kids = new Element[actions.Count];
         for (int i = 0; i < actions.Count; i++) kids[i] = ActionButton(actions[i], photo);
-        Element row = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.ActionGap, Shrink = 0f, Children = kids };
+        Element row = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.ActionGap, Shrink = 0f, Children = kids }.Freeze();   // PERF r3 MODEL M4b
         // Compact draws no actions: crossing 640 they fade, never pop.
         return new BoxEl
         {

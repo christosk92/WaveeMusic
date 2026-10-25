@@ -71,7 +71,7 @@ public static partial class Sidebar
     };
 
     /// <summary>What a structure without a nav tree gets when its template mounts the pane anyway: nothing (a zero box, out of hit-testing).</summary>
-    static readonly BoxEl s_noPane = new() { Key = "sidebar.none", Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+    static readonly BoxEl s_noPane = FluentGpu.Dsl.Ui.Static(() => new BoxEl { Key = "sidebar.none", Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false });
 
     /// <summary>THE NAV-TREE CAPABILITY (P5 ZK): the core pane mounts only under a structure that offers a nav tree. Decided when the
     /// template mounts it (a theme switch remounts the root, so the next structure decides again); the frame's presentation is gated

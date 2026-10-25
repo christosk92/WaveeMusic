@@ -57,7 +57,7 @@ internal static class WinUiArtistPage
         latch.Surface ??= ListStyleLookup.Of(registry, StyleKeys.Surface);
         var chart = ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
 
-        Element? body = p.BodyReady ? Compose(p, latch, tier, in facts) : null;
+        Element? body = p.BodyReady ? Compose(p, latch, tier, in facts).Freeze() : null;   // PERF r3 MODEL M4b: the region reads it later
         // ONE region, and the shimmer is DERIVED (a representative tree at the loaded page's geometry, never mounted directly).
         Element region = new SkelRegionEl(
             Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, tier),

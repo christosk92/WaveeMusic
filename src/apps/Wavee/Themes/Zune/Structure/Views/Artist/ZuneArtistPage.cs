@@ -89,7 +89,7 @@ internal static class ZuneArtistPage
         latch.Viewport = ctx.Hooks.UseContextSignal(Viewport.Size);
 
         // ONE visual swap: overview + measured width + chart settled. Snap, not FadeOnly (the hero must not fade from 0 over a held photograph).
-        Element? body = p.BodyReady ? Compose(p, latch, lay) : null;
+        Element? body = p.BodyReady ? Compose(p, latch, lay).Freeze() : null;   // PERF r3 MODEL M4b: the region reads it later
 
         // ONE region, and the shimmer is DERIVED: a representative tree at the loaded page's geometry, never a tree to mount. Reveal.Soft is the
         // page-level reveal the rest of the app uses; Group null, not the route: the chart's inner region must NOT join this one.

@@ -87,7 +87,8 @@ public static partial class Controls
             Children = [run ?? style],
         };
         Element tip = TrimTip(target, text, style);
-        if (tip.Is(out ComponentEl c)) tip = c with { SkeletonProxy = () => new BoxEl { Children = [target] } };
+        var proxyTarget = target.Freeze();   // PERF r3 MODEL M4b: the proxy runs when a region derives, after this render
+        if (tip.Is(out ComponentEl c)) tip = c with { SkeletonProxy = () => new BoxEl { Children = [proxyTarget] } };
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [tip] };
     }
 

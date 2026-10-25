@@ -161,7 +161,7 @@ public readonly partial struct Track
         // A different element TYPE from what it stands in for (a component's single-child slot ignores keys): the built
         // affordance then MOUNTS instead of updating this node in place, and a mount is what seeds a reveal from the row's
         // live hover (an in-place update left the transport at rest under the pointer and the cluster deaf to the exit).
-        static readonly Element s_absent = FluentGpu.Hooks.Flow.Show(static () => false, new BoxEl());
+        static readonly Element s_absent = FluentGpu.Dsl.Ui.Static<Element>(() => FluentGpu.Hooks.Flow.Show(static () => false, new BoxEl()));
         bool _latched;
         Element? _built;
 

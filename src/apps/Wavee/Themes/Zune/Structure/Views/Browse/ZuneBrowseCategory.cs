@@ -43,7 +43,7 @@ internal static class ZuneBrowseCategory
         Element? body = null;
         Element region = new SkelRegionEl(
             Pending: () => props.Load == BrowseLoad.Pending, Failed: () => props.Load == BrowseLoad.Failed,
-            Content: () => body ??= props.Load == BrowseLoad.Ready ? Body(props, lay, firstW) : new BoxEl(),
+            Content: () => body ??= (props.Load == BrowseLoad.Ready ? Body(props, lay, firstW) : new BoxEl()).Freeze(),
             ShimmerSource: () => Scrolled(props, lay, Shimmer(lay)),
             OnFailed: () => Scrolled(props, lay, Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry)),
             Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);

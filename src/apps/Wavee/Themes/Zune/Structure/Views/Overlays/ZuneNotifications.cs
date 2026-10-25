@@ -58,8 +58,9 @@ internal static class ZuneNotifications
         var cell = ctx.Hooks.UseRef<LoadingCell?>(null);
         var loading = cell.Value ??= new LoadingCell();
         loading.Now = props.Loading;
+        var frozenLoaded = loaded.Freeze();   // PERF r3 MODEL M4b: the region reads it after this render
         Element body = new SkelRegionEl(
-            Pending: loading.Read, Failed: s_never, Content: () => loaded, ShimmerSource: () => FeedShimmer(props.Now, inner, feedMax, layout),
+            Pending: loading.Read, Failed: s_never, Content: () => frozenLoaded, ShimmerSource: () => FeedShimmer(props.Now, inner, feedMax, layout),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
 
         var pending = props.PendingEdits;

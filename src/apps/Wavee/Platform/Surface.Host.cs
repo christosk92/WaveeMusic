@@ -202,7 +202,8 @@ public static partial class Controls
         static Element LabelTip(Element root, string title)
         {
             Element tip = ToolTip.Wrap(root, title);
-            return tip.Is(out ComponentEl c) ? c with { SkeletonProxy = () => root } : tip;
+            var proxyRoot = root.Freeze();   // PERF r3 MODEL M4b: the proxy runs when a region derives, after this render
+            return tip.Is(out ComponentEl c) ? c with { SkeletonProxy = () => proxyRoot } : tip;
         }
     }
 }

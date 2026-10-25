@@ -314,7 +314,7 @@ public readonly partial struct Episode
     {
         if (style is null) return new BoxEl();
         var bound = item;
-        var content = style.Content(in bound, ctx, narrow);
+        var content = style.Content(in bound, ctx, narrow).Freeze();   // PERF r3 MODEL M4b: the region reads it later
         return new SkelRegionEl(
             Pending: () => ReaderLoadState(bound.Item.Value.Episode) == LoadState.Pending,
             Failed: () => ReaderLoadState(bound.Item.Value.Episode) == LoadState.Failed,

@@ -1320,10 +1320,11 @@ public readonly partial struct Track
                 : listState == PlaylistRowsState.Rows ? FlatList(layout, trailing, narrate)
                 : Placeholder(listState, in shape);
 
+            var frozenList = realList.Freeze();   // PERF r3 MODEL M4b: the region reads it after this render
             Element region = new SkelRegionEl(
                 Pending: vertical && !trailing ? VerticalPending : RowsPending,
                 Failed: vertical && !trailing ? VerticalFailed : RowsFailed,
-                Content: () => realList,
+                Content: () => frozenList,
                 ShimmerSource: vertical && !trailing ? () => VerticalShimmer(in shape, chips, lens) : () => RowsShimmer(in shape),
                 OnFailed: FailedPanel,
                 Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
@@ -2904,7 +2905,7 @@ public readonly partial struct Track
             var row = _row;
             // The structure draws the grid (Modern or Classic template); built ONCE per slot per shape, like it always was.
             var templates = _host.RowTemplatesFor(set.Classic);
-            Element grid = templates is null ? new BoxEl() : templates.Grid(row, in set, shape.Tracks, shape.RowH, shape.Art);
+            Element grid = (templates is null ? new BoxEl() : templates.Grid(row, in set, shape.Tracks, shape.RowH, shape.Art)).Freeze();   // PERF r3 MODEL M4b
             // The tracklist EDGE answers with row ids first and the rows' own fields land in a later fetch, so a slot can be
             // valid while its row has no data. The table's reveal gate holds the whole region until the first page knows its
             // face (TableRules.RowsPending), so this branch is for the rows PAST that band — a later batch's rows, a row

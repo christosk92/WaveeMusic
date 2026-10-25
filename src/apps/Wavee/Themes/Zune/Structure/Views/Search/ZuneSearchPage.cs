@@ -418,8 +418,9 @@ internal static class ZuneSearchPage
                 var seeds = new Element[S.ShimmerGenres];
                 for (int i = 0; i < seeds.Length; i++)
                     seeds[i] = Word("genre-seed:" + i.ToString(CultureInfo.InvariantCulture), Loc.Get(Strings.Search.Genres), cased: false, primary: true, static () => { }, lay.LinkTarget);
+                var frozenSeeds = seeds.Freeze();   // PERF r3 MODEL M4b: the region reads them after this render
                 return new SkelRegionEl(
-                    Pending: s_true, Failed: s_false, Content: () => Run(S.GenresKey, Loc.Get(Strings.Search.Genres), seeds, wrap), ShimmerSource: null, OnFailed: null,
+                    Pending: s_true, Failed: s_false, Content: () => Run(S.GenresKey, Loc.Get(Strings.Search.Genres), frozenSeeds, wrap), ShimmerSource: null, OnFailed: null,
                     Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         }
     }

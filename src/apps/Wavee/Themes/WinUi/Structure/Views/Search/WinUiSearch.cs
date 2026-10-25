@@ -229,8 +229,9 @@ internal static class WinUiSearch
                         Choose = selection => { if (InvokeSelection(selection)) context.Close(); },
                         Close = context.Close,
                     });
+                    var frozenBody = body.Freeze();   // PERF r3 MODEL M4b: the factory may run after this render
                     return presentation == AutoSuggestBoxSuggestionPresentation.Popup
-                        ? Embed.Comp(() => new SuggestionsOpenMark(model, body))
+                        ? Embed.Comp(() => new SuggestionsOpenMark(model, frozenBody))
                         : body;
                 },
                 MoveSelection: delta => model.MoveHighlight(delta),

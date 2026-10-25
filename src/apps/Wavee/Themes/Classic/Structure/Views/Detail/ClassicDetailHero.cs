@@ -552,9 +552,10 @@ internal static partial class ClassicDetailFrame
         // its height (SmoothResize): rows the data brings (a second title line, the description) open with the chrome and the rows riding them, never a
         // jump. One boundary in every form, so the column never re-parents.
         Func<bool> pending = rail?.Pending ?? s_false;
+        var frozenColumn = column.Freeze();   // PERF r3 MODEL M4b: the region reads it after this render
         Element region = new SkelRegionEl(
             Pending: pending, Failed: s_false,
-            Content: () => column,
+            Content: () => frozenColumn,
             ShimmerSource: railForm
                 ? () => RailSkeletonColumn(id, cfg, slots, acts, railW, railRec, titleCap, railDescLines)
                 : () => HeroIdentitySkeleton(spec, availW, rowFlow, tiers),

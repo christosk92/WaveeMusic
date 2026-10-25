@@ -139,10 +139,10 @@ internal static class ZuneDiscoveryKit
     /// on the column's right edge): zero wide, its margin cancelling the header row's item gap before it, and the previous one's also the gap before
     /// the row's spacer (the engine's header row is title, spacer, prev, next, <see cref="H.ShelfHeadGap"/> apart). One node either way (a box), so it
     /// never remounts when paging wakes it.</summary>
-    private static readonly BoxEl DormantPrev = new() { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-2f * H.ShelfHeadGap, 0f, 0f, 0f), HitTestVisible = false };
+    private static readonly BoxEl DormantPrev = FluentGpu.Dsl.Ui.Static(() => new BoxEl { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-2f * H.ShelfHeadGap, 0f, 0f, 0f), HitTestVisible = false });
 
     /// <inheritdoc cref="DormantPrev"/>
-    private static readonly BoxEl DormantNext = new() { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-H.ShelfHeadGap, 0f, 0f, 0f), HitTestVisible = false };
+    private static readonly BoxEl DormantNext = FluentGpu.Dsl.Ui.Static(() => new BoxEl { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-H.ShelfHeadGap, 0f, 0f, 0f), HitTestVisible = false });
 
     /// <summary>A ring action: the disc and its lowercase word (none for a glyph-only action, which is named for assistive tech instead).</summary>
     public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize,
