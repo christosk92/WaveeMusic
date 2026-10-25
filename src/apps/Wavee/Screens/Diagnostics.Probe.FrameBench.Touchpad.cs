@@ -175,11 +175,17 @@ public static partial class Diagnostics
                     var ge = _program[g];
                     double tNow = (nowQpc - _activeStartQpc) / (double)_freq;
                     fingerNow = _fingerBase + ge.Sign * ge.Pos(Math.Min(tNow, ge.DurS));
-                    if (!_lifted)
+                    if (!_lifted && tNow >= ge.DurS)
                     {
-                        // DM reports the finger it predicts for the composition target (extrapolated past the lift only while the
-                        // finger is still down at `now`); once the finger is up it reports the lift position and then nothing.
-                        double tTarget = tNow >= ge.DurS ? ge.DurS : (target - _activeStartQpc) / (double)_freq;
+                        // The finger is up: DM produces no more content (its last, predicted report stands — it never reports a
+                        // step back), and raises its status edge _liftFrames pumps later.
+                        _lifted = true;
+                    }
+                    else if (!_lifted)
+                    {
+                        // DM reports the finger it predicts for the composition target (extrapolated past the lift while the
+                        // finger is still down at `now`).
+                        double tTarget = (target - _activeStartQpc) / (double)_freq;
                         fingerTarget = _fingerBase + ge.Sign * ge.Pos(tTarget);
                         double pos = ge.Pos(tTarget);
                         double d = pos - _activeEmitted;
@@ -193,7 +199,6 @@ public static partial class Diagnostics
                             Samples++;
                             emitted = emitted == 'B' ? 'b' : 'S';
                         }
-                        if (tNow >= ge.DurS) _lifted = true;
                     }
                     else if (++_liftPumps >= _liftFrames)
                     {
