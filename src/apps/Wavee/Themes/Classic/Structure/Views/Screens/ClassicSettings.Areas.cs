@@ -1,8 +1,8 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Areas.cs — the area composer and the four sections the document gained (themes plan 6.1) ──
 //
-// The page shows the twelve AREAS of `Settings.Areas.cs` (account · appearance · playback · audio · lyrics · devices & connect · storage · notifications · keyboard ·
+// The page shows the seven tabs of the structure's grouping (`SettingsGrouping.Seven`) over the twelve AREAS of `Settings.Areas.cs` (account · appearance · playback · audio · lyrics · devices & connect · storage · notifications · keyboard ·
 // privacy · feedback & help · about); each is a list of document sections, so Classic and Zune draw the same sections in their own style. A tab's body (`GeneralTab`,
-// `PlaybackTab`, ...) is a flat run of cards in which every section starts at a `Mark(section)`; `AreaBody` asks each tab once, keeps the runs the area names, and hands
+// `PlaybackTab`, ...) is a flat run of cards in which every section starts at a `Mark(section)`; `GroupBody` asks each tab once, keeps the runs the grouped tab names, and hands
 // them to `TabStack` (which balances them into its one or two columns). The four sections below have no old tab: Account, Devices, Keyboard (a READ-ONLY reference of
 // the chords the shell defines) and Feedback & help (report a problem, suggest something, ask a question, what a report holds, copy diagnostics).
 
@@ -24,10 +24,9 @@ internal static partial class ClassicSettings
 
     static Element Mark(string section) => new BoxEl { Key = MarkPrefix + section, Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
 
-    /// <summary>The body of <paramref name="area"/>: every part's run from its tab, in the area's order.</summary>
-    static Element AreaBody(Settings.Area area, SettingsPageProps props)
+    /// <summary>A grouped tab's body: every part's run from its document tab, in the tab's order (<see cref="SettingsGrouping.PartsOf"/>).</summary>
+    static Element GroupBody(IReadOnlyList<Settings.Part> parts, SettingsPageProps props)
     {
-        var parts = Settings.PartsOf(area);
         var built = new Dictionary<Tab, Element[]>(4);
         var cards = new List<Element>(32);
         foreach (var part in parts)
@@ -62,14 +61,12 @@ internal static partial class ClassicSettings
         _ => FeedbackTab(),
     };
 
-    /// <summary>The tab strip's item keys, one per area (`settings:tabitem:appearance`): a driver finds and clicks a tab by its slug.</summary>
-    static readonly string?[] s_areaTabKeys = Array.ConvertAll(Settings.AreaSlugs, static slug => (string?)("settings:tabitem:" + slug));
-
-    static string[] AreaLabels()
+    /// <summary>Does the tab draw a section of the document tab <paramref name="tab"/>?</summary>
+    static bool HasTab(IReadOnlyList<Settings.Part> parts, Tab tab)
     {
-        var labels = new string[Settings.AreaTitleKeys.Length];
-        for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(Settings.AreaTitleKeys[i]);
-        return labels;
+        foreach (var part in parts)
+            if (part.Tab == tab) return true;
+        return false;
     }
 
     // ══ account ══════════════════════════════════════════════════════════════════════════════════════════════════════════

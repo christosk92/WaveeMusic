@@ -14,7 +14,21 @@
 //     older alias (`Settings.AreaFromSlug`) lands where it always did, so its area's home tab shows it. An unknown slug lands where the page
 //     always opened a bad arg.
 //
-// `Default` is today's page: twelve tabs, one area each, slug = the area's slug. It resolves every slug exactly as `Settings.AreaFromSlug`.
+// `Default` is the ungrouped page: twelve tabs, one area each, slug = the area's slug. It resolves every slug exactly as `Settings.AreaFromSlug`.
+// `Seven` is the boards' seven tabs (W-Settings), which Classic and WinUI both draw (owner 2026-10-25: twelve tabs overran Classic's strip at every width):
+//
+//   General                 Account, Devices & connect and Keyboard, and the window rows the old General tab held (language, links, the notification-area icon,
+//                           graphics), listed by the tab itself ("rows moved, not invented")
+//   Appearance              Appearance (theme, its options, display, fullscreen, now playing, home) and Lyrics
+//   Playback                Playback and Audio
+//   Notifications           Notifications
+//   Storage & cache         Storage
+//   Privacy & diagnostics   Privacy and Feedback & help (the logs, the tools and the developer rows ride Feedback)
+//   About                   About
+//
+// Every old slug lands: an area's own slug on its area, shown on the tab that holds it (account, devices, keyboard on General; lyrics on Appearance; audio on
+// Playback; feedback on Privacy & diagnostics); a tab's own slug (`general`, `storage-cache`, `privacy-diagnostics`) on the tab's first area; every older alias
+// where it always did. The old `general` alias used to open Appearance, where the window rows lived; the tab's own slug wins (General now holds them).
 
 using System.Collections.Immutable;
 
@@ -50,6 +64,32 @@ public sealed record SettingsGrouping(ImmutableArray<SettingsTab> Tabs)
 {
     /// <summary>Today's page: one tab per area, in area order, each with the area's slug and name.</summary>
     public static SettingsGrouping Default { get; } = BuildDefault();
+
+    /// <summary>The boards' seven tabs over the twelve areas (see the file header).</summary>
+    public static SettingsGrouping Seven { get; } = BuildSeven();
+
+    static SettingsGrouping BuildSeven()
+    {
+        static ImmutableArray<Settings.Area> A(params Settings.Area[] areas) => [.. areas];
+        var general = new SettingsTab("general", Strings.Settings.Tabs.General, A(Settings.Area.Account, Settings.Area.Devices, Settings.Area.Keyboard))
+        {
+            Parts =
+            [
+                new(Settings.Tab.General, "Language & region"), new(Settings.Tab.General, "Links"), new(Settings.Tab.General, "Notification area"),
+                new(Settings.Tab.General, "Graphics"), new(Settings.Tab.Account, "Account"), new(Settings.Tab.Devices, "Connect"), new(Settings.Tab.Keyboard, "Shortcuts"),
+            ],
+        };
+        return new SettingsGrouping(
+        [
+            general,
+            new SettingsTab("appearance", Strings.Settings.Areas.Appearance, A(Settings.Area.Appearance, Settings.Area.Lyrics)),
+            new SettingsTab("playback", Strings.Settings.Areas.Playback, A(Settings.Area.Playback, Settings.Area.Audio)),
+            new SettingsTab("notifications", Strings.Settings.Areas.Notifications, A(Settings.Area.Notifications)),
+            new SettingsTab("storage-cache", Strings.Settings.Areas.Storage, A(Settings.Area.Storage)),
+            new SettingsTab("privacy-diagnostics", Strings.Settings.Tabs.Privacy, A(Settings.Area.Privacy, Settings.Area.Feedback)),
+            new SettingsTab("about", Strings.Settings.Areas.About, A(Settings.Area.About)),
+        ]);
+    }
 
     static SettingsGrouping BuildDefault()
     {

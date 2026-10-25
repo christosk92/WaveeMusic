@@ -3096,14 +3096,7 @@
         "nowPlaying": "Now playing"
       },
       "screens": {
-        "$comment": "W8b (P6): the screens. The seven Settings tabs (WinUiSettingsGrouping), the theme card and its options, the keyboard list's Ctrl+Tab row.",
-        "tabGeneral": "General",
-        "tabAppearance": "Appearance",
-        "tabPlayback": "Playback",
-        "tabNotifications": "Notifications",
-        "tabStorage": "Storage & cache",
-        "tabPrivacy": "Privacy & diagnostics",
-        "tabAbout": "About",
+        "$comment": "W8b (P6): the screens. The theme card and its options, the keyboard list's Ctrl+Tab row.",
         "themeSection": "Theme",
         "themeSectionSub": "Which theme draws Wavee, and the options that theme defines",
         "themeTitle": "Theme",
