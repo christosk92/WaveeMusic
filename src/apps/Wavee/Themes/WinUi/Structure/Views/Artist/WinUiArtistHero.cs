@@ -32,7 +32,7 @@ internal static class WinUiArtistHero
 
     /// <summary>The card for a <paramref name="cardW"/>-wide band in window tier <paramref name="tier"/>: the photograph (flat neutral without one), the veil, the copy
     /// and, at every tier but Compact, the actions inside it. At Compact the actions are <see cref="CompactActionsSlot"/>, the page's row under the card.</summary>
-    public static Element Card(in Artist.HeroText text, string uri, string? photoUrl, float cardW, WidthTier tier, in Acts acts)
+    public static Element Card(in Artist.HeroText text, string uri, string? photoUrl, float cardW, WidthTier tier, in Acts acts, WinUiArtistLatch? latch = null)
     {
         var form = WinUiArtistRules.HeroOf(tier);
         float height = form.Height;
@@ -53,7 +53,11 @@ internal static class WinUiArtistHero
             {
                 Key = "heroart:" + uri, Width = float.NaN, Height = float.NaN,
             }
-            : new BoxEl { Fill = Design.WatchedPlaceholder(photoUrl) };
+            // The skeleton arm states the card's size: the deriver makes a plate only of a SIZED childless box, so the stretching placeholder derived to
+            // nothing and the loading page drew the copy's bars alone, a small block where the 260-tall card lands (owner video 2026-10-25).
+            : shimmer
+                ? new BoxEl { Width = w, Height = height, Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius) }
+                : new BoxEl { Fill = Design.WatchedPlaceholder(photoUrl) };
         Element veil = new BoxEl
         {
             Height = form.Veil, AlignSelf = FlexAlign.End, HitTestVisible = false, Layout = WinUiArtistMotion.HeroHeight,
@@ -73,7 +77,7 @@ internal static class WinUiArtistHero
                 Key = "artist-hero-actions:card", Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, WinUiArtistRules.ActionsBottom),
                 // Leaving (into Compact) it closes its width as it fades (a wipe from its end), so less of it lies over the copy, which the engine
                 // widens at once (a leaving flex sibling gives its room back on the commit).
-                Layout = WinUiArtistMotion.CardActions,
+                Layout = latch is { HeroLive: true } ? WinUiArtistMotion.CardActions : WinUiArtistMotion.CardActionsLanding,
                 Children = [Actions(text.Name, uri, acts, WinUiDetailRules.Target, words: tier >= WidthTier.Huge, plated: true)],
             });
         Element overlay = new BoxEl
@@ -84,7 +88,7 @@ internal static class WinUiArtistHero
         };
         return new BoxEl
         {
-            Key = "artist-hero", Height = height, ZStack = true, ClipToBounds = true, Animate = WinUiArtistMotion.HeroHeight,
+            Key = "artist-hero", Height = height, ZStack = true, ClipToBounds = true, Animate = WinUiArtistMotion.HeroHeight, OnRealized = latch?.MarkHeroLive,
             Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius), Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children = [photo, veil, boost, overlay],
         };
@@ -155,8 +159,11 @@ internal static class WinUiArtistHero
             : new BoxEl();
         TextEl name = R.Type.ArtistDisplay(text.Name) with
         {
+            // One line first: the name shrinks toward its floor to stay on one line, and a name the floor cannot hold wraps by whole words onto a second
+            // line instead of ending in an ellipsis beside the plated actions ("Kris Kross Amst…", owner video 2026-10-25).
             Size = form.NameSize, LineHeight = form.NameLine, MinSize = MathF.Min(WinUiArtistRules.NameFloor, form.NameSize), Weight = 600,
-            Color = R.OnMedia.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = R.OnMedia.Ink, Wrap = TextWrap.WrapWholeWords, MaxLines = WinUiArtistRules.NameLines, FitMode = TextFitMode.OneLineFirst,
+            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         return new BoxEl
         {

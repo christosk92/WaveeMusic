@@ -110,7 +110,7 @@ internal static class WinUiArtistPage
                     Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                     Children =
                     [
-                        WinUiArtistHero.Card(in text, uri, p.HeroUrl, cardW, tier, in acts),
+                        WinUiArtistHero.Card(in text, uri, p.HeroUrl, cardW, tier, in acts, latch),
                         WinUiArtistHero.CompactActionsSlot(a.Name, uri, in acts, tier == WidthTier.Compact),
                     ],
                 }),
