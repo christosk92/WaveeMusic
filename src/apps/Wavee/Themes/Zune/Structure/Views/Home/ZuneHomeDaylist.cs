@@ -100,6 +100,9 @@ internal static class ZuneHomeDaylist
         Layout = Design.Reduced ? null : H.DaylistResize,
         Children =
         [
+            // THE FORM IN THE KEY IS AN ACCEPTED EXCEPTION to the key rule (owner 2026-10-25, audit FU2b): the tuned V28c fade-through wins over the
+            // form-key rule. The two forms are two keyed layers so the old one fades out where it stands before the new one fades in; one tree would
+            // turn that into a glide. The lint knows (ZuneLintGuide: an Allow for key.hygiene on DaylistFormPrefix). Do not "fix" it.
             new BoxEl
             {
                 Key = H.DaylistFormPrefix + (lay.DaylistBleed ? "bleed" : "strip"), Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,

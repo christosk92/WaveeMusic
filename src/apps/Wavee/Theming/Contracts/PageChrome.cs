@@ -104,6 +104,10 @@ public sealed record PageBackdrop(string? Bleed, IReadOnlyList<string>? Mix = nu
 public sealed record PageChromeRow(IReadOnlyList<PageView> Views, IReadOnlyList<PageAction> Actions, PageBackdrop? Backdrop = null,
     string? Title = null, bool ViewsPending = false)
 {
+    /// <summary>The page's head has not answered yet (contract 1.82, audit FU2b): a theme that draws the <see cref="Actions"/> draws them as a shimmer,
+    /// at their size and not interactive, until it has; the head's landing turns them live through the theme's skeleton reveal.</summary>
+    public bool ActionsPending { get; init; }
+
     /// <summary>Publishes nothing.</summary>
     public static PageChromeRow Empty { get; } = new([], []);
 
@@ -127,6 +131,10 @@ public sealed record PageChrome(string Title, IReadOnlyList<PageCrumb> Crumbs, b
 
     /// <summary>Row 2's actions, in order (contract 1.26).</summary>
     public IReadOnlyList<PageAction> Actions { get; init; } = [];
+
+    /// <summary>The page's head has not answered yet (<see cref="PageChromeRow.ActionsPending"/>, contract 1.82): a band draws <see cref="Actions"/> as a
+    /// shimmer until it has.</summary>
+    public bool ActionsPending { get; init; }
 
     /// <summary>The page's views are still loading (<see cref="PageChromeRow.ViewsPending"/>, contract 1.59): a band that draws row 2 for its views
     /// keeps the row's place while <see cref="Views"/> is empty.</summary>

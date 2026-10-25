@@ -249,7 +249,7 @@ internal sealed class ZuneBand : Component
                 {
                     Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
                     Transform = Prop.Of(() => Affine2D.Translation(0f, -Tie())),
-                    Children = row2 ? [Row2(views, actions, title, rec, type, edgeFade, OnTabKey)] : [],
+                    Children = row2 ? [Row2(views, actions, title, rec, type, edgeFade, OnTabKey, chrome is { ActionsPending: true })] : [],
                 },
             ],
         });
@@ -481,7 +481,7 @@ internal sealed class ZuneBand : Component
 
     /// <summary>Row 2: a detail page's title and hairline, the views (a tab list), then the actions at the end.</summary>
     Element Row2(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions, string? title, ZuneBandLayout rec, ZuneBandType type,
-        float edgeFade, Action<BandTabRow, int, KeyEventArgs> key)
+        float edgeFade, Action<BandTabRow, int, KeyEventArgs> key, bool actionsPending)
     {
         bool tabStyle = title is not null;
         var run = new List<Element>(views.Count + 2);
@@ -548,7 +548,7 @@ internal sealed class ZuneBand : Component
         };
 
         var kids = new List<Element>(2) { viewsRun };
-        if (actions.Count > 0) kids.Add(Actions(actions, _photo));
+        if (actions.Count > 0) kids.Add(Actions(actions, _photo, actionsPending));
         // The row's words are the page's: when the page swaps (the chrome moves to the incoming page as its enter starts, Shell.PageChromeChannel.
         // PublishCurrent) the set of views and actions changes, and the old row fades out where it stands as the new one fades in, in step with
         // the page's own enter, instead of the words popping. The slot is a ZStack keyed by the row's own makeup (never by its title, which a
@@ -626,18 +626,37 @@ internal sealed class ZuneBand : Component
     }
 
     /// <summary>The page's actions: the play disc, the shuffle ring and the word pills, 14 apart. Over a photo bleed (<paramref name="photo"/>) a word
-    /// pill stands on the ground's plate: its accent word read 3.3 : 1 over the lighter shade (variant D), 5.5 : 1 on the ground.</summary>
-    static Element Actions(IReadOnlyList<PageAction> actions, bool photo)
+    /// pill stands on the ground's plate: its accent word read 3.3 : 1 over the lighter shade (variant D), 5.5 : 1 on the ground.
+    /// <para>While the page's head is unread (<paramref name="pending"/>, contract 1.82) the row SHIMMERS with the head, each action a bar of its own
+    /// shape and size, not interactive (owner 2026-10-25, audit FU2b: a live play disc and a "save" pill stood beside the shimmering head); the head's
+    /// landing cross-fades them live through the skeleton reveal. The region is in the row at every state, so the landing swaps only its branch.</para></summary>
+    static Element Actions(IReadOnlyList<PageAction> actions, bool photo, bool pending)
     {
         var kids = new Element[actions.Count];
         for (int i = 0; i < actions.Count; i++) kids[i] = ActionButton(actions[i], photo);
+        Element row = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.ActionGap, Shrink = 0f, Children = kids };
         // Compact draws no actions: crossing 640 they fade, never pop.
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.ActionGap, Shrink = 0f, Children = kids,
-            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+            Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+            Children =
+            [
+                new SkelRegionEl(Pending: pending ? s_pending : s_never, Failed: s_never, Content: () => row, ShimmerSource: null, OnFailed: null,
+                    Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+            ],
         };
     }
+
+    static readonly Func<bool> s_pending = static () => true, s_never = static () => false;
+
+    /// <summary>An action's shimmer: a bar of its own outline (the disc's and the ring's circle, the pill's capsule over its word's room), so the row keeps its
+    /// shape while the head loads (the deriver would draw only the glyph and the word inside a transparent box).</summary>
+    static BoxEl ActionShape(BoxEl box, PageAction a, float h, CornerRadius4 round) => new()
+    {
+        Width = box.Width, Height = h, Corners = round, Fill = Prop.Of(static () => SkeletonStyle.Default.BarColor), Shrink = 0f, HitTestVisible = false,
+        Padding = a.Kind == PageActionKind.Word ? ZuneBandRules.PillPadding : default, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Children = a.Kind == PageActionKind.Word ? [new BoxEl { Opacity = 0f, HitTestVisible = false, Children = [PillWord(a)] }] : [],
+    };
 
     static Element ActionButton(PageAction a, bool photo)
     {
@@ -681,6 +700,7 @@ internal sealed class ZuneBand : Component
             Opacity = a.Enabled ? 1f : ZuneBandRules.DisabledOpacity,
             OnClick = a.Enabled ? a.Invoke : null,
         };
+        box = box with { SkeletonOverride = ActionShape(box, a, h, round) };
         return a.Kind == PageActionKind.Word ? box : ToolTip.Wrap(box, a.Label);
     }
 
