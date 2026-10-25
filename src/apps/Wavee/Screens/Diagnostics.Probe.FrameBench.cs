@@ -289,6 +289,26 @@ public static partial class Diagnostics
                     if (!s.WaitReady(host, w, 30)) return Skip("list " + big + " never became scrollable in 30 s (" + s.Describe(host) + ")");
                     return Measure(s.Driver(host), "list=" + big + " viewport=" + s.Key, s);
                 }
+                case FrameBenchScenarios.TouchpadScroll:
+                case FrameBenchScenarios.TouchpadList:
+                {
+                    // The synthetic precision touchpad (Diagnostics.Probe.FrameBench.Touchpad.cs) on Home, or on the big list.
+                    Base(playing: play is not null);
+                    bool list = name == FrameBenchScenarios.TouchpadList;
+                    if (list)
+                    {
+                        string big = t.Big ?? (t.Playlists.Length > 0 ? t.Playlists[0] : "liked");
+                        long nav0 = NavigationFrameWatch.NavigationId;
+                        Nav(big == "liked" ? new Shell.Route(Shell.RouteKind.Liked) : Shell.For(EntityUri.Parse(big), "Bench list"));
+                        PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                        Settle(1.0);
+                    }
+                    var s = new ScrollState(depthViewports: list ? 30 : 8);
+                    // Home at the owner's size is under three viewports deep: 1.5 is enough (the program scales to the page).
+                    if (!s.WaitReady(host, w, list ? 30 : 20, 1.5)) return Skip("no scrollable page after the wait (" + s.Describe(host) + ")");
+                    Settle(1.0);
+                    return TouchpadWindow(name, host, w, o, s);
+                }
                 case FrameBenchScenarios.Lyrics:
                 case FrameBenchScenarios.LyricsLine:
                 {
@@ -536,12 +556,13 @@ public static partial class Diagnostics
 
         /// <summary>Warm-up, then the measured window: its ledger snapshot (read at the run's rate when the run ends).</summary>
         static Pending MeasureWindow(string name, AppHost host, Win32Window w, FrameBenchOptions o, Driver? d, string? note, ScrollState? scroll,
-            List<KeyValuePair<string, double>>? extra)
+            List<KeyValuePair<string, double>>? extra, Action? windowStart = null)
         {
             Pump(host, w, o.WarmupSec, d);
             scroll?.Restart();
             long walks0 = host.WalkLedger?.Count ?? 0, rasters0 = host.RasterLedger?.Count ?? 0;
-            var energy0 = EnergyMeter.Read();
+            var energy0 = EnergyMeter.Read();   // can block the UI thread for a second or more on its first read (PDH)
+            windowStart?.Invoke();               // after it: the window's own clock starts with the ledger's
             var mark = FrameLedger.Mark();
             Pump(host, w, o.MeasureSec, d);
             var snap = FrameLedger.Snapshot(mark);
@@ -645,6 +666,10 @@ public static partial class Diagnostics
             double _lastOffset, _viewport = 1;
             int _dir = 1;
             public string Key = "";
+            /// <summary>The adopted viewport as last seen (its node, rect, extent).</summary>
+            public ViewportInfo Info;
+            /// <summary>The adopted handle's scroll range (0 before adoption).</summary>
+            public double MaxOffset => _handle?.MaxOffset ?? 0;
             public double Distance;
             public int Steps;
             public double DistanceViewports => _viewport > 0 ? Distance / _viewport : 0;
@@ -691,11 +716,12 @@ public static partial class Diagnostics
                     _lastOffset = bestHandle.Offset.Peek();
                 }
                 _viewport = best.Viewport;
+                Info = best;
                 return true;
             }
 
-            public bool WaitReady(AppHost host, Win32Window w, double maxSec)
-                => PumpUntil(host, w, () => Adopt(host, 3.0), maxSec);
+            public bool WaitReady(AppHost host, Win32Window w, double maxSec, double minRatio = 3.0)
+                => PumpUntil(host, w, () => Adopt(host, minRatio), maxSec);
 
             public string Describe(AppHost host)
             {
@@ -807,6 +833,7 @@ public static partial class Diagnostics
                 host.RunFrame();
                 frameTicks += Stopwatch.GetTimestamp() - f0;
                 s_poseProbe?.Sample(host);
+                s_probeTap?.Drain();
                 host.TickDetachedHosts();
                 n++;
                 var wait = host.WaitRequestWithDetached();
