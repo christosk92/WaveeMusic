@@ -255,7 +255,7 @@ internal static partial class ClassicLibraryArtistReader
         if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort)) return h.SubRail.Value;
         h.RailScope = scope;
         h.RailSort = sort;
-        return (h.SubRail = SubRail(p.Host, scope, sort)).Value;
+        return (h.SubRail = SubRail(p.Host, scope, sort).Freeze()).Value;   // built in a row's realize, kept past it
     }
 
     /// <summary>The two word rails — scope (in your library · all releases · N) — spacer — sort (newest · oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. A PLAIN
