@@ -139,6 +139,11 @@ public readonly partial struct Artist
         readonly ArtistSection[] _plan = new ArtistSection[ArtistSections.Count];
         readonly ArtistSection[] _pivot = new ArtistSection[ArtistSections.Count];
         int _pivotCount, _pivotHash;
+        /// <summary>A pivot click's destination (its pivot index, −1 none) and when the hold lapses: while the click's glide travels, the spy keeps the clicked
+        /// tab lit instead of lighting every section the glide passes (About → Singles → Appears on → About, owner video 2026-10-25). The hold ends when the
+        /// spy reaches the destination, or at the deadline (a wheel that takes over, a destination the glide cannot park under the band at the page's end).</summary>
+        int _spyHold = -1;
+        long _spyHoldUntil;
 
         // ── colour ──
         // Seeded from the last remembered page accent, so the first frame never paints the default over a held colour.
@@ -163,6 +168,13 @@ public readonly partial struct Artist
         /// <see cref="DemandRows"/> has asked. The chart gate reads the rows' marks only for that list
         /// (<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/>); a signal, so the render after the ask re-reads the gate.</summary>
         readonly Signal<(uint Epoch, int Slot, uint Version)> _chartRowsAsked = new((0u, Table.None, 0u));
+
+        /// <summary>THE OVERVIEW DEMAND LATCH: the (scope, artist) <see cref="Demand"/> has asked the overview for. Before it, an overview group nobody asks for
+        /// is "not asked yet"; after it, one nobody asks for any more (the planner gave up on it: a seal after repeated misses, a terminal failure) is never
+        /// coming, and the page fails to its Retry instead of shimmering for the life of the route (IVE, owner video 2026-10-25: the overview was missing a
+        /// group the planner no longer asked, the chart answered, and the skeleton stood until the owner left). A signal, so the render after the ask
+        /// re-reads the gate.</summary>
+        readonly Signal<(uint Epoch, int Slot)> _overviewAsked = new((0u, Table.None));
 
         /// <summary>The hero photo's LATCHED art identity (ch 08 BUG E, <see cref="Detail.CoverLatch"/>): the incoming
         /// candidate (the avatar the card already carried, later the header once the overview lands) only replaces what
@@ -213,7 +225,7 @@ public readonly partial struct Artist
             _republishAccent = RepublishAccent;
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
-            _retry = Demand;
+            _retry = RetryPage;
             _play = Play;
             _shuffle = Shuffle;
             _radio = Radio;
@@ -327,7 +339,9 @@ public readonly partial struct Artist
             _ready = ArtistReadiness.Overview(a);
             bool overviewPending = a.IsValid
                 && ((scope.Artists.Asked[a.Slot] & (uint)ArtistFields.Overview) != 0 || scope.Artists.Inflight[a.Slot] != 0);
-            _failed = !a.IsValid || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot));
+            bool overviewStopped = a.IsValid && !_ready && _overviewAsked.Value == (scope.Epoch, a.Slot)
+                && ArtistSections.OverviewStopped(scope.Artists.Known[a.Slot], scope.Artists.Asked[a.Slot], scope.Artists.Inflight[a.Slot]);
+            _failed = !a.IsValid || overviewStopped || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot));
 
             string routeKey = p.RouteKey;
             string? paletteUrl = a.IsValid ? Controls.ArtUrl(a.PaletteImageId) : null;
@@ -548,6 +562,13 @@ public readonly partial struct Artist
             var scene = Context.Scene;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
+            int at = Array.IndexOf(_pivot, (ArtistSection)section, 0, _pivotCount);
+            if (at >= 0)
+            {
+                _spyHold = at;
+                _spyHoldUntil = Environment.TickCount64 + SpyHoldMs;
+                _active.SetIfChanged(at);
+            }
             scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(),
                 margin: _bandClear);
         }
@@ -579,6 +600,12 @@ public readonly partial struct Artist
             if (viewportHeight <= 0f) viewportHeight = vp.H;
             int at = Detail.BandLayout.ActiveSection(tops[..n], _bandClear, viewportHeight, atEnd);
             if (at != _spyLogged) LogSpy(at, tops[..n], viewportHeight, atEnd);
+            if (_spyHold >= 0)
+            {
+                // A pivot click's glide is travelling: the clicked tab stays lit until the spy reaches it (or the hold lapses).
+                if (at != _spyHold && Environment.TickCount64 < _spyHoldUntil) return;
+                _spyHold = -1;
+            }
             if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had (D40); NoSection lights nothing
         }
 
@@ -660,12 +687,24 @@ public readonly partial struct Artist
         /// <summary>The whole model on mount (ch 08 §7), through what exists: the overview + the chart bit, the chart and
         /// concert edges ONLY while nobody has answered, the three facets. The seed marks everything complete, so an
         /// offline page reaches no network. Also the Retry.</summary>
+        /// <summary>The failed page's Retry: ask the artist's groups again past whatever the planner gave up on (<c>Refresh</c> clears the asks and the miss
+        /// count; a plain <see cref="Demand"/> would skip a sealed group and fail again at once), then demand as on mount.</summary>
+        void RetryPage()
+        {
+            var a = _artist;
+            if (!a.IsValid) return;
+            int slot = a.Slot;
+            Entities.Refresh(Entities.Current.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.All);
+            Demand();
+        }
+
         void Demand()
         {
             var a = _artist;
             if (!a.IsValid) return;
             var e = Entities.Current.Edges;
             Entities.Ensure(a, ArtistFields.All);
+            _overviewAsked.Value = (Entities.Current.Epoch, a.Slot);
             if (e.ArtistPopular.State(a.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistPopular, a.Slot);
             DemandDiscography(a);
             if (e.ArtistConcerts.State(a.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistConcerts, a.Slot);
@@ -989,6 +1028,10 @@ public readonly partial struct Artist
 
     /// <summary>A glide, or an immediate jump under reduced motion.</summary>
     static ScrollMove GlideOrJump() => Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide;
+
+    /// <summary>How long a pivot click's hold on the spy lasts at most (ms): longer than the glide takes to park a far section, short enough that a wheel which
+    /// takes over the scroll gets the spy back almost at once.</summary>
+    const long SpyHoldMs = 700;
 
     /// <summary>The header's chrome grading, else the avatar's, else the header payload colour, else the ladder's
     /// held/default rungs (<see cref="Detail.AccentFor"/>). Both urls are watched HERE, inside the tracked
