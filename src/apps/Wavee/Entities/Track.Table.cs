@@ -1828,7 +1828,14 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             int visible = _rowItems!.Count.Value;
             var state = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
-            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] };
+            // The placeholder's key sits on a CHILD: this item and row 1 are one slot (the first suffix slot becomes the first track row when the rows
+            // land), and a slot root ignores its key, so a keyed root patched the shimmer's nodes into row 1, which then glided in from the
+            // placeholder's layout (the one row that slid in from the right on a playlist load). Under an unkeyed root the row mounts fresh.
+            return new BoxEl
+            {
+                Direction = 1, HitTestPassThrough = true,
+                Children = [new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] }],
+            };
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
