@@ -122,6 +122,14 @@ public readonly partial struct Artist
     /// saved ones; inside each group the sort applies: Newest = year desc, unknown years sink; Oldest = year asc,
     /// unknown years sink; Alphabetical = title (OrdinalIgnoreCase), then uri. The source index is the tie-break of last
     /// resort, so the order is total and the key deterministic.</summary>
+    /// <summary>How a reader block lays out its track rows (contract 1.80, audit FU): their height and whether they run the block's full width UNDER the cover
+    /// and the head instead of beside the cover. <see cref="Core"/> is the shape's own (36, beside); a structure states the narrow arm's
+    /// (<c>LibraryTierPolicy.ReaderNarrowRows</c>: Zune's Compact reader meets the 40 target floor and gives its titles the block's width).</summary>
+    public readonly record struct ReaderRows(float RowH, bool UnderCover)
+    {
+        public static ReaderRows Core => new(ReaderShape.RowH, false);
+    }
+
     public static class ReaderShape
     {
         // The two reader-width edges (#158) are the structure's since TC6: its reader ladder (`Wavee.Theming.ArtistLadders.Reader`; Classic
@@ -213,14 +221,20 @@ public readonly partial struct Artist
             => Math.Max(0, libraryCount) + Math.Max(0, albums) + Math.Max(0, singles) + Math.Max(0, compilations);
 
         /// <summary>The analytic block extent: pad + max(cover + its caption, head + rows) + pad + divider, the head in its
-        /// arm (<see cref="HeadHeight"/> — 44 inline, 72 stacked). The list's layout asks for this BEFORE the block
-        /// renders (`RepeatLayout.Extents`), which is why it may not read anything the block's own measure would decide.</summary>
-        public static float ExtentOf(in ReaderBlock b, bool narrow)
+        /// arm (<see cref="HeadHeight"/> — 44 inline, 72 stacked). With <see cref="ReaderRows.UnderCover"/> the rows run the block's full width
+        /// UNDER the cover and the head: pad + max(cover + its caption, head) + the gap + rows + pad + divider. The rows are <see cref="ReaderRows.RowH"/>
+        /// tall. The list's layout asks for this BEFORE the block renders (`RepeatLayout.Extents`), which is why it may not read anything the block's own
+        /// measure would decide.</summary>
+        public static float ExtentOf(in ReaderBlock b, bool narrow, in ReaderRows rows)
         {
             float cover = CoverOf(narrow) + CoverCaptionGap + CaptionLine;   // cover + gap + the "2022 · Album" caption
-            float body = HeadHeight(narrow) + b.Rows * RowH + RowsPadBottom;
-            return BlockPadTop + MathF.Max(cover, body) + BlockPadBottom + Divider;
+            float list = b.Rows * rows.RowH + RowsPadBottom;
+            float body = rows.UnderCover ? MathF.Max(cover, HeadHeight(narrow)) + RowsUnderGap + list : MathF.Max(cover, HeadHeight(narrow) + list);
+            return BlockPadTop + body + BlockPadBottom + Divider;
         }
+
+        /// <summary>The gap between the cover's caption (or the head) and rows that run under them (<see cref="ReaderRows.UnderCover"/>).</summary>
+        public const float RowsUnderGap = 8f;
 
         /// <summary>Fills <paramref name="into"/> with the ordered blocks; returns the count (the library count in
         /// <paramref name="library"/>, so the UI can title the two groups without re-deriving "in your library").

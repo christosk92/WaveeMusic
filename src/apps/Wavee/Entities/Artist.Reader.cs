@@ -250,6 +250,8 @@ public readonly partial struct Artist
         /// thunk, the block builders and the chrome check read these, never the signals, so a measure inside the layout
         /// pass cannot subscribe anything.</summary>
         bool _narrow, _stacked;
+        /// <summary>The track rows of the arm (the structure's narrow-arm rows, else the shape's own): set with <see cref="_narrow"/>, read by the extents and the cells.</summary>
+        ReaderRows _rows = ReaderRows.Core;
         /// <summary>R3: is scope 1's catalogue union withheld THIS compute because one of the three facets' first page
         /// has neither answered nor failed yet? <see cref="TailKind"/> and <see cref="ReadTail"/> read it (the tail
         /// line reads differently while gated) — set only inside <see cref="Compute"/>, the one place that knows.</summary>
@@ -336,7 +338,7 @@ public readonly partial struct Artist
             _extentOf = i => i == 0 ? ReaderShape.BandHeight(_stacked)
                            : i == 1 ? SubRailH
                            : i - Prefix == _count ? _tailExtent
-                           : (uint)(i - Prefix) < (uint)_count ? ReaderShape.ExtentOf(in _blocks[i - Prefix], _narrow)
+                           : (uint)(i - Prefix) < (uint)_count ? ReaderShape.ExtentOf(in _blocks[i - Prefix], _narrow, in _rows)
                            : EstimatedBlockExtent;
             _keyOf = i => i == 0 ? "band"
                         : i == 1 ? "rail"
@@ -396,6 +398,7 @@ public readonly partial struct Artist
             _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _arm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Reader), TierSource.Measured(_readerW, _readerSeed));
             _narrow = NarrowArm;
+            _rows = _narrow ? ShellPolicy.Now.LibraryTiers.ReaderNarrowRows : ReaderRows.Core;
             _stacked = MediumArm;                                            // subscribe: the spine's presence is a tree edit
             bool spine = !_stacked;
             _shape = UseComputed(_compute);
@@ -505,7 +508,7 @@ public readonly partial struct Artist
         {
             _bandExtent = ReaderShape.BandHeight(_stacked);
             if (_extents.Length < _count) _extents = new float[Math.Max(_count, _extents.Length * 2)];
-            for (int i = 0; i < _count; i++) _extents[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow);
+            for (int i = 0; i < _count; i++) _extents[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow, in _rows);
             _tailExtent = TailHeight(TailKind());
             _extentKey = _listKey;
         }
@@ -518,7 +521,7 @@ public readonly partial struct Artist
             int old = _extents.Length;
             var next = new float[Math.Max(_count, old * 2)];
             Array.Copy(_extents, next, old);
-            for (int i = old; i < _count; i++) next[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow);
+            for (int i = old; i < _count; i++) next[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow, in _rows);
             _extents = next;
         }
 
@@ -742,7 +745,7 @@ public readonly partial struct Artist
             {
                 var b = _blocks[i];
                 if (_cells.TryGetValue(b.AlbumSlot, out var cell)) cell.Settle(b);
-                float extent = ReaderShape.ExtentOf(in b, narrow);
+                float extent = ReaderShape.ExtentOf(in b, narrow, in _rows);
                 if (_extents[i] == extent) continue;
                 // The cache stays BLOCK-indexed (it mirrors `_blocks`); only the correction crosses into flat space.
                 // Before the viewport is live there is no table to correct — the seed will read the CURRENT extent anyway.
@@ -1051,6 +1054,7 @@ public readonly partial struct Artist
 
             /// <summary>The arm this mount froze (it is a list mount input).</summary>
             public bool Narrow => _r._narrow;
+            public ReaderRows Rows => _r._rows;
 
             /// <inheritdoc />
             public Func<ContextMenuModel?> Menu { get; }

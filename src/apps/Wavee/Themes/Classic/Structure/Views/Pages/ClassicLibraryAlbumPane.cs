@@ -98,8 +98,15 @@ internal static class ClassicLibraryAlbumPane
         {
             var p = UseProps<TrailingProps>();
             bool docked = UseContext(s_alsoDocked);
-            // One root, keyed and eased, in both states: the band's height eases away when the aside takes the strip instead of snapping the scroller's tail.
-            Element band = docked ? new BoxEl() : AlsoBy(p.Cell.Props.AlsoBy());
+            var seen = UseRef(false);
+            bool rendered = seen.Value;
+            seen.Value = true;
+            // One root, keyed and eased, in both states: the band's height eases away when the aside takes the strip instead of snapping the scroller's tail. The strip and
+            // its absence are KEYED children: the Huge crossing hands the strip's covers between the aside's grid and this strip (different trees, the same albums), so the
+            // strip arriving on a crossing cross-fades in as the declared tier swap (none on the band's first render: it arrives with the pane).
+            Element band = docked
+                ? new BoxEl { Key = "also:none" }
+                : AlsoBy(p.Cell.Props.AlsoBy()) with { Key = "also:strip", Enter = ClassicTierMotion.SwapEnter(rendered), Exit = ClassicTierMotion.SwapFade };
             return new BoxEl { Key = "also:band", Direction = 1, Shrink = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize, Children = [band] };
         }
     }

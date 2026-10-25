@@ -61,6 +61,10 @@ public sealed record LibraryTierPolicy
     /// album's page (<see cref="LibraryPageProps.PaneBeside"/> says which). Default 1: every split layout draws the pane. Contract 1.79 (audit Z-LIB).</summary>
     public int PaneFromLayout { get; init; } = 1;
 
+    /// <summary>The artist reader's track rows in its NARROW arm (the 88 cover and the stacked head): their height and whether they run under the cover
+    /// (<see cref="Artist.ReaderRows"/>). Default: the shape's own (36 tall, beside the cover). Contract 1.80 (audit FU).</summary>
+    public Artist.ReaderRows ReaderNarrowRows { get; init; } = Artist.ReaderRows.Core;
+
     /// <summary>The structure draws the PODCASTS library as the board does: "your episodes" as a pinned first row of the shows list, the episodes feed (or the picked show) beside it, and no
     /// mode words in the head. The host then opens on Your Episodes until a show has been picked, and a show picked in the list switches back to its pane; false (the default,
     /// Classic's) leaves the two mode words and their swap as they were. Contract addition after 1.34.</summary>

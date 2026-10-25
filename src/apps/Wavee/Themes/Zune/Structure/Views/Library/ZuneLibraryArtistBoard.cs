@@ -13,7 +13,7 @@
 //
 // THE HERO. Its plate is the record's height for every artist (a selection never moves the grid). The name is a detail hero (owner exception 2026-10-21): the record's
 // step on one line, else smaller on one line down to half the step, else two lines at that floor (the one-line block), then an ellipsis. The verbs are play all, shuffle,
-// go to artist and the Follow toggle: a lane too narrow for their words keeps play all's word and names shuffle and go-to by their tooltips (the rings keep their nodes).
+// go to artist and the follow pill: a lane too narrow for their words keeps play all's word and names shuffle and go-to by their tooltips (the rings keep their nodes).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -160,7 +160,7 @@ internal static partial class ZuneLibraryArtistReader
         return library.Length > 0 ? kind + " · " + library : kind;
     }
 
-    /// <summary>Play all · shuffle · go to artist · the Follow toggle. <paramref name="words"/> false (a lane under <see cref="LR.HeroVerbsWordsW"/>): play all keeps its word and
+    /// <summary>Play all · shuffle · go to artist · the follow pill. <paramref name="words"/> false (a lane under <see cref="LR.HeroVerbsWordsW"/>): play all keeps its word and
     /// shuffle and go-to are rings named by their tooltips. Their wrapper is the same either way (<c>stableName</c>), so the lane crossing its width keeps every node.</summary>
     static Element HeroVerbs(IArtistReaderHost host, string uri, string? name, bool words) => new BoxEl
     {

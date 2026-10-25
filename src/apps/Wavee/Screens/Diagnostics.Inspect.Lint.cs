@@ -401,6 +401,10 @@ public static partial class Diagnostics
             /// <summary>A sticky header (pinned over the rows under it on purpose).</summary>
             public bool Sticky { get; init; }
 
+            /// <summary>The window y above which it takes no hits: a recyclable item of a virtual list whose pinned prefix (a sticky toolbar) covers the top
+            /// of the viewport (the engine's item band, <c>InputDispatcher.Hit</c> skips such items above it). Negative infinity: none.</summary>
+            public float HitTop { get; init; } = float.NegativeInfinity;
+
             /// <summary>Its paint: a fill, a border, an image, a gradient (what makes a box ink, and a busy ground).</summary>
             public ColorF Fill { get; init; }
             public float BorderWidth { get; init; }
@@ -1478,6 +1482,18 @@ public static partial class Diagnostics
             var reach = new RectF[count];
             var cover = new float[count];
             InspectVisible.Compute(nodes, s.Width, s.Height, visible, onScreen, inContent, reach, cover);
+            // A row scrolled under a virtual list's pinned prefix is clipped above the item band (the recorder paints it from the band down, as the hit
+            // test takes it): its visible part starts there.
+            for (int i = 0; i < count; i++)
+            {
+                float top = nodes[i].HitTop;
+                RectF v = visible[i];
+                if (!(top > v.Y) || v.IsEmpty) continue;
+                float area = v.W * v.H;
+                RectF cut = top >= v.Bottom ? default : new RectF(v.X, top, v.W, v.Bottom - top);
+                visible[i] = cut;
+                onScreen[i] = cut.IsEmpty || area <= 0f ? 0f : onScreen[i] * (cut.W * cut.H) / area;
+            }
 
             // A modal scrim: an interactive fill over the whole window (a dialog's light-dismiss backdrop). It catches every click and dims
             // what is under it, so whatever was painted before it, its own ancestors aside, is covered: out of scope at screen and content.
@@ -2766,6 +2782,13 @@ public static partial class Diagnostics
                 // bar of a scroller the target sits in (it overlays the target's edge of the view, and its real hit wins).
                 if (NearestScroller(s, m) != scroller && !(m.Role == "ScrollBar" && BarOfAncestor(s, n, m))) continue;
                 RectF o = m.Rect;
+                // A row scrolled under a list's pinned prefix takes no hits above the item band (InputDispatcher.Hit skips it there): only its part
+                // below the band can cut a slop (Zune's show toolbar over the episode rows, audit FU item 6).
+                if (m.HitTop > o.Y)
+                {
+                    if (m.HitTop >= o.Bottom) continue;
+                    o = new RectF(o.X, m.HitTop, o.W, o.Bottom - m.HitTop);
+                }
                 if (o.X >= rr || o.Right <= l || o.Y >= b || o.Bottom <= t) continue;   // not in the grown rect
                 bool cut = false;
                 if (o.X >= r.Right) { rr = MathF.Min(rr, o.X); cut = true; }

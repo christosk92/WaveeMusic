@@ -348,18 +348,17 @@ internal static class ZuneTrackChrome
     /// through <see cref="In"/>, so the kit follows the facts the table is drawn in.</summary>
     sealed class CommandKit : ITrackCommandKit
     {
-        static readonly Dictionary<WidthTier, CommandKit> s_byTier = new();
+        // One kit per tier, first writer wins: a lock-free slot per WidthTier value (PERF r3 UI: every track-table render asks,
+        // and the lock it took showed as UI-thread Monitor.Enter_Slowpath in a navigation burst).
+        static readonly CommandKit?[] s_byTier = new CommandKit?[(int)WidthTier.Huge4K + 1];
         readonly WidthTier _tier;
 
         CommandKit(WidthTier tier) => _tier = tier;
 
         public static CommandKit For(WidthTier tier)
         {
-            lock (s_byTier)
-            {
-                if (!s_byTier.TryGetValue(tier, out var kit)) s_byTier[tier] = kit = new CommandKit(tier);
-                return kit;
-            }
+            ref CommandKit? slot = ref s_byTier[(int)tier];
+            return Volatile.Read(ref slot) ?? Interlocked.CompareExchange(ref slot, new CommandKit(tier), null) ?? slot!;
         }
 
         public ITrackCommandKit In(in TierFacts tiers)

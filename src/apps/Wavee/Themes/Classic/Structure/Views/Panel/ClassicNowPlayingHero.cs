@@ -250,7 +250,7 @@ internal sealed class ClassicHeroTile : Component
         if (sheetSide is not null) return SheetTile(props, overlay, presentation, preset, styleVisible, side, sheetSide);
 
         Element hero = presentation == Rail.PlayerPrefs.Player
-            ? new BoxEl { Key = preset.Slug + "@" + (int)side, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
+            ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
             : new ImageEl
             {
                 Key = "cover",
@@ -278,7 +278,7 @@ internal sealed class ClassicHeroTile : Component
         Element hero = presentation == Rail.PlayerPrefs.Player
             ? new BoxEl
             {
-                Key = preset.Slug + "@" + (int)deckSide, Direction = 1, Shrink = 0f, AlignSelf = FlexAlign.Start, Width = deckSide, Height = deckSide,
+                Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, AlignSelf = FlexAlign.Start, Width = deckSide, Height = deckSide,
                 TransformOriginX = 0f, TransformOriginY = 0f,
                 Transform = Prop.Of(() => Affine2D.Scale(sheetSide() / MathF.Max(1f, deckSide), sheetSide() / MathF.Max(1f, deckSide))),
                 Children = [props.Deck()],

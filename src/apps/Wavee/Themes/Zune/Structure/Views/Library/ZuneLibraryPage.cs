@@ -257,10 +257,13 @@ internal static partial class ZuneLibraryPage
         ExitDynamics: TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut));
 
     /// <summary>The two arms (the split columns and the one-column drill-in) cross-fade when the layout tier crosses: the arriving arm fades in while the leaving one fades out
-    /// as an exit orphan under it, never a snap. Opacity only.</summary>
+    /// as an exit orphan under it, never a snap. Opacity only, and a DECLARED swap family (<see cref="ArmFade"/>): the arms are two arrangements of the page, a breadcrumb
+    /// drill-in and columns, whose head and navigator the host re-places across the swap (the place, the selection).</summary>
+    static readonly EnterExit ArmFade = SwapFamilies.Declare("Zune.Library.Arm", new EnterExit(Opacity: 0f, Active: true));
+
     static readonly LayoutTransition s_arm = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut),
-        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        Enter: ArmFade, Exit: ArmFade,
         ExitDynamics: TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut));
 
     static readonly LayoutTransition s_drillRoot = new(
@@ -310,14 +313,15 @@ internal static partial class ZuneLibraryPage
         };
     }
 
-    /// <summary>The collapsed layout's breadcrumb: a plain band, a 1-DIP divider under it.
+    /// <summary>The collapsed layout's breadcrumb: a plain band, a 1-DIP divider under it. Its crumbs are the kit's Large size (every crumb at least 40 x 40): the drill-in is the
+    /// one-column layout, where the Compact target floor holds.
     /// <para>KEYED. It is the first child of the collapsed root, as the head is of the wide one: unkeyed, the reconciler would pair the two by ordinal.</para></summary>
     static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick, float gap) => new BoxEl
     {
         Key = "lib:crumbs", Direction = 1, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, gap),
         Children =
         [
-            BreadcrumbBar.Create(crumbs, onPick),
+            BreadcrumbBar.Create(crumbs, onPick, size: ControlSize.Large),
             new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
         ],
     };
