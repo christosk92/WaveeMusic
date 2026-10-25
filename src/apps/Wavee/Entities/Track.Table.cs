@@ -852,7 +852,10 @@ public readonly partial struct Track
             var lanes = TableRules.LanesOf(in s);
             float gap = RowMetrics.ColGapFor(s.Tier), pad = RowMetrics.PadXFor(s.Tier);
             _reliefLanes = lanes; _reliefGap = gap; _reliefPad = pad;
-            return TableRules.ReliefFor(in lanes, _lastW, gap, pad, _relief.Value, _tierMeasured.Value);
+            // The LIST column's width, as OnColumnBounds measures it (the table less the hero list's insets), never the table's: in the columns form the
+            // head's side column stands inside the table, and the table's width told this render the floors cleared, undoing the bounds' relief (a
+            // playlist beside its cover kept Plays and BPM·Key and squeezed the title to a letter).
+            return TableRules.ReliefFor(in lanes, _listW.Peek(), gap, pad, _relief.Value, _tierMeasured.Value);
         }
 
         /// <summary>Measure → tier → relief, value-gated so a drag re-renders only where a lane changes hands. The first
