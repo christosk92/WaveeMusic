@@ -78,7 +78,7 @@ public static class ListStamps
     /// <summary>Bumps on every change to any stamp. A surface that re-decides its freshness when a push dirties the list
     /// it shows subscribes; nothing else needs to. Written only on the UI thread, never from inside a computation that
     /// reads it.</summary>
-    public static Signal<uint> Changed { get; } = new(0u);
+    public static Signal<uint> Changed { get; } = new(0u) { DebugName = "library.lists.changed" };
 
     /// <summary>How many lists hold a stamp (diagnostics, the reconnect's log line).</summary>
     public static int Count => s_stamps.Count;

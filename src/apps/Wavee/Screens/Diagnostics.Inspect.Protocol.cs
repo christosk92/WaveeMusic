@@ -251,6 +251,7 @@ public static partial class Diagnostics
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
+            Arg("dt", ArgType.Float, "the fixed frame step in ms (default 16; 8.333 samples motion at 120 Hz: `frames 1` + `render` per frame)", "16"),
         ];
 
         /// <summary>The mount's args: its own and the navigation.</summary>

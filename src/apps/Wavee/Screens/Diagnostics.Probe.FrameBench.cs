@@ -273,6 +273,11 @@ public static partial class Diagnostics
                     // docked, then a theme transaction to Zune and back. One step every 1.1 s, each marked in the frame trace.
                     if (t.Playlists.Length < 3 || t.Artists.Length < 3) return Skip("needs 3 playlists and 3 artists");
                     Base(playing: play is not null);
+                    // The owner plays a CONTEXT, so the docked queue holds dozens of rows (their census: ~106 row surfaces): play the
+                    // first playlist (pl0: 50 tracks under --fake) and let the queue fill before the window.
+                    Playback.PlayContext(t.Playlists[0]);
+                    PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20);
+                    Settle(1.0);
                     string start = Wavee.Theming.ThemeInspection.ActiveId;
                     string other = start == "zune" ? "classic" : "zune";
                     Shell.Route Pl(int i) => Shell.For(EntityUri.Parse(t.Playlists[i]), "Bench playlist");
