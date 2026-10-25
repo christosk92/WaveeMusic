@@ -100,10 +100,10 @@ internal static class ZuneLibraryAlbumPane
             Direction = 1, Grow = 1f, ClipToBounds = true,
             Children =
             [
-                // Both forms keep four children in the same slots (the second is an empty slot when brief), so the rows area below keeps its node (and the table its scroll)
-                // across a height crossing.
-                brief ? K.BriefHeader(p.Title, p.Open, Verbs(p, box), box) : K.PaneHeader(p.Title, p.Open, K.ArtistLine(p.Artists), p.Meta),
-                brief ? new BoxEl { Shrink = 0f } : Commands(p, box, openWord),
+                // ONE head for both height rungs (the words and the verbs keep their nodes, K.PaneHead), then an empty slot that keeps the rows area in its place, so the
+                // rows keep their node (and the table its scroll) across a height crossing.
+                K.PaneHead(p.Title, p.Open, K.ArtistLine(p.Artists), p.Meta, Verbs(p, box, openWord, brief), box, brief),
+                new BoxEl { Shrink = 0f },
                 p.Notice!,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move.
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = [rows] },
@@ -111,38 +111,22 @@ internal static class ZuneLibraryAlbumPane
         };
     }
 
-    /// <summary>The verbs as words: the play ring with its word, the shuffle ring, the heart, the "…", then "open album" at the end. A command is at least <paramref name="box"/> tall
-    /// (a 40 target at Compact). The link is the row's one SHRINKING child, so a narrow pane never clips it off the edge.</summary>
-    static Element Commands(LibraryAlbumPaneProps p, float box, bool openWord)
-    {
-        string openLabel = Loc.Get(Strings.Library.OpenAlbum);
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.PaneCommandsGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, LR.PaneCommandsTop, 0f, LR.PaneCommandsBottom),
-            Children =
-            [
-                Target(ZuneDiscoveryKit.Ring("lib-pane-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true, p.Play), box),
-                Target(ZuneDiscoveryKit.Ring("lib-pane-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: false, primary: false, p.Shuffle), box),
-                K.Save(p.Uri, p.Title, box) with { Key = p.SaveKey },
-                K.MoreButton(p.More, box),
-                new BoxEl { Grow = 1f, MinWidth = 0f },
-                new BoxEl
-                {
-                    Key = "lib-pane-open", Visible = openWord, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, MinHeight = box,
-                    Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, AllowFocusOnInteraction = false, OnClick = p.Open,
-                    Children = [K.WordText(openLabel, active: false) with { Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis }],
-                },
-            ],
-        };
-    }
-
-    /// <summary>The Short rung's verbs, rings only (play, shuffle, the heart, the "..."): each at least <paramref name="box"/> tall. "Open album" is the title.</summary>
-    static Element[] Verbs(LibraryAlbumPaneProps p, float box) =>
+    /// <summary>The verbs: the play ring (with its word on the Regular rung), the shuffle ring, the heart, the "…", then "open album" at the end (Regular only: on the Short
+    /// rung the title opens the album). A command is at least <paramref name="box"/> tall (a 40 target at Compact). The link is the row's one SHRINKING child, so a narrow pane
+    /// never clips it off the edge. The same slots in both forms: what the Short rung does not draw is hidden, so a height crossing rebuilds none of them.</summary>
+    static Element[] Verbs(LibraryAlbumPaneProps p, float box, bool openWord, bool brief) =>
     [
-        Target(ZuneDiscoveryKit.Ring("lib-pane-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: false, primary: true, p.Play), box),
+        Target(ZuneDiscoveryKit.Ring("lib-pane-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: !brief, primary: true, p.Play, stableName: true), box),
         Target(ZuneDiscoveryKit.Ring("lib-pane-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: false, primary: false, p.Shuffle), box),
         K.Save(p.Uri, p.Title, box) with { Key = p.SaveKey },
         K.MoreButton(p.More, box),
+        new BoxEl { Grow = 1f, MinWidth = 0f, Visible = !brief },
+        new BoxEl
+        {
+            Key = "lib-pane-open", Visible = openWord && !brief, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, MinHeight = box,
+            Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, AllowFocusOnInteraction = false, OnClick = p.Open,
+            Children = [K.WordText(Loc.Get(Strings.Library.OpenAlbum), active: false) with { Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis }],
+        },
     ];
 
     /// <summary>A ring verb at least <paramref name="box"/> tall: a command is a target.</summary>
