@@ -1,10 +1,12 @@
 // ── Themes/Zune/Structure/Views/Album/ZuneAlbumTrailing.cs — Zune's album trailing band and aside (themes plan 6.3; P5 Z6a1) ───────────────────
 //
-// Boards Z-Album (the 260 aside: "more by" as rows of a 56 cover, the title and "type · year", its "discography" link), Z-Album-Huge / -Huge4K (the
-// 400 / 440 aside: "more by" as a two-column grid of covers, "fans also like" as four circles a row), Z-Album-Small / -Compact (no aside: the same
-// sections under the rows). Every section opens on Zune's heading (26/32 light, lowercased; a heading that carries a NAME, "More by Daft Punk", keeps
+// Boards Z-Album (the 260 aside: "more by" as rows of a 56 cover, the title and "type · year", its "discography" link, then "credits"), Z-Album-Huge /
+// -Huge4K (the 400 / 440 aside: "about <artist>" with the photo band, "more by" as a two-column grid of covers, "fans also like" as four circles a row),
+// Z-Album-Small / -Compact (no aside: the same sections under the rows). Every section opens on Zune's heading (26/32 light, lowercased; a heading that carries a NAME, "More by Daft Punk", keeps
 // the name's casing) and its link word at the end ("discography" on an artist's releases, else "show all 12", one-way: the stack lengthens in place).
-// Zune draws no "about the artist" card on the album (owner 2026-10-25: the Z-Album aside replaces it; the artist is a tap away on the identity).
+// "about" is the Huge aside's only (owner 2026-10-25, audit FU2b: Z-Album-Huge draws it, Z-Album and the narrower boards do not): ONE keyed block in
+// every aside, folded to nothing below Huge, so the 1920 crossing eases it in and out and keeps its parts (no tier in a key). "credits" is drawn only
+// when the core has a paragraph to state (`AlbumAsideProps.Credits`), which it has not yet: the section draws nothing, not even its heading.
 //
 //   · the REGION (`Album.Trailing`): one skeleton boundary shimmering from the first frame and revealing once, keyed on the shape the host decided;
 //   · the SECTIONS (`Album.Sections`, under the rows): the music videos (one: the wide card; two or more: the paged shelf), fans also like, then
@@ -195,15 +197,142 @@ internal static class ZuneAlbumTrailing
         var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var lay = ZuneDetailTiers.Of(ctx.Tier());
         float w = lay.AsideW > 0f ? lay.AsideW : ZuneDetailRules.Standard.AsideW;
-        var kids = new List<Element>(2);
+        var kids = new List<Element>(3);
         if (p.MoreBy is { } moreBy)
             kids.Add(new BoxEl
             {
                 Key = "aside:" + moreBy.Key, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Enter = enter, Exit = ZuneMotion.SwapFade,
                 Children = [moreBy],
             });
+        // Credits only when there is a paragraph to state (contract 1.82); today the core has none (Album.PageRules.CreditsOf), so nothing draws.
+        if (p.Credits is { Runs.Count: > 0 } credits) kids.Add(Credits(credits) with { Enter = enter, Exit = ZuneMotion.SwapFade });
         if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, w) with { Enter = enter, Exit = ZuneMotion.SwapFade });
-        return new BoxEl { Key = Z.AlbumAsideKey, Direction = 1, Gap = Z.AsideSectionGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+        Element sections = new BoxEl { Direction = 1, Gap = Z.AsideSectionGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+        // "about" stands above them in its own fold: its gap to the next section is its own (inside the fold), so a folded block leaves no air behind.
+        return new BoxEl
+        {
+            Key = Z.AlbumAsideKey, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Children = p.About is { } artist ? [About(artist, lay), sections] : [sections],
+        };
+    }
+
+    /// <summary>Z-Album-Huge's "about <artist>" (the board's own form: no eyebrow, no follow pill): the head ("about" and the artist's name, its link), the
+    /// photo band with the name over its foot (40/48 light, wrapping, never shrinking), the bio (three lines and "more") and the listeners line. ONE keyed
+    /// block at every aside tier, folded to nothing where the tier draws none (<see cref="ZuneDetailLayout.AboutBand"/> 0): its height eases through real
+    /// layout, so a crossing into or out of Huge slides the sections under it instead of mounting a part.</summary>
+    static Element About(Artist artist, ZuneDetailLayout lay)
+    {
+        bool shown = lay.AboutBand > 0f;
+        string name = artist.Name;
+        string? image = Controls.ArtUrl(artist.HeroImageId) is { Length: > 0 } hero ? hero : Controls.ArtUrl(artist.ImageId);
+        string bio = ArtistVerbs.Text(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
+        Action open = () => Track.GoToArtist(artist);
+        Element head = new BoxEl
+        {
+            Key = Z.AboutKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionGap, Height = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                K.Heading(Loc.Get(Strings.Theme.Zune.Artist.About)),
+                new BoxEl
+                {
+                    Key = Z.AboutKey + ":name-link", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 1f, MinWidth = 0f,
+                    Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = open,
+                    Children =
+                    [
+                        R.Type.DenseMeta(name) with
+                        {
+                            Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, Case = TextCase.AsWritten, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            Shrink = 1f, MinWidth = 0f,
+                        },
+                    ],
+                },
+            ],
+        };
+        Element band = new BoxEl
+        {
+            Key = Z.AboutKey + ":band", Height = MathF.Max(lay.AboutBand, ZuneDetailRules.Huge.AboutBand), ZStack = true, ClipToBounds = true,
+            Fill = R.Layer.RowHover, Shrink = 0f,
+            Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = open,
+            Children =
+            [
+                image is { Length: > 0 } url ? Ui.Image(url, ImageFit.Cover, decodePx: Z.AboutImageDecode) : new BoxEl(),
+                new BoxEl
+                {
+                    HitTestVisible = false, MinWidth = 0f,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, Tok.FillSolidBase with { A = 0f }), new GradientStop(1f, Tok.FillSolidBase with { A = Z.AboutScrimTail })),
+                },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.End, MinWidth = 0f, Padding = new Edges4(Z.AboutNamePadX, 0f, Z.AboutNamePadX, Z.AboutNamePadBottom), HitTestVisible = false,
+                    Children =
+                    [
+                        R.Type.Heading(name) with
+                        {
+                            Size = Z.AboutNameSize, LineHeight = Z.AboutNameLine, Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Heading),
+                            Wrap = TextWrap.WrapWholeWords, MaxLines = Z.AboutNameLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        },
+                    ],
+                },
+            ],
+        };
+        var words = new List<Element>(2);
+        if (!string.IsNullOrWhiteSpace(bio))
+        {
+            TextSpan more = new(Loc.Get(Strings.Common.More).ToLowerInvariant(), Color: Tok.TextPrimary, OnClick: open, IsLink: true);
+            words.Add(new SpanTextEl([new TextSpan(bio + " "), more])
+            {
+                Size = Z.AboutBodySize, LineHeight = Z.AboutBodyLine, Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.AboutBioLines,
+                Trim = TextTrim.CharacterEllipsis, OverflowSuffix = [new TextSpan(" "), more], MinWidth = 0f,
+            });
+        }
+        if (artist.MonthlyListeners > 0 || artist.Followers > 0)
+        {
+            var meta = new List<TextSpan>(3);
+            if (artist.MonthlyListeners > 0)
+                meta.Add(new TextSpan((Detail.Text.CompactCount(artist.MonthlyListeners) + " " + Loc.Get(Strings.Artist.MetaMonthly)).ToLowerInvariant(), Color: R.Ink.AccentDecor));
+            if (artist.Followers > 0)
+                meta.Add(new TextSpan((meta.Count > 0 ? " · " : "") + Strings.Person.Card.Followers((int)Math.Min(artist.Followers, int.MaxValue), Detail.Text.CompactCount(artist.Followers)).ToLowerInvariant()));
+            words.Add(new SpanTextEl(meta.ToArray()) { Size = Z.AboutMetaSize, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+        }
+        Element content = new BoxEl
+        {
+            Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
+            Padding = new Edges4(0f, 0f, 0f, Z.AsideSectionGap),   // the gap to the next section, folded with the block
+            Children = [head, band, .. words],
+        };
+        return new BoxEl
+        {
+            Key = Z.AboutKey, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, Shrink = 0f,
+            Height = shown ? float.NaN : 0f, HitTestVisible = shown, Layout = Design.Reduced ? null : ZuneMotion.HeightResize,
+            Children = [content],
+        }.Skeletonized(shown);
+    }
+
+    /// <summary>Z-Album's "credits": the heading (22/28, as the aside's named headings) over the core's paragraph, its names in the primary ink as links and
+    /// "all credits" at the end (contract 1.82).</summary>
+    static Element Credits(AlbumCredits credits)
+    {
+        var spans = new List<TextSpan>(credits.Runs.Count + 2);
+        foreach (var run in credits.Runs)
+            spans.Add(run.Name ? new TextSpan(run.Text, Color: Tok.TextPrimary, OnClick: run.Open, IsLink: run.Open is not null) : new TextSpan(run.Text));
+        if (credits.AllCredits is { } all)
+            spans.Add(new TextSpan(" · " + Loc.Get(Strings.Detail.AllCredits).ToLowerInvariant(), OnClick: all, IsLink: true));
+        return new BoxEl
+        {
+            Key = Z.CreditsKey, Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = Z.CreditsKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
+                    Children = [K.Heading(Loc.Get(Strings.Player.Credits)) with { Size = Z.AsideNamedSize, LineHeight = Z.AsideNamedLine }],
+                },
+                new SpanTextEl(spans.ToArray())
+                {
+                    Size = Z.CreditsSize, LineHeight = Z.CreditsLine, Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords, MinWidth = 0f,
+                },
+            ],
+        };
     }
 
     /// <summary>Fans also like in the aside: four circles a row under the heading.</summary>

@@ -248,6 +248,7 @@ public static partial class Shell
                 ViewsPending = views.Count == 0
                     && (row is { ViewsPending: true } || (row is null && PublishesRow(route.Kind) && !s_spoken.Contains(KeyOf(route)))),
                 Actions = row?.Actions ?? [],
+                ActionsPending = row is { ActionsPending: true },
                 Backdrop = row?.Backdrop ?? PageBackdrop.None,
             };
         }

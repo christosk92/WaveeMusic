@@ -75,7 +75,7 @@ public static class ZuneDetailRules
     /// <summary>The album's pieces: the artist line, the release facts, the countdown, the trailing band's sections, one list stack, the aside.</summary>
     public const string ArtistLineKey = "zune.album.artist", ReleaseKey = "zune.album.release", CountdownKey = "zune.album.countdown",
         SectionsKey = "zune.album.sections", StackKey = "zune.album.stack", AlbumAsideKey = "zune.album.aside", FansKey = "zune.album.fans",
-        UnresolvedKey = "zune.album.unresolved";
+        UnresolvedKey = "zune.album.unresolved", AboutKey = "zune.album.about", CreditsKey = "zune.album.credits";
 
     /// <summary>The ring actions' key prefix (the vertical hero's and the identity column's): "play", "save", "share", "shuffle", "more".</summary>
     public const string RingPrefix = "zune.detail.ring:";
@@ -337,6 +337,18 @@ public static class ZuneDetailRules
     /// <summary>See <see cref="AsideNamedSize"/>.</summary>
     public const int AsideNamedLines = 2;
 
+    /// <summary>Z-Album-Huge's "about": the photo band's name (40/48 light, 16 in from the left and 10 up from the band's foot, two lines at most: it wraps,
+    /// never shrinks), the bio (14/20, three lines and its "more"), the listeners line (13), the photo's decode, and the scrim under the name (the ground
+    /// thickening to <see cref="AboutScrimTail"/> at the band's foot, so the white name reads over any photo).</summary>
+    public const float AboutNameSize = 40f, AboutNameLine = 48f, AboutNamePadX = 16f, AboutNamePadBottom = 10f, AboutBodySize = 14f, AboutBodyLine = 20f,
+        AboutMetaSize = 13f, AboutImageDecode = 640f, AboutScrimTail = 0.6f;
+
+    /// <summary>See <see cref="AboutNameSize"/>.</summary>
+    public const int AboutNameLines = 2, AboutBioLines = 3;
+
+    /// <summary>Z-Album's "credits": the paragraph's 13/20 (its words in the secondary ink, the names in the primary, each a link).</summary>
+    public const float CreditsSize = 13f, CreditsLine = 20f;
+
     /// <summary>"More by" as rows (Z-Album: a 56 cover, 12 to its words) and as a grid (Z-Album-Huge: two columns 16 apart).</summary>
     public const float MoreByArt = 56f, MoreByArtGap = 12f, MoreByGridGap = 16f;
 
@@ -410,7 +422,7 @@ public static class ZuneDetailRules
         RailW = 0f, ColumnGap = 16f, AsideW = 0f, RailGap = 8f, RingSize = 40f, RingGlyph = 14f, RingLabelGap = 10f, ActionsGap = 16f,
         PlayWord = true, SaveWord = true, ShareRing = true, MoreRing = true, ShuffleRing = false, PrimaryInHero = true, MetaLines = 2,
         ArtistSize = 18f, ArtistLine = 24f, MetaSize = 13f, MetaLine = 18f, NotesSize = 12f, NotesLine = 18f, LabelSize = 14f,
-        MoreByGrid = false, Target = 40f,
+        MoreByGrid = false, AboutBand = 0f, Target = 40f,
     };
 
     /// <summary>Small (Z-Album-Small): the 160 identity column, 32 apart from the list. Play, shuffle and saved live in the band's row 2 from here up
@@ -433,7 +445,7 @@ public static class ZuneDetailRules
     public static ZuneDetailLayout Huge { get; } = Standard with
     {
         Tier = WidthTier.Huge, PanoramaH = 176f, PanoramaGap = 12f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = 4f,
-        RailW = 320f, AsideW = 400f, SaveWord = true, MoreByGrid = true, InsightsW = 420f,
+        RailW = 320f, AsideW = 400f, SaveWord = true, MoreByGrid = true, AboutBand = 140f, InsightsW = 420f,
     };
 
     /// <summary>Huge 4K (Z-Album-Huge4K): 400 identity, 440 aside, 64 apart, the 40 rings with shuffle, the 20/28 and 15/20 text.</summary>
@@ -442,7 +454,7 @@ public static class ZuneDetailRules
         Tier = WidthTier.Huge4K, PanoramaH = 176f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
         RingSize = 40f, RingGlyph = 14f, RingLabelGap = 12f, ActionsGap = 20f, ShuffleRing = true,
         ArtistSize = 20f, ArtistLine = 28f, MetaSize = 15f, MetaLine = 20f, NotesSize = 13f, NotesLine = 20f, LabelSize = 15f,
-        Target = 40f, InsightsW = 440f,
+        AboutBand = 180f, Target = 40f, InsightsW = 440f,
     };
 }
 
@@ -542,6 +554,10 @@ public sealed record ZuneDetailLayout : ITierLayoutRecord
 
     /// <summary>"More by" in the aside is a two-column grid of covers (else rows with a 56 cover).</summary>
     public required bool MoreByGrid { get; init; }
+
+    /// <summary>The aside's "about" photo band (Z-Album-Huge: 140; Huge 4K: 180); 0 = the tier draws no "about" (every board but the Huge ones). The block
+    /// stays mounted at every aside tier and folds to nothing, so a crossing eases it in and out instead of mounting it.</summary>
+    public required float AboutBand { get; init; }
 
     /// <summary>A command's hit edge (40 at Compact and 4K).</summary>
     public required float Target { get; init; }

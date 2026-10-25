@@ -365,7 +365,8 @@ public readonly partial struct Album
                 actions.Add(new PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title),
                     Reserve: Loc.Get(saved ? Strings.Menu.Save : Strings.Menu.Saved)));
             }
-            _sink.Publish(new PageChromeRow(views, actions, new PageBackdrop(Bleed: null, TallWash: true), c.Title));
+            // The head unread (no title yet: Identity.HeaderPending's own test) keeps the verbs a shimmer with the head (contract 1.82, audit FU2b).
+            _sink.Publish(new PageChromeRow(views, actions, new PageBackdrop(Bleed: null, TallWash: true), c.Title) { ActionsPending = c.Title is null });
         }
 
         static bool IsPreReleaseSubject(EntityUri subject)
@@ -1075,6 +1076,8 @@ public readonly partial struct Album
             {
                 Release = a.IsValid ? ReleasePanel(a, false) : null, About = about, Fans = fans, MoreBy = moreBy,
                 Artists = artists, AlbumTitle = a.IsValid && a.Knows(AlbumFields.Title) ? a.Title : "",
+                // The credits paragraph (contract 1.82): null today (PageRules.CreditsOf: no album-level credits source yet), so no section draws.
+                Credits = a.IsValid ? PageRules.CreditsOf(a) : null,
             });
 
         static string Signature(string prefix, int count, ReadOnlySpan<int> targets)

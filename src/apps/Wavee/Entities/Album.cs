@@ -944,6 +944,14 @@ public readonly partial struct Album
 
     public static class PageRules
     {
+        /// <summary>The album's credits paragraph for a theme's aside (contract 1.82: "written and produced by ... · with ... · all credits"), or null.
+        /// <para>TODO(album credits, owner 2026-10-25 "build later, stub for now"): there is NO album-level credits source. The data model holds role
+        /// credits per TRACK only (<c>Edges.TrackCredits</c>: the CreditsV2 metadata extension, kind 186, fetched one track at a time on demand by the
+        /// drawer's credits sheet and the stage), plus each track's performers (<c>Edges.TrackArtists</c>) and the album's billed artists. "Written
+        /// and produced by" needs the roles of the whole album: an album credits fetch, or a fan-out over its tracks' CreditsV2 folded by role.
+        /// Until one exists this answers null, so the aside draws NOTHING (no heading, no gap). No network call is made here.</para></summary>
+        public static Theming.Contracts.AlbumCredits? CreditsOf(Album a) => null;
+
         /// <summary>A trailing section's row cap; "Fans also like"'s chip cap; the similar-albums ask.</summary>
         public const int StackCap = 5, FansCap = 8, SimilarLimit = 24;
 
