@@ -290,14 +290,27 @@ public static partial class Diagnostics
                         ("pl2", () => Nav(Pl(2))), ("ar2", () => Nav(Ar(2))), ("pl0", () => Nav(Pl(0))),
                         ("settings", () => Nav(settings)), ("theme:" + start, () => _ = Wavee.Theming.ThemeHost.Switch(start)), ("home", () => Nav(home)),
                     ];
-                    int k = 0;
+                    // Real data lands after a navigation: the owner's log has ~5 fetch answers per navigation, each a table publication
+                    // (Entities.Publish) while the page's entrance runs. Each step is followed by four track-table publications at
+                    // +0.1375 s intervals — the publication alone (no row changes), which is what every component reading the track
+                    // table tracked re-renders on.
+                    int k = 0, phase = 0;
                     return Measure(new Driver(now =>
                     {
-                        var (stepName, act) = steps[k++ % steps.Length];
-                        FluentGpu.Hosting.FrameTrace.Mark("step", stepName);
-                        act();
-                        return now + 1.1;
-                    }), "steps=" + steps.Length + " start=" + start);
+                        if (phase == 0)
+                        {
+                            var (stepName, act) = steps[k++ % steps.Length];
+                            FluentGpu.Hosting.FrameTrace.Mark("step", stepName);
+                            act();
+                        }
+                        else if (phase <= 4)
+                        {
+                            Entities.Current.Tracks.MarkDirty();
+                            Entities.Publish();
+                        }
+                        phase = (phase + 1) % 8;
+                        return now + 0.1375;
+                    }), "steps=" + steps.Length + " start=" + start + " publications=4/step");
                 }
                 case FrameBenchScenarios.PlaylistOpen:
                 {
