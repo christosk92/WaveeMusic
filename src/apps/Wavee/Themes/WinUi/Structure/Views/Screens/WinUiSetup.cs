@@ -184,8 +184,8 @@ internal static partial class WinUiSetup
                 },
             };
             // WinUI (W-Setup): the step label over its bar on the left, the buttons at their own width on the right (a lane that grows pushes them over), 8 apart.
-            kids[0] = ((BoxEl)kids[0]) with { Width = float.NaN, Grow = 1f, Basis = layout.ProgressColumn, Shrink = 1f };
-            foreach (var button in buttons) kids.Add(button is BoxEl b ? b with { Grow = 0f, Basis = float.NaN, Shrink = 0f, MinWidth = WinUiSetupGeometry.FooterButtonMinWidth } : button);
+            kids[0] = kids[0].As<BoxEl>() with { Width = float.NaN, Grow = 1f, Basis = layout.ProgressColumn, Shrink = 1f };
+            foreach (var button in buttons) kids.Add(button.Is(out BoxEl b) ? b with { Grow = 0f, Basis = float.NaN, Shrink = 0f, MinWidth = WinUiSetupGeometry.FooterButtonMinWidth } : button);
             return new BoxEl
             {
                 Key = "setup:footer", Height = layout.FooterHeight, Shrink = 0f, Padding = layout.FooterPadding, Fill = Tok.FillSolidBase,

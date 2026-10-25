@@ -97,7 +97,7 @@ internal static class ClassicFriends
             {
                 Direction = 0, MinWidth = 0f, Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
                 BlocksDragArm = true, OnClick = openProfile,
-                Children = [((TextEl)text[0]) with { HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster }],
+                Children = [text[0].As<TextEl>() with { HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster }],
             };
         }
 

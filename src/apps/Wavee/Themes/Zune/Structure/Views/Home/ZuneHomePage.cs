@@ -208,7 +208,7 @@ internal static class ZuneHomePage
             default:
                 if (!HomeZoneKeys.TryKeyOf(zone.Kind, out var key)) return new BoxEl();
                 Element slot = Slots.View(key, new HomeZoneProps(zone, overlay));
-                return slot is ComponentEl component ? component with { SkeletonProxy = () => ZuneHomeZones.Tree(zone, overlay, lay) } : slot;
+                return slot.Is(out ComponentEl component) ? component with { SkeletonProxy = () => ZuneHomeZones.Tree(zone, overlay, lay) } : slot;
         }
     }
 }

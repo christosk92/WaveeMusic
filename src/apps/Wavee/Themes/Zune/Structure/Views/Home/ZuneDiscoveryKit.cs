@@ -85,7 +85,7 @@ internal static class ZuneDiscoveryKit
             kids.Add(new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Margin = new Edges4(H.HeadToolsGap, 0f, 0f, 0f),
-                Children = [tools is BoxEl box ? box with { Justify = FlexJustify.End } : tools],
+                Children = [tools.Is(out BoxEl box) ? box with { Justify = FlexJustify.End } : tools],
             });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }

@@ -35,7 +35,7 @@ internal static partial class ZuneSettings
             foreach (var named in tab)
                 if (string.Equals(named.Section, part.Section, StringComparison.Ordinal))
                     // A sentence that leads the area sits 4 under the heading, not a section gap (Z-Feedback).
-                    groups.Add(groups.Count == 0 && named.Sentence && named.El is BoxEl lead
+                    groups.Add(groups.Count == 0 && named.Sentence && named.El.Is(out BoxEl lead)
                         ? lead with { Margin = new Edges4(0f, -(Z.SectionGap - Z.SentenceGap), 0f, 0f) }
                         : named.El);
         }

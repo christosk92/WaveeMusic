@@ -30,7 +30,7 @@ internal static class ClassicEagerRow
     static Element Title(Track t, bool isNow)
     {
         Element title = ClassicRowCells.TitleCell(t, isNow);
-        if (title is TextEl titleRun) title = Controls.TrimmedTitle(titleRun, t.ForDisplay.Title);
+        if (title.Is(out TextEl titleRun)) title = Controls.TrimmedTitle(titleRun, t.ForDisplay.Title);
         return title;
     }
 

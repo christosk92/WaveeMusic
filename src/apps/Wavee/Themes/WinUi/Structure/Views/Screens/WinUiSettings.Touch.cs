@@ -39,7 +39,7 @@ internal static partial class WinUiSettings
     /// <summary>The marker key of a toggle's cell: a toggle keeps the label | state | switch row where the tier stacks every other control under its label.</summary>
     const string ToggleKey = "settings:toggle";
 
-    static bool IsToggle(Element? control) => control is BoxEl { Key: ToggleKey };
+    static bool IsToggle(Element? control) => control.Is(out BoxEl toggle) && toggle.Key == ToggleKey;
 
     // ── toggles ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 

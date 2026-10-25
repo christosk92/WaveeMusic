@@ -267,7 +267,7 @@ internal static class WinUiHomeZones
     {
         if (!HomeZoneKeys.TryKeyOf(zone.Kind, out var key)) return new BoxEl();
         Element slot = Slots.View(key, new HomeZoneProps(zone, overlay, controller));
-        return slot is ComponentEl component ? component with { SkeletonProxy = () => BodyTree(zone, overlay, controller: null, layout) } : slot;
+        return slot.Is(out ComponentEl component) ? component with { SkeletonProxy = () => BodyTree(zone, overlay, controller: null, layout) } : slot;
     }
 
     /// <summary>The picture of every kind that is a pure function of its zone: what the `Home.Zone.{Kind}` template and its skeleton proxy both build.</summary>

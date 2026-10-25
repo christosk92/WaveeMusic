@@ -431,8 +431,9 @@ public static partial class Diagnostics
         }
 
         /// <summary>`status`'s health figures: <c>overlays</c> (as `after` lists them), and <c>memory</c> {managedBytes, heapBytes, workingSetBytes,
-        /// allocatedBytes, gen0, gen1, gen2, pauseMs}: the managed heap now, the GC's heap size at its last collection, the process working set,
-        /// the bytes allocated since start, the collections per generation since start and the total pause time.</summary>
+        /// allocatedBytes, threadAllocatedBytes, gen0, gen1, gen2, pauseMs}: the managed heap now, the GC's heap size at its last collection,
+        /// the process working set, the bytes allocated since start (every thread, then the UI thread alone: exact, for allocation-per-navigation
+        /// measurements), the collections per generation since start and the total pause time.</summary>
         void WriteHealth(Utf8JsonWriter w)
         {
             if (_shell is { } shell) WriteOverlays(w, shell);
@@ -442,6 +443,7 @@ public static partial class Diagnostics
             w.WriteNumber("heapBytes", info.HeapSizeBytes);
             w.WriteNumber("workingSetBytes", Environment.WorkingSet);
             w.WriteNumber("allocatedBytes", GC.GetTotalAllocatedBytes(precise: false));
+            w.WriteNumber("threadAllocatedBytes", GC.GetAllocatedBytesForCurrentThread());
             w.WriteNumber("gen0", GC.CollectionCount(0));
             w.WriteNumber("gen1", GC.CollectionCount(1));
             w.WriteNumber("gen2", GC.CollectionCount(2));

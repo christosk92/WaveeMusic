@@ -37,7 +37,7 @@ internal static class ZuneOverlayParts
             ? FluentGpu.Text.TextCaseMap.Apply(Loc.Get(Strings.Crash.NotNow), R.Case.For(LabelKind.Command))
             : c.Text;
         if (c.IsDefault)
-            return (BoxEl)ZuneDiscoveryKit.Ring("zdialog:primary", Icons.Forward, text, showLabel: true, primary: true, c.Invoke, ZuneOverlayRules.DialogRing)
+            return ZuneDiscoveryKit.Ring("zdialog:primary", Icons.Forward, text, showLabel: true, primary: true, c.Invoke, ZuneOverlayRules.DialogRing).As<BoxEl>()
                 with { IsEnabled = c.IsEnabled, Opacity = c.IsEnabled ? 1f : ZuneOverlayRules.DialogDisabledOpacity };
         return new BoxEl
         {

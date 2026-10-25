@@ -87,7 +87,7 @@ public static partial class Controls
             Children = [run ?? style],
         };
         Element tip = TrimTip(target, text, style);
-        if (tip is ComponentEl c) tip = c with { SkeletonProxy = () => new BoxEl { Children = [target] } };
+        if (tip.Is(out ComponentEl c)) tip = c with { SkeletonProxy = () => new BoxEl { Children = [target] } };
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [tip] };
     }
 
@@ -97,7 +97,7 @@ public static partial class Controls
     sealed record TrimTipProps(Element Target, string Text, float Size, ushort Weight, float CharSpacing, float LineHeight,
                                TextWrap Wrap, int MaxLines, float MinSize, string? Family)
     {
-        public bool Equals(TrimTipProps? o) => o is not null && ReferenceEquals(Target, o.Target) && SameMeasure(o);
+        public bool Equals(TrimTipProps? o) => o is not null && Target.SameAs(o.Target) && SameMeasure(o);
 
         /// <summary>Everything the seam measures. Floats compare with <c>Equals</c>: <c>LineHeight</c> and <c>MinSize</c>
         /// are NaN when unset, and NaN must equal itself or the cache never hits.</summary>
@@ -105,7 +105,7 @@ public static partial class Controls
             && CharSpacing.Equals(o.CharSpacing) && LineHeight.Equals(o.LineHeight) && Wrap == o.Wrap && MaxLines == o.MaxLines
             && MinSize.Equals(o.MinSize) && Family == o.Family;
 
-        public override int GetHashCode() => HashCode.Combine(RuntimeHelpers.GetHashCode(Target), Text, Size, MaxLines);
+        public override int GetHashCode() => HashCode.Combine(Target.IdentityHash(), Text, Size, MaxLines);
     }
 
     /// <summary>Owns its props CHANNEL (<see cref="IPropsHost"/>, the app's host pattern): a re-push lands in a field and

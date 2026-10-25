@@ -465,7 +465,7 @@ public readonly partial struct Track
             => other is not null && other.Track == Track && other.DisplayIndex == DisplayIndex && other.Set == Set
                && ReferenceEquals(other.Tracks, Tracks) && other.RowH.Equals(RowH)
                && other.Options.ShowTrackArtist == Options.ShowTrackArtist && other.Options.Zebra == Options.Zebra
-               && ReferenceEquals(other.Options.ActionsCell, Options.ActionsCell);
+               && other.Options.ActionsCell.SameAs(Options.ActionsCell);
 
         public override int GetHashCode() => HashCode.Combine(Track.Slot, DisplayIndex, Set, RowH);
     }
