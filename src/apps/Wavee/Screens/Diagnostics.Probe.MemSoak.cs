@@ -296,6 +296,7 @@ public static partial class Diagnostics
                 (cx, cy) = ((int)MathF.Round(wDip * scale), (int)MathF.Round(hDip * scale));
             }
             uint flags = 0x0010u /*NOACTIVATE*/ | (cx > 0 ? 0u : 0x0001u /*NOSIZE*/);
+            if (cx > 0) UnboundTrackSize(FluentApp.WindowHandle);
             SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, cx, cy, flags);
             // The size is the OUTER rect: grow it by what the frame (the invisible resize borders) takes, so the CLIENT is the size asked.
             if (cx > 0 && GetClientRect(FluentApp.WindowHandle, out ClientRect client) && (client.Right != cx || client.Bottom != cy))
@@ -385,5 +386,33 @@ public static partial class Diagnostics
         [System.Runtime.InteropServices.LibraryImport("user32.dll")]
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         private static partial bool ShowWindow(nint hwnd, int cmd);
+
+        /// <summary>A stated `--bench-size` must not depend on which monitors are attached. USER32's default maximum tracking
+        /// size is the virtual screen plus the frame, so with only the laptop panel attached a 3444 px bench window was clamped
+        /// to 2500 px (a different layout width, and Home too short to scroll). A comctl32 subclass on the probe window alone
+        /// raises the maximum after the engine's own WM_GETMINMAXINFO handling has run.</summary>
+        static unsafe void UnboundTrackSize(nint hwnd) => SetWindowSubclass(hwnd, &ProbeMinMaxProc, 0x57415645u, 0u);
+
+        [System.Runtime.InteropServices.UnmanagedCallersOnly]
+        static unsafe nint ProbeMinMaxProc(nint hwnd, uint msg, nint wParam, nint lParam, nuint id, nuint data)
+        {
+            nint result = DefSubclassProc(hwnd, msg, wParam, lParam);
+            if (msg == 0x0024u /*WM_GETMINMAXINFO*/ && lParam != 0)
+            {
+                var mmi = (MinMaxInfo*)lParam;
+                mmi->MaxTrackX = mmi->MaxTrackY = 32767;
+            }
+            return result;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct MinMaxInfo { public int ReservedX, ReservedY, MaxSizeX, MaxSizeY, MaxPositionX, MaxPositionY, MinTrackX, MinTrackY, MaxTrackX, MaxTrackY; }
+
+        [System.Runtime.InteropServices.LibraryImport("comctl32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static unsafe partial bool SetWindowSubclass(nint hwnd, delegate* unmanaged<nint, uint, nint, nint, nuint, nuint, nint> proc, nuint id, nuint data);
+
+        [System.Runtime.InteropServices.LibraryImport("comctl32.dll")]
+        private static partial nint DefSubclassProc(nint hwnd, uint msg, nint wParam, nint lParam);
     }
 }
