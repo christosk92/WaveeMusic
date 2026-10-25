@@ -268,7 +268,8 @@ public static partial class Diagnostics
         /// shows anywhere else). The memory soak and a bench run need a window nothing covers — a covered window stands its
         /// presents down and evicts its tiles as hidden — and must never take over the screen of the person using the
         /// machine: so, not topmost and never focused, either OFF every monitor (the default; the headless OffscreenSurface's
-        /// placement, which presents normally) or, with `--probe-monitor secondary` (the first monitor that is not the primary) or
+        /// placement, which presents normally) — beside the monitor `--probe-near primary|N` names (default the primary), so the
+        /// frame clock paces by THAT monitor's refresh, or at `--probe-at X,Y` — or, with `--probe-monitor secondary` (the first monitor that is not the primary) or
         /// `--probe-monitor N` (EnumDisplayMonitors order), at that monitor's top-left, for a bench whose frame pacing needs a real
         /// monitor.</summary>
         public static void PlaceProbeWindow()
@@ -276,16 +277,6 @@ public static partial class Diagnostics
             string[] argv = Platform.Args.Argv;
             bool probe = Array.IndexOf(argv, "--mem-soak") >= 0 || Array.Exists(argv, static a => a == "--frame-bench" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
             if (!probe || FluentApp.WindowHandle == 0) return;
-            int x = -30000, y = -30000;
-            int at = Array.IndexOf(argv, "--probe-monitor");
-            if (at >= 0 && at + 1 < argv.Length)
-            {
-                // "secondary" = the first monitor that is not the primary (the primary is the one at 0,0); a number = that
-                // monitor in EnumDisplayMonitors order.
-                (int, int)? tl = argv[at + 1] == "secondary" ? FirstNonPrimaryTopLeft()
-                    : int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? MonitorTopLeft(index) : null;
-                if (tl is { } p) (x, y) = p;
-            }
             // `--bench-size WxH` (DIP at the window's DPI): the frame bench measures at a stated size instead of whatever size the window
             // came up at, so two runs (and a run against the inspector's renders) compare one layout. The summary's `windowPx` says what landed.
             int cx = 0, cy = 0;
@@ -295,6 +286,34 @@ public static partial class Diagnostics
                 float scale = GetDpiForWindow(FluentApp.WindowHandle) is > 0 and uint dpi ? dpi / 96f : 1f;
                 (cx, cy) = ((int)MathF.Round(wDip * scale), (int)MathF.Round(hDip * scale));
             }
+            // Off every monitor by default, but NEAREST the monitor named by `--probe-near primary|N` (default: the primary): the
+            // engine paces by the refresh of the monitor nearest the window (MonitorFromWindow), so with monitors of different rates
+            // a blind spot such as -30000,-30000 paced the bench by whichever panel happened to be closest (2026-10-25: an external
+            // 100 Hz display above-left of the 120 Hz laptop gave a 10 ms frame clock under a 120 Hz compositor tick).
+            var monitors = MonitorRects();
+            int near = 0;
+            int nearAt = Array.IndexOf(argv, "--probe-near");
+            if (nearAt >= 0 && nearAt + 1 < argv.Length && argv[nearAt + 1] != "primary"
+                && int.TryParse(argv[nearAt + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int nearIndex) && nearIndex >= 0 && nearIndex < monitors.Count)
+                near = nearIndex;
+            else near = Math.Max(0, monitors.FindIndex(static m => m.Left <= 0 && m.Top <= 0 && m.Right > 0 && m.Bottom > 0));   // the primary holds 0,0
+            (int x, int y) = OffscreenNear(monitors, near, cx > 0 ? cx + 64 : 4096, cy > 0 ? cy + 64 : 4096);
+            string where = monitors.Count > 0 ? "near monitor " + near.ToString(CultureInfo.InvariantCulture) : "no monitor list";
+            int at = Array.IndexOf(argv, "--probe-monitor");
+            if (at >= 0 && at + 1 < argv.Length)
+            {
+                // "secondary" = the first monitor that is not the primary (the primary is the one at 0,0); a number = that
+                // monitor in EnumDisplayMonitors order.
+                (int, int)? tl = argv[at + 1] == "secondary" ? FirstNonPrimaryTopLeft()
+                    : int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? MonitorTopLeft(index) : null;
+                if (tl is { } p) { (x, y) = p; where = "ON monitor " + argv[at + 1]; }
+            }
+            // `--probe-at X,Y` (virtual-screen px): an explicit spot (off-screen is the caller's business).
+            int atAt = Array.IndexOf(argv, "--probe-at");
+            if (atAt >= 0 && atAt + 1 < argv.Length && argv[atAt + 1].Split(',') is [var sx, var sy]
+                && int.TryParse(sx, NumberStyles.Integer, CultureInfo.InvariantCulture, out int px) && int.TryParse(sy, NumberStyles.Integer, CultureInfo.InvariantCulture, out int py))
+            { (x, y) = (px, py); where = "at --probe-at"; }
+            Say("[probe] placement " + where + " (" + monitors.Count.ToString(CultureInfo.InvariantCulture) + " monitors)");
             uint flags = 0x0010u /*NOACTIVATE*/ | (cx > 0 ? 0u : 0x0001u /*NOSIZE*/);
             if (cx > 0) UnboundTrackSize(FluentApp.WindowHandle);
             SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, cx, cy, flags);
@@ -322,6 +341,53 @@ public static partial class Diagnostics
             for (int i = 0; MonitorTopLeft(i) is { } tl; i++)
                 if (tl != (0, 0)) return tl;
             return null;
+        }
+
+        readonly record struct MonitorRect(int Left, int Top, int Right, int Bottom);
+
+        /// <summary>Every monitor's rect (virtual-screen px), in EnumDisplayMonitors order.</summary>
+        static List<MonitorRect> MonitorRects()
+        {
+            var rects = new List<MonitorRect>();
+            EnumDisplayMonitors(0, 0, (nint m, nint dc, nint r, nint data) =>
+            {
+                rects.Add(new MonitorRect(System.Runtime.InteropServices.Marshal.ReadInt32(r), System.Runtime.InteropServices.Marshal.ReadInt32(r, 4),
+                    System.Runtime.InteropServices.Marshal.ReadInt32(r, 8), System.Runtime.InteropServices.Marshal.ReadInt32(r, 12)));
+                return true;
+            }, 0);
+            return rects;
+        }
+
+        /// <summary>A top-left for a <paramref name="w"/> x <paramref name="h"/> px window that overlaps NO monitor and whose nearest
+        /// monitor (rect distance, MonitorFromWindow's rule) is <paramref name="target"/>: below, right of, left of or above it, at the
+        /// first gap that clears every monitor. Falls back to -30000,-30000 when no side works (or no monitor is known).</summary>
+        static (int X, int Y) OffscreenNear(List<MonitorRect> monitors, int target, int w, int h)
+        {
+            if (target < 0 || target >= monitors.Count) return (-30000, -30000);
+            var t = monitors[target];
+            static long Dist2(MonitorRect m, int l, int tp, int r, int b)
+            {
+                long dx = Math.Max(0, Math.Max(m.Left - r, l - m.Right)), dy = Math.Max(0, Math.Max(m.Top - b, tp - m.Bottom));
+                return dx * dx + dy * dy;
+            }
+            foreach (int gap in (int[])[600, 2000, 8000])
+            {
+                (int, int)[] candidates = [(t.Left, t.Bottom + gap), (t.Right + gap, t.Top), (t.Left - gap - w, t.Top), (t.Left, t.Top - gap - h)];
+                foreach (var (x, y) in candidates)
+                {
+                    int r = x + w, b = y + h;
+                    bool clear = true, nearest = true;
+                    long dt = Dist2(t, x, y, r, b);
+                    for (int i = 0; i < monitors.Count; i++)
+                    {
+                        long d = Dist2(monitors[i], x, y, r, b);
+                        if (d == 0) clear = false;
+                        if (i != target && d <= dt) nearest = false;
+                    }
+                    if (clear && nearest) return (x, y);
+                }
+            }
+            return (-30000, -30000);
         }
 
         static (int X, int Y)? MonitorTopLeft(int index)
