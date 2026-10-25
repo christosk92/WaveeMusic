@@ -276,6 +276,8 @@ public static partial class Shell
                     // EVERY chrome band — title bar, sidebar band, player dock — because the root is transparent and
                     // each band is a deliberate paint-site OMISSION over live Mica, not a fill.
                     MicaAlt = false,
+                    // A probe / bench window (frame bench, memory soak) never takes the foreground or the keyboard.
+                    ShowInactive = Diagnostics.Probe.IsProbeWindowRun(),
                     // Every frame over the panel's refresh interval is logged with WHICH components rendered and who
                     // allocated. ALWAYS ON: a slow frame that cannot be attributed is a slow frame that does not get
                     // fixed.

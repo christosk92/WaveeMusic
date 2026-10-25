@@ -275,8 +275,7 @@ public static partial class Diagnostics
         public static void PlaceProbeWindow()
         {
             string[] argv = Platform.Args.Argv;
-            bool probe = Array.IndexOf(argv, "--mem-soak") >= 0 || Array.Exists(argv, static a => a == "--frame-bench" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
-            if (!probe || FluentApp.WindowHandle == 0) return;
+            if (!IsProbeWindowRun() || FluentApp.WindowHandle == 0) return;
             // `--bench-size WxH` (DIP at the window's DPI): the frame bench measures at a stated size instead of whatever size the window
             // came up at, so two runs (and a run against the inspector's renders) compare one layout. The summary's `windowPx` says what landed.
             int cx = 0, cy = 0;
@@ -314,6 +313,14 @@ public static partial class Diagnostics
                 && int.TryParse(sx, NumberStyles.Integer, CultureInfo.InvariantCulture, out int px) && int.TryParse(sy, NumberStyles.Integer, CultureInfo.InvariantCulture, out int py))
             { (x, y) = (px, py); where = "at --probe-at"; }
             Say("[probe] placement " + where + " (" + monitors.Count.ToString(CultureInfo.InvariantCulture) + " monitors)");
+            // Move FIRST, then size at the DPI of where the window landed: a window created on a 150 % panel and placed on (or
+            // beside) a 100 % one changes DPI on the move, and a size computed at the old DPI came out 1.5x (then "corrected" wrong).
+            SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, 0, 0, 0x0010u /*NOACTIVATE*/ | 0x0001u /*NOSIZE*/);
+            if (sizeAt >= 0 && sizeAt + 1 < argv.Length && TryBenchSize(argv[sizeAt + 1], out float wDip2, out float hDip2))
+            {
+                float scale = GetDpiForWindow(FluentApp.WindowHandle) is > 0 and uint dpi ? dpi / 96f : 1f;
+                (cx, cy) = ((int)MathF.Round(wDip2 * scale), (int)MathF.Round(hDip2 * scale));
+            }
             uint flags = 0x0010u /*NOACTIVATE*/ | (cx > 0 ? 0u : 0x0001u /*NOSIZE*/);
             if (cx > 0) UnboundTrackSize(FluentApp.WindowHandle);
             SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, cx, cy, flags);
@@ -341,6 +348,14 @@ public static partial class Diagnostics
             for (int i = 0; MonitorTopLeft(i) is { } tl; i++)
                 if (tl != (0, 0)) return tl;
             return null;
+        }
+
+        /// <summary>A run whose window is a probe window (memory soak, frame bench): placed by <see cref="PlaceProbeWindow"/> and
+        /// shown without activation, so it never takes the foreground or the keyboard.</summary>
+        public static bool IsProbeWindowRun()
+        {
+            string[] argv = Platform.Args.Argv;
+            return Array.IndexOf(argv, "--mem-soak") >= 0 || Array.Exists(argv, static a => a == "--frame-bench" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
         }
 
         readonly record struct MonitorRect(int Left, int Top, int Right, int Bottom);
