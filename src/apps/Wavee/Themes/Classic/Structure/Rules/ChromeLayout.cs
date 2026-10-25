@@ -57,10 +57,17 @@ internal static class ClassicChromeLayout
     /// <summary>The tab titles' text size (text-first tabs: weight and opacity carry selection).</summary>
     public const float TabTextSize = 13f;
 
-    /// <summary>The tabs lane's reservation moving (a tab opened, closed, pinned or moved): one transition on
-    /// <c>chrome-tabs-lane</c>; individual tab plates carry no layout transition.</summary>
-    public static readonly LayoutTransition TabLaneMotion = new(TransitionChannels.Bounds,
-        TransitionDynamics.Tween(FgMotion.ControlFast, Easing.FluentPopOpen));
+    /// <summary>The tabs lane's reservation moving (a tab opened, closed, pinned or moved, a title growing): one transition on
+    /// <c>chrome-tabs-lane</c>; individual tab plates carry no layout transition. A REFLOW of the width, so the centred search beside
+    /// it rides the lane through real layout, on a critically damped spring: the reservation follows the strip's MEASURED extent, which
+    /// moves a frame at a time while a tab eases its width, and a tween restarted on every such retarget held a frame each time and
+    /// stepped the lane 10 DIP at a go while the search jumped beside it (audit FU2 item 8). The spring keeps its velocity across a
+    /// retarget, so the run is one glide.</summary>
+    public static readonly LayoutTransition TabLaneMotion = new(TransitionChannels.Size | TransitionChannels.Position,
+        TransitionDynamics.Spring(TabLaneResponse, TabLaneDamping), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
+
+    /// <summary>The lane spring: about the old 167 ms tween's settle, and critically damped (a reservation never overshoots its tabs).</summary>
+    const float TabLaneResponse = 0.18f, TabLaneDamping = 1f;
 
     // ── the search field ─────────────────────────────────────────────────────────────────────────────────────────────
 
