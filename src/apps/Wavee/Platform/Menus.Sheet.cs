@@ -30,9 +30,9 @@ public static class ContextSheets
     /// <summary>Attach a context menu to <paramref name="element"/>: the engine's, or the structure's sheet where its policy says so.</summary>
     public static BoxEl Attach(BoxEl element, IOverlayService svc, Func<ContextMenuModel?> factory, ContextMenuOptions? options = null)
     {
-        var stock = ContextMenu.Attach(element, svc, factory, options);
-        Action<ContextRequestEventArgs>? stockHandler = stock.OnContextRequested;
         Action<ContextRequestEventArgs>? own = element.OnContextRequested;
+        // The engine's handler (own, then the stock menu), built without the element clone ContextMenu.Attach would make.
+        Action<ContextRequestEventArgs>? stockHandler = ContextMenu.Handler(own, svc, factory, options);
         return element with
         {
             OnContextRequested = args =>
