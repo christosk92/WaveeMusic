@@ -127,10 +127,24 @@ public sealed record MerchRowData(string Key, string Name, string Price, string?
 /// <summary>One row of a trailing list section.</summary>
 public sealed record TrailRowData(TrailRowKind Kind, TrailCardData? Card = null, MerchRowData? Merch = null);
 
+/// <summary>One run of an album's credits paragraph (contract 1.82): the core's own words ("written and produced by", "and", "with") or a person's
+/// name (<see cref="Name"/>), which opens that person's page where they have one (<see cref="Open"/>; null for an unlinked contributor).</summary>
+public readonly record struct AlbumCreditRun(string Text, bool Name = false, Action? Open = null);
+
+/// <summary>An album's credits as one paragraph (contract 1.82, audit FU2b), composed by the core from the album's credit data: Z-Album's aside reads
+/// "written and produced by Thomas Bangalter and Guy-Manuel de Homem-Christo · with Nile Rodgers, Pharrell Williams · all credits".</summary>
+/// <param name="Runs">The paragraph in reading order (never empty when the record exists).</param>
+/// <param name="AllCredits">Opens every credit of the album; null = no such view.</param>
+public sealed record AlbumCredits(IReadOnlyList<AlbumCreditRun> Runs, Action? AllCredits);
+
 /// <summary>The props of <see cref="ViewKeys.AlbumAside"/> (contract 1.21): the Huge aside's sections, each null or empty when absent. Compares by reference
 /// (the host is the gate, as <see cref="AlbumSectionsProps"/>).</summary>
 public sealed record AlbumAsideProps
 {
+    /// <summary>The album's credits paragraph, or null: nothing to state, and a theme draws no credits section at all (no heading, no gap). Contract
+    /// 1.82. Today always null: the core has no album-level credits source yet (<c>Album.PageRules.CreditsOf</c>).</summary>
+    public AlbumCredits? Credits { get; init; }
+
     /// <summary>About this release (the `Album.ReleasePanel` host, without outer padding); null before the album row exists.</summary>
     public Element? Release { get; init; }
 

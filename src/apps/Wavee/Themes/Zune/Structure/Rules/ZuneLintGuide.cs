@@ -107,6 +107,11 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// <summary>A playlist's description block (the key the Zune playlist hero gives it).</summary>
     private const string PlaylistReadKey = ZunePlaylistRules.EditorReadKey;
 
+    /// <summary>The rule the daylist's form key is excused from, and why (owner 2026-10-25, audit FU2b).</summary>
+    private const string KeyHygieneRule = "key.hygiene",
+        DaylistFormKey = "owner 10-25: the tuned V28c fade-through wins over the form-key rule (the strip's bled and row forms are two keyed layers that fade "
+        + "through each other on the Compact crossing, Z-Home-Compact vs Z-Home; one tree would trade the tuned fade-through for a glide)";
+
     /// <summary>The what's-new panorama's key (the literal `ZuneReleaseNotes.Frame` keys it with).</summary>
     private const string ReleaseNotesTitleKey = "zrn:title";
 
@@ -123,6 +128,8 @@ public sealed class ZuneLintGuide : IThemeLintGuide
             policies.Add(new(LintIntent.TrimOk, "zune-tile:", "tile titles (two lines, then the ellipsis): " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions));
+            // The daylist strip's two forms are two keyed layers of one fade-through (ZuneHomeDaylist.Swap): an ACCEPTED exception to the key rule.
+            policies.Add(new(LintIntent.Allow, ZuneHomeRules.DaylistFormPrefix, DaylistFormKey, Rule: KeyHygieneRule));
         }
         policies.Add(new(LintIntent.TrimOk, PlaylistReadKey,
             "a playlist's description clamps to its lines and ellipsises (Z-Playlist-Followed-Small: -webkit-line-clamp 3; Compact: 2); the reader opens it whole"));
