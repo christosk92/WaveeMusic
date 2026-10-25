@@ -227,12 +227,9 @@ internal static class ClassicArtistChart
             : [title, subLine];
 
         var trail = new Element[tier.ShowDuration ? 2 : 1];
-        // The one row heart (tuned Classic L2): a liked track's filled heart at rest, the outline on row hover or while the
-        // chart's slot holds the focus. The row re-renders on a like (the pop edge), so the saved value is current here.
-        bool saved = st.Saved;
-        var focus = slot?.IsFocused;
-        trail[0] = ClassicRowCells.HeartReveal(ClassicRowCells.Heart(saved, onLike, pop, classic),
-            () => saved || (focus?.Value ?? false));
+        // The one row heart, painted at rest (filled when liked, the outline when not). The row re-renders on a like (the pop
+        // edge), so the saved value is current here.
+        trail[0] = ClassicRowCells.HeartLane(ClassicRowCells.Heart(st.Saved, onLike, pop, classic));
         if (tier.ShowDuration)
             trail[1] = R.Type.DenseMeta(c.Duration) with { Color = nowInk ?? Tok.TextSecondary };
 

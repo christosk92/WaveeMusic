@@ -39,8 +39,8 @@ internal static class ClassicLibraryReaderRules
     public static readonly TrackSize[] Tracks =
         [TrackSize.Px(28f), TrackSize.Star(1f), TrackSize.Px(Track.Lane.HeartTrailing), TrackSize.Px(52f)];
 
-    /// <summary>The row's options, hoisted: the reader never prints a track's artist (the block IS the credit). The trailing heart wears every row's ROW-HOVER reveal
-    /// (tuned Classic L2), so a block of twelve rows is not twelve hearts.</summary>
+    /// <summary>The row's options, hoisted: the reader never prints a track's artist (the block IS the credit). The trailing heart is painted at rest, as on every
+    /// Classic row (<see cref="ClassicRowCells.HeartLane"/>).</summary>
     public static readonly Track.EagerRowOptions RowOptions = new(ShowTrackArtist: false);
 
     // ── the album head ────────────────────────────────────────────────────────────────────────────────────────────
