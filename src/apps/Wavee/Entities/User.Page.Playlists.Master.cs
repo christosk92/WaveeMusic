@@ -115,6 +115,12 @@ public readonly partial struct User
 
         static readonly LayoutTransition s_sortSlotResize = new(TransitionChannels.Size, MotionTok.ContentResize.ToDynamics(), Size: SizeMode.Reflow);
 
+        /// <summary>A declared width that a tier changes (the gutters, the list column, the gap): it eases through real layout on the content-resize motion.</summary>
+        static readonly LayoutTransition s_columnResize = new(TransitionChannels.Size, MotionTok.ContentResize.ToDynamics(), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
+
+        /// <summary>An empty strut <paramref name="width"/> wide whose width eases (a page gutter, the gap beside the list column).</summary>
+        static BoxEl EasedStrut(float width) => new() { Width = width, Shrink = 0f, HitTestVisible = false, Animate = s_columnResize };
+
         /// <summary>Picks a sort word and persists it like every library sort.</summary>
         static void PickSort(Signal<int> sort, SidebarLibrarySort word)
         {
@@ -311,16 +317,19 @@ public readonly partial struct User
                     Key = LibraryPlaylistsMasterRules.PaneKey, Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
                     Children = [Embed.Comp(new PlaylistPaneProps(EntryOf(picked)), static () => new PlaylistPane()) with { Key = "playlist-pane:" + picked }],
                 };
+            // The list column's width (240 / 340 / 380 by tier) and the gap (24 / 40) ease through real layout, so a crossing slides the pane beside them
+            // instead of stepping it; the gap is a strut (a Gap cannot ease).
             return new BoxEl
             {
-                Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Gap = gap, AlignItems = FlexAlign.Stretch, Margin = new Edges4(0f, LibraryPlaylistsMasterRules.BodyGap, 0f, 0f),
+                Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Margin = new Edges4(0f, LibraryPlaylistsMasterRules.BodyGap, 0f, 0f),
                 Children =
                 [
                     new BoxEl
                     {
-                        Key = LibraryPlaylistsMasterRules.ListColumnKey, Direction = 1, Width = listW, MinWidth = listW, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-                        Children = [list],
+                        Key = LibraryPlaylistsMasterRules.ListColumnKey, Direction = 1, Width = listW, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
+                        Animate = s_columnResize, Children = [list],
                     },
+                    EasedStrut(gap),
                     pane,
                 ],
             };

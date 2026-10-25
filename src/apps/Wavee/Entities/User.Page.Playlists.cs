@@ -140,17 +140,29 @@ public readonly partial struct User
                 } with { Key = LibraryPlaylistsRules.ListKey };
             }
 
+            // The page's side gutters are spacers whose widths ease (a padding cannot): a tier that changes the gutter (24 at Small, the theme's from
+            // Standard) slides the head and the columns instead of stepping them.
             return new BoxEl
             {
-                Key = LibraryPlaylistsRules.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                MaxWidth = master ? float.NaN : LibraryPlaylistsRules.ColumnMax + 2f * gutter, AlignItems = FlexAlign.Stretch,
-                Padding = new Edges4(gutter, LibraryPlaylistsRules.PageTop, gutter, LibraryPlaylistsRules.PageBottom), OnBoundsChanged = _measurePage,
+                Key = LibraryPlaylistsRules.ColumnKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+                Padding = new Edges4(0f, LibraryPlaylistsRules.PageTop, 0f, LibraryPlaylistsRules.PageBottom), OnBoundsChanged = _measurePage,
                 Children =
                 [
-                    master
-                        ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders), sortMenu: layout.Value < ShellPolicy.Tracked.LibraryTiers.PaneFromLayout)
-                        : Head(model, null),
-                    body,
+                    EasedStrut(gutter),
+                    new BoxEl
+                    {
+                        // The flat list's cap is the column's own (the gutters stand outside it), so a gutter that changes never moves the cap at once.
+                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+                        MaxWidth = master ? float.NaN : LibraryPlaylistsRules.ColumnMax,
+                        Children =
+                        [
+                            master
+                                ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders), sortMenu: layout.Value < ShellPolicy.Tracked.LibraryTiers.PaneFromLayout)
+                                : Head(model, null),
+                            body,
+                        ],
+                    },
+                    EasedStrut(gutter),
                 ],
             };
         }
