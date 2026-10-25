@@ -440,6 +440,10 @@ class Gate:
         if obj is None:
             self.failed.append(("?", "not a JSON reply: " + (reply if len(reply) <= 200 else reply[:200] + "...")))
             return
+        stale = obj.get("tapeStale", 0)
+        if stale > getattr(self, "stale", 0):   # PERF r3 MODEL M4b: an element read after the render that built it ended
+            self.failed.append((obj.get("cmd", ""), "tape: %d stale element read%s (first: %s)" % (stale, "" if stale == 1 else "s", obj.get("tapeFirstStale", ""))))
+            self.stale = stale
         if not obj.get("ok", False):
             self.failed.append((obj.get("cmd", ""), obj.get("error", "")))
             return

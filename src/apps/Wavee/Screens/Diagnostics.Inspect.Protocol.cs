@@ -1279,6 +1279,7 @@ public static partial class Diagnostics
                 w.WriteBoolean("ok", true);
                 w.WriteString("cmd", cmd ?? "");
                 body?.Invoke(w);
+                TapeStale(w);
                 return End(w);
             }
 
@@ -1291,7 +1292,18 @@ public static partial class Diagnostics
                 w.WriteString("cmd", cmd ?? "");
                 w.WriteString("error", error ?? "");
                 body?.Invoke(w);
+                TapeStale(w);
                 return End(w);
+            }
+
+            /// <summary>PERF r3 MODEL M4b: every reply carries the count of tape elements read after their render ended (`tapeStale`,
+            /// with the first one's message) once there is one; `inspect.py --gate` fails on it.</summary>
+            static void TapeStale(Utf8JsonWriter w)
+            {
+                long n = FluentGpu.Dsl.Tape.StaleReads;
+                if (n == 0) return;
+                w.WriteNumber("tapeStale", n);
+                w.WriteString("tapeFirstStale", FluentGpu.Dsl.Tape.FirstStale ?? "");
             }
 
             /// <summary>An unsolicited event line: `{"kind",...body}` (`ready`, `bye`, `fault`).</summary>
