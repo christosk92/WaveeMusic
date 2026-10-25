@@ -90,8 +90,11 @@ internal static partial class ZunePlaylist
         var input = hooks.UseContext(InputHooks.Current);
         var post = hooks.UsePost();
         var lay = ZunePlaylistTiers.Of(ctx.Tier());
+        // In the panorama the title hangs past the column; where that hang reaches past the column's old clip, the room is the title's glyphs' alone
+        // (ZuneDetailKit.PanoramaBand's past): the lines and the ring stand back to the column (audit FU2d).
+        float past = hooks.UseContext(ZuneDetailKit.TitlePast);
 
-        Element body = p.Editing ? EditArm(p, input, post, lay) : ReadArm(p, hovered);
+        Element body = p.Editing ? EditArm(p, input, post, lay, past) : ReadArm(p, hovered, past);
         Element statusRow = new BoxEl
         {
             Key = "pl-status-row", Direction = 0, Justify = FlexJustify.End,
@@ -109,7 +112,7 @@ internal static partial class ZunePlaylist
         };
     }
 
-    static Element ReadArm(PlaylistEditorProps p, Signal<bool> hovered)
+    static Element ReadArm(PlaylistEditorProps p, Signal<bool> hovered, float past)
     {
         bool description = p.Description;
         string text = p.Text;
@@ -149,12 +152,17 @@ internal static partial class ZunePlaylist
         int status = p.Status;
         // The hairline is the run's underline (the boards: a text decoration, faint at rest, raised on hover), not a rule across the column: the run
         // hugs its words (it still wraps at the column) and the hairline takes the run's width, offset clear of its descenders.
-        Element words = run.Is(out TextEl t) ? t with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f }
-            : run.Is(out SpanTextEl s) ? s with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f }
+        // `past` (the panorama's hang past the column's old clip): the arm stands at the column and its words alone hang back over that room, so the
+        // hairline, the hit area and the focus ring keep the column's edge (the ring opens no wider there) and the words wrap at the same measure.
+        Edges4 hang = past > 0f ? new Edges4(-past, 0f, 0f, 0f) : default;
+        Element words = run.Is(out TextEl t) ? t with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f, Margin = hang }
+            : run.Is(out SpanTextEl s) ? s with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f, Margin = hang }
             : run;
         return new BoxEl
         {
             Key = Z.EditorReadKey, Direction = 1, MinWidth = 0f,
+            Margin = past > 0f ? new Edges4(past, 0f, 0f, 0f) : default,
+            FocusVisualMargin = past > 0f ? new Edges4(0f, -3f, -3f, -3f) : null,
             Role = AutomationRole.Button, Cursor = CursorId.IBeam, Focusable = true, AllowFocusOnInteraction = false, OnClick = p.Begin,
             OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => hovered.Value = false,
@@ -192,7 +200,16 @@ internal static partial class ZunePlaylist
         };
     }
 
-    static Element EditArm(PlaylistEditorProps p, InputHooks? hooks, Action<Action> post, ZunePlaylistLayout lay)
+    /// <summary>The field root's layers after its content row (its lines), set in from the leading edge by <paramref name="past"/>.</summary>
+    static Element[] StandBack(Element[] layers, float past)
+    {
+        var kids = new Element[layers.Length];
+        for (int i = 0; i < layers.Length; i++)
+            kids[i] = i > 0 && layers[i].Is(out BoxEl line) ? line with { Margin = new Edges4(past, 0f, 0f, 0f) } : layers[i];
+        return kids;
+    }
+
+    static Element EditArm(PlaylistEditorProps p, InputHooks? hooks, Action<Action> post, ZunePlaylistLayout lay, float past)
     {
         bool description = p.Description;
         float fieldH = description ? Z.DescriptionFieldH : p.Size + Z.TitleFieldExtra;
@@ -203,7 +220,13 @@ internal static partial class ZunePlaylist
         // Focus WITHOUT a visual cue; with PlaceCaretAtEndOnFocus the caret sits at the end and nothing is selected.
         var parts = new TemplateParts
         {
-            [EditableText.PartRoot] = b => b with { OnRealized = n => post(() => hooks?.FocusNode?.Invoke(n, false)) },
+            // The field keeps the read arm's origin (its words hang like the title's); its lines (every layer after the content row: the resting
+            // underline, the focus bar) stand back to the column where the hang reaches past the column's old clip (`past`, audit FU2d).
+            [EditableText.PartRoot] = b => b with
+            {
+                OnRealized = n => post(() => hooks?.FocusNode?.Invoke(n, false)),
+                Children = past > 0f ? StandBack(b.Children, past) : b.Children,
+            },
         };
         string placeholder = Loc.Get(description ? Strings.Detail.Edit.DescriptionPlaceholder : Strings.Detail.Edit.NamePlaceholder);
         return new BoxEl

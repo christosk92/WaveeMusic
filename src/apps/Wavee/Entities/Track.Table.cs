@@ -1340,10 +1340,6 @@ public readonly partial struct Track
             Element listKeyed = new BoxEl
             {
                 Key = listKey, Grow = trailing ? 0f : 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Children = [region],
-                // The hero list's hero hangs its display title left of the column (DetailTierPolicy.LeadBleed): the list, whose viewport clips, reaches
-                // that far left of the column and every item is set back in by as much (VerticalList, VerticalShimmer), so the hang is drawn and the
-                // rows, the chrome and the hero keep their place. The column (measured: the tier, the lanes) is unchanged.
-                Margin = vertical && !trailing && LeadBleedNow() is > 0f and var room ? new Edges4(-room, 0f, 0f, 0f) : default,
                 // An album's rows stand in the outer scroller: across a row-height change the list's height eases through real layout (the rows glide
                 // inside it), so the trailing band under it rides it frame by frame (audit B9).
                 Layout = trailing && !Design.Reduced ? s_listResize : null,
@@ -1502,8 +1498,14 @@ public readonly partial struct Track
         /// node (its anchor) cannot carry a handler, so the root is this box: it hears the focus edge and feeds the slot's
         /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
         /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
-        static Element FocusRoot(Element slot, Action<bool> focusEdge)
-            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, HitTestPassThrough = true, Children = [slot] };
+        static Element FocusRoot(Element slot, Action<bool> focusEdge, float room = 0f)
+            => new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, HitTestPassThrough = true, Children = [slot],
+                // The hero list's slots span its viewport's leading bleed (VerticalList): the item stands back in the list's column. The slot root stays the
+                // focus node; a row's ring is drawn on its list column (InsetList's ring host), the hero and the chrome take no focus.
+                Padding = room > 0f ? new Edges4(room, 0f, 0f, 0f) : default,
+            };
 
         /// <summary>The keyboard-focus ring of a row, drawn INSIDE the slot's bounds. The slot root (this box) is the focus node (the roving tab stop), not
         /// the row's skin; the engine's default margin (WinUI's -3) pushed the ring 3 DIP outside it, where the list's viewport clipped its left and
@@ -1512,11 +1514,6 @@ public readonly partial struct Track
 
         /// <summary>The structure's display-title hang room (<see cref="DetailTierPolicy.LeadBleed"/>: one number for every tier).</summary>
         static float LeadBleedNow() => ShellPolicy.Tracked.DetailTiers.LeadBleed;
-
-        /// <summary>A hero-list item set back in by the list's hang room (the list reaches that far left of the column so its clip leaves room for
-        /// the hero's display title hang): a pass-through box OUTSIDE the focus root, so the row's focus ring and every hit keep the row's own box.</summary>
-        static Element HangRoom(Element slot, float room)
-            => room > 0f ? new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(room, 0f, 0f, 0f), HitTestPassThrough = true, Children = [slot] } : slot;
 
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
@@ -1579,7 +1576,7 @@ public readonly partial struct Track
             int prefix = Detail.VerticalLayout.PrefixCount;
             float room = LeadBleedNow();
             return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, recs),
-                scope => HangRoom(FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged), room),
+                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged, room),
                 layout,
                 new ListOptions
                 {
@@ -1612,6 +1609,10 @@ public readonly partial struct Track
                         ItemClipTopInset = stickyInset,
                         ItemClipTopInsetSource = _itemBandSig,
                         ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
+                        // The hero hangs its display title left of the column (DetailTierPolicy.LeadBleed): the viewport reaches that far past the list's
+                        // box, and every slot sets its item back in by as much (FocusRoot), so the hang is drawn and nothing else moves. The list's box,
+                        // its drop surface and line, and the column (measured: the tier, the lanes) keep their place.
+                        LeadingBleed = room,
                     },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
@@ -1962,7 +1963,6 @@ public readonly partial struct Track
             return new BoxEl
             {
                 Direction = 1,
-                Padding = LeadBleedNow() is > 0f and var room ? new Edges4(room, 0f, 0f, 0f) : default,   // set back in from the list's hang room
                 Children =
                 [
                     _heroStyle?.Skeleton?.Invoke(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form, _latest.Columns) ?? new BoxEl(),

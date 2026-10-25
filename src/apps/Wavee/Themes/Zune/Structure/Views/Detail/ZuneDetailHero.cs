@@ -250,6 +250,9 @@ internal static class ZuneDetailHero
                 ],
             };
 
+            // How far the panorama's hang reaches past the list's box (the columns form stands on it; the hero form stands inside its gutter): the room
+            // the hero list's viewport and the album's scroller leave there is the title's alone (K.PanoramaBand's past).
+            float past = MathF.Max(0f, -MathF.Min(0f, lay.PanoramaNudgeX) - (columns ? 0f : pad));
             Element expanded = new BoxEl
             {
                 // No floor of its own: its blocks reserve their heights (the rule's), and a floor would land at once on a crossing while the blocks ease.
@@ -259,7 +262,7 @@ internal static class ZuneDetailHero
                     Padded(new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, OnBoundsChanged = _measureBand,
-                        Children = [K.PanoramaBand(id, slots, lay, 0f, enter, ZuneMotion.HeightResize, _titlePending, inner * Z.SkelMetaFraction)],
+                        Children = [K.PanoramaBand(id, slots, lay, 0f, enter, ZuneMotion.HeightResize, _titlePending, inner * Z.SkelMetaFraction, past)],
                     }, columns ? 0f : pad),
                     body,
                 ],
