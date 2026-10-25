@@ -542,7 +542,7 @@ internal static partial class ClassicDetailFrame
             Animate = HeroReflowMotion,
             Children = description is null
                 ? [artRow]
-                : [artRow, Late("hero-description", description, swapIn) with
+                : [artRow, Late("hero-description", description.Value, swapIn) with
                     {
                         Margin = new Edges4(0f, railForm ? railRec.Gap : VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f),
                     }],

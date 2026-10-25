@@ -171,7 +171,7 @@ internal static partial class WinUiSettings
         if (size is { } bytes) actions.Add(R.Type.DenseMeta(Settings.StorageFormat.Bytes(bytes)) with { Color = Tok.TextSecondary, Shrink = 0f });
         // "Open folder" is the category row's writer (the folder door).
         actions.Add(LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
-        if (extra is not null) actions.Add(extra);
+        if (extra is not null) actions.Add(extra.Value);
         return new BoxEl
         {
             Direction = 0, AlignSelf = FlexAlign.Stretch,

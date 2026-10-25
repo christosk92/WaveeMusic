@@ -36,7 +36,7 @@ internal static partial class ClassicSettings
             bool take = false;
             foreach (var element in tab)
             {
-                if (element is BoxEl { Key: { } key } && key.StartsWith(MarkPrefix, StringComparison.Ordinal))
+                if (element.Is(out BoxEl markBox) && markBox.Key is { } key && key.StartsWith(MarkPrefix, StringComparison.Ordinal))
                 {
                     take = string.Equals(key.AsSpan(MarkPrefix.Length).ToString(), part.Section, StringComparison.Ordinal);
                     continue;

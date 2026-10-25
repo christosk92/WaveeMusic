@@ -168,9 +168,9 @@ public readonly partial struct Track
                 stack.Add(new BoxEl
                 {
                     Key = "chrome:chips-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = ChromeResize,
-                    Children = pageBar ? [] : [Gutter(chips) with { Key = "chrome:chips" }],
+                    Children = pageBar ? [] : [Gutter(chips.Value) with { Key = "chrome:chips" }],
                 });
-            if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
+            if (lens is not null) stack.Add(Gutter(lens.Value) with { Key = "chrome:lens" });
             stack.Add(header);
             // The air under the header follows the bar above it: the two-column arm's, and the hero list's columns form, which draws the bar in its hero
             // (audit B9). An easing spacer (a margin cannot ease) in one wrapper in every form, so the form never re-parents the header.
@@ -317,7 +317,7 @@ public readonly partial struct Track
                 Children = insights is null ? [] : [ArrivingToggle(BarPart(Detail.InsightsBarButton(insights)))],
             });
             if (select is not null)
-                tailList.Add(Kit.Command("cmd:select", select, live ? w => MeasureExtra(ref _selectW, w) : s_noWidth));
+                tailList.Add(Kit.Command("cmd:select", select.Value, live ? w => MeasureExtra(ref _selectW, w) : s_noWidth));
             // Where the tier gives the page ONE "…" in the hero (Zune and WinUI Compact), the bar draws none: the hero's carries the list options. The
             // button is keyed on the page alone (the evicted commands are a re-pushed prop, never a key), and it fades in and out across the edge.
             if (PageMenuNow() != global::Wavee.Theming.DetailPageMenu.Hero)
@@ -600,7 +600,7 @@ public readonly partial struct Track
                     ? new BoxEl
                     {
                         Key = "search:word", Direction = 1, Height = edge, JustifySelf = FlexAlign.Start, Animate = s_searchSwap,
-                        Children = [ToolTip.Wrap(word, Loc.Get(Strings.Detail.Filter.SearchThisList))],
+                        Children = [ToolTip.Wrap(word.Value, Loc.Get(Strings.Detail.Filter.SearchThisList))],
                     }
                     : new BoxEl
                     {

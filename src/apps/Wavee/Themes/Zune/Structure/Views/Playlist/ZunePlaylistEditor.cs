@@ -149,12 +149,9 @@ internal static partial class ZunePlaylist
         int status = p.Status;
         // The hairline is the run's underline (the boards: a text decoration, faint at rest, raised on hover), not a rule across the column: the run
         // hugs its words (it still wraps at the column) and the hairline takes the run's width, offset clear of its descenders.
-        Element words = run switch
-        {
-            TextEl t => t with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f },
-            SpanTextEl s => s with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f },
-            _ => run,
-        };
+        Element words = run.Is(out TextEl t) ? t with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f }
+            : run.Is(out SpanTextEl s) ? s with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f }
+            : run;
         return new BoxEl
         {
             Key = Z.EditorReadKey, Direction = 1, MinWidth = 0f,

@@ -143,7 +143,7 @@ internal static partial class ZuneShow
     static Element Card(ShowHeadArgs a, Episode e, string key, Element lead, BoxEl words, Element? trailing, Action open)
     {
         var kids = new List<Element>(3) { lead, words };
-        if (trailing is not null) kids.Add(trailing);
+        if (trailing is not null) kids.Add(trailing.Value);
         var card = new BoxEl
         {
             Key = key, Direction = 0, Gap = CardGap, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = CardArt72,
@@ -174,7 +174,7 @@ internal static partial class ZuneShow
         Element?[] order = serial ? [first, trailer, latest] : [latest, trailer, first];
         var doors = new List<Element>(3);
         foreach (var door in order)
-            if (door is not null) doors.Add(door);
+            if (door is not null) doors.Add(door.Value);
 
         var sections = new List<Element>(2);
         if (doors.Count > 0)
@@ -375,7 +375,7 @@ internal static partial class ZuneShow
                 R.Type.TrackMeta(meta) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             ],
         });
-        if (trailing is not null) kids.Add(trailing);
+        if (trailing is not null) kids.Add(trailing.Value);
         var plate = new BoxEl
         {
             Direction = 0, Gap = CardGap, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = CardArt72, Children = kids.ToArray(),

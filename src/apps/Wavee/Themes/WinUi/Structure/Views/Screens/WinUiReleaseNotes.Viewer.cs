@@ -317,7 +317,7 @@ internal static partial class WinUiReleaseNotes
                 action = Btn(Loc.Get(Strings.WhatsNew.TryIt), live ? tryIt : Inert, ButtonAppearance.Accent, ControlSize.Medium, ov.Target, live);
             }
             if (action is not null)
-                content.Add(new BoxEl { Direction = 0, Gap = K.ViewerActionGap, Margin = new Edges4(0f, 16f, 0f, 0f), Children = [action] });
+                content.Add(new BoxEl { Direction = 0, Gap = K.ViewerActionGap, Margin = new Edges4(0f, 16f, 0f, 0f), Children = [action.Value] });
             return new BoxEl { Direction = 1, MaxWidth = K.ViewerTextMaxWidth, AlignSelf = FlexAlign.Start, Children = content.ToArray() };
         }
     }

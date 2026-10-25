@@ -81,10 +81,10 @@ internal static class WinUiArtistBanners
             var col = new Element[n];
             int k = 0;
             col[k++] = eyebrow;
-            if (bigDate is not null) col[k++] = bigDate;
+            if (bigDate is not null) col[k++] = bigDate.Value;
             col[k++] = title;
             col[k++] = meta;
-            if (countdown is not null) col[k++] = countdown;
+            if (countdown is not null) col[k++] = countdown.Value;
             col[k] = actions;
             content = new BoxEl { Direction = 1, Padding = Edges4.All(Spacing.L), Gap = Spacing.S, Children = col };
         }
@@ -103,13 +103,13 @@ internal static class WinUiArtistBanners
             Element actionCol = new BoxEl
             {
                 Direction = 1, Gap = Spacing.S, AlignItems = FlexAlign.End, Shrink = 0f,
-                Children = countdown is null ? [actions] : [actions, countdown],
+                Children = countdown is null ? [actions] : [actions, countdown.Value],
             };
             content = new BoxEl
             {
                 Direction = 0, Gap = Spacing.XL, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Padding = new Edges4(Spacing.XL, Spacing.L, Spacing.XL, Spacing.L),
-                Children = bigDate is null ? [coverBox, copy, actionCol] : [coverBox, copy, bigDate with { Shrink = 0f }, actionCol],
+                Children = bigDate is null ? [coverBox, copy, actionCol] : [coverBox, copy, bigDate.Value with { Shrink = 0f }, actionCol],
             };
         }
 

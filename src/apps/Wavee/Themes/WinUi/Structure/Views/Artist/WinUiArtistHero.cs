@@ -49,7 +49,7 @@ internal static class WinUiArtistHero
         // The layers stretch with the card (no width or height of their own: the card's height eases across a crossing, its width follows the page's
         // easing inset), so the photograph fills it and the copy rides its foot frame by frame.
         Element photo = photoUrl is { Length: > 0 } src && (shimmer || subject is not null)
-            ? ((BoxEl)Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode, crop: crop)) with
+            ? Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode, crop: crop).As<BoxEl>() with
             {
                 Key = "heroart:" + uri, Width = float.NaN, Height = float.NaN,
             }
@@ -193,7 +193,7 @@ internal static class WinUiArtistHero
     /// <summary>The skeleton arm states a run as its line box (the deriver paints a bar per text leaf at 0.72 of its size, which came out short of the loaded copy).</summary>
     static Element Lines(Element run, bool shimmer)
     {
-        if (!shimmer || run is not TextEl t) return run;
+        if (!shimmer || !run.Is(out TextEl t)) return run;
         return new BoxEl { Height = float.IsNaN(t.LineHeight) ? t.Size : t.LineHeight, MinWidth = 0f, Width = WinUiArtistRules.ShimmerLineW, Corners = CornerRadius4.All(WinUiDetailRules.BoneRadius) };
     }
 

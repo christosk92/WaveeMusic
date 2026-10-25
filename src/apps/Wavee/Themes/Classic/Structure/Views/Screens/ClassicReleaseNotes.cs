@@ -200,7 +200,7 @@ internal static partial class ClassicReleaseNotes
             {
                 Key = "rn:picker-slot", Direction = 0, MinHeight = layout.PickerHeight, MinWidth = 0f,
                 AlignItems = FlexAlign.Center, Layout = ClassicTierMotion.Shove,   // a crossing moves the same slot beside or under the title
-                Children = picker is null ? [] : [picker],
+                Children = picker is null ? [] : [picker.Value],
             });
 
         var rows = new List<Element>(2)
@@ -216,7 +216,7 @@ internal static partial class ClassicReleaseNotes
         {
             Key = "rn:frame", Direction = 0, Gap = layout.FrameGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Padding = new Edges4(gutter, 0f, gutter, 0f),
-            Children = rail is null ? [body] : [body, rail],   // loading / empty: the rail's column AND its gap are gone
+            Children = rail is null ? [body] : [body, rail.Value],   // loading / empty: the rail's column AND its gap are gone
         });
         return new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = rows.ToArray() };
     }

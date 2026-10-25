@@ -427,13 +427,13 @@ internal static class ZuneTrackChrome
             // keeps its slot (and the gap after it) as an empty box.
             if (left.Length == 0) kids.Add(new BoxEl { Key = "bar:left", Shrink = 0f, Margin = new Edges4(leadShift, 0f, 0f, 0f) });
             for (int i = 0; i < left.Length; i++)
-                kids.Add(i == 0 && left[0] is BoxEl first ? first with { Margin = new Edges4(leadShift, 0f, 0f, 0f) } : left[i]);
+                kids.Add(i == 0 && left[0].Is(out BoxEl first) ? first with { Margin = new Edges4(leadShift, 0f, 0f, 0f) } : left[i]);
             kids.Add(middle is null
                 ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
                 : new BoxEl
                 {
                     Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle.Value],
                 });
             kids.AddRange(view);
             kids.Add(new BoxEl
@@ -526,7 +526,7 @@ internal static class ZuneTrackChrome
             var word = Word(label, Tok.TextSecondary, LabelKind.Command) with { Size = R.Type.DenseMeta("").Size, Color = ink };
             Element[] kids = trailing is null
                 ? [Icon(glyph, ZuneListRules.CommandGlyph) with { Color = ink }, word]
-                : [Icon(glyph, ZuneListRules.CommandGlyph) with { Color = ink }, word, trailing];
+                : [Icon(glyph, ZuneListRules.CommandGlyph) with { Color = ink }, word, trailing.Value];
             return Plate(active, onClick, onRealized) with { Gap = ZuneListRules.CommandGap, Padding = ZuneListRules.CommandPad, Children = kids };
         }
 

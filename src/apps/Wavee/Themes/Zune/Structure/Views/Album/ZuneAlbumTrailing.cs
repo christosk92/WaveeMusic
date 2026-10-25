@@ -94,7 +94,7 @@ internal static class ZuneAlbumTrailing
     {
         Key = key, Direction = 1, Gap = Z.SectionGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
         Padding = new Edges4(Z.SectionInset, Z.SectionTop, Z.SectionInset, 0f),
-        Children = heading is null ? [body] : [K.HeadingRow(key + ":head", heading, null, Z.AsideHeadingH), body],
+        Children = heading is null ? [body] : [K.HeadingRow(key + ":head", heading.Value, null, Z.AsideHeadingH), body],
     };
 
     /// <summary>The shared surface's card for a trailing row. <paramref name="release"/>: a row of an artist's own releases, captioned by its kind and
@@ -421,14 +421,14 @@ internal static class ZuneAlbumTrailing
             {
                 Key = Z.StackKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, Height = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
                 Gap = Z.SectionGap,
-                Children = [K.Heading(Loc.Get(Strings.Detail.MoreByHeading)), link!],
+                Children = [K.Heading(Loc.Get(Strings.Detail.MoreByHeading)), link!.Value],
             }
             : aside
             ? new BoxEl
             {
                 Key = Z.StackKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
                 Gap = Z.SectionGap,
-                Children = link is null ? [AsideNamedHeading(StackTitle(p))] : [AsideNamedHeading(StackTitle(p)), link],
+                Children = link is null ? [AsideNamedHeading(StackTitle(p))] : [AsideNamedHeading(StackTitle(p)), link.Value],
             }
             : K.HeadingRow(Z.StackKey + ":head", K.NamedHeading(StackTitle(p)), link, Z.AsideHeadingH);
         return new BoxEl

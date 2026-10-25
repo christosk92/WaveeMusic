@@ -104,7 +104,7 @@ internal static class ClassicArtistHero
         return new BoxEl
         {
             Direction = 1, Height = height, ZStack = true, Animate = ClassicTierMotion.HeightReflow,
-            Children = band is null ? [arm] : [arm, band],
+            Children = band is null ? [arm] : [arm, band.Value],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
 

@@ -399,7 +399,7 @@ internal static class ZuneHomeDaylist
             return new BoxEl
             {
                 Key = "zune-daylist-clock-block", Direction = 0, Wrap = true, Gap = H.ClockGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children = action is null ? [line] : [line, action],
+                Children = action is null ? [line] : [line, action.Value],
             };
         int lit = Math.Clamp(current, 0, DaypartTimeline.Segments - 1);
         var bars = new Element[DaypartTimeline.Segments];
@@ -425,7 +425,7 @@ internal static class ZuneHomeDaylist
             new BoxEl { Direction = 0, Gap = H.BarGap, AlignItems = FlexAlign.End, Height = H.BarLitH, MinWidth = 0f, Children = bars },
             new BoxEl { Direction = 0, Wrap = true, Gap = H.DaypartWordGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = names.ToArray() },
         };
-        if (action is not null) kids.Add(action);
+        if (action is not null) kids.Add(action.Value);
         return new BoxEl { Key = "zune-daylist-clock-block", Direction = 1, Gap = H.ClockGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 }

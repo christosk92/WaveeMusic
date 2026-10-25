@@ -76,7 +76,7 @@ internal static partial class ClassicPlaylist
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true, MinHeight = rowH,
-            Children = lead is null ? [text!] : text is null ? [lead] : [lead, text],
+            Children = lead is null ? [text!.Value] : text is null ? [lead.Value] : [lead.Value, text.Value],
         };
     }
 

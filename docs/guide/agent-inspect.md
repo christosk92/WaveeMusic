@@ -279,8 +279,8 @@ Home, and makes Classic dark the active theme.
 - `status` reports whether something is mounted, the frames run so far, `mounts` (how many mounts this server has done:
   above 1 means state that a mount does not clear may carry over), `video{resolved, requested, preferred, transport,
   player}` (the video surface's placement and whether a player is bound; a fresh server reads `None`, `None`, `Docked`,
-  `GlobalBar`, `false`), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, gen0, gen1, gen2, pauseMs}` (the
-  managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start, the collections per
+  `GlobalBar`, `false`), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, threadAllocatedBytes, gen0, gen1, gen2, pauseMs}` (the
+  managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start by every thread and by the UI thread alone (exact), the collections per
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
   `animating` and `trimSource`.

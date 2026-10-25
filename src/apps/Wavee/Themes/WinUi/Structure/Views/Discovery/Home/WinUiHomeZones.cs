@@ -184,7 +184,7 @@ internal static class WinUiHomeZones
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = layout.HeaderGap,
-            Children = [header, body],
+            Children = [header.Value, body],
         };
     }
 
@@ -243,7 +243,7 @@ internal static class WinUiHomeZones
         if (pager is null) return link;
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link, pager],
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link.Value, pager.Value],
         };
     }
 
@@ -267,7 +267,7 @@ internal static class WinUiHomeZones
     {
         if (!HomeZoneKeys.TryKeyOf(zone.Kind, out var key)) return new BoxEl();
         Element slot = Slots.View(key, new HomeZoneProps(zone, overlay, controller));
-        return slot is ComponentEl component ? component with { SkeletonProxy = () => BodyTree(zone, overlay, controller: null, layout) } : slot;
+        return slot.Is(out ComponentEl component) ? component with { SkeletonProxy = () => BodyTree(zone, overlay, controller: null, layout) } : slot;
     }
 
     /// <summary>The picture of every kind that is a pure function of its zone: what the `Home.Zone.{Kind}` template and its skeleton proxy both build.</summary>

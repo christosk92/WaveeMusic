@@ -202,7 +202,7 @@ public static partial class Controls
         static Element LabelTip(Element root, string title)
         {
             Element tip = ToolTip.Wrap(root, title);
-            return tip is ComponentEl c ? c with { SkeletonProxy = () => root } : tip;
+            return tip.Is(out ComponentEl c) ? c with { SkeletonProxy = () => root } : tip;
         }
     }
 }

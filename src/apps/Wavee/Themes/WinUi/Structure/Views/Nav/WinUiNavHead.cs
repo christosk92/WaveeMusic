@@ -37,7 +37,7 @@ internal static class WinUiNavHead
             },
             new BoxEl { Grow = 1f },
         };
-        if (create is not null) kids.Add(create);
+        if (create is not null) kids.Add(create.Value);
         return new BoxEl
         {
             Direction = 0, Height = WinUiNavGeometry.HeaderHeight, Shrink = 0f, AlignItems = FlexAlign.End,

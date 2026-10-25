@@ -47,7 +47,7 @@ internal static class WinUiModalCard
         var tier = WinUiOverlayTiers.For(ctx.Tier().Window);
         float h = tier.CardButtonHeight;
         if (h <= 0f)
-            return new BoxEl { Direction = 0, Gap = Spacing.S, Justify = FlexJustify.End, Margin = new Edges4(0f, Spacing.M, 0f, 0f), Children = buttons };
+            return new BoxEl { Direction = 0, Gap = Spacing.S, Justify = FlexJustify.End, Margin = new Edges4(0f, Spacing.M, 0f, 0f), Children = [.. buttons] };
         var shared = new Element[buttons.Length];
         for (int i = 0; i < buttons.Length; i++)
             shared[i] = buttons[i] with { Grow = 1f, Basis = 0f, MinWidth = 0f, Height = h, MinHeight = h, Justify = FlexJustify.Center };

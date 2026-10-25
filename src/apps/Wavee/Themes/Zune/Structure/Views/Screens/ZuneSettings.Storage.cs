@@ -113,7 +113,7 @@ internal static partial class ZuneSettings
         };
         if (size is { } bytes) controls.Add(R.Type.DenseMeta(Settings.StorageFormat.Bytes(bytes)) with { Color = Tok.TextPrimary, Shrink = 0f });
         controls.Add(k.Cmd(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
-        if (extra is not null) controls.Add(extra);
+        if (extra is not null) controls.Add(extra.Value);
         return k.Row(ZuneKit.RowKey(D(Tab.Storage, rowId)), Loc.Get(s_storagePartKeys[hue]), sub,
             new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f, Children = controls.ToArray() });
     }

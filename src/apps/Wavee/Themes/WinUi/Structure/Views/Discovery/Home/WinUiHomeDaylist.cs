@@ -215,7 +215,7 @@ internal static class WinUiHomeDaylist
                     Key = "daylist-eyebrow-row", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
                     Children = eyebrowTrail is null
                         ? [Eyebrow() with { Grow = 1f, Shrink = 1f }]
-                        : [Eyebrow() with { Grow = 1f, Shrink = 1f }, ClockLine(eyebrowTrail)],
+                        : [Eyebrow() with { Grow = 1f, Shrink = 1f }, ClockLine(eyebrowTrail.Value)],
                 }
                 : Eyebrow() with { Key = "daylist-eyebrow" },
             Title(p.Title, dl) with { Key = "daylist-title" },

@@ -92,7 +92,7 @@ internal static partial class ZunePlaylist
         return new BoxEl
         {
             Direction = 0, Gap = Z.DaylistGap, AlignItems = FlexAlign.Center, Wrap = true, MinHeight = rowH,
-            Children = lead is null ? [text!] : text is null ? [lead] : [lead, text],
+            Children = lead is null ? [text!.Value] : text is null ? [lead.Value] : [lead.Value, text.Value],
         };
     }
 

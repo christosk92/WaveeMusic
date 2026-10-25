@@ -536,7 +536,7 @@ public static partial class Sidebar
                 : (_paddedList ??= PaddedList());
             // The structure's footer (a fixed row under the list; null for none, the default): not in Edit mode (the Outline carries Settings).
             Element? footer = Kit.Footer(this, compact);
-            if (footer is not null) return modeHead is { } mh2 ? [mh2, body, footer] : [body, footer];
+            if (footer is not null) return modeHead is { } mh2 ? [mh2, body, footer.Value] : [body, footer.Value];
             return modeHead is { } mh ? [mh, body] : [body];
         }
 

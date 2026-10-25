@@ -61,7 +61,7 @@ internal static class ZuneFriends
             nameText = new BoxEl
             {
                 Direction = 0, MinWidth = 0f, Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = openProfile,
-                Children = [((TextEl)nameText) with { HoverColor = Tok.AccentTextPrimary }],
+                Children = [nameText.As<TextEl>() with { HoverColor = Tok.AccentTextPrimary }],
             };
         }
 

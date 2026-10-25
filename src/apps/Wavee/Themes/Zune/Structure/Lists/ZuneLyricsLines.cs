@@ -322,7 +322,7 @@ internal sealed class ZuneLyricsRow : Component
             Color = lineInk, MaxLines = 0, Trim = TextTrim.None, OnRealized = _onLine, Wipe = wipe,
             BrushTransitionMs = Design.Motion.Fast,   // the rest <-> accent flip never snaps in one frame
         };
-        if (rhythm is not null) main = ((TextEl)main) with { FontFamily = R.Type.DisplayFace, CharSpacing = rhythm.Tracking };
+        if (rhythm is not null) main = main.As<TextEl>() with { FontFamily = R.Type.DisplayFace, CharSpacing = rhythm.Tracking };
 
         string? secondaryText = host.SecondaryLine.Value switch
         {

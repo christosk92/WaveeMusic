@@ -252,10 +252,10 @@ internal static partial class ClassicLibraryArtistReader
     {
         var p = h.Props;
         if (p.Scope?.Invoke() is not { } scope || p.Sort?.Invoke() is not { } sort) return new BoxEl { Height = Artist.ReaderShape.SubRailH };
-        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort)) return h.SubRail;
+        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort)) return h.SubRail.Value;
         h.RailScope = scope;
         h.RailSort = sort;
-        return h.SubRail = SubRail(p.Host, scope, sort);
+        return (h.SubRail = SubRail(p.Host, scope, sort)).Value;
     }
 
     /// <summary>The two word rails — scope (in your library · all releases · N) — spacer — sort (newest · oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. A PLAIN

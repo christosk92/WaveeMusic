@@ -296,7 +296,7 @@ internal static class ZuneSearchPage
                     Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
                     Opacity = saved ? 1f : 0f, HoverOpacity = 1f,
                     HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                    Children = [control],
+                    Children = [control.Value],
                 });
             return new BoxEl { ZStack = true, Shrink = 0f, MinWidth = S.KindCellW, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Children = cell.ToArray() };
         }

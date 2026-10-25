@@ -83,7 +83,7 @@ internal static class ZuneArtistChart
                 Focusable = a.SeeAll is not null, AllowFocusOnInteraction = false, OnClick = a.SeeAll, Children = [word],
             };
         }
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = tail is null ? [heading] : [heading, tail] };
+        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = tail is null ? [heading] : [heading, tail.Value] };
     }
 
     static Element Row(ArtistChartRowArgs a)
@@ -213,7 +213,7 @@ internal static class ZuneArtistChart
         if (feat is not null)
         {
             if (sub.Count > 0) Dot();
-            sub.Add(feat);
+            sub.Add(feat.Value);
         }
         if (playsInSub)
         {

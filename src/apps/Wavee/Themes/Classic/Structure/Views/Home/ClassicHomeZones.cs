@@ -187,7 +187,7 @@ internal static class ClassicHomeZones
                     Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
                     Height = ClassicHomeRules.HeaderH + ClassicHomeRules.HeaderGap,
                     Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
-                    Children = [header],
+                    Children = [header.Value],
                 }.Sticky(ClassicHomeRules.StuckBottom, scope: zone.Key),
                 // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
                 new BoxEl
@@ -235,7 +235,7 @@ internal static class ClassicHomeZones
         if (pager is null) return link;
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link, pager],
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link.Value, pager.Value],
         };
     }
 
@@ -260,7 +260,7 @@ internal static class ClassicHomeZones
     {
         if (!HomeZoneKeys.TryKeyOf(zone.Kind, out var key)) return new BoxEl();
         Element slot = Slots.View(key, new HomeZoneProps(zone, overlay, controller));
-        return slot is ComponentEl component ? component with { SkeletonProxy = () => BodyTree(zone, overlay, controller: null, layout) } : slot;
+        return slot.Is(out ComponentEl component) ? component with { SkeletonProxy = () => BodyTree(zone, overlay, controller: null, layout) } : slot;
     }
 
     /// <summary>The picture of every kind that is a pure function of its zone: what the `Home.Zone.{Kind}` template and its skeleton

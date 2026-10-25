@@ -369,17 +369,17 @@ internal static partial class ClassicPlayerBar
             var kids = new List<Element>(5);
             if (huge)
             {
-                if (shuffleSlot is not null) kids.Add(shuffleSlot);
+                if (shuffleSlot is not null) kids.Add(shuffleSlot.Value);
                 kids.Add(transport);
-                if (repeatSlot is not null) kids.Add(repeatSlot);
+                if (repeatSlot is not null) kids.Add(repeatSlot.Value);
                 kids.Add(seekRow);
                 return kids.ToArray();
             }
             kids.Add(transport);
             kids.Add(seekRow);
             float lead = rowGap + slack;
-            if (shuffleSlot is BoxEl s) { kids.Add(s with { Margin = new Edges4(lead, 0f, 0f, 0f) }); lead = m.RightGap; }
-            if (repeatSlot is BoxEl r) kids.Add(r with { Margin = new Edges4(lead, 0f, 0f, 0f) });
+            if (shuffleSlot.Is(out BoxEl s)) { kids.Add(s with { Margin = new Edges4(lead, 0f, 0f, 0f) }); lead = m.RightGap; }
+            if (repeatSlot.Is(out BoxEl r)) kids.Add(r with { Margin = new Edges4(lead, 0f, 0f, 0f) });
             return kids.ToArray();
         }
 

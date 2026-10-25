@@ -205,7 +205,7 @@ internal static partial class ClassicSettings
     /// first (<paramref name="pair"/>), and below the first it keeps its opening header's space above. A column beside another grows to share the row, capped.</summary>
     static Element Column(Element[] children, ClassicSettingsLayout layout, int index, bool pair)
     {
-        if (children.Length > 0 && children[0] is BoxEl first && (index <= 0 || pair))
+        if (children.Length > 0 && children[0].Is(out BoxEl first) && (index <= 0 || pair))
         {
             // The space above a section is a section header's own top padding (inside its height reveal) or another opener's top margin: the first has none.
             if (first.Margin.Top > 0f) first = first with { Margin = first.Margin with { Top = 0f } };
@@ -228,7 +228,7 @@ internal static partial class ClassicSettings
     {
         var starts = new List<int>(8);
         for (int i = 0; i < children.Length; i++)
-            if (children[i] is BoxEl { Key: { } key } && key.StartsWith(SectionKeyPrefix, StringComparison.Ordinal)) starts.Add(i);
+            if (children[i].Is(out BoxEl sectionBox) && sectionBox.Key is { } key && key.StartsWith(SectionKeyPrefix, StringComparison.Ordinal)) starts.Add(i);
         if (starts.Count == 0 || starts[0] != 0) starts.Insert(0, 0);   // rows before the first header are the first group
         var weights = new int[starts.Count];
         for (int g = 0; g < weights.Length; g++) weights[g] = (g + 1 < starts.Count ? starts[g + 1] : children.Length) - starts[g];

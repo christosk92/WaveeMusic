@@ -320,11 +320,12 @@ internal sealed class ClassicHeroHeaderRow : Component
     {
         [SelectorBar.PartItem] = static item =>
         {
-            if (item.Children is not [BoxEl content, var pill]) return item;
+            if (item.Children.Length != 2 || !item.Children[0].Is(out BoxEl content)) return item;
+            var pill = item.Children[1];
             var kids = new Element[content.Children.Length];
             for (int i = 0; i < kids.Length; i++)
             {
-                if (content.Children[i] is TextEl t && t.FontFamily is null)
+                if (content.Children[i].Is(out TextEl t) && t.FontFamily is null)
                 {
                     var rung = t.Weight is 600 or 650 or 700 or 540
                         ? R.Type.DenseTitle("")

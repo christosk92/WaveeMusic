@@ -124,7 +124,7 @@ internal sealed class WinUiNavRow : Component
     /// <c>ToolTip.Wrap(grow: 1f)</c> (the reconciler mirrors a component anchor's grow), so it is never applied twice.
     /// MinWidth 0 keeps a long title eliding instead of pushing the row past the pane.</summary>
     static Element FillSlot(Element content)
-        => content is BoxEl box ? box with { Grow = 1f, Shrink = 1f, MinWidth = 0f } : content;
+        => content.Is(out BoxEl box) ? box with { Grow = 1f, Shrink = 1f, MinWidth = 0f } : content;
 
     (Reorderable Ro, int Start)? ReorderBand(in SidebarRow row, int index)
     {
@@ -319,7 +319,7 @@ internal sealed class WinUiNavRow : Component
     /// <summary>An offline pin keeps its cover, at <see cref="WinUiNavGeometry.OfflineArtOpacity"/>.</summary>
     static Element? Quieted(Element? cover, bool offline)
         => !offline || cover is null ? cover
-            : new BoxEl { Shrink = 0f, Opacity = WinUiNavGeometry.OfflineArtOpacity, Children = [cover] };
+            : new BoxEl { Shrink = 0f, Opacity = WinUiNavGeometry.OfflineArtOpacity, Children = [cover.Value] };
 
     /// <summary>"Not available offline", led by the name when the row cuts it.</summary>
     static string OfflineTip(string label, bool labelCut)
