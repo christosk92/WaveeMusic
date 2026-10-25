@@ -137,7 +137,7 @@ public readonly partial struct Show
             // gutter itself; the two-column arm's ends on the column edge, past which a margin-standing year strip stands.
             _episodes = v => Embed.Comp(new ReaderProps(_m, _routeKey, OwnsEdge: v), static () => new ReaderHost());
             _primary = accent => Embed.Comp(new SlotProps(_m, accent), static () => new PrimarySlot()) with { Key = "show:primary" };
-            _satellitesOf = () => _satellites ??= BuildSatellites();
+            _satellitesOf = () => _satellites ??= BuildSatellites().Freeze();
             _attribution = PublisherOf;
             _badges = () => Embed.Comp(new SlotProps(_m, null), static () => new BadgesSlot());
             _rating = w => Embed.Comp(new SlotProps(_m, null, w), static () => new RatingSlot());
@@ -861,7 +861,7 @@ public readonly partial struct Show
                 return s is null || (uint)i >= (uint)s.ItemCount ? 0 : (int)s.Items[i].Kind;
             };
             // Slot 0 — the persistent prefix — is the RAW sticky rail; every other slot a component (file header).
-            _template = scope => scope.Row.Index.Peek() == 0 ? (_rail ??= RailElement()) : Embed.Comp(() => new ReaderSlot(this, scope));
+            _template = scope => scope.Row.Index.Peek() == 0 ? (_rail ??= RailElement().Freeze()) : Embed.Comp(() => new ReaderSlot(this, scope));
             _content = () => ItemsView.CreateBound(_items!, _template, _layout, OptionsFor(_latest?.RouteKey ?? ""));
             _shimmer = Shimmer;
             _retry = () =>

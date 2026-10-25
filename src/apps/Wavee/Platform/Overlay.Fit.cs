@@ -64,7 +64,7 @@ public static class OverlayFit
     /// <paramref name="configure"/> sets the title, the body and the commands as for <c>ContentDialog.Show</c>; this then fits the card as <see cref="Dialog"/> does,
     /// at the band's form width (<see cref="DialogFit.FormWidth"/>, else <paramref name="requestedWidth"/>); the report form (<paramref name="report"/>) takes the band's
     /// <see cref="DialogFit.ReportWidth"/> first where it names one. Returns the open dialog's handle.</summary>
-    public static OverlayHandle ShowForm(IOverlayService overlay, float requestedWidth, Action<ContentDialog> configure, bool report = false)
+    public static OverlayHandle ShowForm(IOverlayService overlay, float requestedWidth, [Immediate] Action<ContentDialog> configure, bool report = false)
         => ContentDialog.Show(overlay, d =>
         {
             configure(d);
