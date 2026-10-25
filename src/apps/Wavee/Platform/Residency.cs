@@ -16,7 +16,6 @@
 // switches — the poll is always on, and its output is one log line, not a toggle.
 
 using System;
-using System.Diagnostics;
 
 namespace Wavee;
 
@@ -169,8 +168,9 @@ public static partial class Residency
         double machineLoad = info.HighMemoryLoadThresholdBytes > 0
             ? (double)info.MemoryLoadBytes / info.HighMemoryLoadThresholdBytes
             : 0.0;
-        long privateBytes;
-        using (var self = Process.GetCurrentProcess()) privateBytes = self.PrivateMemorySize64;
+        // GetProcessMemoryInfo for this process (TryReadProcessMemory), never Process.PrivateMemorySize64 (a machine-wide
+        // process snapshot, ~6 ms of this UI-thread poll).
+        long privateBytes = TryReadProcessMemory(out var memory) ? memory.PrivateBytes : 0;
         var level = MemoryPressurePolicy.From(privateBytes, machineLoad);
         long freed = Trim(level);
         // The heap step runs AFTER the arenas: what they just let go of is exactly what a collection can now reclaim.

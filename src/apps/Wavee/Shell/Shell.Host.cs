@@ -112,11 +112,29 @@ public static partial class Shell
 
     static void OnFirstFrameRendered(FrameStats _)
     {
+        if (!s_firstFrameLogged)
+        {
+            s_firstFrameLogged = true;
+            Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
+            Crash.Host.NoteFirstFrame();
+            StartupTimeline.Mark("firstFrame");
+        }
+        // The rest of the startup timeline rides the following frames: the first present (the device's own stamp), the window
+        // shown by its reveal gate, the first route restored. Then this unsubscribes and never runs again.
+        if (!s_firstPresentMarked && FluentGpu.Rhi.D3D12.D3D12Device.FirstPresentQpc is var present and not 0)
+        {
+            s_firstPresentMarked = true;
+            StartupTimeline.MarkAt("firstPresent", present);
+        }
+        if (!s_revealedMarked && FluentApp.WindowVisible) { s_revealedMarked = true; StartupTimeline.Mark("revealed"); }
+        if (!s_restoredMarked && Diagnostics.NavigationFrameWatch.NavigationId > 0) { s_restoredMarked = true; StartupTimeline.Mark("restored"); }
+        if (!(s_firstPresentMarked && s_revealedMarked && s_restoredMarked)) return;
         FluentApp.FrameCompleted -= s_firstFrameMark;
         s_firstFrameMark = null;
-        Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
-        Crash.Host.NoteFirstFrame();
+        Log.Event(WaveeLogLevel.Info, "app", "boot.timeline", StartupTimeline.Line(), null, Log.SinceStartMs);
     }
+
+    static bool s_firstFrameLogged, s_firstPresentMarked, s_revealedMarked, s_restoredMarked;
 
     // ══ 2. THE GATE, THEN RUN — the window and the engine loop ══════════════════════════════════════════════════════
 
@@ -234,6 +252,7 @@ public static partial class Shell
         try
         {
             Log.Event(WaveeLogLevel.Info, "app", "boot.window", "", null, Log.SinceStartMs);
+            StartupTimeline.Mark("window");
             s_firstFrameMark = OnFirstFrameRendered;
             FluentApp.FrameCompleted += s_firstFrameMark;
             // `--crash-probe boot`: a deliberate boot-time throw, BEFORE the harness ever creates a window — the
@@ -352,6 +371,7 @@ public static partial class Shell
         PlayLog.Load();
         RestoreNav();
         Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
+        StartupTimeline.Mark("documents");
         AttachPlayback();
     }
 
