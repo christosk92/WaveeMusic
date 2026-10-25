@@ -53,8 +53,9 @@ public static partial class Deck
 
     /// <summary>The now-playing player deck for the rail's hero slot: a <c>side × side</c> square that fills the rail's
     /// content width. It reads its own inputs — <see cref="Shell.Ui.RailWidth"/> (quantised to the 4-DIP grid) and the
-    /// chosen preset (<see cref="Rail.PlayerPrefs"/>) — and keys one host on <c>"deck:&lt;slug&gt;@&lt;side&gt;"</c>, so a
-    /// preset change or a rail resize past a quantum is a remount and nothing else is. The caller owns the hero slot's
+    /// chosen preset (<see cref="Rail.PlayerPrefs"/>) — and keys one host on <c>"deck:&lt;slug&gt;"</c>: a preset change is a
+    /// remount (another deck), a rail resize past a quantum re-pushes the side and the deck redraws at it in place (its model,
+    /// clock and gesture keep running; audit FU item 8). The caller owns the hero slot's
     /// "nothing is playing" arm (ch 21: the slot mounts no deck without a current item).</summary>
     // MOUNT POINT (stage B contract)
     public static Element View() => Embed.Comp(static () => new ViewHost());
@@ -67,8 +68,7 @@ public static partial class Deck
             var side = UseComputed(static () => ClockRules.SideFor(Shell.Ui.RailWidth.Value, Spacing.S));
             float s = side.Value;
             var preset = Rail.PlayerPrefs.CurrentPreset();   // subscribes the prefs epoch
-            return Embed.Comp(() => new Host { Preset = preset, Side = s })
-                with { Key = "deck:" + preset.Slug + "@" + FormatCache.Int((int)s) };
+            return Embed.Comp(new HostSide(s), () => new Host { Preset = preset }) with { Key = "deck:" + preset.Slug };
         }
     }
 
@@ -111,6 +111,9 @@ public static partial class Deck
 
     // ══ 3. THE HOST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The deck's edge, re-pushed by the view on a rail quantum (the deck keeps its node, its model and its clock).</summary>
+    sealed record HostSide(float Side);
+
     /// <summary>The square that IS a deck. Re-renders on the prefs epoch (an option flip restyles the face IN PLACE) and
     /// never on the transport. The model is created from the CURRENT transport (<see cref="Seed"/>), so a deck mounted
     /// mid-song shows a record that was already playing.</summary>
@@ -136,7 +139,7 @@ public static partial class Deck
 
         /// <summary>Which deck — frozen; the view's key remounts on a preset change.</summary>
         public required Rail.PlayerCatalog.Preset Preset;
-        /// <summary>The square edge in DIP — frozen; the view's key remounts on a quantum change.</summary>
+        /// <summary>The square edge in DIP: the view's re-pushed <see cref="HostSide"/>, read on every render (the gesture reads it live).</summary>
         public float Side = DefaultSide;
 
         public readonly Slab Sig = new();
@@ -166,6 +169,7 @@ public static partial class Deck
         public override Element Render()
         {
             _ = Rail.PlayerPrefs.Epoch.Value;
+            Side = UseProps<HostSide>().Side;
             float side = SideDip;
             string? optionSlug = Models.ModelOptionSlug(Preset.Id);
             string? option = optionSlug is null ? null : Rail.PlayerPrefs.ChoiceSlug(in Preset, optionSlug);
@@ -709,15 +713,18 @@ public static partial class Deck
 
     /// <summary>The cover, wherever a face shows one: a stable component (keyed by the caller) whose INNER box is keyed
     /// on the latched generation, so the art changes when the mechanism says so and cross-fades as it does.</summary>
+    sealed record CoverArtProps(Slab Sig, float Size, bool Round);
+
     sealed class CoverArt : Component
     {
-        public required Slab Sig;
-        public required float Size;
-        public required bool Round;
+        Slab Sig = null!;
+        float Size;
+        bool Round;
         Latch _latch;
 
         public override Element Render()
         {
+            (Sig, Size, Round) = UseProps<CoverArtProps>();
             _latch.Update(Sig, image: true);
             string? url = CoverUrlOf(_latch.Shown);
             float size = Size;
@@ -731,10 +738,10 @@ public static partial class Deck
         }
     }
 
-    /// <summary><c>Size</c> is a FROZEN factory field, so the key carries it: a 12" → 7" flip rebuilds the face in place
-    /// and must remount the label at its new size rather than keep the mount-time one.</summary>
+    /// <summary>The size is RE-PUSHED (<see cref="CoverArtProps"/>): a 12" → 7" flip or a rail quantum redraws the label at its new size and keeps
+    /// its node (the art's latch and its cross-fade generation with it).</summary>
     static Element CoverLeaf(Slab sig, float size, bool round, string key)
-        => Embed.Comp(() => new CoverArt { Sig = sig, Size = size, Round = round }) with { Key = key + "@" + FormatCache.Int((int)size) };
+        => Embed.Comp(new CoverArtProps(sig, size, round), static () => new CoverArt()) with { Key = key };
 
     // ══ 7. THE RECORD FAMILY ═════════════════════════════════════════════════════════════════════════════════════════
 
@@ -799,8 +806,8 @@ public static partial class Deck
                 var accent = ZuneAccent(accentSlug);
                 float typeW = 0.34f * s;
                 kids.Add(new CanvasChild(0.62f * s, 0.08f * s,
-                    // The accent is a FROZEN factory field, so an option flip must remount: the key carries it.
-                    Embed.Comp(() => new ZuneType { Sig = sig, Side = s, BlockW = typeW, Accent = accent })
+                    // The side and the accent are re-pushed (an option flip or a rail quantum redraws in place); the key names the accent's option.
+                    Embed.Comp(new ZuneTypeProps(sig, s, typeW, accent), static () => new ZuneType())
                         with { Key = "zune-type:" + accentSlug }));
                 float barW = 0.86f * s;
                 var frac = sig.Frac;
@@ -878,7 +885,7 @@ public static partial class Deck
                 [
                     Disc(d, finish, variant, sig, deckBg, small),
                     Offset((d - thump) * 0.5f, (d - thump) * 0.5f,
-                        Embed.Comp(() => new RecordThump { Host = host, Size = thump }) with { Key = "thump@" + FormatCache.Int((int)thump) }),
+                        Embed.Comp(new RecordThumpProps(host, thump), static () => new RecordThump()) with { Key = "thump" }),
                 ],
             };
         }
@@ -1078,10 +1085,12 @@ public static partial class Deck
 
         /// <summary>The needle drop: a dust ring that expands and fades ONCE per thump, driven straight from the
         /// animation scheduler — three one-shot tracks, zero re-renders.</summary>
+        sealed record RecordThumpProps(Host Host, float Size);
+
         sealed class RecordThump : Component
         {
-            public required Host Host;
-            public required float Size;
+            Host Host = null!;
+            float Size;
 
             static readonly Keyframe[] FadeOut = [new(0f, 0.9f, Easing.Linear), new(1f, 0f, Easing.SmoothOut)];
             static readonly Keyframe[] Expand = [new(0f, 0.2f, Easing.SmoothOut), new(1f, 1.6f, Easing.SmoothOut)];
@@ -1091,6 +1100,7 @@ public static partial class Deck
 
             public override Element Render()
             {
+                (Host, Size) = UseProps<RecordThumpProps>();
                 var host = Host;
                 float size = Size;
                 // A constant dep: a re-render must not re-subscribe (ch 23 §6.4(3)).
@@ -1124,18 +1134,21 @@ public static partial class Deck
         /// <summary>The Zune's poster: a lowercase title whose last third carries the accent, one grey line of artist and
         /// clock. The lettering follows the latch (the artwork's instant, and never a blank for an unknown row); the clock
         /// is a bound text in a FIXED slot, so its relayout cannot move the line beside it.</summary>
+        sealed record ZuneTypeProps(Slab Sig, float Side, float BlockW, ColorF Accent);
+
         sealed class ZuneType : Component
         {
-            public required Slab Sig;
-            public required float Side;
-            public required float BlockW;
-            public required ColorF Accent;
+            Slab Sig = null!;
+            float Side;
+            float BlockW;
+            ColorF Accent;
             Latch _latch;
 
             const string Display = "Segoe UI Variable Display";
 
             public override Element Render()
             {
+                (Sig, Side, BlockW, Accent) = UseProps<ZuneTypeProps>();
                 _latch.Update(Sig, image: false);
                 float s = Side;
                 string title = TitleOf(_latch.Shown).ToLowerInvariant();
