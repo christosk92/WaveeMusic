@@ -81,6 +81,10 @@ public static partial class Diagnostics
             /// switch's own (<see cref="Row.Switch"/>). A theme switch replaces templates by design (owner decision: it resets page UI state),
             /// so the remounts and moves those frames carry are reported apart and not gated; the frames around them are gated as usual.</summary>
             public bool ThemeSwitch;
+            /// <summary>Sample the watched nodes once BEFORE the first traced frame (row <see cref="Result.Baseline"/>, frame -1) and judge f0
+            /// against it: a jump in the frame the action lands is then a move at once like any other. On by default for `state` (whose trace
+            /// starts on the frame the state lands, so its landing frame had nothing to compare with: audit FU2c); `baseline=` sets it.</summary>
+            public bool Baseline;
             public bool WatchesNodes => Keys.Count > 0 || Prefixes.Count > 0;
         }
 
@@ -261,11 +265,13 @@ public static partial class Diagnostics
             public List<string> Watch = [];
             public List<Remount> Remounts = [];
             public List<Row> Rows = [];
+            /// <summary>The watched nodes as they stood before the first traced frame (<see cref="Options.Baseline"/>), frame -1; null when off.</summary>
+            public Row? Baseline;
             public Options Options = new();
             public Summary Summary = new();
         }
 
-        public static Summary Summarize(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, Options o)
+        public static Summary Summarize(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, Options o, Row? baseline = null)
         {
             var s = new Summary { Frames = rows.Count };
             for (int i = 0; i < rows.Count; i++)
@@ -291,7 +297,8 @@ public static partial class Diagnostics
                 if (r.Cpu > 16.67) s.CpuOver16++;
             }
             if (rows.Count > 0) s.SettledAt = s.LastAnimatingFrame < 0 ? rows[0].Frame : (s.LastAnimatingFrame == rows[^1].Frame ? -1 : s.LastAnimatingFrame + 1);
-            DetectMoves(rows, watch, o.JumpDip, o.SnapDip, s, o.Window);
+            // The baseline (frame -1) is a history only: f0 is compared with it, nothing else counts it (timings, settle, node life).
+            DetectMoves(baseline is null ? rows : [baseline, .. rows], watch, o.JumpDip, o.SnapDip, s, o.Window);
             DetectInstants(s, o.InstantDip);
             DetectScroll(rows, s);
             return s;
@@ -318,8 +325,11 @@ public static partial class Diagnostics
                     int w = cur.W;
                     if ((uint)w >= (uint)watch.Count) continue;
                     seen[w] = true;
-                    if (first[w] < 0) first[w] = r.Frame;
-                    last[w] = r.Frame;
+                    if (r.Frame >= 0)
+                    {
+                        if (first[w] < 0) first[w] = r.Frame;
+                        last[w] = r.Frame;
+                    }
                     if (!cur.Shown) { prev[w] = null; prevMag[w] = 0; continue; }
                     if (prev[w] is { } p)
                     {
@@ -486,6 +496,11 @@ public static partial class Diagnostics
                 foreach (Row r in result.Rows)
                     if (r.Frame % o.Every == 0 || r.WheelSent) WriteRow(w, r);
                 w.WriteEndArray();
+            }
+            if (result.Baseline is { } baseRow)
+            {
+                w.WritePropertyName("baseline");   // the watched nodes before the first traced frame (f0 is judged against them)
+                WriteRow(w, baseRow);
             }
             WriteSummary(w, result.Summary);
             // the gate's counts: snapped watched keys, and remounts in and outside a swap family; a theme switch's own frames apart
@@ -747,6 +762,13 @@ public static partial class Diagnostics
             bool moved = false;
             Point2 dragAt = default;
             shell.Host.RenderCensus = o.Census;   // a slow frame names its components (row.census)
+            if (o.Baseline && o.WatchesNodes)
+            {
+                // Frame -1: the scene as the last frame left it, before the action's writes are flushed and laid out.
+                var baseRow = new InspectTrace.Row { Frame = -1, Abs = _frames };
+                SampleNodes(baseRow, -1);
+                result.Baseline = baseRow;
+            }
             for (int f = 0; f < o.Frames; f++)
             {
                 var keyed = shell.FindPrefix("");   // one key copy per frame serves the nodes, the wheel target and the scroller
@@ -791,57 +813,7 @@ public static partial class Diagnostics
                     Gc0 = s.Gc0Delta, Gc1 = s.Gc1Delta, Gc2 = s.Gc2Delta, Census = s.Census,
                     Switch = frozenBefore || (o.ThemeSwitch && shell.Host.FreezeState == FreezePhase.Frozen),
                 };
-                if (o.WatchesNodes)
-                {
-                    keyed = shell.FindPrefix("");   // after the frame: the keys of the nodes this frame left standing
-                    seen.Clear();
-                    // A node a live REFLOW moves or resizes though no row sits on it or an ancestor (the page beside a docking panel's easing
-                    // reservation, the zones after a hero whose height eases, the columns that hold it) rides the reflow's re-solve: that is its track.
-                    // The ancestors of the live reflow rows hold such flows: they resize with it, and the children of the ones that lay their children out
-                    // in a flow ride it (a z-stack's children overlay: a sibling's size moves none of them). A one-frame move under it still reads as an
-                    // INSTANT (InspectTrace.DetectMoves): this only says what has a track.
-                    anim.CollectLiveReflowNodes(reflowScratch);
-                    reflowParents.Clear();
-                    foreach (var rn in reflowScratch)
-                        for (var rp = scene.Parent(rn); !rp.IsNull; rp = scene.Parent(rp))
-                            if (!reflowParents.Add(rp.Raw.Index)) break;   // the chain above is already in
-                    dup.Clear();
-                    nowNode.Clear();
-                    foreach (var (node, key) in keyed)
-                    {
-                        if (!Matches(o, key) || !seen.Add(node.Raw.Index)) continue;
-                        int n = dup.TryGetValue(key, out int c) ? c : 0;
-                        dup[key] = n + 1;
-                        string label = n == 0 ? key : key + "#" + n;
-                        if (!watchIndex.TryGetValue(label, out int w))
-                        {
-                            if (watchIndex.Count >= o.MaxNodes) continue;
-                            w = watchIndex.Count;
-                            watchIndex[label] = w;
-                            result.Watch.Add(label);
-                        }
-                        float opacity = 1f;
-                        bool track = false;
-                        for (var up = node; !up.IsNull; up = scene.Parent(up))
-                        {
-                            opacity *= scene.Paint(up).Opacity;
-                            if (!track && anim.HasTracks(up)) track = true;
-                            if (!track && reflowParents.Count > 0
-                                && (reflowParents.Contains(up.Raw.Index)
-                                    || scene.Parent(up) is var pu && !pu.IsNull && (scene.Flags(pu) & NodeFlags.ZStack) == 0 && reflowParents.Contains(pu.Raw.Index)))
-                                track = true;
-                        }
-                        RectF pres = DrawnRect(scene, node, scene.PresentedAbsoluteRect(node));
-                        row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), pres, track, opacity)
-                            { Vis = VisiblePart(scene, node, pres, window) });
-                        if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
-                    }
-                    foreach (var (key, node) in nowNode)
-                        if (!node.IsNull && lastNode.TryGetValue(key, out NodeHandle was) && !was.IsNull && was != node)
-                            result.Remounts.Add(new InspectTrace.Remount(key, f, FadingSwapFamily(shell, node)));
-                    lastNode.Clear();
-                    foreach (var (key, node) in nowNode) lastNode[key] = node;
-                }
+                if (o.WatchesNodes) keyed = SampleNodes(row, f);
                 if (o.Scroll.Length > 0)
                 {
                     NodeHandle vp = TraceScroller(shell, o.Scroll, keyed);
@@ -855,8 +827,63 @@ public static partial class Diagnostics
                 result.Rows.Add(row);
             }
             o.Window = window;
-            result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o);
+            result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o, result.Baseline);
             return result;
+
+            // The watched nodes after a frame (or before the first: the baseline, frame -1): their rects, tracks and opacity, and a remount where
+            // a lone key's node changed since the frame before. Returns the keys it read (the wheel target and the scroller reuse them).
+            List<(NodeHandle Node, string Key)> SampleNodes(InspectTrace.Row row, int f)
+            {
+                var keyed = shell.FindPrefix("");   // after the frame: the keys of the nodes this frame left standing
+                seen.Clear();
+                // A node a live REFLOW moves or resizes though no row sits on it or an ancestor (the page beside a docking panel's easing
+                // reservation, the zones after a hero whose height eases, the columns that hold it) rides the reflow's re-solve: that is its track.
+                // The ancestors of the live reflow rows hold such flows: they resize with it, and the children of the ones that lay their children out
+                // in a flow ride it (a z-stack's children overlay: a sibling's size moves none of them). A one-frame move under it still reads as an
+                // INSTANT (InspectTrace.DetectMoves): this only says what has a track.
+                anim.CollectLiveReflowNodes(reflowScratch);
+                reflowParents.Clear();
+                foreach (var rn in reflowScratch)
+                    for (var rp = scene.Parent(rn); !rp.IsNull; rp = scene.Parent(rp))
+                        if (!reflowParents.Add(rp.Raw.Index)) break;   // the chain above is already in
+                dup.Clear();
+                nowNode.Clear();
+                foreach (var (node, key) in keyed)
+                {
+                    if (!Matches(o, key) || !seen.Add(node.Raw.Index)) continue;
+                    int n = dup.TryGetValue(key, out int c) ? c : 0;
+                    dup[key] = n + 1;
+                    string label = n == 0 ? key : key + "#" + n;
+                    if (!watchIndex.TryGetValue(label, out int w))
+                    {
+                        if (watchIndex.Count >= o.MaxNodes) continue;
+                        w = watchIndex.Count;
+                        watchIndex[label] = w;
+                        result.Watch.Add(label);
+                    }
+                    float opacity = 1f;
+                    bool track = false;
+                    for (var up = node; !up.IsNull; up = scene.Parent(up))
+                    {
+                        opacity *= scene.Paint(up).Opacity;
+                        if (!track && anim.HasTracks(up)) track = true;
+                        if (!track && reflowParents.Count > 0
+                            && (reflowParents.Contains(up.Raw.Index)
+                                || scene.Parent(up) is var pu && !pu.IsNull && (scene.Flags(pu) & NodeFlags.ZStack) == 0 && reflowParents.Contains(pu.Raw.Index)))
+                            track = true;
+                    }
+                    RectF pres = DrawnRect(scene, node, scene.PresentedAbsoluteRect(node));
+                    row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), pres, track, opacity)
+                        { Vis = VisiblePart(scene, node, pres, window) });
+                    if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
+                }
+                foreach (var (key, node) in nowNode)
+                    if (!node.IsNull && lastNode.TryGetValue(key, out NodeHandle was) && !was.IsNull && was != node)
+                        result.Remounts.Add(new InspectTrace.Remount(key, f, FadingSwapFamily(shell, node)));
+                lastNode.Clear();
+                foreach (var (key, node) in nowNode) lastNode[key] = node;
+                return keyed;
+            }
         }
 
         /// <summary>The swap family a node remounted mid-trace belongs to: the key of the nearest node at or above it that swaps under the theme's

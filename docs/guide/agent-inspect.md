@@ -445,7 +445,9 @@ pending head; `cold-rows` or `cold-warm` lands the header with the membership (o
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
 rating or cover; its rows stay), and `state kind=head-land` puts them back on the same page, so `state kind=head-land trace=40 prefix=...` traces the head landing
 in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). A `state` with `trace=N` (or `settle=false`) runs no frames before its
-trace, so the trace starts on the frame the state lands. Pass `trace=N` on a `state` command to trace its
+trace, so the trace starts on the frame the state lands. Its verdict judges that landing frame too: the watched nodes are sampled once
+before it (the reply's `baseline` row, frame -1) and f0 is compared with them, so a jump in the landing frame counts as moved at once.
+`baseline=false` turns that off; `baseline=true` turns it on for another verb's `trace=N`. Pass `trace=N` on a `state` command to trace its
 frames. **To catch the meta-loading step** (the header known, the meta line and the rows on their shimmer), let the goto settle on the
 skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons` (it replies `loops:["rail:meta", "list:pl:..."]`);
 `settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. Without `loops=skeletons` the goto waits on the

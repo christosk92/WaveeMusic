@@ -199,11 +199,13 @@ public static class ZuneListRules
     /// <summary>See <see cref="GroupHeadSize"/>.</summary>
     public const float GroupHeadHeight = 40f, GroupHeadPadBottom = 6f, GroupHeadGap = 8f;
 
-    /// <summary>A command entering and leaving the bar.</summary>
+    /// <summary>A command entering and leaving the bar.
+    /// <para>No size axes: the motion has no size channel, and a command whose box NARROWS (a refit folding its word) would otherwise take
+    /// the exit's accelerating curve for its slide too, ending in one big step (audit FU2c).</para></summary>
     public static readonly LayoutTransition CommandMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
         TransitionDynamics.Tween(220f, Easing.SmoothOut),
         Enter: new EnterExit(Dx: 8f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: 8f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
+        ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate), Axes: SizeAxes.None);
 
     /// <summary>The bar's browse / selection swap.</summary>
     public static readonly LayoutTransition ModeMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,

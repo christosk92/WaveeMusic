@@ -96,11 +96,13 @@ public static class ClassicTrackChromeLayout
     /// <summary>The selection bar's accent tint at Compact (board C-MultiSelect-Compact: the accent at 10 %).</summary>
     public const float SelectionTint = 0.10f;
 
-    /// <summary>A command entering and leaving the bar (a rung evicts or promotes it).</summary>
+    /// <summary>A command entering and leaving the bar (a rung evicts or promotes it).
+    /// <para>No size axes: the motion has no size channel, and a command whose box NARROWS (a refit folding its word) would otherwise take
+    /// the exit's accelerating curve for its slide too, ending in one big step (the Filter folding its word at 800 as the insights toggle arrives: 13 DIP, audit FU2c).</para></summary>
     public static readonly LayoutTransition CommandMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
         TransitionDynamics.Tween(220f, Easing.SmoothOut),
         Enter: new EnterExit(Dx: 8f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: 8f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
+        ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate), Axes: SizeAxes.None);
 
     /// <summary>The bar's browse / selection swap (the selection bar's enter and exit).</summary>
     public static readonly LayoutTransition ModeMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,

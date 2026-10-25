@@ -1511,6 +1511,8 @@ public static partial class Diagnostics
                 // `trace=N` on any settling verb: no settle, N traced frames from the frame after the action (docs: agent-inspect.md)
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
                 o.ThemeSwitch = themeSwitch;   // `theme`: the frames its transaction freezes are the switch's own (not gated)
+                // `state`: its trace starts on the frame the state lands, so f0 is judged against the nodes as they stood before it (audit FU2c)
+                o.Baseline = a.Bool("baseline", name == "state");
                 trace = RunTrace(shell, o);
                 afterTrace?.Invoke();   // what the verb still owes once the traced frames ran (`theme`: the transaction's end)
             }
