@@ -232,8 +232,8 @@ internal static partial class ZuneLibraryArtistReader
     // ── the sub-rail ─────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>ITEM 1, cached per (scope, sort) pair of signal instances and arm. Built ONCE per arm: every state inside a word is a bind, and the release total rides a
-    /// <see cref="Prop{T}"/>, so the facets answering re-fires one text bind rather than re-rendering the rail. The narrow arm is a list mount input, so its flip
-    /// re-asks this slot.
+    /// <see cref="Prop{T}"/>, so the facets answering re-fires one text bind rather than re-rendering the rail. The cache is keyed on the arm too, so a slot re-asked
+    /// after a flip builds the arm's rail (the Zune reader is a Compact drill-in: it lives in the narrow arm).
     /// <para>It is a plain Element and NOT a component, which is the one structural thing that makes the pin work: a sticky scroll effect with no named scope is a
     /// containing-block-clamped <c>position:sticky</c> against the node's IMMEDIATE parent, and a component anchor is layout-TRANSPARENT.</para></summary>
     static Element Rail(Holder h)

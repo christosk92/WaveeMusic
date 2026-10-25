@@ -67,7 +67,7 @@
 // saved ~170 DIP, which was not enough — so both rows STACK instead, each on one reader-width edge with a 24-DIP exit
 // hysteresis (the structure's reader ladder since TC6):
 //   · NARROW (< 640): the block cover drops 120 → 88 and the album head stacks — the title on a line of its own over
-//     the meta and the three circles. A list mount input (`ReaderMountPolicy.MountKey`), so its extents seed fresh.
+//     the meta and the three circles. NOT a mount input (audit FU2): a flip re-arms every block in place, its extent corrected in `Settle`.
 //   · MEDIUM (< the wide band's lane, 748): the cover spine is gone and the band stacks — avatar + a two-line name over the SAME verbs
 //     the wide arm has. NOT a mount input: the band is item 0, a persistent-prefix row, corrected in place in `Settle`.
 // The edges are DERIVED, not chosen (a test pins the medium one's sum): the inline head keeps `TitleFloorW` at the narrow
