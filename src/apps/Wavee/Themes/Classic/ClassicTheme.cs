@@ -16,11 +16,15 @@ public static class ClassicTheme
     /// <summary>The theme id: the stored value of <c>theme.id</c> and the fallback of every unresolvable id.</summary>
     public const string Id = ThemeCatalog.FallbackId;
 
-    /// <summary>A registration only: names, for the `--inspect` dump and lint, the icon glyphs Classic declares itself (the engine's
-    /// Icons table has no name for them), before <see cref="Create"/> builds the composition.</summary>
-    static ClassicTheme() => ThemeInspection.RegisterGlyphNames(
-        (nameof(ClassicPlayerBarLayout.PlaySolid), ClassicPlayerBarLayout.PlaySolid), (nameof(ClassicPlayerBarLayout.PauseSolid), ClassicPlayerBarLayout.PauseSolid),
-        (nameof(ClassicNavHeadLayout.BannerGlyph), ClassicNavHeadLayout.BannerGlyph), (nameof(SidebarGeometry.OfflineGlyph), SidebarGeometry.OfflineGlyph));
+    /// <summary>Registrations only: the lint guide (Classic's intents, no edges) and, for the `--inspect` dump and lint, the icon glyphs Classic declares
+    /// itself (the engine's Icons table has no name for them), before <see cref="Create"/> builds the composition.</summary>
+    static ClassicTheme()
+    {
+        ThemeInspection.RegisterLintGuide(Id, new ClassicLintGuide());
+        ThemeInspection.RegisterGlyphNames(
+            (nameof(ClassicPlayerBarLayout.PlaySolid), ClassicPlayerBarLayout.PlaySolid), (nameof(ClassicPlayerBarLayout.PauseSolid), ClassicPlayerBarLayout.PauseSolid),
+            (nameof(ClassicNavHeadLayout.BannerGlyph), ClassicNavHeadLayout.BannerGlyph), (nameof(SidebarGeometry.OfflineGlyph), SidebarGeometry.OfflineGlyph));
+    }
 
     /// <summary>Builds the composition. <c>App.BootCore</c> installs it.</summary>
     public static ThemeComposition Create() => new(

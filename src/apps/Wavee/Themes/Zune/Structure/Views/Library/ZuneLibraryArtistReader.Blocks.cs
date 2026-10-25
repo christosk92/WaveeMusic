@@ -36,6 +36,7 @@ internal static partial class ZuneLibraryArtistReader
         int slot = cell.AlbumSlot;
         var a = new Album(slot);
         bool narrow = cell.Narrow;                                // the arm this mount froze (it is a list mount input)
+        var geo = cell.Rows;                                      // the rows the mount froze: their height, and whether they run under the cover
         float cover = Artist.ReaderShape.CoverOf(narrow);
         bool valid = a.IsValid;
         Action go = cell.Open;
@@ -61,12 +62,12 @@ internal static partial class ZuneLibraryArtistReader
             {
                 if (!real)
                 {
-                    kids[r] = PlaceholderRow(r) with { Key = "sh:" + r.ToString(CultureInfo.InvariantCulture) };
+                    kids[r] = PlaceholderRow(r, geo.RowH) with { Key = "sh:" + r.ToString(CultureInfo.InvariantCulture) };
                     continue;
                 }
                 int trackSlot = tracks[r];
                 // ZERO-based: `Track.NumberCell` prints `displayIndex + 1`.
-                kids[r] = Track.EagerRow(new Track(trackSlot), r, in LR.Cols, LR.Tracks, Artist.ReaderShape.RowH,
+                kids[r] = Track.EagerRow(new Track(trackSlot), r, in LR.Cols, LR.Tracks, geo.RowH,
                     () => cell.PlayTrack(trackSlot),
                     in LR.RowOptions)
                     with { Key = "t:" + trackSlot.ToString(CultureInfo.InvariantCulture) };
@@ -80,6 +81,60 @@ internal static partial class ZuneLibraryArtistReader
 
         // A plain stretched column: on the BOUND path the block hangs under the scroller's content node (through the slot's layout-transparent anchors), and that is a column
         // with `AlignItems.Stretch`: the full width comes for free. A `Grow 1 / Basis 0` on a column would aim at the HEIGHT and zero the block.
+        // STICKY COVER: the art and its caption ride down the block while its tracks scroll past, and stop at the block's own bottom edge. The sticky clamps to the containing
+        // block (the row it stands in, `AlignItems.Start`, so this column keeps its content height and the clamp has real room). The inset is the pinned rail plus the block's top
+        // pad, so the cover comes to rest exactly where an unscrolled block draws it. Declared on BOTH faces because `Build` is one function; the SHIMMER face harmlessly loses it
+        // (`SkeletonDeriver` rewrites a box with children as `ScrollEffects = []`). With the rows under the cover its row is the cover's own height: nothing to ride.
+        Element coverColumn = new BoxEl
+        {
+            Direction = 1, Gap = Artist.ReaderShape.CoverCaptionGap, Shrink = 0f, Width = cover,
+            ScrollEffects = [new ScrollEffectSpec(ScrollEffect.Sticky(Artist.ReaderShape.SubRailH + Artist.ReaderShape.BlockPadTop))],
+            Children =
+            [
+                new BoxEl
+                {
+                    Width = cover, Height = cover, Corners = R.Shape.All(ShapeRole.Cover), ClipToBounds = true,
+                    Cursor = valid ? CursorId.Hand : CursorId.Arrow,
+                    Role = valid ? AutomationRole.Button : AutomationRole.None,
+                    OnClick = valid ? go : null,
+                    Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null, cover, cover, R.Shape.For(ShapeRole.Cover), decodePx: LR.BlockDecodePx)],
+                },
+                R.Type.MicroMeta(caption) with
+                {
+                    Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, LineHeight = Artist.ReaderShape.CaptionLine,
+                },
+            ],
+        };
+        Element head = real ? Head(cell, uri, title, go, narrow) : ShimmerHead(cell, narrow);
+        Element divider = new BoxEl
+        {
+            Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault,
+            Margin = new Edges4(LR.ReaderInset, 0f, LR.ReaderInset, 0f),
+        };
+        // `ReaderShape`'s own fields, so `ExtentOf` describes THIS block by identity.
+        if (geo.UnderCover)
+            return new BoxEl
+            {
+                // The narrow arm's rows run the block's width UNDER the cover and the head (`ReaderRows.UnderCover`): the titles get the whole lane instead of what the
+                // 88 cover leaves beside it.
+                Direction = 1, Shrink = 0f, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = Artist.ReaderShape.BlockCoverGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                        Padding = new Edges4(Artist.ReaderShape.BlockPadLeft, Artist.ReaderShape.BlockPadTop, Artist.ReaderShape.BlockPadRight, 0f),
+                        Children = [coverColumn, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [head] }],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f,
+                        Padding = new Edges4(Artist.ReaderShape.BlockPadLeft, Artist.ReaderShape.RowsUnderGap, Artist.ReaderShape.BlockPadRight, Artist.ReaderShape.BlockPadBottom),
+                        Children = [rows],
+                    },
+                    divider,
+                ],
+            };
         return new BoxEl
         {
             Direction = 1, Shrink = 0f, MinWidth = 0f,
@@ -87,56 +142,20 @@ internal static partial class ZuneLibraryArtistReader
             [
                 new BoxEl
                 {
-                    // `ReaderShape`'s own fields, so `ExtentOf` describes THIS row by identity.
                     Direction = 0, Gap = Artist.ReaderShape.BlockCoverGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
                     Padding = new Edges4(Artist.ReaderShape.BlockPadLeft, Artist.ReaderShape.BlockPadTop, Artist.ReaderShape.BlockPadRight, Artist.ReaderShape.BlockPadBottom),
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 1, Gap = Artist.ReaderShape.CoverCaptionGap, Shrink = 0f, Width = cover,
-                            // STICKY COVER: the art and its caption ride down the block while its tracks scroll past, and stop at the block's own bottom edge. The sticky clamps to
-                            // the containing block (the row above, `AlignItems.Start`, so this column keeps its content height and the clamp has real room). The inset is the pinned
-                            // rail plus the block's top pad, so the cover comes to rest exactly where an unscrolled block draws it. Declared on BOTH faces because `Build` is one
-                            // function; the SHIMMER face harmlessly loses it (`SkeletonDeriver` rewrites a box with children as `ScrollEffects = []`).
-                            ScrollEffects = [new ScrollEffectSpec(ScrollEffect.Sticky(Artist.ReaderShape.SubRailH + Artist.ReaderShape.BlockPadTop))],
-                            Children =
-                            [
-                                new BoxEl
-                                {
-                                    Width = cover, Height = cover, Corners = R.Shape.All(ShapeRole.Cover), ClipToBounds = true,
-                                    Cursor = valid ? CursorId.Hand : CursorId.Arrow,
-                                    Role = valid ? AutomationRole.Button : AutomationRole.None,
-                                    OnClick = valid ? go : null,
-                                    Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null, cover, cover, R.Shape.For(ShapeRole.Cover), decodePx: LR.BlockDecodePx)],
-                                },
-                                R.Type.MicroMeta(caption) with
-                                {
-                                    Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, LineHeight = Artist.ReaderShape.CaptionLine,
-                                },
-                            ],
-                        },
-                        new BoxEl
-                        {
-                            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                            Children = [real ? Head(cell, uri, title, go, narrow) : ShimmerHead(cell, narrow), rows],
-                        },
-                    ],
+                    Children = [coverColumn, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [head, rows] }],
                 },
-                new BoxEl
-                {
-                    Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault,
-                    Margin = new Edges4(LR.ReaderInset, 0f, LR.ReaderInset, 0f),
-                },
+                divider,
             ],
         };
     }
 
-    /// <summary>One counted-skeleton row: the shared row's lanes (the number, the title, the heart, the duration) at <see cref="Artist.ReaderShape.RowH"/> with bars where the
+    /// <summary>One counted-skeleton row: the shared row's lanes (the number, the title, the heart, the duration) at the mount's row height with bars where the
     /// number, the title and the clock go. The heart lane holds nothing: it carries no content to promise.</summary>
-    static BoxEl PlaceholderRow(int i) => new()
+    static BoxEl PlaceholderRow(int i, float rowH) => new()
     {
-        Direction = 0, Height = Artist.ReaderShape.RowH, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+        Direction = 0, Height = rowH, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
         Children =
         [
             new BoxEl { Width = LR.ReaderNumLane, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Controls.PendingBar(LR.ShimNumW, LR.ShimBarH)] },

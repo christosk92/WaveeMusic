@@ -90,8 +90,15 @@ internal static class ZuneDetailFrame
         bool fold = facts.Policy is not null && facts.Height == HeightTier.Short;
         var hero = ZuneDetailTiers.Hero;
         var panorama = stacked ? (fold ? hero with { PanoramaH = 0f, RailTitle = true } : hero) : lay;
-        Element band = (tc?.Rail?.Spec ?? tc?.CompactRail?.Spec) is { } spec
-            ? K.PanoramaBand(spec.Identity, spec.Slots, panorama, stacked ? gutter : 0f, enter, Z.PanoramaShift)
+        // A show or an episode whose header is unread shimmers its title in the panorama band, in place, as the track pages' hero does (audit B7 r2;
+        // FU item 11): one stable reader per mounted frame, written each render, so the landing re-renders the band into its title.
+        var titlePending = ctx.Hooks.UseRef<TitlePending?>(null);
+        var pending = titlePending.Value ??= new TitlePending();
+        var showSpec = tc?.Rail?.Spec ?? tc?.CompactRail?.Spec;
+        pending.Now = showSpec?.Identity is { HeaderPending: true, Title.Length: 0 };
+        float bandW = MathF.Max(0f, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width - 2f * gutter);
+        Element band = showSpec is { } spec
+            ? K.PanoramaBand(spec.Identity, spec.Slots, panorama, stacked ? gutter : 0f, enter, Z.PanoramaShift, pending.Read, bandW * Z.SkelMetaFraction)
             : new BoxEl { Key = Z.PanoramaKey, Height = panorama.PanoramaH, Shrink = 0f, Animate = Z.PanoramaFold };
 
         // The identity: the column (the record's width, eased across a crossing) or, stacked, the fixed header across the page; the collapsed strip in
@@ -195,6 +202,14 @@ internal static class ZuneDetailFrame
         // The core docked the aside by the window tier; the content tier is narrower here (a docked panel's page): the aside folds and what it held returns
         // to the band under the rows. Always provided (a value, never a wrapper that comes and goes).
         return Ctx.Provide(Detail.AsideDocked, p.Aside is not null && !dock ? false : coreDocked, Root(p, accent, "page", page));
+    }
+
+    /// <summary>The show frame's title-pending flag for the panorama's region: one stable reader per mounted frame, written each render.</summary>
+    sealed class TitlePending
+    {
+        public bool Now;
+        public readonly Func<bool> Read;
+        public TitlePending() => Read = () => Now;
     }
 
     /// <summary>The frame's root: the tint claim, the tone plane (the art wash) and the arm, the page's accent provided around them.</summary>

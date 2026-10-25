@@ -185,26 +185,37 @@ internal static class ZuneLibraryKit
         OnClick = open, Children = [PaneTitle(title)],
     };
 
-    /// <summary>The pane's header: the title (one line, a link that opens the page), the billed attribution, then the meta. A stated height is not drawn: the words stack.</summary>
-    public static Element PaneHeader(string title, Action open, Element attribution, string meta) => new BoxEl
+    /// <summary>The pane's head in ONE tree for both height rungs: [the words, the verbs]. Regular: a column, the words (the title link, the billed
+    /// <paramref name="attribution"/>, the meta) over the verbs' row. The Short rung (<paramref name="brief"/>): ONE row, the title link (a <paramref name="target"/> tall link,
+    /// yielding first) beside the verbs, the attribution and the meta hidden, because the full head is as tall as the whole 126 DIP page. The words and the verbs keep their
+    /// nodes across a height crossing (only the head's direction and the parts' visibility change), so no verb is rebuilt. <paramref name="verbs"/> are the rings and buttons,
+    /// each already a target, in the same slots in both forms (a caller hides what one form does not draw).</summary>
+    public static Element PaneHead(string title, Action open, Element attribution, string meta, Element[] verbs, float target, bool brief) => new BoxEl
     {
-        Direction = 1, Gap = LR.PaneTitleGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, LR.PaneMetaBottom),
-        Children = [TitleLink(title, open) with { Shrink = 0f }, attribution, PaneMeta(meta)],
+        Key = "lib-pane-head", Direction = (byte)(brief ? 0 : 1), AlignItems = brief ? FlexAlign.Center : FlexAlign.Stretch, Gap = brief ? LR.RowGap : 0f,
+        Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, brief ? LR.ShortPaneBottom : 0f),
+        Children =
+        [
+            new BoxEl
+            {
+                Key = "lib-pane-words", Direction = 1, Gap = LR.PaneTitleGap, MinWidth = 0f, Justify = FlexJustify.Center,
+                Grow = brief ? 1f : 0f, Shrink = brief ? 1f : 0f, Basis = brief ? 0f : float.NaN,
+                Padding = new Edges4(0f, 0f, 0f, brief ? 0f : LR.PaneMetaBottom),
+                Children =
+                [
+                    TitleLink(title, open) with { Shrink = 0f, MinHeight = brief ? target : 0f, AlignItems = FlexAlign.Center },
+                    new BoxEl { Direction = 1, MinWidth = 0f, Visible = !brief, Children = [attribution] },
+                    PaneMeta(meta) with { Visible = !brief },
+                ],
+            },
+            new BoxEl
+            {
+                Key = "lib-pane-verbs", Direction = 0, AlignItems = FlexAlign.Center, Gap = brief ? LR.RowGap : LR.PaneCommandsGap, Shrink = 0f, MinWidth = 0f,
+                Padding = brief ? default : new Edges4(0f, LR.PaneCommandsTop, 0f, LR.PaneCommandsBottom),
+                Children = verbs,
+            },
+        ],
     };
-
-    /// <summary>The Short rung's pane header: the title link and the verbs in ONE row (the title yields first), because the full header (title, billed artists, meta, then the
-    /// verbs) is as tall as the whole 126 DIP page. <paramref name="verbs"/> are the rings and buttons, each already a target; the title is a <paramref name="target"/> tall
-    /// link itself (40 at Compact).</summary>
-    public static Element BriefHeader(string title, Action open, Element[] verbs, float target)
-    {
-        var kids = new Element[verbs.Length + 1];
-        kids[0] = TitleLink(title, open) with { Grow = 1f, MinHeight = target, AlignItems = FlexAlign.Center };
-        Array.Copy(verbs, 0, kids, 1, verbs.Length);
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, LR.ShortPaneBottom), Children = kids,
-        };
-    }
 
     /// <summary>The pane's loading twin: the title and meta as bars in the same slots, so the dissolve into the real header moves nothing.</summary>
     public static BoxEl HeaderSkeleton() => new()

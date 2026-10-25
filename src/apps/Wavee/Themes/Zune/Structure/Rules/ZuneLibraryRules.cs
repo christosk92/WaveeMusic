@@ -227,6 +227,9 @@ public static class ZuneLibraryRules
     /// <summary>The counted-skeleton row's lanes: the number and the duration.</summary>
     public const float ReaderNumLane = 28f, ReaderClockLane = 52f;
 
+    /// <summary>The reader's narrow-arm track row: the Compact target floor (its heart and its row are 40 targets), the rows running under the 88 cover (audit FU).</summary>
+    public const float ReaderNarrowRowH = 40f;
+
     /// <summary>The reader's insets: the band, a block and the sub-rail pad on the page's side by this much.</summary>
     public const float ReaderInset = 16f;
 
@@ -512,6 +515,7 @@ public static class ZuneLibraryTiers
     public static LibraryTierPolicy Policy { get; } = new()
     {
         SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PlaylistsMasterDetail = true, PodcastsEpisodesFirst = true, PaneFromLayout = ZuneLibraryLadders.PaneLayout,
+        ReaderNarrowRows = new Artist.ReaderRows(ZuneLibraryRules.ReaderNarrowRowH, UnderCover: true),
         CompactGridGaps = s_records[0].GridGaps, SmallGridGaps = s_records[1].GridGaps, StandardGridGaps = s_records[2].GridGaps, HugeGridGaps = s_records[3].GridGaps,
     };
 

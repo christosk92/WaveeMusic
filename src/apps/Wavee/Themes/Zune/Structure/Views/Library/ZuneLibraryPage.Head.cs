@@ -131,6 +131,8 @@ internal static partial class ZuneLibraryPage
                 TextBox.Create(p.Filter(), options: new TextBox.TextBoxOptions
                 {
                     Placeholder = Strings.Theme.Zune.Collection.Library.FindIn(p.Title.ToLower(System.Globalization.CultureInfo.CurrentCulture)), Width = l.FindW, Height = l.HeadH,
+                    // The tier's width (120 / 160 / 220) eases on a crossing: the field follows its prop and the row beside it rides the ease.
+                    WidthTransition = LR.ColumnResize,
                 }),
             ],
         };
@@ -146,11 +148,19 @@ internal static partial class ZuneLibraryPage
             ],
         };
 
-    /// <summary>The count as ONE bound text (the host's "312 albums").</summary>
-    static Element Count(LibraryPageProps p, bool withArtists) => R.Type.DenseMeta("") with
+    /// <summary>The count as ONE bound text (the host's "312 albums") in a box whose width eases: Huge's albums count adds its artists ("312 albums · 184 artists"),
+    /// so a crossing changes the words; the box is pinned to the row's end (its words right-aligned, clipped while it eases), and the find field beside it slides.</summary>
+    static Element Count(LibraryPageProps p, bool withArtists) => new BoxEl
     {
-        // The board's "312 albums": the number and the kind's noun, one ICU plural per kind ("1 album", "18 albums"), cased by the label role.
-        Text = Prop.Of(() => p.CountKnown.Current() ? CountWords(p, p.Count.Current(), withArtists) : ""), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+        Key = "lib:count", Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true, Animate = LR.ColumnResize,
+        Children =
+        [
+            R.Type.DenseMeta("") with
+            {
+                // The board's "312 albums": the number and the kind's noun, one ICU plural per kind ("1 album", "18 albums"), cased by the label role.
+                Text = Prop.Of(() => p.CountKnown.Current() ? CountWords(p, p.Count.Current(), withArtists) : ""), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+            },
+        ],
     };
 
     static string CountWords(LibraryPageProps p, int n, bool withArtists)

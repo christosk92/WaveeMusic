@@ -133,6 +133,8 @@ internal static class ZuneDetailHero
         /// <summary>The panorama band's laid-out height: where the columns form's side columns start below the hero's top (they fill the list's viewport from
         /// there down).</summary>
         readonly Signal<float> _bandH = new(0f);
+        /// <summary>The list head's foot inside the body: where a page with no rail (Liked Songs) hangs its aside, beside the rows under the full-width head.</summary>
+        readonly Signal<float> _headFoot = new(0f);
         float _lastMeasuredH;
 
         /// <summary>The panorama's loading gate: the page's header is unread and no title is known (reading the props signal subscribes the region).</summary>
@@ -165,6 +167,7 @@ internal static class ZuneDetailHero
         void MeasureHead(RectF r)
         {
             if (_latest?.Parts.Form != DetailForm.Columns) return;
+            if (MathF.Abs(_headFoot.Peek() - (r.Y + r.H)) > 0.5f) _headFoot.Value = r.Y + r.H;
             Report(_bandH.Peek() + r.Y + r.H);
         }
 
@@ -243,7 +246,7 @@ internal static class ZuneDetailHero
                     identity,
                     new BoxEl { Key = Z.ColumnGapKey, Width = columns && hasRail ? lay.ColumnGap : 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Animate = Z.SlotReveal },
                     listHead,
-                    AsideSlot(cols, lay, dock, enter, AsideHeight(parts.ViewportHeight)),
+                    AsideSlot(cols, lay, dock, enter, AsideHeight(parts.ViewportHeight, underHead: !hasRail), trailing: !hasRail),
                 ],
             };
 
@@ -345,12 +348,15 @@ internal static class ZuneDetailHero
             return Prop.Of(() => MathF.Max(0f, (float)viewportH.Value - band.Value));
         }
 
-        /// <summary>The aside column's height: the list's viewport below the panorama band (it hangs from the band's foot), tracked.</summary>
-        Func<float>? AsideHeight(IReadSignal<double>? viewportH)
+        /// <summary>The aside column's height: the list's viewport below the panorama band (it hangs from the band's foot beside the list head), or below the
+        /// list head on a page with no rail (whose head runs the full width over the rows and the aside), tracked.</summary>
+        Func<float>? AsideHeight(IReadSignal<double>? viewportH, bool underHead)
         {
             if (viewportH is null) return null;
             var band = _bandH;
-            return () => MathF.Max(0f, (float)viewportH.Value - band.Value);
+            if (!underHead) return () => MathF.Max(0f, (float)viewportH.Value - band.Value);
+            var foot = _headFoot;
+            return () => MathF.Max(0f, (float)viewportH.Value - band.Value - foot.Value);
         }
 
         /// <summary>The list bar's block: the hero form's (the rows' gutter either side, 8 over and 4 under the bar) or the columns form's (8 over the bar, the
@@ -678,8 +684,9 @@ internal static class ZuneDetailHero
 
     /// <summary>The aside's slot, the body's last child in both forms: width 0 where none docks, else the column gap and the record's column with its own
     /// scroller (the page's aside body under <see cref="ZuneDetailFrame.InAside"/>, then the insights on a facts page), laid out 0 tall: it hangs below the hero
-    /// beside the rows, as tall as the list's viewport below the panorama. An aside that holds only the insights follows their toggle (0 closed).</summary>
-    static Element AsideSlot(DetailColumnsProps? cols, ZuneDetailLayout lay, bool dock, EnterExit? enter, Func<float>? height)
+    /// beside the rows, as tall as the list's viewport below the panorama. An aside that holds only the insights follows their toggle (0 closed). On a page
+    /// with no rail the body is a column and the slot is <paramref name="trailing"/>: it stands at the column's end, over the trail the rows leave it.</summary>
+    static Element AsideSlot(DetailColumnsProps? cols, ZuneDetailLayout lay, bool dock, EnterExit? enter, Func<float>? height, bool trailing)
     {
         if (!dock || cols?.Aside is not { } aside)
             return new BoxEl { Key = Z.AsideKey, Width = 0f, Height = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.SlotReveal };
@@ -700,7 +707,7 @@ internal static class ZuneDetailHero
             // Laid out at its final width at once (the list head beside it fits its bar once), its picture revealing; the rows beside it in the list ease
             // their own trail.
             Key = Z.AsideKey, Direction = 1, Width = width, Height = 0f, Shrink = 1f, MinWidth = 0f, ClipToBounds = false,
-            Animate = Z.SlotReveal,
+            AlignSelf = trailing ? FlexAlign.End : FlexAlign.Auto, Animate = Z.SlotReveal,
             Children =
             [
                 new BoxEl

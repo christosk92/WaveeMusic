@@ -120,7 +120,7 @@ internal sealed class ZuneHeroTile : Component
         _placeholder ??= () => ZuneHeroWash.Of(props.NowArtUrl());
 
         Element face = presentation == Rail.PlayerPrefs.Player
-            ? new BoxEl { Key = preset.Slug + "@" + (int)side, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
+            ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
             : new ImageEl
             {
                 Key = "cover", Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = P.HeroDecodePx,

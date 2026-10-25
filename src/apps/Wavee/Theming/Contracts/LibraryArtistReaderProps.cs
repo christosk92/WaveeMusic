@@ -150,6 +150,10 @@ public interface IArtistReaderBlock
     /// <summary>The narrow arm this mount froze (cover 88 and the stacked head).</summary>
     bool Narrow { get; }
 
+    /// <summary>The track rows this mount froze (their height, and whether they run under the cover): the same value the reader's extents read, so the
+    /// block's measure is its analytic extent by identity. Contract 1.80 (audit FU).</summary>
+    Artist.ReaderRows Rows { get; }
+
     /// <summary>A liked-only block's own rows, in liked-edge order.</summary>
     ReadOnlySpan<int> LikedRows();
 

@@ -128,7 +128,7 @@ internal static partial class ZuneLibraryArtistReader
         };
     }
 
-    /// <summary>The band's ONE verb row: play all (the accent ring and its word), the Follow toggle, then the shuffle and go-to rings named by their tooltips,
+    /// <summary>The band's ONE verb row: play all (the accent ring and its word), the follow pill, then the shuffle and go-to rings named by their tooltips,
     /// <see cref="Artist.ReaderShape.ActionGap"/> apart. WIDE it always fits (the medium edge is derived from it). STACKED it measures its own lane and, where the whole row would
     /// not fit (<see cref="LR.FoldVerbs"/>), folds shuffle and go-to into one "…" menu, so it never clips.</summary>
     static Element Verbs(IArtistReaderHost host, string uri, string? name, bool stacked)
@@ -174,13 +174,14 @@ internal static partial class ZuneLibraryArtistReader
         Children = [Controls.Artwork(named ? Controls.ArtUrl(a.ImageId) : null, edge, edge, R.Shape.For(ShapeRole.Avatar), decodePx: LR.AvatarDecodePx)],
     };
 
-    /// <summary>The Follow toggle in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of its own, so the one box is what keeps the toggle out of the name column's width. The
-    /// slot is as wide as the LONGER face (<see cref="Artist.ReaderShape.FollowSlotW"/>) and the toggle FILLS it, so the rings after it never shift between a followed and an
-    /// unfollowed artist. A MinWidth, not a Width: a locale whose label is longer still grows it.</summary>
+    /// <summary>Zune's follow (the artist hero's): the lowercase 2-DIP outline pill, the accent while following, in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of
+    /// its own, so the one box is what keeps the pill out of the name column's width. The pill is as wide as its longer word in either state, and the slot reserves the
+    /// reader shape's follow width (<see cref="Artist.ReaderShape.FollowSlotW"/>, which its edges are derived from) with the pill FILLING it, so the rings after it never
+    /// shift between a followed and an unfollowed artist. A MinWidth, not a Width: a locale whose word is longer still grows it.</summary>
     static Element Follow(string uri, string? name) => new BoxEl
     {
         Shrink = 0f, MinWidth = Artist.ReaderShape.FollowSlotW, Direction = 1, AlignItems = FlexAlign.Stretch,
-        Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri }],
+        Children = [Embed.Comp(() => new ZuneArtistHero.FollowPill { Uri = uri, Name = name, Height = Artist.ReaderShape.ActionH }) with { Key = "follow:" + uri }],
     };
 
     /// <summary>The name LINK over the "in your library" subline: the band row's only flexible child in BOTH arms, which is why every control beside it declares
