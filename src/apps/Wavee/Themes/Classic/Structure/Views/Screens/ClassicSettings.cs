@@ -159,7 +159,7 @@ internal static partial class ClassicSettings
 
     /// <summary>The tab strip (board: the tabs under the title). Where the lane runs off the edge (Compact, Small) it scrolls, bleeding to the card's edges, its
     /// end fading where more wait; otherwise it ends at the column (its rule inside the gutters). The first label sits on the gutter either way. ONE tree at every
-    /// tier (the strip always rides its scroller; the tier sets the scroller's height, its fade and the rule's inset), so a crossing keeps the SAME selector bar —
+    /// tier (the strip always rides its scroller; the tier sets the items' height, its fade and the rule's inset), so a crossing keeps the SAME selector bar —
     /// the selected tab's pill and the focused tab survive — instead of swapping one form for the other.</summary>
     static Element TabStrip(ClassicSettingsLayout layout, float gutter, SettingsPageProps props)
     {
@@ -172,8 +172,11 @@ internal static partial class ClassicSettings
             [
                 ScrollView(new BoxEl { Direction = 0, Padding = new Edges4(gutter, 0f, gutter, 0f), Children = [bar] }, horizontal: true) with
                 {
-                    Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight > 0f ? layout.TabHeight : float.NaN, SuppressScrollBar = true,
-                    AutoEdgeFade = layout.TabsScroll, ScrollKey = "settings:tabs",
+                    // The bar's own height (its items plus its 4-DIP padding above and below), never the tier's item height: a scroller held to
+                    // the item height clipped the bar's foot, and the selected tab's pill with it (no selected state at Compact and Small).
+                    Grow = 0f, Shrink = 0f, MinWidth = 0f, SuppressScrollBar = true,
+                    // Every tier: the fade draws only where tabs wait past the edge (twelve areas overrun a Standard column too).
+                    AutoEdgeFade = true, ScrollKey = "settings:tabs",
                 },
                 Divider() with { Margin = layout.TabsScroll ? default : new Edges4(gutter, 0f, gutter, 0f) },
             ],
