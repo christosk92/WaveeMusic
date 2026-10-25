@@ -81,13 +81,13 @@ internal static class WinUiSearchBody
                     Children =
                     [
                         new BoxEl { Direction = 1, Width = layout.HeroW, Shrink = 0f, Children = [top] },
-                        new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [best] },
+                        new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [best.Value] },
                     ],
                 });
             else
             {
                 kids.Add(top);
-                if (best is not null) kids.Add(best);
+                if (best is not null) kids.Add(best.Value);
             }
         }
         else if (m.Fallback is { } fallback) kids.Add(FallbackList(fallback, in ctx, layout));

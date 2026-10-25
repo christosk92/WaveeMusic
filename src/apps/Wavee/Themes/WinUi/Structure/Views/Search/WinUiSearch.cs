@@ -440,7 +440,7 @@ internal static class WinUiSearch
         Padding = WinUiFrameRules.NoticePadding(trailing is not null),
         Children = trailing is null
             ? [new TextEl(text) { Size = WinUiFrameRules.SuggestTextSize, Color = Tok.TextPrimary, Grow = 1f }]
-            : [new TextEl(text) { Size = WinUiFrameRules.SuggestTextSize, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing],
+            : [new TextEl(text) { Size = WinUiFrameRules.SuggestTextSize, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing.Value],
     };
 
     /// <summary>A query row's content: the history glyph, then the text with the typed run semibold (case-insensitive).</summary>

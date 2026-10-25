@@ -537,7 +537,7 @@ internal static class ZuneSearch
         Padding = ZuneFrameRules.NoticePadding,
         Children = trailing is null
             ? [R.Type.DenseTitle(text) with { Color = Tok.TextPrimary, Grow = 1f, Wrap = TextWrap.Wrap }]
-            : [R.Type.DenseTitle(text) with { Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, trailing],
+            : [R.Type.DenseTitle(text) with { Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, trailing.Value],
     };
 
     /// <summary>A query row's content: the search glyph, then the text with the typed run at the selected weight (case-insensitive).</summary>

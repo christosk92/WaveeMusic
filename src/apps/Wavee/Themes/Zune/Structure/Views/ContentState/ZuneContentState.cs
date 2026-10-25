@@ -43,7 +43,7 @@ internal static class ZuneContentState
     private static BoxEl PageBox(string key, Element? page) => new()
     {
         Key = key, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-        Children = page is null ? [] : [page],
+        Children = page is null ? [] : [page.Value],
     };
 
     private static BoxEl OfflineLane(ContentStateProps props, float gutter) => new()

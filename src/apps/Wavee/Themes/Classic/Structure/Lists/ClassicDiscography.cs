@@ -318,7 +318,7 @@ internal static class ClassicDiscography
     /// <c>rows x Pitch</c> tall (the verdict's pitch), so nothing scrolls and the reserved slot height holds.</summary>
     static Element RowsBox(DiscoDrawerPanelArgs a)
         => a.List is null ? new BoxEl()
-            : new BoxEl { Direction = 1, MinWidth = 0f, Height = a.Rows * a.Verdict.Pitch, Children = [a.List] };
+            : new BoxEl { Direction = 1, MinWidth = 0f, Height = a.Rows * a.Verdict.Pitch, Children = [a.List.Value] };
 
     /// <summary>READY BUT EMPTY — offline, a failed read, a trackless album: a fixed 2-row note with a Retry that
     /// re-asks the tracklist while the drawer stays open (W16).</summary>

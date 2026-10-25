@@ -157,9 +157,9 @@ internal static class WinUiArtistPick
         {
             Direction = 1,
             Grow = horizontal ? 1f : 0f, Basis = horizontal ? 0f : float.NaN, MinWidth = horizontal ? 0f : float.NaN,
-            Children = !horizontal && band is not null ? [head, quote, band, foot] : [head, quote, foot],
+            Children = !horizontal && band is not null ? [head, quote, band.Value, foot] : [head, quote, foot],
         };
-        Element content = horizontal && band is not null ? new BoxEl { Direction = 0, Children = [copy, band] } : copy;
+        Element content = horizontal && band is not null ? new BoxEl { Direction = 0, Children = [copy, band.Value] } : copy;
 
         // The panel keeps its own tree (a quote over a footer), but its clickable shell is the shared one: the plate's
         // hover/press reveal, the Button role, the tab stop and the hand cursor all come from the structure's surface shell and

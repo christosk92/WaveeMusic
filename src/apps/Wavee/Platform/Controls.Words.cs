@@ -325,7 +325,7 @@ public static partial class Controls
             {
                 if (_fit) _overlay = UseContext(Overlay.Service);
                 _row ??= Build();
-                _mount ??= _fill ? Scroller(_row) : _fit ? FitSlot(_row) : _row;
+                _mount ??= _fill ? Scroller(_row.Value) : _fit ? FitSlot(_row.Value) : _row;
                 if (_scroll is { } scroll)
                     UseSignalEffect(() =>
                     {
@@ -338,7 +338,7 @@ public static partial class Controls
                 // or a resize re-runs it after that frame's layout and BEFORE its paint — the new bar is seeded at the
                 // old bar's rect on the very frame it appears, and a scrolled-out selection is already back in view.
                 UseLayoutEffect(_afterLayout ??= AfterLayout);
-                return _mount;
+                return _mount.Value;
             }
 
             Element Build()

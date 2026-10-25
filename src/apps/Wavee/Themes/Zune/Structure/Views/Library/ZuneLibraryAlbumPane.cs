@@ -104,7 +104,7 @@ internal static class ZuneLibraryAlbumPane
                 // rows keep their node (and the table its scroll) across a height crossing.
                 K.PaneHead(p.Title, p.Open, K.ArtistLine(p.Artists), p.Meta, Verbs(p, box, openWord, brief), box, brief),
                 new BoxEl { Shrink = 0f },
-                p.Notice!,
+                p.Notice!.Value,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move.
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = [rows] },
             ],

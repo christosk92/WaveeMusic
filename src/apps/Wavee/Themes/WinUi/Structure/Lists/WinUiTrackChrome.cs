@@ -457,7 +457,7 @@ internal static class WinUiTrackChrome
                 : new BoxEl
                 {
                     Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle.Value],
                 });
             if (view.Length + tail.Length == 0) kids.Add(new BoxEl { Key = "bar:right", Shrink = 0f });
             kids.AddRange(view);
@@ -506,7 +506,7 @@ internal static class WinUiTrackChrome
             var word = CommandWord(label, Tok.TextPrimary) with { Color = ink };
             Element[] kids = trailing is null
                 ? [Icon(glyph, WinUiListRules.CommandGlyph) with { Color = ink }, word]
-                : [Icon(glyph, WinUiListRules.CommandGlyph) with { Color = ink }, word, trailing];
+                : [Icon(glyph, WinUiListRules.CommandGlyph) with { Color = ink }, word, trailing.Value];
             return Plate(active, onClick, onRealized) with { Gap = WinUiListRules.CommandGap, Padding = WinUiListRules.CommandPad, Children = kids };
         }
 

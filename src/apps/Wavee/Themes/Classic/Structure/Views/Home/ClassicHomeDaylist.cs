@@ -280,7 +280,7 @@ internal static class ClassicHomeDaylist
                     ? new BoxEl
                     {
                         Key = "daylist-art", ZStack = true, Height = dl.ArtH, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
-                        Children = [p.Art!, p.Veil ?? NoLayer()],
+                        Children = [p.Art!.Value, p.Veil ?? NoLayer()],
                     }
                     : NoLayer(),
                 copy,

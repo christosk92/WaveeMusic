@@ -90,7 +90,7 @@ internal static class ClassicProfileHero
         return new BoxEl
         {
             Direction = 1, Height = m.Height, ZStack = true, Animate = ClassicTierMotion.HeightReflow,
-            Children = band is null ? [expanded] : [expanded, band],
+            Children = band is null ? [expanded] : [expanded, band.Value],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
 

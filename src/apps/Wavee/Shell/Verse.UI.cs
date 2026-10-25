@@ -1090,7 +1090,7 @@ public static partial class Verse
                     : live ? Embed.Comp(() => new Frames(host._tick)) with { Key = "verse:frames" }
                     : wake.DelayMs >= 0f ? Embed.Comp(() => new Waker(host)) with { Key = "verse:wake" }
                     : null;
-                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = child is null ? [] : [child] };
+                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = child is null ? [] : [child.Value] };
             }
         }
 

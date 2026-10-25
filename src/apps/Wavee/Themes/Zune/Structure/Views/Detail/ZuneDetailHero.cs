@@ -528,7 +528,7 @@ internal static class ZuneDetailHero
             {
                 Direction = 1, MinWidth = 0f, ClipToBounds = true,
                 Height = columns ? float.NaN : Z.DescriptionLines * Z.DescriptionLine,
-                Children = description is null ? [] : [description],
+                Children = description is null ? [] : [description.Value],
             }) with { Layout = K.GrowShove, Enter = enter ?? K.FadeUp, Exit = ZuneMotion.SwapFade });
         }
         if (!columns) kids.Add(ZuneMotion.Air("hero:bottom", Z.HeroBottom));

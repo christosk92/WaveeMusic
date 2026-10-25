@@ -109,8 +109,8 @@ public static partial class Controls
                                     Element? overlay = null, Element? corner = null)
     {
         var kids = new List<Element>(3) { art };
-        if (overlay is not null) kids.Add(overlay);
-        if (corner is not null) kids.Add(corner);
+        if (overlay is not null) kids.Add(overlay.Value);
+        if (corner is not null) kids.Add(corner.Value);
         bool wide = MathF.Abs(aspect - 1f) >= 0.001f;
         return new BoxEl
         {
@@ -607,7 +607,7 @@ public static partial class Controls
             Fill = s.OffBackground, HoverFill = s.OffHover, PressedFill = s.OffPressed,
             BorderWidth = s.BorderWidth, BorderBrush = s.OffBorder, HoverBorderBrush = s.OffHoverBorder, PressedBorderBrush = s.OffPressedBorder,
             BrushTransitionMs = s.BrushTransitionMs,
-            Children = lead is null ? [text] : [lead, text],
+            Children = lead is null ? [text] : [lead.Value, text],
         };
     }
 
@@ -681,7 +681,7 @@ public static partial class Controls
             Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
             Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillCardSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children = trailing is null ? [valueBox, captionRun] : [valueBox, captionRun, trailing],
+            Children = trailing is null ? [valueBox, captionRun] : [valueBox, captionRun, trailing.Value],
         };
     }
 

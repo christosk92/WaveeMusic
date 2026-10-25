@@ -1822,7 +1822,7 @@ public static partial class Lyrics
             var timer = UseTimeout(owner._wakeTick, MathF.Max(wake.DelayMs, 1f), DepKey.From(wake.Seq));
             if (needsTicks || wake.DelayMs < 0f) timer.Cancel();
 
-            return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f, Children = stepper is null ? [] : [stepper] };
+            return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f, Children = stepper is null ? [] : [stepper.Value] };
         }
     }
 

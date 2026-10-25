@@ -200,7 +200,7 @@ internal static class ClassicArtistChart
         if (feat is not null)
         {
             if (n > 0) sub[n++] = ChartDot(nowInk);
-            sub[n++] = feat;
+            sub[n++] = feat.Value;
         }
         if (playsInSub)
         {

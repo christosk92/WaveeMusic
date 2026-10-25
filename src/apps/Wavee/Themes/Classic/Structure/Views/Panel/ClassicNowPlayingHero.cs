@@ -320,7 +320,8 @@ internal sealed class ClassicHeroHeaderRow : Component
     {
         [SelectorBar.PartItem] = static item =>
         {
-            if (item.Children is not [BoxEl content, var pill]) return item;
+            if (item.Children.Length != 2 || !item.Children[0].Is(out BoxEl content)) return item;
+            var pill = item.Children[1];
             var kids = new Element[content.Children.Length];
             for (int i = 0; i < kids.Length; i++)
             {

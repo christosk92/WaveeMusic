@@ -308,7 +308,7 @@ internal static partial class WinUiSetup
     private static Element DoorRow(Element? left, params Element[] right)
     {
         var kids = new List<Element>(right.Length + 2);
-        if (left is not null) kids.Add(left);
+        if (left is not null) kids.Add(left.Value);
         kids.Add(new BoxEl { Grow = 1f, HitTestVisible = false });
         kids.AddRange(right);
         return new BoxEl { Direction = 0, Grow = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = kids.ToArray() };

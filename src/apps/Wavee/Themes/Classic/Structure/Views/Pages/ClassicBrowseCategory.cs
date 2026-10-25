@@ -143,7 +143,7 @@ internal static class ClassicBrowseCategory
             Element? tools = layout.ShelfSeeAll ? HyperlinkButton.Create(Loc.Get(Strings.Home.SeeAll), () => open(view)) with { Shrink = 0f } : null;
             header = tools is null ? HomeModules.DrillHeader(shelfTitle, () => open(view)) : HomeModules.ModuleHeader(shelfTitle, null, tools, () => open(view));
             if (layout.ShelfHeaderH > 0f)
-                header = new BoxEl { Height = layout.ShelfHeaderH, Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, Children = [header] };
+                header = new BoxEl { Height = layout.ShelfHeaderH, Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, Children = [header.Value] };
         }
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) =>

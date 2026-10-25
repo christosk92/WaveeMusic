@@ -176,7 +176,7 @@ internal static class ZuneConcertCells
         if (link is not null)
         {
             kids.Add(new BoxEl { Grow = 1f, MinWidth = Spacing.M });
-            kids.Add(link);
+            kids.Add(link.Value);
         }
         return new BoxEl
         {

@@ -241,11 +241,11 @@ internal static partial class ZuneLibraryArtistReader
         var p = h.Props;
         if (p.Scope?.Invoke() is not { } scope || p.Sort?.Invoke() is not { } sort) return new BoxEl { Height = Artist.ReaderShape.SubRailH };
         bool narrow = p.Host.NarrowNow();
-        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort) && h.RailNarrow == narrow) return h.SubRail;
+        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort) && h.RailNarrow == narrow) return h.SubRail.Value;
         h.RailScope = scope;
         h.RailSort = sort;
         h.RailNarrow = narrow;
-        return h.SubRail = SubRail(p.Host, scope, sort, narrow);
+        return (h.SubRail = SubRail(p.Host, scope, sort, narrow)).Value;
     }
 
     /// <summary>The two word groups, scope (in your library · all releases · N), a spacer, sort (newest · oldest · a-z), over the page's own Signal INSTANCES, PINNED at the

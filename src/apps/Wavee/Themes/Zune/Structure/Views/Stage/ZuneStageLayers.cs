@@ -220,7 +220,7 @@ internal static class ZuneStageSpectrum
                 {
                     Key = key, Width = w, Height = h, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                     Margin = new Edges4(x, y, 0f, 0f), Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter, Layout = ZuneStageKit.Place,
-                    Children = [body],
+                    Children = [body.Value],
                 },
             ],
         };

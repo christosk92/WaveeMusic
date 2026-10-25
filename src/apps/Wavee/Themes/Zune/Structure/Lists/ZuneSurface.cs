@@ -99,7 +99,7 @@ internal static class ZuneSurface
         if (float.IsNaN(width))
         {
             Element fill = d.CoverOverride ?? Controls.ArtworkFill(d.CoverUrl, coverRadius, aspect: d.CoverAspect);
-            Element[] cover = fab is null ? [fill] : corner is null ? [fill, fab] : [fill, fab, corner];
+            Element[] cover = fab is null ? [fill] : corner is null ? [fill, fab.Value] : [fill, fab.Value, corner.Value];
             return new BoxEl
             {
                 Direction = 1, Gap = Spacing.S, Grow = 1f,
@@ -176,22 +176,22 @@ internal static class ZuneSurface
                 Children = [artBox],
             };
 
-        Element? trailing = d.Trailing is null ? null : SurfaceParts.Action(d.Trailing);
+        Element? trailing = d.Trailing is null ? null : SurfaceParts.Action(d.Trailing.Value);
         bool lane = SurfaceRules.MenuReservesWidth(in s, hasMenu, d.ShowMenu);
         if (lane)
             trailing = trailing is null ? MenuLane(chrome) : new BoxEl
             {
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children = [trailing, MenuLane(chrome)],
+                Children = [trailing.Value, MenuLane(chrome)],
             };
-        Element column = text ?? RowText(d, in s)!;
+        Element column = text is { } textCol ? textCol : RowText(d, in s)!.Value;
         var flow = new BoxEl
         {
             Direction = 0, Gap = s.ArtGap, AlignItems = FlexAlign.Center, Grow = 1f,
             MinHeight = s.MinHeight, MinWidth = 0f,
             // A floor under art + 2 x pad (Search's 52 / 56 rows of Z-Search-Small / -Compact) trims the pad to fit it; every other row keeps 8.
             Padding = new Edges4(s.PadX, RowPadY(edge, s.MinHeight), s.PadX, RowPadY(edge, s.MinHeight)),
-            Children = trailing is null ? [artBox, column] : [artBox, column, trailing],
+            Children = trailing is null ? [artBox, column] : [artBox, column, trailing.Value],
         };
         if (lane || !SurfaceRules.ShowsMenuTrailing(in s, hasMenu, d.ShowMenu)) return flow;
         return new BoxEl
@@ -254,7 +254,7 @@ internal static class ZuneSurface
         }
         else
         {
-            if (d.Subtitle is not null) kids.Add(d.Subtitle);
+            if (d.Subtitle is not null) kids.Add(d.Subtitle.Value);
             if (d.Meta is { Length: > 0 } meta)
                 kids.Add(R.Type.TrackMeta(meta) with { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
         }
@@ -277,11 +277,11 @@ internal static class ZuneSurface
             MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         var kids = new List<Element>(5);
-        if (d.Eyebrow is not null) kids.Add(d.Eyebrow);
+        if (d.Eyebrow is not null) kids.Add(d.Eyebrow.Value);
         kids.Add(Title(d, title, lines, centred: false));
-        if (d.Subtitle is not null) kids.Add(d.Subtitle);
-        if (d.MetaRow is not null) kids.Add(d.MetaRow);
-        if (d.Below is not null) kids.Add(d.Below);
+        if (d.Subtitle is not null) kids.Add(d.Subtitle.Value);
+        if (d.MetaRow is not null) kids.Add(d.MetaRow.Value);
+        if (d.Below is not null) kids.Add(d.Below.Value);
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = s.IsLargeRow && !ZuneListRules.IsRailRow(in s) ? Spacing.S : SurfaceGeometry.CardLabelGap,

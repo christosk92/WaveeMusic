@@ -261,7 +261,7 @@ internal static class ClassicEntityRow
             // With a hover "…" the count slot hands its place over (S2): it fades out as the button fades in over it, so the count
             // ends at W − 18 at rest instead of leaving a button-wide hole beside it. The Unpin button and the equalizer stay.
             if (slot is not null)
-                parts[t] = overflow ? new BoxEl { Shrink = 0f, HoverOpacity = 0f, Children = [slot] } : slot;
+                parts[t] = overflow ? new BoxEl { Shrink = 0f, HoverOpacity = 0f, Children = [slot.Value] } : slot.Value;
             kids.Add(new BoxEl
             {
                 Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarGeometry.TrailingGap,

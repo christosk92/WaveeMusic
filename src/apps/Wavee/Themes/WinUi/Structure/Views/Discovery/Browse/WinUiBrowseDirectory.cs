@@ -53,7 +53,7 @@ internal static class WinUiBrowseDirectory
         Element region = new SkelRegionEl(
             Pending: () => props.Load == BrowseLoad.Pending, Failed: () => props.Load == BrowseLoad.Failed,
             Content: () => body ??= Content(props.Groups, layout, firstW),
-            ShimmerSource: () => skeleton.Value.Tree is { } tree && skeleton.Value.Tier == layout.Tier ? tree : (skeleton.Value = (layout.Tier, Skeleton(layout, firstW))).Tree!,
+            ShimmerSource: () => skeleton.Value.Tree is { } tree && skeleton.Value.Tier == layout.Tier ? tree : (skeleton.Value = (layout.Tier, Skeleton(layout, firstW))).Tree!.Value,
             // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` (a sealed Asked-and-unanswered row is a no-op for `Ensure`).
             OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry),
             Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,

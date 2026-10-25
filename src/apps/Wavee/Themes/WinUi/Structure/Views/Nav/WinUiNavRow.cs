@@ -319,7 +319,7 @@ internal sealed class WinUiNavRow : Component
     /// <summary>An offline pin keeps its cover, at <see cref="WinUiNavGeometry.OfflineArtOpacity"/>.</summary>
     static Element? Quieted(Element? cover, bool offline)
         => !offline || cover is null ? cover
-            : new BoxEl { Shrink = 0f, Opacity = WinUiNavGeometry.OfflineArtOpacity, Children = [cover] };
+            : new BoxEl { Shrink = 0f, Opacity = WinUiNavGeometry.OfflineArtOpacity, Children = [cover.Value] };
 
     /// <summary>"Not available offline", led by the name when the row cuts it.</summary>
     static string OfflineTip(string label, bool labelCut)

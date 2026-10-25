@@ -274,7 +274,7 @@ internal static partial class ZuneSetup
             var words = new List<Element>(2) { ZuneText.Label(header) };
             if (description is { Length: > 0 }) words.Add(ZuneText.Hint(description));
             kids.Add(new BoxEl { Direction = 1, Gap = Z.CardWordsGap, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = words.ToArray() });
-            if (content is not null) kids.Add(content);
+            if (content is not null) kids.Add(content.Value);
             return kids.ToArray();
         }
     }

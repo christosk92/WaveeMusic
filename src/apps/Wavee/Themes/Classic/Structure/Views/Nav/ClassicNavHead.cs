@@ -41,8 +41,8 @@ internal static class ClassicNavHead
             new BoxEl { Grow = 1f },
         };
         // The hover-revealed ⋯ goes BEFORE the "+": at rest an invisible ⋯ between them read as a hole beside the chevron.
-        if (more is not null) kids.Add(more);
-        if (create is not null) kids.Add(create);
+        if (more is not null) kids.Add(more.Value);
+        if (create is not null) kids.Add(create.Value);
         if (onToggle is not null) kids.Add(chevron ?? Icon(open ? Icons.ChevronUp : Icons.ChevronDown, 12f, Tok.TextSecondary));
         Action? click = null;
         if (onToggle is { } toggle) click = () => toggle(!open);

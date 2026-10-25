@@ -79,7 +79,7 @@ internal static class ZuneLibraryKit
                 {
                     Key = contentKey, Direction = 1, Grow = 1f, MinHeight = 0f, Shrink = 0f, ClipToBounds = true,
                     Width = grow > 0f ? float.NaN : width, Margin = new Edges4(gap, 0f, 0f, 0f),
-                    Enter = ZuneMotion.SwapEnter(rendered), Exit = ZuneMotion.SwapFade, Children = [content],
+                    Enter = ZuneMotion.SwapEnter(rendered), Exit = ZuneMotion.SwapFade, Children = [content.Value],
                 },
             ];
         bool grows = beside && grow > 0f;

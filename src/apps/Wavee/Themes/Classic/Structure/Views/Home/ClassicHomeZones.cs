@@ -187,7 +187,7 @@ internal static class ClassicHomeZones
                     Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
                     Height = ClassicHomeRules.HeaderH + ClassicHomeRules.HeaderGap,
                     Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
-                    Children = [header],
+                    Children = [header.Value],
                 }.Sticky(ClassicHomeRules.StuckBottom, scope: zone.Key),
                 // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
                 new BoxEl
@@ -235,7 +235,7 @@ internal static class ClassicHomeZones
         if (pager is null) return link;
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link, pager],
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link.Value, pager.Value],
         };
     }
 

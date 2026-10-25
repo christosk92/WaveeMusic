@@ -321,7 +321,7 @@ internal sealed class ClassicEditPane : Component
         {
             _pins!.ItemCount = pinKids.Count;
             if (pinKids.Count > 0) into.Add(_pins!.List(new BoxEl { Direction = 1, Children = [.. pinKids] }));
-            if (showAll is not null) into.Add(showAll);
+            if (showAll is not null) into.Add(showAll.Value);
         }
         if (kind == SidebarSectionKind.Collections && itemKids.Count > 0)
         {

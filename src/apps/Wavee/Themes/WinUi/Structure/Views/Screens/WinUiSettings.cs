@@ -161,7 +161,7 @@ internal static partial class WinUiSettings
             Children =
             [
                 new BoxEl { Key = "settings:cards", Direction = 1, MinWidth = 0f, Basis = cap, Grow = 0f, Shrink = 1f, MaxWidth = cap, Children = [body] },
-                aside,
+                aside.Value,
             ],
         };
     }
