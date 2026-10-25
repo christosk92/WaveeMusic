@@ -367,7 +367,7 @@ public static class EvidenceReport
     public static string LedgerTsv(ReadOnlySpan<RasterEntry> entries, Func<int, uint, string> nodeName)
     {
         var sb = new StringBuilder(96 + entries.Length * 110);
-        sb.Append("frame\tnode\tnodeKey\tslice\ttx\tty\tw\th\treason\torder\talpha\tfaithful\tscratchRefused\thash\n");
+        sb.Append("frame\tnode\tnodeKey\tslice\ttx\tty\tw\th\treason\torder\talpha\tfaithful\tscratchRefused\thash\tgeo\n");
         foreach (ref readonly RasterEntry e in entries)
             sb.Append(I(e.Frame)).Append('\t').Append(I(e.NodeIndex)).Append(':').Append(I(e.Gen)).Append('\t')
               .Append(e.NodeIndex > 0 ? nodeName(e.NodeIndex, e.Gen) : "-").Append('\t')
@@ -376,9 +376,15 @@ public static class EvidenceReport
               .Append(I(e.Order)).Append('\t').Append(F3(e.AlphaQ8 / 255f)).Append('\t')
               .Append((e.Flags & RasterEntryFlags.Faithful) != 0 ? "1" : "0").Append('\t')
               .Append((e.Flags & RasterEntryFlags.ScratchRefused) != 0 ? "1" : "0").Append('\t')
-              .Append(H(e.Hash)).Append('\n');
+              .Append(H(e.Hash)).Append('\t').Append(GeoName(e.Flags >> RasterEntryFlags.GeoShift)).Append('\n');
         return sb.ToString();
     }
+
+    /// <summary>A SliceGeometry raster's geometry cause (SliceTable.GeoKind..GeoExtent), "-" for none.</summary>
+    static string GeoName(int cause) => cause switch
+    {
+        1 => "kind", 2 => "origin", 3 => "phase", 4 => "identity", 5 => "residual", 6 => "extent", _ => "-",
+    };
 
     /// <summary>walks.tsv: the walk ledger tail (every slice re-record and why), oldest first.</summary>
     public static string WalksTsv(ReadOnlySpan<WalkEntry> walks, Func<int, uint, string> nodeName)
