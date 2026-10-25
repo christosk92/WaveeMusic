@@ -80,6 +80,9 @@ public static partial class Shell
             // the headless frame clock has its own epoch (its present QPC is frame x 16 ms, not the counter): the lyrics media clock anchors its samples in it, or a
             // playing track reads a huge negative time and no line is ever sung (the shell tests and `--inspect` both boot here)
             Lyrics.SampleClock.NowQpc = static () => FrameTime.NowQpc;
+            // ...and the silent endpoint plays on it too, so the played count the position reports carry keeps the pace the caption extrapolates at
+            // (on the wall clock the reports fell behind the frames and pulled the caption back a line, audit FU2 item 7). Before BootCore builds the backend.
+            Playback.Audio.SilentPaceQpc = static () => FrameTime.NowQpc;
             s_uiThread = Environment.CurrentManagedThreadId;
             Directory.CreateDirectory(options.ProfileDir);
             Platform.ProfileRoot = options.ProfileDir;
@@ -88,6 +91,11 @@ public static partial class Shell
             Platform.Boot(["--fake"], BootProfile.HeadlessFake);
             Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "", null, Log.SinceStartMs);
             App.BootCore(BootProfile.HeadlessFake);
+            // ...and the playback host's stamps with it (BootCore set the wall clock, decision D22, for a window that keeps time while idle): the position
+            // the host publishes is its last report extrapolated on this clock, and the stage caption extrapolates that on the frame clock. With the wall clock
+            // here the published position ran at a different rate from the frames, so the caption stepped back a line now and then (audit FU2 item 7). A
+            // headless host only: its time IS the frames it runs.
+            Playback.FrameNowMs = static () => FrameTime.NowMs;
             Appearance.Seed(options.Theme);   // a fixed kind: no OS read, the token-default accent
             LoadDocuments();
             // Between mounts there is no host to post into. A post from the UI thread still runs inline (as the boot default
