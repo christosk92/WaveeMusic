@@ -297,10 +297,16 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>One group of rows under one label, in the order the rows arrived.</summary>
-    sealed class OptionGroup(string title)
+    sealed class OptionGroup(string title) : IElementHolder
     {
         public string Title { get; } = title;
         public List<(string Key, Element Row)> Rows { get; } = new(4);
+
+        // A render's scratch (built and drawn in one render); frozen by hand should one ever be kept past it (FGEL004).
+        void IElementHolder.FreezeElements()
+        {
+            for (int i = 0; i < Rows.Count; i++) Rows[i] = (Rows[i].Key, Rows[i].Row.Freeze());
+        }
     }
 
     sealed class ThemeOptionsCard : SettingsComponent
