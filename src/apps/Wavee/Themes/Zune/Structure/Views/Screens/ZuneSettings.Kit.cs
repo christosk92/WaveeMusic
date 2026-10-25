@@ -142,7 +142,7 @@ internal sealed class ZuneKit
         {
             Key = key + ":control", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinWidth = 0f,
             Grow = 1f, Shrink = 1f, Basis = stack || Lay.RowsWrap ? float.NaN : 0f, AlignSelf = FlexAlign.Stretch,
-            Children = control is null ? [] : [control],
+            Children = control is null ? [] : [control.Value],
         };
         return new BoxEl
         {

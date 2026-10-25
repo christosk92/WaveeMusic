@@ -46,9 +46,9 @@ internal static partial class ZuneLibraryPage
             if (l.OneRow && !p.IsPodcasts)
             {
                 var one = new List<Element>(3) { lead };
-                if (find is not null) one.Add(find);
+                if (find is not null) one.Add(find.Value);
                 else one.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-                if (view is not null) one.Add(view);
+                if (view is not null) one.Add(view.Value);
                 return new BoxEl
                 {
                     Key = LR.HeadKey, Direction = 1, Gap = l.HeadGap, Shrink = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize,
@@ -56,10 +56,10 @@ internal static partial class ZuneLibraryPage
                 };
             }
             var first = new List<Element>(3) { lead, new BoxEl { Grow = 1f, MinWidth = 0f } };
-            if (view is not null) first.Add(view);
+            if (view is not null) first.Add(view.Value);
             var second = new List<Element>(2);
-            if (find is not null) second.Add(find);
-            if (count is not null) second.Add(count);
+            if (find is not null) second.Add(find.Value);
+            if (count is not null) second.Add(count.Value);
             var rows = new List<Element>(2)
             {
                 new BoxEl { Key = "lib:head:r1", Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH, Children = first.ToArray() },
@@ -74,10 +74,10 @@ internal static partial class ZuneLibraryPage
         }
 
         var kids = new List<Element>(6) { lead };
-        if (view is not null) { kids.Add(K.Divider()); kids.Add(view); }
+        if (view is not null) { kids.Add(K.Divider()); kids.Add(view.Value); }
         kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-        if (find is not null) kids.Add(find);
-        if (count is not null) kids.Add(count);
+        if (find is not null) kids.Add(find.Value);
+        if (count is not null) kids.Add(count.Value);
         // The head's height is the tier's (Small 32, Standard 28): it eases on a crossing, so the columns under it ride it.
         return new BoxEl
         {

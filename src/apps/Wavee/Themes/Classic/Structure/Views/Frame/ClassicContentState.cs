@@ -43,7 +43,7 @@ internal static class ClassicContentState
     private static BoxEl PageBox(string key, Element? page) => new()
     {
         Key = key, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-        Children = page is null ? [] : [page],
+        Children = page is null ? [] : [page.Value],
     };
 
     /// <summary>The page-scale offline strip (ch 29 W9 C / W10) in the flow above the kept content: the page gutter either side, 16 from the

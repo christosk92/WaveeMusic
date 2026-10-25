@@ -170,7 +170,7 @@ internal static class ZuneStageIdentity
         {
             Children =
             [
-                .. (plate is null ? s_none : [plate]),
+                .. (plate is null ? s_none : [plate.Value]),
                 new BoxEl
                 {
                     Key = "stage:cover", Width = size, Height = size, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
@@ -186,7 +186,7 @@ internal static class ZuneStageIdentity
                     Margin = new Edges4(titlesX, titlesY, 0f, 0f), Layout = s_move, HitTestPassThrough = true,
                     Children = [block],
                 },
-                .. (display is null ? s_none : [display]),
+                .. (display is null ? s_none : [display.Value]),
             ],
         };
     }

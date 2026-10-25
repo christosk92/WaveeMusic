@@ -60,7 +60,7 @@ public static partial class Sidebar
                 Input = s.Lib.ShapeInput,
                 ModeEpoch = s.Lib.ReadModeEpoch,
                 Options = s.Lib.ShapeOptions,
-                Head = s.Head,
+                Head = () => s.Head(),
                 TreeSortedNonCustom = s.Lib.TreeSortedNonCustom,
                 SortedListRefusalAction = s.Lib.ShowCustomOrder,
                 CommitReorder = s.CommitReorder,

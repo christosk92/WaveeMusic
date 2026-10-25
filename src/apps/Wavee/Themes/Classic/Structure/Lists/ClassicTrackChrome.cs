@@ -505,7 +505,7 @@ internal static class ClassicTrackChrome
                 : new BoxEl
                 {
                     Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle.Value],
                 });
             kids.AddRange(view);
             kids.Add(new BoxEl
@@ -579,7 +579,7 @@ internal static class ClassicTrackChrome
             Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
             Element[] kids = trailing is null
                 ? [Icon(glyph, ClassicTrackChromeLayout.CommandGlyph) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }]
-                : [Icon(glyph, ClassicTrackChromeLayout.CommandGlyph) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }, trailing];
+                : [Icon(glyph, ClassicTrackChromeLayout.CommandGlyph) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }, trailing.Value];
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicTrackChromeLayout.CommandGap,

@@ -399,7 +399,7 @@ internal static class ZuneHomeDaylist
             return new BoxEl
             {
                 Key = "zune-daylist-clock-block", Direction = 0, Wrap = true, Gap = H.ClockGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children = action is null ? [line] : [line, action],
+                Children = action is null ? [line] : [line, action.Value],
             };
         int lit = Math.Clamp(current, 0, DaypartTimeline.Segments - 1);
         var bars = new Element[DaypartTimeline.Segments];

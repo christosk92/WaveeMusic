@@ -78,7 +78,7 @@ internal static partial class ClassicShow
         Element?[] order = serial ? [first, trailer, latest] : [latest, trailer, first];
         var doors = new List<Element>(3);
         foreach (var door in order)
-            if (door is not null) doors.Add(door);
+            if (door is not null) doors.Add(door.Value);
 
         var sections = new List<Element>(2);
         if (doors.Count > 0)
@@ -365,7 +365,7 @@ internal static partial class ClassicShow
                 },
             ],
         });
-        if (trailing is not null) kids.Add(trailing);
+        if (trailing is not null) kids.Add(trailing.Value);
         var plate = new BoxEl
         {
             Direction = 0, Gap = MiniGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Padding = new Edges4(10f, 8f, 10f, 8f),

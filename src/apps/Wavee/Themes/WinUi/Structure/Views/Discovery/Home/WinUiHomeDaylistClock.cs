@@ -144,7 +144,7 @@ internal static class WinUiHomeDaylistClock
     /// <summary>The lines column's children: the first line alone, or under it the action (the Late face's link) or the caption.</summary>
     static Element[] Lines(SpanTextEl line, string caption, Element? action)
     {
-        if (action is not null) return [line, action];
+        if (action is not null) return [line, action.Value];
         return caption.Length > 0 ? [line, CaptionLine(caption)] : [line];
     }
 

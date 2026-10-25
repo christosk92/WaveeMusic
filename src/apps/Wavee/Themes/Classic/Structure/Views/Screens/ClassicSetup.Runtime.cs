@@ -359,7 +359,7 @@ internal static partial class ClassicSetup
     private static Element RuntimeRow(Element? left, params Element[] right)
     {
         var kids = new List<Element>(2);
-        if (left is not null) kids.Add(left);
+        if (left is not null) kids.Add(left.Value);
         kids.Add(new BoxEl
         {
             Direction = 0, Grow = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,

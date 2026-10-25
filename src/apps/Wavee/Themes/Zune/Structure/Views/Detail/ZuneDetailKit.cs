@@ -87,7 +87,7 @@ internal static class ZuneDetailKit
     public static Element HeadingRow(string key, TextEl heading, Element? link, float height) => new BoxEl
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Height = height, Shrink = 0f, MinWidth = 0f, Gap = Z.SectionGap,
-        Children = link is null ? [heading] : [heading, new BoxEl { Grow = 1f, MinWidth = 0f }, link],
+        Children = link is null ? [heading] : [heading, new BoxEl { Grow = 1f, MinWidth = 0f }, link.Value],
     };
 
     // ── the page column ──────────────────────────────────────────────────────────────────────────────────────────────

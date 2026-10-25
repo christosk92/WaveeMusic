@@ -147,7 +147,7 @@ internal static class ClassicSurface
             Element fill = d.CoverOverride
                 ?? Controls.ArtworkFill(d.CoverUrl, circular ? Radii.Full : Radii.Card, aspect: d.CoverAspect);
             // The overlay is mounted whenever the corner is (chrome ⊂ overlay), so three arms cover every case.
-            Element[] cover = fab is null ? [fill] : corner is null ? [fill, fab] : [fill, fab, corner];
+            Element[] cover = fab is null ? [fill] : corner is null ? [fill, fab.Value] : [fill, fab.Value, corner.Value];
             return new BoxEl
             {
                 Direction = 1, Gap = Spacing.S, Grow = 1f,
@@ -207,7 +207,7 @@ internal static class ClassicSurface
                 Children = [artBox],
             };
 
-        Element? trailing = d.Trailing is null ? null : SurfaceParts.Action(d.Trailing);
+        Element? trailing = d.Trailing is null ? null : SurfaceParts.Action(d.Trailing.Value);
         // A LANE shape's "…" is the cluster's last cell, laid out at rest whether or not the row is hot (stable per row),
         // so it sits BESIDE the Follow pill / heart instead of over it and the hot edge reflows nothing.
         bool lane = SurfaceRules.MenuReservesWidth(in s, hasMenu, d.ShowMenu);
@@ -215,15 +215,15 @@ internal static class ClassicSurface
             trailing = trailing is null ? MenuLane(chrome) : new BoxEl
             {
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children = [trailing, MenuLane(chrome)],
+                Children = [trailing.Value, MenuLane(chrome)],
             };
-        Element column = text ?? RowText(d, in s)!;
+        Element column = (text ?? RowText(d, in s)).Value;
         var flow = new BoxEl
         {
             Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, Grow = 1f,
             MinHeight = s.MinHeight, MinWidth = 0f,
             Padding = Edges4.All(SurfaceGeometry.RowPad),
-            Children = trailing is null ? [artBox, column] : [artBox, column, trailing],
+            Children = trailing is null ? [artBox, column] : [artBox, column, trailing.Value],
         };
         // Otherwise the "…" is an OVERLAY, not a lane: it takes no width at rest or on hover, so the title never
         // re-ellipsises under the pointer and a narrow row keeps its text. It is mounted lazily with the chrome. The ZStack
@@ -300,7 +300,7 @@ internal static class ClassicSurface
         }
         else
         {
-            if (d.Subtitle is not null) kids.Add(d.Subtitle);
+            if (d.Subtitle is not null) kids.Add(d.Subtitle.Value);
             if (d.Meta is { Length: > 0 } meta)
                 kids.Add(R.Type.TrackMeta(meta) with
                     { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
@@ -327,11 +327,11 @@ internal static class ClassicSurface
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         var kids = new List<Element>(5);
-        if (d.Eyebrow is not null) kids.Add(d.Eyebrow);
+        if (d.Eyebrow is not null) kids.Add(d.Eyebrow.Value);
         kids.Add(Title(d, title, lines, centred: false));
-        if (d.Subtitle is not null) kids.Add(d.Subtitle);
-        if (d.MetaRow is not null) kids.Add(d.MetaRow);
-        if (d.Below is not null) kids.Add(d.Below);
+        if (d.Subtitle is not null) kids.Add(d.Subtitle.Value);
+        if (d.MetaRow is not null) kids.Add(d.MetaRow.Value);
+        if (d.Below is not null) kids.Add(d.Below.Value);
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = large ? Spacing.S : SurfaceGeometry.CardLabelGap,

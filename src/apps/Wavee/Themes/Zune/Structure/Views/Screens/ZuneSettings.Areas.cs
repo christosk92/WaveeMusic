@@ -63,7 +63,7 @@ internal static partial class ZuneSettings
         var doc = SettingsDoc.Section(tab, section);
         var kids = new List<Element>(rows.Length);
         foreach (var row in rows)
-            if (row is not null) kids.Add(row);
+            if (row is not null) kids.Add(row.Value);
         return new Named(section, k.Block("zs:section:" + (int)tab + ":" + section, null, doc.SubtitleKey is { } sub ? Loc.Get(sub) : null, kids), doc.SubtitleKey is not null);
     }
 

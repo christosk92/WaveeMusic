@@ -388,9 +388,9 @@ internal sealed class ZuneBand : Component
         bool reduced = Design.Reduced;
         if (_pinsEl is not null && ReferenceEquals(pins, _pinsFor) && Equals(rec, _pinsRec) && tok == _pinsTok && style == _pinsStyle
             && culture == _pinsCulture && reduced == _pinsReduced)
-            return _pinsEl;
+            return _pinsEl.Value;
         _pinsFor = pins; _pinsRec = rec; _pinsTok = tok; _pinsStyle = style; _pinsCulture = culture; _pinsReduced = reduced;
-        return _pinsEl = Pins(pins, rec, _restInk!);
+        return (_pinsEl = Pins(pins, rec, _restInk!)).Value;
     }
 
     /// <summary>"pinned", then the pins (at most the core's cap, six).</summary>

@@ -196,7 +196,7 @@ internal static class ZuneDiscography
     /// <summary>The track rows (and the "show all" cell) as ONE bound list (the core's, mounted once per geometry): exactly rows x pitch tall.</summary>
     static Element RowsBox(DiscoDrawerPanelArgs a)
         => a.List is null ? new BoxEl()
-            : new BoxEl { Direction = 1, MinWidth = 0f, Height = a.Rows * a.Verdict.Pitch, Children = [a.List] };
+            : new BoxEl { Direction = 1, MinWidth = 0f, Height = a.Rows * a.Verdict.Pitch, Children = [a.List.Value] };
 
     /// <summary>READY BUT EMPTY (offline, a failed read, a trackless album): a fixed 2-row note with a Retry that re-asks the tracklist.</summary>
     static Element EmptyNote(Action retry) => new BoxEl

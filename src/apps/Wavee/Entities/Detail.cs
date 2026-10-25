@@ -1082,7 +1082,7 @@ public static partial class Detail
         /// the pending tree with each output it renders derived, so it shimmers as its own shape, where the deriver (which cannot run a render) drew
         /// a 160-wide default bar. Anything else passes through.</summary>
         public static FluentGpu.Dsl.Element Derivable(FluentGpu.Dsl.Element part)
-            => part is FluentGpu.Hooks.ComponentEl c ? c with { SkeletonProxy = () => c with { DeriveRenderedOutput = true } } : part;
+            => FluentGpu.Dsl.ElementCompat.Is(part, out FluentGpu.Hooks.ComponentEl c) ? c with { SkeletonProxy = () => c with { DeriveRenderedOutput = true } } : part;
 
         /// <summary>A wrapped block's line count (never zero).</summary>
         public static int LineCount(int lines) => Math.Max(1, lines);

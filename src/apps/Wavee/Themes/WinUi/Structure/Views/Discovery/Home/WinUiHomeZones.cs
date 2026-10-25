@@ -184,7 +184,7 @@ internal static class WinUiHomeZones
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = layout.HeaderGap,
-            Children = [header, body],
+            Children = [header.Value, body],
         };
     }
 
@@ -243,7 +243,7 @@ internal static class WinUiHomeZones
         if (pager is null) return link;
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link, pager],
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link.Value, pager.Value],
         };
     }
 

@@ -68,7 +68,7 @@ internal static class WinUiArtistOverview
             Element preview = Embed.Comp(new PreviewProps(a, stamp, columns >= 3, target, PreviewWidth(slot, columns), state), static () => new PreviewHost()) with { Key = "ov:preview" };
 
             var side = new List<Element>(4);
-            if (latestCard is not null) side.Add(latestCard);
+            if (latestCard is not null) side.Add(latestCard.Value);
             if (columns >= 3)
             {
                 side.AddRange(after);
@@ -158,7 +158,7 @@ internal static class WinUiArtistOverview
     /// <para>Beside the other columns (<paramref name="row"/>) it may shrink on the main axis (its width); stacked it never does: the main axis is then
     /// its height, which the overview's eased height would otherwise squeeze while it grows.</para>
     static Element Popular(float width, Element? chart, PopularHold hold, bool row)
-        => Column(PopularKey, 0f, chart is null ? [] : [chart]) with
+        => Column(PopularKey, 0f, chart is null ? [] : [chart.Value]) with
         {
             Width = float.IsNaN(hold.Width) ? width : hold.Width, Shrink = row ? 1f : 0f,
             Layout = hold.Released ? WinUiArtistMotion.ColumnReleased : WinUiArtistMotion.Column,
@@ -413,7 +413,7 @@ internal static class WinUiArtistOverview
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
             Children = trailing is null
                 ? [R.Type.RailHeader(title) with { Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, lead]
-                : [R.Type.RailHeader(title) with { Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, lead, trailing],
+                : [R.Type.RailHeader(title) with { Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, lead, trailing.Value],
         };
 
         static Element Group(string title, Element cards, int index) => new BoxEl

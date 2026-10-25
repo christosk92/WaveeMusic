@@ -94,7 +94,7 @@ internal static class ZuneAlbumTrailing
     {
         Key = key, Direction = 1, Gap = Z.SectionGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
         Padding = new Edges4(Z.SectionInset, Z.SectionTop, Z.SectionInset, 0f),
-        Children = heading is null ? [body] : [K.HeadingRow(key + ":head", heading, null, Z.AsideHeadingH), body],
+        Children = heading is null ? [body] : [K.HeadingRow(key + ":head", heading.Value, null, Z.AsideHeadingH), body],
     };
 
     /// <summary>The shared surface's card for a trailing row. <paramref name="release"/>: a row of an artist's own releases, captioned by its kind and

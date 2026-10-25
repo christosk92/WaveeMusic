@@ -96,7 +96,7 @@ internal static partial class ClassicShow
         if (trailing is not null)
         {
             kids.Add(new BoxEl { Grow = 1f, MinWidth = Spacing.M });
-            kids.Add(trailing);
+            kids.Add(trailing.Value);
         }
         return new BoxEl
         {

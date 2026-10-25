@@ -73,10 +73,10 @@ internal static class ZuneHomeQuickplay
     static Element Strip(Element? pins, Element? history, Element? fresh, ZuneHomeLayout lay)
     {
         var kids = new List<Element>(3);
-        if (pins is not null) kids.Add(pins);
+        if (pins is not null) kids.Add(pins.Value);
         // The history group stands in its view's anchor, so the anchor is what moves in the strip: it slides and follows its tiles, as the groups do.
-        if (history is not null) kids.Add(history with { Layout = Design.Reduced ? null : ZuneMotion.GroupResize });
-        if (fresh is not null) kids.Add(fresh);
+        if (history is not null) kids.Add(history.Value with { Layout = Design.Reduced ? null : ZuneMotion.GroupResize });
+        if (fresh is not null) kids.Add(fresh.Value);
         bool stacked = lay.QuickStacked;
         return new BoxEl
         {
@@ -97,7 +97,7 @@ internal static class ZuneHomeQuickplay
             new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = H.HeadInlineGap, MinWidth = 0f,
-                Children = link is null ? [K.GroupText(head)] : [K.GroupText(head), link],
+                Children = link is null ? [K.GroupText(head)] : [K.GroupText(head), link.Value],
             },
             body,
         ],
@@ -115,7 +115,7 @@ internal static class ZuneHomeQuickplay
     {
         Key = key, Direction = 1, Gap = H.TileCaptionGap, Width = edge, Shrink = 0f, MinWidth = 0f,
         Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = open,
-        Children = sub is null ? [art, name] : [art, name, sub],
+        Children = sub is null ? [art, name] : [art, name, sub.Value],
     };
 
     /// <summary>A tile: a crossing that changes its edge scales it there and slides it to its new place (<see cref="ZuneMotion.TileResize"/>).</summary>

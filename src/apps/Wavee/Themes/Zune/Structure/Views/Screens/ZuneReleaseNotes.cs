@@ -142,7 +142,7 @@ internal static partial class ZuneReleaseNotes
             {
                 Key = "zrn:picker-slot", Direction = 0, MinHeight = layout.PickerHeight, MinWidth = 0f, AlignItems = FlexAlign.Center, Animate = ZuneMotion.PivotSlide,
                 Padding = new Edges4(layout.Gutter, 0f, layout.Gutter, 0f),
-                Children = picker is null ? [] : [picker],
+                Children = picker is null ? [] : [picker.Value],
             });
         return new BoxEl
         {
@@ -154,7 +154,7 @@ internal static partial class ZuneReleaseNotes
                 {
                     Key = "zrn:frame", Direction = 0, Gap = layout.FrameGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
                     Padding = new Edges4(layout.Gutter, 0f, layout.Gutter, 0f),
-                    Children = rail is null ? [body] : [body, rail],   // loading / empty: the rail's column AND its gap are gone
+                    Children = rail is null ? [body] : [body, rail.Value],   // loading / empty: the rail's column AND its gap are gone
                 },
             ],
         };

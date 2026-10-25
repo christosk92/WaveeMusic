@@ -129,7 +129,7 @@ internal static class ClassicLibraryAlbumPane
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
                     Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = box }) with { Key = p.SaveKey },
                     ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f, layout.PaneInsetLeft),
-                p.Notice!,
+                p.Notice!.Value,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move. "Also by" is NOT a
                 // sibling here any more — it is the table's trailing band, inside the table's scroller — except at Huge, where it is the aside beside the slot (C-Library-Huge).
                 new BoxEl

@@ -165,7 +165,7 @@ internal static class ClassicRecentsRows
         {
             string meta = chip is null ? when : when.Length > 0 ? chip + " · " + when : chip;
             var lines = new List<Element>(2);
-            if (subtitle is not null) lines.Add(subtitle);
+            if (subtitle is not null) lines.Add(subtitle.Value);
             if (meta.Length > 0) lines.Add(SubMeta(meta));
             subtitle = lines.Count == 0 ? null : new BoxEl { Direction = 1, MinWidth = 0f, Children = lines.ToArray() };
         }

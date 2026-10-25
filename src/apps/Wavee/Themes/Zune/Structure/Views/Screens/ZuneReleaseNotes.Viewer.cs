@@ -282,7 +282,7 @@ internal static partial class ZuneReleaseNotes
             if (store) action = k.Go(Loc.Get(Strings.WhatsNew.StoreCta), live ? props.OpenStoreListing : Inert, live);
             else if (props.TryItFor(h) is { } tryIt) action = k.Go(Loc.Get(Strings.WhatsNew.TryIt), live ? tryIt : Inert, live);
             if (action is not null)
-                content.Add(new BoxEl { Direction = 0, Gap = K.ViewerActionGap, Margin = new Edges4(0f, Spacing.L, 0f, 0f), Children = [action] });
+                content.Add(new BoxEl { Direction = 0, Gap = K.ViewerActionGap, Margin = new Edges4(0f, Spacing.L, 0f, 0f), Children = [action.Value] });
             return new BoxEl { Direction = 1, MaxWidth = K.ViewerTextMaxWidth, AlignSelf = FlexAlign.Start, Children = content.ToArray() };
         }
     }

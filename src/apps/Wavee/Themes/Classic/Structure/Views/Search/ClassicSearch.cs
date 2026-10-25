@@ -527,7 +527,7 @@ internal static class ClassicSearch
         Padding = ClassicChromeLayout.NoticePadding(trailing is not null),
         Children = trailing is null
             ? [new TextEl(text) { Size = ClassicChromeLayout.TextSize, Color = Tok.TextPrimary, Grow = 1f }]
-            : [new TextEl(text) { Size = ClassicChromeLayout.TextSize, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing],
+            : [new TextEl(text) { Size = ClassicChromeLayout.TextSize, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing.Value],
     };
 
     /// <summary>A query row: the search glyph, then the text with the typed run in bold (case-insensitive).</summary>

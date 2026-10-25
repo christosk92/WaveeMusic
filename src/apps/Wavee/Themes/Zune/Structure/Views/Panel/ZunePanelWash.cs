@@ -91,7 +91,7 @@ internal static class ZunePanelWash
             });
         if (!plate) return kids.ToArray();
         kids.Add(Scrim());
-        if (glow is not null) kids.Add(glow);
+        if (glow is not null) kids.Add(glow.Value);
         kids.Add(Edge());
         return kids.ToArray();
     }

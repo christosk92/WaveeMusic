@@ -80,7 +80,7 @@ internal static class ClassicConcertDetail
         var main = new List<Element>(4) { Cells.SplitHero(d.ImageUrl, d.Accent, Identity(d), ClassicConcertTiers.EventHero(layout, wide)) };
         // The rail docks only where the tier has one (C-Concert-Small keeps the tickets inline at every width).
         wide = wide && layout.RailWidth > 0f;
-        if (!wide && tickets is not null) main.Add(tickets);                  // narrow: inline, right after the facts
+        if (!wide && tickets is not null) main.Add(tickets.Value);                  // narrow: inline, right after the facts
         if (layout.LineupWidth > 0f && d.Related.Length > 0)
             // C-Concert-Huge: the lineup a 640 column beside the dates grid (the related concerts as date cards, four a row); either alone takes the row.
             main.Add(new BoxEl
@@ -100,7 +100,7 @@ internal static class ClassicConcertDetail
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Start, Gap = Spacing.XL, MinWidth = 0f,
-            Children = [column with { Grow = 1f, Basis = 0f }, new BoxEl { Width = layout.RailWidth, Shrink = 0f, Direction = 1, Children = [tickets] }],
+            Children = [column with { Grow = 1f, Basis = 0f }, new BoxEl { Width = layout.RailWidth, Shrink = 0f, Direction = 1, Children = [tickets.Value] }],
         };
     }
 

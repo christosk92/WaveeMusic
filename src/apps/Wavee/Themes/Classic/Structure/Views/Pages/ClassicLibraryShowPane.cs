@@ -65,7 +65,7 @@ internal static class ClassicLibraryShowPane
         return new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true,
-            Children = [header, commands, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!] }],
+            Children = [header, commands, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!.Value] }],
         };
     }
 }

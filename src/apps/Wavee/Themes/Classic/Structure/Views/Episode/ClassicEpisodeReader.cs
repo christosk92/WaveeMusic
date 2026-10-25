@@ -86,7 +86,7 @@ internal static class ClassicEpisodeReader
     static Element Section(EpisodeReaderProps p, int index, Element? heading, Element body) => new BoxEl
     {
         Direction = 1, Gap = Spacing.M, MinWidth = 0, MaxWidth = ClassicEpisodeRules.ReaderMeasure, OnRealized = p.Anchors[index],
-        Children = heading is null ? [body] : [heading, body],
+        Children = heading is null ? [body] : [heading.Value, body],
     };
 
     // ══ THE ABOUT SECTION ══════════════════════════════════════════════════════════════════════════════════════════════════

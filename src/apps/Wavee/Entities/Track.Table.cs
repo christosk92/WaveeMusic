@@ -2837,14 +2837,14 @@ public readonly partial struct Track
                 var group = UseComputed(() => _host.GroupHeadAt(_scope.Index.Value - _start));
                 head = _host.GroupHeader(() => group.Value, in shape);
             }
-            if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = head is null ? [row] : [head, row] };
+            if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = head is null ? [row] : [head.Value, row] };
             var t = _trackItem!.Peek();
             int display = _scope.Index.Peek() - _start;
             Element drawer = _host.DrawerBox(t, display, in shape, _scope.Index, _start);
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
-                Children = head is null ? [row, drawer] : [head, row, drawer],
+                Children = head is null ? [row, drawer] : [head.Value, row, drawer],
             };
         }
     }
@@ -2984,7 +2984,7 @@ public readonly partial struct Track
                     return new BoxEl
                     {
                         Key = section is null ? "vitem:blank" : "vitem:recs", Direction = 1,
-                        Children = section is null ? [] : [_host.InsetList(section)],
+                        Children = section is null ? [] : [_host.InsetList(section.Value)],
                     };
                 }
                 default:
@@ -3024,7 +3024,7 @@ public readonly partial struct Track
             return new BoxEl
             {
                 Key = section is null ? "rec:empty" : "rec:section", Direction = 1,
-                Children = section is null ? [] : [section],
+                Children = section is null ? [] : [section.Value],
             };
         }
     }

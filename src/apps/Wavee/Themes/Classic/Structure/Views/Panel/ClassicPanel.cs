@@ -77,7 +77,7 @@ internal static class ClassicPanel
     {
         bool floating = placement != PanelPlacement.Dock;
         // A sheet leads with its head (the grab strip and the row under it: the drag handle); the column below is the arm's own.
-        Element[] kids = head is not null ? [head, .. column] : column;
+        Element[] kids = head is not null ? [head.Value, .. column] : column;
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = CornersFor(placement),

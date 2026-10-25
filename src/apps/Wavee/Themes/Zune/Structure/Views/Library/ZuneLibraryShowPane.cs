@@ -64,7 +64,7 @@ internal static class ZuneLibraryShowPane
             [
                 K.PaneHead(p.Title, p.Open, publisher, p.Meta, verbs, box, brief),
                 new BoxEl { Shrink = 0f },
-                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!] },
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!.Value] },
             ],
         };
     }

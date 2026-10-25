@@ -69,7 +69,7 @@ internal static partial class ClassicLibraryPage
             filter = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = [filter, ViewToggle(p.View(), p.Size(), layout.ViewCell)],
+                Children = [filter.Value, ViewToggle(p.View(), p.Size(), layout.ViewCell)],
             };
         Element titleRow = new BoxEl
         {
@@ -90,7 +90,7 @@ internal static partial class ClassicLibraryPage
         // The head's rows glide when a crossing changes their gap (10 at Small, 8 at Standard) instead of snapping.
         rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
-        if (filter is not null) rows.Add(filter with { Layout = ClassicTierMotion.Shove });
+        if (filter is not null) rows.Add(filter.Value with { Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",

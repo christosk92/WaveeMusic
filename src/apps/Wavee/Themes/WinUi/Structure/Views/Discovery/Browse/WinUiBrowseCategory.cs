@@ -167,7 +167,7 @@ internal static class WinUiBrowseCategory
         // The header is its own row above the shelf (the title at the start, "See all" at the end of the band); an untitled shelf has none.
         return header is null ? shelfEl : new BoxEl
         {
-            Direction = 1, Gap = layout.HeaderGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [header, shelfEl],
+            Direction = 1, Gap = layout.HeaderGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [header.Value, shelfEl],
         };
     }
 
