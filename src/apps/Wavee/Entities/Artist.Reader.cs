@@ -74,8 +74,8 @@ namespace Wavee;
 // SMOOTHNESS IS THE POINT ("no animations, no loading states, clicking feels bad"). Four mechanisms, each named where it
 // lives below:
 //   1. THE MOUNT IS A HARD CUT, AND DATA NEVER TRIGGERS ONE (the 2026-09-18 stabilization, library-stabilization-plan.md
-//      R1/R2). `ReaderMountPolicy.MountKey(artist, scope, sort, narrow)` is the ONLY remount key — it moves for what the
-//      USER changed or what the layout freezes, never for a landing edge. No `Animate` on the keyed list: a key swap is
+//      R1/R2). `ReaderMountPolicy.MountKey(artist, scope, sort)` is the ONLY remount key — it moves for what the
+//      USER changed, never for a landing edge or a width (audit FU2: the narrow arm re-arms every block in place). No `Animate` on the keyed list: a key swap is
 //      synchronous inside one flush, so the new band paints from resident `ArtistFields.Identity` in the SAME frame the
 //      old one leaves — a hard cut, not a fade. A data-driven reshape (a facet page landing, a re-sort as a year lands)
 //      is not a key change at all: the mounted list's realized slots re-render off `_shape` in place — `ReaderItem`
@@ -146,7 +146,8 @@ namespace Wavee;
 //      construction — the counted skeleton is the same geometry as the content.
 //   9. TWO reader-width edges, not the plan's one at 1200 (the reader is 344-650 DIP in a non-maximized window, so a
 //      1200-DIP arm was never seen), decided by the reader's two arms (#158): under the narrow edge (640) the block cover
-//      drops 120 → 88 and the album head STACKS (`_narrow` — the arm the extents and the list mount key read); under
+//      drops 120 → 88 and the album head STACKS (`_narrow` — the arm the extents and the cells read; not a mount input: a flip
+//      re-arms every block in place, its cell's face rebuilt and its extent corrected in `Settle`); under
 //      the medium edge (748, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
 //      extent is corrected in place). Since TC6 both edges are the structure's reader ladder (`ArtistLadders.Reader`, Classic
 //      `Rules\Tiers.Artist.cs`: 24 DIP of hold on widening each), over the width `OnBoundsChanged` writes. W6's
@@ -286,7 +287,7 @@ public readonly partial struct Artist
         /// <summary>The reader's own arranged width, written from <see cref="OnBounds"/> (0 until the first measure: the seed answers until then).</summary>
         readonly Signal<float> _readerW = new(0f);
         /// <summary>The reader's ARM on the structure's reader ladder (<see cref="Theming.ArtistLadders.Reader"/>, TC6), resolved over <see cref="_readerW"/>:
-        /// NARROW (cover 88 + the stacked album head: the list's mount input, so a flip reseeds every block extent), MEDIUM (the spine is GONE and the band
+        /// NARROW (cover 88 + the stacked album head: NOT a mount input, a flip re-arms every block in place and `Settle` corrects its extent), MEDIUM (the spine is GONE and the band
         /// STACKS: NOT a mount input, the band's extent is corrected in place, <see cref="Settle"/>) and wide. One ladder for both edges, so the two arms can
         /// never disagree for a frame; a crossing found after mount commits on the first frame that is not resized.</summary>
         IReadSignal<int>? _arm;
@@ -296,6 +297,8 @@ public readonly partial struct Artist
         IReadSignal<Theming.ThemeFacts>? _facts;
         /// <summary>The narrow arm, read TRACKED (the running render or effect re-runs on a crossing).</summary>
         bool NarrowArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) == Theming.ArtistLadders.ReaderNarrow;
+        /// <summary>The track rows of an arm: the structure's narrow-arm rows, else the shape's own.</summary>
+        static ReaderRows RowsFor(bool narrow) => narrow ? ShellPolicy.Now.LibraryTiers.ReaderNarrowRows : ReaderRows.Core;
         /// <summary>The medium (or narrow) arm: no spine and the stacked band, read TRACKED.</summary>
         bool MediumArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) <= Theming.ArtistLadders.ReaderMedium;
         /// <summary>One cell per ALBUM, minted on its first realize: it owns that block's readiness signal, its two
@@ -398,7 +401,7 @@ public readonly partial struct Artist
             _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _arm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Reader), TierSource.Measured(_readerW, _readerSeed));
             _narrow = NarrowArm;
-            _rows = _narrow ? ShellPolicy.Now.LibraryTiers.ReaderNarrowRows : ReaderRows.Core;
+            _rows = RowsFor(_narrow);
             _stacked = MediumArm;                                            // subscribe: the spine's presence is a tree edit
             bool spine = !_stacked;
             _shape = UseComputed(_compute);
@@ -431,12 +434,13 @@ public readonly partial struct Artist
                 _loggedOrder = "";
             }
             // The TRIPLE is what owns a remembered scroll offset (artist · scope · sort — the Recents pivot rule). The
-            // MOUNT key is R2's: artist, scope, sort and the NARROW arm — every input FROZEN at mount — and NOTHING a data
-            // landing can move. A reshape (a facet page, a re-sort) never reaches here at all; the mounted list's
-            // realized slots re-render off `_shape` in place instead (see the class remarks, mechanism 1). The MEDIUM arm
-            // is deliberately not in it: the band it reshapes is one row whose extent `Settle` corrects in place.
+            // MOUNT key is R2's: artist, scope and sort — what the user picked — and NOTHING a data landing or a width can
+            // move. A reshape (a facet page, a re-sort) never reaches here at all; the mounted list's realized slots re-render
+            // off `_shape` in place instead (see the class remarks, mechanism 1). Neither arm is in it: the MEDIUM arm reshapes
+            // the band, and the NARROW arm re-arms every block (its cell's face follows the arm, `BlockCell.Face`), both rows
+            // whose extents `Settle` corrects in place (audit FU2: the narrow arm in the key rebuilt every block on a crossing).
             string triple = _artist.ToString(CultureInfo.InvariantCulture) + ":" + shape.Scope + ":" + shape.Sort;
-            string key = ReaderMountPolicy.MountKey(_artist, shape.Scope, shape.Sort, _narrow);
+            string key = ReaderMountPolicy.MountKey(_artist, shape.Scope, shape.Sort);
             if (!string.Equals(_listKey, key, StringComparison.Ordinal)) Rebase(key, triple);
 
             // The structure draws the lane (the keyed list host, the spine beside it, the band and the pinned sub-rail as items 0 and 1 of the one scroller). It is handed
@@ -740,12 +744,15 @@ public readonly partial struct Artist
             if (!string.Equals(_spyKey, _listKey, StringComparison.Ordinal)) { _spyKey = _listKey; _current.SetIfChanged(0); }
             if (!string.Equals(_extentKey, _listKey, StringComparison.Ordinal)) SeedExtents();
             else if (_extents.Length < _count) GrowExtents();
-            bool narrow = _narrow;
+            // The NARROW arm is not a mount input either: a flip re-arms every block in place, and its extent reaches the table HERE, read off the SIGNAL
+            // (it subscribes this effect) like the band's below, so the answer cannot depend on whether the render or this effect drains first.
+            bool narrow = NarrowArm;
+            var rows = RowsFor(narrow);
             for (int i = 0; i < _count; i++)
             {
                 var b = _blocks[i];
                 if (_cells.TryGetValue(b.AlbumSlot, out var cell)) cell.Settle(b);
-                float extent = ReaderShape.ExtentOf(in b, narrow, in _rows);
+                float extent = ReaderShape.ExtentOf(in b, narrow, in rows);
                 if (_extents[i] == extent) continue;
                 // The cache stays BLOCK-indexed (it mirrors `_blocks`); only the correction crosses into flat space.
                 // Before the viewport is live there is no table to correct — the seed will read the CURRENT extent anyway.
@@ -1043,8 +1050,16 @@ public readonly partial struct Artist
             /// a signal). Rows and Failed move; the album slot never does.</summary>
             public ReaderBlock Block { get; set; }
 
-            /// <inheritdoc />
-            public Element? Face { get; set; }
+            /// <summary>The view's finished region, cached for the ARM it was built in: a reader that re-arms in place (the narrow arm is no mount input) hands
+            /// the slot no face after a flip, so the view builds the block again in the new arm and the region re-diffs it in place under its key. The read
+            /// is tracked (the slot that reads it re-renders on a flip).</summary>
+            public Element? Face
+            {
+                get => _faceNarrow == Narrow ? _face : null;
+                set { _face = value; _faceNarrow = _r.NarrowArm; }
+            }
+            Element? _face;
+            bool _faceNarrow;
 
             /// <inheritdoc />
             public int AlbumSlot => _slot;
@@ -1052,9 +1067,9 @@ public readonly partial struct Artist
             /// <inheritdoc />
             public Loadable<int> Load => _load;
 
-            /// <summary>The arm this mount froze (it is a list mount input).</summary>
-            public bool Narrow => _r._narrow;
-            public ReaderRows Rows => _r._rows;
+            /// <summary>The reader's arm now, read TRACKED: the block is built in it, and a flip rebuilds the block in place (<see cref="Face"/>).</summary>
+            public bool Narrow => _r.NarrowArm;
+            public ReaderRows Rows => RowsFor(Narrow);
 
             /// <inheritdoc />
             public Func<ContextMenuModel?> Menu { get; }

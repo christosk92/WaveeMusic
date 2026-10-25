@@ -100,7 +100,12 @@ public sealed record AlbumVideoCard(string Key, string Uri, string Title, string
 /// <summary>One media-surface row or card of the trailing band: related albums, the playlists an album appears on, and the fans' circular artist cards.
 /// The surface's subtitle is a plain string the view paints.</summary>
 public sealed record TrailCardData(string Key, string Uri, string Title, string? Subtitle, string? CoverUrl, Action OnClick, Action? OnPlay,
-                                   bool Circular, Func<object?>? Drag, Func<ContextMenuModel?>? Menu);
+                                   bool Circular, Func<object?>? Drag, Func<ContextMenuModel?>? Menu)
+{
+    /// <summary>A release row's kind and year ("Album · 2001", the TypeYear eyebrow's words), for a theme that captions an artist's own releases by them
+    /// (Z-Album's "more by"); null on a playlist or an artist card. Contract 1.81.</summary>
+    public string? TypeYear { get; init; }
+}
 
 /// <summary>What a trailing list row is.</summary>
 public enum TrailRowKind : byte
@@ -195,6 +200,10 @@ public sealed record AlbumTrailStackProps(string Title, int Count, int Shown, Ac
     /// <summary>The name the title carries ("Mia Solace" in "More by Mia Solace"), contract 1.62; null when the title is all words ("Featured on"). A theme
     /// may re-case the title's words, never the name.</summary>
     public string? Name { get; init; }
+
+    /// <summary>The stack's artist's discography page: set on a stack that lists ONE artist's releases ("More by"), null elsewhere. A theme may link it from
+    /// the heading (Z-Album: "discography"). Contract 1.81.</summary>
+    public Action? Discography { get; init; }
 
     /// <inheritdoc />
     public bool Equals(AlbumTrailStackProps? other) => ReferenceEquals(this, other);

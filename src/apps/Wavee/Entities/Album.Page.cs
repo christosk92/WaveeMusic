@@ -1026,7 +1026,8 @@ public readonly partial struct Album
                 var asideFans = new TrailCardData[fansStay ? 0 : fanCount];
                 for (int i = 0; i < asideFans.Length; i++) asideFans[i] = FanCard(new Artist(fans[i]));
                 Element? moreByStack = moreBy > 0 && billed.Length > 0
-                    ? Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot, Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)), name: lead.Name)
+                    ? Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot, Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)), name: lead.Name,
+                            artist: lead.Slot)
                     : null;
                 var billedArtists = new List<Artist>(billed.Length);
                 for (int i = 0; i < billed.Length; i++)
@@ -1047,7 +1048,7 @@ public readonly partial struct Album
             var lists = new List<Element>(4);
             if (moreBy > 0 && billed.Length > 0)
                 lists.Add(Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot,
-                                Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)), name: lead.Name));
+                                Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)), name: lead.Name, artist: lead.Slot));
             if (featured > 0)
                 lists.Add(Stack(Loc.Get(Strings.Detail.FeaturedOn), featured, TrailKind.FeaturedOn, slot,
                                 Signature("featured:", featured, e.AlbumRecommendations.Targets(slot))));
@@ -1116,7 +1117,11 @@ public readonly partial struct Album
             OnPlay: () => Playback.PlayOrToggleContext(id),
             Circular: false,
             Drag: () => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover),
-            Menu: HomeCardNav.MenuOf(in card)));
+            Menu: HomeCardNav.MenuOf(in card))
+        {
+            // The release's own kind and year (the TypeYear eyebrow's words), for a theme that captions an artist's releases by them (contract 1.81).
+            TypeYear = Detail.Text.Eyebrow(BadgeStyle.TypeYear, x.Kind, x.Year, collaborative: false, isPublic: false, visibilityKnown: false),
+        });
     }
 
     /// <summary>A playlist this album appears on: the same plated row, the owner as its subtitle, the same card menu.</summary>

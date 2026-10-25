@@ -60,7 +60,7 @@ internal static class ClassicInsights
         float edge = MathF.Max(SheetToggleEdge, ClassicDetailTiers.Of(ctx.Tier()).Target);
         return p.Form == DetailInsightsToggleForm.BandWord
             ? Embed.Comp(() => new InsightsBandWord(toggle))
-            : ToolTip.Wrap(Embed.Comp(new BarProps(toggle, edge), static () => new InsightsBarButton()) with { Key = "insights:toggle:bar" },
+            : ToolTip.Wrap(Detail.Skeleton.Derivable(Embed.Comp(new BarProps(toggle, edge), static () => new InsightsBarButton()) with { Key = "insights:toggle:bar" }),
                 Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 

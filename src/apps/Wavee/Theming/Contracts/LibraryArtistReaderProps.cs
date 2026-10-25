@@ -147,10 +147,11 @@ public interface IArtistReaderBlock
     /// <summary>The block's readiness: the region cross-dissolves when it flips (Ready also stands for a failed tracklist, which the block paints itself).</summary>
     Loadable<int> Load { get; }
 
-    /// <summary>The narrow arm this mount froze (cover 88 and the stacked head).</summary>
+    /// <summary>The reader's narrow arm NOW (cover 88 and the stacked head), read tracked: a flip re-arms the block in place, so a view builds it in this arm and
+    /// caches its face in <see cref="Face"/>, which the cell hands back only for the arm it was built in (audit FU2).</summary>
     bool Narrow { get; }
 
-    /// <summary>The track rows this mount froze (their height, and whether they run under the cover): the same value the reader's extents read, so the
+    /// <summary>The track rows of the arm (their height, and whether they run under the cover): the same value the reader's extents read, so the
     /// block's measure is its analytic extent by identity. Contract 1.80 (audit FU).</summary>
     Artist.ReaderRows Rows { get; }
 

@@ -23,13 +23,14 @@ namespace Wavee;
 /// (owned by another agent, wave 2) reads instead of re-deriving them inline.</summary>
 public static class ReaderMountPolicy
 {
-    /// <summary>The list remounts for what the USER changed and what the layout freezes — never for data landing.
+    /// <summary>The list remounts for what the USER changed — never for data landing, and never for a width.
     /// <paramref name="artist"/>/<paramref name="scope"/>/<paramref name="sort"/> select which rows exist and in what
-    /// order they are asked for; <paramref name="narrow"/> selects the block layout (narrow vs wide column). A facet
-    /// landing, a re-sort of already-listed rows, or a block's own data changing must never move this key — those are
-    /// in-place reshapes of the SAME mount, exactly like a library navigator reorder (RC3's sibling rule).</summary>
-    public static string MountKey(int artist, int scope, int sort, bool narrow)
-        => artist + ":" + scope + ":" + sort + ":" + (narrow ? "n" : "w");
+    /// order they are asked for. A facet landing, a re-sort of already-listed rows, a block's own data changing, or the
+    /// reader's narrow arm (the block layout: the 88 cover and the stacked head) must never move this key — those are
+    /// in-place reshapes of the SAME mount, exactly like a library navigator reorder (RC3's sibling rule): the arm re-arms
+    /// each block in place and corrects its extent (audit FU2: the arm in the key rebuilt every block on a crossing).</summary>
+    public static string MountKey(int artist, int scope, int sort)
+        => artist + ":" + scope + ":" + sort;
 
     /// <summary>Scope 1 ("all releases") shows the catalogue group only once all three facets' FIRST pages have
     /// answered (or failed): before that, `Compute` (R3) withholds the catalogue span and the list is library rows
