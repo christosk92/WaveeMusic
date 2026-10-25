@@ -58,6 +58,9 @@ public readonly partial struct Track
         public abstract int Count { get; }
         /// <summary>Declared total (≥ Count).</summary>
         public abstract int Total { get; }
+        /// <summary>How many rows the loading table should shimmer before any is resident: what the source already knows of its length (the album's own track
+        /// count before its track list answers, else the declared total), 0 when nothing does.</summary>
+        public virtual int ExpectedRows => Total;
         /// <summary>Unknown ⇒ shimmer, never "Nothing here yet"; Failed only while nothing is resident (G-050).</summary>
         public abstract EdgeState State { get; }
         /// <summary>The edge version for this parent.</summary>
@@ -125,6 +128,8 @@ public readonly partial struct Track
         public override EntityUri Context => _album.Uri;
         public override int Count => Edge.Count(_album.Slot);
         public override int Total => Edge.Total(_album.Slot);
+        // The header states "2 songs" from the album row before the track list answers: the shimmer stands that many rows, not a full chunk.
+        public override int ExpectedRows => _album.Knows(AlbumFields.TrackCount) && _album.TrackCount > 0 ? _album.TrackCount : Total;
         public override EdgeState State => Edge.Readiness(_album.Slot);
         public override uint Version => Edge.Version(_album.Slot);
         public override Track At(int index)
@@ -1912,7 +1917,10 @@ public readonly partial struct Track
         {
             Edges4 inset = !shape.Set.Classic && (!VerticalArm || ColumnsForm) ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
-            var rows = new Element[Design.RevealRamp.Chunk];
+            // As many rows as the source already knows it has (a 2-song single shimmered a 12-row chunk, and the section under it climbed 400 DIP when the
+            // rows landed: "About this album", owner video 2026-10-25), a full chunk when nothing is known yet.
+            int expected = _latest.Source.ExpectedRows;
+            var rows = new Element[expected > 0 ? Math.Min(expected, Design.RevealRamp.Chunk) : Design.RevealRamp.Chunk];
             for (int i = 0; i < rows.Length; i++)
             {
                 rows[i] = ShimmerGrid(in shape, i);
