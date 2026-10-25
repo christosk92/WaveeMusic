@@ -226,10 +226,11 @@ internal static partial class ClassicLibraryPage
         ExitDynamics: TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut));
 
     /// <summary>The two arms (the split columns and the one-column drill-in) cross-fade when the layout tier crosses: the arriving arm fades in while the leaving one fades out
-    /// as an exit orphan under it, never a snap (themes plan 3.3). Opacity only, the drill's own 160 ms.</summary>
+    /// as an exit orphan under it, never a snap (themes plan 3.3). Opacity only, the drill's own 160 ms, and the DECLARED tier swap (<see cref="ClassicTierMotion.SwapFade"/>):
+    /// the arms are two arrangements of the page whose head and navigator the host re-places across the swap.</summary>
     static readonly LayoutTransition s_arm = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut),
-        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        Enter: ClassicTierMotion.SwapFade, Exit: ClassicTierMotion.SwapFade,
         ExitDynamics: TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut));
 
     static readonly LayoutTransition s_drillRoot = new(

@@ -539,7 +539,7 @@ public static partial class Diagnostics
             var window = new RectF(0f, 0f, width, height);
             var nodes = new List<InspectLint.Node>();
             var clicks = new Dictionary<Delegate, int>();
-            var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert, int Root)>();
+            var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert, int Root, float HitTop)>();
             var children = new List<NodeHandle>();
             var blockers = new List<RectF>();
             var exiting = new List<InspectLint.ExitingRun>();
@@ -555,10 +555,10 @@ public static partial class Diagnostics
                     seeds[r] = (true, screen, content, shown);
                 }
             }
-            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false, r));
+            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false, r, float.NegativeInfinity));
             while (stack.Count > 0)
             {
-                var (node, parent, depth, above, inertAbove, root) = stack.Pop();
+                var (node, parent, depth, above, inertAbove, root, hitTop) = stack.Pop();
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
@@ -661,6 +661,7 @@ public static partial class Diagnostics
                         Opacity = opacity,
                         Inert = inert,
                         Sticky = (flags & NodeFlags.StickyPinned) != 0,
+                        HitTop = hitTop,
                         Fill = paint.Fill,
                         BorderWidth = paint.BorderWidth,
                         BorderColor = paint.BorderColor,
@@ -672,7 +673,17 @@ public static partial class Diagnostics
                 }
                 children.Clear();
                 for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) children.Add(c);
-                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, self == parent ? depth : depth + 1, opacity, inert, root));
+                // A virtual list's content node: its recyclable items (past the pinned prefix) take no hits above the item band, the viewport's top
+                // plus the band's inset (InputDispatcher.Hit); the prefix and everything outside keep the band they inherit.
+                float bandTop = float.NegativeInfinity;
+                int bandPrefix = int.MaxValue;
+                if (scene.TryGetVirtualItemBand(node, out int itemPrefix, out float itemInset))
+                {
+                    bandTop = scene.PresentedAbsoluteRect(scene.Parent(node)).Y + itemInset;
+                    bandPrefix = itemPrefix;
+                }
+                for (int i = children.Count - 1; i >= 0; i--)
+                    stack.Push((children[i], self, self == parent ? depth : depth + 1, opacity, inert, root, i >= bandPrefix ? MathF.Max(hitTop, bandTop) : hitTop));
             }
 
             // Exit orphans (a crossfade's outgoing line) are detached from the tree while they animate out: their rects are relative to the

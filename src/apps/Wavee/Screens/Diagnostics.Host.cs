@@ -20,7 +20,6 @@
 // (Diagnostics ▸ Scroll, persisted) is Summary or Trace.
 
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text;
 using FluentGpu;
 using FluentGpu.Hosting;
@@ -501,43 +500,6 @@ public static partial class Diagnostics
         static long s_lastAllocBytes, s_lastAllocTicks, s_peakWorkingSet;
         static long s_lastPageFaults, s_lastFaultTicks;
 
-        /// <summary>kernel32's PROCESS_MEMORY_COUNTERS (natural packing; <c>cb</c> is its own size).</summary>
-        [StructLayout(LayoutKind.Sequential)]
-        struct PROCESS_MEMORY_COUNTERS
-        {
-            public uint cb;
-            public uint PageFaultCount;
-            public nuint PeakWorkingSetSize, WorkingSetSize, QuotaPeakPagedPoolUsage, QuotaPagedPoolUsage,
-                         QuotaPeakNonPagedPoolUsage, QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage;
-        }
-
-        [LibraryImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool K32GetProcessMemoryInfo(nint hProcess, ref PROCESS_MEMORY_COUNTERS counters, uint cb);
-
-        /// <summary>The process's cumulative page-fault count (soft + hard: the OS does not split them in this counter), through the
-        /// current-process pseudo handle. False when the call is unavailable. The F244 correlate: a render-thread present that blocks
-        /// 100-320 ms off-CPU under 86-97% machine memory load is either DWM / the present queue or this process paging, and the
-        /// delta between two <c>mem.sample</c> lines says which.</summary>
-        static bool TryReadPageFaults(out long total)
-        {
-            total = 0;
-            // Every field is assigned (the OS fills the gauges we do not read) so the never-assigned-field warning stays quiet.
-            var counters = new PROCESS_MEMORY_COUNTERS
-            {
-                cb = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<PROCESS_MEMORY_COUNTERS>(), PageFaultCount = 0,
-                PeakWorkingSetSize = 0, WorkingSetSize = 0, QuotaPeakPagedPoolUsage = 0, QuotaPagedPoolUsage = 0,
-                QuotaPeakNonPagedPoolUsage = 0, QuotaNonPagedPoolUsage = 0, PagefileUsage = 0, PeakPagefileUsage = 0,
-            };
-            try
-            {
-                if (!K32GetProcessMemoryInfo(new nint(-1), ref counters, counters.cb)) return false;
-            }
-            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return false; }
-            total = counters.PageFaultCount;
-            return true;
-        }
-
         internal static void OnFrame()
         {
             double since = Clock.Elapsed.TotalMilliseconds - s_lastAt;
@@ -556,10 +518,16 @@ public static partial class Diagnostics
             double rate = s_lastAllocTicks != 0 && nowTicks > s_lastAllocTicks
                 ? (allocNow - s_lastAllocBytes) / ((nowTicks - s_lastAllocTicks) / (double)System.Diagnostics.Stopwatch.Frequency) / 1048576.0 : 0;
             s_lastAllocBytes = allocNow; s_lastAllocTicks = nowTicks;
+            // One GetProcessMemoryInfo for this process (Residency.TryReadProcessMemory), never Process.PrivateMemorySize64: that
+            // snapshots every process on the machine, 5.8 ms on the UI thread inside the navigation frame this line ends.
+            // The page-fault count is the F244 correlate: a render-thread present that blocks 100-320 ms off-CPU under 86-97 %
+            // machine memory load is either DWM / the present queue or this process paging, and the delta between two lines says which.
+            bool haveMemory = Residency.TryReadProcessMemory(out var pm);
             long pageFaults = 0, pageFaultsDelta = 0;
             double pageFaultsPerSec = 0;
-            if (TryReadPageFaults(out pageFaults))
+            if (haveMemory)
             {
+                pageFaults = pm.PageFaults;
                 if (s_lastFaultTicks != 0 && nowTicks > s_lastFaultTicks)
                 {
                     pageFaultsDelta = unchecked((uint)pageFaults - (uint)s_lastPageFaults);   // PageFaultCount is a wrapping DWORD
@@ -567,10 +535,9 @@ public static partial class Diagnostics
                 }
                 s_lastPageFaults = pageFaults; s_lastFaultTicks = nowTicks;
             }
-            long ws = Environment.WorkingSet, privateBytes = 0, processPeak = 0;
+            long ws = Environment.WorkingSet, privateBytes = haveMemory ? pm.PrivateBytes : 0, processPeak = haveMemory ? pm.PeakWorkingSet : 0;
             long previousPeak = s_peakWorkingSet;   // the level is judged against the peak BEFORE this sample raises it
             if (ws > s_peakWorkingSet) s_peakWorkingSet = ws;
-            try { using var p = System.Diagnostics.Process.GetCurrentProcess(); privateBytes = p.PrivateMemorySize64; processPeak = p.PeakWorkingSet64; } catch { }
             var gc = GC.GetGCMemoryInfo();
             var gens = gc.GenerationInfo;   // a span: read into plain locals (a ref local cannot be captured)
             long gen0 = gens.Length > 0 ? gens[0].SizeAfterBytes : 0, gen1 = gens.Length > 1 ? gens[1].SizeAfterBytes : 0,
@@ -617,16 +584,12 @@ public static partial class Diagnostics
         /// <summary>The process-lifetime peak, after the UI loop (no engine read after host disposal).</summary>
         internal static void SampleProcessEnd()
         {
-            try
-            {
-                RoutineSummary.FlushAll(force: true);
-                using var p = System.Diagnostics.Process.GetCurrentProcess();
-                long ws = p.WorkingSet64;
-                s_peakWorkingSet = Math.Max(s_peakWorkingSet, ws);
-                Log.Event(WaveeLogLevel.Info, "mem", "mem.sample", "memory session-end reason=session-end ws=" + Mb(ws) + " wsPeak=" + Mb(s_peakWorkingSet)
-                    + " private=" + Mb(p.PrivateMemorySize64) + " processPeak=" + Mb(p.PeakWorkingSet64) + " wsBytes=" + ws + " processPeakBytes=" + p.PeakWorkingSet64);
-            }
-            catch (InvalidOperationException) { }
+            RoutineSummary.FlushAll(force: true);
+            if (!Residency.TryReadProcessMemory(out var p)) return;
+            long ws = p.WorkingSet;
+            s_peakWorkingSet = Math.Max(s_peakWorkingSet, ws);
+            Log.Event(WaveeLogLevel.Info, "mem", "mem.sample", "memory session-end reason=session-end ws=" + Mb(ws) + " wsPeak=" + Mb(s_peakWorkingSet)
+                + " private=" + Mb(p.PrivateBytes) + " processPeak=" + Mb(p.PeakWorkingSet) + " wsBytes=" + ws + " processPeakBytes=" + p.PeakWorkingSet);
         }
 
         static string Mb(long bytes) => (bytes / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture);

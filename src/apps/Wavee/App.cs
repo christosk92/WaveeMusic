@@ -8,8 +8,10 @@
 // Spec: plan
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime;
+using System.Threading;
 
 namespace Wavee;
 
@@ -128,6 +130,7 @@ public static class App
         Settings.ClearLicenseKeys = Spotify.Audio.KeyStore.Clear;
         Entities.Boot(Platform.Scope);   // table set for the last scope, Store thread, Fetch
         Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
+        StartupTimeline.Mark("entities");
         if (Platform.Args.Fake) Playback.OnThisPc.UseFake(Entities.FakeOnThisPc);   // --fake: a stable spread of "on this PC" rows (ZC2's fact has no cache to read)
         if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
         Spotify.Boot();                  // session static, signals created once; login later
@@ -164,6 +167,7 @@ public static class App
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
         Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
+        StartupTimeline.Mark("playback");
         Shell.InstallUi();               // RootFactory + the Wave-4 pages; must precede Run (I1)
         FrameModel.UnknownRouteSink = static key => Log.Warn("nav", "route.unknown: " + key);   // the frame decides when (first sighting), the host says it
         Modules.InstallUi();             // the module: page, ModuleOpen/LocalPath, PlayLinkRouter.Modules/Match (WP-6.T)
@@ -192,6 +196,7 @@ public static class App
         Diagnostics.InstallPages();      // the diagnostics pages and the screens' diagnostics seams (WP-6.S)
         if (gui) Diagnostics.InstallServices();   // run marker, frame watch, network cost host, the GUI probe arms (WP-6.S)
         Log.Event(WaveeLogLevel.Info, "app", "boot.pages", "", null, Log.SinceStartMs);
+        StartupTimeline.Mark("pages");
         if (gui)
         {
             Shell.StartUpdater();        // AFTER Diagnostics.InstallServices: the updater reads Update.Host.IsMetered at start (WP-6.R)
@@ -241,6 +246,7 @@ public static class App
     [STAThread]
     static int Main(string[] args)
     {
+        StartupTimeline.Mark("main");
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency; // P16a, once
         Glyphs.Register();               // wavee-icons.otf PUA + bundled SegoeFluentIcons.ttf, BEFORE the harness runs, or every Fluent-Icons glyph is tofu on Win10 (ch 00 §9.5)
         // The crash handler's whole life is here, before ANYTHING else — it never opens settings, the store or the
@@ -265,6 +271,7 @@ public static class App
         if (!bootThrew)
         {
             Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "", null, Log.SinceStartMs);
+            StartupTimeline.Mark("platform");
             if (Diagnostics.Probe.TryRun(args, out int code))          // --headless (headless plan §3.2): no window, no Shell; installs its own marshallers
             {
                 Platform.Shutdown();
@@ -347,5 +354,68 @@ public static class App
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Platform);
         Platform.Shutdown();             // the log's file sink writes on a pool thread: without this the exit tail never reaches wavee-yyyyMMdd.log
         return 0;
+    }
+}
+
+/// <summary>The startup phases on the QPC clock, in ms since the OS created the process (PERF r3 UI). The <c>boot.*</c> log lines
+/// carry Environment.TickCount64 (15.6 ms steps); these marks are exact, so a startup A/B can compare phases, not just totals.
+/// One line, <c>boot.timeline</c>, is logged once the window is revealed and the first route restored; <c>--startup-bench</c> and
+/// <c>--frame-bench</c> write the same phases into their summaries. Marks come from Main's thread and then the UI thread, in
+/// sequence; the first mark anchors the process creation time (GetProcessTimes through <c>Process.StartTime</c>).</summary>
+public static class StartupTimeline
+{
+    const int Capacity = 24;
+    static readonly string[] s_names = new string[Capacity];
+    static readonly long[] s_qpc = new long[Capacity];
+    static int s_count;
+    static long s_startQpc;
+
+    /// <summary>Record phase <paramref name="name"/> now (ignored past the capacity, and for a name already marked).</summary>
+    public static void Mark(string name) => MarkAt(name, System.Diagnostics.Stopwatch.GetTimestamp());
+
+    /// <summary>Record phase <paramref name="name"/> at a QPC stamp taken elsewhere (the device's first present).</summary>
+    public static void MarkAt(string name, long qpc)
+    {
+        if (s_startQpc == 0) s_startQpc = Anchor(System.Diagnostics.Stopwatch.GetTimestamp());
+        int n = Volatile.Read(ref s_count);
+        for (int i = 0; i < n; i++) if (s_names[i] == name) return;
+        int at = Interlocked.Increment(ref s_count) - 1;
+        if (at >= Capacity) return;
+        s_qpc[at] = qpc;
+        Volatile.Write(ref s_names[at], name);
+    }
+
+    static long Anchor(long nowQpc)
+    {
+        try
+        {
+            using var self = System.Diagnostics.Process.GetCurrentProcess();
+            double ms = (DateTime.Now - self.StartTime).TotalMilliseconds;
+            return ms is >= 0 and < 24.0 * 3600 * 1000 ? nowQpc - (long)(ms * System.Diagnostics.Stopwatch.Frequency / 1000.0) : nowQpc;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception) { return nowQpc; }
+    }
+
+    /// <summary>The phases marked so far, in mark order: (name, ms since process creation).</summary>
+    public static IReadOnlyList<KeyValuePair<string, double>> Phases()
+    {
+        int n = Math.Min(Volatile.Read(ref s_count), Capacity);
+        var list = new List<KeyValuePair<string, double>>(n);
+        for (int i = 0; i < n; i++)
+            if (Volatile.Read(ref s_names[i]) is { } name)
+                list.Add(new(name, (s_qpc[i] - s_startQpc) * 1000.0 / System.Diagnostics.Stopwatch.Frequency));
+        return list;
+    }
+
+    /// <summary>"main=12.3 platform=… revealed=…" (ms since process creation, one decimal).</summary>
+    public static string Line()
+    {
+        var sb = new System.Text.StringBuilder(256);
+        foreach (var kv in Phases())
+        {
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(kv.Key).Append('=').Append(kv.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return sb.ToString();
     }
 }

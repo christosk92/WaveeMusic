@@ -112,8 +112,8 @@ public static partial class Settings
     /// render) and keep the block's text for the diagnostics copy.</summary>
     public static ReceiptsSample SampleReceipts()
     {
-        using var proc = System.Diagnostics.Process.GetCurrentProcess();
-        long ws = proc.WorkingSet64;
+        using var proc = System.Diagnostics.Process.GetCurrentProcess();   // StartTime only (GetProcessTimes on its handle)
+        long ws = Environment.WorkingSet;   // GetProcessMemoryInfo; Process.WorkingSet64 snapshots every process on the machine
         var tier = ReceiptsTier(GpuProfile.Tier);
         var snap = D3D12Device.LastVideoMemory;
 

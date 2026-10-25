@@ -61,8 +61,8 @@ public static partial class Deck
                 Width = labelW, Height = labelH, Shrink = 0f, Corners = CornerRadius4.All(3f),
                 Fill = labelStyle switch { "chrome" => ColorF.Transparent, "hand" => Hex(0xFFFDF5), _ => Hex(0xF2E9D8) },
                 Gradient = labelStyle == "chrome" ? GradientSpec.Vertical(Hex(0xE8E8EC), Hex(0xB9BCC4)) : null,
-                // The style is a FROZEN factory field: an option flip remounts, so the key carries it.
-                Children = [Embed.Comp(() => new CassetteLabel { Sig = sig, Style = labelStyle, W = labelW, H = labelH, BadgeD = badgeD })
+                // The size and the style are re-pushed: a rail quantum redraws the label in place; the key names the style's option.
+                Children = [Embed.Comp(new CassetteLabelProps(sig, labelStyle, labelW, labelH, badgeD), static () => new CassetteLabel())
                     with { Key = "cassette-label:" + labelStyle }],
             };
 
@@ -208,15 +208,18 @@ public static partial class Deck
         /// <summary>The two lines of ink on the label — the only part of the cassette that re-renders. Latched: a new
         /// album re-letters at the top of the eject, a same-album advance re-letters in place, an unknown row never
         /// blanks the label.</summary>
+        sealed record CassetteLabelProps(Slab Sig, string Style, float W, float H, float BadgeD);
+
         sealed class CassetteLabel : Component
         {
-            public required Slab Sig;
-            public required string Style;
-            public required float W, H, BadgeD;
+            Slab Sig = null!;
+            string Style = "";
+            float W, H, BadgeD;
             Latch _latch;
 
             public override Element Render()
             {
+                (Sig, Style, W, H, BadgeD) = UseProps<CassetteLabelProps>();
                 _latch.Update(Sig, image: false);
                 string title = TitleOf(_latch.Shown), artist = ArtistsOf(_latch.Shown), album = AlbumNameOf(_latch.Shown);
                 string second = album.Length > 0 && artist.Length > 0 ? artist + " · " + album : artist.Length > 0 ? artist : album;
@@ -454,7 +457,7 @@ public static partial class Deck
                         {
                             Width = stripW, Height = stripH, Shrink = 0f, Corners = CornerRadius4.All(2f), Fill = Hex(0xF4EFE6),
                             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-                            Children = [Embed.Comp(() => new MdLabel { Sig = sig, W = stripW * 0.94f, H = stripH }) with { Key = "md-label" }],
+                            Children = [Embed.Comp(new MdLabelProps(sig, stripW * 0.94f, stripH), static () => new MdLabel()) with { Key = "md-label" }],
                         }),
                     ]),
                 ],
@@ -499,14 +502,17 @@ public static partial class Deck
         }
 
         /// <summary>The cartridge's paper strip: TITLE · ARTIST, uppercase, one line, latched like the cassette label.</summary>
+        sealed record MdLabelProps(Slab Sig, float W, float H);
+
         sealed class MdLabel : Component
         {
-            public required Slab Sig;
-            public required float W, H;
+            Slab Sig = null!;
+            float W, H;
             Latch _latch;
 
             public override Element Render()
             {
+                (Sig, W, H) = UseProps<MdLabelProps>();
                 _latch.Update(Sig, image: false);
                 string title = TitleOf(_latch.Shown), artist = ArtistsOf(_latch.Shown);
                 string text = title.Length > 0 && artist.Length > 0 ? title + " · " + artist : title.Length > 0 ? title : artist;
@@ -551,7 +557,7 @@ public static partial class Deck
                 }),
                 new CanvasChild(bodyX + 0.08f * bodyW, bodyY + 0.05f * bodyH, Lcd(lcdW, lcdH, lcdFill, ink, sig, frac)),
                 new CanvasChild(bodyX + (bodyW - wheelD) * 0.5f, bodyY + bodyH * 0.955f - wheelD,
-                    Embed.Comp(() => new IpodWheel { Gesture = gesture, Frac = frac, Diameter = wheelD, Body = body })
+                    Embed.Comp(new IpodWheelProps(gesture, frac, wheelD, body), static () => new IpodWheel())
                         with { Key = "ipod-wheel:" + body }),
             ]) with { Gradient = GradientSpec.Vertical(Hex(0x3A3F4A), Hex(0x22252C)) };
         }
@@ -585,7 +591,7 @@ public static partial class Deck
                     Width = battW, Height = battH, Shrink = 0f, BorderWidth = 1f, BorderColor = Hex(0x333333), Corners = CornerRadius4.All(1f),
                     Children = [new BoxEl { Width = battW * 0.7f, Height = MathF.Max(1f, battH - 2f), Margin = new Edges4(1f, 1f, 0f, 1f), Shrink = 0f, Fill = Hex(0x3AA757) }],
                 }),
-                new CanvasChild(0f, 0f, Embed.Comp(() => new IpodScreen { Sig = sig, W = w, H = h, Ink = ink }) with { Key = "ipod-screen" }),
+                new CanvasChild(0f, 0f, Embed.Comp(new IpodScreenProps(sig, w, h, ink), static () => new IpodScreen()) with { Key = "ipod-screen" }),
                 new CanvasChild(progX, progY, new BoxEl
                 {
                     Width = progW, Height = progH, Shrink = 0f, ClipToBounds = true, BorderWidth = 1f, BorderColor = Hex(0x2A2F38),
@@ -625,15 +631,18 @@ public static partial class Deck
         };
 
         /// <summary>The LCD's art and three lines — the only part of the iPod that changes with the SONG (not the album).</summary>
+        sealed record IpodScreenProps(Slab Sig, float W, float H, ColorF Ink);
+
         sealed class IpodScreen : Component
         {
-            public required Slab Sig;
-            public required float W, H;
-            public required ColorF Ink;
+            Slab Sig = null!;
+            float W, H;
+            ColorF Ink;
             Latch _latch;
 
             public override Element Render()
             {
+                (Sig, W, H, Ink) = UseProps<IpodScreenProps>();
                 _latch.Update(Sig, image: false, followTrack: true);
                 var shown = _latch.Shown;
                 float w = W, h = H, art = 0.34f * w, textW = 0.54f * w;
@@ -662,18 +671,21 @@ public static partial class Deck
         /// one full turn moves the playhead a quarter of the track — through the host's shared gesture. The drag state is
         /// instance fields (the wheel is keyed on the body and nothing re-pushes into it, ch 23 §6.4(2)). The centre button
         /// and the three glyph captions are their own hit nodes, so pressing them never arms the scrub.</summary>
+        sealed record IpodWheelProps(Gesture Gesture, Func<float> Frac, float Diameter, string Body);
+
         sealed class IpodWheel : Component
         {
-            public required Gesture Gesture;
-            public required Func<float> Frac;
-            public required float Diameter;
-            public required string Body;
+            Gesture Gesture = null!;
+            Func<float> Frac = null!;
+            float Diameter;
+            string Body = "";
 
             float _lastAngle, _dragFrac;
             bool _active, _moved;
 
             public override Element Render()
             {
+                (Gesture, Frac, Diameter, Body) = UseProps<IpodWheelProps>();
                 float d = Diameter, centre = 0.36f * d;
                 bool dark = Body != "silver", u2 = Body == "u2";
                 float cap = MathF.Max(6f, d * 0.058f), capH = MathF.Ceiling(cap * 1.5f), glyph = MathF.Max(7f, d * 0.075f);
@@ -1347,7 +1359,7 @@ public static partial class Deck
             var frac = sig.Frac;
             return Canvas.Create(side, side,
             [
-                new CanvasChild(0f, 0f, Embed.Comp(() => new CanvasArtwork { Sig = sig, Side = side, Fast = fast, BleedOpacity = strong ? 1f : 0.6f })
+                new CanvasChild(0f, 0f, Embed.Comp(new CanvasArtworkProps(sig, side, fast, strong ? 1f : 0.6f), static () => new CanvasArtwork())
                     with { Key = "cv:" + (fast ? "fast" : "slow") + ":" + (strong ? "strong" : "soft") }),
                 // Built OUTSIDE the artwork component, so its bind survives every album change above it.
                 new CanvasChild(side * 0.11f, side * 0.95f - 2f, new BoxEl
@@ -1367,12 +1379,14 @@ public static partial class Deck
 
         /// <summary>The bleed and the drifting frame: re-renders on the latched generation (a new album remounts the canvas,
         /// which is its 300 ms cross-fade) and on the loop gate, and owns the drift's layout effect.</summary>
+        sealed record CanvasArtworkProps(Slab Sig, float Side, bool Fast, float BleedOpacity);
+
         sealed class CanvasArtwork : Component
         {
-            public required Slab Sig;
-            public required float Side;
-            public required bool Fast;
-            public required float BleedOpacity;
+            Slab Sig = null!;
+            float Side;
+            bool Fast;
+            float BleedOpacity;
 
             NodeHandle _drift;
             Keyframe[]? _tx, _ty, _sx, _sy;
@@ -1381,6 +1395,7 @@ public static partial class Deck
 
             public override Element Render()
             {
+                (Sig, Side, Fast, BleedOpacity) = UseProps<CanvasArtworkProps>();
                 _latch.Update(Sig, image: true);
                 bool run = Sig.LoopsRun.Value;                 // playing ∧ active ∧ rail open ∧ ¬reduced — a value, not a branch
                 int gen = _latch.Gen;

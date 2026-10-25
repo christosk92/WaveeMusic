@@ -158,14 +158,15 @@ public static partial class Diagnostics
                 ((int)size.Width).ToString(CultureInfo.InvariantCulture) + "x" + ((int)size.Height).ToString(CultureInfo.InvariantCulture),
                 o.MeasureSec, o.WarmupSec, rate, DateTime.UtcNow, results, o.GpuPasses,
                 new FrameBenchLook(Wavee.Theming.ThemeInspection.ActiveId, FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark",
-                    w.Scale, Prefs.Lyrics.BlurStrength(), ((Stage.VizLayout)Prefs.Stage.Layout()).ToString()));
+                    w.Scale, Prefs.Lyrics.BlurStrength(), ((Stage.VizLayout)Prefs.Stage.Layout()).ToString()), StartupTimeline.Phases());
             WriteArtifact(dir, "frame-bench-summary.json", json);
             var report = new StringBuilder(4096).AppendLine()
                 .AppendLine("=== WAVEE FRAME BENCH (" + (real ? "real data" : "--fake") + (o.Label.Length > 0 ? ", " + o.Label : "") + ") ===")
                 .AppendLine("version=" + VersionLabel() + "  processors=" + Environment.ProcessorCount + "  panel=" + w.CurrentRefreshHz() + "Hz  window="
                     + (int)size.Width + "x" + (int)size.Height + "  theme=" + Wavee.Theming.ThemeInspection.ActiveId + "  blur=" + Prefs.Lyrics.BlurStrength() + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s  gpuPasses=" + (o.GpuPasses ? "on" : "off")
                     + "  cyclesPerMs=" + rate.ToString("0", CultureInfo.InvariantCulture))
-                .AppendLine("output=" + Path.GetFullPath(dir)).AppendLine()
+                .AppendLine("output=" + Path.GetFullPath(dir))
+                .AppendLine("startup (ms since process creation): " + StartupTimeline.Line()).AppendLine()
                 .Append(FrameBenchMath.Table(results)).ToString();
             WriteArtifact(dir, "frame-bench-summary.txt", report);
             Say(report);

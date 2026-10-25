@@ -326,4 +326,48 @@ public static partial class Residency
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsIconic(nint hwnd);
+
+    // ── this process's memory counters ────────────────────────────────────────────────────────────────────────────────
+    // `Process.PrivateMemorySize64`, `PeakWorkingSet64` and `WorkingSet64` read a snapshot of EVERY process and thread on the
+    // machine (NtQuerySystemInformation(SystemProcessInformation), then a managed ProcessInfo and ThreadInfo for each): 5.8 ms
+    // on the UI thread (Debug, PERF r3 UI; mostly kernel time, so AOT keeps most of it), paid inside every navigation frame by
+    // the nav-end mem.sample and every 30 s by this governor's poll. GetProcessMemoryInfo on the current-process pseudo-handle
+    // answers the same counters for this process alone: PagefileUsage is the private commit `PrivatePageCount` reports.
+
+    /// <summary>This process's memory counters (bytes, and the cumulative page-fault count, a wrapping DWORD).</summary>
+    public readonly record struct ProcessMemory(long WorkingSet, long PeakWorkingSet, long PrivateBytes, long PageFaults);
+
+    /// <summary>kernel32's PROCESS_MEMORY_COUNTERS_EX (natural packing; <c>cb</c> is its own size).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    struct ProcessMemoryCountersEx
+    {
+        public uint cb, PageFaultCount;
+        public nuint PeakWorkingSetSize, WorkingSetSize, QuotaPeakPagedPoolUsage, QuotaPagedPoolUsage, QuotaPeakNonPagedPoolUsage,
+            QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage, PrivateUsage;
+    }
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool K32GetProcessMemoryInfo(nint hProcess, ref ProcessMemoryCountersEx counters, uint cb);
+
+    /// <summary>Read <see cref="ProcessMemory"/> for this process through the current-process pseudo-handle: one syscall, no
+    /// allocation. False (and zeros) where the call is unavailable.</summary>
+    public static bool TryReadProcessMemory(out ProcessMemory memory)
+    {
+        memory = default;
+        // Every field is assigned (the OS fills the gauges this does not read) so the never-assigned-field warning stays quiet.
+        var c = new ProcessMemoryCountersEx
+        {
+            cb = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<ProcessMemoryCountersEx>(), PageFaultCount = 0,
+            PeakWorkingSetSize = 0, WorkingSetSize = 0, QuotaPeakPagedPoolUsage = 0, QuotaPagedPoolUsage = 0, QuotaPeakNonPagedPoolUsage = 0,
+            QuotaNonPagedPoolUsage = 0, PagefileUsage = 0, PeakPagefileUsage = 0, PrivateUsage = 0,
+        };
+        try
+        {
+            if (!K32GetProcessMemoryInfo(new nint(-1), ref c, c.cb)) return false;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return false; }
+        memory = new ProcessMemory((long)c.WorkingSetSize, (long)c.PeakWorkingSetSize, (long)c.PrivateUsage, c.PageFaultCount);
+        return true;
+    }
 }

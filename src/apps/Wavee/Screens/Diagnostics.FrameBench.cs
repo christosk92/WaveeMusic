@@ -565,13 +565,13 @@ public static partial class Diagnostics
         /// object per scenario with its flat metrics (NaN → null).</summary>
         public static string Json(string version, string label, bool real, int processors, int refreshHz, string windowPx, int measureSec,
             int warmupSec, double cyclesPerMs, DateTime utc, IReadOnlyList<FrameBenchScenarioSummary> scenarios, bool gpuPasses = false,
-            FrameBenchLook? look = null)
+            FrameBenchLook? look = null, IReadOnlyList<KeyValuePair<string, double>>? startup = null)
         {
             using var ms = new MemoryStream();
             using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
             {
                 w.WriteStartObject();
-                w.WriteString("schema", "wavee-frame-bench/2.2");
+                w.WriteString("schema", "wavee-frame-bench/2.3");
                 w.WriteString("version", version);
                 w.WriteString("label", label);
                 w.WriteString("data", real ? "real" : "fake");
@@ -591,6 +591,12 @@ public static partial class Diagnostics
                     w.WriteString("stageLayout", l.StageLayout);
                 }
                 Num(w, "cyclesPerMs", cyclesPerMs);
+                if (startup is { Count: > 0 })   // the process's startup phases, ms since process creation (StartupTimeline; 2.3)
+                {
+                    w.WriteStartObject("startup");
+                    foreach (var kv in startup) Num(w, kv.Key, kv.Value);
+                    w.WriteEndObject();
+                }
                 w.WriteStartArray("scenarios");
                 foreach (var s in scenarios)
                 {

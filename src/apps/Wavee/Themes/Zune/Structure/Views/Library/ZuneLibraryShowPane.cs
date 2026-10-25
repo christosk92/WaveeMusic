@@ -49,39 +49,23 @@ internal static class ZuneLibraryShowPane
     static BoxEl Body(LibraryShowPaneProps p, bool compact, bool brief)
     {
         float box = compact ? LR.CompactCommandBox : LR.CommandBox;
-        if (brief)
-            // [the title and the verbs in one row, an empty slot, the reader]: the same three slots as the full form, so the reader keeps its node across a height crossing.
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, ClipToBounds = true,
-                Children =
-                [
-                    K.BriefHeader(p.Title, p.Open,
-                    [
-                        p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),
-                        new BoxEl { Visible = p.HeartShown, Children = [K.Save(p.Uri, p.Title, box)] },
-                        K.MoreButton(p.More, box),
-                    ], box),
-                    new BoxEl { Shrink = 0f },
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!] },
-                ],
-            };
-        Element header = K.PaneHeader(p.Title, p.Open, R.Type.DenseMeta(p.Publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, p.Meta);
-        Element commands = new BoxEl
-        {
-            Direction = 0, Gap = LR.PaneCommandsGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
-            Padding = new Edges4(0f, LR.PaneCommandsTop, 0f, LR.PaneCommandsBottom),
-            Children =
-            [
-                p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),
-                new BoxEl { Visible = p.HeartShown, Children = [K.Save(p.Uri, p.Title, box)] },
-                K.MoreButton(p.More, box),
-            ],
-        };
+        // [ONE head for both height rungs (K.PaneHead: the words and the verbs keep their nodes), an empty slot, the reader]: the reader keeps its node across a height crossing.
+        Element[] verbs =
+        [
+            p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),
+            new BoxEl { Visible = p.HeartShown, Children = [K.Save(p.Uri, p.Title, box)] },
+            K.MoreButton(p.More, box),
+        ];
+        Element publisher = R.Type.DenseMeta(p.Publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         return new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true,
-            Children = [header, commands, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!] }],
+            Children =
+            [
+                K.PaneHead(p.Title, p.Open, publisher, p.Meta, verbs, box, brief),
+                new BoxEl { Shrink = 0f },
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!] },
+            ],
         };
     }
 }

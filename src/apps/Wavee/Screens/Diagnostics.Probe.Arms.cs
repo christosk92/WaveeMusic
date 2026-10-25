@@ -239,6 +239,12 @@ public static partial class Diagnostics
                 .Append(",\"sessionRestoredMs\":").Append(sessionRestoredMs >= 0 ? Bench.N(sessionRestoredMs) : "null")
                 .Append(",\"framesPumped\":").Append(Bench.Int(frames))
                 .Append(",\"workingSetMB\":").Append(Bench.N(wsMb)).Append(",\"managedMB\":").Append(Bench.N(managedMb));
+            // The QPC phase timeline (StartupTimeline, ms since process creation): where the time before the first present went.
+            json.Append(",\"phases\":{");
+            var phases = StartupTimeline.Phases();
+            for (int i = 0; i < phases.Count; i++)
+                json.Append(i == 0 ? "\"" : ",\"").Append(Bench.Escape(phases[i].Key)).Append("\":").Append(Bench.N(phases[i].Value));
+            json.Append('}');
             var report = new StringBuilder(1024).AppendLine()
                 .AppendLine("=== WAVEE STARTUP BENCH (report-only, not a CI gate) ===")
                 .AppendLine("version=" + VersionLabel() + "  processors=" + Environment.ProcessorCount)
@@ -248,7 +254,8 @@ public static partial class Diagnostics
                 .AppendLine("  session-restored  first frame after the content host activated its first route")
                 .AppendLine("diagnosticRunMs=" + Bench.N(alreadyMs) + "  framesPumped=" + frames)
                 .AppendLine("firstPresentMs=" + Opt(firstPresentMs) + "  sessionRestoredMs=" + Opt(sessionRestoredMs))
-                .AppendLine("workingSetMB=" + Bench.N(wsMb) + "  managedMB=" + Bench.N(managedMb));
+                .AppendLine("workingSetMB=" + Bench.N(wsMb) + "  managedMB=" + Bench.N(managedMb))
+                .AppendLine("phases (ms since process creation): " + StartupTimeline.Line());
             if (mem.Valid)
             {
                 json.Append(",\"gpuLocalUsageMB\":").Append(Bench.N(mem.LocalCurrentUsage / 1048576.0))
