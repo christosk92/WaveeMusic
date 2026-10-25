@@ -38,9 +38,11 @@ public readonly partial struct User
     /// <summary>The numbers of the playlists list.</summary>
     public static class LibraryPlaylistsRules
     {
-        /// <summary>The node keys: the page's column, the list, the two create words.</summary>
+        /// <summary>The node keys: the page's column, the list, the two create words, and the page's two arrangements (the one-column list, the master-detail),
+        /// which cross-fade as a declared swap.</summary>
         public const string ColumnKey = "library-playlists-column", ListKey = "library-playlists-list",
-            NewPlaylistKey = "library-playlists-new-playlist", NewFolderKey = "library-playlists-new-folder", RowPrefix = "library-playlists-row:";
+            NewPlaylistKey = "library-playlists-new-playlist", NewFolderKey = "library-playlists-new-folder", RowPrefix = "library-playlists-row:",
+            ListArmKey = "library-playlists-arm:list", SplitArmKey = "library-playlists-arm:split";
 
         /// <summary>A row, its art, the gap between art and words, the indent a folder level adds, the head's height.</summary>
         public const float RowH = 52f, Art = 40f, ArtGap = 12f, Indent = 20f, HeadH = 40f;
@@ -154,12 +156,23 @@ public readonly partial struct User
                         // The flat list's cap is the column's own (the gutters stand outside it), so a gutter that changes never moves the cap at once.
                         Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
                         MaxWidth = master ? float.NaN : LibraryPlaylistsRules.ColumnMax,
+                        // The two arrangements (Zune: the one-column list under Small, the grouped master-detail from Small) are different heads over different
+                        // lists (the rootlist's folders, the groups), so a crossing cross-fades them as one declared swap: the arriving arm reveals over the
+                        // leaving one as an exit orphan, never a snap (audit FU2: the list and its rows were rebuilt at once and the create words jumped 125).
                         Children =
                         [
-                            master
-                                ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders), sortMenu: layout.Value < ShellPolicy.Tracked.LibraryTiers.PaneFromLayout)
-                                : Head(model, null),
-                            body,
+                            new BoxEl
+                            {
+                                Key = master ? LibraryPlaylistsRules.SplitArmKey : LibraryPlaylistsRules.ListArmKey, Animate = s_armSwap,
+                                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+                                Children =
+                                [
+                                    master
+                                        ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders), sortMenu: layout.Value < ShellPolicy.Tracked.LibraryTiers.PaneFromLayout)
+                                        : Head(model, null),
+                                    body,
+                                ],
+                            },
                         ],
                     },
                     EasedStrut(gutter),

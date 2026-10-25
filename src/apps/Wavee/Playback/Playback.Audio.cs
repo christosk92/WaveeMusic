@@ -508,7 +508,7 @@ public static partial class Playback
                 s_backend = backend;
                 Volatile.Write(ref s_player, MediaPlayer.Build().WithBackend(MediaKind.PcmAudio, backend).Build());
                 ToUi(static () => Supported.Value = true);
-                if (s_forceSilent) Log.Info("audio", $"audio backend: silent endpoint {SilentFormat.SampleRate} Hz, paced to the wall clock");
+                if (s_forceSilent) Log.Info("audio", $"audio backend: silent endpoint {SilentFormat.SampleRate} Hz, paced to the {(SilentPaceQpc is null ? "wall" : "frame")} clock");
             }
             catch (Exception ex)
             {
@@ -549,12 +549,30 @@ public static partial class Playback
         /// <summary>True once <see cref="UseSilentEndpoint"/> was called.</summary>
         public static bool SilentEndpoint => s_forceSilent;
 
+        /// <summary>The clock the silent endpoint's "hardware" plays on, in QPC units; null = the wall clock (the default, every run but a headless one).
+        /// The headless host (`Shell.Headless.Boot`: `--inspect` and the shell host) sets its FRAME clock here, whose present time is frame x 16 ms rather
+        /// than the counter, before the first load: everything that moves on screen there (the stage caption's extrapolated playhead, the lyrics, the deck)
+        /// runs on that clock, and a played count paced on the wall clock fell behind it between reports, so the caption ran ahead and each report pulled it
+        /// back a line (audit FU2 item 7: `cap:p/a/n` re-keyed on the hand-back). Inspector-only; a real device and `--fake` keep the wall clock.</summary>
+        public static Func<long>? SilentPaceQpc { get; set; }
+
+        /// <summary>The headless pace's buffer: a frame clock outruns the wall clock the feed thread sleeps on (it computes its wait from the rate), so the
+        /// buffer holds two seconds rather than a device's 100 ms and the played count never starves while the feed sleeps.</summary>
+        const int HeadlessPaceCapacityMs = 2000;
+
+        /// <summary>The paced silent endpoint for <paramref name="format"/>: on the wall clock, or on <see cref="SilentPaceQpc"/> where the headless host set it
+        /// (its played count stamped on the wall clock still, the domain the session's projection extrapolates on).</summary>
+        static PacedSilentEndpoint NewSilentEndpoint(MixFormat format)
+            => SilentPaceQpc is { } pace
+                ? new PacedSilentEndpoint(format, HeadlessPaceCapacityMs, pace, System.Diagnostics.Stopwatch.Frequency, wallStamps: true)
+                : new PacedSilentEndpoint(format);
+
         /// <summary>The silent backend: the same `PcmAudioPlayer` and RT feed shape `WasapiPcm.CreateBackend` builds, over
         /// <see cref="PacedSilentEndpoint"/> and a plain (non-MMCSS) feed thread, with no device watcher — there is no
         /// device to lose.</summary>
         static PcmAudioPlayer CreateSilentBackend()
             => new(SilentFormat,
-                endpointFactory: static fmt => new PacedSilentEndpoint(fmt),
+                endpointFactory: static fmt => NewSilentEndpoint(fmt),
                 effects: s_effects,
                 maxBlock: 1024,
                 driveWithOwnThread: false,
@@ -4596,7 +4614,7 @@ public static partial class Playback
         /// device; only the leaf is swapped. The leaf is <see cref="PacedSilentEndpoint"/> rather than the engine's
         /// <c>HeadlessAudioEndpoint</c>, whose null sink accepts every frame (<c>WritableFrames</c> = int.MaxValue) and
         /// so ran a fake track's clock as fast as the feed could spin — headless plan §8 Q4, decided here.</para></summary>
-        public static IAudioEndpoint SilentSink(MixFormat format) => new PacedSilentEndpoint(format);
+        public static IAudioEndpoint SilentSink(MixFormat format) => NewSilentEndpoint(format);
 
         /// <summary>A silent device that keeps TIME: its "hardware" consumes queued frames at the wall clock's rate while
         /// started, and its buffer is finite (<see cref="DefaultCapacityMs"/>), so a session renders into it at exactly
@@ -4618,6 +4636,7 @@ public static partial class Playback
             readonly Lock _gate = new();
             readonly Func<long> _now;
             readonly long _ticksPerSecond;
+            readonly bool _wallStamps;
             long _written, _played, _lastTicks;
             bool _started;
 
@@ -4625,9 +4644,12 @@ public static partial class Playback
             /// <param name="capacityMs">The buffer, in milliseconds of audio.</param>
             /// <param name="clock">The monotonic clock in <paramref name="ticksPerSecond"/> units; the
             /// <see cref="System.Diagnostics.Stopwatch"/> by default. Tests pass a manual one.</param>
+            /// <param name="wallStamps">Stamp the played count with the WALL clock at the read rather than the pace clock: a pace clock in another epoch (the
+            /// headless frame clock) must not reach the session's projection, which extrapolates from the stamp on the wall clock.</param>
             public PacedSilentEndpoint(MixFormat format, int capacityMs = DefaultCapacityMs, Func<long>? clock = null,
-                long ticksPerSecond = 0)
+                long ticksPerSecond = 0, bool wallStamps = false)
             {
+                _wallStamps = wallStamps && clock is not null;
                 Format = format;
                 CapacityFrames = Math.Max(1, (int)((long)Math.Max(1, format.SampleRate) * Math.Max(1, capacityMs) / 1000));
                 if (clock is null) _now = System.Diagnostics.Stopwatch.GetTimestamp;
@@ -4698,7 +4720,9 @@ public static partial class Playback
                 {
                     AdvanceLocked();
                     playedFrames = _played;
-                    qpc = (long)(_lastTicks * (1e7 / _ticksPerSecond));
+                    qpc = _wallStamps
+                        ? (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1e7 / System.Diagnostics.Stopwatch.Frequency))
+                        : (long)(_lastTicks * (1e7 / _ticksPerSecond));
                     return true;
                 }
             }
@@ -4715,9 +4739,11 @@ public static partial class Playback
                     int threshold = Math.Max(1, CapacityFrames / 4);
                     // Stopped (paused, ended, not yet started): nothing renders, so sleep until a transport command wakes the
                     // feed or the engine's timeout passes, as a WASAPI client does. Started with room: render now.
+                    // A pace clock that is not the wall clock (the headless frame clock) frees the buffer at ITS rate, which a wait computed from the
+                    // sample rate cannot follow: the feed polls instead, so the played count never starves while the feed sleeps on a wall-clock guess.
                     waitMs = !_started
                         ? timeoutMs
-                        : writable >= threshold
+                        : writable >= threshold || _wallStamps
                             ? 1
                             : (int)Math.Ceiling((threshold - writable) * 1000.0 / Math.Max(1, Format.SampleRate));
                 }

@@ -672,7 +672,7 @@ internal static class ClassicTrackChrome
                         {
                             Width = CommandBarLayout.FilterBadgeSlot, Height = ClassicTrackChromeLayout.BadgeSize, Shrink = 0f, AlignItems = FlexAlign.Center,
                             Children = active ? [InfoBadge.Count(count, parts: s_badgeCommand)] : [],
-                        },
+                        }.Skeletonized(false),   // the badge's reserved slot is air in a shimmering bar (a sized childless box derives to a bar)
                     ],
                 };
             // Icon-only: the funnel carries more ink above its midpoint (+1 optical offset at rest); with a badge it steps (-4, +4) so glyph

@@ -1034,6 +1034,7 @@ public static partial class Detail
                 Form = form,
                 Columns = columns,
                 MenuBridge = _menuBridge,
+                HeadPending = _railPending,
             };
             // A route is a new scroll/hero identity. A ONE-TREE page's table is the same at every width (audit B9): its key is the route alone, and
             // the form is a prop. Elsewhere the arm is in the key (a hero-system list must never reconcile against a standard one). The tier is NOT

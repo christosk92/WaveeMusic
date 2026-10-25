@@ -563,7 +563,7 @@ internal static class WinUiTrackChrome
                         {
                             Width = WinUiListRules.FilterBadgeSlot, Height = WinUiListRules.BadgeSize, Shrink = 0f, AlignItems = FlexAlign.Center,
                             Children = active ? [InfoBadge.Count(count, parts: s_badgeInline)] : [],
-                        },
+                        }.Skeletonized(false),   // the badge's reserved slot is air in a shimmering bar (a sized childless box derives to a bar)
                     ],
                 };
             return Plate(active, onClick, onRealized) with

@@ -290,23 +290,25 @@ public readonly partial struct Album
 
     /// <summary>A capped vertical stack under a section header. "Show all N" lengthens it IN PLACE and is one-way. Keyed
     /// on a data signature: a re-bound section remounts with a fresh expand state.</summary>
-    static Element Stack(string title, int count, TrailKind kind, int parent, string signature, string? name = null)
-        => Embed.Comp(new StackProps(title, count, kind, parent, name), static () => new StackHost()) with { Key = "trail:" + signature };
+    static Element Stack(string title, int count, TrailKind kind, int parent, string signature, string? name = null, int artist = Table.None)
+        => Embed.Comp(new StackProps(title, count, kind, parent, name, artist), static () => new StackHost()) with { Key = "trail:" + signature };
 
     /// <param name="Name">The name the title carries ("More by {name}"), null for a title of words.</param>
-    sealed record StackProps(string Title, int Count, TrailKind Kind, int Parent, string? Name);
+    /// <param name="ArtistSlot">The one artist whose releases the stack lists ("More by"): its discography is the stack's link (contract 1.81).</param>
+    sealed record StackProps(string Title, int Count, TrailKind Kind, int Parent, string? Name, int ArtistSlot = Table.None);
 
     [CoreHost]
     sealed class StackHost : Component
     {
         readonly Signal<bool> _expanded = new(false);
-        readonly Action _expand;
+        readonly Action _expand, _discography;
         readonly Func<StackStamp> _stamp;
         StackProps? _props;
 
         public StackHost()
         {
             _expand = () => _expanded.Value = true;
+            _discography = () => { if (_props is { } p && new Artist(p.ArtistSlot) is { IsValid: true } a) Shell.GoTo(DiscoRoute.For(a, DiscoFacet.Albums)); };
             _stamp = Stamp;
         }
 
@@ -377,7 +379,11 @@ public readonly partial struct Album
             for (int i = 0; i < shown; i++) rows[i] = TrailRow(p.Kind, p.Parent, i);
 
             // The `Album.TrailStack` view: the title and the one-way "Show all N" over the rows ("Show all" lengthens the box in place — the new height reveals).
-            return ViewSlots.View(ViewKeys.AlbumTrailStack, new AlbumTrailStackProps(p.Title, p.Count, shown, _expand, rows) { Name = p.Name });
+            return ViewSlots.View(ViewKeys.AlbumTrailStack, new AlbumTrailStackProps(p.Title, p.Count, shown, _expand, rows)
+            {
+                Name = p.Name,
+                Discography = p.Kind == TrailKind.MoreBy && new Artist(p.ArtistSlot).IsValid ? _discography : null,
+            });
         }
     }
 }

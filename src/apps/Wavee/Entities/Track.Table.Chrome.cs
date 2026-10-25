@@ -73,6 +73,8 @@ public readonly partial struct Track
         const float FindWordNominal = 72f, SelectNominal = 64f;
 
         Func<float, Element> _buildToolbar = null!;
+        Func<Element> _barLive = null!;
+        Func<bool> _barPending = null!;
         Func<Element> _headerShape = null!;
         Func<int, Element> _selectionCommands = null!;
         Action _openSearch = null!, _toggleFind = null!, _exitSelection = null!, _selectAllTracks = null!;
@@ -91,6 +93,8 @@ public readonly partial struct Track
         void InitChrome()
         {
             _buildToolbar = BuildToolbar;
+            _barLive = LiveToolbar;
+            _barPending = BarPending;
             _headerShape = HeaderOf;
             _hideUnavailable = () => { var f = _filters.Peek(); SetFilters(f with { Flags = f.Flags | FilterFlags.PlayableOnly }); };
             _selectionCommands = SelectionCommands;
@@ -187,7 +191,26 @@ public readonly partial struct Track
             };
         }
 
-        Element Toolbar() => Responsive.Of("detail-track-commandbar", _buildToolbar, fallback: _lastW > 0f ? _lastW : 760f);
+        /// <summary>The list bar (Find, Filter, the order, Select, its "…"). While the page's head has not answered (<see cref="TableArgs.HeadPending"/>)
+        /// it SHIMMERS with the page, in its own place and size, and turns live with the region's one cross-fade when the head lands (owner 2026-10-25:
+        /// a live bar stood beside the shimmering head). The shimmer is the bar itself, derived: its command components draw what they render
+        /// (<see cref="BarPart"/>), and a shimmering bar reports no widths to the fit (<see cref="BuildToolbar"/>), so the live bar resolves against
+        /// its real commands.</summary>
+        Element Toolbar() => new SkelRegionEl(
+            Pending: _barPending, Failed: s_barNeverFails, Content: _barLive, ShimmerSource: null, OnFailed: null,
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+
+        Element LiveToolbar() => Responsive.Of("detail-track-commandbar", _buildToolbar, fallback: _lastW > 0f ? _lastW : 760f);
+
+        /// <summary>Is the page's head still unanswered (the bar shimmers)? Tracked through the frame's own flag; false for a table with none.</summary>
+        bool BarPending() => _args.Value?.HeadPending?.Invoke() ?? false;
+
+        static readonly Func<bool> s_barNeverFails = static () => false;
+        static readonly Action<float> s_noWidth = static _ => { };
+
+        /// <summary>An opaque command component of the bar (the sort, filter, search and "…" buttons, the play-next split, the insights toggle) as it
+        /// shimmers (<see cref="Detail.Skeleton.Derivable"/>): their renders only draw, and the anchors they capture are their own.</summary>
+        static Element BarPart(Element part) => Detail.Skeleton.Derivable(part);
 
         // ══ 2. THE COMMAND BAR ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -205,6 +228,9 @@ public readonly partial struct Track
         {
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
             if (_selectionVisible?.Value == true && _dockHost is null) return SelectionSurface("selection");
+            // The bar this build draws shimmers (the page's head is unread): its commands are bars of guessed widths, so they report none to the fit and
+            // anchor nothing. Untracked: the region swaps the bar when the head lands, and the live bar is a fresh build.
+            bool live = !Reactive.Untrack(_barPending);
 
             // The hero list's columns form (audit B9) draws the two-column arm's bar; the read is tracked, so a crossing that flips the form rebuilds it.
             bool vertical = VerticalArm && HeroFormLive;
@@ -239,7 +265,7 @@ public readonly partial struct Track
             var left = new List<Element>(3);
             if (pageBar)
                 left.Add(MeasuredCommand(0, "cmd:page-lead:" + _contextText,
-                    Kit.PageLead(_latest.Source.Context, _accent, _playAll, Loc.Get(Strings.Detail.Shuffle), _shuffle)));
+                    Kit.PageLead(_latest.Source.Context, _accent, _playAll, Loc.Get(Strings.Detail.Shuffle), _shuffle), live));
             else if (!vertical)
             {
                 IReadOnlyList<MenuFlyoutItem> playItems =
@@ -248,49 +274,50 @@ public readonly partial struct Track
                         () => RunOnContext(ActionId.AddToQueue)),
                 ];
                 left.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
-                    Kit.PlayNext(Loc.Get(Strings.Detail.PlayNext), () => RunOnContext(ActionId.PlayNext), playItems)));
+                    BarPart(Kit.PlayNext(Loc.Get(Strings.Detail.PlayNext), () => RunOnContext(ActionId.PlayNext), playItems)), live));
             }
             if (!pageBar && fit.Has(InlineCommand.Shuffle))
-                left.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
+                left.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null), live));
             if (hasTune)
                 left.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
                     Kit.Labeled(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
-                    Loc.Get(Strings.Detail.Tuning.Tooltip))));
+                    Loc.Get(Strings.Detail.Tuning.Tooltip)), live));
 
             var view = new List<Element>(2);
             if (fit.Has(InlineCommand.Filter))
-                view.Add(FilterCommandSlot(fit.Has(InlineCommand.FilterLabel)));
+                view.Add(FilterCommandSlot(fit.Has(InlineCommand.FilterLabel), live));
             if (fit.Has(InlineCommand.Sort))
-                view.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
+                view.Add(MeasuredCommand(3, "cmd:sort", BarPart(Embed.Comp(() => new TableSortButton(this))), live));
 
             var overflow = (InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
             _moreOverflow = overflow;
             if (_latest.MenuBridge is { } bridge) bridge.List = _bridgeList ??= BridgeListItems;
             var tailList = new List<Element>(3);
-            if (insights is not null) tailList.Add(Detail.InsightsBarButton(insights));
+            if (insights is not null) tailList.Add(BarPart(Detail.InsightsBarButton(insights)));
             if (select is not null)
-                tailList.Add(Kit.Command("cmd:select", select, w => MeasureExtra(ref _selectW, w)));
+                tailList.Add(Kit.Command("cmd:select", select, live ? w => MeasureExtra(ref _selectW, w) : s_noWidth));
             // Where the tier gives the page ONE "…" in the hero (Zune and WinUI Compact), the bar draws none: the hero's carries the list options. The
             // button is keyed on the page alone (the evicted commands are a re-pushed prop, never a key), and it fades in and out across the edge.
             if (PageMenuNow() != global::Wavee.Theming.DetailPageMenu.Hero)
-                tailList.Add(Embed.Comp(new MoreProps(overflow), () => new TableMoreButton(this))
-                    with { Key = "cmd:more:" + _contextText, Enter = MoreFade, Exit = MoreFade, Transition = MoreFadeMotion });
+                tailList.Add(BarPart(Embed.Comp(new MoreProps(overflow), () => new TableMoreButton(this))
+                    with { Key = "cmd:more:" + _contextText, Enter = MoreFade, Exit = MoreFade, Transition = MoreFadeMotion }));
             Element[] tail = tailList.ToArray();
 
-            Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
-                with { Key = "search-host" };
+            Element search = BarPart(Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
+                with { Key = "search-host" });
             // One slot in every fit (audit B9): the worded Find measures its width through it, the glyph form simply sits in it, so a crossing that
             // gives Find its word or takes it keeps the search host's node (and a typed query) instead of re-parenting it.
             search = new BoxEl
             {
-                Key = "search-host:slot", Direction = 1, Shrink = 0f, OnRealized = _anchorFilter ??= h => _filterAnchor.Value = h,
-                OnBoundsChanged = findWord ? _measureFindWord ??= r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); } : null,
+                Key = "search-host:slot", Direction = 1, Shrink = 0f, OnRealized = live ? _anchorFilter ??= h => _filterAnchor.Value = h : null,
+                OnBoundsChanged = findWord && live ? _measureFindWord ??= r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); } : null,
                 Children = [search],
             };
             return Kit.Surface("normal", Kit.Bar(left.ToArray(), view.ToArray(), search, tail, chips));
         }
 
-        Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
+        Element MeasuredCommand(int slot, string key, Element command, bool live)
+            => Kit.Command(key, command, live ? w => MeasureToolbarCommand(slot, w) : s_noWidth);
 
         /// <summary>The list bar's "…" coming or going where a tier moves the page's ONE "…" to the hero: an opacity fade, never a cut.</summary>
         static readonly EnterExit MoreFade = new(Opacity: 0f, Active: true);
@@ -377,9 +404,9 @@ public readonly partial struct Track
 
         /// <summary>The inline Filter command of the bar. Its props carry the label, so a rung that drops the word re-renders the SAME
         /// button (an open card keeps its anchor and handle); only the labelled form reports its width to the fit.</summary>
-        Element FilterCommandSlot(bool labelled)
+        Element FilterCommandSlot(bool labelled, bool live)
             => MeasuredCommand(labelled ? 4 : -1, "cmd:filter",
-                Embed.Comp(new FilterCommandProps(labelled), () => new TableFilterButton(this, textMode: false, command: true)));
+                BarPart(Embed.Comp(new FilterCommandProps(labelled), () => new TableFilterButton(this, textMode: false, command: true))), live);
 
         void MeasureExtra(ref float slot, float width)
         {

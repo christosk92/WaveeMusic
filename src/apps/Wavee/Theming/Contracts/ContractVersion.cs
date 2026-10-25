@@ -206,6 +206,8 @@
 // pane stands beside the middle column; default 1, every split) and `LibraryPageProps.PaneBeside`; under it the host opens a picked grouped album's page.
 // 1.80 (audit FU): the artist reader's track rows as a structure's (`Artist.ReaderRows`: their height and whether they run under the cover).
 // `LibraryTierPolicy.ReaderNarrowRows` (the narrow arm's; default the shape's own) and `IArtistReaderBlock.Rows` (what the mount froze).
+// 1.81 (audit FU2): "more by" as an artist's releases: `AlbumTrailStackProps.Discography` (the stack's artist's discography page) and
+// `TrailCardData.TypeYear` (a release row's kind and year).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -221,7 +223,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 80;
+    public const int Minor = 81;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
