@@ -144,6 +144,7 @@ internal static class ClassicTitleBar
             Appearance = TabStripAppearance.Text,
             OverflowMode = TabStripOverflowMode.Scroll,
             TextFontSize = ClassicChromeLayout.TabTextSize,
+            TabWidthMotion = ClassicChromeLayout.TabWidthMotion,
             // The "+" is hover-only, but its 32-DIP slot is reserved at all times so the reported client rect never moves.
             IsAddTabButtonVisible = props.PeekLayout().ShowNewTab,
             AddButtonVisibility = TabStripAddButtonVisibility.OnStripPointerOver,
