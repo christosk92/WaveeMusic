@@ -267,6 +267,33 @@ public static partial class Diagnostics
                     int k = 0;
                     return Measure(new Driver(now => { Nav(++k % 4 == 0 ? home : hops[k % hops.Count]); return now + 0.7; }), "hops over " + hops.Count + " entities");
                 }
+                case FrameBenchScenarios.MotionFlow:
+                {
+                    // The owner's 2026-10-25 recording, as a loop (lane MOTION, audit PERF r3): page entrances with the queue rail
+                    // docked, then a theme transaction to Zune and back. One step every 1.1 s, each marked in the frame trace.
+                    if (t.Playlists.Length < 3 || t.Artists.Length < 3) return Skip("needs 3 playlists and 3 artists");
+                    Base(playing: play is not null);
+                    string start = Wavee.Theming.ThemeInspection.ActiveId;
+                    string other = start == "zune" ? "classic" : "zune";
+                    Shell.Route Pl(int i) => Shell.For(EntityUri.Parse(t.Playlists[i]), "Bench playlist");
+                    Shell.Route Ar(int i) => Shell.For(EntityUri.Parse(t.Artists[i]), "Bench artist");
+                    var settings = new Shell.Route(Shell.RouteKind.Settings);
+                    (string Name, Action Act)[] steps =
+                    [
+                        ("pl0", () => Nav(Pl(0))), ("ar0", () => Nav(Ar(0))), ("pl1", () => Nav(Pl(1))), ("ar1", () => Nav(Ar(1))),
+                        ("settings", () => Nav(settings)), ("theme:" + other, () => _ = Wavee.Theming.ThemeHost.Switch(other)),
+                        ("pl2", () => Nav(Pl(2))), ("ar2", () => Nav(Ar(2))), ("pl0", () => Nav(Pl(0))),
+                        ("settings", () => Nav(settings)), ("theme:" + start, () => _ = Wavee.Theming.ThemeHost.Switch(start)), ("home", () => Nav(home)),
+                    ];
+                    int k = 0;
+                    return Measure(new Driver(now =>
+                    {
+                        var (stepName, act) = steps[k++ % steps.Length];
+                        FluentGpu.Hosting.FrameTrace.Mark("step", stepName);
+                        act();
+                        return now + 1.1;
+                    }), "steps=" + steps.Length + " start=" + start);
+                }
                 case FrameBenchScenarios.PlaylistOpen:
                 {
                     if (t.Playlists.Length == 0) return Skip("no playlist");
