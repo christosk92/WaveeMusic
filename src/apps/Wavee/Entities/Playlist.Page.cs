@@ -325,7 +325,7 @@ public readonly partial struct Playlist
 
         /// <summary>What row 2 says: the playlist, its title once known, the heart's presence (not the viewer's own, not Local Files) and whether the list is
         /// known to be empty (Play and Shuffle are drawn disabled then).</summary>
-        readonly record struct ChromeInputs(bool Valid, EntityUri Subject, string? Title, bool Save, bool Empty);
+        readonly record struct ChromeInputs(bool Valid, EntityUri Subject, string? Title, bool Save, bool Empty, bool Pending = false);
 
         public PlaylistPage()
         {
@@ -532,7 +532,8 @@ public readonly partial struct Playlist
         ChromeInputs ChromeOf(Playlist pl)
             => !pl.IsValid
                 ? default
-                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !_local && !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty);
+                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !_local && !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty,
+                                   Pending: !_local && !pl.Knows(PlaylistFields.Identity));   // Identity.HeaderPending's own test
 
         /// <summary>Publishes row 2 (an auto-tracked effect: it reads the inputs signal and the saved set, so either moving re-publishes).</summary>
         void PublishChrome()
@@ -552,7 +553,8 @@ public readonly partial struct Playlist
                 actions.Add(new Contracts.PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title),
                     Reserve: Loc.Get(saved ? Strings.Menu.Save : Strings.Menu.Saved)));
             }
-            _sink.Publish(new Contracts.PageChromeRow(views, actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true), c.Title));
+            // The head unread keeps the verbs a shimmer with the head (contract 1.82, audit FU2b).
+            _sink.Publish(new Contracts.PageChromeRow(views, actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true), c.Title) { ActionsPending = c.Pending });
         }
 
         /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the seven counters this page depends on —

@@ -255,7 +255,8 @@ public readonly partial struct Show
                 actions.Add(new PageAction("follow", Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
                     () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : ""),
                     Reserve: Loc.Get(following ? Strings.Artist.Follow : Strings.Artist.Following)));
-            _sink.Publish(new PageChromeRow(views, actions, Title: name));
+            // The head unread (no title: Identity.HeaderPending's own test) keeps "follow" a shimmer with the head (contract 1.82, audit FU2b).
+            _sink.Publish(new PageChromeRow(views, actions, Title: name) { ActionsPending = !_show.Knows(ShowFields.Title) });
         }
 
         void DemandShow()

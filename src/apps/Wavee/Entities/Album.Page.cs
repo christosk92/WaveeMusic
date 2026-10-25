@@ -365,7 +365,8 @@ public readonly partial struct Album
                 actions.Add(new PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title),
                     Reserve: Loc.Get(saved ? Strings.Menu.Save : Strings.Menu.Saved)));
             }
-            _sink.Publish(new PageChromeRow(views, actions, new PageBackdrop(Bleed: null, TallWash: true), c.Title));
+            // The head unread (no title yet: Identity.HeaderPending's own test) keeps the verbs a shimmer with the head (contract 1.82, audit FU2b).
+            _sink.Publish(new PageChromeRow(views, actions, new PageBackdrop(Bleed: null, TallWash: true), c.Title) { ActionsPending = c.Title is null });
         }
 
         static bool IsPreReleaseSubject(EntityUri subject)
