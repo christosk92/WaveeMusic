@@ -250,6 +250,12 @@ public static partial class Diagnostics
             /// the node's box; NaN when not known (the headless text model, a snapshot saved before ink was read).</summary>
             public float InkTop { get; init; } = float.NaN;
             public float InkBottom { get; init; } = float.NaN;
+            /// <summary>The left and right of the glyphs' ink, in DIP from the left of the node's box (a display title's first stem stands its side
+            /// bearing inside the box, a hang sets the box left of the column); NaN when not known.</summary>
+            public float InkLeft { get; init; } = float.NaN;
+            public float InkRight { get; init; } = float.NaN;
+            /// <summary>The glyph ink's x extent is known (<see cref="InkLeft"/>, <see cref="InkRight"/>).</summary>
+            public bool HasInkX => float.IsFinite(InkLeft) && float.IsFinite(InkRight) && InkRight > InkLeft;
 
             /// <summary>The glyph ink is known (<see cref="InkTop"/>, <see cref="InkBottom"/>).</summary>
             public bool HasInk => float.IsFinite(InkTop) && float.IsFinite(InkBottom) && InkBottom > InkTop;
@@ -1956,8 +1962,9 @@ public static partial class Diagnostics
         /// the descent under a baseline with no descenders): without glyph ink, a cut no deeper than this is a review, never a verdict.</summary>
         public const float LeadingEm = 0.25f;
 
-        /// <summary>The box the ink of a text node needs. With the glyphs' ink known (<see cref="TextRun.HasInk"/>): the box's x extent and the
-        /// ink's y extent (<paramref name="guess"/> 0), so a cut through the line box's leading or descent, which no glyph fills, is no cut.
+        /// <summary>The box the ink of a text node needs. With the glyphs' ink known (<see cref="TextRun.HasInk"/>): the ink's y extent
+        /// (<paramref name="guess"/> 0), so a cut through the line box's leading or descent, which no glyph fills, is no cut, and its x extent where
+        /// that is known too (<see cref="TextRun.HasInkX"/>: a cut through a hung title's empty side bearing is no cut, its first stem's is), else the box's.
         /// Without it: the laid-out box and the natural height of an unwrapped run that wants more (both measured), widened by
         /// <paramref name="guess"/> above and below: the ink a tight explicit line height leaves outside its line box, a guess
         /// (<see cref="InkEm"/> em of ink, not the glyphs' own metrics).</summary>
@@ -1967,7 +1974,9 @@ public static partial class Diagnostics
             if (t.HasInk)
             {
                 guess = 0f;
-                return new RectF(r.X, r.Y + t.InkTop, r.W, t.InkBottom - t.InkTop);
+                return t.HasInkX
+                    ? new RectF(r.X + t.InkLeft, r.Y + t.InkTop, t.InkRight - t.InkLeft, t.InkBottom - t.InkTop)
+                    : new RectF(r.X, r.Y + t.InkTop, r.W, t.InkBottom - t.InkTop);
             }
             float h = r.H;
             if (!t.Wraps && t.NaturalH > h) h = t.NaturalH;
@@ -2084,14 +2093,18 @@ public static partial class Diagnostics
                         // A box whose cut side feathers (an EdgeFade: a marquee's overflow cue, a title that bleeds out under a fade) dissolves the
                         // text there by design, as a scroll edge with a fade does: no finding (audit B3: the stage's marquee and Large art titles).
                         if (Fades(anc, leftSide ? EdgeMask.Left : EdgeMask.Right)) break;
-                        into.Add(new Finding(Rules.TextClip, Severity.Warn,
-                            $"text {Q(t.String)} is clipped by {anc.Ref}: it runs {F(hOver)} past the {(leftSide ? "left" : "right")} edge ({F(ink.X)}..{F(ink.Right)} in {F(c.X)}..{F(c.Right)})",
+                        // A cut at the LEADING edge eats the start of the words (a display title's first stem: owner 2026-10-25, the Zune panorama
+                        // clipped by the list it hangs in): an error, unless the theme declares the text a designed bleed there (a guide
+                        // LintIntent.Bleed). The trailing edge stays a warning: a title running out past its trailing edge is the usual bleed.
+                        bool leadingCut = leftSide && (PolicyFor(s, n, LintIntent.Bleed) ?? PolicyFor(s, anc, LintIntent.Bleed)) is null;
+                        into.Add(new Finding(Rules.TextClip, leadingCut ? Severity.Error : Severity.Warn,
+                            $"text {Q(t.String)} is clipped by {anc.Ref}: it runs {F(hOver)} past the {(leftSide ? "left (leading)" : "right")} edge ({F(ink.X)}..{F(ink.Right)} in {F(c.X)}..{F(c.Right)})",
                             [n.Ref, anc.Ref])
                         {
                             Measured = [M("inkLeft", ink.X), M("inkRight", ink.Right), M("over", hOver)],
                             Expected = [M("clipLeft", c.X), M("clipRight", c.Right)],
                             Pattern = PatternOfKey(anc.Key ?? anc.Pattern),
-                            Cause = leftSide ? "left" : "right",
+                            Cause = leftSide ? (leadingCut ? "leading" : "leading:bleed") : "right",
                             Rects = [Where(n), Where(anc)],
                             Nodes = [n.Index],
                             Outcome = s.RealText ? Outcome.Fail : Outcome.Review,

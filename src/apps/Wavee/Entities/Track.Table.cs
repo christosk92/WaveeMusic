@@ -1340,6 +1340,10 @@ public readonly partial struct Track
             Element listKeyed = new BoxEl
             {
                 Key = listKey, Grow = trailing ? 0f : 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Children = [region],
+                // The hero list's hero hangs its display title left of the column (DetailTierPolicy.LeadBleed): the list, whose viewport clips, reaches
+                // that far left of the column and every item is set back in by as much (VerticalList, VerticalShimmer), so the hang is drawn and the
+                // rows, the chrome and the hero keep their place. The column (measured: the tier, the lanes) is unchanged.
+                Margin = vertical && !trailing && LeadBleedNow() is > 0f and var room ? new Edges4(-room, 0f, 0f, 0f) : default,
                 // An album's rows stand in the outer scroller: across a row-height change the list's height eases through real layout (the rows glide
                 // inside it), so the trailing band under it rides it frame by frame (audit B9).
                 Layout = trailing && !Design.Reduced ? s_listResize : null,
@@ -1506,6 +1510,14 @@ public readonly partial struct Track
         /// right edges. A positive margin never shrinks the ring, so 0 puts the 2 DIP outer and 1 DIP inner strokes on the row's own edge.</summary>
         static readonly Edges4 s_rowFocusRing = Edges4.All(0f);
 
+        /// <summary>The structure's display-title hang room (<see cref="DetailTierPolicy.LeadBleed"/>: one number for every tier).</summary>
+        static float LeadBleedNow() => ShellPolicy.Tracked.DetailTiers.LeadBleed;
+
+        /// <summary>A hero-list item set back in by the list's hang room (the list reaches that far left of the column so its clip leaves room for
+        /// the hero's display title hang): a pass-through box OUTSIDE the focus root, so the row's focus ring and every hit keep the row's own box.</summary>
+        static Element HangRoom(Element slot, float room)
+            => room > 0f ? new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(room, 0f, 0f, 0f), HitTestPassThrough = true, Children = [slot] } : slot;
+
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
                 scope => FocusRoot(Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)), scope.Row.OnFocusChanged),
@@ -1565,8 +1577,9 @@ public readonly partial struct Track
         Element VerticalList(int visible, bool recs, RepeatLayout layout, float stickyInset, bool narrate)
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
+            float room = LeadBleedNow();
             return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, recs),
-                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged),
+                scope => HangRoom(FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged), room),
                 layout,
                 new ListOptions
                 {
@@ -1676,9 +1689,17 @@ public readonly partial struct Track
             // content's reset epoch (exactly like the flat list's, ListScrollKey): an album evicted from KeepAlive and revisited,
             // or remounted by a theme switch, opens at the offset it was left at, in its first layout (E8/F12), and a
             // different album or a new content load starts at the top.
-            return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children }) with
+            // The hero arm's hero is the scroller's first child: its display title's hang (DetailTierPolicy.LeadBleed) needs room inside the scroller's
+            // clip, so the scroller reaches that far left of the column and its content is set back in by as much (nothing else moves).
+            float bleed = vertical ? LeadBleedNow() : 0f;
+            return ScrollView(new BoxEl
+            {
+                Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children,
+                Padding = bleed > 0f ? new Edges4(bleed, 0f, 0f, 0f) : default,
+            }) with
             {
                 Key = "trail:" + _latest.ScrollKey,
+                Margin = bleed > 0f ? new Edges4(-bleed, 0f, 0f, 0f) : default,
                 ScrollKey = TrailScrollKey,
                 Handle = _trailScroll,
                 Grow = 1f,
@@ -1941,6 +1962,7 @@ public readonly partial struct Track
             return new BoxEl
             {
                 Direction = 1,
+                Padding = LeadBleedNow() is > 0f and var room ? new Edges4(room, 0f, 0f, 0f) : default,   // set back in from the list's hang room
                 Children =
                 [
                     _heroStyle?.Skeleton?.Invoke(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form, _latest.Columns) ?? new BoxEl(),

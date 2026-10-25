@@ -188,7 +188,11 @@ the edge is not checked either: the next match is another node, not the edge (th
 pivots at Compact made the old rule measure the next visible pivot, +313.6 in the gallery's `Z-Overlays-Compact.1`/`.2`). Cause: right-of / left-of. FP classes: an edge whose key a view keyed on
 something else. Suppression: `Allow` policy, baseline.
 
-**`text.clip` (clip).** Word text whose ink runs past a clipping ancestor: vertical error, horizontal warn. Vertically the
+**`text.clip` (clip).** Word text whose ink runs past a clipping ancestor: vertical error; horizontal an **error at the leading
+(left) edge**, where the cut eats the start of the words (a display title's first stem: the Zune panorama hung in the list that
+clipped it, owner 2026-10-25), unless the theme declares the text a designed bleed there (a guide `LintIntent.Bleed`), and a
+warning at the trailing edge. Both axes judge the **glyphs' own ink** (horizontally its x extent: a cut through a hung title's
+empty side bearing is no cut, its first stem's is). Vertically the
 ink is the **glyphs' own ink**: the union of the laid glyphs' black boxes from their design metrics (the engine's
 `AppHost.TryQueryTextInk`, read at capture and saved as `inkTop`/`inkBottom`), so a cut through the line box's leading above
 the caps or its descent under a baseline with no descenders is no cut (Zune what's new and the albums heading were errors on

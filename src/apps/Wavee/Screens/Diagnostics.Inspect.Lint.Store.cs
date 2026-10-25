@@ -289,6 +289,8 @@ public static partial class Diagnostics
             {
                 Num(w, "inkTop", t.InkTop);
                 Num(w, "inkBottom", t.InkBottom);
+                Num(w, "inkLeft", t.InkLeft);
+                Num(w, "inkRight", t.InkRight);
             }
             if (t.OverflowX) w.WriteBoolean("ox", true);
             if (t.OverflowY) w.WriteBoolean("oy", true);
@@ -637,6 +639,8 @@ public static partial class Diagnostics
                 NaturalH = r.Finite(e, "nh", 0f),
                 InkTop = r.Finite(e, "inkTop", float.NaN),
                 InkBottom = r.Finite(e, "inkBottom", float.NaN),
+                InkLeft = r.Finite(e, "inkLeft", float.NaN),
+                InkRight = r.Finite(e, "inkRight", float.NaN),
                 OverflowX = r.Bool(e, "ox"),
                 OverflowY = r.Bool(e, "oy"),
                 Glyph = r.Bool(e, "glyph"),

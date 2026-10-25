@@ -295,6 +295,8 @@ public static partial class Diagnostics
                 NaturalH = overflow.IsText ? overflow.NaturalSize.Height : 0f,
                 InkTop = inked ? ink.Y : float.NaN,
                 InkBottom = inked ? ink.Bottom : float.NaN,
+                InkLeft = inked ? ink.X : float.NaN,
+                InkRight = inked ? ink.Right : float.NaN,
                 OverflowX = overflow.HorizontalOverflow,
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = glyph,

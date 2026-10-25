@@ -438,6 +438,10 @@ public static class ZuneListRules
         RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6)
     {
         HugeWide = Huge4K, HugeWideRung = ZuneTiers.PaneThirdRung,
+        // The panorama's widest hang (ZuneDetailLayout.PanoramaNudgeX, -6 at Compact and Small, -8 at Standard, -10 at Huge): the room the hero arm's
+        // clipping containers leave left of the column, so the title's stems are never cut at the margin (owner 2026-10-25, audit FU2d).
+        LeadBleed = -MathF.Min(MathF.Min(ZuneDetailRules.Compact.PanoramaNudgeX, ZuneDetailRules.Small.PanoramaNudgeX),
+            MathF.Min(MathF.Min(ZuneDetailRules.Standard.PanoramaNudgeX, ZuneDetailRules.Huge.PanoramaNudgeX), ZuneDetailRules.Huge4K.PanoramaNudgeX)),
     };
 
     /// <summary>An album's numbered rows (one line, no art) stand this far under the density's row: Z-Album's 42 under the standard 52 (compact 34, comfortable 50).</summary>
