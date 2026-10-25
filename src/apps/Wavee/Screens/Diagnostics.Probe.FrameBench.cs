@@ -86,6 +86,11 @@ public static partial class Diagnostics
 
             bool passTiming = host.GpuPassTimingEnabled;
             host.GpuPassTimingEnabled = o.GpuPasses;
+            // `--bench-gpu-work` (with --bench-gpu-passes): the pipeline-statistics work census — PS invocations per composite phase in
+            // the GPU CSV and <scenario>-items.tsv (which item shades what). Off for timing runs: the queries cost GPU time of their own.
+            bool gpuWork = o.GpuPasses && Array.IndexOf(Platform.Args.Argv, "--bench-gpu-work") >= 0;
+            d3d.GpuWorkCensusEnabled = gpuWork;
+            d3d.CompositeItemCensusEvery = gpuWork ? 30 : 0;
             FrameLedger.Enable();
             FrameLedger.Attach(host);
             var runMark = FrameLedger.Mark();
@@ -121,6 +126,8 @@ public static partial class Diagnostics
                 }
                 Pump(host, w, 1.0, null);
                 host.GpuPassTimingEnabled = passTiming;
+                d3d.CompositeItemCensusEvery = 0;
+                d3d.GpuWorkCensusEnabled = false;
             }
 
             // ONE rate for the whole run (see the file header), then every window is read, written and summarized at it.
@@ -533,10 +540,15 @@ public static partial class Diagnostics
             Pump(host, w, o.WarmupSec, d);
             scroll?.Restart();
             long walks0 = host.WalkLedger?.Count ?? 0, rasters0 = host.RasterLedger?.Count ?? 0;
+            var energy0 = EnergyMeter.Read();
             var mark = FrameLedger.Mark();
             Pump(host, w, o.MeasureSec, d);
             var snap = FrameLedger.Snapshot(mark);
+            var energy1 = EnergyMeter.Read();
+            extra ??= [];
+            EnergyMeter.AddMetrics(extra, energy0, energy1);
             WriteRecordLedgers(name, host, walks0, rasters0);
+            WriteItemCensus(name, host);
             if (scroll is not null)
             {
                 scroll.Observe();
@@ -571,6 +583,33 @@ public static partial class Diagnostics
                 int n = rl.Read(rasters0, rasters, out _);
                 WriteArtifact(OutDir(), name + "-rasters.tsv", EvidenceReport.LedgerTsv(rasters.AsSpan(0, n), Name));
             }
+        }
+
+        /// <summary>The latest per-item fragment census of the window (D3D12Device.CompositeItemCensusEvery, with the pass timeline) as
+        /// <c>&lt;scenario&gt;-items.tsv</c>: every top-level composite item of one whole-route frame, its kind, node, footprint and the
+        /// pixel-shader invocations its draws cost (the composite's overdraw, item by item).</summary>
+        static void WriteItemCensus(string name, AppHost host)
+        {
+            if (s_benchDevice is not { } d || d.CompositeItemCensusEvery <= 0) return;
+            var items = new D3D12Device.CompositeItemStat[D3D12Device.ItemCensusMax];
+            int n = d.CopyCompositeItemCensus(items);
+            if (n == 0) return;
+            const char T = '\t';
+            var sb = new StringBuilder("item\tkind\tslice\tnode\tfootPx\tps\tpsPerFoot\tdraws\tinline\topaque\n");
+            foreach (var it in items.AsSpan(0, n))
+                sb.Append(it.Item).Append(T).Append(it.Kind).Append(T).Append(it.SliceId).Append(T)
+                  .Append(it.NodeIndex >= 0 ? host.DescribeNode(it.NodeIndex, it.Gen) : "-").Append(T).Append(it.FootPx).Append(T)
+                  .Append(it.PsInvocations).Append(T).Append(it.FootPx > 0 ? (it.PsInvocations / (double)it.FootPx).ToString("0.00", CultureInfo.InvariantCulture) : "-")
+                  .Append(T).Append(it.Draws).Append(T).Append(it.Inline ? 1 : 0).Append(T).Append(it.Opaque ? 1 : 0).Append('\n');
+            WriteArtifact(OutDir(), name + "-items.tsv", sb.ToString());
+            var ops = new D3D12Device.CompositeItemOp[D3D12Device.ItemOpsMax];
+            int no = d.CopyCompositeItemOps(ops);
+            var so = new StringBuilder("item\top\tx\ty\tw\th\tareaPx\n");
+            foreach (var op in ops.AsSpan(0, no))
+                so.Append(op.Item).Append(T).Append(op.Op).Append(T).Append(op.X.ToString("0", CultureInfo.InvariantCulture)).Append(T)
+                  .Append(op.Y.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(op.W.ToString("0", CultureInfo.InvariantCulture)).Append(T)
+                  .Append(op.H.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(((long)(op.W * op.H)).ToString(CultureInfo.InvariantCulture)).Append('\n');
+            WriteArtifact(OutDir(), name + "-itemops.tsv", so.ToString());
         }
 
         /// <summary>Pump until the loop has gone quiet — two consecutive seconds with at most 2 presents each — or <paramref name="maxSec"/>.
