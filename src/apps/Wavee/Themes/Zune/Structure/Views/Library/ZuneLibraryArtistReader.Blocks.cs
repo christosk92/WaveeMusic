@@ -35,8 +35,8 @@ internal static partial class ZuneLibraryArtistReader
         var b = cell.Block;
         int slot = cell.AlbumSlot;
         var a = new Album(slot);
-        bool narrow = cell.Narrow;                                // the arm this mount froze (it is a list mount input)
-        var geo = cell.Rows;                                      // the rows the mount froze: their height, and whether they run under the cover
+        bool narrow = cell.Narrow;                                // the reader's arm now (a flip rebuilds the block in place: the cell's face follows it)
+        var geo = cell.Rows;                                      // the arm's rows: their height, and whether they run under the cover
         float cover = Artist.ReaderShape.CoverOf(narrow);
         bool valid = a.IsValid;
         Action go = cell.Open;
@@ -179,28 +179,22 @@ internal static partial class ZuneLibraryArtistReader
         Element save = K.Save(uri, title, Artist.ReaderShape.HeadCircle, Artist.ReaderShape.HeadGlyph);
         Element more = K.MoreButton(cell.Menu, Artist.ReaderShape.HeadCircle);
         Element titleSlot = TitleSlot(title, go, narrow);
-        if (!narrow)
-            return new BoxEl
-            {
-                Direction = 0, Gap = Artist.ReaderShape.HeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Height = Artist.ReaderShape.HeadH, OnBoundsChanged = cell.OnHeadBounds,
-                Children = [titleSlot, metaEl, play, save, more],        // title fills (floor) → meta shrinks → circles never
-            };
+        // ONE tree in both arms (audit FU2: the reader re-arms in place, the narrow arm is no list mount input): the title slot and the verbs row are the head's two
+        // children in either arm, the head a row inline and a column stacked, so a flip moves the verbs instead of re-parenting them (a re-parent rebuilt the
+        // save, play and "…" circles on the 1008 crossing). Inline: the title fills (floor) → the meta shrinks → the circles never. Stacked: the title row stated
+        // tall and stretched to the body, the verbs at the end (`Justify End`, not a spacer: a spacer would charge the meta one more gap).
+        Element verbs = new BoxEl
+        {
+            Direction = 0, Gap = Artist.ReaderShape.HeadGap, AlignItems = FlexAlign.Center, Justify = narrow ? FlexJustify.End : FlexJustify.Start,
+            Shrink = narrow ? 0f : 1f, MinWidth = 0f, Height = Artist.ReaderShape.HeadCircle,
+            Margin = narrow ? new Edges4(0f, Artist.ReaderShape.HeadStackGap, 0f, Artist.ReaderShape.HeadStackPadBottom) : default,
+            Children = [metaEl, play, save, more],
+        };
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, Height = Artist.ReaderShape.HeadStackedH, OnBoundsChanged = cell.OnHeadBounds,
-            Children =
-            [
-                titleSlot,                                               // HeadTitleRowH tall, stretched to the body
-                new BoxEl
-                {
-                    // `Justify End`, not a spacer: a spacer would charge the meta one more gap.
-                    Direction = 0, Gap = Artist.ReaderShape.HeadGap, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                    MinWidth = 0f, Height = Artist.ReaderShape.HeadCircle,
-                    Margin = new Edges4(0f, Artist.ReaderShape.HeadStackGap, 0f, Artist.ReaderShape.HeadStackPadBottom),
-                    Children = [metaEl, play, save, more],
-                },
-            ],
+            Direction = narrow ? (byte)1 : (byte)0, Gap = narrow ? 0f : Artist.ReaderShape.HeadGap, AlignItems = narrow ? FlexAlign.Stretch : FlexAlign.Center,
+            MinWidth = 0f, Height = narrow ? Artist.ReaderShape.HeadStackedH : Artist.ReaderShape.HeadH, OnBoundsChanged = cell.OnHeadBounds,
+            Children = [titleSlot, verbs],
         };
     }
 
