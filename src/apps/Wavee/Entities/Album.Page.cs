@@ -1075,6 +1075,8 @@ public readonly partial struct Album
             {
                 Release = a.IsValid ? ReleasePanel(a, false) : null, About = about, Fans = fans, MoreBy = moreBy,
                 Artists = artists, AlbumTitle = a.IsValid && a.Knows(AlbumFields.Title) ? a.Title : "",
+                // The credits paragraph (contract 1.82): null today (PageRules.CreditsOf: no album-level credits source yet), so no section draws.
+                Credits = a.IsValid ? PageRules.CreditsOf(a) : null,
             });
 
         static string Signature(string prefix, int count, ReadOnlySpan<int> targets)
