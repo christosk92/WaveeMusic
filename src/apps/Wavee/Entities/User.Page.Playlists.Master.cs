@@ -113,6 +113,12 @@ public readonly partial struct User
         /// <summary>The sort's two forms (the words, the button) cross-fade as one declared swap while their slot eases its width, so what follows slides.</summary>
         static readonly EnterExit s_sortSwap = SwapFamilies.Declare("Library.Playlists.SortSwap", new EnterExit(Opacity: 0f, Active: true));
 
+        /// <summary>The page's two arrangements (the one-column list, the master-detail) cross-fade on a crossing: one declared swap, opacity only.</summary>
+        static readonly EnterExit s_armFade = SwapFamilies.Declare("Library.Playlists.Arm", new EnterExit(Opacity: 0f, Active: true));
+
+        static readonly LayoutTransition s_armSwap = new(TransitionChannels.Opacity, MotionTok.ContentResize.ToDynamics(),
+            Enter: s_armFade, Exit: s_armFade, ExitDynamics: MotionTok.ContentResize.ToDynamics());
+
         static readonly LayoutTransition s_sortSlotResize = new(TransitionChannels.Size, MotionTok.ContentResize.ToDynamics(), Size: SizeMode.Reflow);
 
         /// <summary>A declared width that a tier changes (the gutters, the list column, the gap): it eases through real layout on the content-resize motion.</summary>
