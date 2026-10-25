@@ -50,7 +50,7 @@ internal static class ZuneInsights
         var toggle = p.Toggle;
         if (p.Form == DetailInsightsToggleForm.BandWord) return Embed.Comp(() => new BandWord(toggle));
         float edge = MathF.Max(Z.ToggleEdge, ZuneDetailTiers.For(ctx.Tier().Window).Target);
-        return Controls.Named(Embed.Comp(new BarProps(toggle, edge), static () => new BarButton()) with { Key = "insights:toggle:bar" },
+        return Controls.Named(Detail.Skeleton.Derivable(Embed.Comp(new BarProps(toggle, edge), static () => new BarButton()) with { Key = "insights:toggle:bar" }),
             Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 

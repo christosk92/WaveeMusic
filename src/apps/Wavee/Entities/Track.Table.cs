@@ -383,6 +383,9 @@ public readonly partial struct Track
         /// <summary>Where the page's ONE "…" meets the list options when a tier gives the page one (audit B8 r2): the table publishes its list options here
         /// for the columns form's rail. Stable per frame host.</summary>
         public Detail.PageMenuBridge? MenuBridge { get; init; }
+        /// <summary>The page's head has not answered yet: the frame's own flag (tracked; stable per frame host). While it holds, the list bar shimmers
+        /// with the page in its own place and size, and the head's landing turns it live (owner 2026-10-25). Null: a bar that is never pending.</summary>
+        public Func<bool>? HeadPending { get; init; }
 
         public bool Equals(TableArgs? other)
             => other is not null && (ReferenceEquals(this, other)
@@ -392,7 +395,8 @@ public readonly partial struct Track
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
-                   && Form == other.Form && ReferenceEquals(Columns, other.Columns) && ReferenceEquals(MenuBridge, other.MenuBridge)));
+                   && Form == other.Form && ReferenceEquals(Columns, other.Columns) && ReferenceEquals(MenuBridge, other.MenuBridge)
+                   && ReferenceEquals(HeadPending, other.HeadPending)));
 
         public override int GetHashCode()
             => HashCode.Combine(Source, Profile, Vertical is null, ShowToolbar, Embedded, WidthSeed, ScrollKey, Form);
