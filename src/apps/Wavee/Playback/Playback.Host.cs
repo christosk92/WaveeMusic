@@ -146,10 +146,10 @@ public static partial class Playback
     public static readonly Signal<int> DurationMs = new(0);
     /// <summary>The seek generation (<see cref="State.SeekGen"/>): bumps on every LOCAL seek the reducer emits. The seek bar
     /// samples it BEFORE it posts its commit and asks <see cref="SeekLandedAfter"/> of <see cref="LastSeekLandedGen"/> (V-PA12).</summary>
-    public static readonly Signal<uint> SeekGen = new(0u);
+    public static readonly Signal<uint> SeekGen = new(0u) { DebugName = "playback.seekGen" };
     /// <summary>The <see cref="SeekGen"/> of the last <see cref="AudioSignal.Seeked"/> that landed
     /// (<see cref="State.LastSeekLandedGen"/>) — what releases the seek rail's drop-point hold.</summary>
-    public static readonly Signal<uint> LastSeekLandedGen = new(0u);
+    public static readonly Signal<uint> LastSeekLandedGen = new(0u) { DebugName = "playback.seekLanded" };
     /// <summary>Where a live scrub gesture stands in ms (U-7): the time labels and the rail's readout show it instead of the position
     /// while the pointer drags. −1 = no scrub live. <see cref="ScrubModel"/> runs in the reducer; this is its one published number.</summary>
     public static readonly Signal<int> ScrubPositionMs = new(-1);
@@ -247,7 +247,7 @@ public static partial class Playback
         static uint s_version;
 
         /// <summary>Bumps whenever the roster changed — the number the picker's bound list compares.</summary>
-        public static readonly Signal<uint> Changed = new(0u);
+        public static readonly Signal<uint> Changed = new(0u) { DebugName = "devices.roster" };
 
         public static ReadOnlySpan<Row> Rows => s_rows.AsSpan(0, s_count);
         public static int Count => s_count;

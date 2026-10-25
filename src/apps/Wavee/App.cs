@@ -287,6 +287,8 @@ public static class App
         string logFolder;
         try { logFolder = Platform.LogFolder; }
         catch { logFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs"); }
+        // `--fg frame-trace` without a path writes beside the app log (FrameTrace.cs): the folder the owner already sends.
+        FluentGpu.Hosting.FrameTrace.DefaultDirectory = logFolder;
         int bootFailures = Crash.Host.BootFailures(logFolder);   // a file in the crash folder: readable even when Boot() threw
         if (recoverySwitch || bootThrew || Crash.RecoveryPolicy.Enter(false, bootFailures, false))
         {

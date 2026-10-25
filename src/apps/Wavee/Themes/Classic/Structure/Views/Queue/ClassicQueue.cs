@@ -225,9 +225,12 @@ internal sealed class ClassicQueuePanel : Component
         int index = row.Index;
         bool viewer = props.Queue.Viewer;
         Action skip = () => verbs.Play(itemId, index, r);
+        // The heart and the ✕ are built from their data (the verbs, the entry, the row's uri and title, the tier) by a static builder, so an
+        // unchanged row is an equal push and its surface does not re-render when the panel does (Controls.FromData; WinUI and Zune do the same).
+        Element trailing = Controls.FromData((verbs, itemId, index, r, row.Removable, text.Uri, text.Title, _tier),
+            static d => RowTrailing(d.Uri, d.Title, d.Removable, () => d.verbs.Remove(d.itemId, d.index, d.r), d._tier));
         var data = SurfaceData(r, text, art, click: skip, play: skip, draggable: row.Draggable, queueItem: itemId,
-                               menu: () => verbs.RowMenu(itemId, index, r, viewer),
-                               trailing: RowTrailing(text, row.Removable, () => verbs.Remove(itemId, index, r), _tier));
+                               menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
         var shape = Shape.Row(TrackRowRules.ArtEdge(ClassicQueueRules.QueueArt, art)) with { MinHeight = _rowExtent };
         return new BoxEl
         {
@@ -295,7 +298,7 @@ internal sealed class ClassicQueuePanel : Component
         Action? open = ClassicQueueRules.NowPlayingClickOf(props.OpenNowPlaying is not null) == ClassicQueueRules.NowPlayingClick.OpenContext
             ? props.OpenNowPlaying : null;
         var data = SurfaceData(current, text, art: true, click: open, play: toggle, draggable: true, queueItem: null, menu: null,
-                               trailing: HeartLane(text, _tier));
+                               trailing: Controls.FromData((text.Uri, text.Title, _tier), static d => HeartLane(d.Uri, d.Title, d._tier)));
         var shape = Shape.RowTile with { ArtEdge = ClassicQueueRules.NowArt };
         return new BoxEl
         {
@@ -336,7 +339,7 @@ internal sealed class ClassicQueuePanel : Component
                 new BoxEl
                 {
                     Width = _tier.AtLeast(ClassicQueueRules.NowHeartLaneW), Height = ClassicQueueRules.HairlineExtent, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Heart(text, _tier)],
+                    Children = [Heart(text.Uri, text.Title, _tier)],
                 },
             ],
         };
@@ -382,7 +385,8 @@ internal sealed class ClassicQueuePanel : Component
                 var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art, ShowExplicit: false,
                                                        ShowVideo: true, Draggable: draggable,
                                                        ShowMenu: QueueRowRules.ShowsMenuButton,
-                                                       QueueItemId: queueItem, Trailing: trailing);
+                                                       QueueItemId: queueItem, Trailing: trailing,
+                                                       Tracked: false);   // the host re-pushes when a shown row changes (its rows digest)
                 var data = Track.RowData(new Track(r.Slot).ForDisplay, in options) with { Uri = text.Uri };
                 if (menu is not null) data = data with { Menu = menu };
                 return text.Unavailable ? data with { Title = text.Title, Subtitle = null, CoverUrl = null } : data;
@@ -392,12 +396,12 @@ internal sealed class ClassicQueuePanel : Component
 
     /// <summary>The surface's trailing cluster: the heart, then the ✕ — or its width, so the hearts of removable and
     /// viewed rows line up.</summary>
-    static Element RowTrailing(QueueRowText text, bool removable, Action remove, ClassicPanelContentLayout tier) => new BoxEl
+    static Element RowTrailing(string uri, string title, bool removable, Action remove, ClassicPanelContentLayout tier) => new BoxEl
     {
         Direction = 0, Gap = Spacing.XXS, AlignItems = FlexAlign.Center, Shrink = 0f,
         Children =
         [
-            HeartLane(text, tier),
+            HeartLane(uri, title, tier),
             removable ? CloseGlyph(remove, hairline: false, tier) : new BoxEl { Width = tier.CloseBox, Shrink = 0f },
         ],
     };
@@ -500,16 +504,17 @@ internal sealed class ClassicQueuePanel : Component
 
     /// <summary>The heart's 26-wide lane (40 on a Compact window) — the hairline row's leading cell (<paramref name="height"/> its row) and
     /// the surface's trailing one (NaN: as tall as its cluster).</summary>
-    static Element HeartLane(in QueueRowText text, ClassicPanelContentLayout tier, float height = float.NaN) => new BoxEl
+    static Element HeartLane(in QueueRowText text, ClassicPanelContentLayout tier, float height = float.NaN) => HeartLane(text.Uri, text.Title, tier, height);
+
+    static Element HeartLane(string uri, string title, ClassicPanelContentLayout tier, float height = float.NaN) => new BoxEl
     {
         Width = tier.AtLeast(ClassicQueueRules.HeartLaneW), Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        BlocksDragArm = true, Children = [Heart(text, tier)],
+        BlocksDragArm = true, Children = [Heart(uri, title, tier)],
     };
 
-    static Element Heart(in QueueRowText text, ClassicPanelContentLayout tier)
+    static Element Heart(string uri, string title, ClassicPanelContentLayout tier)
     {
-        if (text.Uri.Length == 0) return new BoxEl();
-        string uri = text.Uri, title = text.Title;
+        if (uri.Length == 0) return new BoxEl();
         float box = tier.HeartBox;
         return Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = 14f, Box = box }) with { Key = "save:" + uri };
     }

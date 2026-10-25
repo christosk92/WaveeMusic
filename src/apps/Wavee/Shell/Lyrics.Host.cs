@@ -1917,7 +1917,7 @@ public static partial class Lyrics
 
         /// <summary>Bumped once per publication. Read it in a bound thunk beside <see cref="Doc(Track)"/>; a bare
         /// document read subscribes to nothing.</summary>
-        public static readonly Signal<uint> Changed = new(0u);
+        public static readonly Signal<uint> Changed = new(0u) { DebugName = "lyrics.changed" };
 
         /// <summary>Bumped when a BACKGROUND pass replaced the document a surface is already showing. The view keys
         /// its "hold the swap until the next handoff" rule off this rather than off <see cref="Changed"/>, which also

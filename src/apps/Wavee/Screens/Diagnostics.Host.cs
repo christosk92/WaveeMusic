@@ -160,6 +160,7 @@ public static partial class Diagnostics
             s_firstFrameMs = double.NaN;
             s_nav = default;
             long id = Interlocked.Increment(ref s_navigationId);
+            FluentGpu.Hosting.FrameTrace.Nav(id, name, arg);   // `--fg frame-trace`: the nav row (no-op when off)
             Log.Event(WaveeLogLevel.Info, "ui", "nav.route", "route shown route=" + name + " arg="
                 + (string.IsNullOrEmpty(arg) ? "-" : Uri.EscapeDataString(arg)) + " navId=" + id.ToString(CultureInfo.InvariantCulture));
         }

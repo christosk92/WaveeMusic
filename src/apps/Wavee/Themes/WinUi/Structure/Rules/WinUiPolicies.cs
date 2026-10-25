@@ -48,7 +48,7 @@ public static partial class WinUiPolicies
     private static readonly NavPanePolicy s_navCompact = s_navAutomatic with { NarrowMode = NavPaneMode.Compact };
 
     private static readonly ShellCapabilities s_tabsOn = new(
-        Tabs: true, NavTree: true, FriendsPanel: true, ForwardButton: true, HistoryMenu: true, MaxBandPins: 0) { CyclesTabs = true };
+        Tabs: true, NavTree: true, FriendsPanel: true, ForwardButton: true, HistoryMenu: true, MaxBandPins: 0, ContinuousPageSwap: true) { CyclesTabs = true };
 
     // Tabs off keeps the workspace (owner Q1, the board): the strip is hidden, not the tabs (W2a, core seam WK (a)).
     private static readonly ShellCapabilities s_tabsOff = s_tabsOn with { HiddenTabStrip = true };

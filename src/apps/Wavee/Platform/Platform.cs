@@ -961,7 +961,7 @@ public static partial class Platform
 
     /// <summary>The same number as a signal, for a binder that wants to re-read a preference reactively. Written on
     /// the UI thread only (C1), like every other signal in the app.</summary>
-    public static readonly Signal<uint> SettingsChanged = new(0u);
+    public static readonly Signal<uint> SettingsChanged = new(0u) { DebugName = "settings.changed" };
 
     /// <summary>Install the backing store. Called once by <see cref="Boot"/> with the registry store; called by a
     /// test with an in-memory one, and with <c>null</c> to go back to defaults-only.</summary>

@@ -487,7 +487,7 @@ public sealed class ClassicStructure : IStructureLayer
             structure.Get(AccentFromArtwork.Key), structure.Get(NowPlayingColors.Key));
 
     /// <inheritdoc />
-    public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
+    public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted with { ContinuousPageSwap = true };
 
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
