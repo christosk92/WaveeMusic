@@ -63,9 +63,10 @@ public enum ClassicArtistHeroArm : byte
 /// <summary>The type rung of the hero's name.</summary>
 public enum ClassicArtistName : byte
 {
-    /// <summary>84 / 96 (<c>ArtistDisplay</c>).</summary>
+    /// <summary>84 / 96 (<c>ArtistDisplay</c>). The artist hero eases it to 48 / 60 (<c>ArtistTitle</c>) at the Medium edge
+    /// (<see cref="ClassicArtistTiers.HeroNameBlend"/>) and sets it one line first, shrinking to the blended floor before it wraps.</summary>
     Display,
-    /// <summary>48 / 60 (<c>ArtistTitle</c>).</summary>
+    /// <summary>48 / 60 (<c>ArtistTitle</c>). The artist hero (only its Short cap uses it) sets it one line first, then it wraps.</summary>
     Title,
     /// <summary>32 / 40 (<c>ArtistCompactTitle</c>).</summary>
     Compact,
@@ -251,6 +252,12 @@ public static class ClassicArtistTiers
         new NamedLadder(ArtistLadders.Hero, Hero),
         new NamedLadder(ArtistLadders.Reader, Reader));
 
+    /// <summary>Where a <paramref name="width"/>-wide page's hero name sits between the Title step (0, at the Medium edge and under it) and the Display step
+    /// (1, at the Wide edge and over it): the name of a <see cref="ClassicArtistName.Display"/> form eases between the two with the page's width, so a resize
+    /// or a docking pane never snaps it a size when it crosses the Wide edge (owner 2026-10-25, "text jumping around" on a queue-pane drag). A function of
+    /// the width alone, never of the latched tier, so the edge's hold cannot snap it either.</summary>
+    public static float HeroNameBlend(float width) => Math.Clamp((width - HeroMediumFrom) / (HeroWideFrom - HeroMediumFrom), 0f, 1f);
+
     /// <summary>The hero sub-tier of a <paramref name="width"/>-wide page, held against <paramref name="previous"/> (-1: a fresh resolve).</summary>
     public static ArtistHeroTier HeroTierFor(float width, int previous = -1) => ArtistLadders.HeroOf(Hero.Resolve(width, previous));
 
@@ -304,7 +311,8 @@ public static class ClassicArtistTiers
 
     private static readonly ClassicArtistHeroForm s_medium = s_wide with
     {
-        Tier = ArtistHeroTier.Medium, Height = 384f, Photo = 384f, CopyMax = 760f, Name = ClassicArtistName.Title,
+        // The name stays the fluid Display one (HeroNameBlend): at the Medium edge it is the Title step, at the Wide edge the Display step.
+        Tier = ArtistHeroTier.Medium, Height = 384f, Photo = 384f, CopyMax = 760f,
     };
 
     // The stacked identity band's WORST-CASE anatomy: verified caption + a 2-line title + a 2-line bio + meta (one row at Compact, three stacked rows at
