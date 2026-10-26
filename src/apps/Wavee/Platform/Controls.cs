@@ -470,11 +470,9 @@ public static partial class Controls
     /// <summary>Semantic copy protection over full-bleed artist photography. Both axes use exactly FOUR stops — the
     /// recorder's limit, so this is a hard ceiling and not a preference — and both release to alpha 0 at the hero seam.
     ///
-    /// <para>The HORIZONTAL arm is the left plate (theme-invariant 0.80 / 0.66 / 0.35): the copy column sits on a surface the
-    /// photograph still shows through, and the photography lives after it. Since its hold follows the copy column's edge (D18),
-    /// a near-opaque 0.96 / 0.92 plate covered half a wide hero and read as a flat grey slab over the photo (owner 2026-10-26,
-    /// "washed, almost solid"); 0.80 / 0.66 keeps every line of copy over 4.5:1 (lint contrast, dark and light) and lets the
-    /// picture through. It must not go back to a whisper either: a softened pass once made it vanish in light themes. The VERTICAL
+    /// <para>The HORIZONTAL arm is the near-opaque left plate (theme-invariant 0.96 / 0.92 / 0.35): the copy column sits
+    /// on a real surface and the photography lives in the right half. A softened pass made the plate a whisper in light
+    /// themes so the always-on bottom photo fade read as "the" fade; it was restored by explicit ruling. The VERTICAL
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
     /// image into a painted plate.</para>
     /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) to where the caller's copy column
@@ -509,15 +507,15 @@ public static partial class Controls
         }
         float h = float.IsNaN(hold) ? HeroVeilHold : Math.Clamp(hold, HeroVeilHold, 1f - HeroVeilShoulder - HeroVeilTail);
         return GradientRight(
-            new GradientStop(0f, veil with { A = 0.80f }),
-            new GradientStop(h, veil with { A = 0.66f }),
+            new GradientStop(0f, veil with { A = 0.96f }),
+            new GradientStop(h, veil with { A = 0.92f }),
             new GradientStop(h + HeroVeilShoulder, veil with { A = 0.35f }),
             new GradientStop(1f, veil with { A = 0f }));
     }
 
     /// <summary>The horizontal veil's default hold stop, the distance from the hold to the 0.35 shoulder, and the least room the
     /// shoulder keeps before the veil's clear edge.</summary>
-    const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.20f, HeroVeilTail = 0.04f;
+    const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.32f, HeroVeilTail = 0.04f;
 
     /// <summary>Where a held vertical veil's 0.35 rung sits, as a share of the way to its hold.</summary>
     const float HeroVeilRampShare = 0.55f;
