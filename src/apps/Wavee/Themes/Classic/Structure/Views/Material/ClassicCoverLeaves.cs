@@ -146,7 +146,6 @@ internal sealed class ClassicCoverTone : Component
 /// carries no artist-page arithmetic.</summary>
 internal sealed class ClassicCoverBlend : Component
 {
-    bool _mounted;
     /// <summary>Has the ladder ever produced a DEFINITIVE first answer (a real grading hit, or Definite because
     /// nothing better can ever arrive)? See the Exit guard below — the whole point of this field.</summary>
     bool _settled;
@@ -179,7 +178,7 @@ internal sealed class ClassicCoverBlend : Component
         // must not brighten in over its first frames.
         //
         // PRE-SETTLEMENT EXIT GUARD — see VeilSettlement's doc for the defect and the fix.
-        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, rung, definite);
+        var (settled, exitAnimates, enterAnimates) = VeilSettlement.Advance(_settled, rung, definite);
         Element tone = new BoxEl
         {
             Key = "artist-wash-tone:" + (byte)rung + ":" + wash.GetHashCode().ToString("X8"),
@@ -189,11 +188,10 @@ internal sealed class ClassicCoverBlend : Component
             // the fade, which is a second flash in place of the first (lighter, and the title's contrast drops
             // with it). A pre-settlement re-key is a CORRECTION, not a transition: it swaps in one frame and is
             // meant to be imperceptible. Once settled, a genuine later change cross-fades exactly as before.
-            Enter = _mounted && exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
+            Enter = enterAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
             Exit = exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
             Transition = MotionTok.ControlNormal,
         };
-        _mounted = true;
         _settled = settled;
         // The wash's height follows the artist hero's (a tier crossing changes both): it eases through real layout with the hero's, inside an
         // auto-sized root, because the view's anchor mirrors its root's DECLARED height and would land at the new height at once.
@@ -215,7 +213,6 @@ internal sealed class ClassicCoverBlend : Component
 internal sealed class ClassicCoverVeil : Component
 {
     static readonly Func<uint, ColorF> s_lift = static a => ColorScience.Lift(ColorScience.ToColor(a));
-    bool _mounted;
     /// <summary>See the identical field on <see cref="ClassicCoverBlend"/> and the Exit guard below — this leaf
     /// veils the same photo the wash sits behind, so it carries the same defect and the same fix.</summary>
     bool _settled;
@@ -238,18 +235,17 @@ internal sealed class ClassicCoverVeil : Component
         // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
         //
         // PRE-SETTLEMENT EXIT GUARD — see VeilSettlement's doc for the defect and the fix.
-        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite);
+        var (settled, exitAnimates, enterAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite);
         Element veil = new BoxEl
         {
             Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
             HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical, p.Hold),
             // Fade only a re-key, never the first paint - and never a PRE-SETTLEMENT re-key either: see the sibling
             // in ClassicCoverBlend. An Enter with no Exit beneath it unveils the photo for the length of the fade.
-            Enter = _mounted && exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
+            Enter = enterAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
             Exit = exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
             Transition = MotionTok.ControlNormal,
         };
-        _mounted = true;
         _settled = settled;
         // Grow only in the STRETCH arm (NaN height): the sized arm keeps Grow 0, exactly as before.
         return new BoxEl

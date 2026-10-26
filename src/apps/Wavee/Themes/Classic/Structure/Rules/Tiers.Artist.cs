@@ -128,6 +128,12 @@ public sealed record ClassicArtistHeroForm
     /// <summary>The action row ends in a More button (the artist's menu; C-Artist-Huge, C-Artist-Huge4K).</summary>
     public bool More { get; init; }
 
+    /// <summary>How much of the hero's height, from its top, the side veil fades in over (a share; 0: the veil runs the whole height). The veil
+    /// keeps the copy readable, and nothing sits above the copy, so the photograph shows clear there instead of under a flat plate (owner
+    /// 2026-10-26: "washed, almost solid"). It ends above the copy's first line: 0.30 where the copy sits at the foot. The centred form keeps the veil
+    /// to its top: its copy starts too high for a fade to read as one (a strip of bare photograph over the veil's edge, owner 2026-10-26).</summary>
+    public float VeilFadeTop { get; init; }
+
     /// <summary>The photograph sits apart from the copy (no type on it, the field arm) or the copy is a band of its own on it (the overlay arm): the
     /// veil is vertical or absent.</summary>
     public bool Stacked => Arm is ClassicArtistHeroArm.Field or ClassicArtistHeroArm.Overlay;
@@ -343,12 +349,12 @@ public static class ClassicArtistTiers
     // C-Artist-Small: the Medium hero with the copy at the bottom-left, 560 wide, one biography line.
     private static readonly ClassicArtistHeroForm s_smallMedium = s_medium with
     {
-        Arm = ClassicArtistHeroArm.Bottom, CopyMax = 560f, CopyBottom = 20f, CopyGap = 6f, BioLines = 1,
+        Arm = ClassicArtistHeroArm.Bottom, CopyMax = 560f, CopyBottom = 20f, CopyGap = 6f, BioLines = 1, VeilFadeTop = 0.30f,
     };
 
     private static readonly ClassicArtistHeroForm s_smallWide = s_wide with
     {
-        Arm = ClassicArtistHeroArm.Bottom, CopyMax = 760f, CopyBottom = 28f,
+        Arm = ClassicArtistHeroArm.Bottom, CopyMax = 760f, CopyBottom = 28f, VeilFadeTop = 0.30f,
     };
 
     // The Compact sub-tier inside a Small window: the overlay arm at the control's 32.
@@ -360,7 +366,7 @@ public static class ClassicArtistTiers
     // C-Artist-Huge (and -Huge4K): the copy 40 up, 1120 wide, the bio at 760, the lines 10 apart; the height follows the width between 560 and 640.
     private static readonly ClassicArtistHeroForm s_huge = s_wide with
     {
-        Arm = ClassicArtistHeroArm.Bottom, Height = HugeHeroMin, Photo = HugeHeroMin, CopyBottom = 40f, CopyGap = 10f, BioMax = 760f, More = true,
+        Arm = ClassicArtistHeroArm.Bottom, Height = HugeHeroMin, Photo = HugeHeroMin, CopyBottom = 40f, CopyGap = 10f, BioMax = 760f, More = true, VeilFadeTop = 0.30f,
     };
 
     /// <summary>The hero's form for sub-tier <paramref name="tier"/> of a <paramref name="width"/>-wide page in the tiers <paramref name="facts"/>; the Standard

@@ -130,7 +130,7 @@ public static class ThemeHost
     /// <c>RequestForwarder</c> is what <c>ctx.OptionRequests</c> sets through, and lands in <see cref="Apply"/>.</summary>
     public static OptionStore Options => s_store?.Store ?? s_noOptions;
 
-    /// <summary>Selects <paramref name="themeId"/> for this run before <see cref="Install"/>: Developer mode on (a Developer-only theme such as Zune
+    /// <summary>Selects <paramref name="themeId"/> for this run before <see cref="Install"/>: Developer mode on (a Developer-only theme
     /// resolves) and the id in this run's settings. For review captures (`--screenshot --theme zune`) in a --fake profile, whose settings live in memory.</summary>
     public static void SelectForRun(string themeId)
     {

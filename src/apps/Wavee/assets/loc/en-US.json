@@ -3528,6 +3528,7 @@
     "releases": "Releases",
     "allChanges": "All changes",
     "all": "All",
+    "filterItem": "{label} ({count})",
     "changeCount": "{count, plural, one {# change} other {# changes}}",
     "issueCount": "{count, plural, one {# issue} other {# issues}}",
     "installed": "Installed",

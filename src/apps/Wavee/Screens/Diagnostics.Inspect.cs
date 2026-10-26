@@ -807,6 +807,10 @@ public static partial class Diagnostics
             };
             string images = a.Str("images", "fake").ToLowerInvariant();
             if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
+            string materials = a.Str("materials", "on").ToLowerInvariant();
+            if (materials is not ("on" or "off")) { error = "materials is on or off"; return false; }
+            // The one switch the engine reads for "no acrylic" besides the OS's two (Materials.AcrylicEnabled); every mount sets it.
+            FluentGpu.Dsl.Materials.EnergySaver = materials == "off";
             float dt = a.Float("dt", 16f);
             if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
             _shell = MountOn(w0, h0, scale, gpu, images == "real", dt);
@@ -1004,7 +1008,7 @@ public static partial class Diagnostics
                 InspectKit.ActivateTheme(theme);
                 return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
             }
-            // Mounted: the user's path, a live theme transaction (prewarm, freeze, swap, remount, thaw). Zune is Developer-only.
+            // Mounted: the user's path, a live theme transaction (prewarm, freeze, swap, remount, thaw).
             if (ThemeInspection.IsDeveloperOnly(theme)) Platform.Developer.Enabled.Value = true;
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;

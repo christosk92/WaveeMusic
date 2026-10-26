@@ -1306,7 +1306,7 @@ public static partial class Lyrics
                 // The hand-off: ONE instant latch + the per-line compensating cascade.
                 float delta = target - (float)_scroll.Offset.Peek();
                 if (MathF.Abs(delta) <= Follow.LatchEpsDip) return FollowArm.AtTarget;
-                LatchViewport(target);
+                LatchHandOff(target);
                 ArmCascade(scene, delta, active);
                 return FollowArm.AtTarget;
             }
@@ -1330,6 +1330,22 @@ public static partial class Lyrics
         {
             _followProgrammaticTargetY = null;
             _scroll.ScrollTo(target, ScrollMove.Immediate);
+        }
+
+        /// <summary>The hand-off latch, FENCED to this frame's publication. The rows' compensating translates (ArmCascade) reach the
+        /// render thread only with this frame's scene, but a plan write wakes the render poser at once: an Immediate ScrollTo was
+        /// posed over the PREVIOUS picture (no compensation) whenever the poser ticked before this frame published, so the whole
+        /// column showed one frame at its destination, then snapped back and eased (owner video 2026-10-26). ShiftFrame moves the
+        /// resting plan to the same target, and the poser keeps posing a picture published before the shift in its own frame
+        /// (ScrollPoser's frame rule): the jump and its compensation reach the glass on one present. A plan still in flight (a
+        /// resync glide) or an unbound handle keeps the plain latch (a shift would carry the glide on); the extent step re-asserts
+        /// the bounds the shift moved.</summary>
+        void LatchHandOff(float target)
+        {
+            double at = _scroll.OffsetNow;
+            if (!_scroll.IsBound || Math.Abs(_scroll.Plan.Dest - at) > Follow.LatchEpsDip) { LatchViewport(target); return; }
+            _followProgrammaticTargetY = null;
+            _scroll.ShiftFrame(target - at);
         }
 
         // ── 2.11 the interlude lane ─────────────────────────────────────────────────────────────────────────────────

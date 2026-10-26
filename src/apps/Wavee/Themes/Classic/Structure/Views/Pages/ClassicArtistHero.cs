@@ -137,8 +137,11 @@ internal static class ClassicArtistHero
             {
                 // Eases its height with the photograph's band on a crossing, the veil stretched over it (its stretch arm), so no strip of the
                 // photograph shows unveiled while the hero's height eases.
+                // The top of the hero carries no copy: the veil fades in over the form's share of it, so the photograph shows there. Linear, so the
+                // veil starts rising at the very edge: a smoothstep left a bare strip that read as a veil cut short.
                 Width = w, Height = height, ZStack = true, HitTestVisible = false, Animate = ClassicTierMotion.HeightReflow,
                 TransformOriginX = 0.5f, TransformOriginY = 0f,
+                EdgeFade = form.VeilFadeTop > 0f ? new EdgeFadeSpec(EdgeMask.Top, 0f, form.VeilFadeTop * height, 0f, 0f, FadeFalloff.Linear) : null,
                 Children =
                 [
                     Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, float.NaN, key: "artist-veil:" + uri,

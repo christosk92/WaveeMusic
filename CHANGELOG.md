@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.7] - unreleased
+
+### Changed
+
+- **WinUI and Zune are there for everyone.** They were only offered with Developer mode on, so most installs, the
+  Microsoft Store one included, never showed them. Settings > Appearance > Theme now lists all three.
+- **WinUI uses the new What's new page,** the same one as Wavee Classic.
+- **What's new shows more at a glance.** The biggest highlight shows its description without hovering on every window
+  but the narrowest, and the changes filter says how many changes each section has: All (52), Added (5), and so on.
+- **The artist header shows more of the photograph.** The panel behind the name and buttons now fades out toward the
+  top of the header, where there is no text, instead of covering it in a flat colour; the text stays as readable as
+  before.
+
+### Fixed
+
+- What's new: hovering a highlight no longer makes its title jump; the frosted band grows and shrinks smoothly with
+  its description.
+- What's new: with Energy saver on, or Windows transparency effects off, a highlight's text sits on a solid band
+  instead of directly on the picture.
+- What's new no longer jumps when the window gets shorter or taller than 720 pixels.
+- An artist page no longer flashes its bare photograph for a frame when the colours from its photo load.
+- Synced lyrics no longer show the whole column at its next position for one frame before scrolling there, which made
+  some line changes look like a jump.
+- The player bar no longer slides down out of the window and back when you select an album in your library or the page
+  under it resizes.
+
 ## [0.3.6] - 2026-10-26
 
 ### Added
