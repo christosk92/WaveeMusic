@@ -1,9 +1,8 @@
-// ── Themes/WinUi/Structure/Rules/WinUiReleaseNotesRules.cs — the numbers of Classic's release-notes surfaces (themes plan 6.1, T11c) ─────────
+// ── Themes/WinUi/Structure/Rules/WinUiReleaseNotesRules.cs — the numbers of WinUI's release-notes overlays (themes plan 6.1, T11c) ─────────
 //
 // What `Screens\ReleaseNotes.UI.cs` and `Screens\ReleaseNotes.cs` (`HighlightCardMetrics`, the geometry half of `HighlightViewerLayout`, plan P14) held beside the
-// pictures they size: the What's-new page's frame, hero, strip, section and rail numbers, the highlight card's whole geometry and the after-update plate's height
-// budget (pure arithmetic: the plate RENDERS from these numbers and a test holds the 620 DIP cap against them), the viewer plate's geometry, its fixed
-// colours and its pager. They are data, not decisions (WVTH003 allows literals only in `Rules\**`). The stepping rule (`HighlightPaging`), the highlight cap
+// pictures they size (the What's-new PAGE is Classic's since 0.3.6): the row and poster cards of the after-update plate, the highlight card's whole geometry and
+// the after-update plate's height budget, the viewer plate's geometry, its fixed colours and its pager. They are data, not decisions (WVTH003 allows literals only in `Rules\**`). The stepping rule (`HighlightPaging`), the highlight cap
 // (`HighlightMax`) and every decision the pages take stay core.
 
 using System;
@@ -13,45 +12,20 @@ using FluentGpu.Foundation;
 
 namespace Wavee.Themes.WinUi;
 
-/// <summary>The constants of Classic's release-notes page, highlight viewer and after-update plate.</summary>
+/// <summary>The constants of WinUI's highlight viewer and after-update plate.</summary>
 public static class WinUiReleaseNotesRules
 {
-    // ── the page's frame, states and since banner ─────────────────────────────────────────────────────────────────────────
+    /// <summary>The 12 DIP meta size (the row card's "Read more").</summary>
+    public const float MetaSize = 12f;
 
-    /// <summary>The since banner's gap. (The frame's gap to the rail is the tier record's: <c>WinUiReleaseNotesLayout.FrameGap</c>.)</summary>
-    public const float SinceGlyph = 16f;
-    public const float SinceGap = 10f;
+    // ── the row card, the card chrome, the kind pill ──────────────────────────────────────────────────────────────────
 
-    /// <summary>The loading ring and the empty state's text measure.</summary>
-    public const float LoadingRingSize = 28f, EmptyTextMaxWidth = 360f;
+    /// <summary>The ROW card (the after-update plate's cards at Compact): the poster's size and decode width, the card's padding, the gap between the poster and
+    /// the copy and between the copy's lines.</summary>
+    public const float RowPosterW = 120f, RowPosterH = 68f, RowPosterDecodePx = 240f, RowCardPad = 8f, RowCardGap = 12f, RowCopyGap = 4f;
 
-    /// <summary>The empty spacer under the last section of the page.</summary>
-    public const float PageTailHeight = 24f;
-
-    /// <summary>The 12 DIP meta size (divider label, meta items, section count, scope), the section badge glyph and the 14 DIP body size.</summary>
-    public const float MetaSize = 12f, BodySize = 14f;
-
-    // ── the hero ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The hero's meta row gap, the headline's size, the tagline's measure and the meta item's gap.</summary>
-    public const float HeroMetaGap = 14f, HeroHeadlineSize = 30f, HeroTaglineMaxWidth = 640f, MetaItemGap = 5f;
-
-    // ── the strip, the card chrome, the kind pill ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The strip's eyebrow-to-row gap. (The gap between cards is the tier record's: <c>WinUiReleaseNotesLayout.HighlightGap</c>.)</summary>
-    public const float StripGap = 6f;
-
-    /// <summary>The ROW card (Compact and Small highlights): the poster's size and decode width, the card's padding, the gap between the poster and the copy and between the
-    /// copy's lines, and the Highlights heading's size and line (Huge).</summary>
-    public const float RowPosterW = 120f, RowPosterH = 68f, RowPosterDecodePx = 240f, RowCardPad = 8f, RowCardGap = 12f, RowCopyGap = 4f, HeadingSize = 20f, HeadingLine = 28f;
-
-    /// <summary>The release picker's width where it is a combo (Small) and the form swap's fade (the rail and the picker cross-fade when a tier crossing swaps them).</summary>
-    public const float PickerWidth = 190f;
-
-    /// <summary>The rail / picker swap and the section / card re-flow fade in and out together over <c>Design.Motion.Fast</c>.</summary>
-    public static LayoutTransition FormFade => new(TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentAccelerate));
+    /// <summary>The ROW card's title size and line, and the gap between the row cards in the plate's column.</summary>
+    public const float RowTitleSize = 14f, RowTitleLine = 20f, RowListGap = 8f;
 
     /// <summary>The kind pill's height, the play glyph's disc and the "Read more" row's gap and size.</summary>
     public const float KindPillHeight = 20f, PlayDisc = 32f, ReadMoreGap = 4f;
@@ -59,38 +33,8 @@ public static class WinUiReleaseNotesRules
     /// <summary>The decode width of a poster (the authored width: without it the poster is a smear).</summary>
     public const float PosterDecodePx = 1200f;
 
-    // ── a changelog section, its rows, the chips and the avatars ──────────────────────────────────────────────────────────
-
-    /// <summary>The section's gap, header badge and header height.</summary>
-    public const float SectionGap = 6f, SectionBadge = 22f, SectionHeaderMinHeight = 28f;
-
-    /// <summary>The scope eyebrow's size.</summary>
-    public const float ScopeSize = 11f;
-
-    /// <summary>A row's reference-chip row gap, the chip's gap, dot (diameter) and the code span's size.</summary>
-    public const float RowRefGap = 6f, ChipGap = 4f, ChipDot = 7f, CodeSpanSize = 12f;
-
-    /// <summary>The chip's height.</summary>
-    public const float ChipHeight = 18f;
-
-    /// <summary>An avatar's disc, its ring, the initials' size and the overflow count's size; at most <see cref="AvatarMax"/> discs show. The
-    /// initial and the count sit at the type floor (11; they were 9 and 10, under it): one letter still fits the 18 disc.</summary>
-    public const float AvatarSize = 18f, AvatarRing = 1.5f, AvatarInitialsSize = 11f, AvatarMoreSize = 11f;
-
-    /// <summary>The most avatars one row stacks.</summary>
-    public const int AvatarMax = 4;
-
-    /// <summary>A fixed, deterministic palette (ch 28 §4.3): the same login gets the same tint on every page and every build.</summary>
-    public static readonly ColorF[] AvatarTints =
-    [
-        ColorF.FromRgba(0x4A, 0x7A, 0xC0, 0xFF), ColorF.FromRgba(0xC0, 0x7A, 0x4A, 0xFF), ColorF.FromRgba(0x4A, 0xA8, 0x7A, 0xFF),
-        ColorF.FromRgba(0x8A, 0x6A, 0xC0, 0xFF), ColorF.FromRgba(0xC0, 0x5A, 0x7A, 0xFF), ColorF.FromRgba(0x5A, 0x8A, 0x8A, 0xFF),
-    ];
-
-    // ── the release rail ──────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The rail's gap, its row list's gap, a row's gap, radio ring (diameter and stroke), unread dot and the title row's gap. (Its width is the tier record's.)</summary>
-    public const float RailGap = 6f, RailListGap = 2f, RailRowGap = 6f, RailRadio = 9f, RailRadioRing = 1.5f, RailDot = 6f;
+    /// <summary>The code span's size in the viewer's sentences.</summary>
+    public const float CodeSpanSize = 12f;
 
     // ── the kind pill's shadow (issue #89 L3: 0/1/4 #00000066) ────────────────────────────────────────────────────────────
 

@@ -784,7 +784,7 @@ public static partial class Diagnostics
 
         /// <summary>Between mounts: make <paramref name="themeId"/> the active theme the way a launch would resolve it (the
         /// id stored in this run's memory settings, the shipped themes installed as App.cs installs them, the palette seeded
-        /// with its definition). A Developer-only theme (Zune) turns Developer mode on; any other turns it off.
+        /// with its definition). A Developer-only theme (none today) turns Developer mode on; any other turns it off.
         /// <paramref name="kind"/>, when given, seeds light or dark first (no OS read). False for an id the app does not ship.</summary>
         public static bool ActivateTheme(string themeId, ThemeKind? kind = null)
         {

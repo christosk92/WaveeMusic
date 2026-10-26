@@ -1,11 +1,10 @@
 // ── Themes/Zune/ZuneTheme.cs — Zune = Zune.Structure x Zune.Style (themes plan 6.3; P5 Z0) ───────────────────────────────────────────
 //
-// The composition file of the theme (WVTH001: it may reference every layer, and every theme). Zune is DEVELOPER-only (P5, Z9 asserts it):
-// with Developer mode off, `ThemeCatalog.Resolve("zune")` answers Classic and the stored `theme.id` is kept, so Zune comes back when
-// Developer mode does.
+// The composition file of the theme (WVTH001: it may reference every layer, and every theme). Zune is PUBLIC since 0.3.6: every user can
+// pick it in Settings > Appearance, Developer mode or not.
 //
 // THE STAND-IN. Until every Zune family has landed (P5 Z9: the Zune registry-completeness test), the structure is handed Classic's
-// registration as its stand-in (`ZuneStructure.cs` explains why it is all or nothing for now): a Developer who picks Zune gets a working
+// registration as its stand-in (`ZuneStructure.cs` explains why it is all or nothing for now): a user who picks Zune gets a working
 // app, Classic's views under Zune's style, policies, tiers and capabilities. Remove the stand-in in the PR that makes Zune's own
 // registry complete.
 
@@ -30,7 +29,7 @@ public static class ZuneTheme
         StructureId: ZuneStructure.LayerId,
         StyleId: ZuneStyle.LayerId,
         InheritsFrom: null,
-        Availability: ThemeAvailability.Developer,
+        Availability: ThemeAvailability.Public,
         // No preview images ship yet: the picker draws its UI-native miniature where an asset is missing.
         Preview: new ThemePreview("themes/zune-light.png", "themes/zune-dark.png"),
         DescriptionKey: Strings.Theme.Zune.Description);

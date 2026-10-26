@@ -1008,7 +1008,7 @@ public static partial class Diagnostics
                 InspectKit.ActivateTheme(theme);
                 return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
             }
-            // Mounted: the user's path, a live theme transaction (prewarm, freeze, swap, remount, thaw). Zune is Developer-only.
+            // Mounted: the user's path, a live theme transaction (prewarm, freeze, swap, remount, thaw).
             if (ThemeInspection.IsDeveloperOnly(theme)) Platform.Developer.Enabled.Value = true;
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;

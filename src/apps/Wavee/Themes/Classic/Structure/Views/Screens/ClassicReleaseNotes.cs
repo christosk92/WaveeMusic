@@ -86,17 +86,23 @@ internal static partial class ClassicReleaseNotes
             Highlights(view.MergedHighlights, props.OpenHighlight, props.OpenStoreListing, layout),
         };
 
-        // The kinds the shown releases carry, in document order: the SelectorBar's words after "All".
+        // The kinds the shown releases carry, in document order (the SelectorBar's words after "All"), and how many changes each holds.
         var kinds = new List<string>(6);
+        var counts = new List<int>(6);
         foreach (var entry in shown)
             foreach (var section in entry.Doc.Sections)
-                if (section.Items is { Length: > 0 } && !kinds.Contains(section.Kind)) kinds.Add(section.Kind);
+                if (section.Items is { Length: > 0 } items)
+                {
+                    int at = kinds.IndexOf(section.Kind);
+                    if (at < 0) { kinds.Add(section.Kind); counts.Add(items.Length); }
+                    else counts[at] += items.Length;
+                }
         int chosen = filter.Value;
         string? only = chosen > 0 && chosen <= kinds.Count ? kinds[chosen - 1] : null;
         if (kinds.Count > 0)
         {
             main.Add(SectionHeading(Loc.Get(Strings.WhatsNew.AllChanges)));
-            main.Add(ChangeFilter(kinds, filter));
+            main.Add(ChangeFilter(kinds, counts, filter));
         }
 
         for (int i = 0; i < shown.Length; i++)
@@ -135,17 +141,22 @@ internal static partial class ClassicReleaseNotes
             rail, picker, gutter, layout);
     }
 
-    /// <summary>The changelog's filter: the stock SelectorBar, "All" then one word per section kind. Keyed by its words: the bar keeps the items it was built with,
-    /// so another release's set of sections mounts a fresh one.</summary>
-    static Element ChangeFilter(List<string> kinds, Signal<int> filter)
+    /// <summary>The changelog's filter: the stock SelectorBar, "All" then one word per section kind, each with how many changes it shows ("Added (5)"). Keyed by
+    /// its words and counts: the bar keeps the items it was built with, so another release's set of sections mounts a fresh one.</summary>
+    static Element ChangeFilter(List<string> kinds, List<int> counts, Signal<int> filter)
     {
         var words = new string[kinds.Count + 1];
-        words[0] = Loc.Get(Strings.WhatsNew.All);
-        for (int i = 0; i < kinds.Count; i++) words[i + 1] = Loc.Get(SectionTitleLocKey(kinds[i]));
+        int total = 0;
+        for (int i = 0; i < kinds.Count; i++)
+        {
+            words[i + 1] = Strings.WhatsNew.FilterItem(Loc.Get(SectionTitleLocKey(kinds[i])), counts[i]);
+            total += counts[i];
+        }
+        words[0] = Strings.WhatsNew.FilterItem(Loc.Get(Strings.WhatsNew.All), total);
         if (filter.Peek() >= words.Length) filter.Value = 0;
         return new BoxEl
         {
-            Key = "rn:filter:" + string.Join("|", kinds), Direction = 0, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Key = "rn:filter:" + string.Join("|", words), Direction = 0, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
             Children = [SelectorBar.Create(words, filter)],
         };
     }
@@ -167,7 +178,8 @@ internal static partial class ClassicReleaseNotes
         {
             new BoxEl
             {
-                Key = "rn:title", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                // Shove: a Short window's smaller page top moves the title, and it glides there.
+                Key = "rn:title", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Layout = ClassicTierMotion.Shove,
                 Margin = new Edges4(0f, 0f, 0f, under ? layout.TitleBottom : 0f),
                 Children = [R.Type.SurfaceDisplay(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f }],
             },
@@ -182,11 +194,20 @@ internal static partial class ClassicReleaseNotes
 
         var rows = new List<Element>(2)
         {
-            new GridEl
+            // The head's height eases through layout when a Short window changes its air (8 / 4 against 16-32 / 12), so the body under it rides (a
+            // box carries the motion: a grid takes none).
+            new BoxEl
             {
-                Key = "rn:head", Columns = switcher && !under ? s_titleAndPicker : s_titleOnly, ColGap = Spacing.M,
-                Padding = new Edges4(gutter, layout.PageTop, gutter, under ? Spacing.XS : layout.TitleBottom),
-                Children = head.ToArray(),
+                Key = "rn:head-band", Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.HeightReflow,
+                Children =
+                [
+                    new GridEl
+                    {
+                        Key = "rn:head", Columns = switcher && !under ? s_titleAndPicker : s_titleOnly, ColGap = Spacing.M,
+                        Padding = new Edges4(gutter, layout.PageTop, gutter, under ? Spacing.XS : layout.TitleBottom),
+                        Children = head.ToArray(),
+                    },
+                ],
             },
         };
         rows.Add(new BoxEl
@@ -238,14 +259,24 @@ internal static partial class ClassicReleaseNotes
 
         // Loc keys, not concatenation: the quotation marks are typography a locale must be able to move.
         string headline = doc.Name is { Length: > 0 } name ? Strings.WhatsNew.Headline(doc.Version, name) : Strings.WhatsNew.HeadlineBare(doc.Version);
-        var kids = new List<Element>(4)
+        // The tagline and the facts line are one keyed block: a Short window drops the facts line, which closes its height (its gap included, as its
+        // own top padding) as it fades and opens it again (MakeRoom), so nothing after it steps; every part keeps its node.
+        var words = new List<Element>(2)
         {
-            new TextEl(headline) { Size = layout.HeadlineSize, LineHeight = layout.HeadlineSize + K.HeadlineLeading, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
             new TextEl(doc.Tagline) { Size = K.TaglineSize, LineHeight = K.TaglineLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = K.HeroTaglineMaxWidth },
         };
         if (layout.HeroMeta && Facts(doc) is { Length: > 0 } facts)
-            kids.Add(new TextEl(facts) { Size = K.MetaSize, LineHeight = K.MetaLine, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap });
-        kids.Add(HeadActions(layout, () => openUrl(release), () => copy(release)));
+            words.Add(new BoxEl
+            {
+                Key = "rn:hero:facts", Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, Spacing.S, 0f, 0f), Layout = ClassicTierMotion.MakeRoom,
+                Children = [new TextEl(facts) { Size = K.MetaSize, LineHeight = K.MetaLine, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap }],
+            });
+        var kids = new List<Element>(3)
+        {
+            new TextEl(headline) { Key = "rn:hero:headline", Size = layout.HeadlineSize, LineHeight = layout.HeadlineSize + K.HeadlineLeading, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
+            new BoxEl { Key = "rn:hero:words", Direction = 1, MinWidth = 0f, Children = words.ToArray() },
+            HeadActions(layout, () => openUrl(release), () => copy(release)) with { Key = "rn:hero:actions" },
+        };
         return new BoxEl { Key = "rn:hero", Direction = 1, Gap = Spacing.S, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = kids.ToArray() };
     }
 

@@ -63,18 +63,17 @@ internal static partial class WinUiReleaseNotes
         if (cards.Length > 0)
         {
             var row = new Element[cards.Length];
-            var rowLayout = WinUiReleaseNotesTiers.For(WidthTier.Compact, short_: false);   // the ROW card's numbers (its 14/20 title, its 8 gap)
             for (int i = 0; i < cards.Length; i++)
             {
                 int idx = i;
                 Element card = ov.CardsColumn
-                    ? RowCard(cards[i], () => openCard(idx), props.OpenStoreListing, rowLayout, inRow: false)
+                    ? RowCard(cards[i], () => openCard(idx), props.OpenStoreListing, ov.Target)
                     : CardFor(cards[i], () => openCard(idx), props.OpenStoreListing, compact: true);
                 row[i] = card with { Key = "dlg-hl:" + (cards[i].Highlight.Id is { Length: > 0 } id ? id : idx.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
             }
             scrolled.Add(new BoxEl
             {
-                Direction = ov.CardsColumn ? (byte)1 : (byte)0, Gap = ov.CardsColumn ? rowLayout.HighlightGap : M.CardGap,
+                Direction = ov.CardsColumn ? (byte)1 : (byte)0, Gap = ov.CardsColumn ? K.RowListGap : M.CardGap,
                 AlignItems = FlexAlign.Stretch, MinWidth = 0f,
                 Padding = new Edges4(padX, M.RowPadTop, padX, M.RowPadBottom),
                 Children = row,
