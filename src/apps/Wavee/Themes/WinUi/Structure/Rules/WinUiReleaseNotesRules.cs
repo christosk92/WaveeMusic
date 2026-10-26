@@ -102,8 +102,10 @@ public static class WinUiReleaseNotesRules
     /// <summary>Deliberate literals (ch 28 §4.6): rgba(0,0,0,.72) — the media scrim (.55) reads thin stacked over the plate's own smoke.</summary>
     public static readonly ColorF ViewerVeil = ColorF.FromRgba(0, 0, 0, 184);
 
-    /// <summary>The pips' white 82 / 140.</summary>
-    public static readonly ColorF PipOff = ColorF.FromRgba(255, 255, 255, 82), PipOffHover = ColorF.FromRgba(255, 255, 255, 140);
+    /// <summary>The unselected pips and their hover: the theme's strong control fill and secondary ink, so they read on the plate in
+    /// light as well as dark (the white 82 / 140 they were vanished on the light plate). Properties: tokens follow a theme switch.</summary>
+    public static ColorF PipOff => Tok.FillControlStrong;
+    public static ColorF PipOffHover => Tok.TextSecondary;
 
     /// <summary>The chrome's dimmed and hover media-scrim alphas (.40 / .70).</summary>
     public const float ChromeDimmedAlpha = 0.40f, ChromeHoverAlpha = 0.70f;

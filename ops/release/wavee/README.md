@@ -159,6 +159,50 @@ if either is missing.
 
 `bytes` and the hash are stamped by the tool - leave them out.
 
+### Light mode (`srcLight`)
+
+Wavee shows a highlight's image in the app mode the reader has, so give every image a light twin: the same shots
+captured with the app in light mode, framed with `-Appearance light` (a pale field and light stat tiles), named
+`<basename>-light.jpg` and listed as `srcLight`. Without it the dark image shows in both modes.
+
+```jsonc
+"media": {
+  "kind": "image",
+  "src": "media/themes.jpg",
+  "srcLight": "media/themes-light.jpg",
+  "alt": "Wavee in the Zune theme, with an album page in the WinUI theme in front of it",
+  "width": 1200, "height": 675
+}
+```
+
+```powershell
+ops\release\tools\New-ReleaseImage.ps1 -Appearance light -Shot artifacts\media-src\home-light.png `
+    -Out ops\release\wavee\0.3.6\media\home-light.jpg
+```
+
+The same path rules and budgets apply, and both files count toward the release's 1.5 MB.
+
+### Measured numbers (`-Variant stats`)
+
+A performance highlight can show up to four stat tiles instead of a screenshot: an icon (`memory`, `gpu`, `cpu`,
+`frames`, `startup`, `battery`, `clock`, `image`), one figure with its unit, and optional before/after bars drawn to
+scale. Only numbers measured on real data, same machine and scenario before and after, belong here; the words go in the
+highlight's title and body, the tiles carry numerals, units and version labels only.
+
+```jsonc
+[ { "icon": "image", "value": "−45", "unit": "MB", "before": 128, "after": 80, "from": "0.3.5", "to": "0.3.6" } ]
+```
+
+```powershell
+ops\release\tools\New-ReleaseImage.ps1 -Variant stats -Stats artifacts\media-src\stats.json `
+    -Out ops\release\wavee\0.3.6\media\lighter.jpg
+```
+
+### Three highlights, no more
+
+The What's new strip and the after-update dialog show at most three (`ReleaseNotes.HighlightMax`); a fourth passes
+validation and is silently not shown. Merge two highlights instead of adding one.
+
 ### Close-ups (`-Variant detail`)
 
 `-Zoom 1` shows the captured pixels 1:1 in the final 1200x675 image (the 760x400 viewport is a 760x400 region of the

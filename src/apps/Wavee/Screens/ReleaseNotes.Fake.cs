@@ -3,6 +3,10 @@
 // Under `--fake` the store never reaches GitHub: `GetAsync` answers any safe version with this notes document (the named release's own words for the six
 // versions of the rail, a generic one for any other), and `RefreshIndexAsync` publishes the rail's index. The words are the demo's, written like a real
 // changelog: three highlight cards, then added / changed / fixed items citing closed issues, two with a first-time contributor.
+//
+// A demo that has real notes of its own (a packaged build's `Assets/whatsnew`, or `--whatsnew <dir>` pointing at a release folder the release tool
+// emitted) plays THAT release instead: its notes, its images, and the index that came with them (or a one-entry index), so a release can be read in
+// the app before it ships.
 
 namespace Wavee;
 
@@ -28,6 +32,30 @@ public static partial class ReleaseNotes
             entries[i] = new ReleaseNotesIndexEntry { Version = r.Version, PackageVersion = r.Version + ".0", Name = r.Name, Date = r.Date, Channel = r.Channel, Issues = [190, 198, 201, 203, 205, 210, 214] };
         }
         return new ReleaseNotesIndex { Releases = entries };
+    }
+
+    /// <summary>The rail's index when the demo plays its own notes <paramref name="own"/>: the index emitted beside them, else that one release.</summary>
+    internal static ReleaseNotesIndex FakeIndex(ReleaseNotesDocument own, ReleaseNotesIndex? emitted)
+    {
+        if (emitted?.Find(own.Version) is not null) return emitted;
+        return new ReleaseNotesIndex
+        {
+            Releases = [new ReleaseNotesIndexEntry { Version = own.Version, PackageVersion = own.PackageVersion, Name = own.Name, Date = own.Date, Channel = own.Channel }],
+        };
+    }
+
+    /// <summary>The release the demo runs: its own notes' version when it has them, else 1.6.0 "aurora" (the canned notes' newest stable).</summary>
+    internal static RunningBuild FakeRunning() =>
+        Notes.FakeOwnNotes() is { } own ? new RunningBuild(own.Version, own.Channel.Length > 0 ? own.Channel : "stable", false) : new RunningBuild("1.6.0", "stable", false);
+
+    /// <summary>The release the demo last read: the one before its own notes in their index ("" when none), else 1.4.0.</summary>
+    internal static string FakeLastSeen()
+    {
+        if (Notes.FakeOwnNotes() is not { } own) return "1.4.0";
+        var releases = Notes.FakeOwnIndex()?.Releases ?? [];
+        for (int i = 0; i + 1 < releases.Length; i++)
+            if (releases[i]?.Version == own.Version) return releases[i + 1]?.Version ?? "";
+        return "";
     }
 
     /// <summary>The notes of <paramref name="version"/>.</summary>

@@ -28,8 +28,8 @@ public static class ReleaseNotesModel
     /// <summary>The running build as the loaders take it.</summary>
     public static ReleaseNotes.RunningBuild Running()
     {
-        // The demo plays 1.6.0 "aurora" (the fake notes' newest stable): its rail marks it and its page has a range to stack.
-        if (Platform.Args.Fake) return new ReleaseNotes.RunningBuild("1.6.0", "stable", false);
+        // The demo plays 1.6.0 "aurora" (the fake notes' newest stable), or its own notes' release: its rail marks it and its page has a range to stack.
+        if (Platform.Args.Fake) return ReleaseNotes.FakeRunning();
         var me = Platform.Version;
         return new ReleaseNotes.RunningBuild(me.Core, me.Channel, me.IsStore);
     }
@@ -37,7 +37,7 @@ public static class ReleaseNotesModel
     /// <summary>The release the reader last opened the notes for ("" before the first open). Read BEFORE
     /// <see cref="MarkSeen"/> and carried into the load: advancing first hands the range (me, me) and the banner and every
     /// dot die.</summary>
-    public static string LastSeen() => Platform.Args.Fake ? "1.4.0" : Platform.Settings.Get(Platform.Keys.ReleaseNotesLastSeen);   // the demo last looked at 1.4.0
+    public static string LastSeen() => Platform.Args.Fake ? ReleaseNotes.FakeLastSeen() : Platform.Settings.Get(Platform.Keys.ReleaseNotesLastSeen);   // the demo last looked at 1.4.0
 
     /// <summary>Reading the page is what marks the notes seen: the last-seen marker becomes the running core version.</summary>
     public static void MarkSeen() => Platform.Settings.Set(Platform.Keys.ReleaseNotesLastSeen, Platform.Version.Core);

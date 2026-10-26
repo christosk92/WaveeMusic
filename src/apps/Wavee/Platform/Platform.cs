@@ -889,6 +889,12 @@ public static partial class Platform
         /// change, so the rollback and its toast can be exercised without a network. Off unless `--fake` is on.</summary>
         public static bool FakeCoverFail { get; private set; }
 
+        /// <summary>`--fake --whatsnew &lt;dir&gt;`: a release's notes folder (the release tool's `validate` output:
+        /// <c>whatsnew.json</c>, <c>whatsnew-index.json</c>, <c>media/</c>) the demo shows as its own release instead of
+        /// the canned notes, so a release's words and images can be looked at before it ships. Null unless `--fake` is on
+        /// AND the folder exists.</summary>
+        public static string? WhatsNewPreview { get; private set; }
+
         /// <summary>`--headless` or `--stress-audio`: a no-window host (<c>Diagnostics.Probe.TryRun</c>). Boot reads it
         /// for one decision — a headless run never applies a pending factory reset, because its `--profile` scratch
         /// folder is not the profile the reset was armed for (headless plan §2.8).</summary>
@@ -925,6 +931,8 @@ public static partial class Platform
             FakeVideo = fv >= 0 && fv + 1 < argv.Length && File.Exists(argv[fv + 1]) ? Path.GetFullPath(argv[fv + 1]) : null;
             FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
             FakeCoverFail = Fake && Array.IndexOf(argv, "--fake-cover-fail") >= 0;
+            int wn = Fake ? Array.IndexOf(argv, "--whatsnew") : -1;
+            WhatsNewPreview = wn >= 0 && wn + 1 < argv.Length && Directory.Exists(argv[wn + 1]) ? Path.GetFullPath(argv[wn + 1]) : null;
             Headless = Array.IndexOf(argv, "--headless") >= 0 || Array.IndexOf(argv, "--stress-audio") >= 0;
             RelaunchBroker = Array.IndexOf(argv, "--relaunch-after") >= 0;
             Recovery = Array.IndexOf(argv, "--recovery") >= 0;

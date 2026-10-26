@@ -188,6 +188,9 @@ public static partial class ReleaseNotes
         /// <summary>image | video.</summary>
         public string Kind { get; set; } = "image";
         public string Src { get; set; } = "";
+        /// <summary>The same still captured in the light app mode (an image highlight), shown while Wavee is light; null or ""
+        /// shows <see cref="Src"/> in both modes. The same path rules and budgets as <see cref="Src"/>.</summary>
+        public string? SrcLight { get; set; }
         public string? Poster { get; set; }
         public string Alt { get; set; } = "";
         public int Width { get; set; }

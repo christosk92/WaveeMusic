@@ -307,7 +307,7 @@ internal static partial class WinUiReleaseNotes
             {
                 new TextEl(h.Title) { Size = K.ViewerTitleSize, Weight = 600, LineHeight = K.ViewerTitleLine, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
                 RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
-                    with { Size = K.ViewerBodySize, LineHeight = K.ViewerBodyLine, Color = Tok.TextSecondary, Margin = new Edges4(0f, 8f, 0f, 0f) },
+                    with { Size = K.ViewerBodySize, LineHeight = K.ViewerBodyLine, Color = Tok.TextPrimary, Margin = new Edges4(0f, 8f, 0f, 0f) },
             };
             Element? action = null;
             if (store)
