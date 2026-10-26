@@ -249,6 +249,7 @@ public static partial class Diagnostics
             Arg("heroLyrics", ArgType.Enum, "the Artist layout's lyrics over the photo", null, "on|off|true|false"),
             Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
             Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
+            Arg("materials", ArgType.Enum, "off: no acrylic runs, every frosted surface draws its fallback plate (what Energy saver and Transparency effects off show)", "on", "on|off"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),

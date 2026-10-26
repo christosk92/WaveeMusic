@@ -807,6 +807,10 @@ public static partial class Diagnostics
             };
             string images = a.Str("images", "fake").ToLowerInvariant();
             if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
+            string materials = a.Str("materials", "on").ToLowerInvariant();
+            if (materials is not ("on" or "off")) { error = "materials is on or off"; return false; }
+            // The one switch the engine reads for "no acrylic" besides the OS's two (Materials.AcrylicEnabled); every mount sets it.
+            FluentGpu.Dsl.Materials.EnergySaver = materials == "off";
             float dt = a.Float("dt", 16f);
             if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
             _shell = MountOn(w0, h0, scale, gpu, images == "real", dt);

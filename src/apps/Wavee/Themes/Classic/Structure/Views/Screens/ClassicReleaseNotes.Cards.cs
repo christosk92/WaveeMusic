@@ -92,8 +92,9 @@ internal static partial class ClassicReleaseNotes
 
     /// <summary>One tile: the poster filling it (a tinted plate without one) and, at its foot, a frosted band — acrylic in the page's ground that blurs the
     /// picture under it and feathers into it from the top, never a hard edge — with the title in it. The description opens in the band while the pointer is on
-    /// the tile (the house reveal: the band grows up over the picture, nothing around it moves), and is always open on Huge windows. The tile is one button
-    /// that opens the viewer with the whole text; the Store tile is not, its accent button goes to the Store. A component only for its hover state.</summary>
+    /// the tile (the band grows up over the picture with it, nothing around it moves), and is always open where the tile has the room (the hero on every
+    /// tier but Compact, every tile on Huge). The tile is one button that opens the viewer with the whole text; the Store tile is not, its accent button
+    /// goes to the Store. A component only for its hover state.</summary>
     sealed class TileView : Component
     {
         readonly Signal<bool> _hover = new(false);
@@ -105,7 +106,7 @@ internal static partial class ClassicReleaseNotes
             var h = a.Item.Highlight;
             var layout = a.Layout;
             bool store = HighlightVisibility.IsStore(h);
-            bool always = layout.DescriptionAlways;
+            bool always = a.Hero ? layout.HeroDescriptionAlways : layout.DescriptionAlways;
             bool open = always || _hover.Value;
             float title = a.Hero ? layout.HeroTitleSize : K.TileTitleSize;
 
@@ -116,10 +117,10 @@ internal static partial class ClassicReleaseNotes
                     Size = title, LineHeight = title + K.HeadlineLeading, Weight = 600, Color = Tok.TextPrimary,
                     Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
-                // Always mounted: the declared height toggles 0 <-> auto and the reveal springs the presented height (the Expander's motion).
+                // Always mounted: the declared height toggles 0 <-> auto and the reveal eases it, on a hover and on a tier crossing that opens it at rest.
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, ClipToBounds = true, Height = open ? float.NaN : 0f, Animate = always ? null : s_reveal,
+                    Direction = 1, MinWidth = 0f, ClipToBounds = true, Height = open ? float.NaN : 0f, Animate = s_reveal,
                     Children =
                     [
                         new TextEl(Plain(MarkdownLite.Tokenize(h.Body)))
@@ -135,6 +136,7 @@ internal static partial class ClassicReleaseNotes
                 words.Add(new BoxEl { Direction = 0, Margin = new Edges4(0f, Spacing.S, 0f, 0f), Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), a.OpenStore, ButtonAppearance.Accent, ControlSize.Medium, layout.Target)] });
 
             float pad = a.Hero ? layout.HeroPad : K.TilePad;
+            var band = K.TileBand;
             var layers = new List<Element>(3);
             if (a.Item.Poster is { Length: > 0 } poster)
                 layers.Add(new ImageEl
@@ -148,13 +150,15 @@ internal static partial class ClassicReleaseNotes
             {
                 AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 1, MinWidth = 0f, HitTestVisible = store,
                 Padding = new Edges4(pad, pad + K.BandFeatherRoom, pad, pad),
-                Acrylic = K.TileBand,
+                // The fill is the frost's fallback plate (energy saver, transparency effects off): the engine feathers it in as it feathers the frost.
+                Acrylic = band, Fill = band.Fallback,
                 Children = words.ToArray(),
             });
 
             var frame = new BoxEl
             {
-                ZStack = true, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                // A layout boundary: the row owns the tile's size, so the band's reflow re-solves the tile alone.
+                ZStack = true, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, IsolateLayout = true,
                 Corners = CornerRadius4.All(Radii.Card), Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
                 BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverBorderColor = Tok.StrokeCardDefault, BrushTransitionMs = Design.Motion.Faster,
                 OnHoverMove = always ? null : _enter, OnPointerExit = always ? null : _exit,
@@ -180,8 +184,10 @@ internal static partial class ClassicReleaseNotes
         readonly Action _exit;
     }
 
-    /// <summary>The description's reveal: the Expander's disclosure (layout lands once, the presented height springs, the band's top edge rides it).</summary>
-    static LayoutTransition s_reveal => new(TransitionChannels.Size, MotionTok.Reveal.ToDynamics(), Size: SizeMode.FlowReveal, Anchor: SizeAnchor.Parallax);
+    /// <summary>The description's reveal: its height eases through real layout, so the band, which sits on the tile's foot and grows UP, carries its
+    /// title and its frost up with it frame by frame (a FlowReveal lands the layout at once, and only what follows the box rides it: the band's top and
+    /// the title above the description jumped).</summary>
+    static LayoutTransition s_reveal => new(TransitionChannels.Size, MotionTok.Reveal.ToDynamics(), Size: SizeMode.Reflow, Axes: SizeAxes.Height);
 
     /// <summary>The ROW card (the after-update plate's cards at Compact): a 120 x 68 poster beside the kind pill, the title and "Read more". The whole card is the hit
     /// region (at least the tier's target tall: the poster alone is 68); the Store card keeps its button a SIBLING of the hit region, as the poster card does.</summary>
