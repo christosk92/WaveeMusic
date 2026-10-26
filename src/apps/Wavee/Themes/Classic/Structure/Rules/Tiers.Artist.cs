@@ -130,7 +130,8 @@ public sealed record ClassicArtistHeroForm
 
     /// <summary>How much of the hero's height, from its top, the side veil fades in over (a share; 0: the veil runs the whole height). The veil
     /// keeps the copy readable, and nothing sits above the copy, so the photograph shows clear there instead of under a flat plate (owner
-    /// 2026-10-26: "washed, almost solid"). It ends above the copy's first line: 0.30 where the copy sits at the foot, 0.12 where it is centred.</summary>
+    /// 2026-10-26: "washed, almost solid"). It ends above the copy's first line: 0.30 where the copy sits at the foot. The centred form keeps the veil
+    /// to its top: its copy starts too high for a fade to read as one (a strip of bare photograph over the veil's edge, owner 2026-10-26).</summary>
     public float VeilFadeTop { get; init; }
 
     /// <summary>The photograph sits apart from the copy (no type on it, the field arm) or the copy is a band of its own on it (the overlay arm): the
@@ -310,7 +311,7 @@ public static class ClassicArtistTiers
     // The tuned Standard forms (every number is the one the core's hero held before tiers).
     private static readonly ClassicArtistHeroForm s_wide = new()
     {
-        Tier = ArtistHeroTier.Wide, Arm = ClassicArtistHeroArm.Centred, Height = 440f, Photo = 440f, CopyMax = 1120f, CopyBottom = 0f, CopyGap = 8f, VeilFadeTop = 0.12f,
+        Tier = ArtistHeroTier.Wide, Arm = ClassicArtistHeroArm.Centred, Height = 440f, Photo = 440f, CopyMax = 1120f, CopyBottom = 0f, CopyGap = 8f,
         BioLines = 2, BioMax = float.NaN, Details = true, Name = ClassicArtistName.Display, Actions = ClassicHeroActions.Row, Target = Target,
     };
 
