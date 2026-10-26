@@ -20,8 +20,8 @@ namespace Wavee.Themes.Classic;
 
 internal static partial class ClassicReleaseNotes
 {
-    /// <summary>The highlights the way the Microsoft Store leads its home page: the FIRST highlight is the hero, the picture filling a big tile with its title, two
-    /// lines of its body and "See details" over a dark foot; the others are smaller tiles with their title alone (the whole text is one click away, in the viewer).
+    /// <summary>The highlights the way the Microsoft Store leads its home page: the FIRST highlight is the hero, a big tile, the others smaller; each is the picture
+    /// with its title in a frosted band at its foot, the description opening there on hover (always on Huge), the whole text one click away in the viewer.
     /// Wide (Standard, Huge): the hero takes two thirds of the row and the others stack 16:9 beside it, so that column sets the row's height. Narrow and medium
     /// (Compact, Small): the hero across the top, the others side by side under it. Three is a cap, not a layout; two sit as equal tiles in the wide form and one
     /// is the hero alone. No highlights ⇒ a 0-height, hit-invisible box.
@@ -80,66 +80,108 @@ internal static partial class ClassicReleaseNotes
         };
     }
 
-    /// <summary>One tile: the poster filling it (a tinted plate without one), a foot under the words in the app mode's ground, and the words at the bottom left in
-    /// the mode's ink. The hero carries its body (two lines) and "See details"; a smaller tile its title alone. The tile is
-    /// one button that opens the viewer (the "See details" on it is its label, not a second button); the Store tile is not, its accent button goes to the Store.</summary>
-    static BoxEl HighlightTile(HighlightItem item, Action open, Action openStore, ClassicReleaseNotesLayout layout, bool hero)
+    /// <summary>One tile in its sized cell: the cell carries the arrangement's size (a share of the row, 16:9), the component inside fills it.</summary>
+    static BoxEl HighlightTile(HighlightItem item, Action open, Action openStore, ClassicReleaseNotesLayout layout, bool hero) => new()
     {
-        var h = item.Highlight;
-        bool store = HighlightVisibility.IsStore(h);
-        float title = hero ? layout.HeroTitleSize : layout.TileTitleSize;
-        var words = new List<Element>(3)
+        Direction = 1, MinWidth = 0f, MinHeight = 0f,
+        Children = [Embed.Comp(new TileArgs(item, open, openStore, layout, hero), static () => new TileView())],
+    };
+
+    /// <summary>What a tile is drawn from (the record's equality re-renders it on a tier crossing).</summary>
+    sealed record TileArgs(HighlightItem Item, Action Open, Action OpenStore, ClassicReleaseNotesLayout Layout, bool Hero);
+
+    /// <summary>One tile: the poster filling it (a tinted plate without one) and, at its foot, a frosted band — acrylic in the page's ground that blurs the
+    /// picture under it and feathers into it from the top, never a hard edge — with the title in it. The description opens in the band while the pointer is on
+    /// the tile (the house reveal: the band grows up over the picture, nothing around it moves), and is always open on Huge windows. The tile is one button
+    /// that opens the viewer with the whole text; the Store tile is not, its accent button goes to the Store. A component only for its hover state.</summary>
+    sealed class TileView : Component
+    {
+        readonly Signal<bool> _hover = new(false);
+        TileArgs _args = null!;
+
+        public override Element Render()
         {
-            new TextEl(h.Title) { Size = title, LineHeight = title + K.HeadlineLeading, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-        };
-        if (hero && layout.HeroBody)
-            words.Add(new TextEl(Plain(MarkdownLite.Tokenize(h.Body)))
+            var a = _args = UseProps<TileArgs>();
+            var h = a.Item.Highlight;
+            var layout = a.Layout;
+            bool store = HighlightVisibility.IsStore(h);
+            bool always = layout.DescriptionAlways;
+            bool open = always || _hover.Value;
+            float title = a.Hero ? layout.HeroTitleSize : K.TileTitleSize;
+
+            var words = new List<Element>(3)
             {
-                Size = K.BodySize, LineHeight = K.BodyLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f, MaxWidth = K.HighlightTextMaxWidth,
-            });
-        if (store)
-            words.Add(new BoxEl { Direction = 0, Margin = new Edges4(0f, Spacing.S, 0f, 0f), Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), openStore, ButtonAppearance.Accent, ControlSize.Medium, layout.Target)] });
-        else if (hero)
-            words.Add(new BoxEl
+                new TextEl(h.Title)
+                {
+                    Size = title, LineHeight = title + K.HeadlineLeading, Weight = 600, Color = Tok.TextPrimary,
+                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+                // Always mounted: the declared height toggles 0 <-> auto and the reveal springs the presented height (the Expander's motion).
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, ClipToBounds = true, Height = open ? float.NaN : 0f, Animate = always ? null : s_reveal,
+                    Children =
+                    [
+                        new TextEl(Plain(MarkdownLite.Tokenize(h.Body)))
+                        {
+                            Size = a.Hero ? K.BodySize : K.MetaSize, LineHeight = a.Hero ? K.BodyLine : K.MetaLine, Color = Tok.TextSecondary,
+                            Wrap = TextWrap.Wrap, MaxLines = a.Hero ? K.HeroDescriptionLines : K.TileDescriptionLines, Trim = TextTrim.CharacterEllipsis,
+                            MinWidth = 0f, MaxWidth = K.HighlightTextMaxWidth, Margin = new Edges4(0f, K.HighlightTitleGap, 0f, 0f),
+                        },
+                    ],
+                },
+            };
+            if (store)
+                words.Add(new BoxEl { Direction = 0, Margin = new Edges4(0f, Spacing.S, 0f, 0f), Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), a.OpenStore, ButtonAppearance.Accent, ControlSize.Medium, layout.Target)] });
+
+            float pad = a.Hero ? layout.HeroPad : K.TilePad;
+            var layers = new List<Element>(3);
+            if (a.Item.Poster is { Length: > 0 } poster)
+                layers.Add(new ImageEl
+                {
+                    Source = poster, Fit = ImageFit.Cover, DecodePx = K.PosterDecodePx, Placeholder = Tok.FillSubtleSecondary,
+                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                });
+            if (IsVideo(h))
+                layers.Add(new BoxEl { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false, Children = [PlayGlyph(h)] });
+            layers.Add(new BoxEl
             {
-                Direction = 0, Margin = new Edges4(0f, Spacing.M, 0f, 0f), HitTestVisible = false,
-                Children = [Btn(Loc.Get(Strings.WhatsNew.SeeDetails), Inert, ButtonAppearance.Standard, ControlSize.Medium, 0f) with { Focusable = false }],
+                AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 1, MinWidth = 0f, HitTestVisible = store,
+                Padding = new Edges4(pad, pad + K.BandFeatherRoom, pad, pad),
+                Acrylic = K.TileBand,
+                Children = words.ToArray(),
             });
 
-        var layers = new List<Element>(3);
-        if (item.Poster is { Length: > 0 } poster)
-            layers.Add(new ImageEl
+            var frame = new BoxEl
             {
-                Source = poster, Fit = ImageFit.Cover, DecodePx = K.PosterDecodePx, Placeholder = Tok.FillSubtleSecondary,
-                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-            });
-        layers.Add(new BoxEl
-        {
-            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-            Gradient = GradientDown(new GradientStop(0f, K.TileFootClear), new GradientStop(hero ? K.HeroFootStart : K.TileFootStart, K.TileFootClear),
-                new GradientStop(hero ? K.HeroFootEnd : K.TileFootEnd, K.TileFoot), new GradientStop(1f, K.TileFoot)),
-        });
-        if (IsVideo(h))
-            layers.Add(new BoxEl { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false, Children = [PlayGlyph(h)] });
-        layers.Add(new BoxEl
-        {
-            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 1, Gap = K.HighlightTitleGap, MinWidth = 0f, HitTestVisible = store,
-            Padding = Edges4.All(hero ? layout.HeroPad : K.TilePad),
-            Children = words.ToArray(),
-        });
+                ZStack = true, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                Corners = CornerRadius4.All(Radii.Card), Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
+                BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverBorderColor = Tok.StrokeCardDefault, BrushTransitionMs = Design.Motion.Faster,
+                OnHoverMove = always ? null : _enter, OnPointerExit = always ? null : _exit,
+                Children = layers.ToArray(),
+            };
+            return store
+                ? frame
+                : frame.Interactive(Interaction.Card) with
+                {
+                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = a.Open,
+                    OnHoverMove = frame.OnHoverMove, OnPointerExit = frame.OnPointerExit, Children = layers.ToArray(),
+                };
+        }
 
-        var frame = new BoxEl
+        public TileView()
         {
-            ZStack = true, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
-            Corners = CornerRadius4.All(Radii.Card), Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverBorderColor = Tok.StrokeCardDefault, BrushTransitionMs = Design.Motion.Faster,
-            Children = layers.ToArray(),
-        };
-        return store
-            ? frame
-            : frame.Interactive(Interaction.Card) with { Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open, Children = layers.ToArray() };
+            // The hover handlers, made once per tile: a pointer move writes only when the answer changes.
+            _enter = _ => { if (!_hover.Peek()) _hover.Value = true; };
+            _exit = () => { if (_hover.Peek()) _hover.Value = false; };
+        }
+
+        readonly Action<Point2> _enter;
+        readonly Action _exit;
     }
+
+    /// <summary>The description's reveal: the Expander's disclosure (layout lands once, the presented height springs, the band's top edge rides it).</summary>
+    static LayoutTransition s_reveal => new(TransitionChannels.Size, MotionTok.Reveal.ToDynamics(), Size: SizeMode.FlowReveal, Anchor: SizeAnchor.Parallax);
 
     /// <summary>The ROW card (the after-update plate's cards at Compact): a 120 x 68 poster beside the kind pill, the title and "Read more". The whole card is the hit
     /// region (at least the tier's target tall: the poster alone is 68); the Store card keeps its button a SIBLING of the hit region, as the poster card does.</summary>

@@ -6,11 +6,11 @@
 // exactly the numbers the page held before tiers; the other tiers follow `C-ReleaseNotes-Compact`, `-Small` and `-Huge`.
 //
 //   tier      release switch          hero                              highlights                                     changelog
-//   Compact   40 picker under title   24 title, actions a 2-col 40 grid hero over the tiles, title only (20 / 14)          one stock Expander per change
-//   Small     32 picker in the title  28 title, actions in a row under  hero over the tiles (24 + body / 16)              (every tier: a group heading
-//   Standard  208 rail                28 title, actions in a row under  hero beside the stacked tiles (28 + body / 16)    per section, a SelectorBar
-//   Huge      280 rail                28 title, actions in a row under  hero beside the stacked tiles (28 + body / 20)    over them to show one)
-//   (the highlights are the Microsoft Store's home: the first one a big hero tile, the others smaller, the words over the picture)
+//   Compact   40 picker under title   24 title, actions a 2-col 40 grid hero over the tiles (16)                          one stock Expander per change
+//   Small     32 picker in the title  28 title, actions in a row under  hero over the tiles (18)                          (every tier: a group heading
+//   Standard  208 rail                28 title, actions in a row under  hero beside the stacked tiles (20)                per section, a SelectorBar
+//   Huge      280 rail                28 title, actions in a row under  hero beside the stacked tiles (24), described     over them to show one)
+//   (the highlights are the Microsoft Store's home: a big hero tile and smaller ones, the title in a frosted band at the foot, the description on hover)
 //   Short     page top 8, title bottom 4, no hero meta line (the page scrolls; nothing else gives way)
 //
 // WinUI's parts throughout (2026-10-26, the owner: "grounded in WinUI patterns, less eyebrows and dots"): the Fluent type ramp, a plain release head (no plate,
@@ -114,16 +114,13 @@ public sealed record ClassicReleaseNotesLayout
     /// <summary>The gap between highlight tiles (8; 12 at Huge).</summary>
     public required float HighlightGap { get; init; }
 
-    /// <summary>The hero tile's title size (20 / 24 / 28 / 28) and the smaller tiles' (14 / 16 / 16 / 20).</summary>
+    /// <summary>The hero tile's title size (16 / 18 / 20 / 24); the smaller tiles' is one size (<c>ClassicReleaseNotesRules.TileTitleSize</c>).</summary>
     public required float HeroTitleSize { get; init; }
 
-    /// <inheritdoc cref="HeroTitleSize"/>
-    public required float TileTitleSize { get; init; }
+    /// <summary>Every tile shows its description without a hover (Huge: the room is there); elsewhere it opens while the pointer is on the tile.</summary>
+    public required bool DescriptionAlways { get; init; }
 
-    /// <summary>The hero shows two lines of its body (every tier but Compact, where its 16:9 tile holds the title and the button alone).</summary>
-    public required bool HeroBody { get; init; }
-
-    /// <summary>The hero's padding around its words (16 / 20 / 24 / 28).</summary>
+    /// <summary>The hero's padding around its words (12 / 16 / 16 / 20).</summary>
     public required float HeroPad { get; init; }
 
     /// <summary>The after-update plate's ROW card title size at Compact (14, the plate's cards); the page's cards use the type ramp.</summary>
@@ -202,7 +199,7 @@ public static class ClassicReleaseNotesTiers
         Target = 40f, PageTop = 12f, TitleBottom = 8f,
         BodyMaxW = float.NaN, BodyGap = 12f,
         HeadlineSize = 24f, HeroActions = ClassicReleaseHeroActions.GridBelow, ActionSize = ControlSize.Large, HeroMeta = true,
-        HighlightForm = ClassicReleaseHighlightForm.Stacked, HighlightGap = 8f, HeroTitleSize = 20f, TileTitleSize = 14f, HeroBody = false, HeroPad = 16f, RowTitleSize = 14f, RowTitleLine = 20f,
+        HighlightForm = ClassicReleaseHighlightForm.Stacked, HighlightGap = 8f, HeroTitleSize = 16f, DescriptionAlways = false, HeroPad = 12f, RowTitleSize = 14f, RowTitleLine = 20f,
     };
 
     static readonly ClassicReleaseNotesLayout s_small = new()
@@ -212,7 +209,7 @@ public static class ClassicReleaseNotesTiers
         Target = 0f, PageTop = 16f, TitleBottom = 12f,
         BodyMaxW = float.NaN, BodyGap = 12f,
         HeadlineSize = 28f, HeroActions = ClassicReleaseHeroActions.RowBelow, ActionSize = ControlSize.Medium, HeroMeta = true,
-        HighlightForm = ClassicReleaseHighlightForm.Stacked, HighlightGap = 8f, HeroTitleSize = 24f, TileTitleSize = 16f, HeroBody = true, HeroPad = 20f, RowTitleSize = 13.5f, RowTitleLine = 18f,
+        HighlightForm = ClassicReleaseHighlightForm.Stacked, HighlightGap = 8f, HeroTitleSize = 18f, DescriptionAlways = false, HeroPad = 16f, RowTitleSize = 13.5f, RowTitleLine = 18f,
     };
 
     static readonly ClassicReleaseNotesLayout s_standard = new()
@@ -222,7 +219,7 @@ public static class ClassicReleaseNotesTiers
         Target = 0f, PageTop = 16f, TitleBottom = 12f,
         BodyMaxW = float.NaN, BodyGap = 16f,
         HeadlineSize = 28f, HeroActions = ClassicReleaseHeroActions.RowBelow, ActionSize = ControlSize.Medium, HeroMeta = true,
-        HighlightForm = ClassicReleaseHighlightForm.Bento, HighlightGap = 8f, HeroTitleSize = 28f, TileTitleSize = 16f, HeroBody = true, HeroPad = 24f, RowTitleSize = 13.5f, RowTitleLine = 18f,
+        HighlightForm = ClassicReleaseHighlightForm.Bento, HighlightGap = 8f, HeroTitleSize = 20f, DescriptionAlways = false, HeroPad = 16f, RowTitleSize = 13.5f, RowTitleLine = 18f,
     };
 
     static readonly ClassicReleaseNotesLayout s_huge = new()
@@ -232,7 +229,7 @@ public static class ClassicReleaseNotesTiers
         Target = 0f, PageTop = 24f, TitleBottom = 12f,
         BodyMaxW = 1200f, BodyGap = 20f,
         HeadlineSize = 28f, HeroActions = ClassicReleaseHeroActions.RowBelow, ActionSize = ControlSize.Medium, HeroMeta = true,
-        HighlightForm = ClassicReleaseHighlightForm.Bento, HighlightGap = 12f, HeroTitleSize = 28f, TileTitleSize = 20f, HeroBody = true, HeroPad = 28f, RowTitleSize = 13.5f, RowTitleLine = 18f,
+        HighlightForm = ClassicReleaseHighlightForm.Bento, HighlightGap = 12f, HeroTitleSize = 24f, DescriptionAlways = true, HeroPad = 20f, RowTitleSize = 13.5f, RowTitleLine = 18f,
     };
 
     static ClassicReleaseNotesLayout ShortOf(ClassicReleaseNotesLayout l)

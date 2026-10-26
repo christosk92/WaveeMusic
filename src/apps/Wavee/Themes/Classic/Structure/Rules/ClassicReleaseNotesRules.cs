@@ -48,14 +48,18 @@ public static class ClassicReleaseNotesRules
     public const float BodyLine = 20f, MetaLine = 16f, TaglineSize = 18f, TaglineLine = 24f, HeadlineLeading = 8f, HeadingTop = 12f, HeadingGap = 8f;
     public const float HighlightTitleGap = 4f, HighlightTextMaxWidth = 620f;
 
-    /// <summary>The highlight tiles (the Microsoft Store's home): the hero's share of the wide row against the stacked tiles' 1, a smaller tile's padding, and the
-    /// foot under the words: clear down to its start, solid by its end, solid to the bottom (the hero's starts higher, its words take more room). The pictures are
-    /// whole app windows, busy where the words sit, so the words get a near-solid band rather than a soft fade (the soft one passed contrast and still read as
-    /// text on a screenshot). The foot follows the app mode as the pictures do (each release ships a light capture): 90 % of the page ground in dark and light.
-    /// Properties: they follow a mode switch.</summary>
-    public const float HeroShare = 2f, TilePad = 12f, HeroFootStart = 0.15f, HeroFootEnd = 0.45f, TileFootStart = 0.3f, TileFootEnd = 0.62f;
-    public static ColorF TileFoot => Tok.Theme == ThemeKind.Light ? ColorF.FromRgba(243, 243, 243, 230) : ColorF.FromRgba(28, 28, 28, 230);
-    public static ColorF TileFootClear => TileFoot with { A = 0f };
+    /// <summary>The highlight tiles (the Microsoft Store's home): the hero's share of the wide row against the stacked tiles' 1, a smaller tile's padding and
+    /// title size, the description's lines (hero, tile), and the band's air over its words where the frost feathers in.</summary>
+    public const float HeroShare = 2f, TilePad = 12f, TileTitleSize = 14f, BandFeatherRoom = 32f;
+    public const int HeroDescriptionLines = 3, TileDescriptionLines = 2;
+
+    /// <summary>The frosted band at a tile's foot: acrylic in the page's ground (dark or light, as the pictures are) that blurs the picture under it and feathers
+    /// into it over its top half, never a hard edge. No tint over the luminosity layer (0.70), so the glass keeps the picture's colours; the owner picked this
+    /// from three (2026-10-26: luminosity 0.55 with a 5 % tint read as a slab, 0.80 with a 60 % feather put the title on half-blurred detail). A property: it
+    /// follows a mode switch.</summary>
+    public static AcrylicSpec TileBand => Tok.Theme == ThemeKind.Light
+        ? new(ColorF.FromRgba(0xF3, 0xF3, 0xF3), 0.00f, 20f, 0.02f, 0.70f, ColorF.FromRgba(0xF3, 0xF3, 0xF3), FeatherTop: 0.50f)
+        : new(ColorF.FromRgba(0x20, 0x20, 0x20), 0.00f, 20f, 0.02f, 0.70f, ColorF.FromRgba(0x1C, 0x1C, 0x1C), FeatherTop: 0.50f);
     public const float GroupHeadingBottom = 4f, ChangeGap = 4f, ChangeRowMinHeight = 48f, ChangeHeaderPadY = 12f, ChangeTextMaxWidth = 680f;
     public const float RailInset = 12f, RailRowPadY = 8f, RailPillW = 3f, RailPillH = 16f;
 
