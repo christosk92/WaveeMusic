@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Wavee** — a Spotify desktop client for Windows, built on the **FluentGpu** engine (a from-scratch NativeAOT,
 GPU-rendered UI engine for .NET 10). This repo holds the app only: `src/apps/{Wavee, Wavee.Core, Wavee.Sdk,
-Wavee.Tests, Wavee.ReleaseTool, modules/*, vendor/*}`, the release tooling (`ops/`), the app docs
+Wavee.ReleaseTool, modules/*, vendor/*}`, the release tooling (`ops/`), the app docs
 (`docs/guide`, `docs/plans`) and the app skills (`.claude/skills`). It was split out of the engine repo on
 2026-08-30 (`docs/plans/wavee/wavee-repo-split-plan.md`); history before that commit is the retired WinUI-era app.
 
@@ -16,7 +16,7 @@ Wavee.Tests, Wavee.ReleaseTool, modules/*, vendor/*}`, the release tooling (`ops
 first; the build fails with one clear sentence otherwise. **Engine rules live in the engine repo** — read
 `..\fluent-gpu\CLAUDE.md` and use its `fluentgpu` skill (`..\fluent-gpu\.claude\skills\fluentgpu\SKILL.md`) for
 how to build UI (signals, hooks, `Element` records, motion, the zero-alloc discipline). Engine changes are made
-in `..\fluent-gpu` and verified there (`dotnet build src/FluentGpu.slnx` Debug + Release, VerticalSlice).
+in `..\fluent-gpu` and verified there (`dotnet build src/FluentGpu.slnx`).
 
 **There is no CI.** Nothing builds on GitHub: releases are cut locally by `ops/release/wavee-release.ps1`
 (both arches, Azure Trusted Signing, uploaded with `gh`). The `wavee-stable` feed and `wavee-v*` tags live on
@@ -45,19 +45,18 @@ without it still builds — the public-only variant — which is why the release
 
 ```powershell
 dotnet build Wavee.slnx                                   # Debug — the app, pulling in the engine via $(EngineRoot)
-dotnet build Wavee.slnx -c Release                        # AND Release: the engine's diag-gate arms differ per configuration
-dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj       # 6.6k+ tests; baseline in docs/guide/releasing-wavee.md §gates
-dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj -c Release   # AND Release: only the optimising (tier-1 PGO) JIT shows JIT-sensitive bugs
 dotnet run --project src/apps/Wavee -- --fake             # offline FakeData demo (no login / network)
-Invoke-Pester -Path ops/release/tests                     # release tooling + local feed server (pure tests)
 powershell -File ops/release/tests/local-update-e2e.ps1 -Scenario inapp   # elevated; the real update path over a loopback feed
 powershell -File ops/release/tests/local-update-e2e.ps1 -Scenario os      # elevated; App Installer's silent on-launch update
 powershell -File ops/release/wavee-release.ps1 -DryRun -SkipTests         # release rehearsal; the real thing without -DryRun
 ```
 
-Before claiming done: Debug **and** Release build clean (`TreatWarningsAsErrors`), `Wavee.Tests` green in Debug
-**and** Release (the .NET 10.0.8 dropped-zeroing miscompile behind `FreshSlot` only reproduces under the Release JIT), and for
-engine-touching work the engine's own gates in `..\fluent-gpu`. Packaged runs write into the package's
+There are no tests (banned 2026-10-20; the build and the pre-commit hook reject new ones). Verify UI with the headless
+inspector (`docs/guide/agent-inspect.md`: `render`, `trace`, `crossing`, `lint`).
+
+Before claiming done: a clean Debug build (`TreatWarningsAsErrors`) and the change rendered and traced in the
+inspector with the screenshots looked at (for engine-touching work, a clean Debug build of `..\fluent-gpu` too). The
+Release build happens only when releasing. Packaged runs write into the package's
 `LocalCache` — never leave a real `%LOCALAPPDATA%\Wavee` (an unpackaged `dotnet run` creates it) around when
 testing a packaged build; the E2E harness wipes it and the startup log line prints `logResolved=` for exactly
 this reason.
@@ -67,16 +66,14 @@ this reason.
 - **Component props freeze at mount.** `Embed.Comp(() => new T { Field = value })` runs once; changing data
   reaches a child only via a `Signal`/`Func`, `Ctx.Provide`+`UseContext`, or a remount through `Key`
   (`..\fluent-gpu\docs\design\subsystems\component-props-contract.md`; `ReuseGuard` catches the mistake).
-- **No source-text tests.** A test never reads/greps production source. Extract the decision into an
-  engine-free pure class and unit-test that (`SetupGating`, `AppUpdateToasts`, `ShutdownUpdatePolicy`,
-  `ReleaseNotesRange` are the pattern).
+- **No tests, ever.** No test projects or files, no `dotnet test`; the build and the pre-commit hook reject them.
 - **No environment-variable switches** for behaviour or verification: always-on logs, the diagnostics page, gates.
 - **No legacy paths.** Replace outright; delete obsolete code. Breaking is acceptable.
 - **Every fix references its issue.** The CHANGELOG bullet ends with ` (#n)`, the commit body carries `Fixes #n`,
   and the release script's `issue refs` gate refuses a mismatch between the two (→ `github-triage` skill).
 - **Plans with real code.** Multi-part work gets a plan in `docs/plans/wavee/*-implementation.md` with the actual
   code, component trees and ASCII wireframes; implementation is parallel subagents on disjoint files, and only the
-  orchestrator builds/tests/launches.
+  orchestrator builds/launches.
 - App skills: `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar: layouts, modes,
   Edit mode, pins), `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board,
   issue forms — every modifying `gh` call is approved by the user first). Sidebar: `docs/guide/sidebar.md`; playback

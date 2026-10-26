@@ -48,6 +48,8 @@ second is **warm**. Label them (`--bench-label`) and compare the two summaries.
 | `--bench-hide-cycles N` / `--bench-hidden-sec S` | `hide-restore` only: cycles per mode (1–100, default 3) and seconds hidden per minimize / hide cycle (3–900, default 30). |
 | `--bench-uris k=uri,...` | Explicit targets: `track`, `lyrics` (word-synced), `lyrics-line`, `album`, `playlist`, `artist`, `big` (`liked` = Liked Songs). |
 | `--bench-label NAME` | Stored in the summary (`cold`, `warm`, a branch name). |
+| `--bench-size WxH` | The window's CLIENT size in DIP at its monitor's DPI (`--bench-size 1440x960`), so two runs measure one layout; without it the window keeps the size it came up at. `windowPx` in the summary says what landed. |
+| `--theme ID`, `--bench-blur N`, `--bench-layout card\|large` | The theme the run uses (`--fake` keeps it in memory), and for the stage scenarios the lyrics blur (0–100) and the stage layout. The summary records the look the run had: `theme`, `kind`, `scale`, `lyricsBlur`, `stageLayout` (schema 2.2), and the stdout head line prints `theme=` and `blur=`. |
 | `--probe-out DIR` | Where everything is written (default `<profile>\bench`). |
 | `--fake-video PATH` | With `--fake`: enables the `video` scenario. |
 | `--bench-shots` | `sidebar-disclosure` / `drawer-toggle` only: before the measured window, two toggles from rest with every presented frame captured for 0.6 s into `shots\<scenario>-<toggle>-<frame>-<ms>.png`. A capture stalls the GPU for its turn, so the frames are spaced wider than the display's; the motion is time-based, so each is the true pose at its moment. |
@@ -80,6 +82,8 @@ The full suite at the default windows takes about 3–4 minutes.
 | `gpu-pass-overhead` | `--bench-gpu-passes` only: the same A/B with pass timing off/on (GPU ms per frame and CPU, ledger on throughout). |
 | `sidebar-disclosure` | Opt-in, by name only: the Classic sidebar's Playlists section collapsing and expanding every 0.6 s (the reveal band in a virtual list). Skipped when no sidebar pane is mounted. Also writes `sidebar-disclosure-pose.csv`: the band's presented extent after every UI frame, which shows whether the pose advances every frame (the present count alone cannot). |
 | `drawer-toggle` | Opt-in, by name only: the first bench playlist, its third row's drawer opening and closing every 0.6 s (a `FlowReveal` drawer in the track table). |
+| `playlist-playing` | Opt-in, by name only: a track playing, the first bench playlist's page on screen (the playing row's equalizer where the list holds the track, the seek bar), rail closed. The owner's "playing, looking at a playlist" steady state. |
+| `playlist-lyrics` | Opt-in, by name only: the same with the lyrics rail open. |
 | `hide-restore` | Opt-in, by name only (it minimizes and hides the window): minimize, tray-hide and cover cycles, memory sampled visible / hidden / restored plus the restore latency. See `docs/guide/hidden-memory.md` and `ops/tools/hidden-mem.ps1`. |
 
 The scroll scenarios first wait (Home 20 s, the list 30 s) for a scroller whose content is at least three viewports long —
@@ -168,7 +172,7 @@ Every scenario therefore carries rate-free metrics, computed from raw cycle delt
 `processGcyclesPerSec`, `uiMcyclesPerSec`, `renderMcyclesPerSec`, `otherMcyclesPerSec` (process - UI - render),
 `uiKcyclesPerPaintedFrame` (all UI-thread cycles in the window / painted frames) and `renderKcyclesPerTurn`. The stdout table
 shows them (`procGc/s`, `uiMc/s`, `rdMc/s`, `othMc/s`). `processCpuPct`, `uiCoresTimes`, `renderCoresTimes` and `paintedCpuMs.*`
-stay in the JSON (schema `wavee-frame-bench/2.1`) as **info only**: the compare tool never flags them. Cycles are not
+stay in the JSON (schema `wavee-frame-bench/2.2`; 2.2 adds the look: `theme`, `kind`, `scale`, `lyricsBlur`, `stageLayout`) as **info only**: the compare tool never flags them. Cycles are not
 frequency-normalised, so compare runs on the same machine and power plan.
 
 ## Comparing
@@ -183,7 +187,7 @@ and the metric's absolute floor (0.05 ms/us/cores, 1 MB, 1 %, 64 B, 0.1 per seco
 and the audio padding minimum are higher-is-better, run-describing figures (frame rates, the census, the A/B arms, scroll
 distance) are neutral, everything else is lower-is-better. `-FailOnRegression` exits 1 on a regression; `-Scenario` narrows;
 `-All` prints every metric. It warns before comparing when the runs differ in data (fake/real), window, processors, measure or
-warm-up window, pass timing, or cycle rate. Its own tests: `powershell -File ops\tools\frame-bench-compare.tests.ps1`.
+warm-up window, pass timing, or cycle rate.
 
 Run-to-run noise on a busy machine is easily 5–10 % for p99 figures: compare medians first, repeat a run that flags
 something before believing it, and never compare a fake run with a real one.
@@ -191,7 +195,7 @@ something before believing it, and never compare a fake run with a real one.
 ## Source
 
 - Engine: `FluentGpu.Engine/Hosting/FrameLedger*.cs`, `AppHost.Ledger.cs`, `Media/Playback/Audio/AudioHealth.cs`;
-  Windows seams `FluentGpu.Windows/Pal/Win32LedgerSampler.cs`. Tests: `FluentGpu.Engine.Tests/FrameLedgerTests.cs`.
+  Windows seams `FluentGpu.Windows/Pal/Win32LedgerSampler.cs`.
 - App: `src/apps/Wavee/Screens/Diagnostics.Probe.FrameBench.cs` (the arm), `Diagnostics.FrameBench.cs` (pure: options,
-  targets, summary maths, JSON, table). Tests: `src/apps/Wavee.Tests/FrameBenchTests.cs`.
-- Compare: `ops/tools/frame-bench-compare.ps1`, tests `ops/tools/frame-bench-compare.tests.ps1`.
+  targets, summary maths, JSON, table).
+- Compare: `ops/tools/frame-bench-compare.ps1`.

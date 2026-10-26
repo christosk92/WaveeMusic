@@ -22,17 +22,18 @@
 //     delegate the composition root installs, because the persisted-query table is `Spotify.Api`'s and owner F's — see
 //     the gap note at the bottom of this file.
 //
-//  3. THE MOUNTS. The four cover leaves are `Platform/Design.cs`'s Components; these are the one-line factories that
-//     embed them with their props and their Key, so no page ever writes `Embed.Comp(new CoverPageTonePlane.Props(…))`
-//     by hand and no page ever holds a palette subscription at PAGE scope.
+//  3. THE MOUNTS. The four cover leaves are the structure's views (T4c: `Shell.Material.PageTone`, `.ArtistBlend`,
+//     `.ArtistVeil`, `.TintBinder`; Classic's are `Themes/Classic/Structure/Views/Material/ClassicCoverLeaves.cs`); these are
+//     the one-line factories that mount them with their props and their Key, so no page ever writes `Slots.View(…)` by hand
+//     and no page ever holds a palette subscription at PAGE scope.
 
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -51,7 +52,7 @@ public static partial class Palette
     /// (the read path still answers from whatever kind 179 has seeded).</summary>
     public static Func<string[], CancellationToken, Task<Graded?[]>>? Filler { get; set; }
 
-    // The debounce, measured on the FRAME clock. `Design.FrameTime.NowMs` is the frame's predicted present time, which
+    // The debounce, measured on the FRAME clock. `FrameTime.NowMs` is the frame's predicted present time, which
     // is the same epoch every other timed decision in the app compares against; `Environment.TickCount64` would be a
     // second epoch for no gain.
     static long s_dueMs;
@@ -65,16 +66,29 @@ public static partial class Palette
     /// flew past — and <see cref="MaxQueue"/> bounds the backlog regardless.</para></summary>
     static partial void PalettePump()
     {
-        s_dueMs = Design.FrameTime.NowMs + PumpDebounceMs;
+        s_dueMs = FrameTime.NowMs + PumpDebounceMs;
         s_armed = true;
     }
 
     /// <summary>Bring the armed debounce due NOW. The ONE test seam in this file, and it is a seam rather than an
     /// injected clock on purpose: the debounce is a DEADLINE, so "drive time forward" is exactly "clear the deadline",
     /// and a fake clock would be a second epoch for the one value this file compares.
-    /// <para>Public rather than internal because this assembly has no <c>InternalsVisibleTo</c> — the diagnostics page
-    /// uses it too, to force a grading pass without waiting out the debounce.</para></summary>
+    /// <para>Public rather than internal because this assembly has no <c>InternalsVisibleTo</c>.</para></summary>
     public static void ForceDue() => s_dueMs = 0;
+
+    /// <summary>Forget the pump's state: no deadline, nothing in flight, no row queued. A HEADLESS host calls it when it mounts.
+    /// The pump is process state but its clock is the host's frame clock, which restarts at zero for every new host, and a
+    /// host torn down with a batch in flight drops the answer's post: without this a later mount would wait out a deadline
+    /// from another epoch, or never grade again (`s_inFlight` stuck). The GUI has one host and one clock and never calls it.
+    /// <para>The rows a lost batch held are no longer in the queue, so the queued marker is cleared on every row, not just
+    /// the queued ones; each row keeps its fetch id, as after a failure, and re-queues on the next render-path miss.</para></summary>
+    public static void ResetPump()
+    {
+        s_armed = false;
+        s_inFlight = false;
+        s_dueMs = 0;
+        ClearQueue();
+    }
 
     /// <summary>THE shell's frame tick calls this (beside `Fetch.Drain()`), and it is the only clock this layer has.
     /// Idempotent and cheap: two comparisons when nothing is due.
@@ -84,7 +98,7 @@ public static partial class Palette
     public static void Tick()
     {
         if (!s_armed || s_inFlight) return;
-        if (Design.FrameTime.NowMs < s_dueMs) return;
+        if (FrameTime.NowMs < s_dueMs) return;
         s_armed = false;
         if (Filler is not { } fill) { DrainUnqueued(); return; }
 
@@ -262,40 +276,45 @@ public static partial class Palette
     // it happens to be showing — a page that re-keyed on the url would remount (and therefore re-fade) its own ground
     // every time the hero swapped covers, which is the opposite of the 250 ms cross-fade the bound Fill already gives.
 
+    /// <summary>The key of a detail page's tone plane: the page's surface, never the theme. A light/dark flip or a definition swap that
+    /// moves a wash role keeps the node and re-runs its bound fill inside the live cross-fade (EP20, Classic tuning F10), so the plane
+    /// fades with every other colour; a key on <c>Tok.Epoch</c> remounted it, which snapped it to the new colour.</summary>
+    public static string ToneKey(string routeKey) => "detail-tone:" + routeKey;
+
     /// <summary>THE detail page's ground: one flat, translucent art-derived plane behind both hero arms.
     /// <para>Mount it as a page-root SIBLING of the scrolling page, never as a child of it.</para></summary>
-    public static Element PageTonePlane(string? url, string? fallbackUrl, bool disabled,
+    public static Element PageTonePlane(string? url, string? fallbackUrl,
                                         float backdropBand, float pageHeight, bool heroOnly, string key,
                                         uint payloadAccent = 0)
-        => Embed.Comp(new CoverPageTonePlane.Props(url, fallbackUrl, disabled, backdropBand, pageHeight, heroOnly, payloadAccent),
-                      static () => new CoverPageTonePlane()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverTone,
+            new CoverToneProps(url, fallbackUrl, backdropBand, pageHeight, heroOnly, payloadAccent)) with { Key = key };
 
     /// <summary>The artist page's blend wash. <paramref name="height"/> / <paramref name="boundary"/> come from the
     /// caller's own hero layout. <paramref name="payloadAccent"/> is the header row's raw accent (the ladder's payload
     /// rung) — 0 when the caller has none.</summary>
-    public static Element ArtistBlendWash(string? url, float height, float boundary, bool disabled, string key,
+    public static Element ArtistBlendWash(string? url, float height, float boundary, string key,
                                            uint payloadAccent = 0)
-        => Embed.Comp(new CoverArtistBlendWash.Props(url, height, boundary, disabled, payloadAccent),
-                      static () => new CoverArtistBlendWash()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverBlend,
+            new CoverBlendProps(url, height, boundary, payloadAccent)) with { Key = key };
 
     /// <summary>The full-bleed artist hero veil over photography (also the Home daylist card's). <paramref name="payloadAccent"/>
     /// is the header row's raw accent (the ladder's payload rung) — 0 when the caller has none.
     /// <para><paramref name="width"/>/<paramref name="height"/> finite = the veil at that size (the artist hero);
     /// <c>float.NaN</c> for both = the STRETCH arm: the veil takes its ZStack slot, for a surface whose height is its
-    /// content's (<see cref="CoverKeyedVeil"/>).</para></summary>
+    /// content's (<see cref="CoverVeilProps"/>). <paramref name="hold"/>: <see cref="CoverVeilProps.Hold"/>.</para></summary>
     public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key,
-                                          uint payloadAccent = 0)
-        => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height, payloadAccent),
-                      static () => new CoverKeyedVeil()) with { Key = key };
+                                          uint payloadAccent = 0, float hold = float.NaN)
+        => ViewSlots.View(ViewKeys.ShellCoverVeil,
+            new CoverVeilProps(url, vertical, width, height, payloadAccent, hold)) with { Key = key };
 
     /// <summary>Publishes the page-scoped shell-material tint when THIS cover is graded — with no page re-render. Every
     /// detail page must mount one, or the window chrome stays neutral while the page is coloured, which is the single
     /// loudest visual regression available here.</summary>
-    public static Element ShellTint(string? url, bool ready, bool disabled, bool apply, object owner,
+    public static Element ShellTint(string? url, bool ready, bool apply, object owner,
                                     Signal<ShellMaterialState>? slot, string key, string? fallbackUrl = null,
                                     uint payloadAccent = 0)
-        => Embed.Comp(new CoverShellTintBinder.Props(url, fallbackUrl, ready, disabled, apply, owner, slot, payloadAccent),
-                      static () => new CoverShellTintBinder()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverTint,
+            new CoverTintProps(url, fallbackUrl, ready, apply, owner, MaterialPort.Of(slot), payloadAccent)) with { Key = key };
 }
 
 // ── WHAT IS NOT HERE, AND WHY ─────────────────────────────────────────────────────────────────────────────────────────

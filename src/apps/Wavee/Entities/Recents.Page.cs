@@ -1,13 +1,17 @@
 // ── Entities/Recents.Page.cs ───────────────────────────────────────────────────────────────────────────────────────
-// the page: masthead, pivots, the measured grouped list with its pinned day band, the drawer accordion, the annotated
-// rail, the semantic zoom + calendar surface, the viewport-following page accent and its ONE wash leg
+// the Recents page's CORE HOST: the model (the shape, the demand, the adoption, the midnight rollover, the refresh after a play),
+// the drawer accordion's state, the sticky band's and the rail's arithmetic, the viewport-following page accent and its ONE
+// wash leg, the playlist bylines' owner demand and every verb
 //
-// Role: UI
+// Role: CORE (the host; the picture is the structure's)
 // Owner: P
 // Wave: 5
-// Budget: 1150 lines
 // Spec: ch 16 §0, §1.1/§1.3 (the tree and the props-freeze map), §2 W1-W4, W8-W12, W14-W15, W22, W24-W25, §4.1-§4.2,
 //   §5, §6.1, §7.1 (demand on mount), §9.1 #1-#4, #10-#17, §9.2
+//
+// T10c2 (themes plan 6.1): the masthead, the pivots, the grouped list with its pinned day band, the rows, the drawer, the rail
+// and the calendar are CLASSIC'S (`Themes\Classic\Structure\Views\Pages\ClassicRecents*.cs`, `Pages.Recents`). `PageView` builds a
+// `RecentsPageProps` per render and mounts the key; the structure's slot components read the host through `IRecentsHost`.
 //
 // THE MODEL. The page demands the recents relation ONCE on mount (`Entities.EnsureEdge(FetchEdge.Recents, me)`) and
 // reads the edge; every row entity the page shows is demanded in ONE batched `Entities.Ensure` per kind when a
@@ -15,7 +19,7 @@
 // it opens. No visible-window fetching anywhere (ch 16 §7.1, contract §8).
 //
 // ONE SHAPE, SWAPPED ATOMICALLY (§9.1 #1). The snapshot, the pivot's cut, the morph flags, the sections, the calendar and
-// the STATEFUL measured layout live on one immutable `Shape`; `BuildShape` publishes it in 0.2.9's order (build →
+// the STATEFUL measured layout live on one immutable `RecentsShape`; `BuildShape` publishes it in 0.2.9's order (build →
 // reuse-or-build the layout → prime it → publish → reset the drawer → re-resolve the sticky band → today in the
 // readout → `ShapeEpoch` LAST). Two epochs: `Epoch` = the same list, new words (midnight); `ShapeEpoch` = a different
 // list (Key remount of the list, the rail, the sticky band, the pivots and the calendar). A publication whose snapshot
@@ -32,11 +36,10 @@
 //
 // ZERO ALLOCATION ON THE SCROLL PATH. The sticky watch over the list's scroll handle (`WatchSticky`/`UpdateSticky`) is
 // arithmetic, three change-gated signal writes and one pre-created posted delegate; per-row strings (when, uri, morph key, the
-// joined subtitle) are cached on the Shape, and the count phrases per count on the page.
+// joined subtitle) are cached on the shape, and the count phrases per count on the page.
 
 using System.Globalization;
 using System.Runtime.InteropServices;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -44,7 +47,9 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
+using ChromeView = Wavee.Theming.Contracts.PageView;
 
 namespace Wavee;
 
@@ -55,67 +60,15 @@ public readonly partial struct Recents
     /// page reads the signed-in account's relation itself.</summary>
     public static Element PageFor(in Shell.Route route) => Embed.Comp(static () => new PageView());
 
-    static readonly RecentsFlatItem EmptyFlat = new(RecentsFlatItemKind.Row, -1, -1, -1);
+    // ══ 2. THE PAGE (the core host: the model, the demand, the verbs; Classic draws it) ══════════════════════════════
 
-    // ══ 1. THE SHAPE ═════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Everything that must agree with everything else, as ONE reference (§9.1 #1). The per-row string caches are
-    /// filled lazily on first bind and dropped with the shape.</summary>
-    internal sealed class Shape
-    {
-        public readonly RecentsSnapshot Rows;
-        public readonly int[] Display;
-        public readonly bool[] Morphable;
-        public readonly RecentsSections Sections;
-        public readonly RecentsCalendar Calendar;
-        public readonly GroupedListVirtualLayout Layout;
-        public readonly TimeSpan BuiltOffset;
-        /// <summary>Built from an ANSWERED relation (false for the pending seed): the skeleton's gate.</summary>
-        public readonly bool Loaded;
-        public readonly string Summary;
-        internal readonly string?[] When, Uri, Morph, Sub;
-        internal readonly string?[] SubOwner;
-
-        public Shape(RecentsSnapshot rows, int[] display, bool[] morphable, RecentsSections sections, RecentsCalendar calendar,
-                     GroupedListVirtualLayout layout, TimeSpan builtOffset, bool loaded, string summary)
-        {
-            Rows = rows; Display = display; Morphable = morphable; Sections = sections; Calendar = calendar;
-            Layout = layout; BuiltOffset = builtOffset; Loaded = loaded; Summary = summary;
-            int n = rows.Count;
-            When = new string?[n]; Uri = new string?[n]; Morph = new string?[n]; Sub = new string?[n]; SubOwner = new string?[n];
-        }
-
-        /// <summary>The midnight relabel: the same list and layout, new day words and a fresh "when" cache.</summary>
-        public Shape Relabeled(RecentsSections sections, string summary)
-            => new(Rows, Display, Morphable, sections, Calendar, Layout, BuiltOffset, Loaded, summary);
-    }
-
-    /// <summary>One recycled slot's handlers, built ONCE per slot; each resolves the slot's CURRENT item at invocation.</summary>
-    internal sealed class RowActions
-    {
-        public readonly Action Toggle, Open, Play;
-        public readonly Func<ContextMenuModel?> Menu;
-        public readonly DragSource DragFrom;
-
-        public RowActions(PageView page, IReadSignal<RecentsFlatItem> item)
-        {
-            Toggle = () => page.ToggleExpanded(item.Peek().OriginalRowIndex);
-            Open = () => page.Open(item.Peek().OriginalRowIndex);
-            Play = () => page.Play(item.Peek().OriginalRowIndex);
-            Menu = () => page.MenuFor(item.Peek().OriginalRowIndex);
-            DragFrom = Wavee.Drag.Source(() => page.DragPayloadFor(item.Peek().OriginalRowIndex));
-        }
-    }
-
-    // ══ 2. THE PAGE ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-    internal sealed class PageView : Component
+    /// <summary>The page's CORE HOST. It builds a <see cref="RecentsPageProps"/> per render and mounts <see cref="ViewKeys.RecentsPage"/>; the structure's
+    /// slot components read its live state through <see cref="IRecentsHost"/>.</summary>
+    [CoreHost]
+    internal sealed class PageView : Component, IRecentsHost
     {
         static readonly Func<int, string> s_itemCount = static n => Strings.Recents.ItemCount(n);
         static readonly Func<int, string> s_groupedFrom = static n => Strings.Recents.GroupedFrom(n);
-        static readonly LayoutTransition BodyFlip = new(TransitionChannels.Position | TransitionChannels.Opacity,
-            MotionTok.ContentResize.ToDynamics(),
-            Enter: new EnterExit(Dy: Spacing.S, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
 
         // ── signals (§1.3's props-freeze map) ──
         internal readonly Signal<int> Epoch = new(0), ShapeEpoch = new(0);
@@ -124,21 +77,32 @@ public readonly partial struct Recents
         internal readonly Signal<int> StickyHeader = new(-1), RailMeasuredVersion = new(0), AccentDay = new(-1);
         internal readonly Signal<float> StickyPush = new(0f);
         internal readonly Signal<Design.PageAccent> Accent;
-        internal readonly Signal<bool> IsZoomedOut = new(false);
         internal readonly Signal<DateOnly> CalendarDay;
-        internal readonly Signal<Shape> ShapeSignal;
+        internal readonly Signal<RecentsShape> ShapeSignal;
 
-        internal readonly ItemsViewController ListController = new(), CalendarController = new();
-        internal readonly AnnotatedScrollBarController ScrollController = new();
-        internal readonly SemanticZoomController ZoomController = new();
+        /// <inheritdoc />
+        public Signal<bool> IsZoomedOut { get; } = new(false);
+        /// <inheritdoc />
+        public ItemsViewController ListController { get; } = new();
+        /// <inheritdoc />
+        public ItemsViewController CalendarController { get; } = new();
+        /// <inheritdoc />
+        public AnnotatedScrollBarController ScrollController { get; } = new();
+        /// <inheritdoc />
+        public SemanticZoomController ZoomController { get; } = new();
         internal readonly object WashOwner = new();
         internal HomeWash? LastWash;
 
-        internal Shape ShapeNow;
-        readonly Shape _pendingShape;
-        internal CultureInfo Culture = CultureInfo.CurrentCulture;
+        /// <inheritdoc />
+        public RecentsShape ShapeNow { get; private set; }
+        readonly RecentsShape _pendingShape;
+        /// <inheritdoc />
+        public CultureInfo Culture { get; private set; } = CultureInfo.CurrentCulture;
         internal DateTimeOffset Now = DateTimeOffset.Now;
-        internal DateOnly Today => DateOnly.FromDateTime(Now.DateTime);
+        /// <inheritdoc />
+        public DateOnly Today => DateOnly.FromDateTime(Now.DateTime);
+        /// <inheritdoc />
+        public string ScrollScope { get; private set; } = "";
 
         int _expandedRow = -1;
         int _pendingAccentDay = -1;
@@ -150,31 +114,62 @@ public readonly partial struct Recents
         string?[] _countLabels = new string?[64], _playedLabels = new string?[64], _savedLabels = new string?[64];
 
         // ── pre-created delegates: nothing on a hot path allocates a closure ──
-        internal readonly Prop<ColorF> AccentInkProp, AccentFillProp;
+        /// <inheritdoc />
+        public Prop<ColorF> AccentInkProp { get; }
+        /// <inheritdoc />
+        public Prop<ColorF> AccentFillProp { get; }
         readonly Prop<ColorF>[] _densityFills = new Prop<ColorF>[6];
-        internal readonly Prop<Affine2D> StickyTransform;
-        internal readonly Action ResetCalendarDayAction, DemandOwnersAction;
-        internal readonly Action<WheelEventArgs> ForwardWheelAction;
-        internal readonly Func<int, Element> MonthCardFactory;
-        internal readonly Func<int, string> MonthKeyFunc;
-        internal readonly Func<BoundItemScope<RecentsFlatItem>, Element> SlotFactory;
+        /// <inheritdoc />
+        public Prop<Affine2D> StickyTransform { get; }
+        internal readonly Action DemandOwnersAction;
+        /// <inheritdoc />
+        public Action ResetCalendarDayAction { get; }
+        /// <inheritdoc />
+        public Action<WheelEventArgs> ForwardWheelAction { get; }
         readonly Action _resolveAccentDay, _rollover, _refresh, _ensureEdge, _adopt, _activated, _deactivated, _openOverview, _retry;
         readonly Action<KeyEventArgs> _onKeyDown;
-        /// <summary>The sticky band's watch over the list's scroll handle (<see cref="ScrollController"/>'s): mounted by
-        /// <see cref="ListSurface"/>, it re-runs on every published offset/extent and writes only on a projected change.</summary>
-        internal readonly Action WatchStickyAction;
+
+        // ── row 2 (P5 Z7): the band's pivots and the Overview word. The row is rebuilt when the selected pivot moves and published from an effect. ──
+        readonly Action _publishChrome, _withdrawChrome;
+        readonly Action[] _chromeGo = new Action[ChromePivots.Length];
+        PageChromeSink _sink = PageChromeSink.None;
+        PageChromeRow? _chromeRow;
+        string? _chromeChip;
+        int _chromeVersion;
+        /// <summary>The sticky band's watch over the list's scroll handle (<see cref="ScrollController"/>'s): mounted by the list surface,
+        /// it re-runs on every published offset/extent and writes only on a projected change.</summary>
+        public Action WatchStickyAction { get; }
         long _stickyKey = long.MinValue;
-        internal readonly Func<int, int> MapInToOutFunc, MapOutToInFunc, ContentTypeFunc;
-        internal readonly Action<int, RecentsFlatItem> InvokeFlatAction;
-        internal readonly Func<int, RecentsFlatItem, string> TextForFunc;
-        internal readonly Func<AnnotatedScrollBarLabel[]> RailLabelsFunc;
-        internal readonly Func<float[]> RailTicksFunc;
-        internal readonly Func<float, AnnotatedScrollBarLabel?> RailDetailFunc;
+        /// <inheritdoc />
+        public Func<int, int> MapInToOutFunc { get; }
+        /// <inheritdoc />
+        public Func<int, int> MapOutToInFunc { get; }
+        /// <inheritdoc />
+        public Func<int, int> ContentTypeFunc { get; }
+        /// <inheritdoc />
+        public Action<int, RecentsFlatItem> InvokeFlatAction { get; }
+        /// <inheritdoc />
+        public Func<int, RecentsFlatItem, string> TextForFunc { get; }
+        /// <inheritdoc />
+        public Func<AnnotatedScrollBarLabel[]> RailLabelsFunc { get; }
+        /// <inheritdoc />
+        public Func<float[]> RailTicksFunc { get; }
+        /// <inheritdoc />
+        public Func<float, AnnotatedScrollBarLabel?> RailDetailFunc { get; }
         readonly Func<bool> _pending, _failed;
-        readonly Func<Element> _content, _shimmer, _failedPanel;
-        readonly Func<PivotTabs> _pivots;
         readonly Func<AccentBinder> _binder;
         readonly Func<OwnerDemand> _owners;
+
+        IReadSignal<RecentsShape> IRecentsHost.ShapeSignal => ShapeSignal;
+        RecentsShape IRecentsHost.PendingShape => _pendingShape;
+        IReadSignal<int> IRecentsHost.Epoch => Epoch;
+        IReadSignal<int> IRecentsHost.ShapeEpoch => ShapeEpoch;
+        IReadSignal<string?> IRecentsHost.Chip => Chip;
+        IReadSignal<StringId> IRecentsHost.ExpandedRow => ExpandedRow;
+        IReadSignal<int> IRecentsHost.StickyHeader => StickyHeader;
+        IReadSignal<int> IRecentsHost.RailMeasuredVersion => RailMeasuredVersion;
+        IReadSignal<Design.PageAccent> IRecentsHost.Accent => Accent;
+        IReadSignal<DateOnly> IRecentsHost.CalendarDay => CalendarDay;
 
         public PageView()
         {
@@ -184,11 +179,11 @@ public readonly partial struct Recents
             var sections = RecentsView.BuildSections(seed, map, Now, Culture);
             var layout = new GroupedListVirtualLayout(sections.HeaderIndices, RecentsLayout.DateHeaderHeight, RecentsLayout.RowHeight);
             layout.ContentExtent(sections.Items.Length, 0f);
-            _pendingShape = new Shape(seed, map, RecentsView.FirstOccurrence(seed), sections,
+            _pendingShape = new RecentsShape(seed, map, RecentsView.FirstOccurrence(seed), sections,
                 RecentsView.DayDensity(seed, map, Now, Culture), layout, Now.Offset, loaded: false, summary: "");
             ShapeNow = _pendingShape;
-            ShapeSignal = new Signal<Shape>(_pendingShape);
-            Accent = new Signal<Design.PageAccent>(Fallback());
+            ShapeSignal = new Signal<RecentsShape>(_pendingShape);
+            Accent = new Signal<Design.PageAccent>(FallbackAccent());
             CalendarDay = new Signal<DateOnly>(Today);
 
             AccentInkProp = Prop.Of(() => Accent.Value.Ink);
@@ -199,7 +194,7 @@ public readonly partial struct Recents
                 int l = level;
                 // The heat's paint: the accent INK at A_subtle + (ink.A − A_subtle)·level/5 (§4.3), bound so a crossing
                 // glides the whole heatmap without one cell re-rendering.
-                _densityFills[level] = Prop.Of(() => RecentsLayout.DensityFill(l, Accent.Value.Ink, Tok.AccentSubtle.A));
+                _densityFills[level] = Prop.Of(() => DensityFillOf(l, Accent.Value.Ink));
             }
             StickyTransform = Prop.Of(() => Affine2D.Translation(0f, StickyPush.Value));
             ResetCalendarDayAction = () => CalendarDay.Value = Today;
@@ -210,9 +205,6 @@ public readonly partial struct Recents
                 ScrollController.ScrollBy(e.Delta, animate: true);
                 e.Handled = true;
             };
-            MonthCardFactory = i => Embed.Comp(() => new MonthCard(this, i)) with { Key = MonthKey(i) };
-            MonthKeyFunc = MonthKey;
-            SlotFactory = scope => Embed.Comp(() => new RowSlot(this, scope));
             _resolveAccentDay = ResolveAccentDay;
             _rollover = RolloverMidnight;
             _refresh = RefreshAfterPlay;
@@ -221,6 +213,13 @@ public readonly partial struct Recents
             _activated = OnActivated;
             _deactivated = OnDeactivated;
             _openOverview = OpenOverviewFromMasthead;
+            for (int i = 0; i < _chromeGo.Length; i++)
+            {
+                string? token = ChromePivots[i].Token;
+                _chromeGo[i] = () => GoPivot(token);
+            }
+            _publishChrome = () => _sink.Publish(_chromeRow);
+            _withdrawChrome = () => _sink.Publish(null);
             _retry = () => { if (Recents.Me.Slot > 0) Entities.RefreshEdge(FetchEdge.Recents, Recents.Me.Slot); };
             _onKeyDown = e =>
             {
@@ -239,17 +238,9 @@ public readonly partial struct Recents
             RailDetailFunc = RailDetail;
             _pending = () => { _ = ShapeEpoch.Value; _ = Recents.Changed.Value; return !ShapeNow.Loaded && Recents.Me.Readiness != EdgeState.Failed; };
             _failed = () => { _ = ShapeEpoch.Value; _ = Recents.Changed.Value; return !ShapeNow.Loaded && Recents.Me.Readiness == EdgeState.Failed; };
-            _content = Content;
-            _shimmer = PendingContent;
-            _failedPanel = () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Page, onAction: _retry);
-            _pivots = () => new PivotTabs(this);
             _binder = () => new AccentBinder(this);
             _owners = () => new OwnerDemand(this);
         }
-
-        /// <summary>The accent before any cover grades, with washes off, or with no source row: byte-identical to what
-        /// every consumer painted before the page had a dynamic accent (§4.1).</summary>
-        internal static Design.PageAccent Fallback() => new(Tok.AccentTextPrimary, Tok.AccentDefault, "");
 
         public override Element Render()
         {
@@ -259,6 +250,7 @@ public readonly partial struct Recents
             var me = Recents.Me;
             uint version = me.Version;
             var readiness = me.Readiness;
+            ScrollScope = UseContext(Shell.PageScrollScope);
 
             // The ONE demand, on mount (and on an account switch); a publication is adopted in the same flush.
             UseEffect(_ensureEdge, DepKey.From((long)me.Slot));
@@ -274,118 +266,29 @@ public readonly partial struct Recents
             _ = Epoch.Value;
             var shape = ShapeNow;
 
-            Element body = new SkelRegionEl(_pending, _failed, _content, _shimmer, _failedPanel,
-                SkelReveal.None, SkeletonStyle.Default, null, SmoothResize: true);
-            var kids = new Element[]
-            {
-                Hero(shape),
-                new BoxEl
-                {
-                    Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.S),
-                    // Keyed on the SHAPE, not the token: a pivot switch re-renders the live strip (its underline enters).
-                    Children = [Embed.Comp(_pivots) with { Key = "recents-pivots:" + FormatCache.Int(shapeEpoch) }],
-                },
-                new BoxEl
-                {
-                    Grow = 1f, Shrink = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
-                    // No dock reserve (§9.1 #10): the shell clips above the player bar; Spacing.L is breathing room.
-                    Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.L),
-                    // The FLIP on a pivot switch. Reduced motion is a VALUE: no transition at all.
-                    Layout = Design.Reduced ? null : BodyFlip,
-                    Children = [body],
-                },
-                Embed.Comp(_binder) with { Key = "recents-accent" },
-                Embed.Comp(_owners) with { Key = "recents-owners" },
-            };
-            Element page = new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Focusable = true,
-                OnKeyDown = _onKeyDown, Children = kids,
-            };
-            // The page PROVIDES its accent: the equalizer, the # cell and the save button read "this page's accent"
+            // Row 2 (P5 Z7): the four pivots and the Overview word, for a structure whose band draws them (Classic's draws none).
+            _sink = UseContext(PageChromeSink.Context);
+            UpdateChrome(Chip.Value);
+            UseEffect(_publishChrome, DepKey.From(_chromeVersion));
+            UseEffect(() => _withdrawChrome, DepKey.Empty);
+
+            // The page PROVIDES its accent (the view wraps the tree): the equalizer, the # cell and the save button read "this page's accent"
             // through the context instead of knowing they sit in Recents (§0 #16).
-            return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)Accent, page);
-        }
-
-        // ── the masthead (W3, §0 #1-#2) ──────────────────────────────────────────────────────────────────────────────
-
-        Element Hero(Shape shape)
-        {
-            var title = Design.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
+            return ViewSlots.View(ViewKeys.RecentsPage, new RecentsPageProps
             {
-                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f,
-                Enter = new EnterExit(Dy: 10f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-            };
-            var overview = Button.Create(Loc.Get(Strings.Recents.Overview), _openOverview, ButtonAppearance.Subtle,
-                ControlSize.Small, glyph: Icons.Calendar) with { Shrink = 0f };
-            Element titleRow = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Children = [title, overview],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.XS,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.L),
-                // The two lines arrive 45 ms apart; reduced motion is a VALUE (0), never a branch.
-                Stagger = Design.Reduced ? 0f : Design.Motion.MastheadStaggerMs,
-                Children = shape.Summary.Length == 0
-                    ? [titleRow]
-                    :
-                    [
-                        titleRow,
-                        Caption(shape.Summary) with
-                        {
-                            Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                            // A reserved measure in lieu of tabular figures: the line never reflows (§0 #2).
-                            MinWidth = 220f,
-                            Enter = new EnterExit(Dy: 10f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-                        },
-                    ],
-            };
+                Host = this,
+                Summary = shape.Summary,
+                ShapeEpoch = shapeEpoch,
+                Pending = _pending,
+                Failed = _failed,
+                Retry = _retry,
+                OpenOverview = _openOverview,
+                OnKeyDown = _onKeyDown,
+                PageAccent = Accent,
+                AccentBinder = Embed.Comp(_binder) with { Key = "recents-accent" },
+                OwnerDemand = Embed.Comp(_owners) with { Key = "recents-owners" },
+            });
         }
-
-        // ── the body arms ────────────────────────────────────────────────────────────────────────────────────────────
-
-        Element Content()
-        {
-            int epoch = ShapeEpoch.Value;
-            string? token = Chip.Value;
-            if (ShapeNow.Rows.Count == 0)
-                // W8: the display sentence alone — no subtitle, no glyph, no action.
-                return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Page,
-                    Loc.Get(Strings.Sidebar.Section.EmptyRecents), "");
-            return Embed.Comp(() => new SemanticSurface(this, token, epoch))
-                with { Key = "recents-semantic:" + (token ?? "all") + ":" + FormatCache.Int(epoch) };
-        }
-
-        /// <summary>The shimmer SOURCE (§9.1 #12): the real day header and the row's real geometry over the pending
-        /// seed — the stateful list must not mount while pending, and the deriver maps these leaves to bars.</summary>
-        Element PendingContent()
-        {
-            var shape = _pendingShape;
-            var items = shape.Sections.Items;
-            var kids = new Element[items.Length];
-            for (int i = 0; i < items.Length; i++)
-                kids[i] = items[i].Kind == RecentsFlatItemKind.DateHeader
-                    ? DayHeader(this, shape, items[i].DayIndex, overlay: false, s_noop)
-                    : new BoxEl
-                    {
-                        Direction = 0, Height = RecentsLayout.RowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                        Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), MinWidth = 0f,
-                        Children =
-                        [
-                            new BoxEl { Width = CardArt, Height = CardArt, Shrink = 0f, Corners = Radii.ControlAll },
-                            new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS, Children = [Design.Type.TrackTitle(""), Caption("")] },
-                            new BoxEl { Direction = 0, Gap = Spacing.M, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [Caption(""), Caption("")] },
-                        ],
-                    };
-            return new BoxEl
-            {
-                Grow = 1f, Shrink = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = kids,
-            };
-        }
-
-        static readonly Action s_noop = static () => { };
 
         // ── the model ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -428,7 +331,7 @@ public readonly partial struct Recents
                 : new GroupedListVirtualLayout(sections.HeaderIndices, RecentsLayout.DateHeaderHeight, RecentsLayout.RowHeight);
             layout.ContentExtent(sections.Items.Length, 0f);
             string summary = loaded ? RecentsView.Summary(rows, Now, Culture, s_itemCount, s_groupedFrom) : "";
-            ShapeNow = new Shape(rows, map, sameRows ? previous.Morphable : RecentsView.FirstOccurrence(rows), sections, calendar,
+            ShapeNow = new RecentsShape(rows, map, sameRows ? previous.Morphable : RecentsView.FirstOccurrence(rows), sections, calendar,
                 layout, Now.Offset, loaded, summary);
             ShapeSignal.Value = ShapeNow;
             ExpandedRow.Value = StringId.Empty;
@@ -438,7 +341,40 @@ public readonly partial struct Recents
             ShapeEpoch.Value = ShapeEpoch.Peek() + 1;
         }
 
-        internal void SelectPivot(string? token)
+        // ── row 2: the pivots (P5 Z7) ──────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The band's pivots in order: a stable id (a node key, never the label), the pivot's token (null is All) and its word.</summary>
+        static readonly (string Id, string? Token, string LabelKey)[] ChromePivots =
+        [
+            ("all", null, Strings.Detail.Filter.All),
+            ("music", RecentsView.PivotMusic, Strings.Recents.Chip.Music),
+            ("podcasts", RecentsView.PivotPodcasts, Strings.Recents.Chip.Podcasts),
+            ("artists", RecentsView.PivotArtists, Strings.Recents.Pivot.Artists),
+        ];
+
+        /// <summary>A band pivot was picked: a pivot with no rows to show is inert (the same rule as the strip it replaces).</summary>
+        void GoPivot(string? token)
+        {
+            if (token is not null && !RecentsView.PivotAvailable(ShapeNow.Rows, token)) return;
+            SelectPivot(token);
+        }
+
+        /// <summary>Rebuild row 2 when the selected pivot moved (the verbs are cached, so an equal row compares by reference).</summary>
+        void UpdateChrome(string? chip)
+        {
+            if (_chromeRow is not null && string.Equals(_chromeChip, chip, StringComparison.Ordinal)) return;
+            _chromeChip = chip;
+            _chromeVersion++;
+            var views = new ChromeView[ChromePivots.Length];
+            for (int i = 0; i < views.Length; i++)
+            {
+                var pivot = ChromePivots[i];
+                views[i] = new ChromeView(pivot.Id, Loc.Get(pivot.LabelKey), Current: string.Equals(pivot.Token, chip, StringComparison.OrdinalIgnoreCase), _chromeGo[i]);
+            }
+            _chromeRow = new PageChromeRow(views, [new PageAction("overview", Loc.Get(Strings.Recents.Overview), _openOverview, PageActionKind.Word)]);
+        }
+
+        public void SelectPivot(string? token)
         {
             if (string.Equals(token, Chip.Peek(), StringComparison.Ordinal)) return;
             Chip.Value = token;
@@ -520,7 +456,7 @@ public readonly partial struct Recents
 
         // ── the accordion (§9.1 #3-#4) ──────────────────────────────────────────────────────────────────────────────
 
-        internal void ToggleExpanded(int r)
+        public void ToggleExpanded(int r)
         {
             var shape = ShapeNow;
             if ((uint)r >= (uint)shape.Rows.Count) return;
@@ -547,7 +483,7 @@ public readonly partial struct Recents
             if (!ExpandedRow.Peek().IsEmpty) ExpandedRow.Value = StringId.Empty;
         }
 
-        void ResetExpandedExtent(Shape shape, int r)
+        void ResetExpandedExtent(RecentsShape shape, int r)
         {
             var rowToFlat = shape.Sections.RowToFlat;
             if ((uint)r >= (uint)rowToFlat.Length) return;
@@ -560,7 +496,7 @@ public readonly partial struct Recents
                 shape.Layout.SetMeasured(flat, RecentsLayout.RowHeight, 0f);
         }
 
-        bool IsFlatRealized(Shape shape, int r)
+        bool IsFlatRealized(RecentsShape shape, int r)
         {
             var rowToFlat = shape.Sections.RowToFlat;
             return (uint)r < (uint)rowToFlat.Length && rowToFlat[r] >= 0 && ListController.IsItemRealized(rowToFlat[r]);
@@ -585,7 +521,7 @@ public readonly partial struct Recents
         }
 
         /// <summary>Open a row's context through the one route composer; a playable plays, Liked Songs is its own route.</summary>
-        internal void Open(int r)
+        public void Open(int r)
         {
             var target = RecentsView.EntitySlotOf(ShapeNow.Rows, r);
             if (!RecentsView.Names(target)) return;
@@ -596,7 +532,7 @@ public readonly partial struct Recents
         }
 
         /// <summary>The cover FAB: a track or episode plays itself; anything else starts as a CONTEXT from the top.</summary>
-        internal void Play(int r)
+        public void Play(int r)
         {
             var target = RecentsView.EntitySlotOf(ShapeNow.Rows, r);
             if (target.Kind == EntityKind.Collection) Playback.PlayOrToggleContext(EntityUri.LikedCollection);
@@ -604,7 +540,7 @@ public readonly partial struct Recents
         }
 
         /// <summary>The container menu (W16): the strip over the container verbs, then the rows, under the card's header.</summary>
-        internal ContextMenuModel? MenuFor(int r)
+        public ContextMenuModel? MenuFor(int r)
         {
             var shape = ShapeNow;
             if ((uint)r >= (uint)shape.Rows.Count) return null;
@@ -626,7 +562,7 @@ public readonly partial struct Recents
         }
 
         /// <summary>The resource drag chip; a kind with no Wavee resource starts no drag.</summary>
-        internal DragPayload? DragPayloadFor(int r)
+        public DragPayload? DragPayloadFor(int r)
         {
             var shape = ShapeNow;
             if ((uint)r >= (uint)shape.Rows.Count) return null;
@@ -640,19 +576,19 @@ public readonly partial struct Recents
 
         // ── the per-row and per-count string caches ─────────────────────────────────────────────────────────────────
 
-        internal string UriOf(Shape shape, int r, EntityRef target)
+        public string UriOf(RecentsShape shape, int r, EntityRef target)
             => shape.Uri[r] ??= target.Kind == EntityKind.Collection ? EntityUri.LikedCollection
                 : RecentsView.Names(target) ? new EntityUri(target.Id).Text : "";
 
-        internal string WhenOf(Shape shape, int r) => shape.When[r] ??= RecentsView.PlayedAt(shape.Rows.Rows[r].PlayedAtMs, Now, Culture);
+        public string WhenOf(RecentsShape shape, int r) => shape.When[r] ??= RecentsView.PlayedAt(shape.Rows.Rows[r].PlayedAtMs, Now, Culture);
 
         /// <summary>The dormant shared-element key, on the FIRST occurrence of a target only (§9.1 #7).</summary>
-        internal string? MorphOf(Shape shape, int r, EntityRef target, string uri)
+        public string? MorphOf(RecentsShape shape, int r, EntityRef target, string uri)
             => shape.Morphable[r] && target.Kind is EntityKind.Album or EntityKind.Playlist
-                ? shape.Morph[r] ??= Design.MorphKeys.For(target.Kind, uri) : null;
+                ? shape.Morph[r] ??= MorphKeyOf(target.Kind, uri) : null;
 
         /// <summary>"Played N tracks · owner" — the phrase from the wire's declared count, never the member run.</summary>
-        internal string SubtitleOf(Shape shape, int r, in RecentsEdge row, string? owner)
+        public string SubtitleOf(RecentsShape shape, int r, in RecentsEdge row, string? owner)
         {
             var meta = RecentsView.MetaFor(in row);
             string phrase = meta.Kind switch
@@ -668,9 +604,9 @@ public readonly partial struct Recents
             return shape.Sub[r]!;
         }
 
-        internal string CountLabel(int n) => Cached(ref _countLabels, n, s_itemCount);
+        public string CountLabel(int n) => Cached(ref _countLabels, n, s_itemCount);
 
-        internal string PlayedAt(long playedAtMs) => RecentsView.PlayedAt(playedAtMs, Now, Culture);
+        public string PlayedAt(long playedAtMs) => RecentsView.PlayedAt(playedAtMs, Now, Culture);
 
         static string Cached(ref string?[] cache, int n, Func<int, string> format)
         {
@@ -679,7 +615,7 @@ public readonly partial struct Recents
             return cache[n] ??= format(n);
         }
 
-        internal Prop<ColorF> DensityFillProp(int level) => _densityFills[Math.Clamp(level, 0, 5)];
+        public Prop<ColorF> DensityFillProp(int level) => _densityFills[Math.Clamp(level, 0, 5)];
 
         // ── the sticky band (§0 #4-#5, W4, W24) ─────────────────────────────────────────────────────────────────────
 
@@ -726,7 +662,7 @@ public readonly partial struct Recents
         /// <summary>DEBUG: a realized row whose day disagrees with its header, or a pinned day that disagrees with the first
         /// visible row, is a stop, not a screenshot (§9.1 #17).</summary>
         [System.Diagnostics.Conditional("DEBUG")]
-        static void ProbeStickyAlignment(Shape s, float offsetY, int stickyFlat)
+        static void ProbeStickyAlignment(RecentsShape s, float offsetY, int stickyFlat)
         {
             var sections = s.Sections;
             if (sections.Items.Length == 0 || (uint)stickyFlat >= (uint)sections.Items.Length) return;
@@ -754,7 +690,7 @@ public readonly partial struct Recents
             ZoomController.ZoomOutTo(-1);
         }
 
-        internal void InvokeDay(int dayIndex)
+        public void InvokeDay(int dayIndex)
         {
             var s = ShapeNow;
             if ((uint)dayIndex >= (uint)s.Sections.HeaderDates.Length) return;
@@ -763,13 +699,16 @@ public readonly partial struct Recents
             ZoomController.ZoomOutTo(RecentsLayout.HeaderFlatFor(s.Sections, date));
         }
 
-        internal void JumpIn(DateOnly date, int monthIndex)
+        public void JumpIn(DateOnly date, int monthIndex)
         {
             CalendarDay.Value = date;
-            ZoomController.ZoomInTo(monthIndex);
+            if (IsZoomedOut.Peek()) { ZoomController.ZoomInTo(monthIndex); return; }
+            // A calendar beside the list (a structure's docked Overview, C-Recents-Huge): nothing to zoom, so the list itself is brought to the day.
+            int flat = MapOutToInFunc(monthIndex);
+            if (flat >= 0) ListController.StartBringItemIntoView(flat, alignmentRatio: 0f, animate: true);
         }
 
-        internal void FocusDay(bool focused, DateOnly date)
+        public void FocusDay(bool focused, DateOnly date)
         {
             if (focused) CalendarDay.SetIfChanged(date);
             else CalendarDay.Value = Today;
@@ -777,7 +716,7 @@ public readonly partial struct Recents
 
         /// <summary>The ONE readout builder the band and the cell tooltip share: plays or "Nothing played", "top: X" once the
         /// top row's identity landed, and "Jump to d MMM" only for a day the list has a header for (no dead promise).</summary>
-        internal string CalendarReadout(Shape s, DateOnly date)
+        public string CalendarReadout(RecentsShape s, DateOnly date)
         {
             var day = RecentsLayout.CalendarDay(s.Calendar, date);
             int plays = day?.PlayCount ?? 0;
@@ -790,7 +729,7 @@ public readonly partial struct Recents
             return readout;
         }
 
-        internal string CalendarTooltip(Shape s, DateOnly date) => date.ToString("dddd d MMMM", Culture) + " · " + CalendarReadout(s, date);
+        public string CalendarTooltip(RecentsShape s, DateOnly date) => date.ToString("dddd d MMMM", Culture) + " · " + CalendarReadout(s, date);
 
         string MonthKey(int i)
         {
@@ -839,319 +778,33 @@ public readonly partial struct Recents
             if ((uint)day >= (uint)sections.HeaderLabels.Length) return null;
             return new AnnotatedScrollBarLabel(s.Layout.OffsetOf(sections.HeaderIndices[day], 0f), sections.HeaderLabels[day]);
         }
-    }
 
-    // ══ 3. THE PIVOTS (W3, W10, §0 #3) ═══════════════════════════════════════════════════════════════════════════════
+        // ── what a target says, and the verbs the structure's slots call ─────────────────────────────────────────────────
 
-    /// <summary>Four FIXED tabs on frame one; a tab with no rows is dimmed and inert, never hidden. Only the selected tab
-    /// MOUNTS its underline, so the scaleX 0 → 1 enter is a real mount; the others reserve the 2-DIP baseline.</summary>
-    internal sealed class PivotTabs(PageView page) : Component
-    {
-        static readonly MotionTokenDef UnderlineEnter = MotionTokenDef.Eased(260f, Easing.SmoothOut);
+        /// <inheritdoc />
+        public RecentsFacts FactsOf(EntityRef target) => Recents.FactsOf(target);
 
-        public override Element Render()
-        {
-            string? selected = page.Chip.Value;
-            _ = page.ShapeEpoch.Value;
-            var rows = page.ShapeNow.Rows;
-            return new BoxEl
-            {
-                Direction = 0, Gap = Spacing.XL, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children =
-                [
-                    Tab(null, Loc.Get(Strings.Detail.Filter.All), true, selected is null),
-                    Tab(RecentsView.PivotMusic, Loc.Get(Strings.Recents.Chip.Music), RecentsView.PivotAvailable(rows, RecentsView.PivotMusic),
-                        string.Equals(selected, RecentsView.PivotMusic, StringComparison.OrdinalIgnoreCase)),
-                    Tab(RecentsView.PivotPodcasts, Loc.Get(Strings.Recents.Chip.Podcasts), RecentsView.PivotAvailable(rows, RecentsView.PivotPodcasts),
-                        string.Equals(selected, RecentsView.PivotPodcasts, StringComparison.OrdinalIgnoreCase)),
-                    Tab(RecentsView.PivotArtists, Loc.Get(Strings.Recents.Pivot.Artists), RecentsView.PivotAvailable(rows, RecentsView.PivotArtists),
-                        string.Equals(selected, RecentsView.PivotArtists, StringComparison.OrdinalIgnoreCase)),
-                ],
-            };
-        }
+        /// <inheritdoc />
+        public string? CoverOf(EntityRef target) => Recents.CoverOf(target);
 
-        Element Tab(string? token, string label, bool available, bool isSelected)
-        {
-            Element text = Design.Type.PivotLabel(label) with
-            {
-                Color = !available ? Tok.TextDisabled : isSelected ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = 1,
-            };
-            Element underline = isSelected
-                ? new BoxEl
-                {
-                    Key = "underline", Height = 2f, Corners = Radii.FullAll,
-                    Fill = page.AccentFillProp, BrushTransitionMs = AccentTransitionMs,
-                    TransformOriginX = 0f, Enter = new EnterExit(Sx: 0f, Active: true), Transition = UnderlineEnter,
-                }
-                : new BoxEl { Key = "baseline", Height = 2f, Fill = ColorF.Transparent };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.XS, Shrink = 0f,
-                Role = AutomationRole.Button, Focusable = available, Cursor = available ? CursorId.Hand : CursorId.Arrow,
-                IsEnabled = available, FocusVisualMargin = new Edges4(2f, 2f, 2f, 2f),
-                OnClick = available ? () => page.SelectPivot(token) : null,
-                Children = [text, underline],
-            };
-        }
-    }
+        /// <inheritdoc />
+        public void SubscribeRow(RecentsShape shape, int row) => Recents.SubscribeRow(shape, row);
 
-    // ══ 4. THE SEMANTIC SURFACE, THE LIST, THE SLOT, THE PINNED BAND, THE RAIL ═══════════════════════════════════════
+        /// <inheritdoc />
+        public void PlayContext(EntityId id) => Playback.PlayContext(id);
 
-    /// <summary>Both views stay mounted (the zoom's keep-alive); the overview enters from 1.08 while the list recedes to
-    /// 0.94. Keyed on (token, shapeEpoch) by its parent — a deliberate remount on a re-cut.</summary>
-    internal sealed class SemanticSurface(PageView page, string? token, int shapeEpoch) : Component
-    {
-        public override Element Render()
-        {
-            string suffix = (token ?? "all") + ":" + FormatCache.Int(shapeEpoch);
-            Element detail = Embed.Comp(() => new ListSurface(page, token)) with { Key = "recents-list:" + suffix };
-            Element rail = Embed.Comp(() => new RailView(page)) with { Key = "recents-rail:" + suffix };
-            Element zoomedIn = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Stretch,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] },
-                    // The HStack item is a stretch COLUMN around the rail: Grow on the rail's own root would steal width.
-                    new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinHeight = 0f, Children = [rail] },
-                ],
-            };
-            Element zoomedOut = Embed.Comp(() => new CalendarSurface(page, shapeEpoch)) with { Key = "recents-calendar:" + FormatCache.Int(shapeEpoch) };
-            return SemanticZoom.Create(
-                new SemanticZoomSlots(new SemanticZoomView(zoomedIn, page.ListController), new SemanticZoomView(zoomedOut, page.CalendarController)),
-                new SemanticZoomOptions
-                {
-                    IsZoomedOut = page.IsZoomedOut, Controller = page.ZoomController,
-                    MapInToOut = page.MapInToOutFunc, MapOutToIn = page.MapOutToInFunc,
-                });
-        }
-    }
-
-    /// <summary>ONE measured virtual list over the grouped projection with the pinned day band over it (§0 #4).</summary>
-    internal sealed class ListSurface(PageView page, string? token) : Component
-    {
-        public override Element Render()
-        {
-            var layout = page.ShapeNow.Layout;
-            var items = UseMemo(() => BoundItems.Project(page.ShapeSignal, static s => s.Sections.Items.Length,
-                static (s, i) => s.Sections.Items[i], EmptyFlat), DepKey.Empty);
-            UseSignalEffect(page.WatchStickyAction);
-            Element list = ItemsView.CreateBound(items, page.SlotFactory, RepeatLayout.Measured(layout), new ListOptions<RecentsFlatItem>
-            {
-                // The rows are cards with their own chrome; a list selector would be a second, competing cue.
-                SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
-                IsItemInvokedEnabled = true, OnInvokedTyped = page.InvokeFlatAction, ItemTextTyped = page.TextForFunc,
-                Controller = page.ListController, Grow = 1f,
-                // One recycle pool per ARM, so a card slot never rebinds into the track-grid shape (§9.1 #13).
-                ContentType = page.ContentTypeFunc,
-                Scroll = new ScrollOptions
-                {
-                    // Each pivot remembers its OWN offset (§9.1 #16).
-                    ScrollKey = UseContext(Shell.PageScrollScope) + "recents:" + (token ?? "all"), AutoEdgeFade = true,
-                    Handle = page.ScrollController.Handle, SuppressScrollBar = true,
-                    // Rows scroll UNDER the pinned band: clipped at exactly 48 with a 24-DIP feather (W4).
-                    ItemClipTopInset = RecentsLayout.DateHeaderHeight, ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
-                },
-            });
-            return new BoxEl
-            {
-                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ZStack = true, ClipToBounds = true,
-                Children = [list, Embed.Comp(() => new StickyDayHeader(page))],
-            };
-        }
-    }
-
-    /// <summary>A BOUND slot: the template runs once per recycled slot and rebinds through the scope's item signal. It
-    /// subscribes to exactly what its row paints — the target's table (identity landing), the accordion, the epoch.</summary>
-    internal sealed class RowSlot : Component
-    {
-        readonly PageView _page;
-        readonly BoundItemScope<RecentsFlatItem> _scope;
-        readonly RowActions _actions;
-        readonly Action _onHeader;
-
-        public RowSlot(PageView page, BoundItemScope<RecentsFlatItem> scope)
-        {
-            _page = page;
-            _scope = scope;
-            _actions = new RowActions(page, scope.Item);
-            _onHeader = () => page.InvokeDay(scope.Item.Peek().DayIndex);
-        }
-
-        public override Element Render()
-        {
-            var overlay = UseContext(Overlay.Service);
-            var flat = _scope.Item.Value;
-            _ = _scope.Index.Value;
-            _ = _page.Epoch.Value;
-            var shape = _page.ShapeNow;
-            if (flat.Kind == RecentsFlatItemKind.DateHeader) return DayHeader(_page, shape, flat.DayIndex, overlay: false, _onHeader);
-            int r = flat.OriginalRowIndex;
-            if ((uint)r >= (uint)shape.Rows.Count) return new BoxEl { Height = RecentsLayout.RowHeight };
-
-            _ = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            var target = RecentsView.EntitySlotOf(shape.Rows, r);
-            _ = TableOf(scope, target.Kind)?.Changed.Value;
-            if (target.Kind == EntityKind.Playlist) _ = scope.Users.Changed.Value;
-            if (shape.Rows.Rows[r].Why == RecentsReason.Saved) _ = scope.Tracks.Changed.Value;
-
-            if (RecentsLayout.UsesTrackArm(shape.Rows, r)) return SingleRow(shape, r, _actions);
-            var id = shape.Rows.Rows[r].ItemId;
-            bool expanded = !id.IsEmpty && _page.ExpandedRow.Value == id;
-            return Card(_page, shape, r, expanded, _actions, overlay);
-        }
-    }
-
-    static Table? TableOf(Scope scope, EntityKind kind) => kind switch
-    {
-        EntityKind.Track => scope.Tracks,
-        EntityKind.Episode => scope.Episodes,
-        EntityKind.Album => scope.Albums,
-        EntityKind.Artist => scope.Artists,
-        EntityKind.Playlist => scope.Playlists,
-        EntityKind.Show => scope.Shows,
-        _ => null,
-    };
-
-    /// <summary>The pinned day band: ALWAYS mounted, 48 tall; before the first resolve it is present but invisible and
-    /// non-hit-testable (W24). The push is a bound transform — a scroll frame never re-renders it.</summary>
-    internal sealed class StickyDayHeader : Component
-    {
-        readonly PageView _page;
-        readonly Action _onClick;
-
-        public StickyDayHeader(PageView page)
-        {
-            _page = page;
-            _onClick = () =>
-            {
-                var s = page.ShapeNow;
-                int flat = page.StickyHeader.Peek();
-                if ((uint)flat < (uint)s.Sections.Items.Length) page.InvokeDay(s.Sections.Items[flat].DayIndex);
-            };
-        }
-
-        public override Element Render()
-        {
-            _ = _page.Epoch.Value;
-            int flat = _page.StickyHeader.Value;
-            var shape = _page.ShapeNow;
-            int day = (uint)flat < (uint)shape.Sections.Items.Length ? shape.Sections.Items[flat].DayIndex : -1;
-            return new BoxEl
-            {
-                Direction = 0, Grow = 1f, MinWidth = 0f, Height = RecentsLayout.DateHeaderHeight,
-                HitTestVisible = day >= 0, HitTestPassThrough = true, Opacity = day >= 0 ? 1f : 0f,
-                Transform = _page.StickyTransform,
-                OnPointerWheel = _page.ForwardWheelAction,
-                Children = [DayHeader(_page, shape, day, overlay: true, _onClick)],
-            };
-        }
-    }
-
-    /// <summary>The 44-DIP annotated rail — the list's scrollbar. Labels and ticks are memoized on (shapeEpoch, the
-    /// layout's measured-extent version), which bumps only on a REAL extent delta (§9.1 #11).</summary>
-    internal sealed class RailView(PageView page) : Component
-    {
-        int _logged;
-
-        public override Element Render()
-        {
-            float slotH = UseMeasuredBounds().Value.H;
-            int measured = page.RailMeasuredVersion.Value;
-            int epoch = page.ShapeEpoch.Peek();
-            var labels = UseMemo(page.RailLabelsFunc, DepKey.From(epoch, measured));
-            var ticks = UseMemo(page.RailTicksFunc, DepKey.From(epoch, measured));
-            // The one diagnostic the parity walk cross-checks (item 39): the last label against the scroll maximum.
-            float max = (float)page.ScrollController.MaximumOffset.Peek();
-            float lastOff = labels.Length > 0 ? labels[^1].ScrollOffset : 0f;
-            int key = HashCode.Combine((int)slotH, (int)max, (int)lastOff, labels.Length);
-            if (key != _logged)
-            {
-                _logged = key;
-                Log.Info("recents.rail", "slotH=" + (int)slotH + " max=" + (int)max + " lastOff=" + (int)lastOff
-                    + " lastMinusMax=" + (int)(lastOff - max) + " labels=" + labels.Length + " ticks=" + ticks.Length);
-            }
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f,
-                Children =
-                [
-                    AnnotatedScrollBar.Create(page.ScrollController, new AnnotatedScrollBarOptions
-                    {
-                        Labels = labels, TickOffsets = ticks,
-                        // The slot's real height, so the last date is the bottom of the track (no dead band).
-                        Height = slotH > 0f ? slotH : float.NaN,
-                        DetailLabelAtOffset = page.RailDetailFunc,
-                    }),
-                ],
-            };
-        }
-    }
-
-    // ══ 5. THE CALENDAR SURFACE (W11-W14) ════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The overview: the readout band + legend over a GridFit of month cards (290 min, 36 gutters, the TALLEST
-    /// month's height as the row estimate). Its scroll key carries the shape epoch: a re-cut forgets (§9.1 #16).</summary>
-    internal sealed class CalendarSurface(PageView page, int shapeEpoch) : Component
-    {
-        public override Element Render()
-        {
-            var calendar = page.ShapeNow.Calendar;
-            Element grid = ItemsView.Create(calendar.Months.Length, page.MonthCardFactory,
-                RepeatLayout.GridFit(RecentsLayout.CalGridW, Spacing.PageWide, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
-                new ListOptions
-                {
-                    SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
-                    Controller = page.CalendarController, Grow = 1f, KeyOf = page.MonthKeyFunc,
-                    Scroll = new ScrollOptions { ScrollKey = UseContext(Shell.PageScrollScope) + "recents-calendar:" + FormatCache.Int(shapeEpoch), AutoEdgeFade = true },
-                });
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Spacing.L,
-                OnPointerExit = page.ResetCalendarDayAction,
-                Children = [Embed.Comp(() => new CalendarBand(page)), grid],
-            };
-        }
-    }
-
-    /// <summary>ONE band: the hovered day over its readout, the legend beside them; the readout gives width back.</summary>
-    internal sealed class CalendarBand(PageView page) : Component
-    {
-        public override Element Render()
-        {
-            DateOnly selected = page.CalendarDay.Value;
-            _ = page.Epoch.Value;
-            var shape = page.ShapeNow;
-            return new BoxEl
-            {
-                Direction = 0, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
-                        Children =
-                        [
-                            Caption(selected.ToString("dddd d MMMM", page.Culture)) with
-                            { Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                            Caption(page.CalendarReadout(shape, selected)) with
-                            { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        ],
-                    },
-                    Legend(page),
-                ],
-            };
-        }
+        /// <inheritdoc />
+        public void HoverDay(DateOnly date) => CalendarDay.SetIfChanged(date);
     }
 
     // ══ 6. THE LEAVES: the accent + wash binder, the owner demand ════════════════════════════════════════════════════
 
     /// <summary>The ONE node that owns the cover-grading watch (§4.1, §9.2). Re-derives once per DAY crossing (the
-    /// quantized <c>AccentDay</c>), on a washes toggle, and when an identity or a grading lands; publishes the page accent
+    /// quantized <c>AccentDay</c>) and when an identity or a grading lands; publishes the page accent
     /// and ONE Hero leg of the shell wash — claim on the first publish and on reactivation, refresh while owner, never
-    /// clear (§4.2).</summary>
+    /// clear (§4.2). It publishes DATA only: whether the wash is drawn is the theme's (Classic's material layer reads its
+    /// Surfaces option), and the page accent follows the artwork whatever that option says (owner NQ6): only the structure's separate
+    /// "Accent from artwork" (CT9) turns it to the system accent.</summary>
     internal sealed class AccentBinder(PageView page) : Component
     {
         static readonly Func<string?, Scheme?> s_chromeScheme = static url => Design.ChromeSchemeFor(url.AsSpan());
@@ -1159,7 +812,6 @@ public readonly partial struct Recents
         public override Element Render()
         {
             var slot = UseContext(ShellMaterial.Slot);
-            bool washes = Prefs.Appearance.ColorWashes();
             _ = Entities.ScopeEpoch.Value;
             _ = page.AccentDay.Value;
             _ = page.ShapeEpoch.Value;
@@ -1173,12 +825,13 @@ public readonly partial struct Recents
             var target = source >= 0 ? RecentsView.EntitySlotOf(rows, source) : default;
             string? url = target.Slot > 0 ? FactsOf(target).Cover : null;
 
-            var resolved = PageView.Fallback();
-            if (washes && url is { Length: > 0 })
+            var resolved = FallbackAccent();
+            // The page accent follows the artwork unless the structure's "Accent from artwork" is off (CT9 U2; a tracked read, so a flip re-renders).
+            if (url is { Length: > 0 } && ShellPolicy.Tracked.Artwork.AccentFromArtwork)
             {
                 _ = Palette.Watch(url).Value;
                 if (Design.ChromeSchemeFor(url) is { } scheme)
-                    resolved = new Design.PageAccent(Design.Palette.ChromeAccent(scheme), Design.Palette.Accent(scheme), url);
+                    resolved = new Design.PageAccent(Design.Palette.Floor(Design.Palette.ChromeAccent(scheme)), ColorScience.Accent(scheme), url);
             }
             UseLayoutEffect(() => page.Accent.SetIfChanged(resolved), DepKey.From(resolved.GetHashCode()));
 
@@ -1190,19 +843,19 @@ public readonly partial struct Recents
                 var t = RecentsView.EntitySlotOf(rows, shape.Display[i]);
                 if (t.Slot > 0 && FactsOf(t).Cover is { Length: > 0 }) card = new HomeCard(t);
             }
-            if (washes && HomeWashSource.PlaneUrl(card) is { Length: > 0 } plane) _ = Palette.Watch(plane).Value;
-            var pick = washes ? HomeWashSource.Pick(card, s_chromeScheme) : null;
+            if (HomeWashSource.PlaneUrl(card) is { Length: > 0 } plane) _ = Palette.Watch(plane).Value;
+            var pick = HomeWashSource.Pick(card, s_chromeScheme);
             HomeWash? wash = pick is { } p ? new HomeWash(new WashLayer(p.Color, p.Key), null, null) : null;
             page.LastWash = wash;
 
             var claimed = UseRef(false);
             UseEffect(() =>
             {
-                ShellMaterial.Publish(slot, page.WashOwner, isClaim: !claimed.Value, definite: !washes, tint: null, wash);
+                ShellMaterial.Publish(slot, page.WashOwner, isClaim: !claimed.Value, definite: false, tint: null, wash);
                 claimed.Value = true;
-            }, DepKey.From(HashCode.Combine(washes, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
+            }, DepKey.From(HashCode.Combine(pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
             UseActivation(onActivated: () => ShellMaterial.Publish(slot, page.WashOwner, isClaim: true,
-                definite: !Prefs.Appearance.ColorWashes(), tint: null, page.LastWash));
+                definite: false, tint: null, page.LastWash));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }
@@ -1219,4 +872,4 @@ public readonly partial struct Recents
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }
-}
+}

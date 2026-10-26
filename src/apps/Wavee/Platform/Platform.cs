@@ -47,6 +47,19 @@ public interface IAppSettings
 {
     T Get<T>(SettingKey<T> key);
     void Set<T>(SettingKey<T> key, T value);
+
+    /// <summary>The stored value when one is present under <c>key.Name</c>: true with what <see cref="Get{T}"/> reads
+    /// (a stored value that does not read as <typeparamref name="T"/> answers the default, exactly as Get does), false
+    /// with <c>key.Default</c> when nothing is stored. The one way to tell "never written" from "written as the
+    /// default" — what a copy-only migration step needs.</summary>
+    bool TryGet<T>(SettingKey<T> key, out T value);
+
+    /// <summary>Is any value stored under <paramref name="name"/>?</summary>
+    bool Has(string name);
+
+    /// <summary>Forget the value under <paramref name="name"/>, so reads answer the key's default again. A no-op when
+    /// nothing is stored.</summary>
+    void Remove(string name);
 }
 
 // ── 2. the key registry ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -72,21 +85,13 @@ public static partial class Platform
     {
         // ── sidebar: legacy (v0) global pane keys, read only by the first-run probe
         //    (`Setup.Bootstrap.IsFreshInstall`): a pane preference written by a build that predates the sidebar designs is
-        //    a witness that this is not a fresh install. The pane state is one value for both layouts (SidebarPaneWidth
+        //    a witness that this is not a fresh install. The pane state is one value for both layouts (the theme state `paneWidth`
         //    below) since v3.
         public static readonly SettingKey<bool> SidebarWidthUserSetLegacy = new("sidebar.width.userSet", false);
         public static readonly SettingKey<bool> SidebarCollapsedLegacy = new("sidebar.collapsed", false);
-        /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). There
-        /// is no key-exists probe, so this is the ONLY thing that tells "never written" from "written as the default".</summary>
+        /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). It
+        /// predates <see cref="IAppSettings.Has"/> and stays the latch those migrations read.</summary>
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
-        /// <summary>The active sidebar layout: 0 Classic · 1 Library. Written by the one-time v3 migration.</summary>
-        public static readonly SettingKey<int> SidebarLayoutId = new("sidebar.layout.id", 0);
-        /// <summary>The expanded pane width, one value for both layouts (180-460).</summary>
-        public static readonly SettingKey<float> SidebarPaneWidth = new("sidebar.pane.width", 320f);
-        /// <summary>The user's collapse to the 48 rail — written only in the Wide band, never by a forced mode.</summary>
-        public static readonly SettingKey<bool> SidebarPaneUserCollapsed = new("sidebar.pane.userCollapsed", false);
-        /// <summary>Entity-row density: 0 Default · 1 Compact.</summary>
-        public static readonly SettingKey<int> SidebarPaneDensity = new("sidebar.pane.density", 0);
         /// <summary>Your Library's chip: 0 none · 1 Playlists · 2 Albums · 3 Artists · 4 Podcasts · 5 Audiobooks.</summary>
         public static readonly SettingKey<int> SidebarLibraryFilter = new("sidebar.library.filter", 0);
         /// <summary>The loc keys of what the v2 migration could not carry over, comma-separated (Settings' "What changed").</summary>
@@ -112,27 +117,16 @@ public static partial class Platform
         /// <summary>"system" asks the startup root to resolve the Windows UI locale; an explicit BCP-47 tag selects the
         /// matching bundled JSON table. Applied before first mount on the NEXT launch.</summary>
         public static readonly SettingKey<string> UiCulture = new("localization.culture", "system");
-        public static readonly SettingKey<int> RowDensity = new("detail.rowdensity", 1);        // 0 Compact · 1 Default · 2 Cozy · 3 Comfortable
-        public static readonly SettingKey<int> TrackRowStyle = new("detail.rowstyle", 0);       // 0 Modern · 1 Classic
-        /// <summary>Artwork inside TRACK cells only: page heroes, media cards, sidebar covers and the player's identity
-        /// artwork are deliberately unaffected.</summary>
-        public static readonly SettingKey<bool> HideTrackArtwork = new("appearance.trackArtwork.hidden", false);
         /// <summary>The Liked Songs cover treatment. DEFAULT 1 = LikedCoverStyle.Lens, not Stock: the point of the feature
         /// is that the collection cover is made of the user's own music, and every treatment degrades to the bundled PNG
         /// until the library owns enough distinct artwork — so a fresh install still paints what it painted before.</summary>
         public static readonly SettingKey<int> LikedCoverStyle = new("appearance.likedCover.style", 1);
-        /// <summary>The page-swap MOTION STYLE (Settings ▸ Appearance ▸ Page motion — a DEVELOPER-ONLY row). The default IS
-        /// <see cref="Design.Nav.DefaultStyle"/>, never a literal, so the persisted default and the code default cannot
-        /// drift: a fresh profile gets Classic's fade-through, and a profile that already picked a style keeps it.</summary>
-        public static readonly SettingKey<int> PageMotionStyle = new("appearance.pageMotion.style", (int)Design.Nav.DefaultStyle);
         /// <summary>BPM · Key as its own COLUMN. Off: it is enrichment most listeners never scan for and it costs width on
         /// every row; it is always available inside a row's expander regardless.</summary>
         public static readonly SettingKey<bool> TempoColumn = new("detail.tempoColumn", false);
         /// <summary>Stream counts as their own COLUMN. VISIBILITY ONLY — the trait bundle rides every list surface
         /// regardless, because gating the FETCH on this setting permanently starved lists opened while it was off.</summary>
         public static readonly SettingKey<bool> PlaysColumn = new("detail.playsColumn", false);
-        /// <summary>0 Automatic (rail on wide windows, hero on narrow) · 1 Hero (the hero composition at every width).</summary>
-        public static readonly SettingKey<int> DetailPageLayout = new("detail.page.layout", 0);
         /// <summary>What the daylist's clock shows on the playlist hero strip and the Home card (<see cref="DaylistClockMode"/>):
         /// 0 Countdown and update time (the default — what every build before #185 showed) · 1 Update time only (no ticking
         /// digits, no per-second motion) · 2 Countdown only. Read through <c>Prefs.Appearance.DaylistClock</c>, which clamps.</summary>
@@ -140,8 +134,6 @@ public static partial class Platform
         /// <summary>TRUE (the default) scrolls overflowing text; FALSE truncates. Renamed from the negative DisableMarquee
         /// (no migration — pre-1.0, cosmetic).</summary>
         public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);
-        /// <summary>FALSE keeps the neutral surface: every tone plane / wash / tint binder paints nothing.</summary>
-        public static readonly SettingKey<bool> ColorWashesEnabled = new("appearance.colorWashes.enabled", true);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>
@@ -155,7 +147,7 @@ public static partial class Platform
         // The animated backdrop and the secondary line are no longer SETTINGS (both Settings rows are gone): the backdrop
         // is a fixed constant and the secondary line is session state the two lyrics globe toggles own. Neither carries a
         // key any more, so a value persisted by an older build can never resurrect either.
-        public static readonly SettingKey<int> LyricsBlurStrength = new("appearance.lyrics.blurStrength", -1);   // -1 = Auto
+        public static readonly SettingKey<int> LyricsBlurStrength = new("appearance.lyrics.blurStrength", 100);   // 0 = off, 1-100; a legacy stored -1 (the removed Auto) reads as 100, see Prefs.Lyrics.FromStored
         // On-device AI lyrics (AiLyrics, plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.1). Off by default:
         // nothing downloads until the user turns the master switch on and confirms the size.
         public static readonly SettingKey<bool> AiLyricsEnabled = new("lyrics.ai.enabled", false);
@@ -164,28 +156,15 @@ public static partial class Platform
         public static readonly SettingKey<bool> AiLyricsOnBatterySaver = new("lyrics.ai.onBatterySaver", false);
         public static readonly SettingKey<string> AiLyricsLanguages = new("lyrics.ai.languages", "en");   // comma-separated
 
-        // ── detail rails + shell rail. The four widths default to Design.cs tokens (RailAlbum 280 / RailPlaylist 240 /
-        //    ShellResponsiveLayout.RailDefaultW 340); Wave 4 owes the convergence test that pins these literals to them.
-        public static readonly SettingKey<float> DetailAlbumRailWidth = new("detail.rail.album.width", 280f);
-        public static readonly SettingKey<float> DetailPlaylistRailWidth = new("detail.rail.playlist.width", 240f);
-        public static readonly SettingKey<float> DetailLikedRailWidth = new("detail.rail.liked.width", 240f);
-        public static readonly SettingKey<float> DetailShowRailWidth = new("detail.rail.show.width", 280f);
-        public static readonly SettingKey<float> ShellRailWidth = new("shell.rail.width", 340f);
-        public static readonly SettingKey<float> ShellDockedVideoHeight = new("shell.rail.docked-video.height", 0f);
-        public static readonly SettingKey<bool> DetailAlbumRailCollapsed = new("detail.rail.album.collapsed", false);
-        public static readonly SettingKey<bool> DetailPlaylistRailCollapsed = new("detail.rail.playlist.collapsed", false);
-        public static readonly SettingKey<bool> DetailLikedRailCollapsed = new("detail.rail.liked.collapsed", false);
-        public static readonly SettingKey<bool> DetailShowRailCollapsed = new("detail.rail.show.collapsed", false);
-        public static readonly SettingKey<bool> DetailRailUniform = new("detail.rail.uniform", false);
-        public static readonly SettingKey<float> DetailUniformRailWidth = new("detail.rail.uniform.width", 240f);
-        public static readonly SettingKey<bool> DetailUniformRailCollapsed = new("detail.rail.uniform.collapsed", false);
+        // (The right panel's width and docked-video height, the detail pages' rails and the library columns are Classic's theme state.)
 
         // ── shell state ──
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
-        public static readonly SettingKey<string> TipsSeen = new("tips.seen", "");
-        public static readonly SettingKey<string> SavedLibrary = new("library.saved", "");
         public static readonly SettingKey<string> PlaylistDepositRecents = new("playlist.deposit.recents", "");
         public static readonly SettingKey<string> WorkspacePinnedTabs = new("workspace.tabs.pinned", "");
+        /// <summary>The concerts the listener marked "interested" (a LOCAL set: the concert API has no interested / saved state of its own): ONE capped blob,
+        /// newest first, the concert uris joined by a space. Read and written ONLY through <see cref="ConcertInterest"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> ConcertInterested = new("concert.interested", "");
 
         // ── podcasts ──
         /// <summary>The show reader's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
@@ -204,7 +183,8 @@ public static partial class Platform
         public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", 16.0 / 9.0);
         public static readonly SettingKey<bool> VideoWindowAlwaysOnTop = new("video.window.ontop", true);
 
-        // ── local playback runtime (the provisioning card; RuntimePhase below) ──
+        // ── local playback runtime (the provisioning card; RuntimePhase below). Path, pack and catalog are read and written by the
+        // private PlayPlay module's provisioner, which is not in this repository. ──
         public static readonly SettingKey<string> PlaybackRuntimePath = new("playback.runtime.path", "");
         public static readonly SettingKey<string> PlaybackRuntimePackId = new("playback.runtime.packId", "");
         public static readonly SettingKey<bool> PlaybackRuntimeSetupDismissed = new("playback.runtime.dismissed", false);
@@ -347,33 +327,26 @@ public static partial class Platform
         // inventing their own; the string shape is 0.2.9's and is persisted, so it never changes. A key is a struct, so
         // the only allocation is the name, and these are read at mount, never per frame.
 
-        /// <summary>Per-context track-table sort column / direction (`detail.sort.col:&lt;ctxUri&gt;`).</summary>
-        public static SettingKey<int> DetailSortCol(string contextUri) => new("detail.sort.col:" + contextUri, 0);
-        public static SettingKey<bool> DetailSortDesc(string contextUri) => new("detail.sort.desc:" + contextUri, false);
-
-        /// <summary>Per-library-kind three-column state (`library.&lt;kind&gt;.*`; kind is "artists"/"albums"/…).</summary>
-        public static SettingKey<float> LibraryLeftW(string kind) => new("library." + kind + ".leftw", kind == "artists" ? 280f : 340f);
-        public static SettingKey<float> LibraryMidW(string kind) => new("library." + kind + ".midw", 440f);
+        /// <summary>Per-library-kind view state (`library.&lt;kind&gt;.*`; the column widths are theme state, `LibraryViewPrefs`; kind is "artists"/"albums"/…).</summary>
         public static SettingKey<int> LibrarySort(string kind) => new("library." + kind + ".sort", 0);
         public static SettingKey<bool> LibraryDesc(string kind) => new("library." + kind + ".desc", false);
         public static SettingKey<int> LibraryView(string kind) => new("library." + kind + ".view", 1);
         public static SettingKey<int> LibrarySize(string kind) => new("library." + kind + ".size", 1);
         public static SettingKey<string> LibrarySelected(string kind) => new("library." + kind + ".selected", "");
+        /// <summary>The albums page's picked artist group (the route key of an artist; "" = every artist). Written only by a structure that asked for the grouping.</summary>
+        public static SettingKey<string> LibraryGroup(string kind) => new("library." + kind + ".group", "");
         public static SettingKey<string> LibraryAlbumKey(string kind) => new("library." + kind + ".albumkey", "");
         public static SettingKey<int> LibraryAlbumSort(string kind) => new("library." + kind + ".album.sort", 0);
         /// <summary>The account's listen-later playlist uri ("Your Episodes") as last discovered (`podcasts.yourEpisodes:&lt;account&gt;`),
         /// so a cold start recognises a pinned Your Episodes before this session has read it. "" = none known.</summary>
         public static SettingKey<string> YourEpisodesUri(string account) => new("podcasts.yourEpisodes:" + account, "");
-        public static SettingKey<bool> LibraryAlbumDesc(string kind) => new("library." + kind + ".album.desc", false);
-        public static SettingKey<int> LibraryAlbumView(string kind) => new("library." + kind + ".album.view", 3);   // Grid
-        public static SettingKey<int> LibraryAlbumSize(string kind) => new("library." + kind + ".album.size", 1);
         /// <summary>The artists reader's scope (0 = in your library · 1 = all releases). Per kind for symmetry with the
         /// other library keys; only "artists" reads it today.</summary>
         public static SettingKey<int> LibraryScope(string kind) => new("library." + kind + ".scope", 0);
-        // LibraryAlbumDesc / LibraryAlbumView / LibraryAlbumSize: ORPHANED by the 2026-09-17 library rework (the
-        // discography grid they drove is gone). Kept and unread — a persisted string never changes — so do not renumber,
-        // repurpose or delete one: a user's store.json still carries them, and LibraryAlbumSort is still read (the
-        // reader's own sort, whose old 0-4 discography values clamp to 0).
+        // RETIRED, never reuse: `library.<kind>.album.desc` / `.album.view` / `.album.size` drove the discography grid the
+        // 2026-09-17 library rework deleted. Nothing reads or writes them, but a user's store.json may still carry them, so a
+        // new key must not take one of those strings. `LibraryAlbumSort` is still read (the reader's own sort, whose old 0-4
+        // discography values clamp to 0).
 
         /// <summary>A deck/player preset's own option (`npv.player.&lt;preset&gt;.&lt;option&gt;`).</summary>
         public static SettingKey<int> NpvOption(string presetSlug, string optionSlug) => new("npv.player." + presetSlug + "." + optionSlug, 0);
@@ -387,6 +360,12 @@ public static partial class Platform
 /// ladder alone, unmanaged by this policy. <see cref="Dense"/> is BUILT but unreachable from the Appearance tab
 /// (ch 00 §6.5) — the policy supports it; nothing writes it.</summary>
 public enum ZoomAutoMode { Auto = 0, Manual = 1, Dense = 2 }
+
+/// <summary>Which process the boot (<see cref="Platform.Boot"/>, <c>App.BootCore</c>) is for. <see cref="Gui"/> is the
+/// app. <see cref="HeadlessFake"/> is the shell test host (<c>Shell.Headless</c>): the same steps in the same order over
+/// `--fake`, a temporary profile and memory settings, without the GUI process's own services (the single-instance gate,
+/// the marshallers, the log file, crash reporting, the updater, OS subscriptions, background timers).</summary>
+public enum BootProfile : byte { Gui = 0, HeadlessFake = 1 }
 
 /// <summary>Derives the app zoom from the window's DIP extent against the app's own design box, so a single "one
 /// number for every display" zoom stops being wrong on a 2×-DIP-wider monitor. BCL-only by construction, so the
@@ -439,6 +418,12 @@ public static class ZoomAutoPolicy
         float lo = mode == ZoomAutoMode.Dense ? DenseFloor : NeutralZoom;
         return SnapPlateauDown(Math.Clamp(ratio, lo, Ceiling));
     }
+
+    /// <summary>The largest plateau at or below <paramref name="ratio"/>, held inside the plateau range (0.75 to
+    /// <see cref="Ceiling"/>); a non-finite ratio is the neutral zoom. The same snap <see cref="Suggest"/> ends with,
+    /// exposed so the large-display clamp (<c>ZoomTierReference</c>, C1b) lands on the same plateaus.</summary>
+    public static float PlateauAtOrBelow(float ratio)
+        => float.IsFinite(ratio) ? SnapPlateauDown(Math.Clamp(ratio, Plateaus[0], Ceiling)) : NeutralZoom;
 
     /// <summary>Snap DOWN to the nearest plateau at or below <paramref name="ratio"/> — 1.20 → 100% and 1.55 → 150%,
     /// never the nearer-by-distance rung. The caller has already clamped to [lo, Ceiling], both of which are plateau
@@ -620,8 +605,6 @@ public readonly record struct WaveeLogEntry(
     long Sequence, long UnixMs, WaveeLogLevel Level, string Category, string EventId, string Message,
     string? OperationId, int ThreadId, long ElapsedMs, WaveeLogField[]? Fields, string? Exception)
 {
-    public int FieldCount => Fields?.Length ?? 0;
-
     /// <summary>The one line format, pure and testable:
     /// <c>I [connect] session.start op=x elapsed=12ms - started k=v</c>. The file sink prefixes it with the
     /// seq/tid/t/sid/pid tokens (<see cref="Log.FormatFileLine"/>); the diagnostics page re-reads both halves. Older
@@ -833,6 +816,17 @@ public static class WaveeIcons
         Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "wavee-icons.otf") + "#WaveeIcons";
 }
 
+/// <summary>Segoe Fluent Icons marks the engine's generated <c>Icons.*</c> table does not carry yet. They draw in the
+/// default icon face (the bundled Segoe Fluent Icons, <see cref="WaveeFonts.Icons"/>), unlike <see cref="WaveeIcons"/>;
+/// a mark moves to the engine's <c>glyphs.json</c> with its next change. Same ASCII-safe <c>Of(0x____)</c> convention.</summary>
+public static class SegoeGlyphs
+{
+    static string Of(int cp) => ((char)cp).ToString();
+
+    /// <summary>A person with a plus (Segoe "AddFriend"): the Follow toggle at rest (tuned Classic D21).</summary>
+    public static readonly string AddFriend = Of(0xE8FA);
+}
+
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content
 /// glob and the MSIX layout's recursive copy of the publish dir). Every entry is the engine's "path#Family" form: the
 /// renderer splits at '#', loads the PATH through DirectWrite's font-file reference and never hands the family name
@@ -895,6 +889,12 @@ public static partial class Platform
         /// change, so the rollback and its toast can be exercised without a network. Off unless `--fake` is on.</summary>
         public static bool FakeCoverFail { get; private set; }
 
+        /// <summary>`--fake --whatsnew &lt;dir&gt;`: a release's notes folder (the release tool's `validate` output:
+        /// <c>whatsnew.json</c>, <c>whatsnew-index.json</c>, <c>media/</c>) the demo shows as its own release instead of
+        /// the canned notes, so a release's words and images can be looked at before it ships. Null unless `--fake` is on
+        /// AND the folder exists.</summary>
+        public static string? WhatsNewPreview { get; private set; }
+
         /// <summary>`--headless` or `--stress-audio`: a no-window host (<c>Diagnostics.Probe.TryRun</c>). Boot reads it
         /// for one decision — a headless run never applies a pending factory reset, because its `--profile` scratch
         /// folder is not the profile the reset was armed for (headless plan §2.8).</summary>
@@ -909,13 +909,30 @@ public static partial class Platform
         /// <c>Platform.Boot()</c>, the other two ways in (crash-diagnostics plan §B.8, §I "WP-D").</summary>
         public static bool Recovery { get; private set; }
 
-        internal static void Parse(string[] argv)
+        /// <summary>This launch's command line: what <see cref="Boot"/> was handed, and the one copy every later argv read
+        /// (the single-instance gate, the harness arms, the diagnostics probes) goes through. Empty until <see cref="Use"/>.</summary>
+        public static string[] Argv { get; private set; } = [];
+
+        /// <summary>Take <paramref name="argv"/> as the launch's command line and parse every flag above from it. Called by
+        /// <see cref="Boot"/>; the headless shell host's boot passes its own argv instead of the test runner's.</summary>
+        public static void Use(string[] argv)
+        {
+            Argv = argv;
+            Parse(argv);
+        }
+
+        /// <summary>Back to an empty command line (every flag off). For a test that ran <see cref="Use"/>.</summary>
+        public static void ResetForTests() => Use([]);
+
+        static void Parse(string[] argv)
         {
             Fake = Array.IndexOf(argv, "--fake") >= 0;
             int fv = Fake ? Array.IndexOf(argv, "--fake-video") : -1;
             FakeVideo = fv >= 0 && fv + 1 < argv.Length && File.Exists(argv[fv + 1]) ? Path.GetFullPath(argv[fv + 1]) : null;
             FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
             FakeCoverFail = Fake && Array.IndexOf(argv, "--fake-cover-fail") >= 0;
+            int wn = Fake ? Array.IndexOf(argv, "--whatsnew") : -1;
+            WhatsNewPreview = wn >= 0 && wn + 1 < argv.Length && Directory.Exists(argv[wn + 1]) ? Path.GetFullPath(argv[wn + 1]) : null;
             Headless = Array.IndexOf(argv, "--headless") >= 0 || Array.IndexOf(argv, "--stress-audio") >= 0;
             RelaunchBroker = Array.IndexOf(argv, "--relaunch-after") >= 0;
             Recovery = Array.IndexOf(argv, "--recovery") >= 0;
@@ -952,7 +969,7 @@ public static partial class Platform
 
     /// <summary>The same number as a signal, for a binder that wants to re-read a preference reactively. Written on
     /// the UI thread only (C1), like every other signal in the app.</summary>
-    public static readonly Signal<uint> SettingsChanged = new(0u);
+    public static readonly Signal<uint> SettingsChanged = new(0u) { DebugName = "settings.changed" };
 
     /// <summary>Install the backing store. Called once by <see cref="Boot"/> with the registry store; called by a
     /// test with an in-memory one, and with <c>null</c> to go back to defaults-only.</summary>
@@ -977,6 +994,28 @@ public static partial class Platform
                 "Settings.Set(\"" + key.Name + "\") off the UI thread — every SettingsChanged subscriber assumes C1");
 #endif
             s_backing?.Set(key, value);
+            SettingsEpoch++;
+            SettingsChanged.Value = SettingsEpoch;
+        }
+
+        public bool TryGet<T>(SettingKey<T> key, out T value)
+        {
+            if (s_backing is { } b) return b.TryGet(key, out value);
+            value = key.Default;
+            return false;
+        }
+
+        public bool Has(string name) => s_backing is { } b && b.Has(name);
+
+        /// <summary>A removal changes what reads answer, so it announces itself like a write.</summary>
+        public void Remove(string name)
+        {
+#if DEBUG
+            System.Diagnostics.Debug.Assert(
+                UiThreadId is not { } uiThreadId || uiThreadId == Environment.CurrentManagedThreadId,
+                "Settings.Remove(\"" + name + "\") off the UI thread — every SettingsChanged subscriber assumes C1");
+#endif
+            s_backing?.Remove(name);
             SettingsEpoch++;
             SettingsChanged.Value = SettingsEpoch;
         }
@@ -1131,28 +1170,38 @@ public static partial class Platform
     /// <item>the crash writers, as soon as the log exists — a crash anywhere after this leaves a report on disk.</item>
     /// </list>
     /// One-shot and allowed to allocate. Nothing here opens a socket, a database or a window.</summary>
-    public static void Boot()
+    /// <para><paramref name="argv"/> is the launch's command line (<c>Environment.GetCommandLineArgs()</c> for the app);
+    /// every flag is argv only — CLAUDE.md forbids an environment-variable switch for behaviour or verification (ch 31
+    /// §0.15, which is precisely why `WAVEE_FAKE_CHALLENGE` does NOT get ported as a second env var).
+    /// <see cref="BootProfile.HeadlessFake"/> (the shell test host) keeps the same order but skips what belongs to a GUI
+    /// process: the OS culture (the launch resolves English), the log FILE and the engine's <c>Diag</c> sink (the ring
+    /// log stays), the crash writers and the realtime capture. Its argv must carry `--fake`, so the backing is memory.</para></summary>
+    public static void Boot(string[] argv, BootProfile profile = BootProfile.Gui)
     {
-        // Self-contained (no `Main(string[] args)` signature change needed anywhere): the process's own command
-        // line, read once, is exactly what `Environment.GetCommandLineArgs()` is for. Every flag below is argv
-        // only — CLAUDE.md forbids an environment-variable switch for behaviour or verification (ch 31 §0.15,
-        // which is precisely why `WAVEE_FAKE_CHALLENGE` does NOT get ported as a second env var).
-        Args.Parse(Environment.GetCommandLineArgs());
+        Args.Use(argv);
+        bool gui = profile == BootProfile.Gui;
+        if (!gui && !Args.Fake) throw new ArgumentException("the headless shell profile boots only with --fake", nameof(argv));
         Backing = SettingsBackingFor(Args.Fake, ProfileRoot);
         // Never in the broker (a courier), a headless run or a `--fake` demo: none of them is the profile the reset was
         // armed for, and a wipe there would eat the user's real profile from a scratch launch.
         if (!Args.RelaunchBroker && !Args.Headless && !Args.Fake) HostApplyFactoryReset();
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
+        Wavee.Theming.ThemeBootstrap.SidebarFolder = Args.Fake ? null : Path.Combine(LocalFolder, "WaveeMusic");   // M7b: where the "SidebarLibraryView" step finds sidebar.json (a demo reads no profile)
+        Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M3 density, M4 hide track art, M6 colour washes); before anything reads a presentation setting
+        DetailRailPrefs.RegisterVerbs();   // M8: the theme verb behind the structure's "Clear all remembered sizes" action
         Developer.Load(Settings);
-        Diagnostics.ScrollSettings.Load(Settings);   // the scroll probe level + feel profile, before the first window
+        ScrollProbePrefs.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";
-        HostOsCulture(ref osCulture);
+        if (gui) HostOsCulture(ref osCulture);
         var locale = AppLocale.Resolve(Settings, osCulture);
         HostOpenLocale(ref locale);
         Locale = locale;
-        HostOpenLog();
-        HostInstallCrashWriters();
+        if (gui)
+        {
+            HostOpenLog();
+            HostInstallCrashWriters();
+        }
         HostOpenCredentials();
         Scope = ResolveScope();
         Log.Event(WaveeLogLevel.Info, "app", "startup", "platform booted", null, Log.SinceStartMs, null,

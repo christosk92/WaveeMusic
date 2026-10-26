@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup wizard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0"><dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" h="780" hint-size="280px,780px"></dc-import><main style="flex-grow: 1; background: rgba(58,58,58,0.298); border-top-left-radius: 8px"></main></div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="idle" w="1440" hint-size="1440px,72px"></dc-import>
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <section role="dialog" aria-label="Sign in to Spotify" style="position: absolute; left: 339px; top: 205px; width: 762px; height: 490px; box-sizing: border-box; border-radius: 8px; background: #202020; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 64px rgba(0,0,0,0.4); display: flex; flex-direction: column; overflow: hidden">
+    <div style="flex-grow: 1; display: flex; padding: 24px; gap: 24px">
+      <div aria-hidden="true" style="width: 192px; flex-shrink: 0; display: flex; align-items: center; justify-content: center"><span style="position: relative; width: 140px; height: 140px; border-radius: 70px; background: radial-gradient(circle, rgba(96,205,255,0.35), rgba(96,205,255,0) 70%)"><span style="position: absolute; left: 40px; top: 40px; width: 60px; height: 60px; border-radius: 16px; background: #60cdff; transform: rotate(-8deg)"></span></span></div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px">
+        <h1 style="margin: 0; font-size: 28px; line-height: 36px; font-weight: 600">Sign in to Spotify</h1>
+        <div style="display: flex; gap: 12px">
+          <div style="flex: 1; padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 2px solid #60cdff; display: flex; flex-direction: column; gap: 8px"><svg width="24" height="24" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12" fill="none" stroke="#60cdff" stroke-width="1"></path></svg><span style="font-size: 14px; font-weight: 600">Continue in your browser</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Sign in on spotify.com, then come back here.</span></div>
+          <div style="flex: 1; padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(255,255,255,0.082); display: flex; gap: 12px"><span aria-hidden="true" style="width: 80px; height: 80px; flex-shrink: 0; border-radius: 4px; background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 10px 10px"></span><span style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 14px; font-weight: 600">Scan the code with your phone</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">WAVE-4K7P · spotify.com/pair · Expires in 04:12</span></span></div>
+        </div>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Wavee needs Spotify Premium. Don’t have a Spotify account? <a href="#">Sign up</a></span>
+      </div>
+    </div>
+    <footer style="height: 80px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); border-top: 1px solid rgba(255,255,255,0.06)">
+      <div style="width: 210px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Step 2 of 4</span><span style="width: 162px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 50%; border-radius: 2px; background: #60cdff"></span></span></div>
+      <span style="flex-grow: 1"></span>
+      <button style="min-width: 120px; height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Log in</button>
+      <button style="min-width: 120px; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Close</button>
+    </footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

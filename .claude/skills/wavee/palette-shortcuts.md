@@ -1,6 +1,8 @@
 # Command palette & shortcuts
 
-Wavee's Ctrl+K palette (`WaveeCommandPalette` in `src/apps/Wavee/Features/Shell/WaveePalette.cs`) is a port of the gallery `CommandPalette`: `Popup.Create(FocusTrap: true, Chrome: Popup)` over a `TextBox` + ranked result list. The type is not named `WaveePalette` — that name is already the cover-colour mapper in `Design/WaveePalette.cs`.
+Wavee's Ctrl+K palette is a port of the gallery `CommandPalette`: `Popup.Create(FocusTrap: true, Chrome: Popup)` over a `TextBox` + ranked result list. The type is not named `WaveePalette` — that name is already the cover-colour mapper in `Design/WaveePalette.cs`.
+
+**Where it lives now (themes plan T4c):** the table, the filter and the invoke are core in `Shell/Shell.Palette.cs` (`Shell.CommandTable`, `Shell.PaletteSession` is the model one open card reads, `Shell.PaletteOpen` the flag). The lane, the popup's anchor and the card (keyboard navigation, selection clamp, announcements) are the structure's `Shell.CommandPalette` view, `Themes/Classic/Structure/Views/Palette/ClassicPalette.cs`; the popup control itself is wired to the open flag by the host (`PaletteProps.Popup`).
 
 ## How to add a command
 
@@ -30,7 +32,7 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 | Chord | Action | Wiring |
 |---|---|---|
 | Ctrl+K | Toggle command palette | `FocusSearchChord` → `OpenPalette` (subsumes omnibar) |
-| Ctrl+F | Focus omnibar | `FindChord` → `_searchFocusRequest` (MergedChromeRow `FirstFocusableIn`) |
+| Ctrl+F | Focus omnibar | `FindChord` → `Shell.SearchFocusRequest` ticket (the `Shell.Search` view's `FirstFocusableIn`, `Themes/Classic/Structure/Views/Search/ClassicSearch.cs`) |
 | Ctrl+T | New Home tab | existing `NewTabChord` |
 | Alt+Left | Back | `BackChord` → `Back()` |
 | Alt+Right | Forward | `ForwardChord` → `Forward()` |
@@ -51,7 +53,7 @@ Buttons consume Space as activation (dispatcher arms click, no bubble). Editors 
 
 ### Seek keys: the keyboard scrub ladder
 
-Left/Right on the focused player bar (and the full-screen stage, which calls the same `Shell.BarKeyStep`) drive `KeyboardScrubLadder` (`src/apps/Wavee/Playback/Playback.Scrub.cs`, pure, unit-tested in `KeyboardScrubLadderTests`). The engine delivers no key-up, so the ladder steps a **visual** target and commits once the key goes quiet:
+Left/Right on the focused player bar (and the full-screen stage, which calls the same `Shell.BarKeyStep`) drive `KeyboardScrubLadder` (`src/apps/Wavee/Playback/Playback.Scrub.cs`, pure). The engine delivers no key-up, so the ladder steps a **visual** target and commits once the key goes quiet:
 
 | Rule | Value (`KeyboardScrubLadder` constant) |
 |---|---|
@@ -66,7 +68,7 @@ A press after more than 250 ms of silence starts a fresh ladder from the current
 
 ### Ctrl+F / in-page filter
 
-`DetailTracks` owns a private `_searchExpanded` with no shell-reachable ticket. Ctrl+F therefore focuses the omnibar. Keep `_searchFocusRequest` for that path so Wave 1's `FirstFocusableIn` fix in `MergedChromeRow` keeps working. Wiring an in-page filter ticket is a follow-up on the page that owns the field.
+`DetailTracks` owns a private `_searchExpanded` with no shell-reachable ticket. Ctrl+F therefore focuses the omnibar. Keep the `SearchFocusRequest` ticket for that path so Wave 1's `FirstFocusableIn` fix in `ClassicSearch.SearchField` keeps working. Wiring an in-page filter ticket is a follow-up on the page that owns the field.
 
 ## Announcer pattern
 

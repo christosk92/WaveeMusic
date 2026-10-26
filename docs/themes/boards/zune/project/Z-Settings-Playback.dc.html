@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: playback and audio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 48px; gap: 12px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #a8a8a8">wavee</span>
+    <button aria-label="back" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span style="font-size: 13px; color: #7a7a7a">settings › <span style="color: #a8a8a8">playback</span></span>
+    <span style="flex-grow: 1"></span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 220px; height: 32px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #7a7a7a; border: 1px solid rgba(255,255,255,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="display: flex; align-items: center; gap: 8px; height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 8px; margin-left: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span>christos</button>
+    <button aria-label="notifications" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg></button>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px; margin-left: 8px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="height: 52px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 16px 0 48px">
+    <div style="height: 44px; box-sizing: border-box; padding: 4px 0; display: flex; align-items: center; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px">
+      <a href="#" style="color: #7a7a7a; font-weight: 350">home</a><a href="#" style="color: #7a7a7a; font-weight: 350">browse</a><a href="#" style="color: #7a7a7a; font-weight: 350">library</a><a href="#" style="color: #7a7a7a; font-weight: 350">recents</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; align-items: flex-start; gap: 8px; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif"><span style="font-size: 11px; line-height: 32px; color: #7a7a7a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+    <div style="position: absolute; left: 40px; top: -6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 120px; font-weight: 200; line-height: 130px; letter-spacing: -2px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+    <div style="position: absolute; left: 48px; top: 140px; right: 48px; bottom: 0; display: flex; gap: 48px">
+      <nav aria-label="settings sections" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column">
+        <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+      </nav>
+      <div style="width: 660px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">playback</span>
+        <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 24px; row-gap: 20px; align-items: center; margin-top: 14px">
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">crossfade</span><span style="font-size: 12px; color: #7a7a7a">blend the end of one song into the next</span></span>
+          <span style="display: flex; align-items: center; gap: 14px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span><span style="width: 220px; height: 2px; background: rgba(255,255,255,0.18); position: relative; display: block"><span style="{{sliderFill}}"></span><span style="position: absolute; left: 41%; top: -9px; width: 8px; height: 20px; background: #ffffff; display: block"></span></span><span style="font-variant-numeric: tabular-nums">5 s</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">gapless</span><span style="font-size: 12px; color: #7a7a7a">live albums and mixes play without a break</span></span>
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>on</label>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">autoplay</span><span style="font-size: 12px; color: #7a7a7a">similar music when your queue ends</span></span>
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>on</label>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">on start</span><span style="font-size: 12px; color: #7a7a7a">when wavee opens</span></span>
+          <span style="display: flex; gap: 8px"><sc-for list="{{onStart}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+        </div>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 30px">audio</span>
+        <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 24px; row-gap: 20px; align-items: center; margin-top: 14px">
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">streaming quality</span><span style="font-size: 12px; color: #7a7a7a">very high needs premium</span></span>
+          <span style="display: flex; gap: 8px"><sc-for list="{{quality}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">download quality</span><span style="font-size: 12px; color: #7a7a7a">for songs you keep offline</span></span>
+          <span style="display: flex; gap: 8px"><sc-for list="{{download}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">normalise volume</span><span style="font-size: 12px; color: #7a7a7a">every song at the same loudness</span></span>
+          <span style="display: flex; align-items: center; gap: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span><span style="display: flex; gap: 8px"><sc-for list="{{level}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">output</span><span style="font-size: 12px; color: #7a7a7a">where this computer plays</span></span>
+          <span style="font-size: 14px">system default · headphones (realtek audio) <a href="#" style="font-size: 13px; margin-left: 10px">change</a></span>
+        </div>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 70px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">playing now</span>
+        <span style="display: flex; gap: 12px; align-items: center; margin-top: 6px"><span style="width: 48px; height: 48px; border-radius: 2px; background: #3a2f22; flex-shrink: 0"></span><span style="display: flex; flex-direction: column"><span style="font-size: 15px">Get Lucky</span><span style="font-size: 13px; color: #a8a8a8">Daft Punk</span></span></span>
+        <div style="display: grid; grid-template-columns: 110px minmax(0, 1fr); row-gap: 8px; font-size: 13px; margin-top: 10px">
+          <span style="color: #7a7a7a">quality</span><span>very high · 320 kbps</span>
+          <span style="color: #7a7a7a">format</span><span>ogg vorbis · 44.1 khz</span>
+          <span style="color: #7a7a7a">loudness</span><span>−4.2 db to normal</span>
+          <span style="color: #7a7a7a">crossfade</span><span>5 s into Beyond</span>
+          <span style="color: #7a7a7a">output</span><span>headphones · shared mode</span>
+        </div>
+        <span style="font-size: 12px; line-height: 18px; color: #7a7a7a; margin-top: 10px">changes take effect from the next song. quality changes keep the current song playing.</span>
+      </div>
+    </div>
+  </div>
+  <div style="height: 72px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progress}}"></div></div>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0"><span style="width: 48px; height: 48px; border-radius: 2px; background: #3a2f22; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px">Get Lucky</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">Daft Punk · Random Access Memories</span></span><button aria-label="save to liked songs" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0">♡</button></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; align-items: center; gap: 16px"><button aria-label="previous" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button><button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button aria-label="next" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button></div><span style="font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums">2:30 · -3:39</span></div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 440px; flex-shrink: 0; justify-content: flex-end; font-size: 13px"><button aria-label="shuffle" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⇄</button><button aria-label="repeat" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">↻</button><button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><span style="width: 96px; height: 2px; background: rgba(255,255,255,0.18); margin: 0 10px 0 2px; display: block"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">lyrics</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">queue</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">devices</button><button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⤢</button><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f","#b983ff"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: 32px; height: 32px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'downloads & storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 40px; display: flex; align-items: center; font-family: ' + D + '; font-size: 20px; line-height: 28px; ' + (n === 'playback' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 32px; padding: 0 12px; border: 0; font: inherit; font-size: 14px; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return {
+    accent, pins, sections,
+    onStart: chips(['resume where i left off', 'stay quiet'], 0),
+    quality: chips(['low', 'normal', 'high', 'very high'], 3),
+    download: chips(['low', 'normal', 'high', 'very high'], 2),
+    level: chips(['quiet', 'normal', 'loud'], 1),
+    switchOn: 'width: 40px; height: 20px; background: ' + accent + '; position: relative; display: block; flex-shrink: 0',
+    sliderFill: 'position: absolute; left: 0; top: 0; width: 41%; height: 2px; background: ' + accent + '; display: block',
+    progress: 'width: 41%; height: 2px; background: ' + accent,
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

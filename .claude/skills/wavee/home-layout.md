@@ -22,37 +22,47 @@ the current page tree, the daylist wireframe and the root-cause table.
 
 ## Where things live
 
+**T10a1: the PICTURE moved into Classic.** Home's views are registered theme views now (`Pages.Home`, `Home.FacetRow`, `Home.Daylist`,
+`Home.DaylistClock`, `Home.Zone.<Kind>`, `Home.Charts`, `Pages.HomeSection`, `Pages.HomeCustomize`, in `Theming/Contracts/ViewKeys.Home.cs`;
+props in `Theming/Contracts/HomeProps.cs`). The trees live in `src/apps/Wavee/Themes/Classic/Structure/Views/Home/` (`ClassicHomePage`,
+`ClassicHomeFacetRow`, `ClassicHomeZones` (the column, chapters, headers and the pure zone bodies), `ClassicHomeRecents`, `ClassicHomeCharts`,
+`ClassicHomeDaylist`, `ClassicHomeDaylistClock`, `ClassicHomeSection`; the customizer is the Common block `Themes/Common/CommonCustomize.cs`, T11c) and their numbers in
+`Themes/Classic/Structure/Rules/ClassicHomeRules.cs`. What stays under `Home/` is the data, the decisions and the CORE HOSTS that mount the keys
+(`HomeScreen`, `Daylist.Host.cs`, `Zones.Hosts.cs`, `SectionScreen.Host.cs`, `Customize.Host.cs`, `HomeVerbs.cs`). A Home view may not name `Shell`,
+`Playback`, `Entities`, `Spotify`, `Store` or `Prefs` (WVTH002): navigation and playback verbs are `HomeVerbs`, live facts arrive on the props.
+
 All under `src/apps/Wavee/Home/` (namespace `Wavee.HomeUi`):
 
 | File | What |
 |---|---|
-| `HomeScreen.cs` | the page root, `Shell.RouteKind.Home`'s factory: `ZStack` over the shell tint, a `ScrollView` column (facet row, the sticky-clipped zone column), the data half (`Props`/`Prefetch`/`Compute`/`Verdict`/`Demand`/`SelectFacet`/`Seed`/`BuildWash`). **No greeting headline** — the facet row IS the page title; the greeting lives only in the daylist eyebrow. `Seed` (All) = Daylist + RecentGrid + a cover shelf with a lead. The facet dim host binds Opacity/HitTest only (no pointer handlers — see Hover) |
+| `HomeScreen.cs` | the page's CORE HOST, `Shell.RouteKind.Home`'s factory: the hooks and effects (route arg, demand, model/verdict computeds, shown/words record, selector sync, landing edge, following-chip prefetch), the data half (`Props`/`Prefetch`/`Compute`/`Verdict`/`Demand`/`SelectFacet`/`Seed`/`BuildWash`) and the `Palette.ShellTint` claim; it mounts `Pages.Home` with the facet, scroll handle/key, the facet row's props, the switch signal, the pending/failed/content/seed Funcs and the wash. The page tree (ZStack over the wash, a `ScrollView` column, the facet row slot, the sticky-clipped zone column in a skeleton region) is `ClassicHomePage`. **No greeting headline** - the facet row IS the page title; the greeting lives only in the daylist eyebrow. `Seed` (All) = Daylist + RecentGrid + a cover shelf with a lead. The facet dim host binds Opacity/HitTest only (no pointer handlers - see Hover) |
 | `Facets.cs` | the facet pivot's pure data (facet ids, ordering) |
-| `Facet.Rules.cs` | `FacetDimPlan` — the switch-motion opacity/duration table (dims via `Design.Motion.Fast`, the app's 167 ms rung, not a Home-local token) |
-| `Facet.UI.cs` | the facet row = the page title: `SelectorBar.Create(..., style: Design.FacetTitleStyle)` (engine E28 `SelectorBarStyle`: 28/36 display, no pill, subtle hover plate; `SelectorH` 40) + the follow toggle + the 3-px indeterminate progress bar + the failed-facet `InfoBar` |
+| `Facet.Rules.cs` | `FacetDimPlan` - the switch-motion opacity/duration table (dims via `Design.Motion.Fast`, the app's 167 ms rung, not a Home-local token) - and `FacetForm` (the title/compact rung of the facet row at its measured width; a core rule the view calls) |
+| `Facet.Props.cs` | `FacetRowProps` (the facet machine's signals and verbs; `Index` is a `Func<Signal<int>>` because a props record carries no writable signal). The row is `ClassicHomeFacetRow` (moved from `Facet.UI.cs`): `SelectorBar.Create(..., style: R.Type.FacetTitleStyle)` (engine E28 `SelectorBarStyle`: 28/36 display, no pill, subtle hover plate; `SelectorH` 40) + the follow toggle + the 3-px indeterminate progress bar + the failed-facet `InfoBar`; the band/clip numbers are `ClassicHomeRules` (`SelectorH`, `BarH`, `StuckInset`, `StuckBottom`, `PageScope`) |
 | `Model.cs` | `Zone`/`ZoneKind`/`ZoneCluster` — the pure presentation shape a page renders, built from the section reader over the entity tables |
 | `ZonePlanner.cs` | `SectionRoles` (per-section role classification: Recents, Daylist, Personal, Radio, Cluster, WideEditorial, Releases, Browse, Generic) + `ZonePlanner.Plan`/`PlanAll` (bands → ordered `Zone[]`); `RecentsCap` = 8 |
-| `Zones.Rules.cs` | pure per-zone rules `Zones.UI.cs` renders from: `ReleaseListRules` (type badge + trailing date column), `ShelfLead` (merges a zone's separately-carried lead card back into its item list) |
-| `Zones.UI.cs` | every zone body over stock controls — `ModuleHeader`/`PagedShelf` for cover shelves (verbatim `Browse.Page.cs`'s pager/pips idiom), `GridEl` of `Controls.MediaRow` for Recents/Release/Cluster/Episode rows, `GridEl` of `SettingsCard` for Browse/Charts tiles, `Controls.Vacancy` for empty/failed. Headers pass `open: null` (no chevron after the subtitle; See all / Listening history carry the drill); tools = See all · divider · ‹ pips ›; a 2-span lead is never circular (`CoverShape.IsCircular`). `ShelfChapter` and `RecentGrid` carry a `SkeletonProxy` = their own static tree builder (see Skeletons) |
-| `Daylist.UI.cs` / `DaylistSource.cs` | the daylist card and its data source. A padless `Ui.Card` (`ClipToBounds`, 8-DIP corners, MinHeight 320) around a ZStack: the header art (`Controls.CoverFill` of `DaylistArt.Of`) across the WHOLE card, the artist hero's horizontal veil (`Palette.ArtistHeroVeil` in its NaN stretch arm), then the copy column on the left (`SpaceBetween`: eyebrow with the greeting, `Design.Type.HeroTitle` ≤ 2 lines, tags, meta, actions on one row, the clock at the foot) at `DaylistForm.CopyWidth(inner)` (half the content width within [340, 560]; the whole width below `SplitMin` 532) inside `Daylist.CopyPadding`. No art url ⇒ no art, no veil. `DaylistClock` = stock `ProgressRing` + two-line countdown, five stock determinate `ProgressBar`s (done/current/future) + daypart labels. `DaylistCard` has a `SkeletonProxy` (same tree, placeholder art slot, no veil) |
+| `Zones.Rules.cs` | pure per-zone rules the zone views render from: `ReleaseListRules` (type badge + trailing date column), `ShelfLead` (merges a zone's separately-carried lead card back into its item list), `EmptyFacetCopy` (the empty facet's loc keys from the planner's zone key) |
+| `Zones.Hosts.cs` | the two zone bodies that read core state: `RecentGrid` (the Recents subscription, the when-map and the week; mounts `Home.Zone.RecentGrid`) and `ChartsBlockView` (the Featured Charts demand and the derived `ChartTilesModel`; mounts `Home.Charts`). Every other zone is drawn by `ClassicHomeZones` (moved from `Zones.UI.cs`): every zone body over stock controls - `ModuleHeader`/`PagedShelf` for cover shelves (verbatim `Browse.Page.cs`'s pager/pips idiom), `GridEl` of `Controls.MediaRow` for Recents/Release/Cluster/Episode rows, `GridEl` of `SettingsCard` for Browse/Charts tiles, `Controls.Vacancy` for empty/failed. Headers pass `open: null` (no chevron after the subtitle; See all / Listening history carry the drill); tools = See all - divider - pips; a 2-span lead is never circular (`CoverShape.IsCircular`). The chapter (header + clipped body) is the page's; a zone BODY is the `Home.Zone.<Kind>` slot (`HomeZoneKeys.TryKeyOf`), and `ShelfChapter` and the slots carry a `SkeletonProxy` = their own static tree builder (see Skeletons). Grid numbers: `ClassicHomeRules` |
+| `Daylist.Host.cs` / `DaylistSource.cs` | the daylist card's CORE HOSTS and its data source. `DaylistCard` reads the greeted name and whether the play button names Pause and mounts `Home.Daylist`; `DaylistClock` owns the window phase, the rollover ladder, the clock MODE and the end-of-window one-shot, and `DaylistCountingClock` the 1-Hz tick that writes the countdown/elapsed/segment signals; each mounts `Home.DaylistClock` with one face (`HomeDaylistClockFace`: Counting, UpdateTime, Updating, Late). The card is `ClassicHomeDaylist`: a padless `Ui.Card` (`ClipToBounds`, 8-DIP corners, MinHeight 320) around a ZStack: the header art (`Controls.CoverFill` of `DaylistArt.Of`) across the WHOLE card, the artist hero's horizontal veil (`Palette.ArtistHeroVeil` in its NaN stretch arm), then the copy column on the left (`SpaceBetween`: eyebrow with the greeting, `R.Type.HeroTitle` <= 2 lines, tags, meta, actions on one row, the clock at the foot) at `DaylistForm.CopyWidth(inner)` (half the content width within [340, 560]; the whole width below `SplitMin` 532) inside `ClassicHomeRules.DaylistCopyPadding`. No art url => no art, no veil. The clock block (`ClassicHomeDaylistClock`) = stock `ProgressRing` + two-line countdown, five stock determinate `ProgressBar`s (done/current/future) + daypart labels. `ClassicHomeDaylist.Skeleton` is the card's `SkeletonProxy` (same tree, placeholder art slot, no veil) |
 | `Time.cs` | `DaypartRules` (the five-segment daypart timeline the daylist card's `DaylistClock` renders + `FormatCountdown`/`Countdown`), `RecentsWeek`/`WeekSummary` (the history tile's 7-day strip, restored in the sixth pass), `WhenCaption` (Recently-played / episode-row "when" ladder), `DaylistNext` (the next-window arrival caption) |
 | `EpisodeCaption.cs` | episode-row caption formatting |
-| `PodcastPlanner.cs` | the Podcasts facet's own regroup (a different algorithm from `ZonePlanner`) — rendered by `Zones.UI.cs` now, no separate `Podcasts.UI.cs` |
-| `Items.Rules.cs` | small pure item-shaping rules `Zones.UI.cs` calls into |
+| `PodcastPlanner.cs` | the Podcasts facet's own regroup (a different algorithm from `ZonePlanner`) — rendered by `ClassicHomeZones` now, no separate `Podcasts.UI.cs` |
+| `Items.Rules.cs` | small pure item-shaping rules the Classic Home views call into |
 | `RecentsCells.cs` | the Recently-played grid's cell shape (kept as-is across the fifth pass) |
 | `Reveal.cs` | `ScreenLoad` (a facet's `Loadable<ScreenModel>` state) and `WashPick` (shell wash accent source order: daylist accent → first cover accent → fallback) — card open/play routing lives OFF this file now (below) |
-| `SectionScreen.Rules.cs` / `SectionScreen.UI.cs` | the "See all"/charts drill page for a Home or Browse section (`Shell.RouteKind.HomeSection`/`BrowseSection`); a bound `ItemsView` over `RepeatLayout.GridFit` (its own grid, unrelated to Home's own zone column). It demands the section WHOLE (`SectionFields.Identity \| Whole`, one `Home.EnsureSection`) and renders what the row holds, skeleton while the walk is in flight; the QUERY layer walks `homeSection`/`browseSection` to the server's end (`Spotify/Spotify.Api.Browse.cs`). No near-tail hook, no append, no page-side paging — never add one back |
-| `Customize.UI.cs` | `CustomizeScreen` — the full-page customizer (`Shell.RouteKind.HomeCustomize`), a `Reorderable` list of `ZoneRow`s |
+| `SectionScreen.Rules.cs` / `SectionScreen.Host.cs` | the "See all"/charts drill page for a Home or Browse section (`Shell.RouteKind.HomeSection`/`BrowseSection`): the host (`SectionScreen`) owns the demand, the table sync, the card source and the masthead publication and mounts `Pages.HomeSection`; the view (`ClassicHomeSection`) is a bound `ItemsView` over `RepeatLayout.GridFit` (its own grid, unrelated to Home's own zone column). It demands the section WHOLE (`SectionFields.Identity | Whole`, one `Home.EnsureSection`) and renders what the row holds, skeleton while the walk is in flight; the QUERY layer walks `homeSection`/`browseSection` to the server's end (`Spotify/Spotify.Api.Browse.cs`). No near-tail hook, no append, no page-side paging - never add one back |
+| `Customize.Host.cs` | `CustomizeScreen` - the customizer's CORE HOST (`Shell.RouteKind.HomeCustomize`): the `HomeLayout` service, the three verbs and the `Reorderable` behaviour object; it mounts `Pages.HomeCustomize` (`CommonCustomize` in `Themes/Common`, registered by every theme: the header with Reset and a `Reorderable` list of `ZoneRow`s, which wires the reorderable's scene/render request/row extent from its OWN render context) |
 | `LayoutFile.cs` | the v2 layout document (below) |
 
 **Deleted in the fifth pass, not coming back**: `Forms.cs` (the width-query forms
 framework), `HomeTok.cs`/`HomeText.cs` (Home's private token/text vocabulary —
-use the app's own `Spacing`/`Radii`/`Design.Type`/`Design.Motion` instead, see
+use the app's own `Spacing`/`Radii`/`R.Type`/`Design.Motion` instead, see
 `Platform/Design.cs`), `Cards.UI.cs` (private card templates — use
 `Entities/Browse.Cards.cs`'s `HomeCards`/`HomeCardNav`, the same ones Browse and
 Search ride), `Chapter.UI.cs` (hand chapter bands — `ModuleHeader` now), `Skeleton.UI.cs`
 (hand skeleton — `SkelRegionEl`/`Skel.Region` now), `Podcasts.UI.cs` (folded into
-`Zones.UI.cs`), `FacetPivot.UI.cs` (replaced by the ~80-line `Facet.UI.cs`),
+the zone bodies, now Classic's `ClassicHomeZones`), `FacetPivot.UI.cs` (replaced by the facet row, now Classic's
+`ClassicHomeFacetRow`),
 `Zones.Rules.cs`'s `ZoneRows`/`ZoneEnter` (the virtualized-list row-extent seed and
 entrance stagger — there is no more `ItemsView` of zones to seed), `Reveal.cs`'s
 `CardNav` (superseded by the app-wide `HomeCardNav`). (`Time.cs`'s `RecentsWeek`/
@@ -67,7 +77,7 @@ Home-private card-nav type.
 
 `Entities/Home.cs` and `Home.Rules.cs` still hold what the page reads OFF THE
 TABLES: `HomeCard`/`HomeCardKind` (the entity handle), `HomeSectionView` (the
-lossless per-section ledger), `HomeCardText`/`HomeCardAccent`, the section
+lossless per-section ledger), `HomeCardText`, the section
 routing rules, `HomeBrowseCards`. (Section paging is the query layer's: `SectionPaging` + `BrowseWalk`.)
 
 ## The layout document (home-layout.json v2)
@@ -89,7 +99,7 @@ migrated.
 - `LayoutCommands.{Toggle, Move, Reset}` build a `LayoutDoc → LayoutDoc` reducer
   function; there is no polymorphic command hierarchy.
 - `LayoutStore` is the file half: `Load()`/`Commit(doc)`, fault-classified
-  (`LayoutReadFault`, `LayoutSaveFault`), fail-soft (corrupt/too-new/unreadable →
+  (`LayoutReadFault`; a failed save is logged), fail-soft (corrupt/too-new/unreadable →
   default in memory, file untouched, writes blocked).
 - `HomeLayout` is the one process-lifetime owner (`HomeLayout.Slot`, a
   `Context<HomeLayout>` with no default — a screen mounted without a provider
@@ -101,7 +111,7 @@ migrated.
 
 ## Sticky headers — the app's own no-background idiom
 
-Home reuses the pattern already in `Browse.Page.cs`/`Artist.Page.cs`: a sticky
+Home reuses the pattern already in `ClassicBrowseDirectory.cs` (Classic's Browse directory view)/`ClassicArtistPage.cs`: a sticky
 header paints NOTHING; the content under it clips to the header's lower edge with
 `.StickyClip(inset)` plus a top `EdgeFadeSpec(EdgeMask.Top, band) { WhileStuck =
 true }`, so it dissolves into the header instead of being guillotined. The facet
@@ -118,6 +128,8 @@ skeleton-derived tree without a `SkeletonProxy` collapses into ONE 160×10 bar
 (the seventh pass's "greeting + thin bars" cold load). Give every such component
 a `SkeletonProxy` that returns its real tree — the same static builder `Render`
 calls — so nested proxies (e.g. `PagedShelf`'s card proxy) are reached.
+A theme view slot (`Slots.View`) is a component too, so the same rule holds for it: the zone column attaches `SkeletonProxy` to every slot and core host it
+places (`ClassicHomeZones.ZoneSlot`, the daylist, the Recents grid, the Charts block), each the SAME static builder its template runs.
 
 ## Hover
 
@@ -133,13 +145,15 @@ non-square covers. Do not add a Home-private hover recipe.
 1. Add the `ZoneKind`/`LayoutZone` (append only) in `Home/Model.cs`/`LayoutFile.cs`.
 2. Teach `SectionRoles.Of` (`ZonePlanner.cs`) to classify the sections that produce
    it, and `ZonePlanner.Plan`/`PlanAll` to place it.
-3. Render it in `Zones.UI.cs` over the stock control from the plan's zone → control
+3. Add its `Home.Zone.<Kind>` key (`ViewKeys.Home.cs`, `HomeZoneKeys`, registered in `ClassicStructure.Register`) and render it in
+   `ClassicHomeZones.BodyTree` over the stock control from the plan's zone → control
    table (a `PagedShelf`, a `GridEl` of `MediaRow`/`SettingsCard`/`Ui.Card`, never a
-   hand-rolled cell) — add any small pure shaping rule it needs to `Zones.Rules.cs`.
+   hand-rolled cell) — add any small pure shaping rule it needs to `Zones.Rules.cs`
+   and any grid number to `ClassicHomeRules`. A body that needs core state gets a core host (like `RecentGrid`).
 4. Add it to `LayoutZones.DefaultOrder`/`KindName`/`TryParse` (`LayoutFile.cs`) so
    the customizer can toggle/reorder it; old documents pick a new kind up
    automatically as visible (no migration).
-5. Add a label in the customizer (`Customize.UI.cs`).
+5. Add a label in the customizer (`CommonCustomize.ZoneLabel`).
 
 Do not hardcode a new zone into a static row table, do not invent a new width-query
 form or a Home-private card template — it goes through the planner and renders

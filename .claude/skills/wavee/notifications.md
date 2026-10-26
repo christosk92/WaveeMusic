@@ -2,7 +2,7 @@
 
 Two channels, one dial per topic. Settings → **Notifications**.
 
-Code: `Wavee.Core/Notifications/NotificationPolicy.cs` (the rules, engine-free + tested), `App/NotificationPrefs.cs` (settings → policy, the ONE accessor), `App/ToastEscalator.cs` (live), `App/ReleaseNotifier.cs` + `App/DaylistNotifier.cs` (scheduled), `Features/Shell/SettingsPage.Notifications.cs` (the tab). Library: [wavee-native](../wavee-native/SKILL.md).
+Code: `Wavee.Core/Notifications/NotificationPolicy.cs` (the rules, engine-free), `App/NotificationPrefs.cs` (settings → policy, the ONE accessor), `App/ToastEscalator.cs` (live), `App/ReleaseNotifier.cs` + `App/DaylistNotifier.cs` (scheduled), `Features/Shell/SettingsPage.Notifications.cs` (the tab). Library: [wavee-native](../wavee-native/SKILL.md).
 
 ## The two channels
 
@@ -15,7 +15,7 @@ Code: `Wavee.Core/Notifications/NotificationPolicy.cs` (the rules, engine-free +
 
 ## Why the dials are finer than the centre's pills
 
-The centre groups for *browsing*: its "New" pill holds albums **and** podcast episodes, its "Spotify" pill holds concerts **and** followers. Those two lumps are the reason people turn a whole feature off instead of the one part that was too loud — a podcast listener gets an order of magnitude more episodes than albums. So the dials key on `NotifyTopic` (8 topics), and `NotificationPrefs.TopicOf(notification)` is the mapping from a concrete row to its topic. `ShowsCategory` maps back the other way for pill visibility, and a category stays visible while **any** of its topics is above Off.
+The centre groups for *browsing*: its "New" pill holds albums **and** podcast episodes, its "Spotify" pill holds concerts **and** followers. Those two lumps are the reason people turn a whole feature off instead of the one part that was too loud — a podcast listener gets an order of magnitude more episodes than albums. So the dials key on `NotifyTopic` (8 topics), and `NotificationPrefs.TopicOf(notification)` is the mapping from a concrete row to its topic; the centre filters rows by their topic's level.
 
 ## The topics
 
@@ -62,7 +62,7 @@ A scheduled toast outlives the process, so both notifiers reconcile rather than 
 
 1. Add to `NotifyTopic` (**append** — the values are persisted) and give it a default in `NotificationPolicy.DefaultFor`; set `CeilingFor` / `IsScheduled` if it is not an ordinary live topic.
 2. Add a `SettingKey<int>` and map it in `NotificationPrefs.KeyFor`, then add the topic to `AllTopics` (that list **is** the UI order — one list, so a topic cannot be added and forgotten in the tab).
-3. Map concrete rows to it in `TopicOf`, and fold it into `ShowsCategory`.
+3. Map concrete rows to it in `TopicOf`.
 4. Give it a label/sub/glyph in `SettingsPage.Notifications.cs` and loc keys under `settings.notify.*`.
 5. Live topic? `ToastEscalator.Present` needs a banner shape. Scheduled? It needs its own notifier with a reconcile.
 
@@ -72,7 +72,7 @@ A scheduled toast outlives the process, so both notifiers reconcile rather than 
 
 Every topic row expands to reveal **Send a test event**, which pushes a synthetic event down **the same code path a real one takes**. The feeds are remote and slow, so without this the dials are unfalsifiable — a correctly-silenced topic and a broken one look identical.
 
-`App/NotificationSimulator.cs` orchestrates; `Wavee.Core/Notifications/SimulatedNotifications.cs` holds the builders (engine-free, therefore tested).
+`App/NotificationSimulator.cs` orchestrates; `Wavee.Core/Notifications/SimulatedNotifications.cs` holds the builders (engine-free).
 
 ### Three shapes, matching the three real ones
 

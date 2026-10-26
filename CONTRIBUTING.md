@@ -100,22 +100,14 @@ Run, at minimum:
 
 ```powershell
 dotnet build Wavee.slnx                                   # Debug
-dotnet build Wavee.slnx -c Release                        # Release — TreatWarningsAsErrors; the diag-gate arms differ per configuration
-dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj        # 6.6k+ tests
 ```
 
-If you touched anything under `ops/`, also run:
-
-```powershell
-Invoke-Pester -Path ops/release/tests
-```
-
-Both Debug and Release need to build clean, and the tests need to pass — not just Debug.
+The Debug build needs to build clean (`TreatWarningsAsErrors`). For UI changes, render and trace them in the headless
+inspector (`docs/guide/agent-inspect.md`) and attach screenshots.
 
 A few rules the codebase enforces strictly:
 
-- **No source-text tests.** A test must never read or grep production source. If behavior needs testing,
-  extract the decision into an engine-free pure class and unit-test that.
+- **No tests.** Test projects and test files are not accepted; the build and the pre-commit hook reject them.
 - **No environment-variable switches** for behavior or verification — logs are always-on, gated by the
   diagnostics page, not env vars.
 - **No legacy paths kept alongside new ones.** Replace outright and delete the old code; breaking changes are

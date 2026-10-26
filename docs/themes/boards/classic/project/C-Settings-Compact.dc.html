@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Settings, Appearance</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 12px 16px 0; display: flex; flex-direction: column; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0"><svg width="24" height="24" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"></path></svg><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Settings</h1></div>
+    <div role="tablist" aria-label="Settings sections" style="display: flex; margin: 8px -16px 0; padding: 0 4px; border-bottom: 1px solid rgba(255,255,255,0.082); flex-shrink: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="7"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+    <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 12px">
+      <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M8 2a6 6 0 1 0 0 12c.8 0 1-.6 1-1 0-.8-.6-1-.6-1.6 0-.6.4-1 1-1h1.3A3.3 3.3 0 0 0 14 7 6 6 0 0 0 8 2zM5 7.5h.01M6.5 5h.01M9.5 5h.01M11 7.5h.01" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg><span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Theme</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">A theme changes how every page, the player and navigation look</span></span></div>
+      <div style="padding: 12px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)">
+        <div role="radiogroup" aria-label="Theme" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{themes}}" as="th" hint-placeholder-count="5">
+            <button role="radio" aria-checked="{{th.on}}" style="{{th.card}}">
+              <span style="{{th.thumb}}"><span style="{{th.a}}"></span><span style="{{th.b}}"></span><span style="{{th.c}}"></span></span>
+              <span style="min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 6px 10px"><span style="{{th.ls}}">{{th.l}}</span><sc-if value="{{th.active}}" hint-placeholder-val="{{false}}"><span style="font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: #60cdff; color: #000">Active</span></sc-if></span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      <button aria-expanded="false" style="min-height: 68px; box-sizing: border-box; padding: 12px 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 16px; color: #fff; font: inherit; text-align: left"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M2.5 2.5h11v11h-11zM2.5 6h11M6 6v7.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">Classic options</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">Row style, density, sidebar layout, surfaces, marquee, track pages, lyrics blur, full-screen layout</span></span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+      <div style="box-sizing: border-box; padding: 12px 16px 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: flex-start; gap: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 2v12" fill="none" stroke="currentColor" stroke-width="1.1"></path><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"></path></svg><span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px">App mode</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Every theme ships light and dark; a change cross-fades in 250 ms</span></span></div>
+        <div role="radiogroup" aria-label="App mode" style="margin-left: 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 2px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><sc-for list="{{modes}}" as="m" hint-placeholder-count="3"><button role="radio" aria-checked="{{m.on}}" style="{{m.s}}">{{m.l}}</button></sc-for></div>
+      </div>
+      <div style="box-sizing: border-box; padding: 12px 16px 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: flex-start; gap: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2M5 7h4M7 5v4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg><span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px">Zoom</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Final on the first frame; no rescale after launch</span></span></div>
+        <button aria-label="Zoom: Auto (100%)" style="margin-left: 32px; height: 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Auto (100%)<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+      </div>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => ({ l, sel: i === 1 ? 'true' : 'false', s: 'position: relative; flex-shrink: 0; height: 44px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 1 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const ab = 'position: absolute; ';
+  const T = [
+    ['Wavee Classic', '#202020', ab + 'left: 0; top: 0; bottom: 0; width: 26%; background: #1a1a1a', ab + 'left: 28%; top: 8px; right: 0; bottom: 0; background: #2b2b2b; border-top-left-radius: 6px', ab + 'left: 34%; top: 18px; width: 40%; height: 8px; border-radius: 2px; background: #60cdff', 1],
+    ['WinUI', '#202020', ab + 'left: 0; top: 0; right: 0; height: 18%; background: #2c2c2c', ab + 'left: 0; top: 18%; bottom: 0; width: 24%; background: #1c1c1c', ab + 'left: 32%; top: 30%; width: 50%; height: 10px; border-radius: 2px; background: #fff; opacity: 0.8'],
+    ['Zune', '#111', ab + 'left: 10%; top: 14%; width: 70%; height: 14px; background: transparent; border-bottom: 3px solid #ff3ca6', ab + 'left: 10%; top: 50%; width: 40%; height: 22px; background: #2b2b2b', ab + 'left: 55%; top: 50%; width: 30%; height: 22px; background: #ff3ca6; opacity: 0.8'],
+    ['Zune Fluent', '#202020', ab + 'left: 10%; top: 14%; width: 70%; height: 12px; border-bottom: 2px solid #60cdff', ab + 'left: 10%; top: 50%; width: 40%; height: 22px; border-radius: 4px; background: #2c2c2c', ab + 'left: 55%; top: 50%; width: 30%; height: 22px; border-radius: 4px; background: #60cdff; opacity: 0.7'],
+    ['Get more themes', '#262626', ab + 'left: 40%; top: 50%; width: 20%; height: 2px; margin-top: -1px; background: rgba(255,255,255,0.6)', ab + 'left: 50%; top: 32%; width: 2px; height: 36%; margin-left: -1px; background: rgba(255,255,255,0.6)', ab + 'display: none']
+  ];
+  const themes = T.map(t => ({ l: t[0], on: t[5] ? 'true' : 'false', active: !!t[5],
+    card: 'padding: 0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; align-items: stretch; background: ' + (t[5] ? 'rgba(96,205,255,0.16)' : 'rgba(255,255,255,0.031)') + '; border: ' + (t[5] ? '2px solid #60cdff' : '1px solid rgba(255,255,255,0.082)') + '; color: #fff; font: inherit',
+    thumb: 'position: relative; display: block; height: 72px; background: ' + t[1], a: t[2], b: t[3], c: t[4],
+    ls: 'font-size: 13px; text-align: left; font-weight: ' + (t[5] ? 600 : 400) }));
+  const modes = ['System', 'Light', 'Dark'].map((l, i) => ({ l, on: i === 0 ? 'true' : 'false', s: 'height: 36px; border: 0; border-radius: 3px; font: inherit; font-size: 13px; background: ' + (i === 0 ? '#60cdff' : 'transparent') + '; color: ' + (i === 0 ? '#000' : '#fff') }));
+  return { tabs, themes, modes };
+}
+}
+</script>
+</body>
+</html>

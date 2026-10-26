@@ -1,6 +1,9 @@
-// ── Entities/Artist.Reader.cs — the library's artist READER (UI): band, sub-rail, spine, blocks ───────────────────────
+// ── Entities/Artist.Reader.cs — the library's artist READER: the core host (shape, demand, cells, spy) ──────────────
 //
-// Role: UI (ReaderProps, Reader — its band, sub-rail, spine, blocks and the per-album BlockCell). The CORE it renders —
+// Role: CORE host (`[CoreHost]`; T10c1). The PICTURE — the band, the name column, the two word rails, the cover spine, the block faces and their counted
+//       skeletons, the tail — is Classic's `Library.ArtistReader` view (`Themes\Classic\Structure\Views\Pages\ClassicLibraryArtistReader*.cs`; keys in
+//       `Theming\Contracts\ViewKeys.Library.cs`, props and the `IArtistReaderHost` / `IArtistReaderBlock` seam in `LibraryArtistReaderProps.cs`). What is here is
+//       ReaderProps, Reader (the shape memo, demand, readiness, extents, spy, mount key, verbs) and the per-album BlockCell. The CORE it renders —
 //       the block order, the extents and the two width arms — is `Artist.Reader.Shape.cs`.
 // Owner: N (N-b wrote it); the narrow-pane arms are track L (#158)
 // Wave: L2 (UI)
@@ -21,7 +24,6 @@
 //       docs/plans/wavee/library-reader-narrow-heads-implementation.md §3.3-§3.6
 
 using System.Globalization;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -30,10 +32,16 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
-// ══ UI: the reader ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// ══ CORE host: the reader (the picture is Classic's `Library.ArtistReader`, T10c1) ═══════════════════════════════════
+//
+// T10c1: this file is the DECIDING half. The structure's view (`ClassicLibraryArtistReader`) draws every element the sections below describe — the band, the sub-rail,
+// the spine and its dots, the block faces and the tail — through `IArtistReaderHost` / `IArtistReaderBlock`; the mechanisms (sticky planes, the persistent prefix, the
+// one shared clip, the per-album region cache, the per-dot memo) are unchanged and are the view's to keep. Where a paragraph says "built here", read "read here, drawn there".
 //
 // WHAT THE UI HALF IS (§5.7, W3/W4/W6). ONE scroller, and everything above the blocks is IN it. Its flat index space is
 // `0` the artist band · `1` the sub-rail (the two word rails) · `Prefix + b` album block b — cover + caption on the
@@ -66,8 +74,8 @@ namespace Wavee;
 // SMOOTHNESS IS THE POINT ("no animations, no loading states, clicking feels bad"). Four mechanisms, each named where it
 // lives below:
 //   1. THE MOUNT IS A HARD CUT, AND DATA NEVER TRIGGERS ONE (the 2026-09-18 stabilization, library-stabilization-plan.md
-//      R1/R2). `ReaderMountPolicy.MountKey(artist, scope, sort, narrow)` is the ONLY remount key — it moves for what the
-//      USER changed or what the layout freezes, never for a landing edge. No `Animate` on the keyed list: a key swap is
+//      R1/R2). `ReaderMountPolicy.MountKey(artist, scope, sort)` is the ONLY remount key — it moves for what the
+//      USER changed, never for a landing edge or a width (audit FU2: the narrow arm re-arms every block in place). No `Animate` on the keyed list: a key swap is
 //      synchronous inside one flush, so the new band paints from resident `ArtistFields.Identity` in the SAME frame the
 //      old one leaves — a hard cut, not a fade. A data-driven reshape (a facet page landing, a re-sort as a year lands)
 //      is not a key change at all: the mounted list's realized slots re-render off `_shape` in place — `ReaderItem`
@@ -109,7 +117,7 @@ namespace Wavee;
 //      about one paragraph earlier. A FAILED verdict resolves the region to Ready and the block paints its own Retry
 //      strip, so no `Exception` is ever allocated to carry a state the block already shows.
 //   3. The block's ▶ is `Controls.PlayFab(play, Icons.Play, 32f)` under `Controls.Named`, not
-//      `Album.CommandCircle(…) with { Fill = Tok.AccentDefault }`: `CommandCircle` returns `Element` (it wraps its box in
+//      `ClassicDetailKit.CommandCircle(…) with { Fill = Tok.AccentDefault }`: `CommandCircle` returns `Element` (it wraps its box in
 //      a tooltip), so `with { Fill = … }` does not compile, and `Interaction.Subtle` OWNS the circle's `Fill` — an accent
 //      rest face has to come from a control that declares one. `PlayFab` is that control, at the head's 32-DIP tier.
 //   4. The head's meta is `Detail.Text.AlbumMeta(n, totalMs, durationsKnown)`, not `Detail.Identity.For(a).Meta`:
@@ -137,10 +145,12 @@ namespace Wavee;
 //      table (`Album.Pane.cs:168` says the same thing for the pane), and the block's reveal is extent-exact by
 //      construction — the counted skeleton is the same geometry as the content.
 //   9. TWO reader-width edges, not the plan's one at 1200 (the reader is 344-650 DIP in a non-maximized window, so a
-//      1200-DIP arm was never seen), both decided by `ReaderShape` (#158): under `NarrowBelow` (640) the block cover
-//      drops 120 → 88 and the album head STACKS (`_narrow` — the arm the extents and the list mount key read); under
-//      `MediumBelow` (772, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
-//      extent is corrected in place). One 24-DIP hysteresis band each, `SetIfChanged` from `OnBoundsChanged`. W6's
+//      1200-DIP arm was never seen), decided by the reader's two arms (#158): under the narrow edge (640) the block cover
+//      drops 120 → 88 and the album head STACKS (`_narrow` — the arm the extents and the cells read; not a mount input: a flip
+//      re-arms every block in place, its cell's face rebuilt and its extent corrected in `Settle`); under
+//      the medium edge (748, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
+//      extent is corrected in place). Since TC6 both edges are the structure's reader ladder (`ArtistLadders.Reader`, Classic
+//      `Rules\Tiers.Artist.cs`: 24 DIP of hold on widening each), over the width `OnBoundsChanged` writes. W6's
 //      one-row compact band, which this replaced, crushed the name to "Tro…" at 391 DIP.
 //  10. The SPINE is `ItemsView.CreateBound` with a `SpineDot` component per slot, not the plain `ItemsView.Create` over
 //      a cached-Element template the rework note asked for. A `Create` template is re-invoked only when the ItemsView
@@ -172,17 +182,16 @@ public readonly partial struct Artist
     }
 
     /// <summary>The library's artist reader (§5.7): band · word rails · spine · one virtualized list of album blocks.
-    /// <para>It owns its props CHANNEL (<see cref="IPropsHost"/>, the <c>Detail.MoreButton</c> host's pattern) instead of
+    /// <para>It owns its props CHANNEL (<see cref="IPropsHost"/>, the <c>ClassicDetailKit.MoreButton</c> host's pattern) instead of
     /// reading them through <c>UseProps</c>: the shape is a memo, and a memo only recomputes when a SIGNAL it read
     /// changed. With the slot arriving as a plain field, selecting a different artist would re-render the band over the
     /// previous artist's blocks — so the props land in a signal the shape memo reads, and one flush carries both.</para></summary>
-    public sealed class Reader : Component, IPropsHost
+    [CoreHost]
+    public sealed class Reader : Component, IPropsHost, IArtistReaderHost
     {
         // ── metrics ──────────────────────────────────────────────────────────────────────────────────────────────────
         // Every band and block metric — the avatar, the circles, the paddings, the two width edges — is `ReaderShape`'s:
         // the tree declares the same fields the estimator and the tests read. What stays here is the lane's own.
-        const float DotEdge = 36f;
-        const float SubRailPadTop = 6f, SubRailPadBottom = 10f;
 
         /// <summary>The two CHROME items at the head of the one scroller: 0 = the artist band (scrolls away), 1 = the
         /// sub-rail (pinned at the viewport top). Everything after them is a block, and the last index is the tail —
@@ -193,49 +202,29 @@ public readonly partial struct Artist
         /// <para>The persistent prefix works ONLY on the BOUND path: the unbound recycler clamps it to 0
         /// (<c>Reconciler.cs:3176</c> — <c>ve.RowBind is null ? 0 : …</c>), which is half the reason the list moved to
         /// <c>ItemsView.CreateBound</c>.</para></summary>
-        const int Prefix = 2;
+        const int Prefix = ReaderShape.Prefix;
 
-        /// <summary>The sub-rail's STATED height; the band's two are <see cref="ReaderShape.BandHeight"/> (100 wide, 168
+        /// <summary>The sub-rail's STATED height; the band's two are <see cref="ReaderShape.BandHeight"/> (100 wide, 164
         /// stacked). Constants rather than measurements because <see cref="_extentOf"/> has to answer indices 0 and 1
         /// BEFORE either item renders (the same contract <see cref="ReaderShape.ExtentOf"/> is under), and because a
         /// pinned rail whose analytic extent disagrees with its measured one leaves a seam between the rail and the first
         /// block.
         /// <para>TRUTHFUL by construction, not by guess: the sub-rail is one <c>Controls.Words.Rail</c>, which declares
-        /// <c>Height = Controls.Words.Height</c> (= <c>User.RailHeight</c>) outright, inside the rail row's own padding,
+        /// <c>Height = Controls.Words.Height</c> (32 DIP) outright, inside the rail row's own padding,
         /// plus the 1-DIP divider under it; each band arm's root declares <c>ReaderShape.BandHeight(stacked)</c> as its
         /// <c>Height</c>. Every chrome root DECLARES the number the table is seeded with, so analytic == measured by
         /// identity — and <see cref="CheckChrome"/> logs the exception if a root ever disagrees.</para></summary>
-        const float SubRailH = SubRailPadTop + User.RailHeight + SubRailPadBottom + ReaderShape.Divider;   // 6 + 32 + 10 + 1
+        const float SubRailH = ReaderShape.SubRailH;   // 6 + Controls.Words.Height + 10 + 1
 
-        /// <summary>The spine's own row pitch. <c>RepeatLayout.Stack</c> carries NO gap of its own (its gap field is 0 —
-        /// <c>ListOptions.cs:38</c>), so the item extent IS the pitch and the 8 DIP under the 36-DIP cover is part of
-        /// the item, not something the layout adds.</summary>
-        const float DotPitch = DotEdge + Spacing.S;
         /// <summary>The seed a block gets before <see cref="ReaderShape.ExtentOf"/> can answer (index out of range during
         /// a resize) — a mid-sized block, so a pre-shape content extent is never absurd.</summary>
         const float EstimatedBlockExtent = 320f;
         /// <summary>The three heights the trailing item can be — air, one line, or the "nothing here yet" vacancy. They
         /// are constants because <see cref="TailExtent"/> has to answer them BEFORE the item renders (the same contract
         /// <see cref="ReaderShape.ExtentOf"/> is under), from the same <see cref="TailKind"/> decision the item reads.</summary>
-        const float TailAirH = Spacing.L, TailLineH = 48f, TailVacancyH = 208f;
+        const float TailLineH = 48f, TailVacancyH = 208f;
+        static float TailAirH => Spacing.L;
 
-        /// <summary>The prototype's block row, exactly: <c>28 | 1fr | 32 | 52</c> — number, title, the TRAILING heart,
-        /// duration. No per-row "…" (the head owns the album's menu and the row's own context menu is the right button),
-        /// and the heart moved OUT of the leading lane pair: in a reader the only thing a row needs to say about itself
-        /// is that you hold it, which belongs beside the duration, not between the number and the title.
-        /// <para>The lane width is <c>Track.Lane.HeartTrailing</c> (32), not <c>Track.Lane.Heart</c> (28): the latter is
-        /// the INLINE heart's slot inside the full table's lane ladder, and the trailing slot is the wider one. The two
-        /// are mutually exclusive by construction (<c>Track.RowMetrics.ShowHeartTrailing</c>), which is why
-        /// <c>Heart</c> is explicitly false here rather than merely omitted.</para></summary>
-        static readonly Track.ColumnSet ReaderCols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
-                                                         Heart: false, Thumb: false, Actions: false, HeartTrailing: true);
-        static readonly TrackSize[] ReaderTracks =
-            [TrackSize.Px(28f), TrackSize.Star(1f), TrackSize.Px(Track.Lane.HeartTrailing), TrackSize.Px(52f)];
-
-        /// <summary>The row's options, hoisted: the reader never prints a track's artist (the block IS the credit) and
-        /// the trailing heart is revealed by ROW HOVER — a liked row states itself on hover, an unliked one offers the
-        /// affordance there and nowhere else, so a block of twelve rows is not twelve hearts.</summary>
-        static readonly Track.EagerRowOptions ReaderRowOptions = new(ShowTrackArtist: false, HeartRevealOnHover: true);
 
         // ── state ────────────────────────────────────────────────────────────────────────────────────────────────────
         /// <summary>The re-pushed props as a SIGNAL (seeded before the first render, written inside the reconciler's batch
@@ -258,12 +247,14 @@ public readonly partial struct Artist
         /// apart because the band is not a block. Seeded in <see cref="SeedExtents"/>, corrected in <see cref="Settle"/>.</summary>
         float _bandExtent = ReaderShape.BandH;
         int _count, _library;
-        /// <summary>The two arms as THIS render read them (<see cref="_narrowBand"/>, <see cref="_medium"/>): the extent
+        /// <summary>The two arms as THIS render read them (<see cref="_arm"/>): the extent
         /// thunk, the block builders and the chrome check read these, never the signals, so a measure inside the layout
         /// pass cannot subscribe anything.</summary>
         bool _narrow, _stacked;
+        /// <summary>The track rows of the arm (the structure's narrow-arm rows, else the shape's own): set with <see cref="_narrow"/>, read by the extents and the cells.</summary>
+        ReaderRows _rows = ReaderRows.Core;
         /// <summary>R3: is scope 1's catalogue union withheld THIS compute because one of the three facets' first page
-        /// has neither answered nor failed yet? <see cref="TailKind"/> and <see cref="Trailing"/> read it (the tail
+        /// has neither answered nor failed yet? <see cref="TailKind"/> and <see cref="ReadTail"/> read it (the tail
         /// line reads differently while gated) — set only inside <see cref="Compute"/>, the one place that knows.</summary>
         bool _catalogueGated;
         /// <summary>R4: the PREVIOUS logged shape's album-slot sequence — a pooled <c>int[]</c> that replaces the old
@@ -293,14 +284,23 @@ public readonly partial struct Artist
         readonly Action<NodeHandle> _onListMounted;
 
         readonly Signal<int> _current = new(0);        // the spine's highlighted block (scroll-spy; signals only)
-        /// <summary>The NARROW arm (<see cref="ReaderShape.Narrow"/>: cover 88 + the stacked album head), written from
-        /// <see cref="OnBounds"/>. ONE signal for both, because both sit on the same 640-DIP edge and two signals could
-        /// disagree for a frame; it is the list's mount input, so a flip reseeds every block extent.</summary>
-        readonly Signal<bool> _narrowBand = new(false);
-        /// <summary>The MEDIUM arm (<see cref="ReaderShape.Medium"/>, the wider 772 edge): the spine is GONE and the band
-        /// STACKS. One signal for both, because the wide band shares the lane with the spine — the edge is derived from
-        /// that sum. NOT a mount input: the band's extent is corrected in place (<see cref="Settle"/>).</summary>
-        readonly Signal<bool> _medium = new(false);
+        /// <summary>The reader's own arranged width, written from <see cref="OnBounds"/> (0 until the first measure: the seed answers until then).</summary>
+        readonly Signal<float> _readerW = new(0f);
+        /// <summary>The reader's ARM on the structure's reader ladder (<see cref="Theming.ArtistLadders.Reader"/>, TC6), resolved over <see cref="_readerW"/>:
+        /// NARROW (cover 88 + the stacked album head: NOT a mount input, a flip re-arms every block in place and `Settle` corrects its extent), MEDIUM (the spine is GONE and the band
+        /// STACKS: NOT a mount input, the band's extent is corrected in place, <see cref="Settle"/>) and wide. One ladder for both edges, so the two arms can
+        /// never disagree for a frame; a crossing found after mount commits on the first frame that is not resized.</summary>
+        IReadSignal<int>? _arm;
+        readonly Func<float> _readerSeed;
+        /// <summary>The facts this reader is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The seeds
+        /// read them before the first render through the process's.</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
+        /// <summary>The narrow arm, read TRACKED (the running render or effect re-runs on a crossing).</summary>
+        bool NarrowArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) == Theming.ArtistLadders.ReaderNarrow;
+        /// <summary>The track rows of an arm: the structure's narrow-arm rows, else the shape's own.</summary>
+        static ReaderRows RowsFor(bool narrow) => narrow ? ShellPolicy.Now.LibraryTiers.ReaderNarrowRows : ReaderRows.Core;
+        /// <summary>The medium (or narrow) arm: no spine and the stacked band, read TRACKED.</summary>
+        bool MediumArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) <= Theming.ArtistLadders.ReaderMedium;
         /// <summary>One cell per ALBUM, minted on its first realize: it owns that block's readiness signal, its two
         /// builder thunks, its menu factory and the finished region element, so a re-realize allocates nothing.</summary>
         readonly Dictionary<int, BlockCell> _cells = new();
@@ -309,17 +309,14 @@ public readonly partial struct Artist
         readonly Func<ReaderShapeKey> _compute;
         readonly Func<int> _countOf, _spineCountOf, _totalOf;
         readonly Func<int, float> _extentOf;
-        readonly Func<RowScope, Element> _itemAt, _dotAt;
         readonly Func<int, string> _keyOf;
-        readonly Action _demandBand, _demandBlocks, _settle, _seekAlbumKey, _playAll, _shuffleAll, _goArtist, _followSpine;
+        readonly Action _demandBand, _demandBlocks, _settle, _seekAlbumKey, _playAll, _shuffleAll, _goArtist, _followSpine, _showAll;
         readonly Action<int, int> _onVisibleRange;
         readonly Action<RectF> _onBounds, _onBandBounds;
         readonly Action _watchSpy;
         /// <summary>The band root's last LOGGED disagreement (<see cref="CheckChrome"/>'s dedupe; NaN = none yet).</summary>
         float _bandLoggedDeclared = float.NaN, _bandLoggedMeasured = float.NaN;
         readonly Prop<int> _total;
-        Element? _subRail;
-        Signal<int>? _railScope, _railSort;
         Memo<ReaderShapeKey>? _shape;
         Memo<int>? _listCount, _spineCount;
         /// <summary>The viewport-height fraction the scroll-spy samples at — recomputed from the live geometry so the
@@ -344,10 +341,8 @@ public readonly partial struct Artist
             _extentOf = i => i == 0 ? ReaderShape.BandHeight(_stacked)
                            : i == 1 ? SubRailH
                            : i - Prefix == _count ? _tailExtent
-                           : (uint)(i - Prefix) < (uint)_count ? ReaderShape.ExtentOf(in _blocks[i - Prefix], _narrow)
+                           : (uint)(i - Prefix) < (uint)_count ? ReaderShape.ExtentOf(in _blocks[i - Prefix], _narrow, in _rows)
                            : EstimatedBlockExtent;
-            _itemAt = ItemAt;
-            _dotAt = scope => Embed.Comp(() => new SpineDot(this, scope));
             _keyOf = i => i == 0 ? "band"
                         : i == 1 ? "rail"
                         : (uint)(i - Prefix) < (uint)_count
@@ -367,8 +362,11 @@ public readonly partial struct Artist
             };
             _goArtist = () => { var a = new Artist(_artist); if (a.IsValid) Shell.GoTo(Shell.For(a.Uri, a.Name)); };
             _followSpine = FollowSpine;
+            _showAll = ShowAllReleases;
             _onVisibleRange = OnVisibleRange;
             _onBounds = OnBounds;
+            // Before the first measure the reader is seeded from the content region the frame resolved the window tiers on (an upper bound of the lane).
+            _readerSeed = () => (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.ContentWidth is var w && w > 0f ? w : float.MaxValue;
             _onBandBounds = r => CheckChrome("band", Table.None, _stacked ? "stacked" : "wide", ReaderShape.BandHeight(_stacked),
                                              r.H, ref _bandLoggedDeclared, ref _bandLoggedMeasured);
             _onListMounted = OnListMounted;
@@ -400,8 +398,11 @@ public readonly partial struct Artist
             // in the navigator's page landed. `Tracks`/`AlbumTracks` were never here for the same reason: a landing
             // row reaches its block through the block's own readiness signal.
             _artist = p?.Slot ?? Table.None;
-            _narrow = _narrowBand.Value;
-            _stacked = _medium.Value;                                        // subscribe: the spine's presence is a tree edit
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
+            _arm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Reader), TierSource.Measured(_readerW, _readerSeed));
+            _narrow = NarrowArm;
+            _rows = RowsFor(_narrow);
+            _stacked = MediumArm;                                            // subscribe: the spine's presence is a tree edit
             bool spine = !_stacked;
             _shape = UseComputed(_compute);
             _listCount = UseComputed(_countOf);
@@ -418,7 +419,7 @@ public readonly partial struct Artist
             // Hooks first, then the guard: props are SEEDED before the first render, so null is unreachable after mount —
             // but a conditional hook would be a real bug, and this is the shipped order (`EagerTrackRowHost`).
             UseEffect(_seekAlbumKey, (p?.AlbumKey.Value ?? "") + "|" + shape.OrderKey);
-            if (p is null) return new BoxEl();
+            if (p is null) return Slots.View(ViewKeys.LibraryArtistReader, new LibraryArtistReaderProps { Host = this, Vacant = true });
 
             // A NEW ARTIST forgets the album cell cache (a stale cell keyed by another artist's album slot must never
             // paint into this pane) and opens the reader at its own top. R2 removed the reshape generation this reset
@@ -433,45 +434,24 @@ public readonly partial struct Artist
                 _loggedOrder = "";
             }
             // The TRIPLE is what owns a remembered scroll offset (artist · scope · sort — the Recents pivot rule). The
-            // MOUNT key is R2's: artist, scope, sort and the NARROW arm — every input FROZEN at mount — and NOTHING a data
-            // landing can move. A reshape (a facet page, a re-sort) never reaches here at all; the mounted list's
-            // realized slots re-render off `_shape` in place instead (see the class remarks, mechanism 1). The MEDIUM arm
-            // is deliberately not in it: the band it reshapes is one row whose extent `Settle` corrects in place.
+            // MOUNT key is R2's: artist, scope and sort — what the user picked — and NOTHING a data landing or a width can
+            // move. A reshape (a facet page, a re-sort) never reaches here at all; the mounted list's realized slots re-render
+            // off `_shape` in place instead (see the class remarks, mechanism 1). Neither arm is in it: the MEDIUM arm reshapes
+            // the band, and the NARROW arm re-arms every block (its cell's face follows the arm, `BlockCell.Face`), both rows
+            // whose extents `Settle` corrects in place (audit FU2: the narrow arm in the key rebuilt every block on a crossing).
             string triple = _artist.ToString(CultureInfo.InvariantCulture) + ":" + shape.Scope + ":" + shape.Sort;
-            string key = ReaderMountPolicy.MountKey(_artist, shape.Scope, shape.Sort, _narrow);
+            string key = ReaderMountPolicy.MountKey(_artist, shape.Scope, shape.Sort);
             if (!string.Equals(_listKey, key, StringComparison.Ordinal)) Rebase(key, triple);
 
-            Element list = new BoxEl
+            // The structure draws the lane (the keyed list host, the spine beside it, the band and the pinned sub-rail as items 0 and 1 of the one scroller). It is handed
+            // the mount's layout and options (rebuilt only when the mount key moves) and the host seam its slots read live state through.
+            return Slots.View(ViewKeys.LibraryArtistReader, new LibraryArtistReaderProps
             {
-                Key = "list:" + _listKey, OnRealized = _onListMounted,       // R4: a TRUTHFUL mount signal — fires only on a real mount
-                Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Direction = 1,
-                Children = [ItemsView.CreateBound(Prefix + _count + 1, _itemAt, _layout, _options)],
-            };
-            // MEDIUM: under the edge the spine is GONE, not hidden — a collapsed node still renders. The two lane
-            // children are KEYED so that toggling the breakpoint never positionally pairs the spine against the list
-            // host: an unkeyed pair would hand the list host's node to the spine on the way down and remount the whole
-            // list (a lost offset and a cold realize) for a 24-DIP drag.
-            Element[] lane = spine
-                ? new Element[] { Spine(), ListHost(list) }
-                : new Element[] { ListHost(list) };
-            // The reader's outer tree IS the lane now: the band and the sub-rail are items 0 and 1 of the list below.
-            return new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true,
-                AlignItems = FlexAlign.Stretch, OnBoundsChanged = _onBounds, Children = lane,
-            };
+                Host = this, ListKey = _listKey, ItemCount = Prefix + _count + 1, BlockCount = _count,
+                Layout = _layout, Options = _options, Spine = spine, Scope = () => p.Scope, Sort = () => p.Sort,
+                SpineController = _spineCtl, SpineCount = _spineCount, OnBounds = _onBounds, OnListMounted = _onListMounted,
+            });
         }
-
-        /// <summary>The stable, UNKEYED parent the keyed list mounts inside. R1 made the mount a hard cut — no
-        /// `Animate`, so there is no overlap to hold open any more — but the wrapper stays: it is what lets
-        /// <c>list</c>'s own `Key` swap (a real `ReconcileChildren` remount, old node out and new one in within the
-        /// same flush) without touching the LANE's own structure, the same "stable host, keyed child" shape
-        /// `library-stabilization-plan.md` §3.3 uses for the navigator.</summary>
-        static Element ListHost(Element list) => new BoxEl
-        {
-            Key = "reader:lane",
-            ZStack = true, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = [list],
-        };
 
         // ── the mounted list: one layout + one options record per MOUNT (both freeze at mount) ────────────────────────
 
@@ -532,7 +512,7 @@ public readonly partial struct Artist
         {
             _bandExtent = ReaderShape.BandHeight(_stacked);
             if (_extents.Length < _count) _extents = new float[Math.Max(_count, _extents.Length * 2)];
-            for (int i = 0; i < _count; i++) _extents[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow);
+            for (int i = 0; i < _count; i++) _extents[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow, in _rows);
             _tailExtent = TailHeight(TailKind());
             _extentKey = _listKey;
         }
@@ -545,7 +525,7 @@ public readonly partial struct Artist
             int old = _extents.Length;
             var next = new float[Math.Max(_count, old * 2)];
             Array.Copy(_extents, next, old);
-            for (int i = old; i < _count; i++) next[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow);
+            for (int i = old; i < _count; i++) next[i] = ReaderShape.ExtentOf(in _blocks[i], _narrow, in _rows);
             _extents = next;
         }
 
@@ -764,12 +744,15 @@ public readonly partial struct Artist
             if (!string.Equals(_spyKey, _listKey, StringComparison.Ordinal)) { _spyKey = _listKey; _current.SetIfChanged(0); }
             if (!string.Equals(_extentKey, _listKey, StringComparison.Ordinal)) SeedExtents();
             else if (_extents.Length < _count) GrowExtents();
-            bool narrow = _narrow;
+            // The NARROW arm is not a mount input either: a flip re-arms every block in place, and its extent reaches the table HERE, read off the SIGNAL
+            // (it subscribes this effect) like the band's below, so the answer cannot depend on whether the render or this effect drains first.
+            bool narrow = NarrowArm;
+            var rows = RowsFor(narrow);
             for (int i = 0; i < _count; i++)
             {
                 var b = _blocks[i];
                 if (_cells.TryGetValue(b.AlbumSlot, out var cell)) cell.Settle(b);
-                float extent = ReaderShape.ExtentOf(in b, narrow);
+                float extent = ReaderShape.ExtentOf(in b, narrow, in rows);
                 if (_extents[i] == extent) continue;
                 // The cache stays BLOCK-indexed (it mirrors `_blocks`); only the correction crosses into flat space.
                 // Before the viewport is live there is no table to correct — the seed will read the CURRENT extent anyway.
@@ -780,14 +763,14 @@ public readonly partial struct Artist
             float tail = TailHeight(TailKind());
             if (tail != _tailExtent && (_ctl.CorrectMeasuredExtent(Prefix + _count, tail) || _ctl.Viewport.IsNull))
                 _tailExtent = tail;
-            // The BAND has two heights too — 100 wide, 168 stacked — and the MEDIUM arm that picks one is deliberately
+            // The BAND has two heights too — 100 wide, 164 stacked — and the MEDIUM arm that picks one is deliberately
             // not a mount input (a 24-DIP grip drag must not remount the list), so a flip reaches the table HERE, as a
             // correction, exactly like a block whose row count landed. Item 0 is a persistent-prefix row, but a real row
             // of the same extent table — `ArrangeVirtual` measures and commits it on every pass like any realized row —
             // so this is the same sanctioned seam one step earlier: the anchor below it is rebased with the write rather
             // than on the next measure. Read off the SIGNAL (it subscribes this effect), never off `_stacked`, so the
             // answer cannot depend on whether the render or this effect drains first.
-            float band = ReaderShape.BandHeight(_medium.Value);
+            float band = ReaderShape.BandHeight(MediumArm);
             if (band != _bandExtent && (_ctl.CorrectMeasuredExtent(0, band) || _ctl.Viewport.IsNull)) _bandExtent = band;
         }
 
@@ -853,14 +836,11 @@ public readonly partial struct Artist
             if ((uint)i < (uint)_count) _spineCtl.StartBringItemIntoView(i, float.NaN, animate: true);
         }
 
-        /// <summary>The two arms off the READER's own width (deviation 9), both DECIDED by <see cref="ReaderShape"/> —
-        /// <see cref="ReaderShape.Narrow"/> (640: cover 88 + the stacked album head) and <see cref="ReaderShape.Medium"/>
-        /// (772: no spine + the stacked band) — so the edges, their 24-DIP hysteresis and the unmeasured-width rule are
-        /// the tested ones, and this only feeds them the arranged width.</summary>
+        /// <summary>The two arms off the READER's own width (deviation 9), both DECIDED by the structure's reader ladder (<see cref="_arm"/>: the edges and
+        /// their holds are the structure's, `Rules\Tiers.Artist.cs`); this only feeds it the arranged width. An unmeasured width keeps the previous arm.</summary>
         void OnBounds(RectF r)
         {
-            _narrowBand.SetIfChanged(ReaderShape.Narrow(r.W, _narrowBand.Peek()));
-            _medium.SetIfChanged(ReaderShape.Medium(r.W, _medium.Peek()));
+            if (r.W > 0f) _readerW.SetIfChanged(r.W);
         }
 
         /// <summary>The always-on truthfulness line (renderer == estimator, the narrow-heads plan §3.4). A chrome root — the
@@ -883,201 +863,6 @@ public readonly partial struct Artist
                 WaveeLogField.Of("delta", measured - declared));
         }
 
-        // ── the band ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>72 avatar · the name LINK · "In your library: 3 albums · 35 songs" · Play all · shuffle · Follow · ↗.
-        /// Painted from `ArtistFields.Identity` the moment the navigator's row carries it — the band never skeletons as a
-        /// whole; an unnamed artist shows "…" in the title and nothing else (§5.7, W3).
-        ///
-        /// <para>UNDER <see cref="ReaderShape.MediumBelow"/> it STACKS (#158): row 1 is a 56 avatar beside the name column,
-        /// the name taking up to two lines; row 2 is the SAME verbs as the wide arm — an accent play FAB at the band's 36
-        /// tier, shuffle, Follow, ↗ — left-aligned in <see cref="ReaderShape.StackedControlsW"/> (244 DIP: with the
-        /// padding it fits the 300-DIP window floor, which a test pins). The reason is arithmetic rather than taste: one
-        /// row spends <see cref="ReaderShape.WideBandFixedW"/> (484 DIP, with the 56-DIP spine beside it) on what never
-        /// shrinks, and the name column — the only flexible child — is what pays. W6's one-row compact arm, which this
-        /// replaces, got that down to 312 and still left the name 79 DIP at a 391-DIP reader: "Tro…".</para>
-        ///
-        /// <para>Each arm's root is KEYED ("band:w" / "band:s") as a CHILD of <see cref="ReaderItem"/>'s root — a
-        /// single-child slot's own Key is inert — so the swap is a real remount; and each DECLARES
-        /// <see cref="ReaderShape.BandHeight"/>, the number `_extentOf(0)` seeds and <see cref="Settle"/> corrects to.
-        /// With stated heights inside, the declaration restates the measurement rather than overriding it, and
-        /// <see cref="CheckChrome"/> says so if it ever does not.</para></summary>
-        Element Band(Artist a, bool named, ReaderShapeKey shape, bool stacked)
-        {
-            string uri = a.IsValid ? a.Uri.Text : "";
-            string? name = named ? a.Name : null;
-            if (!stacked)
-                return new BoxEl
-                {
-                    Key = "band:w", Direction = 0, Gap = ReaderShape.BandGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-                    Height = ReaderShape.BandH, MinWidth = 0f, OnBoundsChanged = _onBandBounds,
-                    Padding = new Edges4(ReaderShape.BandPadX, ReaderShape.BandPadTop, ReaderShape.BandPadX, ReaderShape.BandPadBottom),
-                    Children =
-                    [
-                        Avatar(a, named, ReaderShape.AvatarEdge),
-                        NameColumn(a, named, shape, stacked: false),
-                        Controls.PlayButton(Tok.AccentDefault, _playAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f },
-                        Album.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), _shuffleAll),
-                        Follow(uri, name, FlexJustify.End),
-                        Album.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), _goArtist),
-                    ],
-                };
-            return new BoxEl
-            {
-                Key = "band:s", Direction = 1, Gap = ReaderShape.BandStackRowGap, Shrink = 0f,
-                Height = ReaderShape.BandStackedH, MinWidth = 0f, OnBoundsChanged = _onBandBounds,
-                Padding = new Edges4(ReaderShape.BandStackPadX, ReaderShape.BandStackPadTop, ReaderShape.BandStackPadX, ReaderShape.BandPadBottom),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, Gap = ReaderShape.BandStackGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                        Height = ReaderShape.NameColumnH,
-                        Children = [Avatar(a, named, ReaderShape.AvatarEdgeStacked), NameColumn(a, named, shape, stacked: true)],
-                    },
-                    new BoxEl
-                    {
-                        Direction = 0, Gap = ReaderShape.BandStackGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                        Height = ReaderShape.BandCircle,
-                        Children =
-                        [
-                            Controls.Named(Controls.PlayFab(_playAll, Icons.Play, ReaderShape.BandCircle), Loc.Get(Strings.Library.PlayAll)),
-                            Album.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), _shuffleAll),
-                            Follow(uri, name, FlexJustify.Start),                     // left edge pinned: ↗ never moves on a flip
-                            Album.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), _goArtist),
-                        ],
-                    },
-                ],
-            };
-        }
-
-        static Element Avatar(Artist a, bool named, float edge) => new BoxEl
-        {
-            Width = edge, Height = edge, Shrink = 0f, Corners = Radii.Circle(edge),
-            ClipToBounds = true, Shadow = Elevation.Card,
-            Children = [Controls.Artwork(named ? Controls.ArtUrl(a.ImageId) : null, edge, edge, edge / 2f, decodePx: 144)],
-        };
-
-        /// <summary>The Follow toggle in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of its own (`Shrink` is
-        /// a `BoxEl` field), so the one box is what keeps the toggle out of the name column's width.
-        /// <para>The slot is as wide as the LONGER face (<see cref="ReaderShape.FollowSlotW"/>), so nothing beside it
-        /// shifts ~9 DIP between a followed and an unfollowed artist on every navigator click: the wide arm right-aligns
-        /// the toggle (Play all and shuffle sit to its left), the stacked arm left-aligns it (↗ sits to its right). A
-        /// MinWidth, not a Width: a locale whose label is longer still grows it.</para></summary>
-        static Element Follow(string uri, string? name, FlexJustify justify) => new BoxEl
-        {
-            Shrink = 0f, MinWidth = ReaderShape.FollowSlotW, Direction = 0, Justify = justify,
-            Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri }],
-        };
-
-        /// <summary>The name LINK over the "in your library" subline — the band row's only flexible child (`Grow 1 /
-        /// Basis 0 / MinWidth 0` in BOTH arms; the avatar is `Shrink 0`), which is why every control beside it declares
-        /// <c>Shrink = 0</c>.
-        /// <para>STACKED, the name may take two 40-DIP lines, auto-fitting 32 → 28 first (<c>ArtistCompactTitle</c>
-        /// carries <c>MinSize = 28</c>, and Wrap + MaxLines make it live — the artist hero's compact tier is the
-        /// precedent), ellipsis after that. The column is the stated <see cref="ReaderShape.NameColumnH"/> and centres its
-        /// content, so a one-line name sits level with the avatar and a two-line one fills the box: the band's height
-        /// never depends on the name. WIDE, it is the one line it always was.</para>
-        /// <para>Either way a TRIMMED name gets a tooltip and a whole one does not (<c>Controls.TrimTip</c>). The tooltip
-        /// wrapper is a COLUMN child here, cross-stretched to the column's width, because a ToolTip wrapper is
-        /// <c>Shrink 0</c> and can never shrink as a ROW child (the engine's rule 11); the link inside it shrinks.</para>
-        /// <para>The subline counts RELEASES (saved + liked-only, <c>shape.Library</c>) and SONGS (<c>shape.Songs</c>),
-        /// both off the shape so a liked-edge landing re-renders the band with them. An artist you only have loose
-        /// tracks of reads "In your library: 7 songs" rather than the old "0 albums", and one with neither says
-        /// nothing at all.</para></summary>
-        Element NameColumn(Artist a, bool named, ReaderShapeKey shape, bool stacked)
-        {
-            string name = named ? a.Name : "…";
-            TextEl nameText = Design.Type.ArtistCompactTitle(name) with
-            {
-                Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster,
-                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, LineHeight = ReaderShape.NameLine,
-                Wrap = stacked ? TextWrap.Wrap : TextWrap.NoWrap,
-                MaxLines = stacked ? ReaderShape.NameLines : 1,
-            };
-            // The ±8 padding and the −8 margins cancel, so the TEXT is exactly the column's width
-            // (`ReaderShape.NameAvailW`) while the hover plate overhangs it by 8 on each side.
-            Element link = new BoxEl
-            {
-                Corners = Radii.ControlAll, Shrink = 1f, MinWidth = 0f,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-                Margin = new Edges4(-Spacing.S, 0f, -Spacing.S, 0f),
-                Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = _goArtist,
-                Children = [nameText],
-            }.Interactive(Interaction.Subtle);
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ReaderShape.NameSubGap,
-                Height = stacked ? ReaderShape.NameColumnH : float.NaN,
-                Justify = stacked ? FlexJustify.Center : FlexJustify.Start,
-                Children =
-                [
-                    Controls.TrimTip(link, name, nameText),
-                    Design.Type.DenseMeta(named ? LibraryLine(shape) : "") with
-                    {
-                        Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                ],
-            };
-        }
-
-        /// <summary>"In your library: 3 albums · 35 songs" — or, when there is no RELEASE at all and only loose liked
-        /// tracks, "In your library: 7 songs"; empty when the artist is in your library for nothing.
-        /// <para>No <c>== 1</c> arms: <c>nAlbums</c>/<c>nSongs</c>/<c>nSongsOnly</c> are ICU PLURALS now and render
-        /// "1 album" / "1 song" themselves — in every locale's own plural categories, which a hand-written English
-        /// two-way branch cannot do (Polish has three, Arabic six). The <c>oneAlbum</c>/<c>oneSong</c> keys still exist
-        /// for the surfaces that need the bare word; this is not one of them.</para></summary>
-        static string LibraryLine(ReaderShapeKey shape)
-        {
-            int albums = shape.Library, songs = shape.Songs;
-            if (albums <= 0)
-                return songs <= 0 ? "" : Strings.Library.InYourLibrary(Strings.Library.NSongsOnly(songs), "");
-            return Strings.Library.InYourLibrary(Strings.Library.NAlbums(albums),
-                                                 songs > 0 ? Strings.Library.NSongs(songs) : "");
-        }
-
-        /// <summary>ITEM 1: the two word rails — scope (in your library · all releases · N) — spacer — sort (newest ·
-        /// oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. Built ONCE: every state
-        /// inside a rail word is a bind, and the release total rides a <see cref="Prop{T}"/>, so the facets answering
-        /// re-fires one text bind rather than re-rendering the rail.
-        /// <para>It is a plain Element and NOT a component, which is the one structural thing that makes the pin work.
-        /// A sticky scroll effect with no named scope is a containing-block-clamped <c>position:sticky</c> against the
-        /// node's IMMEDIATE parent. A component anchor is layout-TRANSPARENT and mirrors its child's size
-        /// (<c>Reconciler.MirrorParticipation</c>), so a scope-less sticky root returned from a component sits in a parent
-        /// of its own height and never pins. Returned raw, the sub-rail IS the bound slot's root and its parent is the
-        /// scroller's CONTENT node, whose height is the whole list.</para>
-        /// <para>Its card fill is load-bearing: a pinned direct child of the content paints ABOVE the blocks sliding under
-        /// it (<c>NodeFlags.StickyPinned</c>), so the 48-DIP row's fill plus the 1-DIP divider is what stops a track row
-        /// showing through — the item clip below is the belt, this is the braces.</para></summary>
-        Element Rail()
-        {
-            if (_p is not { } p) return new BoxEl { Height = SubRailH };
-            if (_subRail is not null && ReferenceEquals(_railScope, p.Scope) && ReferenceEquals(_railSort, p.Sort))
-                return _subRail;
-            _railScope = p.Scope;
-            _railSort = p.Sort;
-            return _subRail = SubRail(p);
-        }
-
-        Element SubRail(ReaderProps p) => new BoxEl
-        {
-            Direction = 1, Shrink = 0f, Height = SubRailH, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f, Fill = Tok.FillCardDefault,
-                    Padding = new Edges4(Spacing.XL, SubRailPadTop, Spacing.XL, SubRailPadBottom),
-                    Children =
-                    [
-                        User.ScopeRail(p.Scope, _total, () => _narrowBand.Value, fill: true),   // the narrow arm folds "all · N"
-                        User.ReaderSortRail(p.Sort),
-                    ],
-                },
-                new BoxEl { Height = ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
-            ],
-        }.Sticky(0f);
-
         /// <summary>How many releases the catalogue says this artist has. Read from the three facet edges HERE, inside
         /// the shape memo's compute (which subscribes all three), and carried out on <see cref="ReaderShapeKey"/> — the
         /// rail's own `Prop` reads the KEY, because a thunk that reads an edge table reads no signal and the rail element
@@ -1088,90 +873,115 @@ public readonly partial struct Artist
             return e.ArtistAlbums.Total(_artist) + e.ArtistSingles.Total(_artist) + e.ArtistCompilations.Total(_artist);
         }
 
-        // ── the spine ────────────────────────────────────────────────────────────────────────────────────────────────
+        // ── the host seam: what the structure's view reads (`IArtistReaderHost`) ─────────────────────────────────────────
+        //
+        // The view's slots are components of its own (the band, a block or the tail, a spine dot) and they read the reader's live state through these members,
+        // in THEIR render, exactly as the nested `ReaderItem` / `SpineDot` components read the owner: a read subscribes the slot that made it, never the page.
 
-        /// <summary>The cover spine (W3), now a SECOND virtualized list that follows the first: one 36-px cover per
-        /// block, the ring and the ink BOUND to <see cref="_current"/> so the scroll-spy costs two compositor writes and
-        /// no render, and a click glides that block to the top.
-        ///
-        /// <para>Why a list and not the old eager column: the column built one Element per block on every reader
-        /// re-render — 200 covers for a discography, all of them mounted, all of them decoding art, for the twelve you
-        /// can see. As a list it realizes what fits plus an overscan, and <see cref="FollowSpine"/> glides it so the
-        /// current dot is always among them.</para>
-        ///
-        /// <para>The prototype pins the spine at <c>top:52px</c> — under the sub-rail. Here the spine is the lane's
-        /// SIBLING, not part of the scroller, so it simply runs the lane's full height beside the list: the band and the
-        /// rail live in the list column only, and there is nothing for it to slide out from under. Keeping its own
-        /// padding is what lines the first dot up with the first block.</para>
-        ///
-        /// <para>Its <c>Key</c> is CONSTANT: the spine must not be positionally paired against the list host when the
-        /// breakpoint toggles it, and it must not remount per artist — its count rides
-        /// <see cref="ListOptions.CountSignal"/> and its dots re-render themselves.</para></summary>
-        Element Spine() => new BoxEl
+        /// <summary>The band's own subscriptions, in the slot that paints them. <c>_shape</c> carries the artist slot the compute settled on plus the two counts the
+        /// subline reads, so pulling it first is also what keeps the band from painting one artist's name over another's numbers. The arm is read off the signal: a flip
+        /// swaps the keyed band root.</summary>
+        public ArtistReaderBand ReadBand()
         {
-            Key = "reader:spine",
-            Width = ReaderShape.SpineW, Shrink = 0f, Direction = 1, MinHeight = 0f, ClipToBounds = true,
-            Padding = new Edges4(Spacing.M, Spacing.M, 0f, Spacing.M),
-            Children =
-            [
-                ItemsView.CreateBound(_count, _dotAt, RepeatLayout.Stack(DotPitch), new ListOptions
-                {
-                    SelectionMode = ItemsSelectionMode.None, Controller = _spineCtl, Grow = 1f,
-                    CountSignal = _spineCount,
-                    // No scrollbar and no scroll key: the spine is a READOUT of the reader's position, driven by
-                    // `FollowSpine`, so a conscious bar would invite a second, conflicting intent and a restore key
-                    // would fight the follow on the first frame. The alpha fade says "there is more above/below".
-                    Scroll = new ScrollOptions { SuppressScrollBar = true, AutoEdgeFade = true },
-                }),
-            ],
-        };
-
-        /// <summary>One dot. Everything that varies with the SPY is bound (opacity + the accent ring), so a scroll-spy
-        /// edge is two compositor writes and no render at all; everything that varies with the BLOCK (the cover, the
-        /// tooltip name, the saved dimming) is rebuilt by <see cref="SpineDot"/>'s own render, which happens on a
-        /// recycle or when the album table publishes — never per frame.</summary>
-        Element DotAt(int index)
-        {
-            int i = index;
-            var b = _blocks[i];
-            var a = new Album(b.AlbumSlot);
-            bool saved = b.Saved;
-            string name = a.IsValid && a.Knows(AlbumFields.Title) ? a.Title : "";
-            Element dot = new BoxEl
-            {
-                Key = "dot:" + a.Slot.ToString(CultureInfo.InvariantCulture),
-                Width = DotEdge, Height = DotEdge, Shrink = 0f, Corners = CornerRadius4.All(4f), ClipToBounds = true,
-                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
-                OnClick = () => { if ((uint)i < (uint)_count) BringBlockToTop(i); },
-                Opacity = Prop.Of(() => _current.Value == i ? 1f : saved ? 0.5f : 0.3f), HoverOpacity = 0.9f,
-                BorderWidth = 2f,
-                BorderColor = Prop.Of(() => _current.Value == i ? Tok.AccentDefault : ColorF.Transparent),
-                BrushTransitionMs = Design.Motion.Fast,
-                Children = [Controls.Artwork(Controls.ArtUrl(a.ImageId), DotEdge, DotEdge, 3f, decodePx: 72)],
-            };
-            // No name yet, no tooltip: an empty tooltip is a hover that says nothing.
-            return name.Length > 0 ? Controls.Named(dot, name) : dot;
+            _ = Entities.ScopeEpoch.Value;
+            _ = Entities.Current.Artists.Changed.Value;
+            _ = _propsSig.Value;
+            var shape = _shape!.Value;
+            bool stacked = MediumArm;
+            var a = new Artist(_artist);
+            return new ArtistReaderBand(a, a.IsValid && a.Knows(ArtistFields.Name), shape, stacked);
         }
 
-        // ── the items ────────────────────────────────────────────────────────────────────────────────────────────────
+        /// <summary>A block (<c>Prefix + b</c>) or, past the last block, null — the tail. The shape is pulled first: the sequence (and the tail's three states) moved.
+        /// The cell is refreshed with the block record as a plain field (a realize must not write a signal).</summary>
+        public IArtistReaderBlock? ReadBlock(int blockIndex)
+        {
+            _ = _shape!.Value;
+            return (uint)blockIndex < (uint)_count ? Cell(_blocks[blockIndex]) : null;
+        }
 
-        /// <summary>The BOUND slot template — invoked ONCE per slot, with that slot's index SIGNAL.
-        ///
-        /// <para>The two chrome slots split here rather than inside <see cref="ReaderItem"/> because they want opposite
-        /// things. The BAND has to re-render (a name, an avatar, a count landing), so it is a component. The SUB-RAIL
-        /// has to PIN above the rows, and a scope-less sticky returned from a component can never pin — the component
-        /// anchor is a same-height transparent parent and the sticky clamps to its containing block (see
-        /// <see cref="Rail"/>); it also never needs to re-render, because every word inside it is a bind over the
-        /// page's own Signal instances. Reading the index with <c>Peek</c> is exact for the two of them: the persistent
-        /// prefix creates slot 0 and slot 1 with a constant index signal and never recycles them
-        /// (<c>Reconciler.RealizeBoundWindowWithPersistentPrefix</c>), and every recyclable slot is created at an index
-        /// at or above the prefix.</para></summary>
-        Element ItemAt(RowScope scope)
-            => scope.Index.Peek() == 1 ? Rail() : Embed.Comp(() => new ReaderItem(this, scope));
+        /// <summary>The list's last item over <see cref="TailKind"/>'s three answers (decided ONCE, here, because <see cref="TailHeight"/> has to answer its height
+        /// before the item renders and the two must not be able to disagree). The strings are the view's; these are the facts they read.</summary>
+        public ArtistReaderTail ReadTail()
+        {
+            _ = _shape!.Value;
+            int kind = TailKind();
+            if (kind == 0) return new ArtistReaderTail(0, TailHeight(0), false, false, 0, "", _showAll);
+            string name = new Artist(_artist).Name;
+            if (kind == 2) return new ArtistReaderTail(2, TailHeight(2), false, false, 0, name, _showAll);
+            if (_catalogueGated) return new ArtistReaderTail(1, TailHeight(1), true, false, 0, name, _showAll);
+            var e = Entities.Current.Edges;
+            bool partial = e.ArtistAlbums.State(_artist) == EdgeState.Partial
+                        || e.ArtistSingles.State(_artist) == EdgeState.Partial
+                        || e.ArtistCompilations.State(_artist) == EdgeState.Partial;
+            return new ArtistReaderTail(1, TailHeight(1), false, partial, TotalReleases() - _count, name, _showAll);
+        }
 
-        /// <summary>The block body for BLOCK index <paramref name="b"/>: its album's CACHED region element, so a
-        /// re-realize allocates nothing at all.</summary>
-        Element BlockBody(int b) => Cell(_blocks[b]).Region;
+        /// <summary>The band's verbs and the rail's reads (stable objects: the band slot hands them to controls that freeze them at mount).</summary>
+        public Action PlayAll => _playAll;
+        /// <inheritdoc cref="PlayAll"/>
+        public Action ShuffleAll => _shuffleAll;
+        /// <inheritdoc cref="PlayAll"/>
+        public Action GoArtist => _goArtist;
+        /// <summary>The band root's bounds callback — the chrome truthfulness check.</summary>
+        public Action<RectF> OnBandBounds => _onBandBounds;
+        /// <summary>The scope rail's "all releases · N": a bound prop over the SHAPE (a memo read inside a Prop thunk is tracked).</summary>
+        public Prop<int> ReleaseTotal => _total;
+        /// <summary>The narrow arm, read inside a bound text (the rail folds "all · N").</summary>
+        public bool NarrowNow() => NarrowArm;
+        /// <summary>The spine's highlighted block.</summary>
+        public Signal<int> Current => _current;
+
+        /// <summary>Block <paramref name="index"/> as this render's buffer holds it.</summary>
+        public bool TryBlockAt(int index, out ReaderBlock block)
+        {
+            if ((uint)index < (uint)_count) { block = _blocks[index]; return true; }
+            block = default;
+            return false;
+        }
+
+        /// <summary>A dot's click: glide that block to the top; a stale index (a reshape raced the click) is ignored.</summary>
+        public void BringToTop(int blockIndex)
+        {
+            if ((uint)blockIndex < (uint)_count) BringBlockToTop(blockIndex);
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<ArtistReaderRelease> ReadReleases()
+        {
+            _ = Entities.ScopeEpoch.Value;
+            _ = _shape!.Value;
+            _ = Entities.Current.Albums.Changed.Value;
+            var releases = new ArtistReaderRelease[_count];
+            for (int i = 0; i < releases.Length; i++) releases[i] = new ArtistReaderRelease(_blocks[i].AlbumSlot, _blocks[i].Saved);
+            return releases;
+        }
+
+        /// <inheritdoc />
+        public Element AlbumPane(int albumSlot) => Embed.Comp(new Album.PaneProps(albumSlot, ShowAlsoBy: false), static () => new Album.Pane());
+
+        /// <summary>The triple a spine dot re-renders on: the flat index (a recycle always changes it), the album SLOT that index resolves to right now (a reorder can
+        /// change it without a recycle), and that album's own row <see cref="Table.Version"/> (a cover, a title, a year landing). <see cref="Entities.ScopeEpoch"/> is
+        /// read first, same as every other read in this file, so an account switch invalidates it too.
+        /// <para>C2 (RC9): the OLD render read the whole-table <c>Albums.Changed</c> and the whole <c>_shape</c> memo directly, so every album publish anywhere
+        /// re-rendered every mounted dot. The dot's PER-DOT memo over this triple still wakes on every reshape and every album publish (one array read each), but it only
+        /// PUBLISHES — and so only re-renders that dot — when ITS OWN triple actually moved.</para></summary>
+        public (int Index, int Slot, uint Ver) WatchDot(RowScope scope)
+        {
+            _ = Entities.ScopeEpoch.Value;
+            int i = scope.Index.Value;
+            _ = _shape!.Value;                                  // a reorder can change which album sits at THIS index
+            int slot = (uint)i < (uint)_count ? _blocks[i].AlbumSlot : Table.None;
+            var albums = Entities.Current.Albums;
+            uint ver = slot > Table.None && (uint)slot < (uint)albums.Count ? albums.Version[slot] : 0u;
+            return (i, slot, ver);
+        }
+
+        /// <summary>The vacancy's one action: switch to all releases.</summary>
+        void ShowAllReleases()
+        {
+            if (_p is { } p) p.Scope.Value = 1;
+        }
 
         /// <summary>The cell for a block, minted on first realize. A realize NEVER writes a signal (that would be a write
         /// during a render): a brand-new cell CONSTRUCTS its loadable in the right state, and an existing one only takes
@@ -1220,160 +1030,13 @@ public readonly partial struct Artist
 
         static float TailHeight(int kind) => kind switch { 2 => TailVacancyH, 1 => TailLineH, _ => TailAirH };
 
-        /// <summary>The list's last item, over <see cref="TailKind"/>'s three answers. Its root declares the height
-        /// <see cref="TailHeight"/> already promised the extent table and nothing else: on the BOUND path an item root
-        /// is stretched to the slot's cross axis by the content column, so the `Grow 1 / Basis 0` the old selector-skin
-        /// ROW wrapper needed (deviation 7) would now aim at the HEIGHT and collapse the item to nothing.</summary>
-        Element Trailing()
-        {
-            int kind = TailKind();
-            Element[] body;
-            if (kind == 2)
-            {
-                var p = _p;
-                string name = new Artist(_artist).Name;
-                body =
-                [
-                    Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
-                        title: Strings.Library.EmptyLibraryTitle(name), subtitle: "",
-                        actionLabel: Loc.Get(Strings.Library.EmptyLibraryAction),
-                        onAction: () => { if (p is not null) p.Scope.Value = 1; }),
-                ];
-            }
-            else if (kind == 1)
-            {
-                string text;
-                if (_catalogueGated)
-                {
-                    text = Loc.Get(Strings.Library.FetchingReleases);        // R3: the catalogue gate, not a partial page
-                }
-                else
-                {
-                    var e = Entities.Current.Edges;
-                    int missing = TotalReleases() - _count;
-                    bool partial = e.ArtistAlbums.State(_artist) == EdgeState.Partial
-                                || e.ArtistSingles.State(_artist) == EdgeState.Partial
-                                || e.ArtistCompilations.State(_artist) == EdgeState.Partial;
-                    text = partial && missing > 0
-                        ? Strings.Library.FetchingMore(missing)
-                        : Strings.Library.AllInLibrary(new Artist(_artist).Name);
-                }
-                body = [Design.Type.DenseMeta(text) with { Color = Tok.TextTertiary }];
-            }
-            else body = Array.Empty<Element>();
-
-            return new BoxEl
-            {
-                Direction = 1, Shrink = 0f, MinWidth = 0f,
-                Height = TailHeight(kind),
-                // The vacancy owns its own padding (and centres inside it); the line and the air take the list's gutter.
-                Padding = kind == 2 ? new Edges4() : new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.XL),
-                Children = body,
-            };
-        }
-
-        // ── the two item components ──────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>One slot of the reader's ONE viewport: the band (0), a block (<c>Prefix + b</c>) or the tail. Slot 1,
-        /// the pinned sub-rail, never reaches here — <see cref="ItemAt"/> hands that one back raw (see its remarks).
-        ///
-        /// <para>It exists because the outer render no longer contains the band: a bound slot's template runs ONCE, so
-        /// whatever has to change inside the slot has to be read by a COMPONENT that lives in it. Each arm subscribes to
-        /// exactly what it paints from — the band to the artist table, the shape memo and the MEDIUM arm; a block to
-        /// nothing at all (its region owns its own readiness signal, and the cell it comes from is refreshed by
-        /// <see cref="Settle"/>); the tail to the shape, because its three states are decided from the counts. The
-        /// index signal is read by every arm, which is what makes a recycle a re-render of this one slot.</para>
-        ///
-        /// <para>The root is a plain stretched column, NOT `Grow 1 / Basis 0`: a bound slot's root is mounted straight
-        /// under the scroller's content node (through one layout-transparent component anchor), and that is a COLUMN
-        /// with <c>AlignItems.Stretch</c> — the width comes for free and a zero flex-basis would aim at the height. The
-        /// keyed region/tail/band bodies hang under it as CHILDREN so the keyed child diff can remount them.</para></summary>
-        sealed class ReaderItem(Reader owner, RowScope scope) : Component
-        {
-            readonly Reader _r = owner;
-            readonly RowScope _scope = scope;
-
-            public override Element Render()
-            {
-                int i = _scope.Index.Value;
-                Element body;
-                if (i == 0)
-                {
-                    // The band's own subscriptions, in the slot that paints them. `_shape` carries the artist slot the
-                    // compute settled on plus the two counts the subline reads, so pulling it first is also what keeps
-                    // the band from painting one artist's name over another's numbers.
-                    _ = Entities.ScopeEpoch.Value;
-                    _ = Entities.Current.Artists.Changed.Value;
-                    _ = _r._propsSig.Value;
-                    var shape = _r._shape!.Value;
-                    bool stacked = _r._medium.Value;               // the arm: a flip swaps the keyed band root
-                    var a = new Artist(_r._artist);
-                    body = _r.Band(a, a.IsValid && a.Knows(ArtistFields.Name), shape, stacked);
-                }
-                else
-                {
-                    int b = i - Prefix;
-                    _ = _r._shape!.Value;                          // the sequence (and the tail's three states) moved
-                    body = (uint)b < (uint)_r._count ? _r.BlockBody(b) : _r.Trailing();
-                }
-                return new BoxEl { Direction = 1, MinWidth = 0f, Children = [body] };
-            }
-        }
-
-        /// <summary>One slot of the SPINE. The dot itself is rebuilt here rather than cached per album slot on purpose:
-        /// a cached Element cannot observe its cover landing, and the two things that DO change per frame — the ring and
-        /// the ink — are binds inside it that never rebuild anything. So the render runs on a recycle (the index signal)
-        /// and on an album publish that touches THIS dot's own album (a cover, a title) — never on every other album's
-        /// publish, and never on a reshape that leaves this index's album untouched.
-        /// <para>C2 (RC9): the OLD render read the whole-table <c>Albums.Changed</c> and the whole <c>_shape</c> memo
-        /// directly, so every album publish anywhere re-rendered every mounted dot (`SpineDot×18` per landing batch).
-        /// <see cref="_watch"/> is a PER-DOT memo over <c>(index, thisIndex'sAlbumSlot, thatAlbum'sRowVersion)</c>: it
-        /// still wakes on every reshape and every album publish (one array read each), but it only PUBLISHES — and so
-        /// only re-renders this dot — when ITS OWN triple actually moved (the `EagerTrackRowHost` pattern,
-        /// <c>Track.UI.cs</c>, applied per dot instead of per row).</para></summary>
-        sealed class SpineDot(Reader owner, RowScope scope) : Component
-        {
-            readonly Reader _r = owner;
-            readonly RowScope _scope = scope;
-            readonly Func<(int Index, int Slot, uint Ver)> _watch = () => Watch(owner, scope);
-
-            /// <summary>The triple this dot re-renders on: the flat index (a recycle always changes it), the album
-            /// SLOT that index resolves to right now (a reorder can change it without a recycle), and that album's own
-            /// row <see cref="Table.Version"/> (a cover, a title, a year landing). <see cref="Entities.ScopeEpoch"/> is
-            /// read first, same as every other read in this file, so an account switch invalidates it too.</summary>
-            static (int Index, int Slot, uint Ver) Watch(Reader r, RowScope scope)
-            {
-                _ = Entities.ScopeEpoch.Value;
-                int i = scope.Index.Value;
-                _ = r._shape!.Value;                                // a reorder can change which album sits at THIS index
-                int slot = (uint)i < (uint)r._count ? r._blocks[i].AlbumSlot : Table.None;
-                var albums = Entities.Current.Albums;
-                uint ver = slot > Table.None && (uint)slot < (uint)albums.Count ? albums.Version[slot] : 0u;
-                return (i, slot, ver);
-            }
-
-            public override Element Render()
-            {
-                int i = UseComputed(_watch).Value.Index;
-                // The pitch is the ITEM's, not the layout's: `RepeatLayout.Stack` carries no gap, so the 8 DIP under the
-                // cover is this box's own bottom band.
-                return new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, Height = DotPitch,
-                    Children = (uint)i < (uint)_r._count ? new Element[] { _r.DotAt(i) } : Array.Empty<Element>(),
-                };
-            }
-        }
-
-        /// <summary>ONE cell per album: its readiness signal, its two builder thunks, its menu factory and the finished
-        /// region. The cell is the reason a block can reveal without the list re-rendering, and the reason a re-realize is
-        /// a dictionary lookup instead of a tree of fresh closures.</summary>
-        sealed class BlockCell
+        /// <summary>ONE cell per album: its readiness signal, its record, its liked rows, its verbs and the finished region the view caches on it. The cell is the
+        /// reason a block can reveal without the list re-rendering, and the reason a re-realize is a dictionary lookup instead of a tree of fresh closures.</summary>
+        sealed class BlockCell : IArtistReaderBlock
         {
             readonly Reader _r;
             readonly int _slot;
             readonly Loadable<int> _load;
-            readonly Func<ContextMenuModel?> _menu;
             int _version = int.MinValue;
 
             /// <summary>A LIKED-ONLY block's own rows (<see cref="User.LikedTracksOfAlbum"/>), in liked-edge order — the
@@ -1385,13 +1048,45 @@ public readonly partial struct Artist
 
             /// <summary>The block record this cell paints, refreshed by the owner (a plain field: a realize must not write
             /// a signal). Rows and Failed move; the album slot never does.</summary>
-            public ReaderBlock Block;
+            public ReaderBlock Block { get; set; }
 
-            public readonly Element Region;
+            /// <summary>The view's finished region, cached for the ARM it was built in: a reader that re-arms in place (the narrow arm is no mount input) hands
+            /// the slot no face after a flip, so the view builds the block again in the new arm and the region re-diffs it in place under its key. The read
+            /// is tracked (the slot that reads it re-renders on a flip).</summary>
+            public Element? Face
+            {
+                get => _faceNarrow == Narrow ? _face : null;
+                set { _face = value; _faceNarrow = _r.NarrowArm; }
+            }
+            Element? _face;
+            bool _faceNarrow;
+
+            /// <inheritdoc />
+            public int AlbumSlot => _slot;
+
+            /// <inheritdoc />
+            public Loadable<int> Load => _load;
+
+            /// <summary>The reader's arm now, read TRACKED: the block is built in it, and a flip rebuilds the block in place (<see cref="Face"/>).</summary>
+            public bool Narrow => _r.NarrowArm;
+            public ReaderRows Rows => RowsFor(Narrow);
+
+            /// <inheritdoc />
+            public Func<ContextMenuModel?> Menu { get; }
 
             /// <summary>The head root's bounds callback — the chrome truthfulness check (<see cref="CheckChrome"/>) —
             /// allocated once per cell like every other delegate here, and the last disagreement it logged.</summary>
-            readonly Action<RectF> _onHeadBounds;
+            public Action<RectF> OnHeadBounds { get; }
+
+            /// <inheritdoc />
+            public Action Open { get; }
+
+            /// <inheritdoc />
+            public Action PlayAlbum { get; }
+
+            /// <inheritdoc />
+            public Action Retry { get; }
+
             float _loggedDeclared = float.NaN, _loggedMeasured = float.NaN;
 
             public BlockCell(Reader r, ReaderBlock b)
@@ -1399,22 +1094,26 @@ public readonly partial struct Artist
                 _r = r;
                 _slot = b.AlbumSlot;
                 Block = b;
-                _menu = () => { var a = new Album(_slot); return a.IsValid ? Album.HeroMenu(a, _r._overlay) : null; };
-                _onHeadBounds = rect => CheckChrome("head", _slot, _r._narrow ? "stacked" : "inline",
-                                                    ReaderShape.HeadHeight(_r._narrow), rect.H,
-                                                    ref _loggedDeclared, ref _loggedMeasured);
+                int slot = _slot;
+                Menu = () => { var a = new Album(slot); return a.IsValid ? Album.HeroMenu(a, _r._overlay) : null; };
+                OnHeadBounds = rect => CheckChrome("head", slot, _r._narrow ? "stacked" : "inline",
+                                                   ReaderShape.HeadHeight(_r._narrow), rect.H,
+                                                   ref _loggedDeclared, ref _loggedMeasured);
+                Open = () => { var al = new Album(slot); if (al.IsValid) Shell.GoTo(Shell.For(al.Uri, al.Title)); };
+                PlayAlbum = () => Playback.PlayOrToggleContext(LibraryRows.IdOf(EntityKind.Album, slot));
+                Retry = () => Entities.RefreshEdge(FetchEdge.AlbumTracks, slot);
                 // CONSTRUCTED in its answer state, never written into it: this runs inside the list's render.
                 bool answered = Verdict(out int version);
                 _version = answered ? version : int.MinValue;
                 _load = answered ? Loadable<int>.Ready(version) : Loadable<int>.Pending(0);
-                // The shimmer source is this SAME block with placeholder fields (SkeletonDeriver derives the bars from
-                // it), the content the real one. Both read the cell's live block, so neither is ever stale.
-                // smoothResize OFF (deviation 8): the region sits inside a MEASURED virtualized item whose extent the
-                // shape already states exactly, and a Reflow size track there clips the region and fights the table.
-                Region = Skel.Region(_load, () => Build(real: false), _ => Build(real: true), SkelReveal.FadeOnly,
-                                     smoothResize: false)
-                    with { Key = "blk:" + _slot.ToString(CultureInfo.InvariantCulture) };
             }
+
+            /// <inheritdoc />
+            public ReadOnlySpan<int> LikedRows() => _liked.AsSpan(0, _likedCount);
+
+            /// <inheritdoc />
+            public void PlayTrack(int trackSlot)
+                => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, _slot), LibraryRows.IdOf(EntityKind.Track, trackSlot));
 
             /// <summary>Republish readiness — from the owner's EFFECT, the only place that writes. Ready/Failed BOTH
             /// resolve the region to Ready: a failed tracklist is an answer the block paints itself (the head plus the
@@ -1493,142 +1192,18 @@ public readonly partial struct Artist
                 _likedCount = Math.Min(n, _liked.Length);
             }
 
-            /// <summary>One block: cover + "2022 · Album" caption | head (title link · meta · ▶ ♥ ⋯) + rows.
-            /// <paramref name="real"/> false is the COUNTED skeleton — the same geometry with placeholder boxes and
-            /// <see cref="ReaderBlock.Rows"/> shimmer rows, which is what keeps <see cref="ReaderShape.ExtentOf"/> exact
-            /// across the reveal. A failed tracklist replaces the rows with the Error voice's own Retry strip.</summary>
-            Element Build(bool real)
-            {
-                var b = Block;
-                var a = new Album(_slot);
-                int slot = _slot;
-                bool narrow = _r._narrow;                          // the arm this mount froze (it is a list mount input)
-                float cover = ReaderShape.CoverOf(narrow);
-                bool valid = a.IsValid;
-                Action go = () => { var al = new Album(slot); if (al.IsValid) Shell.GoTo(Shell.For(al.Uri, al.Title)); };
-                string uri = valid ? a.Uri.Text : "";
-                string title = valid && a.Knows(AlbumFields.Title) ? a.Title : "";
-                string caption = (valid && a.Knows(AlbumFields.Year) && a.Year > 0
-                                    ? a.Year.ToString(CultureInfo.InvariantCulture) + " · " : "")
-                               + Detail.Text.KindLabel(valid && a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album);
-
-                Element rows;
-                if (real && b.Failed)
-                {
-                    rows = Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact,
-                        title: Loc.Get(Strings.Library.SongsFailed),
-                        onAction: () => Entities.RefreshEdge(FetchEdge.AlbumTracks, slot));
-                }
-                else
-                {
-                    // A LIKED-ONLY block lists the liked rows and nothing else — you did not save this record, so the
-                    // rest of it is not yours to show. The row NUMBER is the position in that list, not the album's
-                    // track number; the play action is still the track in the ALBUM's context, which is what makes the
-                    // rest of the record reachable from the queue.
-                    var tracks = b.LikedOnly ? _liked.AsSpan(0, _likedCount) : valid ? a.TrackSlots : default;
-                    int n = real ? tracks.Length : Math.Max(1, b.Rows);
-                    var kids = new Element[n];
-                    for (int r = 0; r < n; r++)
-                    {
-                        if (!real)
-                        {
-                            kids[r] = Track.ShimmerRow(in ReaderCols, ReaderTracks, ReaderShape.RowH, 0f)
-                                with { Key = "sh:" + r.ToString(CultureInfo.InvariantCulture) };
-                            continue;
-                        }
-                        int trackSlot = tracks[r];
-                        // ZERO-based: `Track.NumberCell` prints `displayIndex + 1` (Track.UI.cs:387). Passing r + 1 here
-                        // numbered every block from 2.
-                        kids[r] = Track.EagerRow(new Track(trackSlot), r, in ReaderCols, ReaderTracks, ReaderShape.RowH,
-                            () => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, slot),
-                                                       LibraryRows.IdOf(EntityKind.Track, trackSlot)),
-                            in ReaderRowOptions)
-                            with { Key = "t:" + trackSlot.ToString(CultureInfo.InvariantCulture) };
-                    }
-                    rows = new BoxEl
-                    {
-                        Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, ReaderShape.RowsPadBottom),
-                        Children = kids,
-                    };
-                }
-
-                // A plain stretched column: on the BOUND path the block hangs under the scroller's content node (through
-                // the slot's layout-transparent anchors), and that is a column with `AlignItems.Stretch` — the full
-                // width comes for free. The old `Grow 1 / Basis 0` (deviation 7) was for the unbound selector skin's ROW
-                // wrapper, which no longer exists; on a column it would aim at the HEIGHT and zero the block.
-                return new BoxEl
-                {
-                    Direction = 1, Shrink = 0f, MinWidth = 0f,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            // `ReaderShape`'s own fields, so `BodyWidth` and `ExtentOf` describe THIS row by identity.
-                            Direction = 0, Gap = ReaderShape.BlockCoverGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
-                            Padding = new Edges4(ReaderShape.BlockPadLeft, ReaderShape.BlockPadTop, ReaderShape.BlockPadRight, ReaderShape.BlockPadBottom),
-                            Children =
-                            [
-                                new BoxEl
-                                {
-                                    Direction = 1, Gap = ReaderShape.CoverCaptionGap, Shrink = 0f, Width = cover,
-                                    // STICKY COVER (prototype `.block .side{position:sticky; top:64px}`): the art and its
-                                    // caption ride down the block while its tracks scroll past, and stop at the block's
-                                    // own bottom edge. The sticky clamps to the containing block — here the row above
-                                    // (its immediate parent), which is `AlignItems.Start` so this column keeps its content
-                                    // height and the clamp has real room. The inset is the pinned rail plus the block's
-                                    // top pad, so the cover comes to rest exactly where an unscrolled block draws it.
-                                    // The column carries no static `Transform`: a transform-owning scroll effect and a
-                                    // static matrix on one node is a hard reconciler error, not a silent fight.
-                                    // It is declared on BOTH faces because `Build` is one function, and the SHIMMER face
-                                    // harmlessly loses it: `SkeletonDeriver`'s container arm rewrites a box with
-                                    // children as `ScrollEffects = []` (engine `Hooks/SkeletonDeriver.cs`), so the
-                                    // skeleton cover simply does not stick. It cannot throw and it cannot mis-bake.
-                                    ScrollEffects = [new ScrollEffectSpec(ScrollEffect.Sticky(SubRailH + ReaderShape.BlockPadTop))],
-                                    Children =
-                                    [
-                                        new BoxEl
-                                        {
-                                            Width = cover, Height = cover, Corners = Radii.CardAll, ClipToBounds = true,
-                                            Shadow = Elevation.Card, Cursor = valid ? CursorId.Hand : CursorId.Arrow,
-                                            Role = valid ? AutomationRole.Button : AutomationRole.None,
-                                            OnClick = valid ? go : null,
-                                            Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null,
-                                                                         cover, cover, Radii.Card, decodePx: 256)],
-                                        },
-                                        Ui.Caption(caption) with
-                                        {
-                                            Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                                            LineHeight = ReaderShape.CaptionLine,
-                                        },
-                                    ],
-                                },
-                                new BoxEl
-                                {
-                                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                                    Children = [real ? Head(a, slot, uri, title, go, narrow) : ShimmerHead(narrow), rows],
-                                },
-                            ],
-                        },
-                        new BoxEl
-                        {
-                            Height = ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault,
-                            Margin = new Edges4(Spacing.XL, 0f, Spacing.XL, 0f),
-                        },
-                    ],
-                };
-            }
-
             /// <summary>The head's meta line: "3 songs · 10 min" (deviation 4), or a liked-only block's own count.</summary>
-            string Meta(Album a, int slot)
+            public string Meta()
             {
                 // A liked-only block does not READ the album's tracklist, so it must not describe one: "2 liked
                 // songs" is the whole truth about what is under this head, where `AlbumMeta` would have claimed the
                 // record's own length off rows this block never asked for. `nLikedSongs` is an ICU plural and
                 // renders "1 liked song" itself — no `== 1` arm, in any locale's plural categories.
                 if (Block.LikedOnly) return Strings.Library.NLikedSongs(_likedCount);
+                var a = new Album(_slot);
                 var slots = a.IsValid ? a.TrackSlots : default;
                 long totalMs = 0;
-                bool durationsKnown = Entities.Current.Edges.AlbumTracks.State(slot) == EdgeState.Complete;
+                bool durationsKnown = Entities.Current.Edges.AlbumTracks.State(_slot) == EdgeState.Complete;
                 for (int i = 0; i < slots.Length; i++)
                 {
                     var t = new Track(slots[i]);
@@ -1637,149 +1212,6 @@ public readonly partial struct Artist
                 }
                 // "3 songs · 10 min": the cover's caption states the year (W3).
                 return Detail.Text.AlbumMeta(slots.Length, totalMs, durationsKnown) ?? "";
-            }
-
-            /// <summary>The album head, in its arm (#158). INLINE (≥ 640): one row — the title slot is the row's flexible
-            /// filler, floored at <see cref="ReaderShape.TitleFloorW"/>, then the meta beside the three circles; the meta
-            /// shrinks before the title would go under its floor, and the circles never do. STACKED (narrow): the title
-            /// on a row of its own, over the meta and the circles right-aligned beneath it, so the title gets the whole
-            /// body — the inline row left it 3 DIP at a 391-DIP reader ("P…") and overflowed outright at 360, clipping
-            /// the ⋯ off the pane. The meta sits beside the circles in BOTH arms, a deliberate change from W3's "meta
-            /// beside the title": the title is the flexible filler now, which is what lets its tooltip wrapper live in a
-            /// slot the flex algorithm sizes (<see cref="TitleSlot"/>).
-            /// <para>Both roots DECLARE <see cref="ReaderShape.HeadHeight"/> as their <c>Height</c> — the number
-            /// <see cref="ReaderShape.ExtentOf"/> adds — not as a <c>MinHeight</c>: a locale whose metrics overrun keeps
-            /// the stated box, it never reflows the block. They do NOT clip: the title link's hover plate overhangs the
-            /// root by its −4 margin and its focus ring outsets past the stacked root's top edge, and with stated heights
-            /// and a width budget that cannot overflow (the head tests pin it) a clip would only shear those.</para></summary>
-            Element Head(Album a, int slot, string uri, string title, Action go, bool narrow)
-            {
-                Element metaEl = Ui.Caption(Meta(a, slot)) with
-                {
-                    Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
-                };
-                Element play = Controls.Named(Controls.PlayFab(() => Playback.PlayOrToggleContext(LibraryRows.IdOf(EntityKind.Album, slot)),
-                                                               Icons.Play, ReaderShape.HeadCircle),
-                                              Strings.Library.PlayAlbum(title));
-                Element save = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ReaderShape.HeadGlyph, Box = ReaderShape.HeadCircle })
-                               with { Key = "save:" + uri };
-                Element more = Detail.MoreButton(_menu, ReaderShape.HeadCircle, ReaderShape.HeadGlyph, round: true);
-                Element titleSlot = TitleSlot(title, go, narrow);
-                if (!narrow)
-                    return new BoxEl
-                    {
-                        Direction = 0, Gap = ReaderShape.HeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                        Height = ReaderShape.HeadH, OnBoundsChanged = _onHeadBounds,
-                        Children = [titleSlot, metaEl, play, save, more],        // title fills (floor 120) → meta shrinks → circles never
-                    };
-                return new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, Height = ReaderShape.HeadStackedH, OnBoundsChanged = _onHeadBounds,
-                    Children =
-                    [
-                        titleSlot,                                               // HeadTitleRowH tall, stretched to the body
-                        new BoxEl
-                        {
-                            // `Justify End`, not a spacer: a spacer would charge the meta one more gap than
-                            // `ReaderShape.StackedMetaAvailW` says it gets.
-                            Direction = 0, Gap = ReaderShape.HeadGap, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                            MinWidth = 0f, Height = ReaderShape.HeadCircle,
-                            Margin = new Edges4(0f, ReaderShape.HeadStackGap, 0f, ReaderShape.HeadStackPadBottom),
-                            Children = [metaEl, play, save, more],
-                        },
-                    ],
-                };
-            }
-
-            /// <summary>The title link inside its tooltip, inside a slot the FLEX algorithm sizes: inline it is the head
-            /// row's `Grow 1 / Basis 0` filler, floored at <see cref="ReaderShape.TitleFloorW"/>; stacked it is a column
-            /// child of the stated row height, cross-stretched to the body. In both, the ToolTip wrapper is a COLUMN
-            /// child — stretched to the slot's width; a wrapper is `Shrink 0` and can never be a shrinking ROW child (the
-            /// engine's rule 11) — and the link inside it is `Shrink 1 / MinWidth 0`, so a short title keeps a
-            /// content-hugging hover plate, a long one ellipsizes, and only a trimmed one gets a tooltip
-            /// (<c>Controls.TrimTip</c>).</summary>
-            static Element TitleSlot(string title, Action go, bool narrow)
-            {
-                TextEl text = new TextEl(title)
-                {
-                    Size = 20f, LineHeight = ReaderShape.HeadTitleLine, Weight = 600, Color = Tok.TextPrimary,
-                    HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                };
-                // 4 DIP of padding each side, the LEFT one cancelled by a −4 margin: the hover plate overhangs and the text
-                // stays flush with the rows below; 2 + 26 + 2 is the 30-DIP title row.
-                Element link = new BoxEl
-                {
-                    Corners = Radii.ControlAll, MinWidth = 0f, Shrink = 1f,
-                    Padding = new Edges4(ReaderShape.HeadLinkInsetX, ReaderShape.HeadLinkInsetY / 2f,
-                                         ReaderShape.HeadLinkInsetX, ReaderShape.HeadLinkInsetY / 2f),
-                    Margin = new Edges4(-ReaderShape.HeadLinkInsetX, 0f, 0f, 0f),
-                    Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = go,
-                    Children = [text],
-                }.Interactive(Interaction.Subtle);
-                return new BoxEl
-                {
-                    Direction = 1, Justify = FlexJustify.Center,
-                    Grow = narrow ? 0f : 1f, Basis = narrow ? float.NaN : 0f,
-                    MinWidth = narrow ? 0f : ReaderShape.TitleFloorW,
-                    Height = narrow ? ReaderShape.HeadTitleRowH : float.NaN,
-                    Children = [Controls.TrimTip(link, title, text)],
-                };
-            }
-
-            /// <summary>The head's SHIMMER face, per arm: <see cref="Head"/>'s geometry with sized boxes for the title, the
-            /// meta and the three circles (deviation 5 — the deriver needs a measurable shape, and `Skel.Region` forbids
-            /// mounting stateful components, the tooltip host included, during load). Same stated heights, so the reveal
-            /// moves nothing. The title and meta bars ride in clipping CONTAINER slots shaped like the real ones:
-            /// `SkeletonDeriver` keeps a container's layout but turns a childless box into a bar that keeps its
-            /// <c>Width</c> and drops its <c>Shrink</c> — and a childless `Grow` spacer into a visible 14-px pill.</summary>
-            Element ShimmerHead(bool narrow)
-            {
-                static Element Circle() => new BoxEl
-                {
-                    Width = ReaderShape.HeadCircle, Height = ReaderShape.HeadCircle, Shrink = 0f,
-                    Corners = Radii.Circle(ReaderShape.HeadCircle),
-                };
-                Element metaSlot = new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
-                    Children = [new BoxEl { Width = 90f, Height = 16f, Corners = Radii.ControlAll }],
-                };
-                Element titleBar = new BoxEl { Width = 180f, Height = ReaderShape.HeadTitleLine, Corners = Radii.ControlAll };
-                if (!narrow)
-                    return new BoxEl
-                    {
-                        Direction = 0, Gap = ReaderShape.HeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                        Height = ReaderShape.HeadH, OnBoundsChanged = _onHeadBounds,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f,
-                                MinWidth = ReaderShape.TitleFloorW, ClipToBounds = true, Children = [titleBar],
-                            },
-                            metaSlot, Circle(), Circle(), Circle(),
-                        ],
-                    };
-                return new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, Height = ReaderShape.HeadStackedH, OnBoundsChanged = _onHeadBounds,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
-                            Height = ReaderShape.HeadTitleRowH, Children = [titleBar],
-                        },
-                        new BoxEl
-                        {
-                            Direction = 0, Gap = ReaderShape.HeadGap, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                            MinWidth = 0f, Height = ReaderShape.HeadCircle,
-                            Margin = new Edges4(0f, ReaderShape.HeadStackGap, 0f, ReaderShape.HeadStackPadBottom),
-                            Children = [metaSlot, Circle(), Circle(), Circle()],
-                        },
-                    ],
-                };
             }
         }
     }

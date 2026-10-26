@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Discography, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="none" ctx="The Weeknd" items="Overview|Albums|Singles &amp; EPs|Compilations|About" sub-sel="{{none}}" actions="artist" lower="{{lower}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; flex-direction: column; flex-shrink: 0">
+      <span style="font-size: 12px; line-height: 16px; color: var(--t2)"><a href="#" style="color: var(--acct)">The Weeknd</a> · 34 releases</span>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">Discography</h1>
+    </div>
+    <div role="group" aria-label="Release type" style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent)">
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><button aria-pressed="{{c.pressed}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+    </div>
+    <div style="display: flex; align-items: center; gap: 4px; height: 40px; flex-shrink: 0; border-bottom: 1px solid var(--div); padding-bottom: 4px">
+      <button style="height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">Newest first<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="List" aria-pressed="true" style="width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: var(--sub); color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Grid" aria-pressed="false" style="width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div style="display: flex; flex-direction: column; margin: -6px -4px 0 -4px">
+      <section aria-label="Hurry Up Tomorrow" style="display: flex; flex-direction: column; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); padding-bottom: 4px">
+        <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; height: 52px; padding-left: 4px">
+          <span style="width: 40px; height: 40px; border-radius: 4px; background: linear-gradient(160deg, #6a3434, #2a1a1a); display: block"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="font-size: 14px; line-height: 20px; font-weight: 600; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Hurry Up Tomorrow</a><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album · 2025 · 22 songs</span></span>
+          <button aria-label="Hide songs of Hurry Up Tomorrow" aria-expanded="true" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <sc-for list="{{tracks}}" as="r" hint-placeholder-count="5"><div role="row" style="{{r.row}}"><span style="font-size: 14px; color: var(--t3); font-variant-numeric: tabular-nums; padding-left: 8px">{{r.n}}</span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><button aria-label="More for {{r.t}}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button></div></sc-for>
+        <a href="#" style="height: 40px; display: flex; align-items: center; padding-left: 12px; font-size: 14px; color: var(--acct)">Show all 22 songs</a>
+      </section>
+      <sc-for list="{{collapsed}}" as="r" hint-placeholder-count="4"><div role="row" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="font-size: 14px; line-height: 20px; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</a><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap">{{r.meta}}<sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="On this PC" role="img"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span></span><button aria-label="Show songs of {{r.t}}" aria-expanded="false" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div></sc-for>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const chips = ['All', 'Albums', 'Singles & EPs', 'Compilations'].map((l, i) => ({ label: l, pressed: i === 0 ? 'true' : 'false',
+    style: 'height: 40px; flex-shrink: 0; padding: 0 14px; border-radius: 4px; font: inherit; font-size: 14px; white-space: nowrap; ' + (i === 0 ? 'border: 1px solid transparent; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  const tracks = ['Wake Me Up', 'Cry for Me', 'I Can’t Wait to Get There', 'São Paulo', 'Until We’re Skin & Bones'].map((t, i) => ({ n: String(i + 1), t: t,
+    row: 'display: grid; grid-template-columns: 36px minmax(0, 1fr) 40px; align-items: center; height: 40px; border-radius: 4px; ' + (i === 1 ? 'background: var(--sub)' : '') }));
+  const collapsed = [['Dawn FM', 'Album · 2022 · 16 songs', '#2a3a5a', false], ['Dancing in the Flames', 'Single · 2024', '#5a3a2a', false], ['After Hours', 'Album · 2020 · 14 songs', '#5a2a3a', true], ['Timeless', 'Single · 2024', '#3a3a3a', false]].map((d) => ({ t: d[0], meta: d[1], cached: d[3],
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; height: 52px; margin-top: 2px; padding-left: 4px; border-radius: 4px',
+    art: 'width: 40px; height: 40px; border-radius: 4px; display: block; background: ' + d[2] }));
+  return { vars, theme, accent, chips, tracks, collapsed, none: -1, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

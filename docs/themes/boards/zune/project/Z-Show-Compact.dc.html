@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune show: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 480px; background: linear-gradient(180deg, #24342b 0%, #1d2621 45%, #161616 100%)"></div>
+  <div style="position: relative; flex-shrink: 0; display: flex; flex-direction: column">
+    <dc-import name="Z-Part-TitleBar" tier="compact" crumb="library › podcasts › the rest is football" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+    <dc-import name="Z-Part-Band" tier="compact" section="library" sub="episodes,about" on="episodes" title="the rest is football" actions="following" collapsed="false" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 10px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92">the rest is football</div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 80px; bottom: 0; display: flex; flex-direction: column">
+      <div style="display: flex; gap: 16px; align-items: flex-end; flex-shrink: 0">
+        <span style="width: 120px; height: 120px; border-radius: 2px; background: #2f4a3b; display: block; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.06)"></span>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1; padding-bottom: 2px">
+          <span style="font-size: 12px; line-height: 16px; color: #7a7a7a">podcast · exclusive</span>
+          <a href="#" style="font-size: 18px; line-height: 24px; color: #ffffff">Goalhanger</a>
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">4.8 · 12k ratings · yours 5</span>
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">812 episodes · daily</span>
+          <span style="display: flex; flex-direction: column; gap: 4px; padding-top: 4px"><span style="height: 3px; background: rgba(255,255,255,0.12); display: flex"><span style="{{playedBar}}"></span><span style="{{progressBar}}"></span></span><span style="font-size: 11px; line-height: 14px; color: #7a7a7a">120 played · 2 in progress · 690 to go</span></span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 14px; align-items: center; height: 48px; margin-top: 16px; flex-shrink: 0; font-size: 14px">
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; min-width: 0">
+          <span style="{{resumeRing}}"><span style="{{resumeDisc}}">▶</span></span>
+          <span style="display: flex; flex-direction: column; align-items: flex-start; line-height: 18px"><span>resume</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap">#808 · 6 min left</span></span>
+        </button>
+        <span style="flex-grow: 1"></span>
+        <button style="{{followPill}}">following</button>
+        <button aria-label="share" style="{{ring}}">↗</button>
+        <button aria-label="more" style="{{ring}}">⋯</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 20px; height: 40px; margin-top: 8px; flex-shrink: 0; font-size: 14px; white-space: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent)">
+        <a href="#" style="color: #ffffff; font-weight: 600; flex-shrink: 0">all <span style="color: #7a7a7a; font-weight: 400">812</span></a>
+        <a href="#" style="flex-shrink: 0">unplayed <span style="color: #7a7a7a">690</span></a>
+        <a href="#" style="flex-shrink: 0">in progress <span style="color: #7a7a7a">2</span></a>
+        <a href="#" style="flex-shrink: 0">played <span style="color: #7a7a7a">120</span></a>
+        <a href="#" style="flex-shrink: 0">newest</a>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 12px; height: 36px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">october</span><span style="font-size: 13px; color: #7a7a7a">9</span></div>
+      <sc-for list="{{episodes}}" as="e" hint-placeholder-count="4">
+        <a href="#" style="{{e.row}}">
+          <span style="{{e.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 3px">
+            <span style="{{e.title}}">{{e.name}}</span>
+            <span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.meta}}</span>
+            <span style="display: flex; align-items: center; gap: 8px; height: 14px"><span style="{{e.track}}"><span style="{{e.fill}}"></span></span><span style="{{e.state}}">{{e.stateText}}</span></span>
+          </span>
+          <span style="{{e.action}}">{{e.actionGlyph}}</span>
+        </a>
+      </sc-for>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" kind="podcast" title="Deep dive: the 1993 title race" artist="The Rest Is Football" art="#2f4a3b" progress="87" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const eps = [
+    ['Why the Premier League keeps changing', '#812 · 9 oct · 48 min', 'new', 'new', 0, false],
+    ['Deep dive: the 1993 title race', '#808 · 7 oct · 47 min', 'progress', '6 min left', 87, true],
+    ['Mailbag: your questions, our excuses', '#807 · 6 oct · 61 min', 'played', '✓ played', 0, false],
+    ['Transfer window verdicts', '#806 · 5 oct · 44 min', 'none', '', 0, false],
+  ];
+  const episodes = eps.map((d) => ({
+    name: d[0], meta: d[1], stateText: d[3],
+    row: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; gap: 12px; align-items: center; height: 84px; flex-shrink: 0; color: #ffffff; margin: 0 -16px; padding: 0 8px 0 16px' + (d[2] === 'played' ? '; opacity: 0.58' : '') + (d[5] ? '; background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 56px; height: 56px; border-radius: 2px; background: ' + (d[5] ? '#2f4a3b' : '#2a3f33') + '; display: block',
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[2] === 'progress' ? accent : '#ffffff'),
+    track: d[2] === 'progress' ? 'width: 64px; height: 2px; background: rgba(255,255,255,0.14); display: block; flex-shrink: 0' : 'display: none',
+    fill: 'width: ' + d[4] + '%; height: 2px; background: ' + accent + '; display: block',
+    state: 'font-size: 11px; line-height: 14px; color: ' + (d[2] === 'progress' || d[2] === 'new' ? accent : '#7a7a7a'),
+    actionGlyph: d[5] ? '▮▮' : (d[2] === 'played' ? '↻' : '▶'),
+    action: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid ' + (d[5] ? accent : '#ffffff') + '; color: ' + (d[5] ? accent : '#ffffff'),
+  }));
+  return {
+    accent, episodes,
+    playedBar: 'width: 15%; height: 3px; background: #ffffff; display: block',
+    progressBar: 'width: 1%; height: 3px; background: ' + accent + '; display: block',
+    resumeRing: 'width: 48px; height: 48px; box-sizing: border-box; border-radius: 24px; padding: 3px; background: conic-gradient(' + accent + ' 0 87%, rgba(255,255,255,0.16) 87% 100%); display: flex; flex-shrink: 0',
+    resumeDisc: 'width: 42px; height: 42px; box-sizing: border-box; border-radius: 21px; border: 3px solid #1c2520; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    followPill: 'height: 40px; padding: 0 14px; box-sizing: border-box; border-radius: 20px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px; flex-shrink: 0',
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 13px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

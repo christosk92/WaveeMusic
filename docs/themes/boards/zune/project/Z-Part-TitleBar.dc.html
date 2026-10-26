@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune part: title bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{root}}">
+  <span style="{{wordStyle}}">wavee</span>
+  <button aria-label="back" style="width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+  <sc-if value="{{hasCrumb}}" hint-placeholder-val="{{ false }}"><span style="{{crumbStyle}}">{{crumb}}</span></sc-if>
+  <span style="flex-grow: 1"></span>
+  <sc-if value="{{pill}}" hint-placeholder-val="{{ true }}">
+    <label style="{{pillStyle}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" value="{{query}}" style="border: 0; background: transparent; color: #fff; font: inherit; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #7a7a7a; border: 1px solid rgba(255,255,255,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="{{acctStyle}}"><span style="{{avatar}}"></span>christos</button>
+    <button aria-label="notifications" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0; position: relative"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg><span style="{{dot}}"></span></button>
+  </sc-if>
+  <sc-if value="{{icons}}" hint-placeholder-val="{{ false }}">
+    <button aria-label="search" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
+    <button aria-label="account" style="width: 40px; height: 40px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span></button>
+  </sc-if>
+  <span style="display: flex; color: #a8a8a8; font-size: 12px; flex-shrink: 0">
+    <span style="{{cap}}">─</span><span style="{{cap}}">☐</span><span style="{{cap}}">✕</span>
+  </span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tier":{"editor":"enum","default":"standard","options":["compact","small","standard","huge","4k"]},"crumb":{"editor":null},"query":{"editor":null},"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":48}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const tier = this.props.tier ?? 'standard';
+  const crumb = this.props.crumb ?? '';
+  const query = this.props.query ?? '';
+  const big = tier === '4k';
+  const pill = tier === 'standard' || tier === 'huge' || tier === '4k';
+  const pad = tier === 'compact' ? 16 : tier === 'small' ? 24 : big ? 64 : 48;
+  const h = big ? 56 : 48;
+  const pillW = tier === 'huge' ? 320 : big ? 400 : 220;
+  return {
+    crumb, query, pill, icons: !pill,
+    hasCrumb: crumb.length > 0 && tier !== 'compact',
+    root: 'width: 100%; height: ' + h + 'px; box-sizing: border-box; flex-shrink: 0; display: flex; align-items: center; gap: ' + (tier === 'compact' ? 4 : 12) + 'px; padding: 0 0 0 ' + pad + 'px; color: #ffffff; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; position: relative',
+    wordStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #a8a8a8; flex-shrink: 0',
+    crumbStyle: 'font-size: ' + (big ? 15 : 13) + 'px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0',
+    pillStyle: 'display: flex; align-items: center; gap: 8px; width: ' + pillW + 'px; height: ' + (big ? 40 : 32) + 'px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: ' + (big ? 20 : 16) + 'px; border: 1px solid ' + (query ? '#ffffff' : 'rgba(255,255,255,0.18)') + '; color: #7a7a7a; font-size: ' + (big ? 15 : 13) + 'px; flex-shrink: 0',
+    acctStyle: 'display: flex; align-items: center; gap: 8px; height: 40px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: ' + (big ? 15 : 13) + 'px; padding: 0 8px; margin-left: 8px; flex-shrink: 0',
+    avatar: 'width: ' + (big ? 28 : 24) + 'px; height: ' + (big ? 28 : 24) + 'px; border-radius: 14px; background: #5b6b3b; display: block',
+    dot: 'position: absolute; right: 9px; top: 9px; width: 6px; height: 6px; border-radius: 3px; background: ' + accent,
+    cap: 'width: 46px; height: ' + h + 'px; display: flex; align-items: center; justify-content: center',
+  };
+}
+}
+</script>
+</body>
+</html>

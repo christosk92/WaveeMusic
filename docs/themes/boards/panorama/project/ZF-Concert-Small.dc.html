@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concert, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="browse" ctx="The Midnight · Live" items="Top|For you|Genres|Charts|Concerts" sub-sel="{{four}}" lower="{{lower}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 16px 24px 0 24px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 20px; align-items: flex-end; flex-shrink: 0">
+      <span aria-hidden="true" style="width: 112px; height: 112px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #8b5a2f, #3a2418 70%)"></span>
+      <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Concert · <span style="color: var(--acct)">On sale</span> · Sat 14 Nov · 20:00 · <a href="#" style="color: var(--acct)">Paradiso</a>, Amsterdam</span>
+        <h1 title="The Midnight · Live" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">The Midnight · Live</h1>
+        <span style="display: flex; gap: 8px; align-items: center">
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px">Buy tickets<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M11.5 9.5v4h-9v-9h4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-pressed="true" style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct)"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="currentColor"></path></svg>Interested</button>
+          <button aria-label="Add to calendar" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"></rect><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+          <button aria-label="Share" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 32px; min-height: 0">
+      <section aria-label="Tickets" style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: baseline; gap: 10px; height: 32px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Tickets</h2><span style="font-size: 12px; color: var(--t2)">Doors 19:00 · ages 18+</span></div>
+        <sc-for list="{{offers}}" as="o" hint-placeholder-count="3"><a href="#" style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; height: 44px; padding: 0 8px; color: var(--t1); border-top: 1px solid var(--div)"><span style="font-size: 14px; line-height: 20px">{{o.name}}</span><span style="font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{o.price}}</span></a></sc-for>
+      </section>
+      <section aria-label="Lineup" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: baseline; gap: 10px; height: 32px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Lineup</h2><span style="font-size: 12px; color: var(--t2)">2 artists</span></div>
+        <sc-for list="{{lineup}}" as="l" hint-placeholder-count="2"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="{{l.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{l.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{l.role}}</span></span><span style="font-size: 12px; color: var(--acct)">{{l.tag}}</span></a></sc-for>
+        <span style="display: flex; align-items: center; gap: 8px; padding: 10px 8px 0 8px; font-size: 12px; line-height: 16px; color: var(--t2)"><span style="width: 20px; height: 20px; border-radius: 10px; background: #6b4a7a"></span><span><a href="#" style="color: var(--acct)">emma.k</a> and <a href="#" style="color: var(--acct)">Mila</a> are interested</span></span>
+      </section>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="music" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const offers = [['Ticketmaster', 'from €45'], ['Eventim', 'from €48'], ['Paradiso box office', '€45 at the door']].map((d) => ({ name: d[0], price: d[1] }));
+  const lineup = [['The Midnight', 'Headliner · 2.1M monthly listeners', '#6b4a2f', 'Following'], ['FM-84', 'Support · 1.3M monthly listeners', '#4a3b2f', '']].map((d) => ({ name: d[0], role: d[1], tag: d[3], art: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[2] }));
+  return { vars, theme, accent, offers, lineup, four: 4, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

@@ -7,7 +7,7 @@
 // Offline (no account, no network):
 //   Wavee.exe --fake --profile <scratch dir> --frame-bench[=a,b] [--bench-sec 10] [--bench-warmup-sec 2] --probe-out <dir>
 // Real data (the profile's own account, CDN images and audio, real lyrics; takes over that account's playback):
-//   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] --probe-out <dir>
+//   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] [--bench-queue] --probe-out <dir>
 // Real data is never implied: without `--fake` the arm refuses unless `--bench-real` is on the line, and `--bench-real` refuses
 // unless `--profile` is too (it plays on that profile's account and sets that profile's settings, restored at the end).
 //
@@ -19,12 +19,11 @@
 // scale — and written as `<scenario>-{ui,render,gpu,memory,audio}.csv` + a binary `<scenario>.fgl`, with the summary
 // (Diagnostics.FrameBench.cs, pure) in `frame-bench-summary.json` and the stdout table. Pass-granular GPU timing is opt-in
 // (`--bench-gpu-passes`: it adds timestamp queries at every pass boundary) and then measures its own cost (gpu-pass-overhead).
-// The window is made topmost: a covered window stands its presents down, and a bench launched from a terminal opens behind it.
+// The window is placed by PlaceProbeWindow (Diagnostics.Probe.MemSoak.cs): off every monitor, or `--probe-monitor N|secondary`; never topmost.
 
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using FluentGpu;
 using FluentGpu.Foundation;
 using FluentGpu.Hosting;
 using FluentGpu.Pal;
@@ -59,15 +58,16 @@ public static partial class Diagnostics
         {
             var o = s_frameBench;
             if (!o.Enabled) return false;
+            ApplyInlineArg();
             if (window is not Win32Window w || device is not D3D12Device d3d) { Say("[frame-bench] unavailable: requires Win32Window + D3D12Device"); return true; }
             s_benchDevice = d3d;
             bool fake = Platform.Args.Fake;
             if (FrameBenchOptions.RealRefusal(fake, o.Real, Platform.ProfileRoot) is { } refusal) { Say("[frame-bench] refusing: " + refusal); return true; }
-            foreach (string bad in FrameBenchOptions.UnknownNames(Environment.GetCommandLineArgs()))
+            foreach (string bad in FrameBenchOptions.UnknownNames(Platform.Args.Argv))
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
 
-            SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /*NOSIZE|NOMOVE|NOACTIVATE*/);
+            // The window was placed by PlaceProbeWindow (off every monitor, or --probe-monitor N|secondary): never topmost, never focused.
             if (!PumpUntil(host, w, static () => NavigationFrameWatch.NavigationId > 0, 20)) { Say("[frame-bench] the shell never activated a route"); return true; }
             bool real = !fake;
             int quality = Platform.Settings.Get(Platform.Keys.PlaybackQuality);
@@ -86,6 +86,11 @@ public static partial class Diagnostics
 
             bool passTiming = host.GpuPassTimingEnabled;
             host.GpuPassTimingEnabled = o.GpuPasses;
+            // `--bench-gpu-work` (with --bench-gpu-passes): the pipeline-statistics work census — PS invocations per composite phase in
+            // the GPU CSV and <scenario>-items.tsv (which item shades what). Off for timing runs: the queries cost GPU time of their own.
+            bool gpuWork = o.GpuPasses && Array.IndexOf(Platform.Args.Argv, "--bench-gpu-work") >= 0;
+            d3d.GpuWorkCensusEnabled = gpuWork;
+            d3d.CompositeItemCensusEvery = gpuWork ? 30 : 0;
             FrameLedger.Enable();
             FrameLedger.Attach(host);
             var runMark = FrameLedger.Mark();
@@ -121,6 +126,8 @@ public static partial class Diagnostics
                 }
                 Pump(host, w, 1.0, null);
                 host.GpuPassTimingEnabled = passTiming;
+                d3d.CompositeItemCensusEvery = 0;
+                d3d.GpuWorkCensusEnabled = false;
             }
 
             // ONE rate for the whole run (see the file header), then every window is read, written and summarized at it.
@@ -149,14 +156,17 @@ public static partial class Diagnostics
             var size = w.ClientSizePx;
             string json = FrameBenchMath.Json(VersionLabel(), o.Label, real, Environment.ProcessorCount, w.CurrentRefreshHz(),
                 ((int)size.Width).ToString(CultureInfo.InvariantCulture) + "x" + ((int)size.Height).ToString(CultureInfo.InvariantCulture),
-                o.MeasureSec, o.WarmupSec, rate, DateTime.UtcNow, results, o.GpuPasses);
+                o.MeasureSec, o.WarmupSec, rate, DateTime.UtcNow, results, o.GpuPasses,
+                new FrameBenchLook(Wavee.Theming.ThemeInspection.ActiveId, FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark",
+                    w.Scale, Prefs.Lyrics.BlurStrength(), ((Stage.VizLayout)Prefs.Stage.Layout()).ToString()), StartupTimeline.Phases());
             WriteArtifact(dir, "frame-bench-summary.json", json);
             var report = new StringBuilder(4096).AppendLine()
                 .AppendLine("=== WAVEE FRAME BENCH (" + (real ? "real data" : "--fake") + (o.Label.Length > 0 ? ", " + o.Label : "") + ") ===")
                 .AppendLine("version=" + VersionLabel() + "  processors=" + Environment.ProcessorCount + "  panel=" + w.CurrentRefreshHz() + "Hz  window="
-                    + (int)size.Width + "x" + (int)size.Height + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s  gpuPasses=" + (o.GpuPasses ? "on" : "off")
+                    + (int)size.Width + "x" + (int)size.Height + "  theme=" + Wavee.Theming.ThemeInspection.ActiveId + "  blur=" + Prefs.Lyrics.BlurStrength() + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s  gpuPasses=" + (o.GpuPasses ? "on" : "off")
                     + "  cyclesPerMs=" + rate.ToString("0", CultureInfo.InvariantCulture))
-                .AppendLine("output=" + Path.GetFullPath(dir)).AppendLine()
+                .AppendLine("output=" + Path.GetFullPath(dir))
+                .AppendLine("startup (ms since process creation): " + StartupTimeline.Line()).AppendLine()
                 .Append(FrameBenchMath.Table(results)).ToString();
             WriteArtifact(dir, "frame-bench-summary.txt", report);
             Say(report);
@@ -202,10 +212,14 @@ public static partial class Diagnostics
         {
             var home = new Shell.Route(Shell.RouteKind.Home);
             void Settle(double s) => Pump(host, w, s, null);
+            // `--bench-queue`: every scenario's base keeps the rail open on the queue (the owner's daily layout: the queue panel docked
+            // beside every page), so its re-renders are part of what each scenario measures. Without it the base closes the rail.
+            bool queueRail = Array.IndexOf(Platform.Args.Argv, "--bench-queue") >= 0;
             void Base(bool playing, string? track = null)
             {
                 if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
-                Shell.Ui.RailOpen.Value = false;
+                if (queueRail) Shell.Ui.Mode.Value = Shell.RailMode.Queue;
+                Shell.Ui.RailOpen.Value = queueRail;
                 Nav(home);
                 track ??= play;
                 if (!playing) { Playback.Stop(); Settle(1.0); return; }
@@ -253,6 +267,51 @@ public static partial class Diagnostics
                     int k = 0;
                     return Measure(new Driver(now => { Nav(++k % 4 == 0 ? home : hops[k % hops.Count]); return now + 0.7; }), "hops over " + hops.Count + " entities");
                 }
+                case FrameBenchScenarios.MotionFlow:
+                {
+                    // The owner's 2026-10-25 recording, as a loop (lane MOTION, audit PERF r3): page entrances with the queue rail
+                    // docked, then a theme transaction to Zune and back. One step every 1.1 s, each marked in the frame trace.
+                    if (t.Playlists.Length < 3 || t.Artists.Length < 3) return Skip("needs 3 playlists and 3 artists");
+                    Base(playing: play is not null);
+                    // The owner plays a CONTEXT, so the docked queue holds dozens of rows (their census: ~106 row surfaces): play the
+                    // first playlist (pl0: 50 tracks under --fake) and let the queue fill before the window.
+                    Playback.PlayContext(t.Playlists[0]);
+                    PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20);
+                    Settle(1.0);
+                    string start = Wavee.Theming.ThemeInspection.ActiveId;
+                    string other = start == "zune" ? "classic" : "zune";
+                    Shell.Route Pl(int i) => Shell.For(EntityUri.Parse(t.Playlists[i]), "Bench playlist");
+                    Shell.Route Ar(int i) => Shell.For(EntityUri.Parse(t.Artists[i]), "Bench artist");
+                    var settings = new Shell.Route(Shell.RouteKind.Settings);
+                    (string Name, Action Act)[] steps =
+                    [
+                        ("pl0", () => Nav(Pl(0))), ("ar0", () => Nav(Ar(0))), ("pl1", () => Nav(Pl(1))), ("ar1", () => Nav(Ar(1))),
+                        ("settings", () => Nav(settings)), ("theme:" + other, () => _ = Wavee.Theming.ThemeHost.Switch(other)),
+                        ("pl2", () => Nav(Pl(2))), ("ar2", () => Nav(Ar(2))), ("pl0", () => Nav(Pl(0))),
+                        ("settings", () => Nav(settings)), ("theme:" + start, () => _ = Wavee.Theming.ThemeHost.Switch(start)), ("home", () => Nav(home)),
+                    ];
+                    // Real data lands after a navigation: the owner's log has ~5 fetch answers per navigation, each a table publication
+                    // (Entities.Publish) while the page's entrance runs. Each step is followed by four track-table publications at
+                    // +0.1375 s intervals — the publication alone (no row changes), which is what every component reading the track
+                    // table tracked re-renders on.
+                    int k = 0, phase = 0;
+                    return Measure(new Driver(now =>
+                    {
+                        if (phase == 0)
+                        {
+                            var (stepName, act) = steps[k++ % steps.Length];
+                            FluentGpu.Hosting.FrameTrace.Mark("step", stepName);
+                            act();
+                        }
+                        else if (phase <= 4)
+                        {
+                            Entities.Current.Tracks.MarkDirty();
+                            Entities.Publish();
+                        }
+                        phase = (phase + 1) % 8;
+                        return now + 0.1375;
+                    }), "steps=" + steps.Length + " start=" + start + " publications=4/step");
+                }
                 case FrameBenchScenarios.PlaylistOpen:
                 {
                     if (t.Playlists.Length == 0) return Skip("no playlist");
@@ -288,12 +347,47 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = false;
                     return r;
                 }
+                case FrameBenchScenarios.PlaylistPlaying:
+                case FrameBenchScenarios.PlaylistLyrics:
+                case FrameBenchScenarios.PlaylistMinimized:
+                {
+                    // A track playing, the first bench playlist's page on screen: the playing row's equalizer (where the list holds
+                    // the track) and the seek bar move.
+                    if (t.Playlists.Length == 0) return Skip("no playlist");
+                    if (play is null) return Skip("no track to play");
+                    string pl = t.Playlists[0];
+                    Base(playing: true);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(pl), "Bench playlist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    bool rail = name != FrameBenchScenarios.PlaylistPlaying;
+                    bool minimized = name == FrameBenchScenarios.PlaylistMinimized;
+                    if (rail) { Shell.Ui.Mode.Value = Shell.RailMode.Lyrics; Shell.Ui.RailOpen.Value = true; }
+                    Settle(1.5);
+                    // Minimized for the whole window (the warmup lets the park edge and its flush pass): nothing can present, so every
+                    // UI wake and render turn the window measures is work for pixels nobody sees.
+                    if (minimized) ShowWindow(w.Handle.Value, 6 /*SW_MINIMIZE*/);
+                    var r = Measure(null, "playlist=" + pl + (rail ? " rail=lyrics" : "") + (minimized ? " minimized" : ""));
+                    if (minimized)
+                    {
+                        if (!host.IsParked) r = r with { Note = r.Note + " NOT PARKED" };   // the window measured nothing hidden
+                        ShowWindow(w.Handle.Value, 9 /*SW_RESTORE*/);
+                        Settle(1.0);
+                    }
+                    if (rail) Shell.Ui.RailOpen.Value = false;
+                    return r;
+                }
                 case FrameBenchScenarios.StageLyrics:
                 case FrameBenchScenarios.StageVisualizer:
                 {
                     if (play is null) return Skip("no track to play");
                     Base(playing: true, name == FrameBenchScenarios.StageLyrics ? word ?? line ?? play : play);
                     Prefs.Stage.SetMode((int)(name == FrameBenchScenarios.StageLyrics ? Stage.Mode.Lyrics : Stage.Mode.Visualizer));
+                    // `--bench-blur N` (0-100) and `--bench-layout card|large` (A/B of the stage's depth blur; --fake keeps both in memory).
+                    string[] av = Platform.Args.Argv;
+                    int bAt = Array.IndexOf(av, "--bench-blur"), lAt = Array.IndexOf(av, "--bench-layout");
+                    if (bAt >= 0 && bAt + 1 < av.Length && int.TryParse(av[bAt + 1], out int benchBlur)) Prefs.Lyrics.SetBlurStrength(benchBlur);
+                    if (lAt >= 0 && lAt + 1 < av.Length) Prefs.Stage.SetLayout(av[lAt + 1] == "large" ? (int)Stage.VizLayout.LargeArt : (int)Stage.VizLayout.Card);
                     Stage.Open(null, "bench");
                     Settle(1.5);
                     var r = Measure(null);
@@ -332,6 +426,14 @@ public static partial class Diagnostics
                         Shell.Ui.RailOpen.Value = false;
                         return r;
                     }
+                case FrameBenchScenarios.NavGc:
+                {
+                    // `--bench-nav-play`: the first playlist plays, so its row's equalizer runs while the bench navigates.
+                    bool playList = Array.IndexOf(Platform.Args.Argv, "--bench-nav-play") >= 0 && t.Playlists.Length > 0;
+                    Base(playing: playList, playList ? t.Playlists[0] : null);
+                    SettleQuiet(host, w, 10);
+                    return NavGc(name, host, w, t);
+                }
                 case FrameBenchScenarios.HideRestore:
                     Base(playing: false);
                     SettleQuiet(host, w, 20);
@@ -482,19 +584,83 @@ public static partial class Diagnostics
             List<KeyValuePair<string, double>>? extra)
         {
             Pump(host, w, o.WarmupSec, d);
-            scroll?.Restart(host);
+            scroll?.Restart();
+            long walks0 = host.WalkLedger?.Count ?? 0, rasters0 = host.RasterLedger?.Count ?? 0;
+            var energy0 = EnergyMeter.Read();
             var mark = FrameLedger.Mark();
             Pump(host, w, o.MeasureSec, d);
             var snap = FrameLedger.Snapshot(mark);
+            var energy1 = EnergyMeter.Read();
+            extra ??= [];
+            EnergyMeter.AddMetrics(extra, energy0, energy1);
+            WriteRecordLedgers(name, host, walks0, rasters0);
+            WriteItemCensus(name, host);
             if (scroll is not null)
             {
-                scroll.Observe(host);
+                scroll.Observe();
                 extra ??= [];
                 extra.Add(new("scrollViewports", scroll.DistanceViewports));
                 extra.Add(new("scrollSteps", scroll.Steps));
                 note = (note is null ? "" : note + " ") + "scrolled " + scroll.DistanceViewports.ToString("0.0", CultureInfo.InvariantCulture) + " viewports in " + scroll.Steps + " steps";
             }
             return new Pending(name, Snap: snap, Note: note, Extra: extra);
+        }
+
+        /// <summary>The window's slice re-records and tile rasters (the evidence ledgers' tails, newest <see cref="FluentGpu.Render.Evidence.WalkLedger.WalkLedgerCapacity"/> /
+        /// <see cref="FluentGpu.Render.Evidence.RasterLedger.RasterLedgerCapacity"/>) as <c>&lt;scenario&gt;-walks.tsv</c> / <c>-rasters.tsv</c>: which slice re-recorded
+        /// and why, which tile rastered and why. Written after the window, so the formatting costs the measurement nothing.</summary>
+        static void WriteRecordLedgers(string name, AppHost host, long walks0, long rasters0)
+        {
+            var names = new Dictionary<(int, uint), string>();
+            string Name(int index, uint gen)
+            {
+                if (!names.TryGetValue((index, gen), out string? s)) names[(index, gen)] = s = host.DescribeNode(index, gen);
+                return s;
+            }
+            if (host.WalkLedger is { } wl)
+            {
+                var walks = new FluentGpu.Render.Evidence.WalkEntry[FluentGpu.Render.Evidence.WalkLedger.WalkLedgerCapacity];
+                int n = wl.Read(walks0, walks, out _);
+                WriteArtifact(OutDir(), name + "-walks.tsv", EvidenceReport.WalksTsv(walks.AsSpan(0, n), Name));
+            }
+            if (host.RasterLedger is { } rl)
+            {
+                var rasters = new FluentGpu.Render.Evidence.RasterEntry[FluentGpu.Render.Evidence.RasterLedger.RasterLedgerCapacity];
+                int n = rl.Read(rasters0, rasters, out _);
+                WriteArtifact(OutDir(), name + "-rasters.tsv", EvidenceReport.LedgerTsv(rasters.AsSpan(0, n), Name));
+            }
+        }
+
+        /// <summary>The latest per-item fragment census of the window (D3D12Device.CompositeItemCensusEvery, with the pass timeline) as
+        /// <c>&lt;scenario&gt;-items.tsv</c>: every top-level composite item of one whole-route frame, its kind, node, footprint and the
+        /// pixel-shader invocations its draws cost (the composite's overdraw, item by item).</summary>
+        static void WriteItemCensus(string name, AppHost host)
+        {
+            if (s_benchDevice is not { } d || d.CompositeItemCensusEvery <= 0) return;
+            var items = new D3D12Device.CompositeItemStat[D3D12Device.ItemCensusMax];
+            int n = d.CopyCompositeItemCensus(items);
+            if (n == 0) return;
+            const char T = '\t';
+            var sb = new StringBuilder("item\tkind\tslice\tnode\tfootPx\tps\tpsPerFoot\tdraws\tinline\topaque\tfoot\tclip\topaqueRect\n");
+            static string R(float x, float y, float w, float h) => w <= 0f && h <= 0f ? "-" : string.Create(CultureInfo.InvariantCulture, $"{x:0},{y:0} {w:0}x{h:0}");
+            foreach (var it in items.AsSpan(0, n))
+                sb.Append(it.Item).Append(T).Append(it.Kind).Append(T).Append(it.SliceId).Append(T)
+                  .Append(it.NodeIndex >= 0 ? host.DescribeNode(it.NodeIndex, it.Gen) : "-").Append(T).Append(it.FootPx).Append(T)
+                  .Append(it.PsInvocations).Append(T).Append(it.FootPx > 0 ? (it.PsInvocations / (double)it.FootPx).ToString("0.00", CultureInfo.InvariantCulture) : "-")
+                  .Append(T).Append(it.Draws).Append(T).Append(it.Inline ? 1 : 0).Append(T).Append(it.Opaque ? 1 : 0)
+                  .Append(T).Append(R(it.Foot.Left, it.Foot.Top, it.Foot.Right - it.Foot.Left, it.Foot.Bottom - it.Foot.Top))
+                  .Append(T).Append(R(it.Clip.X, it.Clip.Y, it.Clip.W, it.Clip.H)).Append(T).Append(R(it.OpaqueRect.X, it.OpaqueRect.Y, it.OpaqueRect.W, it.OpaqueRect.H)).Append('\n');
+            WriteArtifact(OutDir(), name + "-items.tsv", sb.ToString());
+            var ops = new D3D12Device.CompositeItemOp[D3D12Device.ItemOpsMax];
+            int no = d.CopyCompositeItemOps(ops);
+            var so = new StringBuilder("item\top\tx\ty\tw\th\tareaPx\talpha\tfillKind\tclipDepth\tclipDip\n");
+            foreach (var op in ops.AsSpan(0, no))
+                so.Append(op.Item).Append(T).Append(op.Op).Append(T).Append(op.X.ToString("0", CultureInfo.InvariantCulture)).Append(T)
+                  .Append(op.Y.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(op.W.ToString("0", CultureInfo.InvariantCulture)).Append(T)
+                  .Append(op.H.ToString("0", CultureInfo.InvariantCulture)).Append(T).Append(((long)(op.W * op.H)).ToString(CultureInfo.InvariantCulture))
+                  .Append(T).Append(op.Alpha.ToString("0.###", CultureInfo.InvariantCulture)).Append(T).Append(op.FillKind).Append(T).Append(op.ClipDepth)
+                  .Append(T).Append(R(op.Clip.X, op.Clip.Y, op.Clip.W, op.Clip.H)).Append('\n');
+            WriteArtifact(OutDir(), name + "-itemops.tsv", so.ToString());
         }
 
         /// <summary>Pump until the loop has gone quiet — two consecutive seconds with at most 2 presents each — or <paramref name="maxSec"/>.
@@ -588,7 +754,7 @@ public static partial class Diagnostics
             }
 
             /// <summary>The measured window starts: distance from here.</summary>
-            public void Restart(AppHost host)
+            public void Restart()
             {
                 Distance = 0;
                 Steps = 0;
@@ -596,7 +762,7 @@ public static partial class Diagnostics
             }
 
             /// <summary>Fold the handle's movement since the last look into the distance.</summary>
-            public void Observe(AppHost host)
+            public void Observe()
             {
                 if (_handle is not { } h) return;
                 double off = h.Offset.Peek();
@@ -609,7 +775,7 @@ public static partial class Diagnostics
                 // Re-adopt every step: a page that re-created its scroller, or a route change, hands over to what is on screen now.
                 if (!Adopt(host, 1.5) && _handle is null) return now + 0.25;
                 var h = _handle!;
-                Observe(host);
+                Observe();
                 double vp = h.Viewport > 0 ? h.Viewport : _viewport;
                 if (vp > 0) _viewport = vp;
                 double max = Math.Min(h.MaxOffset, vp * depthViewports);

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Title bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{s.root}}">
+  <sc-if value="{{regular}}" hint-placeholder-val="{{true}}">
+  <button aria-label="Toggle sidebar" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+  <button aria-label="Back" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3M7 4 3 8l4 4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+  <sc-if value="{{showFwd}}" hint-placeholder-val="{{true}}"><button aria-label="Forward" style="{{s.btnDim}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+  <div role="tablist" aria-label="Tabs" style="display: flex; align-items: stretch; height: 48px; margin-left: 4px; min-width: 0">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="1">
+      <button role="tab" aria-selected="{{t.sel}}" style="{{t.style}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{t.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.label}}</span><span style="{{t.bar}}"></span></button>
+    </sc-for>
+  </div>
+  <sc-if value="{{searchWide}}" hint-placeholder-val="{{true}}">
+    <div role="search" style="{{s.search}}"><span style="{{s.searchText}}">{{query}}</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg><span style="{{s.searchLine}}"></span></div>
+  </sc-if>
+  <span style="flex-grow: 1"></span>
+  <sc-if value="{{actions}}" hint-placeholder-val="{{true}}">
+    <button aria-label="Notifications, 1 unread" style="{{s.btnRel}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"></path></svg><span style="{{s.badge}}">1</span></button>
+    <button aria-label="Friend activity" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 7.5a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6zM1.8 13c.3-2.4 2-3.7 4.2-3.7s3.9 1.3 4.2 3.7M10.5 3.2a2.2 2.2 0 0 1 0 4.2M11.8 9.6c1.4.4 2.3 1.6 2.5 3.4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+  </sc-if>
+  <button aria-label="Account and more" style="{{s.btn}}"><span style="{{s.avatar}}">C</span></button>
+  <span style="width: 48px; flex-shrink: 0"></span>
+  <sc-if value="{{searchIcon}}" hint-placeholder-val="{{false}}"><button aria-label="Search" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button></sc-if>
+  </sc-if>
+  <sc-if value="{{compactRest}}" hint-placeholder-val="{{false}}">
+  <button aria-label="Open navigation" aria-expanded="{{drawerOpen}}" style="{{s.btnNav}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+  <button aria-label="Back" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3M7 4 3 8l4 4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+  <span style="flex-grow: 1"></span>
+  <button aria-label="Search" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+  <button aria-label="{{tabsLabel}}" style="{{s.btn}}"><span style="{{s.tabCount}}">{{tabCount}}</span></button>
+  </sc-if>
+  <sc-if value="{{compactSearch}}" hint-placeholder-val="{{false}}">
+  <button aria-label="Close search" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3M7 4 3 8l4 4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+  <div role="search" style="{{s.searchC}}"><span style="{{s.searchText}}">{{query}}</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg><span style="{{s.searchLine}}"></span></div>
+  <span style="width: 6px; flex-shrink: 0"></span>
+  </sc-if>
+  <span aria-hidden="true" style="{{s.cap}}"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"></path></svg></span>
+  <span aria-hidden="true" style="{{s.cap}}"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M.5.5h9v9h-9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+  <span aria-hidden="true" style="{{s.cap}}"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0 0 10" stroke="currentColor" stroke-width="1"></path></svg></span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"tabs":{"editor":"text","default":"home:Home"},"sel":{"editor":"int","default":0},"w":{"editor":"int","default":1440,"min":300,"max":3840},"tier":{"editor":"enum","options":["auto","compact","huge"],"default":"auto"},"drawer":{"editor":"boolean","default":false},"search":{"editor":"enum","options":["rest","focus"],"default":"rest"},"query":{"editor":"text","default":""},"$preview":{"width":1440,"height":48}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const T = dark
+    ? { mica: '#202020', t1: '#ffffff', t2: 'rgba(255,255,255,0.773)', t3: 'rgba(255,255,255,0.529)', ctl: 'rgba(255,255,255,0.059)', ctlS: 'rgba(255,255,255,0.071)', acc: '#60cdff', onAcc: '#000', strong: 'rgba(255,255,255,0.545)', input: 'rgba(30,30,30,0.702)', sub: 'rgba(255,255,255,0.059)' }
+    : { mica: '#ededed', t1: 'rgba(0,0,0,0.894)', t2: 'rgba(0,0,0,0.62)', t3: 'rgba(0,0,0,0.447)', ctl: 'rgba(255,255,255,0.702)', ctlS: 'rgba(0,0,0,0.09)', acc: '#005fb8', onAcc: '#fff', strong: 'rgba(0,0,0,0.447)', input: '#ffffff', sub: 'rgba(0,0,0,0.035)' };
+  const w = Number(this.props.w ?? 1440);
+  const tier = this.props.tier ?? 'auto';
+  const compact = tier === 'compact', huge = tier === 'huge';
+  const drawer = this.props.drawer === true || this.props.drawer === 'true';
+  const focus = (this.props.search ?? 'rest') === 'focus';
+  const q = this.props.query ?? '';
+  const I = { home: 'M2.5 7.5 8 3l5.5 4.5V13H10V9.5H6V13H2.5z', album: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z', artist: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4', playlist: 'M2.5 4h8M2.5 8h8M2.5 12h5M12 3.5v7.5a1.5 1.5 0 1 1-1.5-1.5H12', heart: 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z', search: 'M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2', browse: 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z', library: 'M3 2.5v11M6 2.5v11M9 3l3.5 10.2', recents: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 4.5V8l2.5 1.5', podcast: 'M8 7.5v6.5M6 14h4M5.2 4.8a4 4 0 0 0 0 5.4M10.8 4.8a4 4 0 0 1 0 5.4M3.5 3a6.5 6.5 0 0 0 0 9M12.5 3a6.5 6.5 0 0 1 0 9', settings: 'M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4', concert: 'M3 13.5h10M5 13.5V6l3-3.5L11 6v7.5M8 8.5v2', profile: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4', tag: 'M2.5 2.5h6l5 5-6 6-5-5z' };
+  const sel = Number(this.props.sel ?? 0);
+  const tabsRaw = String(this.props.tabs ?? 'home:Home').split('|');
+  const maxTab = huge ? 240 : w < 760 ? 140 : 200;
+  const tabs = tabsRaw.map((raw, i) => {
+    const k = raw.split(':')[0], label = raw.split(':').slice(1).join(':') || k;
+    const on = i === sel;
+    return { label, sel: on ? 'true' : 'false', d: I[k] || I.playlist,
+      style: 'position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; max-width: ' + maxTab + 'px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: ' + (on ? 650 : 400) + '; color: ' + (on ? T.t1 : T.t2),
+      bar: on ? 'position: absolute; left: 8px; right: 8px; bottom: 5px; height: 2px; border-radius: 1px; background: ' + T.acc : 'display: none' };
+  });
+  const sw = huge ? 480 + (focus ? 80 : 0) : Math.floor(Math.min(420, Math.max(280, w * 0.28)) / 10) * 10 + (focus ? 80 : 0);
+  const searchWide = w >= 760;
+  const btn = 'width: 40px; height: 44px; margin: 0 2px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; font: inherit; color: ' + T.t1;
+  const s = {
+    root: 'position: relative; width: ' + w + 'px; height: 48px; box-sizing: border-box; display: flex; align-items: center; padding-left: 2px; background: ' + T.mica + '; color: ' + T.t1 + "; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden",
+    btn, btnDim: btn + '; color: ' + T.t3, btnRel: btn + '; position: relative', btnNav: btn + (drawer ? '; background: ' + T.sub : ''),
+    badge: 'position: absolute; right: 6px; top: 8px; min-width: 14px; height: 14px; border-radius: 7px; background: ' + T.acc + '; color: ' + T.onAcc + '; font-size: 9px; font-weight: 600; display: flex; align-items: center; justify-content: center',
+    avatar: 'width: 28px; height: 28px; border-radius: 14px; background: linear-gradient(135deg, #8a5a44, #3b5b7a); color: #fff; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center',
+    tabCount: 'min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 3px; border-radius: 4px; border: 1.2px solid currentColor; font-size: 11px; line-height: 15px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums',
+    search: 'position: absolute; top: 8px; left: ' + Math.round((w - sw) / 2) + 'px; width: ' + sw + 'px; height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 11px; border-radius: 4px; background: ' + (focus ? T.input : T.ctl) + '; border: 1px solid ' + T.ctlS + '; font-size: 14px; color: ' + T.t2 + '; overflow: hidden',
+    searchC: 'position: relative; flex-grow: 1; min-width: 0; height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 11px; border-radius: 4px; background: ' + T.input + '; border: 1px solid ' + T.ctlS + '; font-size: 14px; color: ' + T.t2 + '; overflow: hidden',
+    searchText: 'flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (q ? T.t1 : T.t2),
+    searchLine: 'position: absolute; left: 0; right: 0; bottom: 0; height: ' + (focus ? 2 : 1) + 'px; background: ' + (focus ? T.acc : T.strong),
+    cap: 'width: 46px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: ' + T.t1
+  };
+  return { s, tabs, query: q || 'Search songs, artists, albums...', showFwd: w >= 520, searchWide, searchIcon: !searchWide, actions: w >= 1200,
+    regular: !compact, compactRest: compact && !focus, compactSearch: compact && focus, drawerOpen: drawer ? 'true' : 'false',
+    tabCount: String(tabsRaw.length), tabsLabel: tabsRaw.length + (tabsRaw.length === 1 ? ' tab open, switch tabs' : ' tabs open, switch tabs') };
+}
+}
+</script>
+</body>
+</html>

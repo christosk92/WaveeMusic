@@ -274,6 +274,11 @@ public static partial class Visualizer
             return galleryShown && Catalog.PreviewTier > face ? Catalog.PreviewTier : face;
         }
 
+        /// <summary>The bars under the cover (Lyrics mode on a Huge 4K stage, C-Stage-Huge4K: <c>Stage.Layout.ArtBarsShown</c>) draw the
+        /// spectrum outside Visualizer mode: a level lease is raised to the spectrum while they show. Every other tier stands (None stays None:
+        /// the gates closed it).</summary>
+        public static Tier WithArtBars(Tier tier, bool artBars) => artBars && tier == Tier.Level ? Tier.Spectrum : tier;
+
         /// <summary>Does the clock fill the scope series this tick? Under a spectrum-or-better lease, in Visualizer mode, while
         /// at least one MOUNTED face reads them (<paramref name="readers"/>: the live slab's <c>ScopeReaders</c> — the stage
         /// Scope/Flow face and the LIVE gallery tiles of those kinds count themselves; an open gallery whose Scope tile is a

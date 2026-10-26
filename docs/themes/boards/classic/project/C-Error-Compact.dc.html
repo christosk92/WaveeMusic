@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact error, Podcasts facet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 12px 16px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div role="tablist" aria-label="Home" style="display: flex; align-items: center; gap: 8px; height: 40px; margin: 0 -16px 0 -8px; flex-shrink: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)">
+      <sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><button role="tab" aria-selected="{{f.sel}}" style="{{f.style}}">{{f.l}}</button></sc-for>
+    </div>
+    <div role="alert" style="height: 72px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; border-radius: 4px; background: #442726; border: 1px solid rgba(0,0,0,0.1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: #ff99a4; flex-shrink: 0"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM6 6l4 4M10 6l-4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Couldn’t load Podcasts</span><span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Check your connection and try again.</span></span><button style="height: 40px; flex-shrink: 0; padding: 0 14px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Retry</button></div>
+    <div aria-hidden="true" style="opacity: 0.6; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Continue listening</span>
+      <sc-for list="{{eps}}" as="e" hint-placeholder-count="4"><span style="height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 8px; background: rgba(255,255,255,0.051)"><span style="{{e.a}}"></span><span style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.t}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{e.m}}</span><span style="width: 120px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.15)"><span style="{{e.p}}"></span></span></span></span></sc-for>
+      <span style="margin-top: 10px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Shows for you</span>
+      <div style="display: flex; gap: 12px; margin-right: -16px; overflow: hidden"><sc-for list="{{shows}}" as="c" hint-placeholder-count="3"><span style="{{c}}"></span></sc-for></div>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const facets = ['All', 'Music', 'Podcasts', 'Audiobooks'].map((l, i) => ({ l, sel: i === 2 ? 'true' : 'false', style: "height: 40px; flex-shrink: 0; padding: 2px 8px; border: 0; border-radius: 4px; background: transparent; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: " + (i === 2 ? 600 : 400) + '; color: ' + (i === 2 ? '#ffffff' : 'rgba(255,255,255,0.773)') }));
+  const eps = [['Building a GPU renderer in .NET', 'Coffee & Code · 17 min left', '#9bb36b', 45], ['The quiet power of defaults', 'Design Details · 31 min left', '#c0613e', 20], ['Why audio engines glitch', 'Low Latency · 8 min left', '#3b6b9b', 80], ['Shipping on a Friday', 'Release Notes · 22 min left', '#9b6ac0', 35]].map(e => ({ t: e[0], m: e[1], a: 'width: 56px; height: 56px; flex-shrink: 0; border-radius: 6px; background: ' + e[2], p: 'display: block; width: ' + e[3] + '%; height: 3px; border-radius: 2px; background: #60cdff' }));
+  const shows = ['#4a5b3b', '#6b3b4a', '#2f4a6b'].map(c => 'width: 148px; height: 148px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, ' + c + ', #1a1a1a)');
+  return { facets, eps, shows };
+}
+}
+</script>
+</body>
+</html>

@@ -52,13 +52,18 @@ public static partial class Controls
     }
 
     /// <summary>The surface's re-pushed props: the data (<see cref="CardData"/>'s data-only equality), the shape (a value)
-    /// and the shelf's card width (NaN for every fluid/row shape — <c>float.Equals</c>, so NaN equals NaN). No focus
-    /// signal: the host learns slot mode from context. Public only so the equality rule can be pinned by a fact.</summary>
+    /// and the shelf's card width (NaN for every fluid/row shape). No focus signal: the host learns slot mode from context.
+    /// Public only so the equality rule can be pinned by a fact.
+    /// <para>The render gate compares a shelf width by KIND only (fixed or fluid): the value reaches the drawn card through
+    /// the host's live width signal, which the shelf body binds its sizes to, so a new card width (every tick of a
+    /// docking pane's reflow, a window drag) re-lays the card out and re-renders nothing (audit B3bc). A seed face is
+    /// built from the value itself, so a seed still re-renders on it.</para></summary>
     public sealed record SurfaceProps(CardData Data, SurfaceShape Shape, float Width = float.NaN)
     {
         public bool Equals(SurfaceProps? o)
             => o is not null && (ReferenceEquals(this, o)
-               || (Shape.Equals(o.Shape) && Width.Equals(o.Width) && Data.Equals(o.Data)));
+               || (Shape.Equals(o.Shape) && float.IsNaN(Width) == float.IsNaN(o.Width)
+                   && (!Data.IsSeed || Width.Equals(o.Width)) && Data.Equals(o.Data)));
 
         public override int GetHashCode() => HashCode.Combine(Data, Shape, Width);
     }
@@ -75,6 +80,8 @@ public static partial class Controls
     {
         SurfaceProps? _latest;
         readonly Signal<SurfaceProps?> _props = new(null);
+        // The shelf card's width, written on every re-push: the shelf body and the gutter bind their sizes to it.
+        readonly Signal<float> _width = new(float.NaN);
         readonly Signal<bool> _hot = new(false);
         bool _pointerIn, _selfFocus, _innerFocus;
         // The label block / text column, built once per GATED props instance: the hot edge re-renders this host to mount
@@ -88,6 +95,8 @@ public static partial class Controls
         readonly Action<bool> _selfFocusChanged, _innerFocusChanged;
         readonly Func<object?> _dragPayload;
         readonly Func<ContextMenuModel?> _menu;
+        // The structure's templates for the shell, the bodies and the labels (T8c): resolved once per host from the ambient registry.
+        global::Wavee.Theming.Contracts.SurfaceStyle? _style;
 
         public SurfaceHost()
         {
@@ -107,6 +116,7 @@ public static partial class Controls
         public void ApplyProps(object props)
         {
             _latest = (SurfaceProps)props;
+            if (!_latest.Width.Equals(_width.Peek())) _width.Value = _latest.Width;
             _props.Value = _latest;
         }
 
@@ -115,6 +125,7 @@ public static partial class Controls
             // The context reads come BEFORE the early return, so the hook order never depends on the props being seeded.
             var overlay = UseContext(Overlay.Service);
             RowScope? row = UseContext(ItemsView.SlotRow);
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             var p = _props.Value;
             if (p is null) return new BoxEl();
             var d = p.Data;
@@ -123,6 +134,8 @@ public static partial class Controls
             // A seed is the shape's bone face: disabled, no plate, no chrome, no handlers. In a bound slot its owner also
             // disables the row, so the slot root dims and refuses invoke.
             if (d.IsSeed) return SurfaceParts.Seed(in s, p.Width, d.Height, CoverShape.IsCircular(d.Circular, d.CoverAspect));
+            var style = _style ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.Surface);
+            if (style is null) return new BoxEl();
 
             bool slot = row is not null;
             // HOT first, then the relation COARSE-first (the NowPlayingOverlayHost discipline): a hot surface never asks
@@ -142,11 +155,12 @@ public static partial class Controls
             if (!ReferenceEquals(_textFor, p))
             {
                 _textFor = p;
-                _text = s.IsRow ? SurfaceParts.RowText(d, in s) : SurfaceParts.Labels(d, in s, SurfaceParts.InnerOf(p.Width));
+                // The stack's label block is width-free (its column sizes it), so a shelf's width change keeps it and its trim tooltip.
+                _text = s.IsRow ? style.RowText(d, in s) : style.Labels(d, in s, float.NaN);
             }
             Element body = s.IsRow
-                ? SurfaceParts.RowBody(d, in s, overlayOn, chrome, hasMenu, play, _text)
-                : SurfaceParts.StackBody(d, in s, p.Width, overlayOn, chrome, hasMenu, play, _text);
+                ? style.RowBody(d, in s, overlayOn, chrome, hasMenu, play, _text)
+                : style.StackBody(d, in s, _width.Peek(), float.IsNaN(p.Width) ? null : _width, overlayOn, chrome, hasMenu, play, _text);
             // FOCUS WITHIN, with no scene walk: the dispatcher fires OnFocusChanged on an ancestor as a ROUTED boundary
             // event (focus entering/leaving its SUBTREE), so this NON-focusable wrapper hears a Tab from the shell onto
             // the surface's own FAB as an ENTRY — the very move the shell itself reads as a loss. Layout-transparent (a
@@ -163,7 +177,7 @@ public static partial class Controls
             DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
             // The shell is the surface's outermost hit-testable node, so the hover/exit/focus handlers belong exactly
             // here — the subtree edges the dispatcher delivers them on are this node's.
-            BoxEl shell = SurfaceParts.Shell(within, in s, in mode, d.Uri) with
+            BoxEl shell = style.Shell(within, in s, in mode, d.Uri) with
             {
                 OnClick = mode.OwnsClick ? _onClick : null,
                 OnHoverMove = _enter, OnPointerExit = _exit,
@@ -176,10 +190,10 @@ public static partial class Controls
             // The opened surface wears the accent border + the brighter fill. The accent is read HERE, in this host's
             // render, so a palette landing repaints the one selected surface and no other; the NEWEST pushed thunk is
             // honoured through `_latest`, like every other delegate.
-            if (d.Selected) shell = SurfaceParts.Selected(shell, _latest?.Data.SelectedAccent);
+            if (d.Selected) shell = style.Selected(shell, _latest?.Data.SelectedAccent);
             // The menu rides on the shell in BOTH modes: the right-click funnel is not a gesture owner.
-            if (hasMenu) shell = ContextMenu.Attach(shell, overlay!, _menu);
-            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, p.Width);
+            if (hasMenu) shell = ContextSheets.Attach(shell, overlay!, _menu);
+            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, _width);
             return SurfaceRules.TitleTip(trimmed: false, hasLabels: s.Labels) ? LabelTip(root, d.Title) : root;
         }
 
@@ -188,7 +202,7 @@ public static partial class Controls
         static Element LabelTip(Element root, string title)
         {
             Element tip = ToolTip.Wrap(root, title);
-            return tip is ComponentEl c ? c with { SkeletonProxy = () => root } : tip;
+            return tip.Is(out ComponentEl c) ? c with { SkeletonProxy = () => root } : tip;
         }
     }
 }

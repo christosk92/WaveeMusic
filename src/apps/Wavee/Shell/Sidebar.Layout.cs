@@ -12,7 +12,7 @@ using System.Collections.Generic;
 
 namespace Wavee;
 
-/// <summary>The two sidebar layouts. PERSISTED as <c>sidebar.layout.id</c> (0 Classic · 1 Library) — append only.</summary>
+/// <summary>The two sidebar layouts. PERSISTED as the int of Classic's `structure.sidebar` option (0 Classic · 1 Library) — append only.</summary>
 public enum SidebarLayoutId : byte { Classic = 0, Library = 1 }
 
 /// <summary>The closed section catalogue (design C.1). Not persisted by number: the files use <see cref="SidebarCatalogue.IdOf"/>.</summary>
@@ -22,10 +22,10 @@ public enum SidebarSectionKind : byte
 }
 
 /// <summary>Row density for entity rows (design P.4): Default = row C (two lines, art 32), Compact = row B (one line, art
-/// 24). Glyph rows and headers are unaffected. PERSISTED as <c>sidebar.pane.density</c>.</summary>
+/// 24). Glyph rows and headers are unaffected. PERSISTED as the int of Classic's `structure.libraryDensity` option.</summary>
 public enum SidebarDensity : byte { Default = 0, Compact = 1 }
 
-/// <summary>Your Library's list presentation.</summary>
+/// <summary>Your Library's list presentation. PERSISTED as the int of the active theme's state key `libraryView` (<see cref="Sidebar.LibraryViewKey"/>: List 0, Grid 1) — append only.</summary>
 public enum SidebarLibraryView : byte { List = 0, Grid = 1 }
 
 /// <summary>Your Library's sort. <see cref="CustomOrder"/> IS the Spotify rootlist order and applies under the Playlists
@@ -46,7 +46,6 @@ public enum SidebarLibraryKinds : byte { None = 0, Albums = 1, Artists = 2, Podc
 public static class SidebarCatalogue
 {
     public const string HomeRoute = "home";
-    public const string SettingsRoute = "settings";
     public const string LikedRoute = "liked";
 
     /// <summary>Recent / New releases row limits.</summary>
@@ -151,8 +150,7 @@ public static class SidebarCatalogue
     public static SectionState DefaultState(SidebarSectionKind kind) => kind switch
     {
         SidebarSectionKind.Recent or SidebarSectionKind.NewReleases => new SectionState(IdOf(kind), Hidden: true, Limit: DefaultLimit(kind)),
-        SidebarSectionKind.Library => new SectionState(IdOf(kind), Sort: SidebarLibrarySort.Recents, Descending: false,
-            View: SidebarLibraryView.List, ShowLiked: true),
+        SidebarSectionKind.Library => new SectionState(IdOf(kind), Sort: SidebarLibrarySort.Recents, Descending: false, ShowLiked: true),
         _ => new SectionState(IdOf(kind)),
     };
 
@@ -186,7 +184,6 @@ public sealed record SectionState(
     IReadOnlyList<string>? ItemOrder = null,
     SidebarLibrarySort? Sort = null,
     bool? Descending = null,
-    SidebarLibraryView? View = null,
     bool? ShowLiked = null)
 {
     public IReadOnlyList<string> HiddenList => HiddenItems ?? System.Array.Empty<string>();
@@ -196,7 +193,7 @@ public sealed record SectionState(
     public bool Equals(SectionState? other)
         => other is not null && string.Equals(Id, other.Id, System.StringComparison.Ordinal) && Hidden == other.Hidden
            && Collapsed == other.Collapsed && Limit == other.Limit && Sort == other.Sort && Descending == other.Descending
-           && View == other.View && ShowLiked == other.ShowLiked
+           && ShowLiked == other.ShowLiked
            && SidebarLayoutRules.SameList(HiddenItems, other.HiddenItems) && SidebarLayoutRules.SameList(ItemOrder, other.ItemOrder);
 
     public override int GetHashCode() => System.HashCode.Combine(Id, Hidden, Collapsed, Limit, HiddenItems?.Count ?? 0, ItemOrder?.Count ?? 0);
@@ -248,7 +245,6 @@ public sealed record SetSectionLimit(SidebarLayoutId Layout, string SectionId, i
 public sealed record SetItemShown(SidebarLayoutId Layout, string SectionId, string ItemId, bool Shown) : SidebarOp(Layout);
 public sealed record MoveItem(SidebarLayoutId Layout, string SectionId, string ItemId, int ToIndex) : SidebarOp(Layout);
 public sealed record SetLibrarySort(SidebarLibrarySort Sort, bool Descending) : SidebarOp(SidebarLayoutId.Library);
-public sealed record SetLibraryView(SidebarLibraryView View) : SidebarOp(SidebarLayoutId.Library);
 public sealed record SetShowLiked(bool Shown) : SidebarOp(SidebarLayoutId.Library);
 /// <summary>"Reset this layout": every section back to its default, collapse bits kept.</summary>
 public sealed record ResetLayout(SidebarLayoutId Layout) : SidebarOp(Layout);
@@ -287,7 +283,6 @@ public static class SidebarLayoutRules
             SetItemShown o => ItemShown(overlay, o, out var r5) ?? Fail(r5),
             MoveItem o => ItemMove(overlay, o, out var r6) ?? Fail(r6),
             SetLibrarySort o => Update(overlay, "library", s => s with { Sort = o.Sort, Descending = o.Descending }),
-            SetLibraryView o => Update(overlay, "library", s => s with { View = o.View }),
             SetShowLiked o => Update(overlay, "library", s => s with { ShowLiked = o.Shown }),
             ResetLayout => Reset(overlay),
             ReplaceOverlay o => MergeWithCatalogue(o.Overlay, null),
@@ -516,10 +511,12 @@ public static class SidebarLayoutRules
         return list;
     }
 
-    /// <summary>"Classic · modified" (design C.1): any section's shown / order / limit / sort / view / showLiked /
-    /// hidden items / item order differs from the catalogue default. Collapse, density, width and the filter never count.</summary>
-    public static bool IsModified(LayoutOverlay overlay)
+    /// <summary>"Classic · modified" (design C.1): any section's shown / order / limit / sort / showLiked /
+    /// hidden items / item order differs from the catalogue default, or the Library layout's list/grid <paramref name="view"/> (the theme's state,
+    /// not part of the overlay) is not List. Collapse, density, width and the filter never count.</summary>
+    public static bool IsModified(LayoutOverlay overlay, SidebarLibraryView view = SidebarLibraryView.List)
     {
+        if (overlay.Layout == SidebarLayoutId.Library && view != SidebarLibraryView.List) return true;
         var fresh = SidebarCatalogue.DefaultOverlay(overlay.Layout);
         if (overlay.Sections.Count != fresh.Sections.Count) return true;
         for (int i = 0; i < fresh.Sections.Count; i++)
@@ -530,7 +527,7 @@ public static class SidebarLayoutRules
             if (!SidebarCatalogue.TryKindOf(a.Id, out var kind)) return true;
             if (a.Hidden != b.Hidden || (a.Limit ?? 0) != (b.Limit ?? 0)) return true;
             if ((a.Sort ?? b.Sort) != b.Sort || (a.Descending ?? b.Descending) != b.Descending
-                || (a.View ?? b.View) != b.View || (a.ShowLiked ?? b.ShowLiked) != b.ShowLiked) return true;
+                || (a.ShowLiked ?? b.ShowLiked) != b.ShowLiked) return true;
             if (a.HiddenList.Count != 0) return true;
             if (!SameList(EffectiveItemOrder(overlay.Layout, kind, a), SidebarCatalogue.ItemsOf(overlay.Layout, kind))) return true;
         }
@@ -551,9 +548,13 @@ public static class SidebarLayoutRules
         return false;
     }
 
-    /// <summary>The resolved document for a layout (§P3.3).</summary>
-    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density)
+    /// <summary>The resolved document for a layout (§P3.3). <paramref name="view"/> is the theme's list/grid state (not part of the overlay).
+    /// <paramref name="covers"/> is the structure's covers choice (<see cref="Theming.NavPanePolicy.ShowCovers"/>): off turns the Classic layout's
+    /// entity sections into text rows.</summary>
+    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density,
+                                           SidebarLibraryView view = SidebarLibraryView.List, bool covers = true)
     {
+        bool textRows = !covers && layout == SidebarLayoutId.Classic;
         var overlay = state.Of(layout);
         var sections = new SidebarSection[overlay.Sections.Count];
         var lib = SidebarLibraryOptions.Default;
@@ -565,13 +566,13 @@ public static class SidebarLayoutRules
             var visible = new List<string>(order.Count);
             for (int k = 0; k < order.Count; k++) if (!Contains(s.HiddenList, order[k])) visible.Add(order[k]);
             sections[i] = new SidebarSection(kind, s.Hidden, s.Collapsed, s.Limit ?? SidebarCatalogue.DefaultLimit(kind),
-                SidebarSection.ShapeFor(kind, density), visible.ToArray());
+                SidebarSection.ShapeFor(kind, density, textRows), visible.ToArray());
             if (kind == SidebarSectionKind.Library)
             {
                 var hiddenKinds = SidebarLibraryKinds.None;
                 for (int k = 0; k < s.HiddenList.Count; k++) hiddenKinds |= SidebarCatalogue.KindFlagOf(s.HiddenList[k]);
                 lib = new SidebarLibraryOptions(s.Sort ?? SidebarLibrarySort.Recents, s.Descending ?? false,
-                    s.View ?? SidebarLibraryView.List, s.ShowLiked ?? true, hiddenKinds);
+                    view, s.ShowLiked ?? true, hiddenKinds);
             }
         }
         return new SidebarLayoutDoc(layout, sections, density, lib);
@@ -591,10 +592,12 @@ public sealed record SidebarSection(
 {
     public string Id => SidebarCatalogue.IdOf(Kind);
 
-    /// <summary>The one row shape per section (design V.3): glyph sections are row A; entity sections follow the density.</summary>
-    public static SidebarRowShape ShapeFor(SidebarSectionKind kind, SidebarDensity density)
+    /// <summary>The one row shape per section (design V.3): glyph sections are row A; entity sections are text rows when
+    /// <paramref name="textRows"/> (covers off), else they follow the density.</summary>
+    public static SidebarRowShape ShapeFor(SidebarSectionKind kind, SidebarDensity density, bool textRows = false)
         => kind is SidebarSectionKind.Home or SidebarSectionKind.Collections or SidebarSectionKind.Settings
             ? SidebarRowShape.Glyph
+            : textRows ? SidebarRowShape.EntityText
             : density == SidebarDensity.Compact ? SidebarRowShape.EntityOneLine : SidebarRowShape.EntityTwoLine;
 }
 
@@ -746,16 +749,27 @@ public static class SidebarLibraryFilters
 
 /// <summary>A pin row's state (design Q9): pending (last-known name + kind glyph, no warning) until the projection
 /// hydrates; unavailable only after an AUTHORITATIVE miss (a converged rootlist that no longer carries a folder); offline
-/// neutral. Never auto-dropped, never a toast.</summary>
+/// while the session is offline and the pin's entity has not resolved this session (S9: it keeps its cached title and
+/// cover, quieted, "Not available offline"). Never auto-dropped, never a toast.</summary>
 public enum SidebarPinState : byte { Resolved = 0, Pending = 1, Unavailable = 2, Offline = 3 }
 
 public static class SidebarPinStateRules
 {
-    public static SidebarPinState Of(bool identityKnown, bool authoritativeMiss, bool online)
+    /// <summary>The state of a pin row. <paramref name="identityKnown"/> is the entity's own identity landing this session;
+    /// <paramref name="named"/> a cached or live name. Offline wins over a cached name for an ENTITY pin (S9: a cached name is
+    /// what it shows, not proof it is reachable); a route or folder pin is never "offline" (it is the app's own structure),
+    /// and online a cached name is enough to draw the row as resolved while the entity hydrates.</summary>
+    public static SidebarPinState Of(bool identityKnown, bool named, bool authoritativeMiss, bool online, SidebarEntryKind kind)
         => authoritativeMiss ? SidebarPinState.Unavailable
          : identityKnown ? SidebarPinState.Resolved
+         : !online && IsEntity(kind) ? SidebarPinState.Offline
+         : named ? SidebarPinState.Resolved
          : !online ? SidebarPinState.Offline
          : SidebarPinState.Pending;
+
+    /// <summary>A pin that names a catalogue entity (playlist, album, artist, show): the kinds that need a connection to resolve.</summary>
+    public static bool IsEntity(SidebarEntryKind kind)
+        => kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album or SidebarEntryKind.Artist or SidebarEntryKind.Show;
 
     /// <summary>The localized noun a pin row shows while nothing has named it yet (design D9: nothing blank is ever
     /// rendered). Null for a kind that always carries its own title (a route pin's destination title).</summary>
@@ -847,8 +861,8 @@ public static class SidebarDedupeMotion
         var newBands = new List<(int First, int Count)>(ids.Count);
         for (int i = 0; i < ids.Count; i++)
         {
-            if (SidebarRowGeometry.TrySectionBodyRange(oldRows, ids[i], out int of, out int oc)) oldBands.Add((of, oc));
-            if (SidebarRowGeometry.TrySectionBodyRange(newRows, ids[i], out int nf, out int nc)) newBands.Add((nf, nc));
+            if (SidebarPlanQueries.TrySectionBodyRange(oldRows, ids[i], out int of, out int oc)) oldBands.Add((of, oc));
+            if (SidebarPlanQueries.TrySectionBodyRange(newRows, ids[i], out int nf, out int nc)) newBands.Add((nf, nc));
         }
         return Seeds(splices, oldBands, newBands, oldExtentOf, newExtentOf, newRows.Count);
     }

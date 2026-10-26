@@ -32,7 +32,7 @@ parser never throws. Percent-encoding is decoded. A raw command line that *conta
 - `settings` — `arg` is a tab slug (`general appearance playback notifications storage privacy about`); it selects
   the tab through `Shell.OnSettingsTabRequested` and is never committed as a route `Arg` (the strip keeps saying
   "Settings"). An unknown slug opens General.
-- `logs` — the log viewer page (Settings › Privacy & diagnostics › Logs › Log viewer; `Screens/LogsPage.UI.cs`).
+- `logs` — the log viewer page (Settings › Privacy & diagnostics › Logs › Log viewer; `Screens/LogsPage.Host.cs` + the Common `Themes/Common/CommonLogs.cs`).
   A normal route, not developer-only; `arg` unused. Back/Esc returns to Settings › Privacy & diagnostics.
 - `home` — `arg` is a facet chip id (`""` All, `music-chip`, `podcasts-chip`, `audiobooks-chip`, or a Following
   sub-chip id like `music-following-chip`). An unknown/missing id falls back to All
@@ -64,7 +64,7 @@ Probes / `--screenshot` / `--frames` skip this entire block.
 
 ## Drain (shell consumer)
 
-`Pending` is a monotonic `Signal<int>` (same shape as `OpenVideoOverrides` / `_searchFocusRequest`). Read `.Value` so
+`Pending` is a monotonic `Signal<int>`. Read `.Value` so
 the effect re-runs; drain on the **first** tick too (cold-start verbs are already queued before the shell mounts).
 
 ```csharp

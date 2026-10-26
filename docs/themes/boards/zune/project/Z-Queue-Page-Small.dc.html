@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune up next (full screen) · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #0f0f0f; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 20px; font-size: 13px; color: #7a7a7a">
+    <span style="display: flex; gap: 20px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350"><a href="#">lyrics</a><a href="#">visualizer</a><a href="#" style="color: #ffffff; font-weight: 600">up next</a><a href="#">artist</a></span>
+    <span style="flex-grow: 1"></span>
+    <a href="#">options</a><a href="#" style="color: #ffffff">exit full screen</a>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 32px; padding: 12px 24px 0 24px; overflow: hidden">
+    <div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+      <span style="width: 220px; height: 220px; background: #6b2f4a; display: block"></span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">nightcall</span>
+      <span style="{{artistInk}}">Kavinsky · OutRun</span>
+      <span style="font-size: 12px; color: #7a7a7a">playing from playlist · late night drive</span>
+    </div>
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+      <div style="display: flex; align-items: baseline; gap: 12px; height: 36px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">next in queue</span><a href="#" style="font-size: 13px">clear</a><span style="flex-grow: 1"></span><span style="display: flex; gap: 14px; font-size: 12px; color: #a8a8a8"><span style="{{accentInk}}">shuffle</span><span>repeat</span><span>autoplay</span></span></div>
+      <sc-for list="{{queue}}" as="r" hint-placeholder-count="2">
+        <div style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 12px; color: #9c9c9c">{{r.artist}}</span></span><span style="font-size: 12px; color: #9c9c9c; text-align: right">{{r.time}}</span><button aria-label="{{r.removeLabel}}" style="width: 32px; height: 32px; border: 0; background: transparent; color: #c8c8c8; font-size: 12px; padding: 0">✕</button></div>
+      </sc-for>
+      <div style="display: flex; align-items: baseline; gap: 12px; height: 40px; flex-shrink: 0; padding-top: 6px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">next up</span><span style="font-size: 12px; color: #7a7a7a">from late night drive · 36 more</span></div>
+      <sc-for list="{{next}}" as="r" hint-placeholder-count="4">
+        <div style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 12px; color: #9c9c9c">{{r.artist}}</span></span><span style="font-size: 12px; color: #9c9c9c; text-align: right">{{r.time}}</span><span></span></div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="height: 96px; flex-shrink: 0; background: #0a0a0a; display: flex; flex-direction: column; padding: 0 24px">
+    <div style="display: flex; align-items: center; gap: 14px; height: 30px; font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums"><span>1:14</span><span style="flex-grow: 1; height: 2px; background: rgba(255,255,255,0.12); display: block"><span style="{{progress}}"></span></span><span>-3:04</span></div>
+    <div style="display: flex; align-items: center; height: 66px; gap: 16px">
+      <button aria-label="save to liked songs" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; font-size: 17px; padding: 0">♡</button>
+      <span style="flex-grow: 1; display: flex; align-items: center; justify-content: center; gap: 20px">
+        <button aria-label="shuffle" style="{{shuffle}}">⇄</button>
+        <button aria-label="previous" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+        <button aria-label="pause" style="{{playDisc}}"><svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <button aria-label="next" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+        <button aria-label="repeat" style="width: 36px; height: 36px; border: 0; background: transparent; color: #a8a8a8; font-size: 17px; padding: 0">↻</button>
+      </span>
+      <button style="{{device}}">living room ▾</button>
+      <button aria-label="more" style="width: 36px; height: 36px; border: 0; background: transparent; color: #a8a8a8; font-size: 17px; padding: 0">⋯</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const mk = (list, start) => list.map((d, i) => ({
+    n: String(start + i), title: d[0], artist: d[1], time: d[2], removeLabel: 'remove ' + d[0] + ' from queue',
+    row: 'display: grid; grid-template-columns: 40px 48px minmax(0, 1fr) 44px 32px; gap: 0 8px; align-items: center; height: 52px; flex-shrink: 0; ' + (d[4] ? 'background: rgba(255,255,255,0.05)' : ''),
+    num: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 22px; font-weight: 300; color: #7a7a7a; padding-left: 4px',
+    art: 'width: 40px; height: 40px; border-radius: 2px; display: block; background: ' + d[3],
+  }));
+  const queue = mk([['Get Lucky', 'Daft Punk', '6:09', '#3a2f22', false], ['Instant Crush', 'Daft Punk', '5:37', '#3a2f22', true]], 1);
+  const next = mk([['Resonance', 'HOME', '3:32', '#2f5b6b', false], ['Tech Noir', 'Gunship', '4:56', '#5b3b6b', false], ['Sunset', 'The Midnight', '5:07', '#6b4a2f', false], ['Turbo Killer', 'Carpenter Brut', '3:16', '#6b2f2f', false]], 3);
+  return {
+    accent, queue, next,
+    artistInk: 'font-size: 15px; color: ' + accent,
+    accentInk: 'color: ' + accent,
+    progress: 'display: block; width: 29%; height: 2px; background: ' + accent,
+    shuffle: 'width: 36px; height: 36px; border: 0; background: transparent; color: ' + accent + '; font-size: 17px; padding: 0',
+    playDisc: 'width: 48px; height: 48px; border-radius: 24px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+    device: 'height: 36px; border: 0; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px; padding: 0 8px',
+  };
+}
+}
+</script>
+</body>
+</html>

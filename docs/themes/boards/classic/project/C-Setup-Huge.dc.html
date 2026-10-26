@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup wizard, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0"><dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" w="320" h="1320" hint-size="320px,1320px"></dc-import><main style="flex-grow: 1; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px"></main></div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="idle" w="2560" tier="huge" hint-size="2560px,72px"></dc-import>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <section role="dialog" aria-modal="true" aria-label="Sign in to Spotify" style="position: absolute; left: 800px; top: 420px; width: 960px; height: 600px; box-sizing: border-box; border-radius: 8px; background: #202020; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 64px rgba(0,0,0,0.4); display: flex; flex-direction: column; overflow: hidden">
+    <div style="flex-grow: 1; min-height: 0; display: flex; padding: 32px; gap: 32px">
+      <div aria-hidden="true" style="width: 240px; flex-shrink: 0; display: flex; align-items: center; justify-content: center"><span style="position: relative; width: 190px; height: 190px; border-radius: 95px; background: radial-gradient(circle, rgba(96,205,255,0.35), rgba(96,205,255,0) 70%)"><span style="position: absolute; left: 55px; top: 55px; width: 80px; height: 80px; border-radius: 20px; background: #60cdff; transform: rotate(-8deg)"></span></span></div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; justify-content: center">
+        <div style="display: flex; align-items: center; gap: 8px"><button aria-label="Back" style="width: 30px; height: 30px; margin-left: -6px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3M7 4L3 8l4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><h1 style="margin: 0; font-size: 28px; line-height: 36px; font-weight: 600">Sign in to Spotify</h1></div>
+        <div role="radiogroup" aria-label="How to sign in" style="display: flex; gap: 16px">
+          <button role="radio" aria-checked="true" style="flex: 1; min-height: 168px; padding: 20px; border-radius: 8px; background: rgba(96,205,255,0.08); border: 2px solid #60cdff; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; color: #fff; font: inherit; text-align: left"><svg width="32" height="32" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12" fill="none" stroke="#60cdff" stroke-width="1"></path></svg><span style="font-size: 14px; line-height: 20px; font-weight: 600">Continue in your browser</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Sign in on spotify.com, then come back here.</span></button>
+          <button role="radio" aria-checked="false" style="flex: 1; min-height: 168px; padding: 20px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(255,255,255,0.082); display: flex; align-items: center; gap: 16px; color: #fff; font: inherit; text-align: left"><span role="img" aria-label="Pairing code" style="width: 120px; height: 120px; flex-shrink: 0; border-radius: 4px; background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 12px 12px"></span><span style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Scan the code with your phone</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">WAVE-4K7P · spotify.com/pair · Expires in 04:12</span></span></button>
+        </div>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Wavee needs Spotify Premium. Don’t have a Spotify account? <a href="#">Sign up</a></span>
+      </div>
+    </div>
+    <footer style="height: 80px; flex-shrink: 0; box-sizing: border-box; padding: 0 32px; display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); border-top: 1px solid rgba(255,255,255,0.06)">
+      <div style="width: 210px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Step 2 of 4</span><span role="progressbar" aria-label="Setup progress" aria-valuenow="2" aria-valuemax="4" style="width: 162px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 50%; border-radius: 2px; background: #60cdff"></span></span></div>
+      <span style="flex-grow: 1"></span>
+      <button style="min-width: 120px; height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Log in</button>
+      <button style="min-width: 120px; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Close</button>
+    </footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 // ── Home/SectionScreen.Rules.cs ────────────────────────────────────────────────────────────────────────────────────
-// The tiny pure rules `Home/SectionScreen.UI.cs` needs: the page's load state (`SectionScreenLoadRule`: pending / ready /
+// The tiny pure rules the section drill page (`SectionScreen.Host.cs`) needs: the page's load state (`SectionScreenLoadRule`: pending / ready /
 // empty / failed from the section row's facts, so the walk landing — or a seal — reaches the region reactively, RCA
 // 2026-09-30) and its hero title (`SectionScreenTitle`: the route arg first).
 //

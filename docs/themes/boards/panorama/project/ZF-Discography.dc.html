@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Discography</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="none" crumb="Search › The Weeknd › Discography" ctx="The Weeknd" items="Overview|Albums|Singles &amp; EPs|Compilations|About" sub-sel="{{none}}" actions="artist" lower="{{lower}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 12px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; flex-direction: column; flex-shrink: 0">
+      <span style="font-size: 12px; line-height: 16px; color: var(--t2)"><a href="#" style="color: var(--acct)">The Weeknd</a> · 34 releases · 2011–2025</span>
+      <h1 title="Discography" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Discography</h1>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0">
+      <div role="group" aria-label="Release type" style="display: flex; gap: 8px">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><button aria-pressed="{{c.pressed}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+      </div>
+      <span style="flex-grow: 1"></span>
+      <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">Newest first<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <div role="group" aria-label="View" style="display: flex; padding: 2px; gap: 2px; border-radius: 6px; background: var(--ctrl); border: 1px solid var(--ctrlb)">
+        <button aria-label="List" aria-pressed="{{listPressed}}" style="{{s.listBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+        <button aria-label="Grid" aria-pressed="{{gridPressed}}" style="{{s.gridBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      </div>
+    </div>
+    <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 4px; min-height: 0">
+        <section aria-label="Hurry Up Tomorrow" style="display: flex; gap: 24px; padding: 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); flex-shrink: 0">
+          <span style="width: 160px; height: 160px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #6a3434, #2a1a1a); display: block"></span>
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><a href="#" style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--t1)">Hurry Up Tomorrow</a><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album · 2025 · 22 songs, 84 min</span></span>
+              <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+              <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Saved</button>
+              <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+              <button aria-label="Hide songs of Hurry Up Tomorrow" aria-expanded="true" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            </div>
+            <div role="table" aria-label="Songs on Hurry Up Tomorrow" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); grid-auto-flow: column; column-gap: 32px; padding-top: 6px">
+              <sc-for list="{{tracks}}" as="r" hint-placeholder-count="10"><div role="row" style="{{r.row}}"><span style="font-size: 14px; color: var(--t3); font-variant-numeric: tabular-nums; padding-left: 8px">{{r.n}}</span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="display: flex; justify-content: center"><sc-if value="{{r.liked}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Liked" role="img"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></sc-if></span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.d}}</span></div></sc-for>
+            </div>
+            <a href="#" style="font-size: 14px; line-height: 20px; color: var(--acct); padding: 4px 0 0 8px">Show all 22 songs</a>
+          </div>
+        </section>
+        <sc-for list="{{collapsed}}" as="r" hint-placeholder-count="4">
+          <div role="row" style="{{r.row}}">
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="font-size: 14px; line-height: 20px; font-weight: 600; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</a><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--t2)">{{r.meta}}<sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="On this PC" role="img"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span></span>
+            <button aria-label="Play {{r.t}}" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg></button>
+            <button aria-label="{{r.saveLabel}}" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" style="{{r.heart}}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="Show songs of {{r.t}}" aria-expanded="false" style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">{{r.count}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{isGrid}}" hint-placeholder-val="{{ false }}">
+      <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 20px 16px">
+        <sc-for list="{{grid}}" as="d" hint-placeholder-count="16"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{d.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{d.n}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{d.y}}</span></a></sc-for>
+      </div>
+    </sc-if>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"view":{"editor":"enum","options":["list","grid"],"default":"list"},"lower":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const view = this.props.view ?? 'list';
+  const isList = view !== 'grid';
+  const seg = (on) => 'width: 36px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; color: var(--t1); background: ' + (on ? 'var(--sub)' : 'transparent');
+  const chips = ['All', 'Albums', 'Singles & EPs', 'Compilations'].map((l, i) => ({ label: l, pressed: i === 0 ? 'true' : 'false',
+    style: 'height: 32px; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 14px; ' + (i === 0 ? 'border: 1px solid transparent; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  const tracks = [['Wake Me Up', '5:08', false], ['Cry for Me', '3:44', true], ['I Can’t Wait to Get There', '3:47', false], ['São Paulo', '5:01', true], ['Until We’re Skin & Bones', '1:39', false], ['Baptized in Fear', '3:52', false], ['Open Hearts', '3:54', false], ['Opening Night', '1:46', false], ['Closing Night', '4:21', false], ['Reflections Laughing', '4:46', false]].map((d, i) => ({ n: String(i + 1), t: d[0], d: d[1], liked: d[2],
+    row: 'display: grid; grid-template-columns: 36px minmax(0, 1fr) 32px 56px; align-items: center; height: 40px; border-radius: 4px; ' + (i === 6 ? 'background: var(--sub)' : '') }));
+  const collapsed = [['Dawn FM', 'Album · 2022', '16 songs', '#2a3a5a', true, false], ['Dancing in the Flames', 'Single · 2024', '1 song', '#5a3a2a', false, false], ['After Hours', 'Album · 2020', '14 songs', '#5a2a3a', true, true], ['Timeless', 'Single · 2024 · with Playboi Carti', '1 song', '#3a3a3a', false, false]].map((d, i) => ({ t: d[0], meta: d[1], count: d[2], saveLabel: (d[4] ? 'Remove ' : 'Save ') + d[0] + (d[4] ? ' from' : ' to') + ' your library', cached: d[5],
+    heart: 'fill: ' + (d[4] ? 'currentColor' : 'none'),
+    row: 'display: grid; grid-template-columns: 72px minmax(0, 1fr) 36px 36px auto; align-items: center; height: 72px; padding: 0 12px; border-radius: 8px; ' + (i === 2 ? 'background: var(--sub)' : ''),
+    art: 'width: 56px; height: 56px; border-radius: 4px; display: block; background: ' + d[3] }));
+  const grid = [['Hurry Up Tomorrow', '2025 · Album', '#4a2a2a'], ['Dancing in the Flames', '2024 · Single', '#5a3a2a'], ['Timeless', '2024 · Single', '#3a3a3a'], ['São Paulo', '2024 · Single', '#4a3a2a'], ['Popular', '2023 · Single', '#2a2a4a'], ['One of the Girls', '2023 · Single', '#3a2a3a'], ['Dawn FM', '2022 · Album', '#2a3a5a'], ['The Highlights', '2021 · Compilation', '#5a2a2a'], ['Take My Breath', '2021 · Single', '#4a2a4a'], ['After Hours', '2020 · Album', '#5a2a3a'], ['Blinding Lights', '2019 · Single', '#7a2a2a'], ['My Dear Melancholy,', '2018 · EP', '#2a2a2a'], ['Starboy', '2016 · Album', '#5a2a3a'], ['Beauty Behind the Madness', '2015 · Album', '#3a2a2a'], ['Kiss Land', '2013 · Album', '#5a3a4a'], ['Trilogy', '2012 · Compilation', '#2a2a3a']].map((d) => ({ n: d[0], y: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; display: block; background: ' + d[2] }));
+  const s = { listBtn: seg(isList), gridBtn: seg(!isList) };
+  return { vars, theme, accent, chips, tracks, collapsed, grid, s, isList, isGrid: !isList, listPressed: isList ? 'true' : 'false', gridPressed: isList ? 'false' : 'true', none: -1, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

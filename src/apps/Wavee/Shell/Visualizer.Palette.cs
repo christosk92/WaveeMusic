@@ -12,14 +12,14 @@
 // REAL COVER COLOURS ONLY. The previous palette's second colour was the accent's hue + 150° — a synthetic complement (the
 // "salmon") that appeared on no cover. Now:
 //
-//   A     the accent (the stage's art-derived accent: the most saturated graded role, Design.Palette.Accent)
+//   A     the accent (the stage's art-derived accent: the most saturated graded role, ColorScience.Accent)
 //   B     the next graded role at least 28° of hue away from A; with none, A moved in VALUE — a tint of a real colour
 //   C     the next distinct role; else the HSV mid between A and B, moved in value until it is distinct
 //   Deep  BackgroundBase, clamped deep on the dark arm and pale on the light one (the backdrop's floor tone)
 //
 // Every paint colour (A, B, C) clears `StrokeContrast` (3:1) against the arm's veil: on the light arm it is darkened, on
-// the dark arm lifted, at constant hue — a light stage never gets a highlighter. Large soft washes may go under the floor
-// but cap their alpha at `WashA`. Two colours are DISTINCT when they are ≥ 20° of hue apart OR ≥ 0.1 of value apart.
+// the dark arm lifted, at constant hue — a light stage never gets a highlighter. Two colours are DISTINCT when they are
+// ≥ 20° of hue apart OR ≥ 0.1 of value apart.
 //
 // Rules: pure — no signal, no entity read, no theme read (the arm is a parameter), no allocation (spans are stackalloc'd).
 
@@ -33,8 +33,11 @@ public static partial class Visualizer
     /// <summary>The colours a face paints with, derived once per (cover, theme) in Stage.UI.cs (<c>StageCtx.BasePalette</c>)
     /// and rotated by the moments clock (<c>StageCtx.Palette</c>, the live one). Faces bind the slab's cross-faded
     /// <c>A/B/C/Deep</c> signals for solid fills; a value of this record is for what cannot bind (gradient stops), keyed by
-    /// <c>Slab.PaletteEpoch</c>.</summary>
-    public readonly record struct Palette(ColorF Accent, ColorF A, ColorF B, ColorF C, ColorF Deep, bool Dark)
+    /// <c>Slab.PaletteEpoch</c>.
+    /// <para>The palette carries NO polarity (tuned R5): it is derived FOR an arm, but a face that needs to know which arm it paints on
+    /// reads the one source every face and ink reads, <c>StageInk.IsDark</c> (a palette's own flag lagged the live arm through half a
+    /// cross-fade, so faces read light / dark from two sources).</para></summary>
+    public readonly record struct Palette(ColorF Accent, ColorF A, ColorF B, ColorF C, ColorF Deep)
     {
         /// <summary>The paint contrast floor over the veil (bars, strokes, caps).</summary>
         public const float StrokeContrast = 3f;
@@ -42,11 +45,6 @@ public static partial class Visualizer
         public const float MinHueGap = 28f;
         /// <summary>Two colours are distinct when this far apart in hue OR in value.</summary>
         public const float DistinctHue = 20f, DistinctValue = 0.1f;
-        /// <summary>A large soft fill's alpha cap (blobs, nebulae, washes — exempt from the contrast floor).</summary>
-        public const float WashAlphaDark = 0.75f, WashAlphaLight = 0.6f;
-
-        public float WashA => Dark ? WashAlphaDark : WashAlphaLight;
-
         /// <summary>A, B, C by index (a face colouring its parts "by index" cycles the three).</summary>
         public ColorF Pick(int i)
         {
@@ -62,13 +60,13 @@ public static partial class Visualizer
             if (!(t > 0f)) return a;                         // the ends are EXACT (a fade lands on its target, bit for bit)
             if (t >= 1f) return b;
             return new Palette(ColorF.Lerp(a.Accent, b.Accent, t), ColorF.Lerp(a.A, b.A, t), ColorF.Lerp(a.B, b.B, t),
-                ColorF.Lerp(a.C, b.C, t), ColorF.Lerp(a.Deep, b.Deep, t), t < 0.5f ? a.Dark : b.Dark);
+                ColorF.Lerp(a.C, b.C, t), ColorF.Lerp(a.Deep, b.Deep, t));
         }
 
         /// <summary>Derive from the stage accent and the cover's graded scheme (null/empty = no grading yet) for one arm.</summary>
         public static Palette From(ColorF accent, Scheme? scheme, bool dark)
         {
-            var ground = Design.StageInk.Arm(dark ? ThemeKind.Dark : ThemeKind.Light).Veil;
+            var ground = StageInk.Arm(dark ? ThemeKind.Dark : ThemeKind.Light).Veil;
             var a = Floor(accent with { A = 1f }, ground, dark);
 
             // the graded roles, raw (TextBrightAccent is the contrast-graded INK — pure white/black — never a colour)
@@ -76,9 +74,9 @@ public static partial class Visualizer
             int count = 0;
             if (scheme is { IsEmpty: false } sc)
             {
-                roles[count++] = Design.Palette.ToColor(sc.BackgroundTintedBase) with { A = 1f };
-                roles[count++] = Design.Palette.ToColor(sc.BackgroundBase) with { A = 1f };
-                roles[count++] = Design.Palette.ToColor(sc.TextSubdued) with { A = 1f };
+                roles[count++] = ColorScience.ToColor(sc.BackgroundTintedBase) with { A = 1f };
+                roles[count++] = ColorScience.ToColor(sc.BackgroundBase) with { A = 1f };
+                roles[count++] = ColorScience.ToColor(sc.TextSubdued) with { A = 1f };
             }
 
             // B: the first chromatic role far enough round the wheel from A
@@ -104,7 +102,7 @@ public static partial class Visualizer
             }
             if (!haveC) c = Separate(Mid(a, b), ground, dark, a, b);
 
-            return new Palette(accent, a, b, c, DeepOf(scheme, a, dark), dark);
+            return new Palette(accent, a, b, c, DeepOf(scheme, a, dark));
         }
 
         // ── the arithmetic (public for Wavee.Tests) ─────────────────────────────────────────────────────────────────
@@ -114,7 +112,7 @@ public static partial class Visualizer
         {
             var (hx, sx, _) = x.ToHsv();
             var (hy, sy, _) = y.ToHsv();
-            if (sx <= Design.Palette.NeutralS || sy <= Design.Palette.NeutralS) return 0f;
+            if (sx <= ColorScience.NeutralS || sy <= ColorScience.NeutralS) return 0f;
             float d = MathF.Abs(hx - hy) % 360f;
             return d > 180f ? 360f - d : d;
         }
@@ -152,11 +150,11 @@ public static partial class Visualizer
             }
         }
 
-        static bool Chromatic(ColorF c) => c.ToHsv().S > Design.Palette.NeutralS;
+        static bool Chromatic(ColorF c) => c.ToHsv().S > ColorScience.NeutralS;
 
         /// <summary>A raw graded role → a paint colour: brightness-lifted and saturation-floored (the chrome accent's own
         /// recipe), so a near-black background role becomes its colour rather than a smudge.</summary>
-        static ColorF Paint(ColorF role) => Design.Palette.Vivid(Design.Palette.Lift(role));
+        static ColorF Paint(ColorF role) => ColorScience.Vivid(ColorScience.Lift(role));
 
         /// <summary>A moved in value: darker on the dark arm, lighter on the light arm (then floored and separated).</summary>
         static ColorF ValueTint(ColorF a, bool dark)
@@ -195,7 +193,7 @@ public static partial class Visualizer
         /// light one; without a grading, A's hue at those values.</summary>
         static ColorF DeepOf(Scheme? scheme, ColorF a, bool dark)
         {
-            var (h, s, v) = scheme is { IsEmpty: false } sc ? Design.Palette.ToColor(sc.BackgroundBase).ToHsv() : a.ToHsv();
+            var (h, s, v) = scheme is { IsEmpty: false } sc ? ColorScience.ToColor(sc.BackgroundBase).ToHsv() : a.ToHsv();
             if (scheme is not { IsEmpty: false }) { s *= dark ? 0.7f : 0.25f; v = dark ? 0.20f : 0.92f; }
             return dark ? ColorF.FromHsv(h, s, Math.Clamp(v, 0.08f, 0.28f)) : ColorF.FromHsv(h, MathF.Min(s, 0.35f), MathF.Max(v, 0.86f));
         }

@@ -8,8 +8,8 @@
 //
 // WAVE 5 ADDS, in this file: the section FLAGS and the per-section CARD FACTS (§2b — what a home card paints that no
 // entity column holds: the payload accent of a non-playlist card, the section's own subtitle line, the raw format token,
-// the audiobook facts, the seeds), the account's TOP relations, `SectionKind.HomeShorts`, the readiness gate
-// (`HomeFeedReadiness` + `HomeRevealGate`, §5b) and the page's demand (`Home.EnsureFeed` / `EnsureSection`, §7). The
+// the audiobook facts, the seeds), the account's TOP relations, `SectionKind.HomeShorts` and the
+// page's demand (`Home.EnsureFeed` / `EnsureSection`, §7). The
 // composed feed model, the composer and every ported rule set live in `Home.Rules.cs`. A drill page demands its section
 // WHOLE (`SectionFields.Whole`): the query layer walks the section to its end (Spotify/Spotify.Api.Browse.cs) and no page
 // ever pages a section itself (the "no page-side fetch windows" rule).
@@ -29,15 +29,8 @@
 // one <see cref="SectionKind"/> whose members are namespaced by family. Two tables would be two paging
 // implementations behind one page.
 //
-// THE READINESS RULES ARE THE POINT OF THIS FILE (ch 10 §7). Three separate questions, three separate answers, and
-// 0.2.9 got each of them wrong in a different way:
+// THE SECTION'S READINESS RULE LIVES HERE (ch 10 §7); the whole-page one is `ScreenLoad` (Home/Reveal.cs):
 //
-//   • <see cref="Home.Classify"/> — the WHOLE-PAGE gate. `Store.Warm` paints yesterday's rows at boot, so
-//     "sectionCount > 0" is not readiness; the live attempt must have CONCLUDED first. This is the "cached shelves
-//     painted, then replaced 1.5 s later" shape the gate exists to prevent.
-//   • <see cref="Home.ChromeConcluded"/> — the 1,500 ms hold. "Concluded" here means NOTHING IS COMING, not
-//     "something arrived": an Idle notification bridge (offline, `--fake`) is concluded, and getting that wrong is the
-//     difference between a 0 ms and a 1,500 ms hold on every offline launch.
 //   • <see cref="Section.IsComplete"/> / <see cref="SectionPaging"/> — a SECTION reveals complete, and completeness is
 //     the server's cursor, not its total. Measured on a captured Home: 7 of 31 sections disagreed with their own
 //     `totalCount`, and a complete section can answer `nextOffset: 0`. Paging on the deduped card count walks the
@@ -79,7 +72,7 @@ public enum HomeFields : uint
     /// <summary>The facet chip strip. 0 chips is a real answer: no strip, and the greeting row still renders.</summary>
     Chips = 1 << 1,
     /// <summary>The section list itself has been answered for (whether or not it is empty). The EDGE carries the
-    /// rows; this bit carries "somebody replied", which is what <see cref="Home.Classify"/> needs and what an edge
+    /// rows; this bit carries "somebody replied", which is what <see cref="Home.LiveAttemptConcluded"/> needs and what an edge
     /// state alone cannot say while the store is warming rows from disk.</summary>
     Sections = 1 << 2,
 
@@ -131,16 +124,6 @@ public enum SectionKind : byte
     BrowseCategoryGrid = 17,
     /// <summary>The trailing "related categories" block: same content as a grid, different placement.</summary>
     BrowseRelated = 18,
-}
-
-/// <summary>The whole-page readiness verdict — 0.2.9's <c>HomeFeedReadiness.Classify</c>.</summary>
-public enum HomeState : byte
-{
-    /// <summary>Keep the skeleton: the warm rows are provisional and the live attempt has not concluded.</summary>
-    Placeholder = 0,
-    Ready = 1,
-    /// <summary>Concluded, and there is genuinely nothing. A real, renderable empty — not a skeleton forever.</summary>
-    Empty = 2,
 }
 
 // ── 2. the tables ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -488,7 +471,7 @@ public enum HomeCardFlags : byte
 /// stale feed instead of re-rendering it.
 /// <para>Deliberately NOT in <c>Scope.Tables</c>: that array is the store's warm/trim walk, and a Home feed is not
 /// something to warm from disk — a stale greeting and yesterday's shelves painted at boot is the exact failure
-/// <see cref="Home.Classify"/> exists to prevent.</para>
+/// the whole-page gate (<c>ScreenLoad</c>) exists to prevent.</para>
 ///
 /// <para><b>KNOWN GAP, REPORTED (defect 1).</b> <c>Scope.ReleaseText</c> walks <c>Scope.Tables</c>, and these four
 /// synthetic tables — <see cref="Homes"/>, <see cref="Sections"/>, <c>Searches</c> and <c>Browses</c> — are not in it,
@@ -516,10 +499,9 @@ public sealed partial class Edges
     public readonly EdgeTable<KindEdge> SectionCards = new();
 
     /// <summary>A home baseline section's preview tracks (D2, <c>feedBaselineLookup</c>): parent = the SECTION row,
-    /// like <see cref="SectionCards"/>. Up to five thin <see cref="Track"/> rows per section, rank order
-    /// (<see cref="PreviewEdge"/>). Filled by <c>Spotify.Decode.FeedBaselineLookup</c>; read through
-    /// <see cref="Wavee.Section.PreviewSlots"/>.</summary>
-    public readonly EdgeTable<PreviewEdge> SectionPreviewTracks = new();
+    /// like <see cref="SectionCards"/>. Up to five thin <see cref="Track"/> rows per section, in the server's (rank)
+    /// order. Filled by <c>Spotify.Decode.FeedBaselineLookup</c>; read through <see cref="Wavee.Section.PreviewSlots"/>.</summary>
+    public readonly EdgeTable<NoEdge> SectionPreviewTracks = new();
 
     /// <summary>WHOLE-FEED READINESS MARKER for D2's lookup (<see cref="FetchEdge.HomePreviews"/>): parent = the Home
     /// row, no real children — it exists only so the edge door's ask/answer machinery (dedupe, failure, retry) has
@@ -626,23 +608,12 @@ public readonly partial struct Section(int slot) : IEquatable<Section>
     /// <summary>Which TABLE each card's slot indexes, parallel to <see cref="CardSlots"/>: a band mixes kinds, so a
     /// row binds <c>new EntityRef(CardKinds[i].Kind, CardSlots[i])</c> and never a bare slot.</summary>
     public ReadOnlySpan<KindEdge> CardKinds => Entities.Current.Edges.SectionCards.Payload(Slot);
-    public EdgeState CardState => Entities.Current.Edges.SectionCards.State(Slot);
     public uint CardVersion => Entities.Current.Edges.SectionCards.Version(Slot);
 
     /// <summary>D2's preview tracks (<c>feedBaselineLookup</c>) — up to five thin <c>Track</c> slots, rank order. Same
     /// span rule as <see cref="CardSlots"/>.</summary>
     public ReadOnlySpan<int> PreviewSlots => Entities.Current.Edges.SectionPreviewTracks.Targets(Slot);
-    /// <inheritdoc cref="PreviewSlots"/>
-    public ReadOnlySpan<PreviewEdge> PreviewRanks => Entities.Current.Edges.SectionPreviewTracks.Payload(Slot);
-    public EdgeState PreviewState => Entities.Current.Edges.SectionPreviewTracks.State(Slot);
     public uint PreviewVersion => Entities.Current.Edges.SectionPreviewTracks.Version(Slot);
-
-    /// <summary>IS THIS SECTION WHOLE? Ch 10 §7's reveal gate — "a section reveals COMPLETE" — answered from three
-    /// columns, so the page never counts and never probes: somebody has answered for the band, and the server has
-    /// nothing left past our cursor. A section that revealed on "some cards arrived" is the pop-in the chapter
-    /// forbids, and one that waited for <see cref="Total"/> to be reached would never reveal at all (7 of 31 measured
-    /// sections overshoot their own total).</summary>
-    public bool IsComplete => Knows(SectionFields.Identity) && !HasMore;
 
     /// <summary>Does "Show all" stay armed?</summary>
     public bool HasMore => SectionPaging.HasMore(Raw, Cards, Total, NextOffset);
@@ -701,10 +672,6 @@ public readonly partial struct Home(int slot) : IEquatable<Home>
     public int SectionCount => E.HomeSection.Count(Slot);
     public uint SectionVersion => E.HomeSection.Version(Slot);
 
-    /// <summary>The whole-page verdict. <paramref name="concluded"/> is "the fetch for this (scope, facet) is no
-    /// longer in flight AND the session is not still connecting" — see <see cref="Home.Concluded"/>.</summary>
-    public HomeState State(bool concluded) => Classify(SectionCount, concluded);
-
     public bool Equals(Home other) => other.Slot == Slot;
     public override bool Equals(object? o) => o is Home h && h.Slot == Slot;
     public override int GetHashCode() => Slot;
@@ -712,35 +679,10 @@ public readonly partial struct Home(int slot) : IEquatable<Home>
     public static bool operator !=(Home a, Home b) => a.Slot != b.Slot;
 }
 
-// ── 5. the readiness rules (ch 10 §7) ────────────────────────────────────────────────────────────────────────────────
+// ── 5. a chrome row's load verdict ───────────────────────────────────────────────────────────────────────────────────
 
-public readonly partial struct Home
-{
-    /// <summary>THE whole-page gate — 0.2.9's <c>HomeFeedReadiness.Classify</c>, unchanged in behaviour and moved onto
-    /// the model. Until the live attempt has CONCLUDED the answer is <see cref="HomeState.Placeholder"/> whatever the
-    /// store warmed from disk, because warm rows are provisional and painting them and then replacing them 1.5 s later
-    /// is the exact regression the gate exists to prevent.</summary>
-    public static HomeState Classify(int sectionCount, bool concluded)
-        => !concluded ? HomeState.Placeholder
-         : sectionCount > 0 ? HomeState.Ready
-         : HomeState.Empty;
-
-    /// <summary>"The live attempt is over" — nothing is in flight for this feed and the session is not still coming
-    /// up. Split out so the page never has to remember that BOTH halves matter: a concluded fetch during a
-    /// reconnecting session is not a conclusion.</summary>
-    public static bool Concluded(bool fetchInflight, bool sessionConnecting) => !fetchInflight && !sessionConnecting;
-
-    /// <summary>THE 1,500 ms hold's predicate — 0.2.9's <c>ChromeConcluded</c>. "Concluded" means NOTHING IS COMING,
-    /// which is why an absent notification bridge and an Idle one both answer true: Idle is "never fetched" (offline,
-    /// <c>--fake</c>), and treating it as pending is the difference between a 0 ms hold and a 1,500 ms one on every
-    /// offline launch. <see cref="HomeLoad.Pending"/> is the ONE state worth a bounded wait.</summary>
-    public static bool ChromeConcluded(HomeLoad charts, bool hasNotifications, HomeLoad whatsNew, HomeLoad social)
-        => charts != HomeLoad.Pending
-        && (!hasNotifications || (whatsNew != HomeLoad.Pending && social != HomeLoad.Pending));
-}
-
-/// <summary>The three-state load verdict the chrome predicate reads. Deliberately not a bool pair: "never asked" and
-/// "asked and waiting" are different answers and 0.2.9 conflating them is what armed the hold offline.</summary>
+/// <summary>The three-state load verdict of a chrome row (the chart deck, the top-content row). Deliberately not a bool
+/// pair: "never asked" and "asked and waiting" are different answers.</summary>
 public enum HomeLoad : byte
 {
     /// <summary>Never fetched — offline, <c>--fake</c>, or a bridge that does not exist. CONCLUDED.</summary>
@@ -801,9 +743,6 @@ public struct StagedSection : IStagedRow
     /// <c>s.Slot(table, in row.Id)</c> — and no format-to-arena-then-parse-back round trip.</summary>
     public StagedId Id;
     public TextRef Title, Subtitle;
-    /// <summary>The feed or browse-page row this band belongs to, so the commit can rebuild the parent's edge without
-    /// a second pass. Empty for a band fetched on its own (the drill page).</summary>
-    public TextRef ParentUri;
     public int Total, Raw, Cards, NextOffset;
     public uint Accent;
     public ushort Unsupported, Duplicates;
@@ -854,7 +793,7 @@ public struct StagedTopRun
 /// <summary>One decoded FEED SUBJECT: the server's greeting and its facet chip strip. The band list itself is the
 /// <see cref="Edges.HomeSection"/> run — this row carries what is ON the subject and the
 /// <see cref="HomeFields.Sections"/> bit, which is "somebody replied", the one thing an edge state cannot say while the
-/// store is warming yesterday's rows from disk (<see cref="Home.Classify"/>).</summary>
+/// store is warming yesterday's rows from disk (<see cref="Home.LiveAttemptConcluded"/>).</summary>
 public struct StagedHome : IStagedRow
 {
     public StagedId Id;
@@ -1077,137 +1016,10 @@ public readonly partial struct Home
     }
 }
 
-// ── 7. the reveal gate (Wave 5, ported verbatim: 0.2.9 `HomeFeedReadiness.cs:31-164`, ch 10 §8) ──────────────────────
-
-/// <summary>Where the home LANDING feed stands, and the reveal gate's pure halves. Home reveals ONCE, from the feed the
-/// session settles on: before the live-catalog attempt has concluded every read is provisional — including one that
-/// already carries resident shelves — and publishing those is the "cached grid, then everything jumps" recording (#53).
-/// <see cref="Classify"/> delegates to <see cref="Home.Classify"/>, the one copy of the three-way decision.</summary>
-public static class HomeFeedReadiness
-{
-    /// <param name="groupCount">The unfaceted feed's group (section) count.</param>
-    /// <param name="liveCatalogConcluded">The live attempt has CONCLUDED — succeeded, failed, gone offline, or was never
-    /// going to run. The one state that is not concluded is a connect in flight (<see cref="Home.LiveAttemptConcluded"/>).</param>
-    public static HomeState Classify(int groupCount, bool liveCatalogConcluded) => Home.Classify(groupCount, liveCatalogConcluded);
-
-    /// <summary>The hard fallback: past this since mount the page force-publishes the best answer it has.</summary>
-    public const double ForceReleaseMs = 8000d;
-
-    /// <summary>Pure elapsed-time gate for the hard fallback — see <see cref="ForceReleaseMs"/>.</summary>
-    public static bool ShouldForceRelease(double elapsedMs) => elapsedMs >= ForceReleaseMs;
-
-    /// <summary>How long the FIRST reveal waits, after the feed settled, for the chrome rows (Charts, the timeline) to
-    /// conclude. A cap, not a sleep; later publishes never wait.</summary>
-    public const double ChromeSettleMs = 1500d;
-
-    /// <summary>The first paint may happen once the feed settled AND the chrome concluded (or the cap elapsed, or the hard
-    /// fallback forced it).</summary>
-    public static bool MayReveal(bool feedSettled, bool chromeConcluded, double msSinceSettled, bool force = false)
-        => feedSettled && (chromeConcluded || force || msSinceSettled >= ChromeSettleMs);
-
-    /// <summary>A MOUNTING page's warm-start predicate — "should this region seed already revealed instead of a
-    /// skeleton?" Deliberately NOT <see cref="Home.Classify"/>: a disk-warmed row can carry Known sections BEFORE
-    /// its first live check concludes (<c>Store.Warm</c> — "the store paints yesterday's rows at boot"), and
-    /// painting those on a genuine COLD BOOT is the exact "cached grid, then everything jumps" regression Classify
-    /// exists to prevent (see the file banner). <paramref name="revealedThisSession"/> is the signal that rules
-    /// that case out WITHOUT relaxing Classify's gate: it is true only after this exact content has already cleared
-    /// that gate once, this process, this scope (<see cref="Home.Feeds.HasRevealed"/> /
-    /// <see cref="Home.Feeds.HasChartsRevealed"/> — session-scoped, so a KEEP-ALIVE EVICTION of the page's
-    /// Loadable/gate never clears it). A background refresh setting <c>Inflight</c> again afterward does not
-    /// un-reveal it — that is the point: a returning page must paint the graph's still-known content and let the
-    /// refresh update it in place, not re-shimmer merely because its page-local state was discarded.</summary>
-    public static bool ShouldPaintOnMount(int groupCount, bool revealedThisSession)
-        => groupCount > 0 && revealedThisSession;
-
-    /// <summary>The epoch/placeholder transition every UNFACETED read runs: a withheld read returns the applied epoch
-    /// UNCHANGED, so a later read at the SAME epoch still publishes; <paramref name="force"/> publishes a placeholder but
-    /// still obeys the epoch gate.</summary>
-    public static (bool Publish, int AppliedEpoch) ApplyEpoch(
-        int appliedEpoch, int epoch, int groupCount, bool liveCatalogConcluded, bool force = false)
-    {
-        if (epoch < appliedEpoch) return (false, appliedEpoch);
-        if (!force && Classify(groupCount, liveCatalogConcluded) == HomeState.Placeholder) return (false, appliedEpoch);
-        return (true, epoch);
-    }
-}
-
-/// <summary>What <see cref="HomeRevealGate{TFeed}.Offer"/> decided about a read.</summary>
-public enum HomeRevealVerdict : byte
-{
-    /// <summary>Withheld — stale epoch, or a provisional read the page keeps skeletonized.</summary>
-    Withheld,
-    /// <summary>Settled but the chrome has not concluded: held for the first reveal (published from <c>Tick</c>).</summary>
-    Held,
-    /// <summary>The FIRST reveal: publish now, once.</summary>
-    Reveal,
-    /// <summary>Already revealed: an in-place Ready→Ready swap — never a second reveal, never a skeleton.</summary>
-    Swap,
-}
-
-/// <summary>The Home page's reveal state machine, engine-free so the whole launch sequence is testable. One instance per
-/// mounted page (a page-local field, never a static — two tabs each track what THEY consumed).</summary>
-public sealed class HomeRevealGate<TFeed> where TFeed : class
-{
-    /// <summary>The feed epoch this page's rendered (or held) feed was read at; -1 until the first read lands.</summary>
-    public int AppliedEpoch { get; private set; } = -1;
-
-    /// <summary>The page has painted a real branch (feed, empty or error) — from here every publish is a swap.</summary>
-    public bool Revealed { get; private set; }
-
-    // The most recent UNFACETED read seen, applied or not: what the 8 s hard fallback force-publishes.
-    int _lastSeenEpoch = -1;
-    TFeed? _lastSeenFeed;
-
-    // The settled feed waiting on the chrome for the first reveal, and when it settled (the cap's origin).
-    TFeed? _held;
-    double _heldAtMs;
-
-    /// <summary>A settled feed is waiting for the chrome rows.</summary>
-    public bool IsHolding => _held is not null;
-
-    /// <summary>A read landed. <paramref name="alreadyResolved"/>: the region left Pending by another path (an initial
-    /// failure, a facet tap) — a page that painted anything real is revealed. A faceted read always passes
-    /// (<see cref="HomeFeedReadiness.Classify"/> never applies to the server's own facet document).</summary>
-    public HomeRevealVerdict Offer(int epoch, TFeed feed, int groupCount, bool faceted, bool liveCatalogConcluded,
-        bool force, bool alreadyResolved, bool chromeConcluded, double nowMs)
-    {
-        if (alreadyResolved) Revealed = true;
-        if (epoch < AppliedEpoch) return HomeRevealVerdict.Withheld;
-        if (!faceted && epoch >= _lastSeenEpoch) { _lastSeenEpoch = epoch; _lastSeenFeed = feed; }
-        var (publish, applied) = HomeFeedReadiness.ApplyEpoch(AppliedEpoch, epoch, groupCount, liveCatalogConcluded, force || faceted);
-        AppliedEpoch = applied;
-        if (!publish) return HomeRevealVerdict.Withheld;
-        if (Revealed) { _held = null; return HomeRevealVerdict.Swap; }
-        _held = feed;
-        _heldAtMs = nowMs;
-        return Tick(chromeConcluded, nowMs, force) is null ? HomeRevealVerdict.Held : HomeRevealVerdict.Reveal;
-    }
-
-    /// <summary>The chrome moved, or the cap timer fired: the held feed to publish as the first reveal, or null.
-    /// Idempotent — a second tick after the reveal returns null.</summary>
-    public TFeed? Tick(bool chromeConcluded, double nowMs, bool force = false)
-    {
-        if (Revealed || _held is null) return null;
-        if (!HomeFeedReadiness.MayReveal(feedSettled: true, chromeConcluded, nowMs - _heldAtMs, force)) return null;
-        var feed = _held;
-        _held = null;
-        Revealed = true;
-        return feed;
-    }
-
-    /// <summary>The 8 s hard fallback's input: a held feed first, then the last read seen even if withheld. A null feed
-    /// means nothing has landed at all yet (the page offers <c>HomeFeedView.Empty</c>).</summary>
-    public (int Epoch, TFeed? Feed) ForceRelease()
-        => (Math.Max(_lastSeenEpoch, AppliedEpoch), _held ?? _lastSeenFeed);
-}
-
 // ── 8. the page's demand (Wave 5, WP-5.P contract §2.1) ──────────────────────────────────────────────────────────────
 
 public readonly partial struct Home
 {
-    /// <summary>The selected facet id ("" = unfiltered). App-global, like 0.2.9's <c>Services.HomeFacet</c>: the strip
-    /// WRITES it; the page and the feed host READ it — the host as a request parameter (ch 10 §9 trap 7).</summary>
-    public static readonly Signal<string> SelectedFacet = new("");
 
     /// <summary>"The live attempt for this row concluded" (ch 10 §7): no request is out for the row AND the session is
     /// not in <c>Resolving..Minting</c> AND the row has been answered, asked, or can never be asked (the session is not
@@ -1442,17 +1254,6 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
     public EntityId Id => !IsBlank && SectionTable.CardTable(Target.Kind) is { } table && (uint)Target.Slot < (uint)table.Count
         ? table.Id[Target.Slot] : default;
 
-    /// <summary>The target row knows its Identity group.</summary>
-    public bool KnowsIdentity => !IsBlank && Live && Target.Kind switch
-    {
-        EntityKind.Playlist or EntityKind.Collection => S.Playlists.Knows(Target.Slot, (uint)PlaylistFields.Identity),
-        EntityKind.Album => S.Albums.Knows(Target.Slot, (uint)AlbumFields.Title),
-        EntityKind.Artist => S.Artists.Knows(Target.Slot, (uint)ArtistFields.Name),
-        EntityKind.Track => S.Tracks.Knows(Target.Slot, (uint)TrackFields.Title),
-        EntityKind.Episode => S.Episodes.Knows(Target.Slot, (uint)EpisodeFields.Title),
-        EntityKind.Show => S.Shows.Knows(Target.Slot, (uint)ShowFields.Title),
-        _ => false,
-    };
 
     public string Title => Resolve(TitleId);
 
@@ -1692,21 +1493,6 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
     int EpisodeShowSlot => !IsBlank && Live && Target.Kind == EntityKind.Episode ? S.Episodes.Show[Target.Slot] : Table.None;
 
     public string? GenericTitle => PlaylistText(static (t, slot) => t.GenericTitle[slot]);
-
-    /// <summary>A daylist whose name is empty or still its generic pre-title: a shallow identity that must not be
-    /// displayed as a personalized title (0.2.9 <c>HomeCardMeta.NeedsHydration</c>). LIVE: it flips the render after the
-    /// real header lands, which is what 0.2.9's hydrator loop became (ch 10 §7 DATA GAPS).</summary>
-    public bool NeedsHydration
-    {
-        get
-        {
-            if (IsBlank || !Live || Format != "daylist") return false;
-            var title = TitleId;
-            if (title.IsEmpty) return true;
-            var generic = S.Playlists.GenericTitle[Target.Slot];
-            return !generic.IsEmpty && (generic.Value == title.Value || Resolve(generic) == Resolve(title));
-        }
-    }
 
     /// <summary>Unix ms the daylist's window rolls over; 0 = unknown.</summary>
     public long ExpiresAtMs => IsPlaylist ? S.Playlists.DaylistExpiresAt[Target.Slot] * 1000L : 0;

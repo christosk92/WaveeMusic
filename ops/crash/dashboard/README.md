@@ -17,8 +17,6 @@ Issues → Issue detail, Reports → Report detail, Versions, Symbols.
 npm install
 npm run dev       # vite dev server, port 5173
 npm run build     # tsc -b (strict) && vite build
-npm test          # vitest run — mapping, format, render tests per page (mock mode), and the Delete report /
-                  # Run retention mutations against a stubbed `fetch` (mock mode off)
 npm run shots     # Playwright (system Edge) screenshot pass — see below
 npm run preview   # serve the production build, port 4173
 ```
@@ -173,6 +171,5 @@ src/
   pages/ReportDetail/   index.tsx — facts, report.txt/log-tail viewer (LogViewer, shared with Issue detail),
                         memory snapshot, delete report, install erasure, parts.tsx
   lib/                  format.ts, colors.ts
-  test/setup.ts         jsdom polyfills (ResizeObserver, canvas, matchMedia, NodeFilter) for vitest
 shots/take.mjs           Playwright screenshot script (output in shots/out/, gitignored)
 ```

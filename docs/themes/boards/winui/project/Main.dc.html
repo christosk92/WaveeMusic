@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee Fluent audit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff}a:hover{color:#c7f4ff}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #1c1c1c; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 48px 24px">
+  <div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="font-size: 12px; color: #9e9e9e">Wavee · design review · 10 October 2026</div>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Where Wavee breaks WinUI / Fluent</h1>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #c5c5c5; max-width: 760px">Audited against Windows 11 design guidance (Microsoft Learn), Fluent 2 and the WinUI theme resources on microsoft-ui-xaml main, from five screenshots: Library › Artists, Library › Albums, Home, an album and a playlist. Motion is out of scope: production’s choreography is deliberate.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px">
+        <sc-for list="{{legend}}" as="l" hint-placeholder-count="3">
+          <span style="{{l.style}}">{{l.label}}</span>
+        </sc-for>
+      </div>
+    </div>
+    <sc-for list="{{sections}}" as="s" hint-placeholder-count="8">
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{s.title}}</h2>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <sc-for list="{{s.items}}" as="f" hint-placeholder-count="4">
+            <div style="display: grid; grid-template-columns: 96px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; padding: 14px 16px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(0,0,0,0.2); align-items: start">
+              <span style="{{f.sevStyle}}">{{f.sev}}</span>
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <span style="font-size: 14px; line-height: 20px; font-weight: 600">{{f.what}}</span>
+                <span style="font-size: 12px; line-height: 16px; color: #9e9e9e">{{f.where}}</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <span style="font-size: 13px; line-height: 18px; color: #c5c5c5">{{f.rule}}</span>
+                <a href="{{f.url}}" style="font-size: 12px; line-height: 16px">{{f.src}}</a>
+              </div>
+              <span style="font-size: 13px; line-height: 18px; color: #ffffff">{{f.fix}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":4200}}'>
+class Component extends DCLogic {
+renderVals() {
+  const sev = {
+    high: 'height: 24px; align-self: start; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 4px; font-size: 12px; font-weight: 600; background: #ff99a4; color: #2b0006',
+    med: 'height: 24px; align-self: start; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 4px; font-size: 12px; font-weight: 600; background: #fce100; color: #2b2300',
+    low: 'height: 24px; align-self: start; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 4px; font-size: 12px; font-weight: 600; background: rgba(255,255,255,0.12); color: #ffffff',
+  };
+  const L = 'https://learn.microsoft.com/en-us/windows/apps/';
+  const X = 'https://github.com/microsoft/microsoft-ui-xaml/blob/main/controls/dev/';
+  const f = (s, what, where, rule, src, url, fix) => ({ sev: s === 'high' ? 'Breaks' : s === 'med' ? 'Off-pattern' : 'Polish', sevStyle: sev[s], what, where, rule, src, url, fix });
+  const sections = [
+    { title: '1. Title bar', items: [
+      f('med', 'Real tabs in the title bar, drawn as an underlined label instead of TabView tabs', 'Every screen, left of the search box', 'Tabs in the title bar are right when tabs are a main element. A TabView tab has rounded top corners and joins the content surface when selected; it carries a close button, there is an add-tab button, and the strip keeps a draggable footer. The title bar uses Mica Alt. An underline reads as a SelectorBar, not a tab.', 'Title bar design · TabView · Mica', L + 'develop/ui/controls/tab-view', 'Stock TabView tabs (8 px top corners, close ✕ on hover, "+" button, drag region after the strip) on Mica Alt. The page header can then skip repeating the tab name in the title bar.'),
+      f('med', 'Back and forward and a hamburger, each its own 48 px target', 'Title bar, left', 'Fluent puts back (E830) and the pane toggle in the title bar, 40 px wide each. Back is shown disabled when the stack is empty. There is no guidance for forward.', 'TitleBar control', L + 'develop/ui/controls/title-bar', 'Keep back and the pane toggle at 40 px. Move forward to Alt+→ and the mouse X2 button, or keep it disabled-not-hidden, never hidden.'),
+      f('med', 'A pill-shaped search box (radius 16) with a "Ctrl+F" keycap inside it', 'Title bar centre', 'Controls use ControlCornerRadius 4. Title bar search is a centred AutoSuggestBox with MaxWidth 580–600 in a 48 px bar.', 'CornerRadius_themeresources · Title bar customization', X + 'CommonStyles/CornerRadius_themeresources.xaml', 'A stock AutoSuggestBox: 4 px corners, query glyph, "Search" placeholder, shortcut in the tooltip ("Search (Ctrl+F)").'),
+      f('low', 'The title bar is about 56 px tall', 'Every screen', 'Standard 32, or 48 (Tall) with a search box or PersonPicture; caption buttons match with PreferredHeightOption=Tall.', 'Title bar design', L + 'design/basics/titlebar-design', '48 px.'),
+    ]},
+    { title: '2. Navigation pane', items: [
+      f('high', 'Nav items about 62 px apart with roughly 24 px icons', 'Sidebar: Home, Liked Songs, Albums…', 'A NavigationViewItem has MinHeight 36 with a 4,2 margin (a 40 px pitch), a 16 px icon and a 3×16 accent selection pill.', 'NavigationView_themeresources', X + 'NavigationView/NavigationView_themeresources.xaml', '40 px pitch, 16 px Segoe Fluent icons, Body 14 labels. The same pane then fits about 50% more items.'),
+      f('med', 'Every group has a header, a collapse chevron and a divider', 'Pinned, Collections, Playlists', 'Headers label groups and separators group items; WinUI Gallery uses headers without separators. Collapse chevrons belong to hierarchical items, not headers.', 'NavigationView', L + 'develop/ui/controls/navigationview', 'A header (Body Strong) with 12 px of space above it, no rule. Collapse goes through a hierarchical "Playlists" parent item.'),
+      f('med', 'A pin glyph always visible on pinned items', 'Pinned', 'The section already says "Pinned". Hover-only commands minimise clutter but must also be in the context menu.', 'Contextual commanding', L + 'develop/ui/controls/collection-commanding', 'No pin glyph. Unpin lives in the context menu and appears on hover only.'),
+      f('low', 'Raw library counts (393, 20, 18) right-aligned', 'Collections', 'InfoBadge is for dismissible, non-permanent signals; permanent totals are not badge material.', 'Info badge', L + 'develop/ui/controls/info-badge', 'Drop the counts from the pane (they belong in each page’s header), or show them as Caption tertiary text.'),
+      f('low', 'Heavy truncation: "New F…", "90s rock perm…", "K-Pop Duets (러블리 듀…"', 'Sidebar', 'The default OpenPaneLength is 320, and the samples give every item a tooltip.', 'NavigationView API', 'https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.navigationview.openpanelength', 'Pane at 320 with tooltips on every item. The shorter pitch also frees space.'),
+    ]},
+    { title: '3. Materials and layers', items: [
+      f('high', 'Four different tints side by side: the sidebar, the list pane, the detail pane and inner bands', 'Albums, Artists (master–detail), album card, "in your library" band', 'Windows 11 uses two layers: a base layer (Mica: title bar, nav) and one content layer (LayerFillColorDefault, a 1,1,0,0 stroke, an 8 px top-left radius). Stacked tinted panes fall outside that model.', 'Layering · Mica', L + 'design/signature-experiences/layering', 'One content card. Split master and detail with a 1 px divider (or a Card), not a second tint. Bands inside the page become plain sections.'),
+      f('med', 'A large gradient-wash hero on Home (purple and orange)', 'Home, daylist', '“Avoid overusing brand colors or using them on large surfaces.” Contrast must hold regardless of the colour.', 'Fluent 2 Color', 'https://fluent2.microsoft.design/color', 'A Card (CardBackgroundFillColorDefault) with the daylist artwork as an image, or full-bleed artwork with a scrim. No synthetic gradient.'),
+      f('low', 'The player bar is its own tinted slab', 'Bottom bar', 'The player bar is commanding chrome and belongs to the base layer (Mica), like the title bar.', 'Mica', L + 'design/style/mica', 'Player bar on Mica, separated from the content card by the card’s own edge.'),
+    ]},
+    { title: '4. Typography', items: [
+      f('high', 'Light-weight page titles ("Home", "Albums", "Artists")', 'Master panes, Home', 'The Windows 11 ramp uses only Regular and Semibold, with Semibold for titles. Light is Windows 8/10 Metro.', 'Typography', L + 'design/signature-experiences/typography', 'Title Large 40/52 Semibold for page titles, Title 28/36 Semibold for pane titles, Subtitle 20/28 Semibold for sections.'),
+      f('med', 'Three title styles on one screen: light "Albums", bold "Arash", semibold "WLUWD" and "SUPERMAN"', 'Library master–detail', 'One ramp, one style per level. Bold is not in the ramp (“Use Semibold instead of Bold”).', 'Typography', L + 'design/signature-experiences/typography', 'Pane title = Title 28; detail title = Title Large 40; album card title = Subtitle 20. All Semibold.'),
+      f('med', 'Lowercase UI text: "in your library", "all releases", "newest", "oldest", "alphabetical"', 'Artist detail', '“Use sentence casing for all UI text, including titles.”', 'Typography', L + 'design/signature-experiences/typography', 'Sentence case everywhere outside the Zune nav style, which is deliberately Metro.'),
+    ]},
+    { title: '5. Accent colour', items: [
+      f('high', 'Accent on nearly everything: filled hearts on every liked row and in the player, five play buttons, tab underlines, both sliders, links, "Playing on iPhone", toggled player buttons', 'All screens', '“Accent colors are used sparingly.” WinUI applies accent to the AccentButton, selection pills, slider thumbs, toggles and hyperlinks. Fluent 2: one primary button per layout.', 'Color · Fluent 2 Button', L + 'design/signature-experiences/color', 'Accent on one Play per surface, selection pills, slider thumbs, links and the now-playing indicator. A liked heart is the filled glyph (HeartFill) in TextPrimary, not accent.'),
+      f('high', '"Playing on iPhone" in accent text', 'Player bar', 'Accent text means a hyperlink. Semantic colours carry status, and they are not decorative.', 'Color · Fluent 2 Color', L + 'design/signature-experiences/color', 'Neutral secondary text with a device icon. If it needs attention, an informational InfoBar in the queue pane.'),
+      f('med', 'An artwork-tinted Play split button that looks disabled (pale blue, dark text)', 'Playlist (LoL Worlds)', 'Contrast must hold regardless of the accent or theme; state fills have to stay legible.', 'Color', L + 'design/signature-experiences/color', 'Primary buttons use the system accent ramp (AccentFillColorDefault). Artwork colour stays in imagery and washes, never in control states.'),
+    ]},
+    { title: '6. Buttons and commands', items: [
+      f('high', 'Five different Play buttons: an accent circle (artist header, album card), an accent rectangle (album pane), a split button (album), a pale split button (playlist) and the Home hero Play', 'All screens', 'Circular command buttons are not a WinUI style; corners are 4 px. SplitButton is for an action plus options.', 'Geometry · Buttons', L + 'design/signature-experiences/geometry', 'One Play: an AccentButton (32 tall, 4 px corners), as a SplitButton where Play next / Add to queue / Radio exist. The only circle is the player bar’s play/pause, the same exception Media Player makes.'),
+      f('med', 'Sort shown as tabs: "newest · oldest · alphabetical"', 'Artist detail', 'SelectorBar switches between data sets or views. A sort order is not a view; DropDownButton holds options.', 'SelectorBar · Buttons', L + 'develop/ui/controls/selector-bar', 'Keep "In your library | All releases" as a SelectorBar. Sort becomes a DropDownButton "Newest ⌄" with radio items.'),
+      f('med', '"Follow" uses a heart, the same glyph as Like', 'Artist header', 'A heart reads as like or favourite. Follow is a labelled toggle.', 'Iconography', L + 'design/signature-experiences/iconography', 'A ToggleButton "Follow" / "Following" (a person-add glyph, or no glyph).'),
+      f('low', 'Mixed button forms in one row: bare shuffle and share glyphs next to a bordered "Follow"', 'Artist header', 'Expose one or two buttons; secondary actions shouldn’t carry the same weight. AppBarButtons are 40×40 with tooltips.', 'Buttons', L + 'develop/ui/controls/buttons', 'Accent Play, Standard Follow, then subtle 40×40 icon buttons (shuffle, share, more) with tooltips.'),
+      f('low', 'The sort control shows two direction marks ("↑↓ Recents ▲")', 'Library master panes', 'DropDownButton: one label plus a chevron; direction lives in the menu.', 'Buttons', L + 'develop/ui/controls/buttons', '"Recents ⌄" with Ascending/Descending radio items inside.'),
+    ]},
+    { title: '7. Lists and track tables', items: [
+      f('med', 'Zebra striping with rounded plates', 'Album, playlist tables', 'Default WinUI lists don’t stripe. The ListViewItem backplate is a 4 px inset, shown on hover and selection only.', 'ListViewItem_themeresources', X + 'CommonStyles/ListViewItem_themeresources.xaml', 'No stripes. Hover = SubtleFillColorSecondary on a 4 px inset backplate; selection adds the 3 px accent pill.'),
+      f('high', 'Every row shows an outlined heart, ⋯, a chevron and a versions icon at rest', 'Album, playlist', 'Hover commands are a mouse accelerator “to minimize visual clutter”, as long as everything is also in the context menu.', 'Contextual commanding', L + 'develop/ui/controls/collection-commanding', 'At rest: number, (cover), title, artist, album, date, duration, plus a filled heart only when liked. On hover or focus: outline heart and ⋯. Everything in the context menu.'),
+      f('med', 'A ">" chevron on every track row (it expands versions)', 'Album, playlist', 'A chevron on a row signals navigation (SettingsCard pattern).', 'SettingsCard', 'https://learn.microsoft.com/en-us/dotnet/communitytoolkit/windows/settingscontrols/settingscard', 'Only rows that have versions get an expand affordance (a chevron-down that rotates), placed where Expander puts it.'),
+      f('med', 'Single-line rows about 72 px tall (album)', 'Album', 'ListViewItem MinHeight is 40. Two-line rows use Body plus Caption; a compact density exists (32).', 'ListViewItem_themeresources · Spacing', X + 'CommonStyles/ListViewItem_themeresources.xaml', '40 px single-line (album), 48 px two-line with a 32–40 px cover (playlist). Density stays a setting.'),
+      f('low', 'A table built from list rows, but with no sortable column headers', 'Playlist: Title / Album / Date added / BPM', 'Multi-column collections are DataGrid territory: column headers sort and resize.', 'ListView and GridView', L + 'develop/ui/controls/listview-and-gridview', 'Column headers that are clickable sort toggles (mirroring the Sort dropdown) and resizable.'),
+    ]},
+    { title: '8. Player bar and icons', items: [
+      f('high', 'The seek bar has no thumb while the volume slider has a big one', 'Player bar', '“Don’t change the size of the slider thumb.” Thumb 18 outer / 12 inner, track 4, so both sliders look the same.', 'Slider · Slider_themeresources', L + 'develop/ui/controls/slider', 'Both are the stock Slider. The seek bar shows its thumb on hover (as Media Player does), same metrics.'),
+      f('med', '9+ icon buttons with mixed sizes and stroke weights, one boxed differently (devices)', 'Player bar, right', 'Segoe Fluent Icons are monoline at 16/20/24. Transport buttons are 40×40. A toggled AppBarToggleButton uses the checked style, not an ad-hoc box.', 'Iconography · MediaTransportControls', L + 'design/style/segoe-fluent-icons-font', 'Right cluster: lyrics, queue, devices, volume and ⋯, at 40×40 with 16 px glyphs. Mini player, video and "show more" go into ⋯. Toggled = filled glyph plus the checked backplate.'),
+      f('low', 'A 56 px accent circle for play/pause next to 40 px glyphs', 'Player bar centre', 'The MediaTransportControls buttons are 40×40; Media Player’s circular play is an in-box exception.', 'MediaTransportControls_themeresources', X + 'CommonStyles/MediaTransportControls_themeresources.xaml', 'A 40 px circle (the one sanctioned circle), the same accent as the slider thumbs.'),
+    ]},
+    { title: '9. Spacing', items: [
+      f('med', 'Page margins vary by pane: about 24 in the sidebar, 32 in master panes, 40–48 in detail', 'All', 'Multiples of 4. NavigationView content gets 24 px margins (12 in Minimal); Settings-like pages use 36/56. 8 between buttons, 12 between a control and its label, 16 from an edge to text.', 'Content basics · NavigationView', L + 'design/basics/content-basics', 'One page inset (36 left and right, 24 top), 8 between buttons, 12 between groups, 24 between sections.'),
+    ]},
+  ];
+  const legend = [
+    { label: 'Breaks: clearly against the guidance', style: sev.high },
+    { label: 'Off-pattern: works, reads non-native', style: sev.med },
+    { label: 'Polish', style: sev.low },
+  ];
+  return { sections, legend };
+}
+}
+</script>
+</body>
+</html>

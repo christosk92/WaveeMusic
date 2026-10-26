@@ -4,7 +4,6 @@
 // press on its play button pauses instead of starting). The seam was declared with the card rework but never installed,
 // so no card ever lit up (#160). The decision is the pure CardRelation below; Install wires it to Playback's signals.
 
-using FluentGpu.Foundation;
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -33,21 +32,10 @@ public static partial class Playback
     /// equality-gated signal, so an idle card that reads it first never joins the per-skip identity fan-out.</summary>
     public static readonly Signal<bool> HasCardContext = new(false);
 
-    static readonly Func<string, bool> s_cardRelates = CardRelates;
+    static readonly Func<string, bool> s_cardRelates = PlayRelation.CardRelates;
 
-    /// <summary>Install <see cref="Controls.NowPlaying"/>. Relation and ownership are the same identity test: a card that
-    /// IS the playing context or item may light up and may pause it.</summary>
+    /// <summary>Install <see cref="Controls.NowPlaying"/>. Relation and ownership are the same identity test
+    /// (<see cref="PlayRelation.CardRelates"/>): a card that IS the playing context or item may light up and may pause it.</summary>
     public static void InstallCardSeam()
         => Controls.NowPlaying = new Controls.PlaybackSeam(HasCardContext, IsPlaying, s_cardRelates, s_cardRelates);
-
-    /// <summary>A subscribing read of exactly the signal the card's kind compares with (see <see cref="CardRelation"/>).</summary>
-    static bool CardRelates(string uri)
-    {
-        if (string.IsNullOrEmpty(uri)) return false;
-        var card = EntityId.Parse(uri);
-        if (card.IsEmpty) return false;
-        return CardRelation.IsPlayable(card.Kind)
-            ? CardRelation.Relates(card, default, CurrentId.Value)
-            : CardRelation.Relates(card, ContextUri.Value, default);
-    }
 }

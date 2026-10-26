@@ -1,0 +1,596 @@
+// ── Themes/WinUi/Structure/Views/Panel/WinUiPanel.cs — the frame of WinUI's `Shell.Panel` (P6 W4a) ────────────────────────────────────
+//
+// Boards W-Queue, W-PaneLyrics, W-PaneNowPlaying (docked at Standard), W-Shell-Small 2 (the overlay), W-Shell-Compact 3 (the sheet), W-Shell-Huge
+// (two panes) and the "Side panes" block of W-Tiers. The core keeps what decides (`PanelHost`: open, mode, committed width, docked, floating or a
+// sheet; the rail <-> docked-video coupling; the tier's placement and dock line, `Rules\Tiers.Player.cs`) and hands this template one decided
+// `PanelView` per render. The frame (`WinUiFrame`) places the host; this template draws the pane itself:
+//
+//   surface   DOCKED in the content layer beside the page (the frame's reservation paints the layer; the pane adds its 1-px left divider);
+//             as an OVERLAY (below the dock line) the acrylic flyout surface with its stroke and the flyout shadow, at the same width; as a
+//             SHEET (Compact) 85 % of the window body's height from the bottom, the acrylic with r8 top corners and the 32 x 4 grabber.
+//   head      the tabs (Body 14, the selected one semibold in the primary ink with the 3-px accent pill under it, the rest secondary), 48
+//             tall, then the close (32; 40 at Compact). The primary pane's tabs are Queue · Lyrics · Now playing · Friends (Friends where the
+//             capabilities offer it; Video while the video body is up) less what a linked pane beside it shows (`PanelView.Beside`); a pane of
+//             Huge's arrangement shows its own tab group (`PanelView.Tabs`: Queue + Now playing) and switches it with `ShowPaneTab`. Opening
+//             another body switches the tab, so the content's width never changes twice (W-Tiers).
+//   bodies    Queue (the core host of `Queue.Panel`), Lyrics (`Panel.LyricsHeader` over the core host of `Lyrics.View`), Now playing (the
+//             hero `Player.NowPlayingHero`, or the docked video in its place; in the sheet, the transport the sheet covers the bar for; then
+//             "Next up" over `Panel.NextUp`), Friends (`Panel.Friends`), Video (the playing track's title and line, then "Next up").
+//   motion    ONE retained translate track on the host node: X docked and as an overlay, Y as a sheet; 250 ms on the decelerate curve; seeded
+//             at rest on mount and on a placement change. A dock <-> overlay change CROSSFADES the pane in over 250 ms (the frame FLIPs the
+//             host; the page's reservation moves once, on the line, never mid-gesture: the dock line holds 24).
+//   keys      Escape closes an overlay or a sheet; the grabber closes the sheet (the scrim above it too).
+//
+// The sheet remembers its tab: the core keeps the mode across a close and a reopen.
+
+using FluentGpu.Animation;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Input;
+using FluentGpu.Localization;
+using FluentGpu.Signals;
+using FluentGpu.Theming;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+using static FluentGpu.Dsl.Ui;
+
+using B = Wavee.Themes.WinUi.WinUiPanelBodies;
+using F = Wavee.Themes.WinUi.WinUiPanelLayout;
+
+namespace Wavee.Themes.WinUi;
+
+/// <summary>WinUI's side pane.</summary>
+internal static class WinUiPanel
+{
+    /// <summary>The registered template of <see cref="ViewKeys.ShellPanel"/>.</summary>
+    public static Element Template(PanelProps props, in ViewContext ctx) => Embed.Comp(props, static () => new WinUiPanelFrame());
+
+    /// <summary>The tabs in their fixed order (W-Queue: Queue · Lyrics · Now playing · Friends).</summary>
+    internal static readonly PanelMode[] TabOrder = [PanelMode.Queue, PanelMode.Lyrics, PanelMode.NowPlaying, PanelMode.Friends];
+
+    internal static string Word(PanelMode mode) => mode switch
+    {
+        PanelMode.Queue => Loc.Get(Strings.Player.Queue),
+        PanelMode.Lyrics => Loc.Get(Strings.Player.Lyrics),
+        PanelMode.Friends => Loc.Get(Strings.Theme.Winui.Player.Friends),
+        PanelMode.Video => Loc.Get(Strings.Player.Video),
+        _ => Loc.Get(Strings.Theme.Winui.Player.NowPlaying),
+    };
+
+    /// <summary>The head: the tabs, then (when they do not all fit the pane's width) the "⋯" that lists the rest, then the close. The current tab
+    /// always shows; the others keep their order and the first that does not fit moves, with the ones after it, into the "⋯" (W-Queue-Small:
+    /// "More pane tabs: Friends"). Its own component (<see cref="WinUiPaneHead"/>): it fits the width it is LAID OUT at, so a seam drag re-fits
+    /// the tabs under the pointer (the committed <paramref name="width"/> moves only on release), and only the head re-renders, only when the fit
+    /// changes.</summary>
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, bool compact, float width)
+        => Embed.Comp(new PaneHeadProps(props, view, body, friends, compact, width), static () => new WinUiPaneHead());
+
+    /// <summary>The head's inputs: the panel's props and view, the body on show, whether Friends is offered, Compact, the committed width.</summary>
+    internal sealed record PaneHeadProps(PanelProps Props, PanelView View, PanelMode Body, bool Friends, bool Compact, float Width);
+
+    /// <summary>The head's tabs in order and the verb that shows one (the pane's own tab group, the primary's modes, or none).</summary>
+    internal static List<PanelMode> HeadModesOf(PaneHeadProps p, out Action<PanelMode>? show)
+    {
+        var (props, view, body, friends) = (p.Props, p.View, p.Body, p.Friends);
+        var modes = new List<PanelMode>(5);
+        if (!view.Tabs.IsEmpty && props.ShowPaneTab is { } showPane)
+        {
+            // A pane of Huge's arrangement: its own tab group.
+            show = showPane;
+            foreach (var mode in TabOrder)
+                if (view.Tabs.Contains(mode) || mode == body) modes.Add(mode);
+        }
+        else if (props.ShowMode is { } showMode)
+        {
+            show = showMode;
+            foreach (var mode in TabOrder)
+            {
+                if (mode == PanelMode.Friends && !friends) continue;
+                if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
+                modes.Add(mode);
+            }
+            if (body == PanelMode.Video) modes.Add(PanelMode.Video);
+        }
+        else
+        {
+            show = null;
+            modes.Add(body);
+        }
+        return modes;
+    }
+
+    /// <summary>Each tab's word as drawn, measured (NaN where a word has no measure yet). Once per head render: a drag re-fits against these.</summary>
+    internal static float[] TabWidths(List<PanelMode> modes, PanelMode body)
+    {
+        var widths = new float[modes.Count];
+        int current = Math.Max(0, modes.IndexOf(body));
+        for (int i = 0; i < widths.Length; i++) widths[i] = Controls.NaturalWidth(Word(modes[i]), Label(modes[i], i == current));
+        return widths;
+    }
+
+    /// <summary>Which tabs the head shows in a pane <paramref name="width"/> wide, as bits (bit i: tab i shows): each tab's measured word (at least
+    /// the touch floor) against the lane the close leaves; every tab where they fit or a word has no measure. Allocates nothing.</summary>
+    internal static int FitMask(float[] widths, int current, bool compact, float width)
+    {
+        float close = compact ? F.CloseTouchBox : F.CloseBox;
+        int all = (1 << widths.Length) - 1;
+        for (int i = 0; i < widths.Length; i++) if (float.IsNaN(widths[i])) return all;
+        Span<bool> shown = stackalloc bool[widths.Length];
+        if (!F.FitTabs(widths, current, F.TabLane(width, close), close, shown)) return all;
+        int mask = 0;
+        for (int i = 0; i < shown.Length; i++) if (shown[i]) mask |= 1 << i;
+        return mask;
+    }
+
+    /// <summary>The head's tree for the fit <paramref name="mask"/> (<see cref="FitMask"/>); <paramref name="onBounds"/> reports the width it is
+    /// laid out at.</summary>
+    internal static Element HeadTree(PaneHeadProps p, List<PanelMode> modes, Action<PanelMode>? show, int mask, Action<RectF> onBounds)
+    {
+        var (props, body, compact) = (p.Props, p.Body, p.Compact);
+        float close = compact ? F.CloseTouchBox : F.CloseBox;
+        int current = Math.Max(0, modes.IndexOf(body));
+
+        // Each tab stands in its own keyed slot (the 18 before it and the tab), so one that moves into or out of the "⋯" fades and eases its width
+        // and the ones after it slide (F.TabMotion): a pane drag across the fit reads as motion, never a snap.
+        var tabs = new List<Element>(modes.Count);
+        var rest = new List<PanelMode>(modes.Count);
+        LayoutTransition? motion = Design.Reduced ? null : F.TabMotion;
+        for (int i = 0; i < modes.Count; i++)
+        {
+            if ((mask & (1 << i)) == 0) { rest.Add(modes[i]); continue; }
+            tabs.Add(new BoxEl
+            {
+                Key = F.TabSlotKeyPrefix + modes[i], Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true, Animate = motion,
+                Padding = new Edges4(tabs.Count > 0 ? F.TabGap : 0f, 0f, 0f, 0f),
+                Children = [Tab(modes[i], i == current, show)],
+            });
+        }
+
+        var row = new List<Element>(3)
+        {
+            new ScrollEl
+            {
+                Horizontal = true, Height = F.TabRowH, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
+                Content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Height = F.TabRowH, Children = tabs.ToArray() },
+            },
+        };
+        if (rest.Count > 0 && show is not null)
+            row.Add(new BoxEl
+            {
+                Key = F.MoreSlotKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
+                Animate = Design.Reduced ? null : F.MoreSlotMotion,
+                Children = [Embed.Comp(new MoreTabsProps(rest.ToArray(), show, close), static () => new WinUiPaneMoreTabs()) with { Key = F.MoreKey }],
+            });
+        row.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.ChromeClose, props.Close, true, false, close, close, F.CloseGlyph) with { Key = F.CloseKey },
+            Loc.Get(Strings.Theme.Winui.Player.ClosePane)));
+        return new BoxEl
+        {
+            Key = F.TabsKey, Direction = 1, Shrink = 0f, OnBoundsChanged = onBounds,
+            Children =
+            [
+                new BoxEl { Height = F.TabRowH, Direction = 0, AlignItems = FlexAlign.Center, Padding = F.TabRowPadding, Children = row.ToArray() },
+            ],
+        };
+    }
+
+    /// <summary>A tab's word as drawn (the selected one semibold in the primary ink, the rest secondary).</summary>
+    static TextEl Label(PanelMode mode, bool current) => new(Word(mode))
+    {
+        Size = F.TabSize, LineHeight = F.TabLine, Weight = current ? F.TabSelectedWeight : F.TabWeight,
+        Color = current ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+    };
+
+    /// <summary>The "⋯" props: the tabs it lists, the verb that shows one, its box.</summary>
+    internal sealed record MoreTabsProps(PanelMode[] Modes, Action<PanelMode> Show, float Box);
+
+    /// <summary>One tab: the word over the pill (reserved on every tab, painted on the selected one), its hit box the row's 48.</summary>
+    private static Element Tab(PanelMode mode, bool current, Action<PanelMode>? show)
+    {
+        var column = new BoxEl
+        {
+            Direction = 1, AlignItems = FlexAlign.Stretch, Gap = F.PillGap, Shrink = 0f,
+            Children =
+            [
+                Label(mode, current),
+                new BoxEl { Height = F.PillH, Corners = CornerRadius4.All(F.PillH / 2f), Fill = current ? Tok.AccentDefault : ColorF.Transparent },
+            ],
+        };
+        bool clickable = show is not null && !current;
+        return new BoxEl
+        {
+            Key = F.TabKeyPrefix + mode, Height = F.TabRowH, MinWidth = F.TabMinW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, F.PillH + F.PillGap, 0f, 0f),
+            Role = AutomationRole.Tab, Focusable = clickable, AllowFocusOnInteraction = false, Cursor = clickable ? CursorId.Hand : null,
+            OnClick = clickable ? () => show!(mode) : null,
+            Children = [column],
+        };
+    }
+
+    /// <summary>The body of <paramref name="body"/>.</summary>
+    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool sheet) => body switch
+    {
+        PanelMode.Queue => props.QueueBody(),
+        PanelMode.Lyrics => new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinHeight = 0f,
+            Children = [Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader), GrowSlot(props.LyricsBody())],
+        },
+        PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
+        PanelMode.Video => Embed.Comp(props, static () => new WinUiPanelVideoArm()),
+        _ => NowPlaying(props, view, sheet),
+    };
+
+    private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
+
+    /// <summary>The Now playing tab: the pinned slot (the hero, or the docked video in its place), the sheet's transport, then "Next up".</summary>
+    private static Element NowPlaying(PanelProps props, PanelView view, bool sheet)
+    {
+        Element pinned = view.Pinned == PanelPinned.DockedVideo
+            ? DockedCap(props, docked: true, view.Width)
+            : Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
+        var kids = new List<Element>(3) { pinned };
+        if (sheet && props.Transport is { } transport) kids.Add(Embed.Comp(transport, static () => new WinUiSheetTransport()));
+        kids.Add(Embed.Comp(props.NowPlaying, static () => new WinUiNowPlayingArm()));
+        return ScrollView(new BoxEl { Direction = 1, Children = kids.ToArray() }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+    }
+
+    /// <summary>The docked video card with its splitter: the height cell the splitter writes and the card binds (a stable bind).</summary>
+    internal static Element DockedCap(PanelProps props, bool docked, float width)
+    {
+        Element video = props.DockedCard();
+        if (!docked) return video;                                         // the card's own gate: zero size, no reflow
+        return new BoxEl
+        {
+            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
+            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Children =
+            [
+                video,
+                new BoxEl
+                {
+                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
+                    Children =
+                    [
+                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
+                        {
+                            Min = props.DockedVideoMin(width),
+                            Max = props.DockedVideoMax(),
+                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
+                        }),
+                    ],
+                },
+            ],
+        };
+    }
+
+    /// <summary>"Next up" (Body Strong) over the shared rows, or the empty queue's vacancy.</summary>
+    internal static Element[] UpNext(bool has, NextUpProps rows) =>
+    [
+        new TextEl(Loc.Get(Strings.Player.NextUp)) { Size = WinUiQueueRules.HeaderSize, LineHeight = WinUiQueueRules.HeaderLine, Weight = WinUiQueueRules.TitleWeight, Color = Tok.TextPrimary },
+        has
+            ? Slots.View(ViewKeys.PanelNextUp, rows)
+            : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.QueueEmpty), subtitle: ""),
+    ];
+}
+
+/// <summary>The pane's head (<see cref="WinUiPanel.Head"/>): it re-fits its tabs to the width it is laid out at. The fit is a bit mask derived from
+/// that width (a memo over the words measured at render), so a seam drag re-renders the head only on the frames a tab crosses the fit, never per
+/// pointer move, and allocates nothing in between; the committed width fits until the first layout reports one.</summary>
+internal sealed class WinUiPaneHead : Component
+{
+    float[] _widths = [];
+    int _current;
+    bool _compact;
+    float _committed;
+    FloatSignal? _laid;
+    Action<RectF>? _onBounds;
+
+    public override Element Render()
+    {
+        var p = UseProps<WinUiPanel.PaneHeadProps>();
+        var modes = WinUiPanel.HeadModesOf(p, out var show);
+        _widths = WinUiPanel.TabWidths(modes, p.Body);
+        _current = Math.Max(0, modes.IndexOf(p.Body));
+        _compact = p.Compact;
+        _committed = p.Width;
+        var laid = _laid = UseFloatSignal(float.NaN);
+        _onBounds ??= r => { if (_laid is { } l && !(MathF.Abs(l.Peek() - r.W) <= 0.25f)) l.Value = r.W; };   // NaN until the first layout
+        // Subscribes the live width through the fit alone: a drag that crosses no tab's edge leaves the memo's value, and this head, alone.
+        var fit = UseComputed(() => WinUiPanel.FitMask(_widths, _current, _compact, WidthOf(_laid!.Value)));
+        _ = fit.Value;
+        int mask = WinUiPanel.FitMask(_widths, _current, _compact, WidthOf(laid.Peek()));
+        return WinUiPanel.HeadTree(p, modes, show, mask, _onBounds);
+    }
+
+    /// <summary>The width the head fits: where it is laid out, else (before its first layout) the committed width.</summary>
+    float WidthOf(float laid) => float.IsFinite(laid) && laid > 0f ? laid : _committed;
+}
+
+/// <summary>The pane's frame: the surface, the slide, the crossfade, the head and the body on show. A component because the slide targets the
+/// rendered root and keeps its seeded-once flag across renders.</summary>
+internal sealed class WinUiPanelFrame : Component
+{
+    bool _motionSeeded;
+    float _closedAt;
+    PanelPlacement _seededPlacement;
+    Action<RectF>? _onBounds;
+    Action<KeyEventArgs>? _onKey;
+    Action? _close;
+    bool _escapes;
+    static readonly Action s_absorb = static () => { };
+
+    public override Element Render()
+    {
+        var props = UseProps<PanelProps>();
+        var view = props.Read();
+        bool open = view.Open;
+        var placement = view.Placement;
+        bool floating = placement != PanelPlacement.Dock;
+        bool sheet = placement == PanelPlacement.Sheet;
+        float width = placement == PanelPlacement.Float ? WinUiFrameRules.PanelFloatW : view.Width;
+        var body = view.Body;
+        var vp = UseContextSignal(Viewport.Size);
+        var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
+        bool friends = facts.Value.Capabilities.FriendsPanel;
+        var tiers = facts.Value.Tiers;
+        bool compact = tiers.Policy is not null && tiers.Window == WidthTier.Compact;
+
+        _close = props.Close;
+        _escapes = open && floating;
+        _onKey ??= e =>
+        {
+            if (e.Handled || e.KeyCode != Keys.Escape || e.Mods != KeyModifiers.None || !_escapes) return;
+            e.Handled = true;
+            _close?.Invoke();
+        };
+
+        // A pane that unmounts its body when closed (a docked pane beside the primary) keeps it for the slide-out, then lets it go.
+        var (lingering, setLingering) = UseState(open);
+        UseLayoutEffect(() => { if (open && !lingering) setLingering(true); }, DepKey.From(open ? 1 : 0));
+        UseTimeout(() => { if (!open) setLingering(false); }, F.SlideMs, DepKey.From(open ? 1 : 0));
+        bool bodyLive = !view.UnmountWhenClosed || open || lingering;
+
+        float offCanvas = sheet ? MathF.Max(1f, vp.Peek().Height) : width;
+        UseLayoutEffect(() =>
+        {
+            if (Context.Anim is not { } anim || Context.HostNode.IsNull) return;
+            var channel = sheet ? AnimChannel.TranslateY : AnimChannel.TranslateX;
+            float target = open ? 0f : offCanvas;
+            if (!_motionSeeded || _seededPlacement != placement)
+            {
+                // A dock <-> overlay change while open crossfades the pane in (the frame FLIPs the host to its new place).
+                bool crossfade = _motionSeeded && open && !Design.Reduced
+                    && (_seededPlacement == PanelPlacement.Dock) != (placement == PanelPlacement.Dock) && placement != PanelPlacement.Sheet
+                    && _seededPlacement != PanelPlacement.Sheet;
+                _motionSeeded = true;
+                _seededPlacement = placement;
+                anim.Animate(Context.HostNode, sheet ? AnimChannel.TranslateX : AnimChannel.TranslateY, 0f, 0f, 1f, Easing.Linear);
+                anim.Animate(Context.HostNode, channel, target, target, 1f, Easing.Linear);
+                if (crossfade) anim.Animate(Context.HostNode, AnimChannel.Opacity, 0f, 1f, F.CrossfadeMs, Easing.Linear);
+                return;
+            }
+            // Docked or floating, the pane slides by the width it is laid out at (the frame's host: the live width, held at the width a drag
+            // closed it at), so its edge and the page's eased reservation travel the same distance on the same curve.
+            if (!sheet && Context.Scene is { } laid && laid.AbsoluteRect(Context.HostNode).W is var w && w > 0.5f) target = open ? 0f : w;
+            float from = Context.Scene is { } scene
+                ? (sheet ? scene.Paint(Context.HostNode).LocalTransform.Dy : scene.Paint(Context.HostNode).LocalTransform.Dx)
+                : (open ? offCanvas : 0f);
+            // Opening from rest: from the edge at the width it opens at (a pane a drag closed at 270 reopens at 360 from 360 out, not 270).
+            if (open && !sheet && _closedAt > 0f && MathF.Abs(from - _closedAt) < 0.5f && target == 0f && Context.Scene is { } s2)
+                from = MathF.Max(from, s2.AbsoluteRect(Context.HostNode).W);
+            if (!open) _closedAt = target;
+            anim.Animate(Context.HostNode, channel, from, target, Design.Reduced ? 1f : F.SlideMs, F.SlideEasing);
+        }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
+
+        _onBounds ??= r => props.BodyHeightChanged(r.H);
+
+        Element bodySlot = new BoxEl
+        {
+            Key = F.BodyKey, Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
+            Children = [bodyLive ? WinUiPanel.Body(props, view, body, sheet) : new BoxEl { Grow = 1f, HitTestVisible = false }],
+        };
+        var column = new List<Element>(4);
+        if (sheet) column.Add(Grabber(props.Close, compact));
+        // The docked card mounts unconditionally outside the Now playing tab (its own gate hides it); that tab pins it in place of the hero.
+        if (body != PanelMode.NowPlaying) column.Add(WinUiPanel.DockedCap(props, view.DockedHere, width));
+        column.Add(WinUiPanel.Head(props, view, body, friends, compact, sheet ? vp.Value.Width : width));
+        column.Add(bodySlot);
+
+        CornerRadius4 corners = sheet ? new CornerRadius4(B.CardRadius, B.CardRadius, 0f, 0f)
+            : placement == PanelPlacement.Float ? new CornerRadius4(B.CardRadius, 0f, 0f, B.CardRadius)
+            : default;
+        var surface = new BoxEl
+        {
+            Key = F.SurfaceKey,
+            Direction = 1, Grow = sheet ? F.SheetShare : 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+            Corners = corners, HitTestVisible = open,                       // a closed pane is laid out off-canvas and unhittable
+            // A docked pane beside the primary that is closed (its tier docks none, or it slid out and let its body go) leaves the tree: its head
+            // was a second tab strip laid out under the primary's, clipped by its host, that `find` listed as shown.
+            Visible = bodyLive,
+            BlocksBackgroundScroll = open && floating,
+            // An overlay or a sheet swallows a click on its own empty room (the current tab, the gaps between rows): it must never fall through
+            // to the frame's scrim underneath and close the pane.
+            OnClick = open && floating ? s_absorb : null,
+            Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,       // no shadow docked
+            OnKeyDown = _onKey,
+            Children =
+            [
+                new BoxEl
+                {
+                    Grow = 1f, ClipToBounds = true, Corners = corners, OnBoundsChanged = _onBounds,
+                    Acrylic = floating ? Tok.AcrylicFlyout : null, Fill = floating ? ColorF.Transparent : ColorF.Transparent,
+                    BorderColor = floating ? Tok.StrokeFlyoutDefault : ColorF.Transparent, BorderWidth = floating ? 1f : 0f,
+                },
+                // Docked: the band's hairline, the content card's own (left and top, round the r8 arc, the full height): one stroke that follows the
+                // band's corner, never a straight line that the corner's clip leaves as a stub at the top.
+                new BoxEl
+                {
+                    Grow = 1f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Margin = WinUiFrameRules.StrokeOverhang, Corners = WinUiFrameRules.PaneBandCorners,
+                            BorderWidth = floating ? 0f : WinUiFrameRules.StrokeWidth, BorderColor = floating ? ColorF.Transparent : Tok.StrokeCardDefault,
+                        },
+                    ],
+                },
+                new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
+            ],
+        };
+        // One wrapper in every placement, so a pane that turns into the Compact sheet at the 641 crossing keeps its parts (the surface was the
+        // root docked and a child of the sheet's wrapper, so every part under it mounted again). The sheet: 85 % of the body's height from the
+        // bottom, the room above it letting taps through to the frame's scrim; docked or floating, no room.
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, HitTestPassThrough = true,
+            Children = [new BoxEl { Grow = 1f - F.SheetShare, Basis = 0f, HitTestVisible = false, Visible = sheet }, surface],
+        };
+    }
+
+    /// <summary>The sheet's grabber (32 x 4): its row closes the sheet (40 tall at Compact, the touch floor).</summary>
+    static Element Grabber(Action close, bool compact) => new BoxEl
+    {
+        Key = F.GrabberKey, Height = compact ? F.GrabberTouchH : F.GrabberRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = close,
+        Children =
+        [
+            ToolTip.Wrap(new BoxEl
+            {
+                Width = F.GrabberTouchH, Height = compact ? F.GrabberTouchH : F.GrabberRowH, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [new BoxEl { Width = F.GrabberW, Height = F.GrabberH, Corners = CornerRadius4.All(F.GrabberH / 2f), Fill = Tok.FillControlStrong }],
+            }, Loc.Get(Strings.Theme.Winui.Player.Grabber)),
+        ],
+    };
+}
+
+/// <summary>The head's "⋯" (W-Queue-Small): the tabs the pane's width leaves out, as a menu under it; picking one shows it (the head then lays
+/// out round the new current tab).</summary>
+internal sealed class WinUiPaneMoreTabs : Component
+{
+    public override Element Render()
+    {
+        var p = UseProps<WinUiPanel.MoreTabsProps>();
+        var anchor = UseRef<NodeHandle>(default);
+        var handle = UseRef<OverlayHandle?>(null);
+        var overlay = UseContext(Overlay.Service);
+        UseEffect(() => () => handle.Value?.Close(), DepKey.Empty);
+        void Toggle()
+        {
+            if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+            var items = new List<MenuFlyoutItem>(p.Modes.Length);
+            foreach (var mode in p.Modes)
+            {
+                var m = mode;
+                items.Add(new MenuFlyoutItem(WinUiPanel.Word(m), null, true, () => p.Show(m)));
+            }
+            handle.Value = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(items, () => handle.Value?.Close(), size: OverlayFit.MenuSize),
+                FlyoutPlacement.BottomEdgeAlignedRight,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+            handle.Value.ClosedAction = () => handle.Value = null;
+        }
+        string names = string.Join(", ", Array.ConvertAll(p.Modes, WinUiPanel.Word));
+        return ToolTip.Wrap(WinUiPlayerBar.Button(Icons.More, Toggle, true, false, p.Box, p.Box, F.MoreGlyph, h => anchor.Value = h),
+            Strings.Theme.Winui.Player.MorePaneTabs(names));
+    }
+}
+
+/// <summary>The Now playing tab's body under the hero: "Next up" (the hero carries the track itself).</summary>
+internal sealed class WinUiNowPlayingArm : Component
+{
+    public override Element Render()
+    {
+        var props = UseProps<NowPlayingHeroProps>();
+        var track = props.NowTrack();
+        if (!track.IsValid)
+            return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: "");
+        props.SubscribeEntities();
+        return new BoxEl
+        {
+            Direction = 1, Gap = B.HeroMetaGap, Padding = B.Inset,
+            Children = WinUiPanel.UpNext(props.HasNextUp(), props.NextUp),
+        };
+    }
+}
+
+/// <summary>The sheet's transport (the sheet covers the Mini bar): the seek row (both times) over shuffle · previous · play · next · repeat,
+/// the bar's own pieces at the touch floor.</summary>
+internal sealed class WinUiSheetTransport : Component
+{
+    public override Element Render()
+    {
+        var props = UseProps<PanelTransportProps>();
+        var f = props.Facts();
+        var verbs = props.Verbs;
+        const float box = WinUiPanelBodies.TouchButton;
+        return new BoxEl
+        {
+            Key = "sheet-transport", Direction = 1, Padding = B.Inset, Shrink = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+                    Height = WinUiPlayerLayout.SeekRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiPlayerLayout.SeekGap,
+                    Children =
+                    [
+                        props.TimeText(false),
+                        new BoxEl { Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [props.SeekBar()] },
+                        props.TimeText(true),
+                    ],
+                },
+                new BoxEl
+                {
+                    Height = box + WinUiPlayerLayout.TransportGap, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = WinUiPlayerLayout.TransportGap,
+                    Children =
+                    [
+                        WinUiPlayerBar.Button(Icons.Shuffle, () => verbs.ToggleShuffle(), f.CanTransport, f.Shuffle, box, box, WinUiPlayerLayout.Glyph),
+                        WinUiPlayerBar.Button(Icons.Previous, () => verbs.Previous(), f.PrevEnabled, false, box, box, WinUiPlayerLayout.Glyph),
+                        new BoxEl
+                        {
+                            Width = WinUiPlayerLayout.Play + WinUiPlayerLayout.TransportGap, Height = WinUiPlayerLayout.Play + WinUiPlayerLayout.TransportGap,
+                            Corners = Radii.Circle(WinUiPlayerLayout.Play + WinUiPlayerLayout.TransportGap), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                            Fill = f.PrimaryEnabled ? Tok.AccentDefault : Tok.AccentDisabled, HoverFill = f.PrimaryEnabled ? Tok.AccentSecondary : Tok.AccentDisabled,
+                            Role = AutomationRole.Button, Focusable = true, Cursor = f.PrimaryEnabled ? CursorId.Hand : null,
+                            OnClick = f.PrimaryEnabled ? () => verbs.TogglePlay("panel.sheet") : null,
+                            Children = [new TextEl(f.Playing ? WinUiPlayerLayout.PauseSolid : WinUiPlayerLayout.PlaySolid) { Size = WinUiPlayerLayout.PlayGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextOnAccentPrimary }],
+                        },
+                        WinUiPlayerBar.Button(Icons.Next, () => verbs.Next(), f.NextEnabled, false, box, box, WinUiPlayerLayout.Glyph),
+                        WinUiPlayerBar.Button(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, () => verbs.CycleRepeat(), f.CanTransport, f.RepeatOn, box, box, WinUiPlayerLayout.Glyph),
+                    ],
+                },
+            ],
+        };
+    }
+}
+
+/// <summary>The video tab: the playing track's title and line under the docked card, then "Next up" (built from WinUI's parts: no board).</summary>
+internal sealed class WinUiPanelVideoArm : Component
+{
+    public override Element Render()
+    {
+        var props = UseProps<PanelProps>();
+        var now = props.NowPlaying;
+        var track = now.NowTrack();
+        props.SubscribeVideoBody();
+        var content = new List<Element>(5);
+        if (track.IsValid)
+        {
+            content.Add(new TextEl(track.Title)
+            {
+                Size = B.HeroTitleSize, LineHeight = B.HeroTitleLine, Weight = B.HeroTitleWeight, Color = Tok.TextPrimary,
+                MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+            });
+            string artists = now.ResolveString(track.ArtistLineId), album = track.Album.IsValid ? track.Album.Title : "";
+            string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
+            if (meta.Length > 0)
+                content.Add(new TextEl(meta) { Size = B.HeroArtistSize, LineHeight = B.HeroArtistLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+        }
+        content.AddRange(WinUiPanel.UpNext(now.HasNextUp(), now.NextUp));
+        return ScrollView(new BoxEl
+        {
+            Direction = 1, Gap = B.HeroGap, Padding = B.HeroPadding,
+            Children = content.ToArray(),
+        }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+    }
+}

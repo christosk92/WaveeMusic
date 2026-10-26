@@ -51,7 +51,6 @@
 //     `ItemsView.SlotRow` and renders click-less and focus-less: the slot root is the ONE gesture owner and the ONE tab
 //     stop (input-a11y.md §6.5) — a surface that also owned them is the shelf's old double tab stop.
 
-using System.Collections.Generic;
 using System.Text;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -92,7 +91,7 @@ public static partial class Controls
     /// <para>ONLY A NON-SQUARE COVER ZOOMS (width ≠ height: the 16:9 wide tiles, a 2-span lead): 1.02 over the
     /// <see cref="Design.Motion.Standard"/> rung with a decelerate ease — the prototype's slow drift into a wide
     /// picture. A square cover stays still; its hover is the plate's fill alone (rule 2). Reduced motion collapses the
-    /// zoom to 1 (<see cref="Design.ScaleTier.Hover"/>).</para>
+    /// zoom to 1 (<see cref="ScaleTier.Hover"/>).</para>
     /// <para><paramref name="circular"/> flips the clip OFF (rule 4): the FAB sits inside the cover's RECTANGLE but
     /// outside the avatar circle, so clipping it would cut the affordance in half. It is honoured only on a SQUARE slot
     /// (<see cref="CoverShape.IsCircular"/>).</para>
@@ -101,16 +100,23 @@ public static partial class Controls
     /// in.</para></summary>
     public static Element CardCover(Element art, float width, float height, bool circular, Element? overlay = null,
                                     Element? corner = null)
+        => CardCover(art, width, height, width / MathF.Max(1f, height), circular, overlay, corner);
+
+    /// <summary><see cref="CardCover(Element, float, float, bool, Element?, Element?)"/> at sizes that may be BOUND (a shelf card's
+    /// live width, audit B3bc): the shape decisions (the clip, the wide tile's hover scale) read <paramref name="aspect"/>, the
+    /// cover's width ÷ height, which a width change keeps. <paramref name="art"/> fills the stack (a ZStack layer of no size).</summary>
+    public static Element CardCover(Element art, Prop<float> width, Prop<float> height, float aspect, bool circular,
+                                    Element? overlay = null, Element? corner = null)
     {
         var kids = new List<Element>(3) { art };
-        if (overlay is not null) kids.Add(overlay);
-        if (corner is not null) kids.Add(corner);
-        bool wide = width != height;
+        if (overlay is not null) kids.Add(overlay.Value);
+        if (corner is not null) kids.Add(corner.Value);
+        bool wide = MathF.Abs(aspect - 1f) >= 0.001f;
         return new BoxEl
         {
             ZStack = true, Width = width, Height = height,
-            ClipToBounds = !CoverShape.IsCircular(circular, width / MathF.Max(1f, height)),
-            HoverScale = wide ? Design.Motion.ScaleSubtle.Hover : 1f,
+            ClipToBounds = !CoverShape.IsCircular(circular, aspect),
+            HoverScale = wide ? R.Motion.ScaleSubtle.Hover : 1f,
             HoverDurationMs = Design.Motion.Slow, HoverEasing = Easing.FluentDecelerate,
             Children = kids.ToArray(),
         };
@@ -153,7 +159,7 @@ public static partial class Controls
     {
         Shrink = 0f, Padding = new Edges4(Spacing.S, 2f, Spacing.S, 2f),
         Corners = Radii.PillAll, Fill = Tok.FillSubtleSecondary,
-        Children = [Design.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary, MaxLines = 1 }],
+        Children = [R.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary, MaxLines = 1 }],
     };
 
     // ══ 3. THE NOW-PLAYING OVERLAY ═══════════════════════════════════════════════════════════════════════════════════
@@ -245,13 +251,13 @@ public static partial class Controls
                 ? new BoxEl
                 {
                     Shrink = 0f, Padding = new Edges4(6f, 4f, 6f, 4f),
-                    Corners = Radii.PillAll, Fill = Design.OnMedia.ScrimRest,
-                    BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke,
+                    Corners = Radii.PillAll, Fill = R.OnMedia.ScrimRest,
+                    BorderWidth = 1f, BorderColor = R.OnMedia.Stroke,
                     // Centred on the cover in the stack's own terms, and handed over to the FAB on hover: at rest the
                     // playing surface shows THIS (the equalizer on its small scrim), never a pause button (owner, #160).
                     AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
                     HoverOpacity = 0f, HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.SmoothOut,
-                    Children = [Equalizer(pb!.IsPlaying, () => Design.OnMedia.Ink, EqualizerH)],
+                    Children = [Equalizer(pb!.IsPlaying, () => R.OnMedia.Ink, EqualizerH)],
                 }
                 // The STAND-IN. Keeping the slot occupied is what stops the FAB's node being re-keyed when the
                 // equalizer appears beside it.
@@ -489,7 +495,7 @@ public static partial class Controls
     ///
     /// <para>The url and the decode target are RE-PUSHED PROPS (<see cref="ShimmerProps"/>), not constructor fields: a
     /// recycled virtual row that rebinds to another cover UPDATES this component in place instead of remounting it (hook
-    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> keys it by decode size only). The settle
+    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> gives it one constant key). The settle
     /// latch is therefore keyed to WHAT it settled for — a rebind re-arms the breathe for the new cover exactly as the
     /// old per-url remount did.</para></summary>
     public sealed class CoverShimmer : Component
@@ -555,7 +561,7 @@ public static partial class Controls
     /// the rail itself cannot disagree.</summary>
     public const float ChipHeight = 32f, ChipRailHeight = 40f, ChipRailInsetX = 3f;
     /// <inheritdoc cref="ChipHeight"/>
-    public const float ChipRailExtent = ChipRailHeight + Spacing.S;
+    public static float ChipRailExtent => ChipRailHeight + Spacing.S;
 
     /// <summary>One filter chip: the STOCK <see cref="ToggleButton.Controlled"/> (32/r4, WinUI's own ramp, checked =
     /// accent) with no style of its own. Every filter chip in the app is this one control, the look the Concerts filter
@@ -571,6 +577,39 @@ public static partial class Controls
             // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
             // flex compresses every chip to fit the viewport and the labels ellipsise instead of the rail
             // overflowing, which is the opposite of what the scroller is for. Callers passing their own parts keep it.
+
+    /// <summary>A chip that NAVIGATES (Browse's Top and For you): the UNCHECKED face of <see cref="Chip"/> — the stock
+    /// ToggleButton's own off plate, padding, 32 floor, r4, stroke and brush ramp, read from <see cref="ToggleButton.DefaultStyle"/>
+    /// so a theme's ToggleButton entry restyles both — on a link (Role Hyperlink, the hand). A destination is never
+    /// "checked", so this is not a toggle; it exists so a link chip is not a private box with its own look (D7).
+    /// <paramref name="lead"/> sits <see cref="ToggleButton.Style.GlyphGap"/> before the label (Browse's identity pip);
+    /// <paramref name="strong"/> sets the label at 600. Shrink 0: on a wrapping row the row breaks rather than every chip
+    /// ellipsising. <paramref name="minHeight"/>, <paramref name="cornerRadius"/> and <paramref name="padX"/> (all 0 / negative = the stock) are the Compact
+    /// tier's: a 40-high target, the pill's full corner and its 16 side padding (<c>C-Browse-Compact</c>).</summary>
+    public static Element LinkChip(string key, string label, Action onClick, Element? lead = null, bool strong = false,
+                                   float minHeight = 0f, float cornerRadius = -1f, float padX = -1f)
+    {
+        var s = ToggleButton.DefaultStyle;
+        var text = new TextEl(label)
+        {
+            Size = s.FontSize, Weight = (ushort)(strong ? 600 : 400), Color = s.OffForeground, PressedColor = s.OffPressedForeground,
+            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        return new BoxEl
+        {
+            Key = key,
+            Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, FocusVisualMargin = s.FocusVisualMargin,
+            OnClick = onClick,
+            Direction = 0, Gap = lead is null ? 0f : s.GlyphGap, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
+            MinHeight = minHeight > 0f ? MathF.Max(minHeight, s.MinHeight) : s.MinHeight,
+            Padding = padX >= 0f ? new Edges4(padX, s.Padding.Top, padX, s.Padding.Bottom) : s.Padding,
+            Corners = CornerRadius4.All(cornerRadius >= 0f ? cornerRadius : s.CornerRadius),
+            Fill = s.OffBackground, HoverFill = s.OffHover, PressedFill = s.OffPressed,
+            BorderWidth = s.BorderWidth, BorderBrush = s.OffBorder, HoverBorderBrush = s.OffHoverBorder, PressedBorderBrush = s.OffPressedBorder,
+            BrushTransitionMs = s.BrushTransitionMs,
+            Children = lead is null ? [text] : [lead.Value, text],
+        };
+    }
 
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.
@@ -632,7 +671,7 @@ public static partial class Controls
                 ? [new BoxEl { Key = "v", Children = [valueRun] }]
                 : [new BoxEl { Key = "v:" + value, Animate = MotionRecipes.TextSwap, Children = [valueRun] }],
         };
-        Element captionRun = Design.Type.MicroMeta(caption)
+        Element captionRun = R.Type.MicroMeta(caption)
             with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
         return new BoxEl
@@ -642,7 +681,7 @@ public static partial class Controls
             Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
             Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillCardSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children = trailing is null ? [valueBox, captionRun] : [valueBox, captionRun, trailing],
+            Children = trailing is null ? [valueBox, captionRun] : [valueBox, captionRun, trailing.Value],
         };
     }
 
@@ -726,6 +765,8 @@ public static partial class Controls
 
     /// <summary>The portrait itself.</summary>
     public const float FaceAvatar = 28f;
+    /// <summary>The overflow face's "+N": the 11-DIP text floor (it was 10), bold in the 28 avatar.</summary>
+    public const float FaceMoreText = 11f;
     /// <summary>The ring drawn around each portrait, in the SURFACE fill, so overlapping faces stay separable.</summary>
     public const float FaceRing = 2f;
     /// <summary>The framed diameter (portrait + ring on both sides) — what the row actually reserves per face.</summary>
@@ -804,8 +845,8 @@ public static partial class Controls
             // this inset must keep supporting.
             FocusVisualMargin = live ? Design.FocusInsetRow : default,
             HoverFill = !live ? ColorF.Transparent : f.Selected ? Tok.AccentSecondary : Tok.AccentSubtle,
-            HoverScale = live ? Design.Motion.ScaleStandard.Hover : 1f,
-            PressScale = live ? Design.Motion.ScaleStandard.Press : 1f,
+            HoverScale = live ? R.Motion.ScaleStandard.Hover : 1f,
+            PressScale = live ? R.Motion.ScaleStandard.Press : 1f,
             HoverDurationMs = Design.Motion.Faster,
             OnClick = f.OnClick,
             Children = [PersonPicture.Create("", FaceAvatar, displayName: f.Name, imageSourcePath: f.ImageUrl)],
@@ -830,8 +871,8 @@ public static partial class Controls
             FocusVisualMargin = live ? Design.FocusInsetRow : default,
             HoverFill = live ? Tok.FillSubtleSecondary : ColorF.Transparent,
             PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
-            HoverScale = live ? Design.Motion.ScaleStandard.Hover : 1f,
-            PressScale = live ? Design.Motion.ScaleStandard.Press : 1f,
+            HoverScale = live ? R.Motion.ScaleStandard.Hover : 1f,
+            PressScale = live ? R.Motion.ScaleStandard.Press : 1f,
             HoverDurationMs = Design.Motion.Faster,
             OnClick = onClick,
             Children =
@@ -840,7 +881,7 @@ public static partial class Controls
                 {
                     Width = FaceAvatar, Height = FaceAvatar, Corners = CornerRadius4.All(FaceAvatar / 2f),
                     Fill = Tok.FillCardDefault, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [new TextEl("+" + n) { Size = 10f, Weight = 700, Color = Tok.TextSecondary }],
+                    Children = [new TextEl("+" + n) { Size = FaceMoreText, Weight = 700, Color = Tok.TextSecondary }],
                 },
             ],
         };

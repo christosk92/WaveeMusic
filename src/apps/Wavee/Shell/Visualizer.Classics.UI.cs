@@ -23,14 +23,13 @@
 // uniformly. Colours come from the slab's cross-faded A/B/C wherever a bind can carry them, from `pal` where the engine
 // takes a static (gradients).
 
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee;
 
@@ -38,7 +37,7 @@ public static partial class Visualizer
 {
     // ══ 1. THE SIM HOST ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The per-frame half of a simulated face: dt from <c>Design.FrameTime</c> (clamped, a restart is one frame),
+    /// <summary>The per-frame half of a simulated face: dt from <c>FrameTime</c> (clamped, a restart is one frame),
     /// then <see cref="Advance"/> — Peek the slab, step the body, write and publish. Built once per face build; the tick
     /// delegate is allocated here, never per frame.</summary>
     abstract class FaceSim
@@ -54,7 +53,7 @@ public static partial class Visualizer
             Slab = slab; Dark = dark; Levels = new float[slab.Bands.Length];
             Tick = () =>
             {
-                long now = Design.FrameTime.NowMs;
+                long now = FrameTime.NowMs;
                 float dt = Particles.Dt(_lastMs, now);
                 _lastMs = now;
                 Advance(dt);
@@ -115,7 +114,7 @@ public static partial class Visualizer
     /// blur). No sim: the thunk reads the bands and peaks, so reduced motion is the same face.</summary>
     public static Element ClassicFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark;
+        bool pv = spec.Preview, dark = Ink.IsDark;
         int cols = pv ? 16 : 28, rows = pv ? 9 : 18;
         float k = pv ? 1f : SimScale(in spec);
         float gx = (pv ? 3f : 8f) * k, gy = (pv ? 2f : 5f) * k;
@@ -190,7 +189,7 @@ public static partial class Visualizer
     /// poster slab (level 0) the rest-speed streaks of a ~200-DIP tile were sub-pixel and the poster came out blank.</summary>
     public static Element WarpFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
+        bool pv = spec.Preview, dark = Ink.IsDark, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Warp.PreviewCount : Particles.Warp.Count;
         var sim = new WarpSim(slab, dark, count, spec.W, spec.H, spec.H * (pv ? 0.5f : 0.46f), 1f, pv ? 4f : 1f, pv ? 0.35f : 0f);
         var kids = new List<CanvasChild>(2)
@@ -238,8 +237,8 @@ public static partial class Visualizer
         int n = pv ? Particles.Tunnel.PreviewFrames : Particles.Tunnel.Frames;
         float m = MathF.Min(spec.W, spec.H), side = 1.6f * m, cx = spec.W * 0.5f, cy = spec.H * (pv ? 0.5f : 0.46f);
         float minSide = (pv ? 2f : 6f) * (pv ? 1f : SimScale(in spec)), border = MathF.Max(pv ? 1f : 1.5f, 0.006f * side);
-        float arm = pal.Dark ? 1f : 0.8f;
-        var sim = new TunnelSim(slab, pal.Dark);
+        float arm = Ink.IsDark ? 1f : 0.8f;
+        var sim = new TunnelSim(slab, Ink.IsDark);
         var phase = sim.Phase; var spin = sim.Spin; var level = slab.Level;
         var kids = new List<CanvasChild>(n + 1);
         for (int k = n - 1; k >= 0; k--)
@@ -283,7 +282,7 @@ public static partial class Visualizer
     /// and the halo a darker tint (coloured glass, not lamps). Preview / reduced: the orbs hold their orbit position.</summary>
     public static Element AmbienceFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
+        bool pv = spec.Preview, dark = Ink.IsDark, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Ambience.PreviewCount : Particles.Ambience.Count;
         var sim = new AmbienceSim(slab, dark, count, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H), pv ? 1.4f : 1f);
         var kids = new List<CanvasChild>(2)
@@ -326,7 +325,7 @@ public static partial class Visualizer
     {
         bool pv = spec.Preview, live = !pv && !Design.Reduced;
         int parts = pv ? Particles.Kaleido.PreviewParts : Particles.Kaleido.Parts, copies = pv ? Particles.Kaleido.PreviewCopies : Particles.Kaleido.Copies;
-        var sim = new KaleidoSim(slab, pal.Dark, parts, copies, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H) * (pv ? 1.2f : 1f));
+        var sim = new KaleidoSim(slab, Ink.IsDark, parts, copies, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H) * (pv ? 1.2f : 1f));
         var kids = new List<CanvasChild>(2)
         {
             new CanvasChild(0f, 0f, SimField(in spec, SpriteKernel.Capsule, PaintBlend.SrcOver, live ? Prop.Of(() => sim.Src.Current) : Prop.Of(() => sim.Bound()))),
@@ -366,7 +365,7 @@ public static partial class Visualizer
     /// ribbon on light). Preview: the line alone.</summary>
     public static Element ScopeFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark, glow = !pv;
+        bool pv = spec.Preview, dark = Ink.IsDark, glow = !pv;
         float k = SimScale(in spec), x0 = spec.W * 0.06f, w = spec.W * 0.88f, mid = spec.H * 0.48f, amp = spec.H * (pv ? 0.38f : 0.2f);
         var scope = slab.Scope;
         var kids = new List<CanvasChild>(2);
@@ -431,7 +430,7 @@ public static partial class Visualizer
                 }));
             return FaceFrame(spec, kids);
         }
-        var sim = new DriftSim(slab, pal.Dark, ring);
+        var sim = new DriftSim(slab, Ink.IsDark, ring);
         var dt = sim.Dt; var time = sim.Time; var src = ring.Src;
         float pivotY = cy - spec.H * 0.5f;
         kids.Add(new CanvasChild(0f, 0f, new BoxEl

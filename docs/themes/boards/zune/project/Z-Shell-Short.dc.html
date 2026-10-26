@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune frame: short window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 330px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="home" sub="all,music,podcasts,audiobooks" on="all" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  <div style="position: relative; flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 8px 24px 0 24px; overflow: hidden">
+    <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; background: #1b1b1b; overflow: hidden">
+      <div style="width: 56px; height: 56px; flex-shrink: 0; background: linear-gradient(135deg, #4a2f5b, #7a3b6b 60%, #1b1b1b)"></div>
+      <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1">
+        <span style="font-size: 12px; color: #a8a8a8">good afternoon · your daylist</span>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; line-height: 26px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">sad girl synth-pop tuesday afternoon</span>
+      </span>
+      <button aria-label="play" style="width: 36px; height: 36px; flex-shrink: 0; margin-right: 12px; border: 0; border-radius: 18px; background: {{accent}}; color: #000; display: flex; align-items: center; justify-content: center; font: inherit; font-size: 13px">▶</button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">made for you</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px"><sc-for list="{{mixes}}" as="t" hint-placeholder-count="5"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span></a></sc-for></div>
+    </div>
+    <div style="position: absolute; right: 12px; bottom: 8px; box-sizing: border-box; height: 24px; padding: 0 10px; display: flex; align-items: center; background: rgba(22,22,22,0.94); font-size: 12px; line-height: 16px; color: #a8a8a8; white-space: nowrap">330 tall: band collapses to 52 at the first scroll, daylist to one row, panels overlay, play bar medium 72 reserved</div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":330}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + c + '; display: block';
+  const mixes = [['Daily Mix 1', '#4a3b6b'], ['Daily Mix 2', '#6b3b5b'], ['Discover Weekly', '#2f5b4a'], ['Release Radar', '#5b4a2f'], ['Synthwave Mix', '#2f3b6b']].map((d) => ({ name: d[0], art: sq(d[1]) }));
+  return { accent, mixes };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Row states, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 20px 16px; overflow: hidden; background: var(--layer); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Rows below 640</h2>
+  <span style="font-size: 12px; line-height: 16px; color: var(--t2); margin-bottom: 8px">52 tall, art 40, artist · album on line two, More is a 40 × 40 target. Long-press opens the same menu as right-click.</span>
+  <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+    <span style="font-size: 12px; line-height: 16px; color: var(--t2); padding: 6px 0 2px 0">{{r.label}}</span>
+    <div role="row" style="{{r.row}}">
+      <sc-if value="{{r.pill}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 18px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span></sc-if>
+      <span style="display: flex; align-items: center; justify-content: center"><sc-if value="{{r.check}}" hint-placeholder-val="{{ false }}"><span style="width: 20px; height: 20px; border-radius: 4px; background: var(--acc); color: var(--onacc); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg></span></sc-if><sc-if value="{{r.showArt}}" hint-placeholder-val="{{ true }}"><span style="{{r.art}}"></span></sc-if></span>
+      <span style="display: flex; flex-direction: column; min-width: 0"><span style="display: flex; align-items: center; gap: 6px; min-width: 0"><sc-if value="{{r.playing}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="Playing" role="img" style="flex-shrink: 0; color: var(--acct)"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><span style="{{r.title}}">{{r.t}}</span><sc-if value="{{r.explicit}}" hint-placeholder-val="{{ false }}"><span style="width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; font-size: 10px; font-weight: 600; background: var(--t2); color: var(--layer)">E</span></sc-if></span><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden"><sc-if value="{{r.offline}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Available offline" role="img" style="flex-shrink: 0; color: var(--acct)"><path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 4.5v6M5.5 8l2.5 2.5L10.5 8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if>{{r.meta}}</span></span>
+      <button aria-label="More for {{r.t}}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </div>
+  </sc-for>
+  <div role="toolbar" aria-label="Selection" style="position: absolute; left: 8px; right: 8px; bottom: 12px; height: 56px; box-sizing: border-box; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 12px; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: var(--shadow)">
+    <span style="flex-grow: 1; font-size: 14px; font-weight: 600">2 selected</span>
+    <button aria-label="Add to playlist" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+    <button aria-label="Add to queue" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <button aria-label="Remove from Liked Songs" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 9h5.6l.7-9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <button aria-label="Clear selection" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { layer: '#282828', sub: 'rgba(255,255,255,0.0605)', sub2: 'rgba(255,255,255,0.0419)', fly: '#2c2c2c', flyb: 'rgba(0,0,0,0.2)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', fo: '#ffffff', fi: '#000000', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff', shadow: '0 8px 16px rgba(0,0,0,0.26)' }
+    : { layer: '#f9f9f9', sub: 'rgba(0,0,0,0.0373)', sub2: 'rgba(0,0,0,0.0241)', fly: '#fcfcfc', flyb: 'rgba(0,0,0,0.0578)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', fo: '#000000', fi: '#ffffff', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92', shadow: '0 8px 16px rgba(0,0,0,0.14)' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const S = [
+    ['Rest', 'Give Life Back to Music', 'Daft Punk · Random Access Memories', '#3a2f22', {}],
+    ['Pressed', 'Instant Crush', 'Daft Punk, Julian Casablancas · Random Access Memories', '#3a2f22', { bg: 'var(--sub2)', dim: true }],
+    ['Selected', 'Midnight City', 'M83 · Hurry Up, We’re Dreaming', '#3b4a6b', { bg: 'var(--sub)', pill: true }],
+    ['Multi-select', 'Tech Noir', 'Gunship · GUNSHIP', '#5b3b6b', { bg: 'var(--sub)', check: true }],
+    ['Playing', 'Nightcall', 'Kavinsky · OutRun', '#6b2f4a', { playing: true }],
+    ['Keyboard focus', 'Sunset', 'The Midnight · Endless Summer', '#6b4a2f', { focus: true }],
+    ['Available offline', 'Resonance', 'HOME · Odyssey', '#2f5b6b', { offline: true }],
+    ['Explicit', 'Starboy', 'The Weeknd, Daft Punk · Starboy', '#5a2a3a', { explicit: true }],
+    ['Unavailable', 'Turbo Killer', 'Unavailable in your country', '#6b2f2f', { unavailable: true }]
+  ];
+  const rows = S.map((s) => { const f = s[4]; return { label: s[0], t: s[1], meta: s[2], pill: !!f.pill, check: !!f.check, showArt: !f.check, playing: !!f.playing, explicit: !!f.explicit, offline: !!f.offline,
+    row: 'position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; height: 52px; border-radius: 4px; box-sizing: border-box; ' + (f.bg ? 'background: ' + f.bg + '; ' : '') + (f.focus ? 'outline: 2px solid var(--fo); box-shadow: inset 0 0 0 1px var(--fi); ' : '') + (f.unavailable ? 'opacity: 0.45; ' : ''),
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + s[3],
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (f.playing ? 'var(--acct)' : (f.dim ? 'var(--t2)' : 'var(--t1)')) }; });
+  return { vars, rows };
+}
+}
+</script>
+</body>
+</html>

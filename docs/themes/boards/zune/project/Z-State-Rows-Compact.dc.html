@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune row states: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="library › playlists › late night drive" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px">
+    <button aria-label="done selecting" style="width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; font-size: 15px; padding: 0; margin-left: -12px">✕</button>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; font-weight: 600; line-height: 36px; color: {{accent}}">3</span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; font-weight: 350; line-height: 36px">selected</span>
+    <span style="flex-grow: 1"></span>
+    <a href="#" style="height: 40px; display: flex; align-items: center; padding: 0 8px; font-size: 14px">select all 42</a>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 0 0 0; overflow: hidden">
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+      <div style="{{r.rowStyle}}">
+        <span style="{{r.check}}">{{r.checkGlyph}}</span>
+        <span style="{{r.art}}"></span>
+        <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.t}}</span><span style="{{r.subStyle}}">{{r.sub}}</span></span>
+        <span style="{{r.trail}}">{{r.trailGlyph}}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div style="flex-shrink: 0; height: 88px; background: #242424; box-shadow: 0 -12px 32px rgba(0,0,0,0.45); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; padding: 0 8px">
+    <sc-for list="{{actions}}" as="a" hint-placeholder-count="5"><button style="{{a.style}}"><span style="{{a.ring}}">{{a.glyph}}</span>{{a.label}}</button></sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const data = [
+    ['Midnight City', 'M83 · 4:03', '#3b4a6b', 'rest'],
+    ['Resonance', 'HOME · 3:32', '#2f5b6b', 'press'],
+    ['A Real Hero', 'College, Electric Youth · 4:28', '#4a3b5b', 'sel'],
+    ['Tech Noir', 'Gunship · 4:57', '#5b3b6b', 'sel'],
+    ['Sunset', 'The Midnight · 5:09', '#6b4a2f', 'selfocus'],
+    ['Nightcall', 'Kavinsky · 4:18', '#6b2f4a', 'play'],
+    ['Turbo Killer', 'Carpenter Brut · unavailable in your country', '#6b2f2f', 'off'],
+    ['Instant Crush', 'Daft Punk, Julian Casablancas · moving', '#3a2f22', 'drag'],
+    ['Running in the Night', 'FM-84 · 3:52', '#2f4a5b', 'drop'],
+    ['Blinding Lights', 'The Weeknd · 3:20', '#7a2a2a', 'rest'],
+  ];
+  const rows = data.map((d) => {
+    const s = d[3];
+    const sel = s === 'sel' || s === 'selfocus', play = s === 'play', off = s === 'off', drag = s === 'drag', drop = s === 'drop', press = s === 'press';
+    let bg = 'transparent';
+    if (sel) bg = 'rgba(255,60,166,0.12)';
+    if (press) bg = 'rgba(255,255,255,0.08)';
+    if (drag) bg = '#242424';
+    return {
+      t: d[0], sub: d[1],
+      checkGlyph: sel ? '✓' : '',
+      trailGlyph: drag ? '≡' : '⋯',
+      rowStyle: 'display: grid; grid-template-columns: 48px 56px minmax(0, 1fr) 40px; align-items: center; height: 56px; flex-shrink: 0; padding-right: 8px; background: ' + (sel ? accent.length === 7 ? accent + '1f' : bg : bg) + (off ? '; opacity: 0.45' : '') + (s === 'selfocus' ? '; box-shadow: inset 0 0 0 2px #ffffff' : '') + (drag ? '; box-shadow: 0 10px 24px rgba(0,0,0,0.5); transform: translateX(8px)' : '') + (drop ? '; border-top: 2px solid ' + accent : ''),
+      check: 'width: 20px; height: 20px; box-sizing: border-box; margin-left: 16px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; ' + (sel ? 'background: ' + accent : 'border: 2px solid rgba(255,255,255,0.4)'),
+      art: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[2] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#9c9c9c'),
+      trail: 'width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: ' + (play ? accent : '#a8a8a8'),
+    };
+  });
+  const actions = [['▶', 'play'], ['⇥', 'play next'], ['+', 'add to'], ['♡', 'like'], ['−', 'remove']].map((d, i) => ({
+    glyph: d[0], label: d[1],
+    style: 'display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 12px; padding: 0; height: 76px; justify-content: center',
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 14px; ' + (i === 0 ? 'background: ' + accent + '; color: #000' : 'border: 2px solid #ffffff; color: #ffffff'),
+  }));
+  return { accent, rows, actions };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: every section</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 32px 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 32px 48px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">account</span>
+    <span style="display: flex; align-items: center; gap: 14px"><span style="width: 48px; height: 48px; border-radius: 24px; background: #5b6b3b; flex-shrink: 0"></span><span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300">christos</span><span style="font-size: 13px; color: {{accent}}">spotify premium · individual</span></span></span>
+    <span style="font-size: 13px; color: #a8a8a8">signed in on this pc since sep 2 · country nl</span>
+    <span style="display: flex; gap: 20px; font-size: 13px"><a href="#">manage on spotify.com</a><a href="#">switch account</a><a href="#">sign out</a></span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">lyrics</span>
+    <sc-for list="{{lyrics}}" as="r" hint-placeholder-count="4"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">devices &amp; connect</span>
+    <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">this pc shows up as</span><input type="text" value="christos’s desktop" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 15px; padding: 6px 0; outline: none"></label>
+    <sc-for list="{{devices}}" as="r" hint-placeholder-count="2"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">downloads &amp; storage</span>
+    <span style="display: flex; height: 12px; width: 100%"><span style="{{storeDl}}"></span><span style="width: 9%; height: 12px; background: rgba(255,255,255,0.45); display: block"></span><span style="flex-grow: 1; height: 12px; background: rgba(255,255,255,0.08); display: block"></span></span>
+    <span style="display: flex; gap: 18px; font-size: 13px; color: #a8a8a8"><span><span style="color: #ffffff">4.2 gb</span> downloads · 812 songs</span><span><span style="color: #ffffff">1.1 gb</span> cache</span><span>limit 12 gb</span></span>
+    <span style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="color: #a8a8a8; margin-right: 6px; font-size: 13px">cache limit</span><sc-for list="{{cache}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+    <span style="display: flex; gap: 20px; font-size: 13px"><a href="#">clear cache</a><a href="#">remove all downloads</a><a href="#">move…</a></span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">notifications</span>
+    <sc-for list="{{notify}}" as="r" hint-placeholder-count="4"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+    <span style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">keyboard</span><a href="#" style="font-size: 13px">change a shortcut</a></span>
+    <sc-for list="{{keys}}" as="k" hint-placeholder-count="6"><span style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; height: 28px; font-size: 14px"><span>{{k.label}}</span><span style="font-size: 12px; color: #a8a8a8; border: 1px solid rgba(255,255,255,0.14); padding: 1px 6px">{{k.key}}</span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">privacy</span>
+    <span style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 14px">crash reports</span><span style="display: flex; gap: 8px"><sc-for list="{{crash}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span></span>
+    <sc-for list="{{privacy}}" as="r" hint-placeholder-count="2"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">about</span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 68px; letter-spacing: -1px">wavee 1.6</span>
+    <span style="font-size: 13px; color: #a8a8a8">1.6.0 · up to date · checked 2 hours ago</span>
+    <span style="font-size: 13px; color: #7a7a7a">drawn by fluentgpu on your graphics card</span>
+    <span style="display: flex; gap: 20px; font-size: 13px"><a href="#">check for updates</a><a href="#">release notes</a><a href="#">licences</a><a href="#">github</a></span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">find a setting · the field sits above the section list; results name their section</span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #ffffff; color: #a8a8a8"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" value="cross" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"></label>
+    <a href="#" style="display: flex; flex-direction: column; padding: 8px 12px; margin: 0 -12px; background: rgba(255,255,255,0.05); color: #ffffff"><span style="font-size: 15px"><span style="color: {{accent}}">cross</span>fade</span><span style="font-size: 12px; color: #7a7a7a">playback</span></a>
+    <a href="#" style="display: flex; flex-direction: column; padding: 8px 12px; margin: 0 -12px; color: #ffffff"><span style="font-size: 15px">automix and <span style="color: {{accent}}">cross</span>fade on playlists</span><span style="font-size: 12px; color: #7a7a7a">playback</span></a>
+    <span style="font-size: 13px; color: #7a7a7a">nothing else matches "cross"</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f","#b983ff"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const sw = (d) => ({ label: d[0], hint: d[1],
+    sw: 'width: 40px; height: 20px; position: relative; display: block; background: ' + (d[2] ? accent : 'rgba(255,255,255,0.14)'),
+    knob: 'position: absolute; top: 2px; width: 16px; height: 16px; display: block; ' + (d[2] ? 'right: 2px; background: #000000' : 'left: 2px; background: #ffffff'),
+  });
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 28px; padding: 0 10px; border: 0; font: inherit; font-size: 13px; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return {
+    accent,
+    lyrics: [['show lyrics', 'in the panel and full screen', true], ['translation line', 'under each line, when spotify has one', false], ['romanisation', 'for korean and japanese', true], ['line up unsynced lyrics', 'on this pc, on the npu', true]].map(sw),
+    devices: [['visible on your network', 'phones and speakers can play here', true], ['only show devices on this network', '', false]].map(sw),
+    notify: [['new releases', 'from artists you follow', true], ['now playing', 'a windows toast when a song starts', false], ['updates', 'when a new wavee is ready', true], ['in-app sounds', '', false]].map(sw),
+    privacy: [['private session', 'what you play stays out of your taste profile', false], ['keep listening history', 'recents and the overview', true]].map(sw),
+    keys: [['play or pause', 'space'], ['next song', 'ctrl →'], ['previous song', 'ctrl ←'], ['search', 'ctrl f'], ['volume up / down', 'ctrl ↑ ↓'], ['go back', 'alt ←']].map((d) => ({ label: d[0], key: d[1] })),
+    cache: chips(['1 gb', '2 gb', '5 gb', 'no limit'], 1),
+    crash: chips(['ask me', 'always send', 'never'], 0),
+    storeDl: 'width: 35%; height: 12px; display: block; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

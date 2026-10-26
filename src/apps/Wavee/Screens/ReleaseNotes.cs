@@ -913,6 +913,8 @@ public static partial class ReleaseNotes
                     list.Add(new ReleaseMediaEntry(m.Src, IsMotionMedia(m.Kind, m.Src)));
                 if (!string.IsNullOrWhiteSpace(m.Poster) && seen.Add(m.Poster!))
                     list.Add(new ReleaseMediaEntry(m.Poster!, false));
+                if (!string.IsNullOrWhiteSpace(m.SrcLight) && seen.Add(m.SrcLight!))
+                    list.Add(new ReleaseMediaEntry(m.SrcLight!, false));
             }
             return list;
         }
@@ -1448,105 +1450,7 @@ public static partial class ReleaseNotes
         }
     }
 
-    // ── HighlightCardMetrics.cs ──────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The highlight card's fixed geometry and the after-update dialog's height budget, as PURE arithmetic.
-    /// The card and the dialog RENDER from these constants and the tests hold the 620 DIP plate cap against them, so a
-    /// padding someone nudges fails a test instead of a screenshot.</summary>
-    public static class HighlightCardMetrics
-    {
-        /// <summary>Release images are authored 1200×675; the band derives its height from the card's width rather than
-        /// pinning a pixel height a wide card would letterbox and a narrow one would crop.</summary>
-        public const float PosterAspect = 16f / 9f;
-
-        /// <summary>The page card's width cap — with one highlight a full-row card reads as a banner, not a card.</summary>
-        public const float CardMaxW = 420f;
-
-        /// <summary>The dialog's lone-card cap, REPLACING the old 236 DIP height cap: 356 wide gives a 200 DIP band at
-        /// the authored proportion. A height cap would have had to crop.</summary>
-        public const float CompactCardMaxW = 356f;
-
-        public const float TitleSize = 13.5f;
-        /// <summary>Explicit, so the title block's height is arithmetic (18 or 36), not a font-metric guess.</summary>
-        public const float TitleLineHeight = 18f;
-        /// <summary>Two: "Report a problem from inside Wavee" wraps at 216 wide and a one-line ellipsis cuts the verb off.
-        /// Three is 18 DIP the body needs more.</summary>
-        public const int TitleMaxLines = 2;
-
-        public const float BodySize = 12.5f;
-        /// <summary>The font-natural box for 12.5 px is ~16.6; an INTEGER line height is what makes the overflow test
-        /// exact — natural heights are 17·n, never within half a pixel of the threshold.</summary>
-        public const float BodyLineHeight = 17f;
-        /// <summary>Four: ~128 characters at 216 wide (one whole sentence of every 0.2.6 body), ~260 at 420. Three cuts
-        /// the Logs body inside its first clause; five is 17 DIP the row does not need once the viewer exists.</summary>
-        public const int BodyLines = 4;
-        public const float BodySlotHeight = BodyLines * BodyLineHeight;      // 68
-
-        /// <summary>One line of fade, not two — two dissolved lines out of four reads as a rendering fault.</summary>
-        public const float FadeHeight = 24f;
-        /// <summary>Natural heights are 51 / 68 / 85, so "exactly four lines" is decided correctly.</summary>
-        public const float OverflowThreshold = BodySlotHeight + 0.5f;        // 68.5
-
-        public const float LabelHeight = 16f;
-        public const float StoreButtonHeight = 32f;
-        public const float StoreButtonGap = 4f;
-        public const float PadL = 12f, PadT = 10f, PadR = 12f, PadB = 12f;
-        /// <summary>The column gap between title, slot and label.</summary>
-        public const float TitleBodyGap = 4f;
-        /// <summary>The store card's hit region stops 4 DIP under the slot; its button is a sibling footer, so a card
-        /// never nests a button inside a button.</summary>
-        public const float HitRegionStoreBottomPad = 4f;
-
-        public const float PlateWidth = 720f;
-        public const float PlatePadX = 26f;
-        public const float PlateMaxHeight = 620f;
-        public const float CardGap = 10f;
-        public const float RowPadTop = 6f, RowPadBottom = 14f;
-        public const float HeroPadTop = 22f, HeroPillRow = 22f, HeroGap = 8f,
-                           HeroWelcomeLine = 35f, HeroTaglineLine = 19f, HeroPadBottom = 18f;
-        /// <summary>14 + 32 buttons + 14 + the 1 px top border.</summary>
-        public const float FooterHeight = 62f;
-
-        public static bool Overflows(float naturalHeight) => naturalHeight > OverflowThreshold;
-
-        /// <summary>10 + title + 4 + 68 + tail + 12 → 132 / 150 regular (one- / two-line title), 152 / 170 store.</summary>
-        public static float TextBlockHeight(int titleLines, bool store)
-        {
-            float title = Math.Clamp(titleLines, 1, TitleMaxLines) * TitleLineHeight;
-            float tail = store
-                ? HitRegionStoreBottomPad + StoreButtonGap + StoreButtonHeight   // 4 + 4 + 32
-                : TitleBodyGap + LabelHeight;                                    // 4 + 16
-            return PadT + title + TitleBodyGap + BodySlotHeight + tail + PadB;
-        }
-
-        /// <summary>668 inner: three-up 216, two-up 329, lone min(668, 356) = 356.</summary>
-        public static float DialogCardWidth(int cardCount)
-        {
-            int n = Math.Clamp(cardCount, 1, 3);
-            float inner = PlateWidth - 2f * PlatePadX;
-            return MathF.Min((inner - (n - 1) * CardGap) / n, CompactCardMaxW);
-        }
-
-        /// <summary>The 16:9 band: 216 → 122, 329 → 185, 356 → 200, 420 → 236.</summary>
-        public static float BandHeight(float cardWidth)
-            => MathF.Round(cardWidth / PosterAspect, MidpointRounding.AwayFromZero);
-
-        public static float CardHeight(float cardWidth, int titleLines, bool store)
-            => BandHeight(cardWidth) + TextBlockHeight(titleLines, store);
-
-        /// <summary>22 + 22 + 8 + 35 + 8 + 19·lines + 18 → 132 for one tagline line, 151 for two.</summary>
-        public static float HeroHeight(int taglineLines)
-            => HeroPadTop + HeroPillRow + HeroGap + HeroWelcomeLine + HeroGap
-               + Math.Max(1, taglineLines) * HeroTaglineLine + HeroPadBottom;
-
-        /// <summary>The plate's height for a row of <paramref name="cardCount"/> cards, worst case (two-line titles).</summary>
-        public static float DialogHeight(int cardCount, bool store, int taglineLines)
-            => HeroHeight(taglineLines) + RowPadTop
-               + CardHeight(DialogCardWidth(cardCount), TitleMaxLines, store)
-               + RowPadBottom + FooterHeight;
-    }
-
-    // ── HighlightViewerLayout.cs ─────────────────────────────────────────────────────────────────────────────────
+    // ── HighlightPaging (the stepping half of the old HighlightViewerLayout) ─────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The viewer's navigation verbs, app-neutral: the view maps FluentGpu's <c>Keys.*</c> ints onto these so
     /// this file stays engine-free and unit-testable.</summary>
@@ -1557,44 +1461,9 @@ public static partial class ReleaseNotes
 
     public readonly record struct HighlightStep(int Index, HighlightSlideDirection Direction);
 
-    /// <summary>The viewer plate's geometry (design §B.1) and its stepping rule (§B.2), pure.</summary>
-    public static class HighlightViewerLayout
+    /// <summary>The viewer's stepping rule (design §B.2), pure. (Its plate and card geometry is Classic's: <c>ClassicReleaseNotesRules</c>.)</summary>
+    public static class HighlightPaging
     {
-        /// <summary>A 1200 px poster shown at 960 is a 0.8× downsample — sharp, never upsampled; wider plates make the
-        /// text measure absurd.</summary>
-        public const float PlateMaxWidth = 960f;
-        /// <summary>Below this the image is unreadable (180 tall); the text column scrolls instead.</summary>
-        public const float PlateMinWidth = 320f;
-        /// <summary>48 DIP of veil each side, so the plate reads as a plate and not as a page.</summary>
-        public const float ScrimInsetX = 96f;
-        /// <summary>Pager (36) + text block (≤ 260) + 64 vertical margin the image must leave below itself.</summary>
-        public const float ReservedBelowImage = 360f;
-        public const float PlateMarginY = 64f;
-        public const float PosterAspect = 16f / 9f;
-        public const float ChromeCircle = 36f;
-        public const float ChromeInset = 12f;
-
-        /// <summary>W = min(max(320, min(960, vpW − 96, (vpH − 360)·16⁄9)), vpW − 96). The floor never pushes the plate
-        /// past the window edge. 1440×900 → 960; 1100×700 → 604; 900×600 → 427; 500×420 → 320; a 320-wide window → 224.</summary>
-        public static float PlateWidth(float vpW, float vpH)
-        {
-            float byWidth = vpW - ScrimInsetX;
-            float byHeight = (vpH - ReservedBelowImage) * PosterAspect;
-            float w = MathF.Min(PlateMaxWidth, MathF.Min(byWidth, byHeight));
-            w = MathF.Max(PlateMinWidth, w);
-            w = MathF.Min(w, byWidth);
-            return MathF.Round(w);
-        }
-
-        /// <summary>The 16:9 band height, from the plate's OWN width — always, poster or not. L4 (issue #89): a
-        /// no-poster slide used to get a flat 120 DIP band regardless of plate width; the prototype keeps the same
-        /// <c>w·9/16</c> rule either way (a tinted band, not a smaller one), which is also just this formula with
-        /// <paramref name="hasPoster"/> dropped — kept as a parameter for the call-site's own poster-presence branch on
-        /// the band's FILL, not its height.</summary>
-        public static float ImageHeight(float plateWidth, bool hasPoster) => MathF.Round(plateWidth / PosterAspect);
-
-        public static float PlateMaxHeight(float vpH) => vpH - PlateMarginY;
-
         /// <summary>Clamped, no wrap (the WinUI FlipView rule): a Right press on the last slide does nothing. A silent
         /// jump back to the first feels like a bug, and the dots already say where you are.</summary>
         public static HighlightStep Step(int current, int count, HighlightNavKey key)

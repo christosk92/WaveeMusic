@@ -52,6 +52,22 @@ public static partial class Controls
                                        style.Wrap, style.MaxLines, style.MinSize, style.FontFamily),
                       static () => new TrimTipHost());
 
+    /// <summary>The single-line natural width of <paramref name="text"/> drawn in <paramref name="style"/> (its size, weight, tracking and line
+    /// height, the default face), through the same seam query <see cref="TrimTip"/> makes: what a row that lays out its own pieces (a line of
+    /// links cut at its end, a tab strip that moves what does not fit into an overflow) needs to decide in its render. Cold path, one shape
+    /// per call. NaN with no seam (a headless text backend): the caller keeps its uncut arrangement.</summary>
+    public static float NaturalWidth(string text, TextEl style)
+    {
+        if (text.Length == 0) return 0f;
+        if (TextSeam.Default is not { } fonts) return float.NaN;
+        var one = new TextStyle(default, style.Size, style.ResolvedWeight, TextWrap.NoWrap, TextTrim.None, 0, style.CharSpacing, style.LineHeight);
+        Span<RectF> rects = stackalloc RectF[8];
+        int n = fonts.GetRangeRects(text, in one, float.PositiveInfinity, 0, text.Length, rects);
+        float natural = 0f;
+        for (int i = 0; i < n; i++) natural += rects[i].W;
+        return natural;
+    }
+
     /// <summary>The ONE "title inside <see cref="TrimTip"/>" wrapper — every surface's trimmable title (the media surface's
     /// cards and rows, a text-first (B) panel's record title, a podcast door) goes through it, so the slot it measures and
     /// the skeleton it leaves cannot drift. The run sits in a column box that fills a stretched wrapper, so the slot the
@@ -71,7 +87,7 @@ public static partial class Controls
             Children = [run ?? style],
         };
         Element tip = TrimTip(target, text, style);
-        if (tip is ComponentEl c) tip = c with { SkeletonProxy = () => new BoxEl { Children = [target] } };
+        if (tip.Is(out ComponentEl c)) tip = c with { SkeletonProxy = () => new BoxEl { Children = [target] } };
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [tip] };
     }
 
@@ -81,7 +97,7 @@ public static partial class Controls
     sealed record TrimTipProps(Element Target, string Text, float Size, ushort Weight, float CharSpacing, float LineHeight,
                                TextWrap Wrap, int MaxLines, float MinSize, string? Family)
     {
-        public bool Equals(TrimTipProps? o) => o is not null && ReferenceEquals(Target, o.Target) && SameMeasure(o);
+        public bool Equals(TrimTipProps? o) => o is not null && Target.SameAs(o.Target) && SameMeasure(o);
 
         /// <summary>Everything the seam measures. Floats compare with <c>Equals</c>: <c>LineHeight</c> and <c>MinSize</c>
         /// are NaN when unset, and NaN must equal itself or the cache never hits.</summary>
@@ -89,7 +105,7 @@ public static partial class Controls
             && CharSpacing.Equals(o.CharSpacing) && LineHeight.Equals(o.LineHeight) && Wrap == o.Wrap && MaxLines == o.MaxLines
             && MinSize.Equals(o.MinSize) && Family == o.Family;
 
-        public override int GetHashCode() => HashCode.Combine(RuntimeHelpers.GetHashCode(Target), Text, Size, MaxLines);
+        public override int GetHashCode() => HashCode.Combine(Target.IdentityHash(), Text, Size, MaxLines);
     }
 
     /// <summary>Owns its props CHANNEL (<see cref="IPropsHost"/>, the app's host pattern): a re-push lands in a field and
@@ -98,28 +114,32 @@ public static partial class Controls
     {
         TrimTipProps? _p;
         readonly Signal<TrimTipProps?> _props = new(null);
-        TrimTipProps? _measuredFor; float _measuredW = float.NaN; bool _trimmed;
+        string? _memKey;   // the keyed-measurement role (E17c), composed once from the first text: a remount starts measured
 
         public void ApplyProps(object props) { _p = (TrimTipProps)props; _props.Value = _p; }
 
         public override Element Render()
         {
             _ = _props.Value;
-            float w = UseMeasuredWidth(4f).Value;                       // written during layout → this re-renders next frame
-            var p = _p!;
-            if (w > 0f && (w != _measuredW || !p.SameMeasure(_measuredFor)))
+            _memKey ??= "trim:" + _p!.Text;
+            // The measured width (written during layout) feeds a MEMO of the one bit the tree reads: a width that keeps the
+            // run trimmed (or fitting) re-renders nothing, so a reflow tick that narrows every card re-lays them out and only
+            // a title that starts or stops overflowing re-renders (audit B3bc: 88 hosts per tick of a Classic dock).
+            var width = UseMeasuredWidth(_memKey, 4f);
+            var trimmed = UseComputed(() =>
             {
-                _measuredFor = p; _measuredW = w;
-                _trimmed = Measure(p, w, Context.Scene?.Strings);
-            }
+                float w = width.Value;
+                return _props.Value is { } q && w > 0f && Measure(q, w, Context.Scene?.Strings);
+            });
+            var p = _p!;
             // Not measured yet (w == 0) or fits: a null tip mounts no wiring and leaves the target alone.
-            string? tip = w > 0f && _trimmed ? p.Text : null;
+            string? tip = trimmed.Value ? p.Text : null;
             return ToolTip.Wrap(p.Target, (Prop<string?>)tip);
         }
 
         /// <summary>One seam query. A single-line run (NoWrap, or capped at one line) compares its natural width with the
         /// slot; a run capped at N &gt; 1 lines is laid out at the slot width and its line fragments are counted against
-        /// the cap. An auto-fit run (<c>MinSize</c>, which the engine only applies to a wrapping, line-capped run) is
+        /// the cap. An auto-fit run (<c>MinSize</c>: a NoWrap run, or a wrapping line-capped one) is
         /// measured at its FLOOR face — the smallest it ever shrinks to — because the engine ellipsizes only after even
         /// the floor fails to fit. An uncapped wrapping run grows instead of being cut, so it is never trimmed. The face
         /// is the TextEl's own (<c>Family</c> interned through the engine's table — the one the font system resolves
@@ -131,7 +151,7 @@ public static partial class Controls
             if (TextSeam.Default is not { } fonts) return true;
             bool wraps = p.Wrap != TextWrap.NoWrap;
             if (wraps && p.MaxLines <= 0) return false;
-            float size = wraps && p.MinSize > 0f && p.MinSize < p.Size ? p.MinSize : p.Size;   // NaN fails both compares
+            float size = p.MinSize > 0f && p.MinSize < p.Size ? p.MinSize : p.Size;   // NaN fails both compares
             StringId family = p.Family is { } name && strings is not null ? strings.Intern(name) : default;
             Span<RectF> rects = stackalloc RectF[8];
             if (!wraps || p.MaxLines == 1)

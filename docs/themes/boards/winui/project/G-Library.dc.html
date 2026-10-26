@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee redesign: Library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; background: #1a1a1a; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+  <div style="height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding-left: 8px; gap: 2px">
+    <div style="height: 36px; width: 220px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 12px; font-size: 12px; border-radius: 8px 8px 0 0; background: #282828"><span style="width: 16px; height: 16px; border-radius: 3px; background: #60cdff"></span><span style="flex-grow: 1">Library</span><span style="font-size: 10px; color: #c5c5c5">✕</span></div>
+    <button aria-label="New tab" style="width: 32px; height: 32px; margin: 0 0 4px 2px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 16px">+</button>
+    <div style="flex-grow: 1"></div>
+    <span style="width: 138px; height: 40px; display: flex; align-items: center; justify-content: space-around; font-size: 12px; color: #c5c5c5"><span>—</span><span>▢</span><span>✕</span></span>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; background: #282828">
+    <div style="height: 48px; flex-shrink: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 280px; align-items: center; padding: 0 8px; box-sizing: border-box">
+      <div style="display: flex; gap: 4px"><button aria-label="Toggle navigation" style="width: 40px; height: 36px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">☰</button><button aria-label="Back" disabled="" style="width: 40px; height: 36px; border: 0; border-radius: 4px; background: transparent; color: #5d5d5d; font: inherit">←</button></div>
+      <label style="justify-self: center; width: 100%; max-width: 600px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.061); border: 1px solid rgba(255,255,255,0.07); border-bottom-color: rgba(255,255,255,0.14); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Search songs, artists, podcasts</span><span>⌕</span></label>
+      <div style="display: flex; justify-content: flex-end"><span style="width: 32px; height: 32px; border-radius: 16px; background: #6b5b4a; margin: 0 8px"></span></div>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; border-top: 1px solid rgba(255,255,255,0.06)">
+      <nav aria-label="Main" style="width: 280px; flex-shrink: 0; padding: 8px 0; box-sizing: border-box; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.06)">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="10">
+          <sc-if value="{{n.header}}" hint-placeholder-val="{{ false }}"><div style="height: 40px; display: flex; align-items: flex-end; padding: 0 0 8px 20px; box-sizing: border-box; font-size: 14px; font-weight: 600">{{n.label}}</div></sc-if>
+          <sc-if value="{{n.item}}" hint-placeholder-val="{{ true }}"><a href="#" style="{{n.style}}"><span style="{{n.pillStyle}}"></span><span style="width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; border: 1px solid #c5c5c5; border-radius: 3px"></span><span style="flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.label}}</span></a></sc-if>
+        </sc-for>
+      </nav>
+      <main style="flex-grow: 1; min-width: 0; padding: 24px 36px 0 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Library</h1>
+        <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.06)">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="5"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <label style="width: 260px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.061); border: 1px solid rgba(255,255,255,0.07); border-bottom-color: rgba(255,255,255,0.14); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Filter albums</span><span>⌕</span></label>
+          <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.061); border: 1px solid rgba(255,255,255,0.07); color: #fff; font: inherit; font-size: 14px">Recently added ⌄</button>
+          <span style="flex-grow: 1; font-size: 12px; color: #c5c5c5; text-align: right; padding-right: 8px">20 albums</span>
+          <div style="display: flex; height: 32px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.07); overflow: hidden">
+            <button aria-label="Grid view" aria-pressed="true" style="width: 40px; border: 0; background: rgba(255,255,255,0.084); color: #fff; font: inherit">▦</button>
+            <button aria-label="List view" aria-pressed="false" style="width: 40px; border: 0; background: transparent; color: #c5c5c5; font: inherit">☰</button>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px 16px; padding-top: 4px">
+          <sc-for list="{{albums}}" as="a" hint-placeholder-count="12">
+            <a href="#" style="{{a.cardStyle}}"><span style="{{a.art}}"></span><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.t}}</span><span style="font-size: 12px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.s}}</span></a>
+          </sc-for>
+        </div>
+      </main>
+    </div>
+    <div style="height: 72px; flex-shrink: 0; display: grid; grid-template-columns: 1fr 520px 1fr; align-items: center; padding: 0 16px; box-sizing: border-box; border-top: 1px solid rgba(255,255,255,0.06); background: #202020">
+      <div style="display: flex; align-items: center; gap: 12px"><span style="width: 48px; height: 48px; border-radius: 4px; background: #3b5b7a"></span><span style="display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 600">Stereo Love</span><span style="font-size: 12px; color: #c5c5c5">Edward Maya, Vika Jigulina</span></span></div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 2px">
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 40px; text-align: center">⇄</span><span style="width: 40px; text-align: center">⏮</span><span style="width: 36px; height: 36px; border-radius: 18px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center; font-size: 11px">❚❚</span><span style="width: 40px; text-align: center">⏭</span><span style="width: 40px; text-align: center">↻</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; width: 100%; font-size: 12px; color: #c5c5c5"><span>1:59</span><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.54)"><div style="width: 48%; height: 4px; border-radius: 2px; background: #60cdff"></div></div><span>4:07</span></div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; font-size: 12px; color: #c5c5c5"><span>▭ iPhone</span><span>❝</span><span>▤</span><span>🔉︎</span><div style="width: 96px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.54)"><div style="width: 70%; height: 4px; border-radius: 2px; background: #60cdff"></div></div><span>⋯</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const navItem = (label, sel) => ({ item: true, header: false, label,
+    style: 'position: relative; height: 36px; margin: 2px 4px; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 16px; border-radius: 4px; font-size: 14px; color: #ffffff; ' + (sel ? 'background: rgba(255,255,255,0.061)' : ''),
+    pillStyle: sel ? 'position: absolute; left: 0; top: 10px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const head = (label) => ({ item: false, header: true, label });
+  const nav = [navItem('Home', false), navItem('Browse', false), navItem('Library', true), head('Pinned'), navItem('Liked Songs', false), navItem('Your Episodes', false), head('Playlists'), navItem('K-Pop Duets (러블리 듀엣)', false), navItem('LoL Worlds Songs 2014–2026', false), navItem('90’s Nederlandstalig', false)];
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Playlists', false), vs('Albums', true), vs('Artists', false), vs('Podcasts', false), vs('Audiobooks', false)];
+  const data = [['FINE', 'Jukjae · 2017', '#7a6a5a'], ['ARE YOU EVER COMING BACK?', 'vaultboy · 2026', '#5a6a7a'], ['STARTING OVER', 'Yu Takahashi · 2018', '#4a4a4a'], ['WLUWD', 'Tristam · 2021', '#3b4a7a'], ['2024 World Championship Theme', 'League of Legends · 2024', '#7a5a3b'], ['Arcane League of Legends: Season 2', 'Arcane · 2024', '#2f4a6b'], ['Sacrifice', 'League of Legends · 2025', '#6b3b2f'], ['The Stereo Love Show', 'Edward Maya · 2012', '#3b5b7a'], ['Superman', 'Arash · 2014', '#6b8f8a'], ['Armageddon', 'aespa · 2024', '#5b2f6b'], ['Odyssey', 'HOME · 2014', '#2f5b6b'], ['Endless Summer', 'The Midnight · 2016', '#6b4a2f']];
+  const albums = data.map((d, i) => ({ t: d[0], s: d[1],
+    cardStyle: 'display: flex; flex-direction: column; gap: 6px; padding: 8px; margin: -8px; border-radius: 8px; color: #fff; ' + (i === 3 ? 'background: rgba(255,255,255,0.061)' : ''),
+    art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + d[2] }));
+  return { nav, views, albums };
+}
+}
+</script>
+</body>
+</html>

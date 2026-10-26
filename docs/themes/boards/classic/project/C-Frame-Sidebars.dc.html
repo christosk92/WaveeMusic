@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sidebar options</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 24px 32px 0; display: flex; gap: 48px; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 260px">
+    <div style="height: 52px"><div style="font-size: 14px; line-height: 20px; font-weight: 600">Classic layout (default)</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Text rows 36 / pitch 40, folder label at 40, count and ⋯ share one slot (hover on K-Pop Duets), no footer</div></div>
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="liked" hover="kpop" w="260" h="800" hint-size="260px,800px"></dc-import>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 260px">
+    <div style="height: 52px"><div style="font-size: 14px; line-height: 20px; font-weight: 600">Classic · Show covers · offline</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Two-line 40 rows, header hover shows + and ⋯ at rest look, offline pins keep title and cover</div></div>
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" covers="{{true}}" state="offline" sel="dw" hover="playlists" w="260" h="800" hint-size="260px,800px"></dc-import>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 260px">
+    <div style="height: 52px"><div style="font-size: 14px; line-height: 20px; font-weight: 600">Library layout · list · compact</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Stock chips, one sort label “Recents ⌄” (Y2), one-line 36 rows</div></div>
+    <dc-import name="C-Sidebar" theme="dark" layout="library" density="compact" sel="kpop" w="260" h="800" hint-size="260px,800px"></dc-import>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 260px">
+    <div style="height: 52px"><div style="font-size: 14px; line-height: 20px; font-weight: 600">Library layout · grid · failed refresh</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">The failed state now shows (S10): banner with Retry above what was loaded</div></div>
+    <dc-import name="C-Sidebar" theme="dark" layout="library" view="grid" state="failed" sel="home" w="260" h="800" hint-size="260px,800px"></dc-import>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 48px">
+    <div style="height: 52px; font-size: 14px; line-height: 20px; font-weight: 600">Rail</div>
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="liked" h="800" hint-size="48px,800px"></dc-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

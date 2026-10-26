@@ -25,7 +25,7 @@ using Wavee;
 
 namespace Wavee.HomeUi;
 
-/// <summary>The Recents grid's row/column arithmetic (Sixth pass, `Zones.UI.cs`'s `RecentGrid`): how many played
+/// <summary>The Recents grid's row/column arithmetic (Sixth pass, `ClassicHomeRecents.cs`): how many played
 /// cells fill out the grid before the fixed history tile, given the responsive column count.</summary>
 public static class RecentsPlan
 {

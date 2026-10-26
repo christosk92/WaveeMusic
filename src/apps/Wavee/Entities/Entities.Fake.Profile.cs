@@ -17,9 +17,10 @@ public static partial class Entities
         var s = Staging.Rent();
         try
         {
-            for (int u = 0; u < 4; u++)
+            for (int i = 0; i < 5; i++)
             {
-                ref var row = ref s.Users.RowFor(s.AddText(Utf8(UserUri(u))), Authority.Seed,
+                int u = i < 4 ? i : 0;   // FakeProfileUri: me's profile address, me's facts
+                ref var row = ref s.Users.RowFor(s.AddText(Utf8(i < 4 ? UserUri(i) : FakeProfileUri)), Authority.Seed,
                     (uint)(UserFields.Social | UserFields.Follow));
                 row.Followers = 3;
                 row.Following = 6;
@@ -34,9 +35,10 @@ public static partial class Entities
         var edges = Current.Edges;
         Span<int> targets = stackalloc int[8];
         Span<ProfileCardEdge> cards = stackalloc ProfileCardEdge[8];
-        for (int u = 0; u < 4; u++)
+        for (int i = 0; i < 5; i++)
         {
-            int user = ResolveSeedSlot(EntityKind.User, UserUri(u));
+            int u = i < 4 ? i : 0;   // FakeProfileUri carries me's shelves
+            int user = ResolveSeedSlot(EntityKind.User, i < 4 ? UserUri(i) : FakeProfileUri);
             if (user == Table.None) continue;
             int n = 0;
             for (int k = 0; k < 3; k++)

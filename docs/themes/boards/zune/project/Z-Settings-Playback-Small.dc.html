@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: playback · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="settings › playback" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+    <div style="position: absolute; left: 18px; top: -6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+    <div style="position: absolute; left: 24px; top: 70px; right: 24px; bottom: 0; display: flex; gap: 32px">
+      <nav aria-label="settings sections" style="width: 180px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+      </nav>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; flex-shrink: 0">playback</span>
+        <div style="display: grid; grid-template-columns: 170px minmax(0, 1fr); column-gap: 20px; row-gap: 16px; align-items: center; margin-top: 12px; flex-shrink: 0">
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">crossfade</span><span style="font-size: 12px; color: #7a7a7a">blend one song into the next</span></span>
+          <span style="display: flex; align-items: center; gap: 12px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span><span style="width: 160px; height: 2px; background: rgba(255,255,255,0.18); position: relative; display: block"><span style="{{sliderFill}}"></span><span style="position: absolute; left: 41%; top: -9px; width: 8px; height: 20px; background: #ffffff; display: block"></span></span><span style="font-variant-numeric: tabular-nums">5 s</span></span>
+          <sc-for list="{{toggles}}" as="t" hint-placeholder-count="2">
+            <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">{{t.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{t.hint}}</span></span>
+            <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>on</label>
+          </sc-for>
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">on start</span><span style="font-size: 12px; color: #7a7a7a">when wavee opens</span></span>
+          <span style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{onStart}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+        </div>
+        <span style="display: flex; align-items: center; gap: 10px; margin-top: 20px; padding: 10px 12px; background: #1b1b1b; font-size: 12px; color: #a8a8a8; flex-shrink: 0; white-space: nowrap; overflow: hidden"><span style="width: 28px; height: 28px; border-radius: 2px; background: #3a2f22; flex-shrink: 0"></span><span style="color: #ffffff; font-size: 13px">Get Lucky</span>very high · 320 kbps · crossfade 5 s into Beyond</span>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Get Lucky" artist="Daft Punk" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 30px; flex-shrink: 0; display: flex; align-items: center; white-space: nowrap; font-family: ' + D + '; font-size: 18px; line-height: 24px; ' + (n === 'playback' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const toggles = [['gapless', 'live albums play without a break'], ['autoplay', 'similar music when the queue ends']].map((d) => ({ label: d[0], hint: d[1] }));
+  const onStart = ['resume where i left off', 'stay quiet'].map((l, i) => ({ label: l, style: 'height: 32px; padding: 0 12px; border: 0; font: inherit; font-size: 14px; white-space: nowrap; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return {
+    accent, sections, toggles, onStart,
+    switchOn: 'width: 40px; height: 20px; background: ' + accent + '; position: relative; display: block; flex-shrink: 0',
+    sliderFill: 'position: absolute; left: 0; top: 0; width: 41%; height: 2px; background: ' + accent + '; display: block',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Multi-select, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|liked:Liked Songs" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div style="display: flex; gap: 16px; align-items: center; flex-shrink: 0">
+      <div style="width: 96px; height: 96px; border-radius: 8px; overflow: hidden; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex-shrink: 0"><span style="background: #3b5b7a"></span><span style="background: #5b2f6b"></span><span style="background: #6b4a2f"></span><span style="background: #2f6b5b"></span><span style="background: #6b2f3b"></span><span style="background: #4a3b2f"></span><span style="background: #2f5b6b"></span><span style="background: #6b5b2f"></span><span style="background: #4a4a6b"></span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Playlist</div><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Liked Songs</h1><div style="font-size: 14px; line-height: 20px; color: #c5c5c5">Chris · 1,284 songs</div></div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 4px; height: 48px; flex-shrink: 0; padding: 0 4px 0 12px; box-sizing: border-box; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+      <label style="display: flex; align-items: center; gap: 12px; height: 40px; font-size: 14px; flex-grow: 1"><span style="width: 20px; height: 20px; border-radius: 4px; background: #60cdff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 10px; height: 2px; border-radius: 1px; background: #000"></span></span>3 selected</label>
+      <button style="height: 40px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Select all</button>
+      <button aria-label="Cancel selection (Esc)" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+    </div>
+    <div role="table" aria-label="Liked songs" aria-multiselectable="true" style="display: flex; flex-direction: column; margin: -8px -8px 0 -8px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+        <div role="row" aria-selected="{{r.sel}}" style="{{r.style}}">
+          <span style="{{r.pill}}"></span>
+          <span style="display: flex; align-items: center; justify-content: center"><span style="{{r.box}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="{{r.tick}}"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="#000" stroke-width="1.8"></path></svg></span></span>
+          <span style="{{r.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span>
+          <span style="text-align: right; padding-right: 12px; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+  <div role="toolbar" aria-label="Selection commands" style="height: 64px; flex-shrink: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; padding: 0 4px; box-sizing: border-box; background: #2c2c2c; border-top: 1px solid rgba(255,255,255,0.0837); box-shadow: 0 -8px 16px rgba(0,0,0,0.26)">
+    <sc-for list="{{cmds}}" as="c" hint-placeholder-count="5"><button aria-label="{{c.aria}}" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 12px; line-height: 16px; white-space: nowrap; min-width: 0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{c.d}}" fill="{{c.fill}}" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="max-width: 100%; overflow: hidden; text-overflow: ellipsis">{{c.label}}</span></button></sc-for>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const cmds = [['Play next', 'Play next', 'M2.5 4h7M2.5 8h7M2.5 12h4M10.5 9.5v4.5l3.5-2.25z'], ['Queue', 'Add to queue', 'M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z'], ['Playlist', 'Add to playlist', 'M2.5 4h8M2.5 8h5M2.5 12h5M12 8v6M9 11h6'], ['Remove', 'Remove from Liked Songs', 'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9'], ['More', 'More selection commands', 'M3 8h.01M8 8h.01M13 8h.01']].map(c => ({ label: c[0], aria: c[1], d: c[2], fill: 'none' }));
+  cmds[4].d = 'M2 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0M7 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0M12 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0';
+  cmds[4].fill = 'currentColor';
+  const data = [['Supernova', 'aespa', 'Armageddon', '2:58', '#5b2f6b', true], ['Stereo Love', 'Edward Maya, Vika Jigulina', 'The Stereo Love Show', '4:07', '#3b5b7a', false, true], ['Broken Angel (feat. Helena)', 'Arash', 'Donya', '3:11', '#4a3b2f', true], ['Days of Thunder', 'The Midnight', 'Endless Summer', '4:37', '#6b4a2f', false], ['Magnetic', 'ILLIT', 'SUPER REAL ME', '2:41', '#6b5b2f', true], ['Whiplash', 'aespa', 'Whiplash', '3:03', '#4a2f5b', false], ['Love wins all', 'IU', 'The Winning', '4:31', '#7a6a5a', false], ['GODS', 'NewJeans', 'GODS', '3:40', '#2f4a5b', false]];
+  const rows = data.map(d => ({ t: d[0], sub: d[1] + ' · ' + d[2], time: d[3], sel: d[5] ? 'true' : 'false',
+    style: 'position: relative; display: grid; grid-template-columns: 40px 40px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; height: 56px; padding: 0 0 0 4px; border-radius: 4px; ' + (d[5] ? 'background: rgba(255,255,255,0.0605)' : ''),
+    pill: d[5] ? 'position: absolute; left: 0; top: 20px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+    box: 'width: 20px; height: 20px; box-sizing: border-box; border-radius: 4px; display: flex; align-items: center; justify-content: center; ' + (d[5] ? 'background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.5442)'),
+    tick: d[5] ? 'display: block' : 'display: none',
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + d[4],
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[6] ? '#99ebff' : '#ffffff') }));
+  return { cmds, rows };
+}
+}
+</script>
+</body>
+</html>

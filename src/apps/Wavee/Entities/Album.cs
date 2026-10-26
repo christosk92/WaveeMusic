@@ -288,16 +288,9 @@ public readonly partial struct Album(int slot) : IEquatable<Album>
 
     // ── edges ──
     public ReadOnlySpan<int> TrackSlots => Entities.Current.Edges.AlbumTracks.Targets(Slot);
-    /// <summary>Disc + track number per member (ch 05 D13). Parallel to <see cref="TrackSlots"/>.</summary>
-    public ReadOnlySpan<AlbumTrackEdge> TrackNumbers => Entities.Current.Edges.AlbumTracks.Payload(Slot);
     public ReadOnlySpan<int> ArtistSlots => Entities.Current.Edges.AlbumArtists.Targets(Slot);
     /// <summary>Deluxe / remaster / anniversary editions of THIS album (ch 05 D4).</summary>
     public ReadOnlySpan<int> VersionSlots => Entities.Current.Edges.AlbumVersions.Targets(Slot);
-    /// <summary>"More by &lt;artist&gt;" as the ALBUM payload carries it — its own edge, because that payload lands
-    /// long before the artist is ever fetched (ch 05 D5).</summary>
-    public ReadOnlySpan<int> MoreBySlots => Entities.Current.Edges.AlbumMoreBy.Targets(Slot);
-    public ReadOnlySpan<int> FeaturedOnSlots => Entities.Current.Edges.AlbumFeaturedOn.Targets(Slot);
-    public ReadOnlySpan<int> SimilarSlots => Entities.Current.Edges.AlbumSimilar.Targets(Slot);
     /// <summary>Merch listings: targets are <see cref="MerchTable"/> rows, not entities (§9.6 Q4, ch 05 D8). Read one
     /// with <see cref="MerchAt"/>.</summary>
     public ReadOnlySpan<int> MerchSlots => Entities.Current.Edges.AlbumMerch.Targets(Slot);
@@ -779,23 +772,6 @@ public readonly partial struct Album
             return new ReleaseDate((ushort)d.Year, (byte)d.Month, (byte)d.Day, precision);
         }
 
-        /// <summary>The Length phrase's parts: hours and minutes, a sub-minute total floors UP to one minute.</summary>
-        public static (int Hours, int Minutes) LengthParts(long ms)
-        {
-            var t = TimeSpan.FromMilliseconds(ms);
-            int h = (int)t.TotalHours, m = t.Minutes;
-            return h >= 1 ? (h, m) : (0, Math.Max(1, m));
-        }
-
-        /// <summary>"13" when every row is out, "8 of 13" (<c>detail.factOfCount</c>) otherwise, null with no rows.</summary>
-        public static string? SongsText(ReleaseFacts f)
-            => !f.HasSongs ? null
-             : f.SongsOut == f.SongsTotal ? f.SongsTotal.ToString(CultureInfo.InvariantCulture)
-             : Strings.Detail.FactOfCount(f.SongsOut, f.SongsTotal);
-
-        /// <summary>The Length tile through the SAME formatter the meta line uses (ch 05 §6's fix).</summary>
-        public static string? LengthText(ReleaseFacts f) => f.HasLength ? Track.Format.TotalTime(f.LengthMs) : null;
-
         /// <summary>YEAR "2014" · MONTH "November 2014" · DAY "November 4, 2014", in the CURRENT culture; null when unknown.</summary>
         public static string? ReleasedText(ReleaseFacts f)
         {
@@ -908,12 +884,17 @@ public readonly partial struct Album
 
     // ── the artist-page album drawer (ch 05 W19, §8 row 3) ──────────────────────────────────────────────────────────
 
+    /// <summary>The drawer's geometry a structure decides per tier (themes plan 3.2): the track columns (0: the grid's own rule,
+    /// <see cref="DrawerVerdict.ColumnsFor"/>), the row pitch and the head's allowance (0: <see cref="DrawerVerdict.RowPitch"/> /
+    /// <see cref="DrawerVerdict.HeaderH"/>). <c>default</c> is the drawer before tiers.</summary>
+    public readonly record struct DrawerShape(int Columns, float RowPitch, float HeaderH);
+
     /// <summary>Everything the drawer needs, decided in ONE place (0.2.9 <c>AlbumDrawerVerdict</c>): rows, columns, the
-    /// show-all cell and BOTH heights, so the panel, the reserved slot and the bring-into-view can never disagree.</summary>
+    /// show-all cell, the row pitch and BOTH heights, so the panel, the reserved slot and the bring-into-view can never disagree.</summary>
     public readonly record struct DrawerVerdict(string Uri, int Rows, int Columns, int Shown, int Total, bool Loading,
-                                                bool ReadyEmpty, bool ShowAllRow, float PanelHeight, float SlotHeight)
+                                                bool ReadyEmpty, bool ShowAllRow, float PanelHeight, float SlotHeight, float Pitch)
     {
-        /// <summary>6 pad + 28 header row + 6 pad.</summary>
+        /// <summary>6 pad + 28 header row + 6 pad; the row pitch where the structure's shape names none.</summary>
         public const float HeaderH = 40f, RowPitch = 32f, TopGap = 8f, BottomGap = 8f;
         public const int CapPerColumn = 12, TwoColumnMinGridCols = 5, FallbackShimmerRows = 3;
 
@@ -924,22 +905,26 @@ public readonly partial struct Album
         /// <param name="loadedTracks">that album's rows</param>
         /// <param name="thinTracks">rows already on the card itself</param>
         /// <param name="thinTrackCount">the card's advertised count (sizes the placeholder)</param>
+        /// <param name="gridCols">the grid's columns (the column rule where <paramref name="shape"/> names no columns)</param>
+        /// <param name="shape">the structure's geometry for the tier on screen (<c>default</c>: the drawer before tiers)</param>
         public static DrawerVerdict For(string selectedUri, string? loadedUri, int loadedTracks, int thinTracks, int thinTrackCount,
-                                        bool pending, int gridCols)
+                                        bool pending, int gridCols, DrawerShape shape = default)
         {
             if (selectedUri.Length == 0) return default;
             bool match = loadedUri == selectedUri;                        // identity, not "whatever is in hand"
             int have = match ? loadedTracks : thinTracks;
             bool loading = !match && pending;
             bool readyEmpty = match && !pending && have == 0;
-            int columns = ColumnsFor(gridCols);
+            int columns = shape.Columns > 0 ? shape.Columns : ColumnsFor(gridCols);
+            float pitch = shape.RowPitch > 0f ? shape.RowPitch : RowPitch;
+            float head = shape.HeaderH > 0f ? shape.HeaderH : HeaderH;
             int cap = CapPerColumn * columns;
             int total = have > 0 ? have : Math.Max(thinTrackCount, 0);
             int shown = loading ? Math.Min(total > 0 ? total : FallbackShimmerRows, cap) : Math.Min(have, cap);
             bool showAll = !loading && total > cap;
             int rows = readyEmpty ? 2 : (int)Math.Ceiling((shown + (showAll ? 1 : 0)) / (float)columns);
-            float panel = HeaderH + rows * RowPitch;
-            return new(selectedUri, rows, columns, shown, total, loading, readyEmpty, showAll, panel, panel + TopGap + BottomGap);
+            float panel = head + rows * pitch;
+            return new(selectedUri, rows, columns, shown, total, loading, readyEmpty, showAll, panel, panel + TopGap + BottomGap, pitch);
         }
 
         /// <summary>The verdict off the album's own <c>AlbumTracks</c> edge: pending while the list is Unknown and not
@@ -959,6 +944,14 @@ public readonly partial struct Album
 
     public static class PageRules
     {
+        /// <summary>The album's credits paragraph for a theme's aside (contract 1.82: "written and produced by ... · with ... · all credits"), or null.
+        /// <para>TODO(album credits, owner 2026-10-25 "build later, stub for now"): there is NO album-level credits source. The data model holds role
+        /// credits per TRACK only (<c>Edges.TrackCredits</c>: the CreditsV2 metadata extension, kind 186, fetched one track at a time on demand by the
+        /// drawer's credits sheet and the stage), plus each track's performers (<c>Edges.TrackArtists</c>) and the album's billed artists. "Written
+        /// and produced by" needs the roles of the whole album: an album credits fetch, or a fan-out over its tracks' CreditsV2 folded by role.
+        /// Until one exists this answers null, so the aside draws NOTHING (no heading, no gap). No network call is made here.</para></summary>
+        public static Theming.Contracts.AlbumCredits? CreditsOf(Album a) => null;
+
         /// <summary>A trailing section's row cap; "Fans also like"'s chip cap; the similar-albums ask.</summary>
         public const int StackCap = 5, FansCap = 8, SimilarLimit = 24;
 
@@ -974,8 +967,6 @@ public readonly partial struct Album
         /// the realised members are the fallback — the same rows the facts tile and the tracklist count. A known
         /// count wins over the members when it is real, because the members may be a partial page.</summary>
         public static int SongCount(int knownTrackCount, int memberCount) => knownTrackCount > 0 ? knownTrackCount : memberCount;
-
-        public static bool HasReleasePanel(ReleaseFacts facts, int otherVersions) => !facts.IsEmpty || otherVersions > 0;
 
         /// <summary>A trailing relation still out: asked this scope and neither answered nor failed.</summary>
         public static bool InFlight(bool asked, EdgeState readiness) => asked && readiness == EdgeState.Unknown;
@@ -1030,61 +1021,39 @@ public readonly partial struct Album
             public bool IsEmpty => !About && !Fans && RowBlocks == 0 && !Video;
         }
 
-        /// <summary>The shape off what the row knows at mount. An unknown kind reads as a full album (the sections do
-        /// the same); About and Fans are always reserved (a release without a billed artist is the exception, and a
-        /// wrong reserve eases while a re-keyed region goes blank). The Featured on block is reserved for every release,
+        /// <summary>The shape a release reserves at mount, whatever its kind or length. About and Fans are always reserved
+        /// (a release without a billed artist is the exception, and a wrong reserve eases while a re-keyed region goes
+        /// blank). The Featured on block is reserved for every release,
         /// a single included: <c>SectionsHost</c> asks for it at Visible priority whatever the length and adds it when it
         /// answers, so a short release that reserved none would grow a whole rows block on the reveal.
         /// <paramref name="videoKnown"/> is true only when every
         /// member's video verdict is in AND at least one member has a video (<see cref="VideoDecided"/>,
         /// <see cref="SelectVideos"/>): a video that lands later is never guessed, it eases in like any late section.
         /// <paramref name="videoShelf"/> (two or more videos, <see cref="ArmFor"/>) reserves the shelf's height, not the single hero's.</summary>
-        public static TrailingShape SkeletonShape(bool knowsKind, AlbumKind kind, int knownTrackCount, bool videoKnown = false,
-                                                  bool videoShelf = false)
-        {
-            return new TrailingShape(About: true, Fans: true, RowBlocks: 1, Video: videoKnown || videoShelf, VideoShelf: videoShelf);
-        }
+        public static TrailingShape SkeletonShape(bool videoKnown = false, bool videoShelf = false)
+            => new(About: true, Fans: true, RowBlocks: 1, Video: videoKnown || videoShelf, VideoShelf: videoShelf);
 
         // The skeleton's numbers, derived from the real surfaces (Album.Page.cs) so the reserve equals the paint.
-        /// <summary>A section header's line box (<c>Design.Type.RailHeader</c> = Subtitle 20/28) and the bone drawn in it.</summary>
+        /// <summary>A section header's line box (<c>R.Type.RailHeader</c> = Subtitle 20/28) and the bone drawn in it.</summary>
         public const float SkelHeaderH = 28f, SkelHeaderBarH = 18f;
-        /// <summary>A related row's floor (pinned to <c>Shape.RowTileStill</c>), the gap between rows, and the rows a block shows
+        /// <summary>The gap between a block's rows (each row is the real <c>Shape.RowTileStill</c>), and the rows a block shows
         /// (<see cref="StackCap"/>).</summary>
-        public const float SkelRowH = 64f, SkelRowGap = 4f;
+        public const float SkelRowGap = 4f;
         public const int SkelRows = StackCap;
         /// <summary>Header-to-body gap and the section padding's vertical sum (Album.Page.cs <c>SectionPad</c>: XL top, L bottom).</summary>
         public const float SkelSectionGap = 12f, SkelSectionPadV = 36f;
         /// <summary>The About card (<c>Controls.PageAbout</c>): its tallest cell is the text column, eyebrow 16 + name 28 + a two-line
         /// 13/18 bio 36 + two 4-DIP gaps = 88, inside the link's 12 + 12 padding. The 84 portrait is shorter.</summary>
         public const float SkelAboutPortrait = 84f, SkelAboutTextH = 88f, SkelAboutH = SkelAboutTextH + 24f;
-        /// <summary>One "Fans also like" card (the artist-page circular card): <see cref="FanCardW"/> wide, as tall as the shelf
-        /// card with one caption line, <see cref="FansCap"/> of them in one clipped row.</summary>
+        /// <summary>One "Fans also like" card (the artist-page circular card): <see cref="FanCardW"/> wide, <see cref="FansCap"/> of
+        /// them in one clipped row.</summary>
         public const float FanCardW = 148f;
-        public static float SkelFansH => SurfaceGeometry.ShelfHeight(FanCardW, 1f, captionLines: 1, metaLine: false);
-        /// <summary>The single-video hero (<c>VideoHero</c>): a 116 thumb inside 12 + 12 padding, under the section's XL top pad
-        /// and no bottom pad (About supplies that step).</summary>
-        public const float SkelVideoThumbW = 200f, SkelVideoThumbH = 116f, SkelVideoTopPad = 20f;
-        public const float SkelVideoH = SkelVideoTopPad + SkelVideoThumbH + 24f;
-        /// <summary>The video SHELF (<c>VideoShelf</c>, two or more videos): the section's XL top pad, the shelf's header row (its 32-DIP
-        /// pager is taller than the 28 title), the shelf's 12 header gap, then one row of 16:9 <c>Shape.Video</c> cards. The cards fit
-        /// 200-280 wide at the live page width; the skeleton has no width, so it reserves the narrowest (under-states, like the rest).</summary>
+        /// <summary>The single-video hero (<c>VideoHero</c>)'s 116 thumb.</summary>
+        public const float SkelVideoThumbW = 200f, SkelVideoThumbH = 116f;
+        /// <summary>The video SHELF (<c>VideoShelf</c>, two or more videos): the shelf's header row (its 32-DIP pager is taller than
+        /// the 28 title), the shelf's 12 header gap, then one row of 16:9 <c>Shape.Video</c> cards.</summary>
         public const float SkelVideoShelfHeaderH = 32f, SkelVideoShelfGap = 12f;
         public const int SkelVideoShelfCards = 3;
-        public static float SkelVideoShelfH => SkelVideoTopPad + SkelVideoShelfHeaderH + SkelVideoShelfGap
-                                               + SurfaceGeometry.StackExtent(Shape.Video, VideoCardMinW, 16f / 9f);
-
-        /// <summary>The DIP the skeleton for <paramref name="s"/> occupies — the same numbers the elements use, summed in
-        /// the order the loaded band stacks them (the sum itself is order-free).</summary>
-        public static float SkeletonHeight(in TrailingShape s)
-        {
-            float section = SkelSectionPadV + SkelHeaderH + SkelSectionGap;
-            float h = 0f;
-            if (s.Video) h += s.VideoShelf ? SkelVideoShelfH : SkelVideoH;
-            if (s.About) h += SkelSectionPadV + SkelAboutH;                 // the card has no header
-            if (s.Fans) h += section + SkelFansH;
-            if (s.RowBlocks > 0) h += s.RowBlocks * (section + SkelRows * SkelRowH + (SkelRows - 1) * SkelRowGap);
-            return h;
-        }
 
         /// <summary>W18's unresolvable <c>prerelease:</c> route: nothing named it, its own tracklist ask FAILED, and the row
         /// never learned a title — the shell with "Nothing here yet", never an error page.</summary>
@@ -1111,16 +1080,6 @@ public readonly partial struct Album
             int best = 0;
             for (int i = 1; i < tracks.Length; i++)
                 if (tracks[i].PlayCount > tracks[best].PlayCount) best = i;
-            return best;
-        }
-
-        /// <summary>The star's row: argmax play count when some row has plays, else -1 (agrees with
-        /// <see cref="DeriveTopTrack"/>).</summary>
-        public static int TopTrackIndex(ReadOnlySpan<Track> tracks)
-        {
-            int best = -1;
-            for (int i = 0; i < tracks.Length; i++)
-                if (tracks[i].PlayCount > 0 && (best < 0 || tracks[i].PlayCount > tracks[best].PlayCount)) best = i;
             return best;
         }
 

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Classic theme options</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1100px; box-sizing: border-box; padding: 36px 40px; display: flex; flex-direction: column; gap: 20px; background: #202020; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <div style="display: flex; align-items: flex-end; gap: 24px">
+    <div style="flex-grow: 1"><div style="font-size: 12px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)">Settings › Appearance › Classic options</div><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Classic theme options</h1></div>
+    <div style="max-width: 560px; font-size: 12px; line-height: 17px; color: rgba(255,255,255,0.62)">The switches that only make sense for Classic now belong to it (abstraction-map §4, §6.1). Defaults are today’s values, so nobody’s app changes on upgrade; old keys migrate once. Another theme shows its own options here instead.</div>
+  </div>
+  <div style="display: flex; gap: 12px; font-size: 12px"><span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 2px; background: #60cdff"></span>Structure: which views Classic builds</span><span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 2px; background: #c08ab0"></span>Style: how Classic paints them</span><span style="display: inline-flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.62)">Bold value = default</span></div>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+    <sc-for list="{{opts}}" as="o" hint-placeholder-count="18">
+      <div style="padding: 14px 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: center; gap: 8px"><span style="{{o.tag}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; flex-grow: 1">{{o.n}}</span><span style="font-size: 11px; font-family: Consolas, monospace; color: rgba(255,255,255,0.45)">{{o.k}}</span></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 4px"><sc-for list="{{o.vals}}" as="v" hint-placeholder-count="3"><span style="{{v.s}}">{{v.l}}</span></sc-for></div>
+        <div style="font-size: 12px; line-height: 17px; color: rgba(255,255,255,0.773)">{{o.d}}</div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="padding: 14px 16px; border-radius: 8px; border: 1px dashed rgba(255,255,255,0.15); font-size: 12px; line-height: 18px; color: rgba(255,255,255,0.7)"><b style="color: #fff">Not Classic options (they stay app preferences for every theme):</b> App mode (System / Light / Dark), Zoom, Daylist clock, Liked Songs cover style, BPM · Key and Plays columns, Show remaining time, full-screen view, visualizer, sensitivity, sync offset, calm motion, AI lyrics, video placement, Autoplay, reduced motion. <b style="color: #fff">Deleted:</b> the developer “Page motion” switch (Classic keeps today’s recipe).</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+  const S = '#60cdff', Y = '#c08ab0';
+  const O = [
+    [S, 'Sidebar layout', 'structure.sidebar', ['*Classic', 'Library'], 'Classic: Home, Pinned, Collections and Playlists sections you show, hide and reorder. Library: Home, Pinned and one “Your Library” list with chips, sort and list/grid.'],
+    [S, 'Show covers', 'structure.showCovers', ['Off', '*On'], 'Classic layout only. Off: 36 px text rows (folder glyph at 16, label at 40). On: 40 px rows with a 32 cover and a second line.'],
+    [S, 'Library density', 'structure.libraryDensity', ['*Default', 'Compact'], 'Library layout rows: two lines with a 32 cover, or one line with a 24 cover at 36 px.'],
+    [S, 'Row style', 'structure.rowStyle', ['*Modern', 'Classic'], 'Modern: inset r6 plates, zebra, artwork, numbers and equalizer. Classic: full-bleed hairline rows, one “Title · Artists” line, the whole playing row in accent. Also the artist chart and the queue.'],
+    [S, 'Hide track artwork', 'structure.hideTrackArt', ['*Off', 'On'], 'Removes the artwork lane in track tables, the artist chart, the queue, search song rows, Recents and full-screen lists.'],
+    [S, 'Marquee text', 'structure.marquee', ['*On', 'Off'], 'Long titles of the playing row and the player bar scroll. Off: they trim with a tooltip. Reduced motion always stops them.'],
+    [S, 'Track page layout', 'structure.pageLayout', ['*Automatic', 'Hero'], 'Automatic: the cover rail beside the list on wide pages, the vertical hero on narrow ones. Hero: always the vertical hero.'],
+    [S, 'Keep left rail same size', 'structure.railUniform', ['*Off', 'On'], 'One rail width for albums, playlists and shows instead of one per kind. Comes with “Clear remembered sizes”.'],
+    [S, 'Lyrics blur', 'structure.lyricsBlur', ['*Intensity 0 – 100'], 'Depth of field on the side-panel lyrics: lines away from the active one blur more; 0 turns it off. Full screen never blurs.'],
+    [S, 'Full-screen layout', 'structure.stageLayout', ['*Visualizer first', 'Large cover', 'Centered cover', 'Artist photo'], 'Where the cover, lyrics and visualizer sit in full screen.'],
+    [S, 'Spectrum under the cover', 'structure.stageSpectrum', ['*Bars', 'Ring', 'Line', 'Off'], 'Large and Centered cover layouts: the strip or ring that moves with the music.'],
+    [S, 'Artist photo layout', 'structure.stageHero*', ['*Lyrics over photo', '*Slow pan and zoom', 'Dimming 75'], 'Lyrics pane or the big name; Ken Burns pan (off under reduced motion); how dark the foot of the photo gets.'],
+    [S, 'Now playing hero', 'structure.heroPresentation', ['*Cover', 'Player'], 'Developer only. The side panel’s hero: the cover, or a player preset (presets stay hidden until they work, #199).'],
+    [S, 'Clear remembered sizes', 'action', ['Clear…'], 'Resets rail, pane and column widths Classic remembers per page kind.'],
+    [Y, 'Density', 'style.density', ['Compact', '*Default', 'Cozy', 'Comfortable'], 'Track rows: Modern 40 / 48 / 56 / 64, Classic 36 / 40 / 44 / 48, with art 32 / 32 / 40 / 48. Also the list ⋯ › Row size.'],
+    [Y, 'Surfaces', 'style.surfaces', ['Off', '*Subtle', 'Rich'], 'Replaces “Color washes”: Home’s radial washes, the page tone plane under detail pages, the artist and profile blend. Off is flat Mica.'],
+    [Y, 'Accent from artwork', 'style.accentFromArtwork', ['*On', 'Off'], 'Detail pages take Play, hearts and accent text from the cover, floored at 4.5 : 1 (D13). Off: the Windows accent everywhere.'],
+    [Y, 'Now playing colours', 'style.nowPlayingColors', ['*On', 'Off'], 'Full screen and the now-playing panel tint from the cover. Off: neutral stage.']
+  ];
+  const opts = O.map(o => ({ n: o[1], k: o[2], d: o[4],
+    tag: 'width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: ' + o[0],
+    vals: o[3].map(v => { const def = v[0] === '*'; return { l: def ? v.slice(1) : v, s: 'height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 4px; font-size: 12px; ' + (def ? 'font-weight: 600; background: rgba(96,205,255,0.16); border: 1px solid #60cdff; color: #a6d8ff' : 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: rgba(255,255,255,0.85)') }; }) }));
+  return { opts };
+}
+}
+</script>
+</body>
+</html>

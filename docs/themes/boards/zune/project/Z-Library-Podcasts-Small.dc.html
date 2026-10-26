@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: podcasts · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="library › podcasts › your episodes" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="podcasts" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 24px 0 24px; gap: 10px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 20px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+      <button style="height: 28px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; display: flex; align-items: center; gap: 6px">recents <span style="font-size: 10px; color: #a8a8a8">▾</span></button>
+      <span style="flex-grow: 1"></span>
+      <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in podcasts" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 120px; outline: none; padding: 2px 0"></label>
+      <span>14 shows</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px">
+      <div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <a href="#" style="height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: #ffffff; font-weight: 600; background: rgba(255,255,255,0.05); padding: 0 8px; margin: 0 -8px">your episodes <span style="font-size: 12px; color: #7a7a7a; font-weight: 400">24</span></a>
+        <span style="font-size: 12px; color: #7a7a7a; height: 28px; display: flex; align-items: flex-end; padding-bottom: 4px; box-sizing: border-box; flex-shrink: 0">followed shows</span>
+        <sc-for list="{{shows}}" as="s" hint-placeholder-count="7">
+          <a href="#" style="display: grid; grid-template-columns: 32px minmax(0, 1fr) 16px; gap: 10px; align-items: center; height: 44px; flex-shrink: 0"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span><span style="font-size: 11px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.sub}}</span></span><span style="{{s.dot}}"></span></a>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 36px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">your episodes</span><span style="font-size: 12px; color: #7a7a7a">24 · 6 hr 12 min</span><span style="flex-grow: 1"></span><span style="display: flex; gap: 14px; font-size: 13px"><a href="#" style="color: #ffffff">all</a><a href="#">unplayed</a><a href="#">in progress</a></span></div>
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; flex-shrink: 0">
+            <div style="display: flex; align-items: baseline; gap: 10px; height: 32px; padding-top: 4px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">{{g.title}}</span><span style="font-size: 12px; color: #7a7a7a">{{g.count}}</span></div>
+            <sc-for list="{{g.rows}}" as="e" hint-placeholder-count="3">
+              <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 84px 32px; gap: 10px; align-items: center; height: 60px"><span style="{{e.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 2px"><span style="{{e.title}}">{{e.name}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.meta}}</span></span><span style="{{e.state}}">{{e.stateText}}</span><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 15px; padding: 0">⋯</button></div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" kind="podcast" title="The hidden history of the synthesizer" artist="Twenty Thousand Hertz" art="#4a2f3b" progress="62" saved="true" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const shows = [['The Rest Is Football', 'goalhanger · 3 new', '#2f4a3b', true], ['Twenty Thousand Hertz', 'dallas taylor · 1 new', '#4a2f3b', true], ['Hurry Slowly', 'jocelyn k. glei', '#3b3b2f', false], ['Planet Money', 'npr · 2 new', '#2f3b4a', true], ['Song Exploder', 'hrishikesh hirway', '#4a3b2f', false], ['Darknet Diaries', 'jack rhysider', '#2f2f2f', false], ['99% Invisible', 'roman mars · 1 new', '#3b2f4a', true]].map((d) => ({ name: d[0], sub: d[1], art: 'width: 32px; height: 32px; border-radius: 2px; display: block; background: ' + d[2], dot: 'width: 6px; height: 6px; border-radius: 3px; display: block; justify-self: end; background: ' + (d[3] ? accent : 'transparent') }));
+  const mk = (list) => list.map((d) => ({ name: d[0], meta: d[1], stateText: d[3], art: 'width: 52px; height: 52px; border-radius: 2px; display: block; background: ' + d[2], title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[4] ? accent : '#ffffff'), state: 'font-size: 12px; text-align: right; color: ' + (d[4] ? accent : '#7a7a7a') }));
+  const groups = [
+    { title: 'today', count: '3', rows: mk([['The hidden history of the synthesizer', 'Twenty Thousand Hertz · 32 min', '#4a2f3b', '12 min left', true], ['Why the Premier League keeps changing', 'The Rest Is Football · 48 min', '#2f4a3b', 'unplayed', false], ['What the Fed did next', 'Planet Money · 24 min', '#2f3b4a', 'unplayed', false]]) },
+    { title: 'this week', count: '9', rows: mk([['Episode 312: slow mornings', 'Hurry Slowly · 54 min', '#3b3b2f', 'unplayed', false], ['Deep dive: the 1993 title race', 'The Rest Is Football · 47 min', '#2f4a3b', '6 min left', false]]) },
+  ];
+  return { accent, shows, groups };
+}
+}
+</script>
+</body>
+</html>

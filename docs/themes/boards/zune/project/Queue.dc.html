@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune queue panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c8c8c8;text-decoration:none}a:hover{color:#ffffff;text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 420px; height: 760px; box-sizing: border-box; background: #1b1b1b; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 24px 20px; display: flex; flex-direction: column; gap: 6px">
+  <div style="display: flex; gap: 20px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; margin-bottom: 14px">
+    <a href="#" style="color: #ffffff">queue</a><a href="#" style="color: #6f6f6f">lyrics</a><a href="#" style="color: #6f6f6f">details</a>
+  </div>
+  <div style="font-size: 13px; color: #8f8f8f; height: 24px; display: flex; align-items: center">now playing</div>
+  <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 0; height: 72px">
+    <span style="width: 56px; height: 56px; border-radius: 2px; background: #6b2f4a"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; gap: 2px">
+      <span style="font-size: 17px; color: {{accent}}">Nightcall</span>
+      <span style="font-size: 13px; color: {{accent}}; opacity: 0.8">Kavinsky</span>
+    </span>
+  </div>
+  <div style="font-size: 13px; color: #8f8f8f; height: 32px; display: flex; align-items: flex-end; padding-bottom: 4px">next from late night drive</div>
+  <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+    <div style="{{r.rowStyle}}">
+      <span style="{{r.artStyle}}"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px">
+        <span style="font-size: 15px; line-height: 20px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span>
+        <span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.artist}}</span>
+      </span>
+      <span style="{{r.trailStyle}}">{{r.trail}}</span>
+    </div>
+  </sc-for>
+  <div style="font-size: 13px; color: #8f8f8f; height: 32px; display: flex; align-items: flex-end; padding-bottom: 4px">autoplay</div>
+  <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr) 40px; align-items: center; height: 52px; opacity: 0.6">
+    <span style="width: 36px; height: 36px; border-radius: 2px; background: #2f3b6b"></span>
+    <span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px">Dimension</span><span style="font-size: 13px; color: #9c9c9c">Jacob Banks</span></span>
+    <span></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":420,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const data = [['Resonance', 'HOME', '#2f5b6b'], ['Tech Noir', 'Gunship', '#5b3b6b'], ['Sunset', 'The Midnight', '#6b4a2f'], ['Turbo Killer', 'Carpenter Brut', '#6b2f2f'], ['A Real Hero', 'College, Electric Youth', '#4a6b2f']];
+  const rows = data.map((d, i) => ({
+    title: d[0], artist: d[1], trail: i === 1 ? '✕' : '',
+    rowStyle: 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 40px; align-items: center; height: 52px; ' + (i === 1 ? 'background: rgba(255,255,255,0.05)' : ''),
+    artStyle: 'width: 36px; height: 36px; border-radius: 2px; background: ' + d[2],
+    trailStyle: 'font-size: 13px; color: #c8c8c8; text-align: center',
+  }));
+  return { rows, accent };
+}
+}
+</script>
+</body>
+</html>

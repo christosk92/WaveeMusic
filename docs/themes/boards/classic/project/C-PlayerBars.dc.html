@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Player bar variants</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1240px; box-sizing: border-box; padding: 28px 0 0; display: flex; flex-direction: column; gap: 14px; background: #181818; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <sc-for list="{{bars}}" as="b" hint-placeholder-count="10">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="padding: 0 24px; display: flex; gap: 12px; align-items: baseline"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{b.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.7)">{{b.d}}</span></div>
+      <dc-import name="C-PlayerBar" theme="dark" variant="{{b.v}}" w="{{b.w}}" panel="{{b.p}}" hint-size="1440px,72px"></dc-import>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+  const bars = [
+    ['Music · Full tier (1440)', 'Shuffle latched, inline volume, Lyrics latched with the same plate as Queue and Devices (P2); seek thumb only on hover', 'music', 1440, 'lyrics'],
+    ['Podcast with chapters', 'Back 15 / forward 30, speed instead of shuffle/repeat, the seek rail split at chapter marks, chapter in the subtitle', 'podcast', 1440, 'none'],
+    ['Video', 'Video split button (32 + chevron) latched while the video shows; placement menu on the chevron', 'video', 1440, 'none'],
+    ['Remote device', '“Playing on Living room TV” in accent under the artist; Devices latched', 'remote', 1440, 'queue'],
+    ['Loading', 'The top hairline becomes an indeterminate sweep after 450 ms; layout unchanged', 'loading', 1440, 'none'],
+    ['Wide tier (1100–1239)', 'Expand leaves; everything else stays', 'music', 1180, 'none'],
+    ['Comfortable tier (900–1099)', 'Inline volume slider folds to the Volume button; Queue stays (P1)', 'music', 1000, 'none'],
+    ['Medium tier (760–899)', 'Shuffle and Repeat move into ⋯; Lyrics, Volume and Queue stay', 'music', 820, 'none'],
+    ['Compact tier (440–759)', 'Prev/next, elapsed, Volume and Lyrics fold; Queue now stays from here up (was Wide only)', 'music', 600, 'none'],
+    ['Minimal tier (< 440)', 'Art, title, heart, play, devices, ⋯', 'music', 400, 'none']
+  ].map(b => ({ t: b[0], d: b[1], v: b[2], w: b[3], p: b[4] }));
+  return { bars };
+}
+}
+</script>
+</body>
+</html>

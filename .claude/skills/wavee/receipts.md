@@ -20,7 +20,7 @@ File: `src/apps/Wavee/Features/Shell/SettingsPage.About.cs` (`WaveeNowReceipts`)
 | GPU assets | `D3D12Device.LastVideoMemory` LOCAL + NON_LOCAL `CurrentUsage` |
 | App excl. GPU | working set − shared-segment usage, labeled `shared / iGPU` or `discrete` |
 
-**Refresh:** `UseInterval(Tick, 5000)` + mount `UseEffect(Tick)`. Format strings **on the tick only**. Bind `TextEl(signal)` so the parent `Render()` stays run-once — never `UseContext(FrameDiagnostics.Current)` (that re-renders every frame; see `FpsOverlay`).
+**Refresh:** `UseInterval(Tick, 5000)` + mount `UseEffect(Tick)`. Format strings **on the tick only**. Bind `TextEl(signal)` so the parent `Render()` stays run-once — never `UseContext(FrameDiagnostics.Current)` (that re-renders every frame; see `CommonFpsPill` in `Themes/Common/CommonFps.cs`).
 
 `AboutTab` is behind SettingsPage’s tab switch, so the interval **must** live on this child (`Embed.Comp(() => new WaveeNowReceipts())`), not in `AboutTab()` itself.
 

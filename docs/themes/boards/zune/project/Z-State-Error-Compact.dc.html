@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune offline and errors: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="search › the weeknd" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <div style="flex-shrink: 0; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 8px 8px 16px; box-sizing: border-box; background: #242424">
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#a8a8a8" stroke-width="1.5" aria-hidden="true"><path d="M2 6a9 9 0 0 1 12 0M4.5 8.5a5.5 5.5 0 0 1 7 0M7 11a2 2 0 0 1 2 0M2 2l12 12"/></svg>
+    <span style="flex-grow: 1; min-width: 0; font-size: 13px; line-height: 18px; color: #c8c8c8">you're offline · pages you've opened still show · playback picks up when you're back</span>
+    <button style="height: 40px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 8px; white-space: nowrap">retry</button>
+  </div>
+  <dc-import name="Z-Part-Band" tier="compact" section="browse" sub="popular,albums,singles &amp; eps,details" on="popular" title="the weeknd" collapsed="true" accent="{{accent}}" hint-size="400px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 172px; flex-shrink: 0; position: relative; overflow: hidden; background: #1b1b1b">
+      <div style="position: absolute; left: 10px; top: 16px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: rgba(255,255,255,0.5)">the weeknd</div>
+      <div style="position: absolute; left: 16px; right: 16px; top: 96px; display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 15px; line-height: 20px">can't load this artist offline</span>
+        <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">it loads by itself when you reconnect.</span>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; flex-shrink: 0">
+      <span style="{{markIdle}}">↓</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">on this pc</span>
+      <span style="font-size: 13px; color: #7a7a7a">saved songs by the weeknd</span>
+    </div>
+    <div style="display: flex; flex-direction: column; padding: 0 8px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+        <div style="{{r.rowStyle}}">
+          <span style="{{r.artStyle}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ true }}"><span style="{{r.mark}}">↓</span></sc-if>{{r.sub}}</span></span>
+          <button aria-label="more" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin: 16px 16px 0 16px; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 8px 8px 14px; box-sizing: border-box; background: #1b1b1b; flex-shrink: 0">
+      <span style="flex-grow: 1; min-width: 0; font-size: 13px; line-height: 18px; color: #c8c8c8">playback paused · it resumes from 1:14 when you reconnect</span>
+      <button style="height: 40px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">ok</button>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Blinding Lights" artist="The Weeknd · paused, offline" art="#7a2a2a" progress="22" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const mark = (c) => 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid ' + c + '; color: ' + c + '; font-size: 8px; line-height: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0';
+  const data = [['Blinding Lights', 'After Hours · 3:20', '#7a2a2a', ''], ['Save Your Tears', 'After Hours · 3:35', '#3a2a5a', ''], ['Starboy', 'Starboy · 3:50', '#5a2a3a', 'nc'], ['The Hills', 'Beauty Behind the Madness · 4:02', '#2a2a2a', 'nc'], ['Die For You', 'Starboy · 4:20', '#4a3a2a', '']];
+  const rows = data.map((d) => {
+    const play = d[3] === 'play', off = false, nc = d[3] === 'nc';
+    return {
+      title: d[0], sub: d[1], cached: !nc,
+      rowStyle: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; height: 56px; padding-left: 8px' + (off ? '; opacity: 0.45' : ''),
+      artStyle: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[2] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; color: ' + (play ? accent : '#9c9c9c'),
+      mark: mark(play ? accent : '#a8a8a8'),
+    };
+  });
+  return { accent, rows, markIdle: mark('#a8a8a8') };
+}
+}
+</script>
+</body>
+</html>

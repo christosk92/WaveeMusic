@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune artist top songs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c8c8c8;text-decoration:none}a:hover{color:#ffffff;text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1280px; height: 680px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column">
+  <div style="height: 220px; background: #2a2433; display: flex; align-items: flex-end; padding: 0 48px 20px 48px">
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px">the weeknd</div>
+  </div>
+  <div style="padding: 24px 48px 0 48px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: baseline; gap: 20px">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300">top songs</div>
+      <a href="#" style="font-size: 14px">play all</a>
+      <a href="#" style="font-size: 14px">see all 10</a>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+        <div style="{{r.rowStyle}}">
+          <span style="{{r.numStyle}}">{{r.num}}</span>
+          <span style="{{r.artStyle}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px">
+            <span style="{{r.titleStyle}}">{{r.title}}</span>
+            <span style="font-size: 13px; color: #9c9c9c; font-variant-numeric: tabular-nums">{{r.plays}}</span>
+          </span>
+          <span style="{{r.timeStyle}}">{{r.time}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1280,"height":680}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const data = [
+    ['Blinding Lights', '4.9B plays', '3:20', '#7a2a2a'], ['Starboy', '3.8B plays', '3:50', '#5a2a3a'],
+    ['Save Your Tears', '3.2B plays', '3:35', '#3a2a5a'], ['The Hills', '2.6B plays', '4:02', '#2a2a2a'],
+    ['Die For You', '2.4B plays', '4:20', '#4a3a2a'], ['Call Out My Name', '1.9B plays', '3:48', '#2a3a4a'],
+    ['I Feel It Coming', '1.8B plays', '4:29', '#3a4a2a'], ['Often', '1.1B plays', '4:09', '#4a2a4a'],
+    ['Can’t Feel My Face', '1.6B plays', '3:33', '#5a3a2a'], ['Earned It', '1.4B plays', '4:37', '#2a4a4a'],
+  ];
+  const rows = data.map((d, i) => {
+    const play = i === 2, hover = i === 5;
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], plays: d[1], time: d[2],
+      rowStyle: 'display: grid; grid-template-columns: 52px 64px minmax(0, 1fr) 56px; align-items: center; height: 64px; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-weight: 300; font-size: ' + (play ? 11 : 28) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#6f6f6f') + '; font-variant-numeric: tabular-nums',
+      artStyle: 'width: 48px; height: 48px; border-radius: 2px; background: ' + d[3],
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+    };
+  });
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

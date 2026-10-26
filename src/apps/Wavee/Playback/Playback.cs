@@ -458,10 +458,6 @@ public static partial class Playback
 
         /// <summary><see cref="Seek"/> against a whole <see cref="LiveWindow"/>.</summary>
         public static long Seek(in LiveWindow w, double frac) => Seek(w.SeekableStartMs, w.SeekableEndMs, frac);
-
-        /// <summary>How far behind the live edge a rail fraction would land, in ms — what the "GO LIVE −m:ss" label
-        /// reads while a drag is in flight, before anything is committed.</summary>
-        public static long BehindAt(in LiveWindow w, double frac) => Math.Max(0, w.LiveEdgeMs - Seek(in w, frac));
     }
 
     /// <summary>Clock formatting for the transport's time labels — the ONE place a millisecond count becomes the
@@ -528,9 +524,6 @@ public static partial class Playback
         long _lastSec;     // last whole second actually pushed to the OS (the steady-state dedupe)
         bool _hasLast;     // has _lastSec ever been written? (default(struct) must not dedupe against second 0)
         bool _flushQueued; // a flush is scheduled and not yet consumed
-
-        /// <summary>True while a flush has been scheduled and not yet consumed by <see cref="TryTake"/>.</summary>
-        public readonly bool FlushQueued => _flushQueued;
 
         /// <summary>Record a position tick. NEWEST WINS — an unconsumed pending value is simply overwritten, so a
         /// burst of N ticks costs N field writes and no OS call. Returns true IFF the caller must SCHEDULE a flush (no
@@ -627,8 +620,6 @@ public static partial class Playback
         public long LastSeenServerTs;
 
         public static OwnerState Initial => new() { Kind = Owner.Nobody, Cause = NobodyCause.Launch };
-
-        public readonly bool IsUs => Kind == Owner.Us;
     }
 
     /// <summary>The fold. Every rule is a pure function of (state, frame, our identity) — no clock, no I/O, no
@@ -2051,7 +2042,7 @@ public static partial class Playback
     {
         if (ScrubOrphaned(ref s)) return;
         bool audible = s.Scrub.Audible;
-        var e = s.Scrub.Up(i.IntArg, i.NowMs);
+        var e = s.Scrub.Up(i.IntArg);
         s.Scrub.Audible = false;
         if (!e.Commit) return;
         if (audible && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && !s.Parked && s.Error == Fault.None && !s.NoSeek)

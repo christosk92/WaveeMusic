@@ -16,8 +16,9 @@
 // Localization note (remediation §3.11, reversing this file's original "not reused on purpose" call): `Date` reuses
 // `Strings.Detail.Today`/`Strings.Detail.Yesterday` — the Detail page's own keys — rather than minting a Home twin;
 // one key per phrase, app-wide. It resolves them through the same caller-supplied `localize` delegate as
-// `WhenCaption.Format` (`null` defaults to `Loc.Get`). `Duration`/`Remaining` stay literal English — there is no
-// loc key yet for the "27 min" / "1 h 1 min" / "… left" shapes, and minting one is a future loc pass, not this cut.
+// `WhenCaption.Format` (`null` defaults to `Loc.Get`). `Duration`/`Remaining` are localised the same way (tuned Classic H2):
+// the app's own duration words (`detail.durationMin`, `detail.durationHrMin`, `detail.durationHr` for a whole hour) and the
+// podcast "{time} left" phrase (`podcast.left`), never a literal suffix.
 
 using System;
 using System.Globalization;
@@ -48,28 +49,31 @@ public static class EpisodeCaption
         return releasedLocal.Year == nowLocal.Year ? monthDay : $"{monthDay} {releasedLocal.Year}";
     }
 
-    /// <summary>"27 min" / "1 h 1 min" / "2 h 10 min" — rounded to the nearest minute (never truncated: a 43.9 min
+    /// <summary>"27 min" / "1 hr 1 min" / "2 hr 10 min" / "1 hr" — rounded to the nearest minute (never truncated: a 43.9 min
     /// remainder reads "44 min", matching the capture's own "8 334 ms of 44 min" episode). &lt;= 0 answers "".</summary>
     public static string Duration(long durationMs) => durationMs <= 0 ? "" : MinutesLabel(durationMs);
 
-    /// <summary>"{duration − position} left" — never negative (a position past the duration floors at 0), rounded
+    /// <summary>"{duration − position} left" (<c>podcast.left</c>) — never negative (a position past the duration floors at 0), rounded
     /// like <see cref="Duration"/>.</summary>
     public static string Remaining(long durationMs, long positionMs)
     {
         long left = durationMs - positionMs;
         if (left < 0) left = 0;
-        return MinutesLabel(left) + " left";
+        return Strings.Podcast.Left(MinutesLabel(left));
     }
 
     /// <summary>The in-progress hairline's fill fraction, 0..1. A non-positive duration (unknown) answers 0.</summary>
     public static double ProgressFraction(long positionMs, long durationMs)
         => durationMs <= 0 ? 0 : Math.Clamp((double)positionMs / durationMs, 0d, 1d);
 
+    /// <summary>The whole minutes a caption prints: rounded to the nearest minute (half away from zero), never below 1.</summary>
+    public static long RoundedMinutes(long ms) => Math.Max(1, (long)Math.Round(ms / 60_000d, MidpointRounding.AwayFromZero));
+
     static string MinutesLabel(long ms)
     {
-        long totalMinutes = Math.Max(1, (long)Math.Round(ms / 60_000d, MidpointRounding.AwayFromZero));
+        long totalMinutes = RoundedMinutes(ms);
         long hours = totalMinutes / 60, minutes = totalMinutes % 60;
-        if (hours <= 0) return $"{minutes} min";
-        return minutes == 0 ? $"{hours} h" : $"{hours} h {minutes} min";
+        if (hours <= 0) return Strings.Detail.DurationMin(minutes);
+        return minutes == 0 ? Strings.Detail.DurationHr(hours) : Strings.Detail.DurationHrMin(hours, minutes);
     }
 }

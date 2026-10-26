@@ -43,7 +43,12 @@ public static partial class ReleaseNotes
         string SelectedVersion, string LastSeen);
 
     /// <summary>A highlight ready to render, its poster already resolved to a real path (or null) by the LOADER.</summary>
-    public sealed record HighlightItem(ReleaseHighlight Highlight, ReleaseNotesDocument Doc, string? Poster);
+    public sealed record HighlightItem(ReleaseHighlight Highlight, ReleaseNotesDocument Doc, string? DarkPoster, string? LightPoster = null)
+    {
+        /// <summary>The poster for the app mode NOW: the light capture while Wavee is light (when the release has one), else the
+        /// dark one. Read in render: a light/dark switch re-runs every render, so the card swaps with the rest of the page.</summary>
+        public string? Poster => LightPoster is { Length: > 0 } && FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? LightPoster : DarkPoster;
+    }
 
     // ══ THE APP-BOUND DECISIONS (pure, but they name app types the ReleaseTool cherry-pick does not have — G-265) ═══════
 
@@ -141,7 +146,7 @@ public static partial class ReleaseNotes
             foreach (var h in e.Doc.Highlights)
             {
                 if (merged.Count >= HighlightMax) return merged.ToArray();
-                if (HighlightVisibility.IsVisible(h, isStoreInstall)) merged.Add(new HighlightItem(h, e.Doc, ResolvePoster(h, store, e.Doc)));
+                if (HighlightVisibility.IsVisible(h, isStoreInstall)) merged.Add(new HighlightItem(h, e.Doc, ResolvePoster(h, store, e.Doc), ResolvePoster(h, store, e.Doc, light: true)));
             }
         return merged.ToArray();
     }
@@ -153,15 +158,17 @@ public static partial class ReleaseNotes
         if (store is null || await store.GetAsync(me.Core, ct).ConfigureAwait(false) is not { } doc) return null;
         var visible = HighlightVisibility.SelectVisible(doc.Highlights, me.IsStore, HighlightMax);
         var cards = new HighlightItem[visible.Count];
-        for (int i = 0; i < visible.Count; i++) cards[i] = new HighlightItem(visible[i], doc, ResolvePoster(visible[i], store, doc));
+        for (int i = 0; i < visible.Count; i++) cards[i] = new HighlightItem(visible[i], doc, ResolvePoster(visible[i], store, doc), ResolvePoster(visible[i], store, doc, light: true));
         return (doc, cards);
     }
 
-    /// <summary>A highlight's poster on disk, or null. LOADER-only: <c>File.Exists</c> per card per render is UI-thread I/O.</summary>
-    public static string? ResolvePoster(ReleaseHighlight? h, Store? store, ReleaseNotesDocument? doc)
+    /// <summary>A highlight's poster on disk, or null. LOADER-only: <c>File.Exists</c> per card per render is UI-thread I/O.
+    /// <paramref name="light"/> asks for the light-mode capture (an image's <c>srcLight</c>), null when the release has none.</summary>
+    public static string? ResolvePoster(ReleaseHighlight? h, Store? store, ReleaseNotesDocument? doc, bool light = false)
     {
         if (store is null || doc is null || h?.Media is not { } m) return null;
-        string? src = string.Equals(m.Kind, "video", StringComparison.OrdinalIgnoreCase) ? m.Poster : m.Src;   // a video names its still
+        bool video = string.Equals(m.Kind, "video", StringComparison.OrdinalIgnoreCase);
+        string? src = light ? (video ? null : m.SrcLight) : video ? m.Poster : m.Src;   // a video names its still
         if (string.IsNullOrEmpty(src)) return null;
         try { string path = store.MediaPath(doc, src); return path.Length > 0 && File.Exists(path) ? path : null; }
         catch (Exception) { return null; }
@@ -180,13 +187,10 @@ public static partial class ReleaseNotes
         {
             if (Volatile.Read(ref s_notes) is { } live) return live;
             var me = Platform.Version;
-            var built = new Store(GitHubHttp, Platform.LocalFolder, me.FeedRelease, releasesRoot: me.UpdateBaseUrl);
+            var built = new Store(GitHubHttp, Platform.LocalFolder, me.FeedRelease, embeddedRoot: Platform.Args.WhatsNewPreview, releasesRoot: me.UpdateBaseUrl);
             return Interlocked.CompareExchange(ref s_notes, built, null) ?? built;
         }
     }
-
-    /// <summary>Replace the store (a harness, a loopback feed). The composition root does not need to call it.</summary>
-    public static void UseStore(Store store) => Volatile.Write(ref s_notes, store);
 
     /// <summary>Fill the seams other owners left for this store: the updater's two notes seams
     /// (<c>Update.Host.PeekIndexEntry</c> / <c>PrefetchNotes</c>, read through static forwarders at call time, so the order
@@ -284,6 +288,14 @@ public static partial class ReleaseNotes
             if (string.IsNullOrWhiteSpace(semver)) return null;
             semver = semver.Trim();
             if (!IsSafeVersion(semver)) return null;
+            if (Platform.Args.Fake)   // the demo never reaches GitHub
+            {
+                // A demo with this build's own notes (a packaged build, or `--whatsnew <dir>`) shows those as its release and has
+                // nothing for any other version; without them it answers every version with the canned notes.
+                if (FakeOwnNotes() is { } own) { Note("embedded"); return string.Equals(own.Version, semver, StringComparison.Ordinal) ? own : null; }
+                Note("fake");
+                return FakeDocument(semver);
+            }
 
             // The embedded copy is THIS build's notes and nothing else: handing it back for another version is a silent lie.
             if (TryReadDocument(Path.Combine(_embeddedRoot, DocName)) is { } embedded && string.Equals(embedded.Version, semver, StringComparison.Ordinal))
@@ -329,10 +341,8 @@ public static partial class ReleaseNotes
             }
         }
 
-        /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path.</summary>
-        public Task<ReleaseNotesIndex?> PeekIndexAsync(CancellationToken ct) => Task.FromResult(PeekIndex());
-
-        /// <summary>The synchronous half of <see cref="PeekIndexAsync"/> (the updater's seam is synchronous).</summary>
+        /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path,
+        /// synchronous like the updater's seam.</summary>
         public ReleaseNotesIndex? PeekIndex()
         {
             if (IndexSnapshot() is { } live) return live;
@@ -361,6 +371,7 @@ public static partial class ReleaseNotes
         /// <summary>Re-read the rolling index into memory + the cache. A failure keeps whatever index we had.</summary>
         public async Task RefreshIndexAsync(CancellationToken ct)
         {
+            if (Platform.Args.Fake) { Volatile.Write(ref _index, FakeOwnIndex() ?? FakeIndex()); return; }
             byte[]? bytes = await GetBytesAsync(_releasesRoot + _feedRelease + "/" + IndexName, ct).ConfigureAwait(false);
             if (bytes is null) return;
             ReleaseNotesIndex? index;
@@ -497,6 +508,26 @@ public static partial class ReleaseNotes
         void Failed(string url, Exception ex) { lock (_gate) { _lastFetchUtc = DateTimeOffset.UtcNow; _lastFetchUrl = url; _lastFetchStatus = ex.Message; } }
 
         void Note(string source) { lock (_gate) _lastSource = source; }
+
+        /// <summary>Under `--fake`: this build's embedded notes, when it has them, else null.</summary>
+        public ReleaseNotesDocument? FakeOwnNotes() => ReadFakeOwn()?.Doc;
+
+        /// <summary>Under `--fake` with notes of its own: their rail index (<see cref="FakeIndex(ReleaseNotesDocument, ReleaseNotesIndex?)"/>), else null.</summary>
+        public ReleaseNotesIndex? FakeOwnIndex() => ReadFakeOwn()?.Index;
+
+        /// <summary>The embedded document and its index, read once.</summary>
+        FakeOwn? ReadFakeOwn()
+        {
+            if (!Platform.Args.Fake) return null;
+            if (Volatile.Read(ref _fakeOwn) is { } read) return read.Doc is null ? null : read;
+            var doc = TryReadDocument(Path.Combine(_embeddedRoot, DocName));
+            var own = new FakeOwn(doc, doc is null ? null : FakeIndex(doc, TryRead(Path.Combine(_embeddedRoot, IndexName), ReleaseNotesJsonContext.Default.ReleaseNotesIndex)));
+            Volatile.Write(ref _fakeOwn, own);
+            return doc is null ? null : own;
+        }
+
+        sealed record FakeOwn(ReleaseNotesDocument? Doc, ReleaseNotesIndex? Index);
+        FakeOwn? _fakeOwn;
 
         /// <summary>Read + deserialize + NORMALIZE: no surface downstream guards against a hand-authored <c>"sections": null</c>.</summary>
         ReleaseNotesDocument? TryReadDocument(string path)

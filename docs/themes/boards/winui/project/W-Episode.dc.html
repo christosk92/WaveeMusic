@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Episode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|episode:Latency, Honestly:#4a5b3b" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="podcasts" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; gap: 24px; align-items: flex-end">
+        <div style="width: 168px; height: 168px; border-radius: 8px; background: #4a5b3b; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Episode · <a href="#">Coffee &amp; Code</a></div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Latency, Honestly</h1>
+          <div style="font-size: 14px; line-height: 20px; color: #c5c5c5">23 Sep 2026 · 54 min · #42 · with Theo Vance</div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c5c5c5"><span style="width: 240px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.0837)"><span style="display: block; width: 43%; height: 4px; border-radius: 2px; background: #60cdff"></span></span><span>31 min left</span></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 8px">
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>Pause</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Mark as played</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Save to Your Episodes</button>
+            <button aria-label="Copy link" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <sc-for list="{{pivot}}" as="v" hint-placeholder-count="4"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 36px; min-height: 0">
+        <section style="display: flex; flex-direction: column; gap: 12px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About this episode</h2>
+          <p style="margin: 0; font-size: 14px; line-height: 20px; color: #c5c5c5">Theo Vance joins us to talk about why p99 latency is a story rather than a number, what dashboards hide, and the time a single retry loop took down a payments cluster. We start with the basics at <a href="#">02:14</a>, get into tail amplification at <a href="#">18:40</a>, and close with a postmortem reading list at <a href="#">47:05</a>.</p>
+          <a href="#" style="font-size: 14px">Read more</a>
+          <h2 style="margin: 0; padding-top: 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Chapters</h2>
+          <div style="display: flex; flex-direction: column">
+            <sc-for list="{{chapters}}" as="c" hint-placeholder-count="6">
+              <a href="#" style="{{c.style}}"><span style="width: 56px; font-size: 14px; color: {{c.timeColor}}; font-variant-numeric: tabular-nums">{{c.time}}</span><span style="font-size: 14px; flex-grow: 1; color: #fff">{{c.title}}</span><span style="{{c.eq}}"></span></a>
+            </sc-for>
+          </div>
+        </section>
+        <section style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+          <div style="display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Transcript</h2><span style="font-size: 12px; color: #c5c5c5">follows playback · click a sentence to jump there</span></div>
+          <label style="height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Search the transcript</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); font-size: 14px; line-height: 20px">
+            <p style="margin: 0; color: #9e9e9e"><span style="font-size: 12px; font-variant-numeric: tabular-nums">23:12</span> …and that is the thing about percentiles: they summarise, and summaries forget.</p>
+            <p style="margin: 0; color: #ffffff; font-weight: 600"><span style="font-size: 12px; font-variant-numeric: tabular-nums; color: #99ebff">23:41</span> So when someone says the p99 is fine, my first question is: fine for whom?</p>
+            <p style="margin: 0; color: #c5c5c5"><span style="font-size: 12px; font-variant-numeric: tabular-nums">23:58</span> Because one in a hundred requests is one in a hundred people.</p>
+            <p style="margin: 0; color: #c5c5c5"><span style="font-size: 12px; font-variant-numeric: tabular-nums">24:10</span> Right, and those people tend to be the ones with the biggest carts.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="podcast" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const pivot = [vs('About', true), vs('Chapters', false), vs('Transcript', false), vs('Comments', false)];
+  const ch = [['00:00', 'Cold open'], ['02:14', 'What a percentile actually says'], ['18:40', 'Tail amplification'], ['23:41', 'Fine for whom?'], ['35:02', 'The retry loop that took down payments'], ['47:05', 'Postmortem reading list']];
+  const chapters = ch.map((c, i) => ({ time: c[0], title: c[1], timeColor: i === 3 ? '#99ebff' : '#9e9e9e', style: 'display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 4px; ' + (i === 3 ? 'background: rgba(255,255,255,0.0605)' : ''), eq: i === 3 ? 'width: 12px; height: 12px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  return { pivot, chapters };
+}
+}
+</script>
+</body>
+</html>

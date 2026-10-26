@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="none" ctx="Settings" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|About" sub-sel="{{one}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <h1 style="margin: 0 0 12px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Appearance</h1>
+    <div style="border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+      <div style="min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; box-sizing: border-box">
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Theme</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Pages, navigation and the player. Library and settings stay the same.</span></span>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </div>
+      <div role="radiogroup" aria-label="Theme" style="border-top: 1px solid var(--div); padding: 8px; display: flex; flex-direction: column; gap: 4px">
+        <sc-for list="{{themes}}" as="t" hint-placeholder-count="4">
+          <label style="{{t.row}}"><span style="{{t.prev}}"></span><span style="{{t.radio}}"><sc-if value="{{t.on}}" hint-placeholder-val="{{ false }}"><span style="width: 8px; height: 8px; border-radius: 4px; background: var(--onacc)"></span></sc-if></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{t.name}}">{{t.label}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{t.desc}}</span></span></label>
+        </sc-for>
+      </div>
+    </div>
+    <a href="#" style="min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; box-sizing: border-box; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)">
+      <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Panorama options</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Accent, background, now playing, casing, titles, density</span></span>
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </a>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+      <span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px">App mode</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Light or dark; the theme draws both</span></span>
+      <button style="{{s.combo}}">Use system setting<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+      <span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px">Zoom</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Ctrl + plus and Ctrl + minus also work</span></span>
+      <button style="{{s.combo}}">100%<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const s = { combo: 'width: 100%; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px' };
+  const themes = [['Wavee Classic', 'Today’s Wavee', 'linear-gradient(90deg, #000000 0 24%, #1e1e1e 24% 100%)', false], ['WinUI', 'Windows 11, sidebar', 'linear-gradient(90deg, #202020 0 24%, #282828 24% 100%)', false], ['Zune', 'Metro, lowercase, pink', 'linear-gradient(180deg, #161616 0 60%, #ff3ca6 60% 66%, #161616 66% 100%)', false], ['Panorama', 'Zune layout, Windows 11 look', 'linear-gradient(180deg, #202020 0 42%, #282828 42% 100%)', true]].map((t) => ({ label: t[0], desc: t[1], on: t[3],
+    row: 'min-height: 56px; display: grid; grid-template-columns: 64px 32px minmax(0, 1fr); align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; box-sizing: border-box; ' + (t[3] ? 'background: var(--sub)' : ''),
+    prev: 'width: 56px; height: 40px; border-radius: 4px; box-sizing: border-box; border: 1px solid var(--div); background: ' + t[2],
+    radio: t[3] ? 'width: 20px; height: 20px; border-radius: 10px; background: var(--acc); display: flex; align-items: center; justify-content: center' : 'width: 20px; height: 20px; border-radius: 10px; box-sizing: border-box; border: 1px solid var(--strong)',
+    name: 'font-size: 14px; line-height: 20px; ' + (t[3] ? 'font-weight: 600' : '') }));
+  return { vars, theme, accent, s, themes, one: 1 };
+}
+}
+</script>
+</body>
+</html>

@@ -473,6 +473,10 @@ public static partial class Spotify
             static int s_failed;
             static readonly Lock Gate = new();
 
+            /// <summary>The process-wide cache if something already created it, else null: a reader that must never be the
+            /// one to create it (a list row asking "on this PC") reads this, not <see cref="Shared"/>.</summary>
+            public static ChunkDiskCache? IfCreated => Volatile.Read(ref s_shared);
+
             /// <summary>The process-wide cache over the live settings (re-read on every operation, so a settings change
             /// needs no relaunch; `AudioBodyCacheEnabled = false` makes it read-only, as 0.2.9's policy did). Null when
             /// it could not be created — every call site treats null as "no cache".</summary>

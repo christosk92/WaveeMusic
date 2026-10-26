@@ -1,6 +1,6 @@
 // ── Shell/Shell.Host.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// window, activation, session snapshot, history.json / play-log.json / play-recency.json (ch 16), the WaveeTips host
-// (A10), the file-drop hook
+// window, activation, session snapshot, history.json / play-log.json / play-recency.json (ch 16), the file-drop
+// hook
 //
 // Role: SHELL
 // Owner: I
@@ -24,18 +24,15 @@
 // from its own boot, before `Run` is called; until then the loop paints an empty content region, which is exactly what
 // the Wave-4 gate's "`--fake` shows the shell frame with an empty content host" describes.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
 
 using FluentGpu;
 using FluentGpu.Controls;     // ToolTip.CloseOpen — a parked page's bubble must not outlive the route
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Hosting;      // FrameStats — the one-shot `boot.firstframe` mark's FrameCompleted payload
 using FluentGpu.Signals;
@@ -108,10 +105,6 @@ public static partial class Shell
     /// is what a build without the local-file surface should do.</summary>
     public static Action<IReadOnlyList<string>>? OnFilesDropped;
 
-    /// <summary>The app palette seam. Owner L's `Design.cs` installs the Wavee palette here BEFORE the first frame; a
-    /// build without it runs on the engine's own palette rather than not running.</summary>
-    public static Action<ThemeKind>? SeedPalette;
-
     /// <summary>Boot's last timing mark: <c>boot.firstframe</c>, the first frame the engine actually rendered — the
     /// number that answers "how long did the user stare at nothing". Subscribed once, right before <c>Run</c>; logs
     /// and unsubscribes on its own first invocation so it never fires again for the rest of the process.</summary>
@@ -119,11 +112,29 @@ public static partial class Shell
 
     static void OnFirstFrameRendered(FrameStats _)
     {
+        if (!s_firstFrameLogged)
+        {
+            s_firstFrameLogged = true;
+            Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
+            Crash.Host.NoteFirstFrame();
+            StartupTimeline.Mark("firstFrame");
+        }
+        // The rest of the startup timeline rides the following frames: the first present (the device's own stamp), the window
+        // shown by its reveal gate, the first route restored. Then this unsubscribes and never runs again.
+        if (!s_firstPresentMarked && FluentGpu.Rhi.D3D12.D3D12Device.FirstPresentQpc is var present and not 0)
+        {
+            s_firstPresentMarked = true;
+            StartupTimeline.MarkAt("firstPresent", present);
+        }
+        if (!s_revealedMarked && FluentApp.WindowVisible) { s_revealedMarked = true; StartupTimeline.Mark("revealed"); }
+        if (!s_restoredMarked && Diagnostics.NavigationFrameWatch.NavigationId > 0) { s_restoredMarked = true; StartupTimeline.Mark("restored"); }
+        if (!(s_firstPresentMarked && s_revealedMarked && s_restoredMarked)) return;
         FluentApp.FrameCompleted -= s_firstFrameMark;
         s_firstFrameMark = null;
-        Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
-        Crash.Host.NoteFirstFrame();
+        Log.Event(WaveeLogLevel.Info, "app", "boot.timeline", StartupTimeline.Line(), null, Log.SinceStartMs);
     }
+
+    static bool s_firstFrameLogged, s_firstPresentMarked, s_revealedMarked, s_restoredMarked;
 
     // ══ 2. THE GATE, THEN RUN — the window and the engine loop ══════════════════════════════════════════════════════
 
@@ -154,7 +165,7 @@ public static partial class Shell
     /// <c>Store.Use</c>, no <c>Entities.Boot</c>, no setting written.</para></summary>
     public static bool AcquireInstance()
     {
-        var args = Environment.GetCommandLineArgs();
+        var args = Platform.Args.Argv;
         ParseArgs(args, out int frames, out string? screenshot, out _, out _);
         s_instanceAcquired = true;
         if (screenshot is not null || frames >= 0) return true;   // the harness arms: no gate, same as always
@@ -198,8 +209,12 @@ public static partial class Shell
             throw new InvalidOperationException(
                 "Shell.Run called without Shell.AcquireInstance — the composition root must acquire the single-instance gate before opening the store.");
 
-        var args = Environment.GetCommandLineArgs();
+        var args = Platform.Args.Argv;
         ParseArgs(args, out int frames, out string? screenshot, out int winW, out int winH);
+        // A `--screenshot` run's review-capture flags (Diagnostics.CaptureOptions): the off-screen surface, a Manual zoom for
+        // the run, and a wavee:// deep link. All of them are inert without `--screenshot`.
+        var capture = Diagnostics.CaptureOptions.Parse(args);
+        ZoomService.RunZoom = capture.RunZoom;
 
         InstallCrashNet();
         if (!Platform.Args.Headless && !Platform.Args.RelaunchBroker)
@@ -226,37 +241,36 @@ public static partial class Shell
                 Tray.HasTrayArg(args));
             Tray.Host.Arm(startHidden);
         }
+        // The harness arms hold no gate, so the activation above never parks their deep link: a capture's own
+        // `wavee://open?route=…&arg=…` goes through the same drain a cold protocol launch does (the shell's first effect).
+        else if (capture.DeepLink.Length > 0) s_pendingActivation = capture.DeepLink;
 
-        SeedTheme();
-        Session.Load();
-        History.Store.Load();
-        PlayLog.Load();
-        RestoreNav();
-        Tips.Load();
-        Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
-        // The play log and the deck document meet playback, then the launch restore — before the first frame, after the
-        // session document is loaded (G-078, G-079; Shell.Host.Deck.cs).
-        AttachPlayback();
+        Appearance.Seed(Appearance.ModeOf(Platform.Settings.Get(Platform.Keys.ThemeMode)));   // the persisted preference, else the live OS theme (a fresh install)
+        LoadDocuments();
 
         Exception? loopFailure = null;
         try
         {
             Log.Event(WaveeLogLevel.Info, "app", "boot.window", "", null, Log.SinceStartMs);
+            StartupTimeline.Mark("window");
             s_firstFrameMark = OnFirstFrameRendered;
             FluentApp.FrameCompleted += s_firstFrameMark;
             // `--crash-probe boot`: a deliberate boot-time throw, BEFORE the harness ever creates a window — the
             // report chrome (Crash.Host.ArmProbe) never mounts to dispatch it, so this is the boot arm's only wiring.
             if (Crash.Host.ProbeMode() == "boot") throw new InvalidOperationException("--crash-probe boot");
             FluentAppHarness.Run(
-                static () => new RootHost(),
+                // The factory runs after the engine created the window and before the first frame. The engine installed the OS accent as a
+                // `Tok.SetAccent` override there, which would win over the active theme's accent: release it (Appearance, THE OS ACCENT).
+                static () => { Appearance.OnWindowCreated(); Diagnostics.Probe.PlaceProbeWindow(); return new RootHost(); },
                 new AppOptions
                 {
                     // MinWidth 300 (DIP): the shell is verified sound below 360 — the detail surface is in vertical
                     // mode, the track table is at its narrowest tier and the hero artwork is at its 64-DIP floor — and
                     // 360 was a hard ~564 physical-px floor at 150 % DPI that stopped the window fitting a half-screen
-                    // split.
+                    // split. MinHeight 330 (DIP, tuned Classic F8, #197): before it the window could be dragged down to a
+                    // title-bar strip; 330 keeps the title row, a 210-DIP page and the player bar on screen.
                     Title = "Wavee Music", Width = winW, Height = winH,
-                    MinWidth = 300, CustomFrame = true,
+                    MinWidth = 300, MinHeight = (int)Theming.TierPolicy.WindowMinHeight, CustomFrame = true,
                     // Always base Mica, never Mica Alt: Alt's stronger tint reads as an over-saturated navy chrome
                     // next to apps that default to base Mica on the same wallpaper. The material is visible through
                     // EVERY chrome band — title bar, sidebar band, player dock — because the root is transparent and
@@ -266,13 +280,17 @@ public static partial class Shell
                     // allocated. ALWAYS ON: a slow frame that cannot be attributed is a slow frame that does not get
                     // fixed.
                     RenderCensus = true,
+                    // `--d3d12-debug`: the D3D12 debug layer, for the memory soak's live-object census (FluentApp.RequestGpuLiveCensus).
+                    // A diagnostics launch only: the layer validates every call and costs frame time and memory.
+                    D3D12DebugLayer = Array.IndexOf(Platform.Args.Argv, "--d3d12-debug") >= 0,
                     // The scene store starts at its steady-state size and the idle trim never shrinks below it: growing
                     // from 64 by doubling ~45 column arrays put LOH allocations and gen2 collections inside the first
                     // scrolls and navigations (realize=6.8/13.9 ms frames with gc=…/1, 2026-09-23).
                     InitialSceneCapacity = 8192,
-                    // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump from
-                    // 100 % to the user's scale).
-                    Zoom = Platform.Settings.Get(Platform.Keys.ZoomLevel),
+                    // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump). Not the
+                    // persisted level as it stands: the Auto zoom the 500 ms loop would settle this window on, so the first
+                    // frame is final and nothing re-zooms half a second later.
+                    Zoom = ZoomService.InitialZoom(ZoomService.Mode, ZoomService.PersistedLevel, winW, winH, ZoomService.PrimaryMonitor()),
                     // The engine's decoded-image disk cache lands under Wavee's own app data, next to logs/ and the
                     // library — ONE folder for "everything Wavee wrote", which is what the Storage tab measures and
                     // what factory reset wipes.
@@ -282,8 +300,20 @@ public static partial class Shell
                     // The sign-in launch into the tray: the window exists, the tree mounts, nothing paints until the icon
                     // (or a second launch) shows it.
                     StartHidden = startHidden,
+                    // The first frame the user sees is final (Classic tuning F9): the window stays hidden until a frame has
+                    // presented (no bare Mica first) with the setup plate already up when a first run or a re-auth is due, and
+                    // every later show-from-hidden (the tray) repaints first the same way. Entrances seeded on the hidden
+                    // frames start on the first shown one (EP20, F11). The gate's watchdog shows the window regardless.
+                    RevealOnFirstPresent = true,
+                    FirstFrameReady = Setup.Wizard.FirstFrameReady,
                 },
-                new HarnessOptions { Frames = frames, Screenshot = screenshot });
+                new HarnessOptions
+                {
+                    Frames = frames, Screenshot = screenshot,
+                    // `--offscreen`: lay out and render at --width x --height DIP (x --scale px), not at what the monitor allows.
+                    SurfaceSizeDip = capture.Offscreen ? new FluentGpu.Foundation.Size2(winW, winH) : default,
+                    SurfaceScale = capture.Scale,
+                });
         }
         catch (Exception ex)
         {
@@ -330,6 +360,21 @@ public static partial class Shell
         }
     }
 
+    /// <summary>The documents the first render reads (the session, history, play log, the restored route), then
+    /// the play log and the deck document meet playback and the launch restore — before the first frame, after the session
+    /// document is loaded (G-078, G-079; Shell.Host.Deck.cs). <see cref="Run"/>'s and the headless host's shared prelude,
+    /// after the theme seed.</summary>
+    static void LoadDocuments()
+    {
+        Session.Load();
+        History.Store.Load();
+        PlayLog.Load();
+        RestoreNav();
+        Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
+        StartupTimeline.Mark("documents");
+        AttachPlayback();
+    }
+
     static void ParseArgs(string[] args, out int frames, out string? screenshot, out int winW, out int winH)
     {
         frames = -1;
@@ -373,7 +418,7 @@ public static partial class Shell
     public static void InstallMarshallers()
     {
         if (Interlocked.Exchange(ref s_marshallersInstalled, 1) != 0) return;
-        Action<Action> post = static action =>
+        AssignPosters(static action =>
         {
             // END OF THE DRAIN: a posted action commits into the tables, and a table's `Changed` signal fires only in
             // `Entities.Publish` — so every posted action is followed by it, early posts included, or a surface bound to
@@ -383,17 +428,27 @@ public static partial class Shell
             s_earlyPosts.Enqueue(a);
             // The root may have attached between the check and the enqueue: drain through it so nothing strands.
             if (s_uiPost is { } late) DrainEarlyPosts(late);
-        };
+        });
+        AiLyrics.Install(s_marshal!);     // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
+        Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
+        Residency.HostQuiet = static () => FluentApp.IsSettledForPause(NavGcPolicy.InteractionQuietMs);   // the post-navigation gen-0 collection's quiet gate
+        FluentApp.FrameCompleted += s_frameTick;
+    }
+
+    /// <summary>Point every cross-thread seam at <paramref name="post"/>: the four core seams, the lyrics store, the Store
+    /// shot, the sidebar store, the planner's drain wake and this file's own timers (<see cref="s_marshal"/>). The GUI
+    /// assigns them once (<see cref="InstallMarshallers"/>); the headless host assigns its host's poster per mount and
+    /// puts the previous values back on dispose (<see cref="PosterSeams"/>).</summary>
+    static void AssignPosters(Action<Action> post)
+    {
         Playback.ToUi = post;
         Spotify.Post = post;
         Store.Post = post;
         Wavee.Palette.Post = post;
         Lyrics.Store.ToUi = post;         // the lyrics document store's UI-thread hop (G-008)
-        AiLyrics.Install(post);           // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
         Diagnostics.StoreShot.ToUi = post;   // the Store shot's settle timer lands back on the UI thread
         s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
-        Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
 
         // THE planner's wake for an owed drain (wave D4). `Fetch.Drain()` below sends what a tick's `Ensure`s bucketed —
         // but it rides the RENDERED frame, and an ask made outside one (a posted answer's re-plan, a session event, a
@@ -403,36 +458,64 @@ public static partial class Shell
         // anyway drains at `FrameCompleted` first and the posted drain finds nothing owed (two bool compares). The
         // lambda is static and `s_drainWake` is one cached delegate; the post reuses the pooled `PublishAfter` wrapper.
         Fetch.WakeForDrain = static () => s_marshal?.Invoke(s_drainWake);
+    }
 
-        // THE frame tick. `Fetch.Drain()` sends the tick's buckets — one request per shape, however many `Ensure`s
-        // filled it — and re-tries a bucket the online gate is holding; `Palette.Tick()` is how the grading debounce
-        // fires; both are two comparisons when idle. An expired fetch backoff re-sends through the idle wake below
-        // (`ArmFetchWake`, re-armed at the end of every tick), rendering or not. It rides the host's per-RENDERED-frame
-        // relay, so an idle window (no frames) ticks nothing — a palette deadline that lands while idle is served on the
-        // next frame, which that layer documents as a delay, never a loss. The lambda is static: zero allocation per
-        // frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit: `ScrollActive` —
-        // was any viewport in user-driven motion this frame or the last (`AppHost.AnyUserScrollMoving`).
-        FluentApp.FrameCompleted += static stats =>
+    /// <summary>The values <see cref="AssignPosters"/> replaces, captured so the headless host can restore them when a
+    /// mount ends: a seam left pointing at a disposed host would drop every later post.</summary>
+    readonly record struct PosterSeams(Action<Action> PlaybackToUi, Action<Action> SpotifyPost, Action<Action> StorePost,
+        Action<Action> PalettePost, Action<Action> LyricsToUi, Action<Action> StoreShotToUi, Action<Action>? Marshal,
+        Action<Action> SidebarToUi, Action? WakeForDrain)
+    {
+        public static PosterSeams Capture() => new(Playback.ToUi, Spotify.Post, Store.Post, Wavee.Palette.Post, Lyrics.Store.ToUi,
+            Diagnostics.StoreShot.ToUi, s_marshal, Sidebar.ToUi, Fetch.WakeForDrain);
+
+        public void Restore()
         {
-            // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
-            // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
-            Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            Fetch.Drain();
-            // The scroll bit, and its FALLING edge: the palette pump does not re-arm itself while a scroll is live
-            // (PublishCadence.PalettePumpAllowed), so the rows it left queued are picked up here, once, when the
-            // scroll ends. Read before the publish so the edge frame publishes as a non-scroll frame.
-            bool wasScrolling = ScrollActive;
-            ScrollActive = stats.ScrollActive;
-            if (wasScrolling && !stats.ScrollActive) Wavee.Palette.ResumeIfPending();
-            // A write made by a UI event handler (not a posted action) is published here, on the frame it rendered —
-            // on the cadence: every frame when no scroll is live, every 4th frame / 50 ms while one is (W2-A1). The
-            // tables already hold the data; only the `Changed` fan-out waits.
-            PublishOnCadence();
-            Lyrics.Requests.AfterPublish();
-            Wavee.Palette.Tick();
-            Store.FlushPalette();
-            ArmFetchWake();
-        };
+            Playback.ToUi = PlaybackToUi;
+            Spotify.Post = SpotifyPost;
+            Store.Post = StorePost;
+            Wavee.Palette.Post = PalettePost;
+            Lyrics.Store.ToUi = LyricsToUi;
+            Diagnostics.StoreShot.ToUi = StoreShotToUi;
+            s_marshal = Marshal;
+            Sidebar.Activate(SidebarToUi);
+            Fetch.WakeForDrain = WakeForDrain;
+        }
+    }
+
+    static readonly Action<FrameStats> s_frameTick = FrameTick;
+
+    // THE frame tick. `Fetch.Drain()` sends the tick's buckets — one request per shape, however many `Ensure`s
+    // filled it — and re-tries a bucket the online gate is holding; `Palette.Tick()` is how the grading debounce
+    // fires; both are two comparisons when idle. An expired fetch backoff re-sends through the idle wake below
+    // (`ArmFetchWake`, re-armed at the end of every tick), rendering or not. It rides the host's per-RENDERED-frame
+    // relay, so an idle window (no frames) ticks nothing — a palette deadline that lands while idle is served on the
+    // next frame, which that layer documents as a delay, never a loss. The delegate is cached (`s_frameTick`): zero allocation per
+    // frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit: `ScrollActive` —
+    // was any viewport in user-driven motion this frame or the last (`AppHost.AnyUserScrollMoving`).
+    /// <summary>THE frame tick: the planner's clock and drain, the scroll edge, the publish cadence, the palette pump.
+    /// Raised at the end of every rendered frame — by <c>FluentApp.FrameCompleted</c> in the GUI, by the mounted host's
+    /// <c>AppHost.FrameCompleted</c> under the headless shell host. UI THREAD.</summary>
+    public static void FrameTick(FrameStats stats)
+    {
+        // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
+        // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
+        Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Fetch.Drain();
+        // The scroll bit, and its FALLING edge: the palette pump does not re-arm itself while a scroll is live
+        // (PublishCadence.PalettePumpAllowed), so the rows it left queued are picked up here, once, when the
+        // scroll ends. Read before the publish so the edge frame publishes as a non-scroll frame.
+        bool wasScrolling = ScrollActive;
+        ScrollActive = stats.ScrollActive;
+        if (wasScrolling && !stats.ScrollActive) Wavee.Palette.ResumeIfPending();
+        // A write made by a UI event handler (not a posted action) is published here, on the frame it rendered —
+        // on the cadence: every frame when no scroll is live, every 4th frame / 50 ms while one is (W2-A1). The
+        // tables already hold the data; only the `Changed` fan-out waits.
+        PublishOnCadence();
+        Lyrics.Requests.AfterPublish();
+        Wavee.Palette.Tick();
+        Store.FlushPalette();
+        ArmFetchWake();
     }
 
     // ── the publish cadence (W2-A1) ─────────────────────────────────────────────────────────────────────────────────
@@ -605,6 +688,23 @@ public static partial class Shell
 
     static System.Threading.Timer? s_memoryPoll;
 
+    /// <summary>The governor's SETTLE tick after a navigation lands (Platform/Residency.Heap.cs, <c>NavGcPolicy</c>): first
+    /// check <see cref="NavGcPolicy.QuietMs"/> after the landing, then every <see cref="NavGcRetryMs"/> while the decision is
+    /// open. A one-shot timer that posts through the UI marshaller, like the poll: an idle app paints no frames, so it cannot
+    /// ride the frame tick.</summary>
+    public const int NavGcRetryMs = 100;
+
+    static System.Threading.Timer? s_navGc;
+    static readonly Action s_navGcTick = static () => { if (Residency.NavGcTick()) s_navGc?.Change(NavGcRetryMs, Timeout.Infinite); };
+
+    /// <summary>A navigation landed: note it with the governor and (re)arm its settle timer. UI thread.</summary>
+    internal static void ArmNavGc()
+    {
+        Residency.NoteNavigationLanded();
+        s_navGc ??= new System.Threading.Timer(static _ => s_marshal?.Invoke(s_navGcTick), null, Timeout.Infinite, Timeout.Infinite);
+        s_navGc.Change((int)NavGcPolicy.QuietMs, Timeout.Infinite);
+    }
+
     /// <summary>Arm the governor's RECURRING poll (unlike <see cref="ArmAudioWarm"/> / <see cref="ArmJumpList"/>,
     /// which fire once): every tick posts <c>Residency.Poll</c> through the UI marshaller, never runs inline on the
     /// timer's own thread pool thread — <c>Store.TrimMemory</c> asserts <c>ReferenceEquals(scope, Entities.Current)</c>,
@@ -639,7 +739,7 @@ public static partial class Shell
     static void ArmJumpList()
     {
         // The jump list is keyed by the app's AUMID — shared with the user's Wavee: a --profile instance leaves it alone.
-        if (s_jumpList is not null || !Playback.Os.JumpList.OwnsList(Platform.ProfileRoot)) return;
+        if (s_jumpList is not null || s_headless || !Playback.Os.JumpList.OwnsList(Platform.ProfileRoot)) return;
         s_jumpList = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Os.JumpList.Attach(
                 recentContexts: static max => PlayLog.RecentContexts(max),
                 recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max))),
@@ -683,26 +783,6 @@ public static partial class Shell
         // WP-0 spike (crash-diagnostics-implementation.md §B.0): registers the filter/VEH candidates so a native AV in
         // foreign code (`--crash-probe native`) proves — or disproves — that either sees it under NativeAOT.
         Crash.NativeHook.Install();
-    }
-
-    /// <summary>Seed the theme BEFORE the window comes up (no startup flash): honour the persisted preference, falling
-    /// back to the live OS theme for a fresh install.</summary>
-    static void SeedTheme()
-    {
-        int mode = Platform.Settings.Get(Platform.Keys.ThemeMode);
-        var kind = mode switch
-        {
-            1 => ThemeKind.Light,
-            2 => ThemeKind.Dark,
-            _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark,
-        };
-        if (SeedPalette is { } seed) seed(kind);
-        else FluentGpu.Dsl.Tok.Use(kind);
-        if (FluentApp.SystemAccentRamp() is { } ramp) FluentGpu.Dsl.Tok.SetAccent(in ramp);
-        else if (FluentApp.SystemAccent() is { } accent) FluentGpu.Dsl.Tok.SetAccent(accent);
-        // The icon face is the BUNDLED Segoe Fluent Icons file, not the system family of the same name: the system one
-        // ships with Windows 11 only, and on Windows 10 every glyph added in Fluent Icons drew as tofu.
-        FluentGpu.Dsl.Theme.IconFont = WaveeFonts.Icons;
     }
 
     /// <summary>UNPACKAGED ONLY. A packaged build declares its protocols AND its startup task in the manifest and the
@@ -843,6 +923,8 @@ public static partial class Shell
     /// push. Each one names what it is for:</summary>
     public static void GoTo(in Route route, NavOrigin? origin = null, NavTransitionKind motion = NavTransitionKind.Forward)
     {
+        // A theme transaction is building the new frame under a frozen one: the navigation waits for its thaw start (plan 4.2 f).
+        if (Theming.ThemeHost.IsTransactionRunning && HoldGoTo(route, origin, motion)) return;
         // History always opens in its OWN tab (a global view — the browser convention).
         if (route.Kind == RouteKind.History && Current.Peek().Kind != RouteKind.History)
         {
@@ -851,6 +933,9 @@ public static partial class Shell
         }
         Commit(route, origin, motion);
     }
+
+    static bool HoldGoTo(Route route, NavOrigin? origin, NavTransitionKind motion)
+        => Theming.ThemeHost.HoldNavigation(() => GoTo(route, origin, motion));
 
     /// <summary>The commit half of <see cref="GoTo"/>, without the own-tab rule — a fresh tab's FIRST route lands
     /// here, or opening History in a new tab would open another new tab, forever.</summary>
@@ -907,6 +992,14 @@ public static partial class Shell
         SyncActiveTab(normalized);
         SyncOmnibar(normalized);
         Session.CaptureNav();
+    }
+
+    /// <summary>The entry Back would show (the route below the current one in the history), or false when Back has none.</summary>
+    public static bool TryPeekBack(out Route route)
+    {
+        if (s_nav.Back.Count == 0) { route = default; return false; }
+        route = s_nav.Back[^1];
+        return true;
     }
 
     public static void GoBack()
@@ -992,6 +1085,19 @@ public static partial class Shell
     public static void ActivateTab(int index) => Apply(Tabs.Activate(index));
     public static void ActivateTabById(int id) => Apply(Tabs.ActivateById(id));
     public static void OpenTab(in Route route) => Apply(Tabs.Open(route));
+
+    /// <summary>Open <paramref name="route"/> in a new tab BEHIND the active one (P6 WK: a structure that hides the strip,
+    /// <c>ShellCapabilities.HiddenTabStrip</c>): the workspace grows, the page on screen stays.</summary>
+    public static void OpenTabInBackground(in Route route) => Apply(Tabs.OpenInBackground(route));
+
+    /// <summary>Ctrl+Tab (+1) / Ctrl+Shift+Tab (-1): activate the neighbouring tab, wrapping (P6 WK). False when nothing moved (one tab).</summary>
+    public static bool CycleTab(int delta)
+    {
+        var result = Tabs.Cycle(delta);
+        if (result.Intent == TabNavIntent.None) return false;
+        Apply(result);
+        return true;
+    }
     public static void CloseTab(int index) => Apply(Tabs.Close(index));
     public static void CloseTabById(int id) => Apply(Tabs.CloseById(id));
     public static void SetTabPinned(int id, bool pinned) => Apply(Tabs.SetPinned(id, pinned));
@@ -1050,13 +1156,24 @@ public static partial class Shell
 
     // ══ 5. THE ROOT ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The engine's root component. It reads NO signal, so it renders exactly once for the process and a
-    /// route change never re-runs it — everything below reaches its own state through a signal or a bound prop. When
-    /// stage 2 has not installed a frame it paints one empty full-bleed box, which is a running loop rather than a
-    /// crash.</summary>
+    /// <summary>The engine's root component. Its ONE signal read is the theme epoch (<c>ThemeRoot.Wrap</c>), so it renders
+    /// once for the process and again only on a theme switch (which remounts the frame); a route change never re-runs
+    /// it — everything below reaches its own state through a signal or a bound prop. When stage 2 has not installed a
+    /// frame it paints one empty full-bleed box, which is a running loop rather than a crash.</summary>
     sealed class RootHost : Component
     {
         public override Element Render()
+        {
+            RootServices();
+            var input = UseContext(InputHooks.Current);
+            UseSignalEffect(() => ApplyHitFloor(input));
+            return RootFrame();
+        }
+
+        /// <summary>What the GUI root adds around the frame: the UI poster hand-over and the root's process-level effects.
+        /// The headless shell host mounts <see cref="RootFrame"/> without these (its host owns the posters, and none of
+        /// these services runs in a test process).</summary>
+        void RootServices()
         {
             // The first render is the earliest point the engine's poster exists; the marshallers queued until now.
             AttachUiPoster(UsePost());
@@ -1081,9 +1198,20 @@ public static partial class Shell
             // the UI thread and only post work; nothing here waits.
             UseSignalEffect(AiLyrics.DriverPlayhead);
             UseSignalEffect(AiLyrics.DriverEvaluate);
-            return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }
+
+    /// <summary>The window's content: <see cref="RootFactory"/>'s frame (<see cref="Frame"/> once <see cref="InstallUi"/>
+    /// ran), or an empty box before it, inside the theme providers (view registry, option store, theme facts). Both roots
+    /// (the window's and the headless host's) mount this.</summary>
+    static Element RootFrame() => Theming.ThemeRoot.Wrap(RootContent);
+
+    static Element RootContent() => RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
+
+    /// <summary>The window tier's touch floor (<see cref="Theming.TouchTargetPolicy"/>) for the host's hit test, re-written whenever the tier
+    /// changes: both roots (the window's <see cref="RootHost"/> and the headless host's) run it in their render.</summary>
+    internal static void ApplyHitFloor(InputHooks input)
+        => input.SetMinHitSize?.Invoke(Theming.TouchTargetPolicy.FloorFor(Theming.ThemeHost.Facts.Value.Tiers.Window));
 
     // ══ 6. HISTORY.JSON — the navigation log's store (ch 16) ════════════════════════════════════════════════════════
 
@@ -1246,6 +1374,8 @@ public static partial class Shell
     {
         public bool RailOpen { get; set; }
         public int RailMode { get; set; }
+        /// <summary>The queue is open beside the panel (the second docked pane where the window tier docks two, TC2).</summary>
+        public bool QueueBeside { get; set; }
     }
 
     /// <summary>The persisted deck (G-078, G-217): identities as uri TEXT and plain numbers, never a slot — slots do not
@@ -1389,13 +1519,13 @@ public static partial class Shell
 
         /// <summary>Persist the session-only rail presentation. EQUALITY-GATED, because the shell's effect also runs
         /// once at mount after adopting the saved values.</summary>
-        public static void CaptureShell(bool railOpen, int railMode)
+        public static void CaptureShell(bool railOpen, int railMode, bool queueBeside = false)
         {
             if (s_writesBlocked) return;
             lock (s_gate)
             {
-                if (s_doc.Shell is { } cur && cur.RailOpen == railOpen && cur.RailMode == railMode) return;
-                s_doc.Shell = new SessionShellDto { RailOpen = railOpen, RailMode = railMode };
+                if (s_doc.Shell is { } cur && cur.RailOpen == railOpen && cur.RailMode == railMode && cur.QueueBeside == queueBeside) return;
+                s_doc.Shell = new SessionShellDto { RailOpen = railOpen, RailMode = railMode, QueueBeside = queueBeside };
             }
             Interlocked.Exchange(ref s_dirty, 1);
             ScheduleSave();
@@ -1587,18 +1717,6 @@ public static partial class Shell
             return true;
         }
 
-        /// <summary>Fold externally-known plays in (a server recents snapshot). Only a NEWER stamp changes anything,
-        /// so a revalidation that returned the same history costs no re-render.</summary>
-        public static bool MergeRecency(IReadOnlyDictionary<string, long> stamps)
-        {
-            bool changed = false;
-            foreach (var kv in stamps) changed |= Stamp(kv.Key, kv.Value);
-            if (!changed) return false;
-            s_version.Value++;
-            ScheduleSave();
-            return true;
-        }
-
         /// <summary>The jump list's play-log half: the newest distinct CONTEXTS, newest first. Composes the SAME route
         /// key the history half does, so one <c>seen</c> set covers both.</summary>
         public static Playback.Os.JumpRow[] RecentContexts(int max)
@@ -1752,55 +1870,6 @@ public static partial class Shell
                 WriteThenRename(path, file => JsonSerializer.Serialize(file, ring, PlayLogJson.Default.PlayEntryDtoArray), "play-log");
                 if (recencyPath is not null) WriteThenRename(recencyPath, file => WriteRecency(file, recency), "play-recency");
             });
-        }
-    }
-
-    // ══ 9. THE TEACHING-TIP HOST (A10) ══════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The IMPERATIVE half of the teaching-tip service: the persisted set, the per-session arm and the
-    /// one-at-a-time latch. Every DECISION is <see cref="TipsCore"/>'s.</summary>
-    public static class Tips
-    {
-        static string s_seen = "";
-        static readonly HashSet<string> s_armedThisSession = new(StringComparer.Ordinal);
-
-        /// <summary>The tip currently on screen, or "" — ONE at a time, process-wide. Two callouts up together read as
-        /// an error state.</summary>
-        public static readonly Signal<string> Active = new("");
-
-        internal static void Load() => s_seen = Platform.Settings.Get(Platform.Keys.TipsSeen);
-
-        /// <summary>May this tip appear right now? <paramref name="canPresent"/> is the caller's "I have an anchor and
-        /// somewhere to draw it".</summary>
-        public static bool ShouldShow(string tipId, bool canPresent)
-            => TipsCore.ShouldShow(s_seen, tipId, s_armedThisSession.Contains(tipId), Active.Peek().Length > 0, canPresent);
-
-        /// <summary>Arm a tip for this session and mark it on screen. Returns false when the gate refuses.</summary>
-        public static bool Arm(string tipId, bool canPresent)
-        {
-            if (!ShouldShow(tipId, canPresent)) return false;
-            s_armedThisSession.Add(tipId);
-            Active.Value = tipId;
-            return true;
-        }
-
-        /// <summary>The user acknowledged it — the DURABLE "don't show again".</summary>
-        public static void Acknowledge(string tipId)
-        {
-            string next = TipsCore.Add(s_seen, tipId);
-            if (!string.Equals(next, s_seen, StringComparison.Ordinal))
-            {
-                s_seen = next;
-                Platform.Settings.Set(Platform.Keys.TipsSeen, next);
-            }
-            if (string.Equals(Active.Peek(), tipId, StringComparison.Ordinal)) Active.Value = "";
-        }
-
-        /// <summary>Dismissed WITHOUT acknowledging: it stays armed for this session (so it does not re-open on the
-        /// next page that hosts it) but is not written to the durable set.</summary>
-        public static void Dismiss(string tipId)
-        {
-            if (string.Equals(Active.Peek(), tipId, StringComparison.Ordinal)) Active.Value = "";
         }
     }
 

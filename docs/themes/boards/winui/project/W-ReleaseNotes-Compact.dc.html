@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What's new, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|notes:What’s new" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">What’s new</h1>
+
+    <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">Release
+      <span role="combobox" aria-expanded="false" style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093)"><span style="flex-grow: 1">1.6.0 “Harbour” · 3 Oct 2026</span><span style="height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5">Latest</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+    </label>
+
+    <div role="status" style="display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 8px 12px; border-radius: 4px; background: #2f2f2f; border: 1px solid rgba(0,0,0,0.1)">
+      <div style="display: flex; gap: 12px; align-items: flex-start"><span style="width: 16px; height: 16px; margin-top: 2px; border-radius: 8px; background: #60cdff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #000; font-size: 11px; font-weight: 700">i</span><span style="font-size: 14px; line-height: 20px; flex-grow: 1">Since you last looked: 3 releases — 1.4.0 → 1.6.0. Showing everything new.</span><button aria-label="Close" style="width: 40px; height: 40px; margin: -10px 0 0 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button></div>
+      <button style="align-self: flex-start; height: 40px; margin-left: 28px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Only the latest</button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Wavee 1.6.0 “Harbour”</h2>
+      <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Released 3 Oct 2026 · Requires Windows 11 · Tag v1.6.0</span>
+      <span style="display: flex; gap: 4px; margin-left: -8px"><a href="#" style="height: 40px; display: inline-flex; align-items: center; padding: 0 8px; font-size: 14px">Open on GitHub</a><a href="#" style="height: 40px; display: inline-flex; align-items: center; padding: 0 8px; font-size: 14px">Copy link</a></span>
+    </div>
+
+    <div aria-label="Highlights" style="display: flex; gap: 12px; margin-right: -16px; overflow: hidden; flex-shrink: 0">
+      <sc-for list="{{highlights}}" as="h" hint-placeholder-count="3">
+        <div style="width: 264px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="{{h.img}}"></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{h.tag}}">{{h.kind}}</span><span style="font-size: 14px; font-weight: 600">{{h.title}}</span></span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{h.body}}</span><a href="#" style="height: 32px; display: inline-flex; align-items: center; font-size: 14px">Try it →</a></div>
+      </sc-for>
+    </div>
+
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+      <section style="display: flex; flex-direction: column; gap: 0; flex-shrink: 0">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; padding-bottom: 4px">{{g.title}}</h3>
+        <sc-for list="{{g.items}}" as="i" hint-placeholder-count="3">
+          <div style="display: flex; align-items: flex-start; gap: 12px; min-height: 40px; padding: 10px 0; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.0419); font-size: 14px; line-height: 20px"><span style="flex-grow: 1">{{i.text}}</span><a href="#" style="{{i.chip}}">{{i.issue}}</a></div>
+        </sc-for>
+      </section>
+    </sc-for>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tagS = 'height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5';
+  const highlights = [['New', 'Themes', 'Wavee Classic, WinUI and Zune. Each theme brings its own options; community themes can be installed.', '#2f4a6b'], ['Improved', 'Full-screen lyrics', 'Word-by-word timing on Copilot+ PCs, romanization as a second line.', '#3b5b7a'], ['Rebuilt', 'Library', 'One list, A–Z headers, a detail pane for albums, artists and shows.', '#4a3b2f']].map(h => ({ kind: h[0], title: h[1], body: h[2], tag: tagS, img: 'display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 4px; background: ' + h[3] }));
+  const chip = (s) => 'flex-shrink: 0; height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; font-variant-numeric: tabular-nums; ' + (s === 'closed' ? 'background: #3b2a4a; color: #d8b4fe' : 'background: #393d1b; color: #6ccb5f');
+  const groups = [
+    { title: 'Added', items: [{ text: 'Themes: Wavee Classic, WinUI and Zune, with per-theme options', issue: '#214', chip: chip('closed') }, { text: 'Lyrics: romanization and translation as a second line', issue: '#198', chip: chip('closed') }, { text: 'Concerts: tickets rail with provider availability', issue: '#171', chip: chip('closed') }] },
+    { title: 'Changed', items: [{ text: 'Player bar: one Play style everywhere, transport buttons at 40 px', issue: '#205', chip: chip('closed') }, { text: 'Search: facet SelectorBar replaces the chip row', issue: '#188', chip: chip('closed') }] }
+  ];
+  return { highlights, groups };
+}
+}
+</script>
+</body>
+</html>

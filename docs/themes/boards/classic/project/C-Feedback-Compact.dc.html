@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Report a problem</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main aria-hidden="true" style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098)"></main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <section role="dialog" aria-label="Report a problem" style="position: absolute; left: 16px; right: 16px; top: 64px; bottom: 16px; box-sizing: border-box; border-radius: 8px; background: #2b2b2b; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 64px rgba(0,0,0,0.4); overflow: hidden; display: flex; flex-direction: column">
+    <div style="flex-grow: 1; min-height: 0; padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <h1 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Report a problem</h1>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Opens a prefilled GitHub form. Nothing is sent until you submit it there.</p>
+      <div role="radiogroup" aria-label="Kind" style="display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><sc-for list="{{kinds}}" as="k" hint-placeholder-count="4"><button role="radio" aria-checked="{{k.on}}" style="{{k.s}}">{{k.l}}</button></sc-for></div>
+      <sc-for list="{{fields}}" as="f" hint-placeholder-count="4"><label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px">{{f.l}}<span style="{{f.box}}">{{f.p}}</span></label></sc-for>
+      <label style="display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; line-height: 20px"><span role="checkbox" aria-checked="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 4px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"></path></svg></span>Include diagnostics and the last 200 log lines</label>
+      <button aria-expanded="false" style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px"><span style="flex-grow: 1; text-align: left">Report preview</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+    </div>
+    <footer style="flex-shrink: 0; padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(32,32,32,0.6); border-top: 1px solid rgba(255,255,255,0.06)"><button style="height: 40px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Open GitHub</button><button style="height: 40px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Cancel</button></footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const kinds = ['Bug', 'Feature', 'Question', 'Idea'].map((l, i) => ({ l, on: i === 0 ? 'true' : 'false', s: 'flex: 1 1 64px; height: 36px; padding: 0 10px; border: 0; border-radius: 3px; font: inherit; font-size: 13px; ' + (i === 0 ? 'background: #60cdff; color: #000' : 'background: transparent; color: #fff') }));
+  const box = (h) => 'min-height: ' + h + 'px; box-sizing: border-box; padding: 9px 10px; border-radius: 4px; background: rgba(30,30,30,0.7); border: 1px solid rgba(255,255,255,0.071); border-bottom-color: rgba(255,255,255,0.545); font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.6)';
+  const fields = [['Title', 'One line that says what’s wrong', 40], ['What happened', 'Queue disappears from the player bar when the window is narrow', 80], ['Steps to reproduce', '1. Make the window 800 px wide…', 64], ['Area', 'Player bar', 40]].map(f => ({ l: f[0], p: f[1], box: box(f[2]) }));
+  return { kinds, fields };
+}
+}
+</script>
+</body>
+</html>

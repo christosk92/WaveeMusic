@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album skeleton, huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|album:Armageddon:#5b2f6b" sel="1" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="albums" height="1280" hint-size="280px,1280px"></dc-import>
+    <main aria-busy="true" style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 32px 48px 0 48px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 48px; overflow: hidden">
+      <div style="display: flex; flex-direction: column; gap: 24px; min-width: 0">
+        <div style="display: flex; gap: 32px; align-items: flex-end">
+          <div style="width: 232px; height: 232px; border-radius: 8px; background: #5b2f6b; flex-shrink: 0; box-shadow: 0 8px 16px rgba(0,0,0,0.26)"></div>
+          <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex-grow: 1">
+            <div style="height: 20px; display: flex; align-items: center"><span style="{{sk.meta}}"></span></div>
+            <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Armageddon</h1>
+            <div style="height: 28px; display: flex; align-items: center; gap: 8px"><span style="width: 28px; height: 28px; border-radius: 14px; background: rgba(255,255,255,0.0605)"></span><span style="{{sk.byline}}"></span></div>
+            <div style="display: flex; gap: 8px; align-items: center; padding-top: 14px">
+              <span style="{{sk.play}}"></span><span style="{{sk.btn}}"></span><span style="{{sk.btn}}"></span><span style="{{sk.icon}}"></span><span style="{{sk.icon}}"></span>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div style="height: 40px; display: flex; align-items: center; gap: 8px"><span style="{{sk.tool}}"></span><span style="flex-grow: 1"></span><span style="{{sk.tool}}"></span><span style="{{sk.tool}}"></span><span style="{{sk.tool}}"></span></div>
+          <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(0, 0.6fr) 160px 40px 80px 40px 40px; align-items: center; height: 36px; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5"><span style="padding-left: 16px">#</span><span>Title</span><span>Artists</span><span style="text-align: right">Plays</span><span></span><span style="text-align: right; padding-right: 8px">Time</span><span></span><span></span></div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="14">
+            <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(0, 0.6fr) 160px 40px 80px 40px 40px; align-items: center; height: 40px; margin-top: 2px; opacity: {{r.o}}">
+              <span style="padding-left: 16px"><span style="display: block; width: 14px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+              <span><span style="{{r.title}}"></span></span>
+              <span><span style="{{r.artists}}"></span></span>
+              <span style="display: flex; justify-content: flex-end"><span style="display: block; width: 56px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+              <span></span>
+              <span style="display: flex; justify-content: flex-end; padding-right: 8px"><span style="display: block; width: 32px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+              <span></span><span></span>
+            </div>
+          </sc-for>
+        </div>
+        <section aria-label="Fans also like" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Fans also like</h2></div>
+          <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 24px">
+            <sc-for list="{{fans}}" as="c" hint-placeholder-count="7"><div style="display: flex; align-items: center; gap: 12px; min-width: 0"><span style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 28px; background: rgba(255,255,255,0.0605)"></span><span style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><span style="{{c.t}}"></span><span style="{{c.s}}"></span></span></div></sc-for>
+          </div>
+        </section>
+      </div>
+      <aside aria-label="About this album" style="display: flex; flex-direction: column; gap: 24px; padding-top: 4px; min-width: 0">
+        <section style="display: flex; flex-direction: column; gap: 8px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About this album</h2>
+          <div style="display: flex; flex-direction: column; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <sc-for list="{{facts}}" as="f" hint-placeholder-count="4">
+              <div style="{{f.style}}"><span style="width: 120px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">{{f.k}}</span><span style="{{f.v}}"></span></div>
+            </sc-for>
+          </div>
+        </section>
+        <section style="display: flex; flex-direction: column; gap: 8px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Artists on this album</h2>
+          <div style="display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 12px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 22px; background: rgba(255,255,255,0.0605)"></span><span style="display: flex; flex-direction: column; gap: 8px; min-width: 0; flex-grow: 1"><span style="{{sk.artist}}"></span><span style="{{sk.listeners}}"></span></span><span style="{{sk.follow}}"></span></div>
+        </section>
+        <section style="display: flex; flex-direction: column; gap: 12px">
+          <div style="height: 28px; display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">More by</h2><span style="{{sk.moreBy}}"></span></div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{more}}" as="c" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 6px; opacity: {{c.o}}"><span style="display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: rgba(255,255,255,0.0605)"></span><span style="height: 20px; display: flex; align-items: center"><span style="{{c.t}}"></span></span><span style="height: 16px; display: flex; align-items: center"><span style="{{c.s}}"></span></span></div></sc-for>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const f = 'rgba(255,255,255,0.0605)';
+  const bar = (w, h, r) => 'display: block; max-width: 100%; width: ' + w + 'px; height: ' + h + 'px; border-radius: ' + (r || 2) + 'px; background: ' + f;
+  const sk = { meta: bar(190, 12), byline: bar(280, 14), play: bar(112, 32, 4), btn: bar(96, 32, 4), icon: bar(32, 32, 4), tool: bar(80, 24, 4),
+    artist: bar(120, 14), listeners: bar(180, 10), follow: bar(88, 32, 4), moreBy: bar(110, 16, 4) };
+  const widths = [180, 240, 150, 210, 170, 260, 140, 200, 230, 160, 190, 220, 150, 210];
+  const aw = [90, 120, 80, 110, 70, 130, 90, 100, 80, 120, 90, 110, 70, 100];
+  const rows = widths.map((w, i) => ({ title: bar(w, 14), artists: bar(aw[i], 12), o: (i < 10 ? 1 : 1 - (i - 9) * 0.18).toFixed(2) }));
+  const fans = [96, 72, 84, 64, 110, 76, 92].map(w => ({ t: bar(w, 14), s: bar(44, 10) }));
+  const facts = ['Released', 'Label', 'Length', 'Copyright'].map((k, i) => ({ k, v: bar([48, 96, 132, 150][i], 12), style: 'display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 16px; ' + (i > 0 ? 'border-top: 1px solid rgba(255,255,255,0.0837)' : '') }));
+  const more = [[120, 80], [150, 72], [110, 140], [130, 120]].map((m, i) => ({ t: bar(m[0], 14), s: bar(m[1], 10), o: (i < 2 ? 1 : 0.7).toFixed(2) }));
+  return { sk, rows, fans, facts, more };
+}
+}
+</script>
+</body>
+</html>

@@ -1905,10 +1905,19 @@ public static partial class Lyrics
 
         static readonly Dictionary<string, Doc?> Docs = new(StringComparer.Ordinal);
         static readonly HashSet<string> Asked = new(StringComparer.Ordinal);
+        /// <summary>The tracks whose answer was a miss while the app was OFFLINE: nothing cached, no connection to ask. The surface shows
+        /// the offline voice for them (<c>LyricsState.Offline</c>) instead of "No lyrics", and asks again on <see cref="Retry"/> or when
+        /// the connection is back (<see cref="RetryWhenOnline"/>).</summary>
+        static readonly HashSet<string> OfflineMisses = new(StringComparer.Ordinal);
+
+        /// <summary>Is the app online? Read on the UI thread when a provider answer is committed (a SIGNAL read, so a render or
+        /// signal effect that calls <see cref="RetryWhenOnline"/> re-runs when it flips). The session phase by default; a test
+        /// replaces it.</summary>
+        public static Func<bool> Online { get; set; } = static () => Spotify.Status.Value == Spotify.SessionPhase.Online;
 
         /// <summary>Bumped once per publication. Read it in a bound thunk beside <see cref="Doc(Track)"/>; a bare
         /// document read subscribes to nothing.</summary>
-        public static readonly Signal<uint> Changed = new(0u);
+        public static readonly Signal<uint> Changed = new(0u) { DebugName = "lyrics.changed" };
 
         /// <summary>Bumped when a BACKGROUND pass replaced the document a surface is already showing. The view keys
         /// its "hold the swap until the next handoff" rule off this rather than off <see cref="Changed"/>, which also
@@ -1922,7 +1931,7 @@ public static partial class Lyrics
             if (Provider is { } old) old.Upgraded -= OnUpgraded;
             Provider = provider;
             if (provider is not null) provider.Upgraded += OnUpgraded;
-            lock (Docs) { Docs.Clear(); Asked.Clear(); }
+            lock (Docs) { Docs.Clear(); Asked.Clear(); OfflineMisses.Clear(); }
             Changed.Value++;
         }
 
@@ -1943,6 +1952,35 @@ public static partial class Lyrics
         {
             if (string.IsNullOrEmpty(trackId)) return null;
             lock (Docs) return Docs.TryGetValue(trackId, out var d) ? d : null;
+        }
+
+        /// <summary>Was this track's answer an OFFLINE miss (nothing cached, no connection)? One set read — safe from a render.</summary>
+        public static bool AnsweredOffline(string trackId)
+        {
+            if (string.IsNullOrEmpty(trackId)) return false;
+            lock (Docs) return OfflineMisses.Contains(trackId);
+        }
+
+        /// <summary>Ask again for a track whose answer was an offline miss (the offline voice's Retry). A no-op for any other track:
+        /// a real miss stays answered. UI thread.</summary>
+        public static void Retry(string trackId)
+        {
+            if (string.IsNullOrEmpty(trackId)) return;
+            lock (Docs)
+            {
+                if (!OfflineMisses.Remove(trackId)) return;
+                Docs.Remove(trackId);
+                Asked.Remove(trackId);
+            }
+            Changed.Value++;   // back to the shimmer while the ask is in flight
+            Ensure(trackId);
+        }
+
+        /// <summary>The connection is back: retry an offline miss. Reads <see cref="Online"/> (a signal), so a signal effect calling this
+        /// on the shown track re-runs on the flip and the lyrics appear without a click. UI thread.</summary>
+        public static void RetryWhenOnline(string trackId)
+        {
+            if (Online() && AnsweredOffline(trackId)) Retry(trackId);
         }
 
         /// <summary>Has this track been asked for yet? The view's "shimmer vs empty" discriminator: not asked ⇒ the
@@ -1986,20 +2024,24 @@ public static partial class Lyrics
             Doc? doc = null;
             try { doc = await provider.GetAsync(trackId, CancellationToken.None).ConfigureAwait(false); }
             catch (Exception e) { Log.Debug(Diag.Category, $"lyrics fetch for {trackId} failed: {e.GetType().Name}"); }
-            Commit(trackId, doc, upgrade: false);
+            Commit(trackId, doc, upgrade: false, fromNetwork: true);
         }
 
         static void OnUpgraded(Doc doc) => Commit(doc.TrackId, doc, upgrade: true);
 
-        static void Commit(string trackId, Doc? doc, bool upgrade)
+        static void Commit(string trackId, Doc? doc, bool upgrade, bool fromNetwork = false)
         {
             ToUi(() =>
             {
+                // A provider miss while offline is not "no lyrics": nothing was cached and nothing could be asked.
+                bool offlineMiss = fromNetwork && doc is not { Lines.Count: > 0 } && !Online();
                 lock (Docs)
                 {
                     // The user's AI choice (Doc.Override) outlives a background provider pass until it is turned off.
                     if (upgrade && Docs.TryGetValue(trackId, out var current) && !Authority.PromotionReplaces(doc, current)) return;
                     Docs[trackId] = doc;
+                    if (offlineMiss) OfflineMisses.Add(trackId);
+                    else if (!upgrade) OfflineMisses.Remove(trackId);
                 }
                 // Derived facts live on the model: the capability bits are computed at COMMIT, never scanned by the
                 // UI, and the secondary-line toggle is composed only when they are non-zero.
@@ -2041,7 +2083,7 @@ public static partial class Lyrics
         /// <summary>Drop everything (logout, a scope switch, a provider change).</summary>
         public static void Clear()
         {
-            lock (Docs) { Docs.Clear(); Asked.Clear(); }
+            lock (Docs) { Docs.Clear(); Asked.Clear(); OfflineMisses.Clear(); }
             Provider?.ClearCache();
             Prefs.Available.Value = 0;
             Changed.Value++;
@@ -2051,7 +2093,7 @@ public static partial class Lyrics
         public static void Refetch(string trackId)
         {
             if (string.IsNullOrEmpty(trackId) || Provider is not { } provider) return;
-            lock (Docs) { Docs.Remove(trackId); Asked.Remove(trackId); }
+            lock (Docs) { Docs.Remove(trackId); Asked.Remove(trackId); OfflineMisses.Remove(trackId); }
             Changed.Value++;
             _ = RefetchAsync(provider, trackId);
         }
@@ -2062,7 +2104,7 @@ public static partial class Lyrics
             try { doc = await provider.RefetchAsync(trackId, CancellationToken.None).ConfigureAwait(false); }
             catch (Exception e) { Log.Debug(Diag.Category, $"lyrics re-fetch for {trackId} failed: {e.GetType().Name}"); }
             lock (Docs) Asked.Add(trackId);
-            Commit(trackId, doc, upgrade: false);
+            Commit(trackId, doc, upgrade: false, fromNetwork: true);
         }
     }
 

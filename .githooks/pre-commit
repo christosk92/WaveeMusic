@@ -9,6 +9,18 @@ staged=$(git diff --cached --name-only --diff-filter=AM)
 
 block=""
 
+# 3) Tests are banned (owner decision 2026-10-20): no test projects, test files or VerticalSlice-style harnesses.
+#    Verification is the headless inspector (Wavee.exe --inspect, tools/inspect.py) and screenshots.
+test_re='\.Tests?\.csproj$|(^|/)[A-Za-z0-9_.]*\.Tests?/|(^|/)[A-Za-z0-9_.]*ShellTests/|(^|/)FluentGpu\.VerticalSlice/|\.Tests\.ps1$|\.(test|spec)\.(ts|tsx|js|mjs)$|(^|/)test_[^/]*\.py$|_test\.py$|(^|/)vitest\.config\.|(^|/)jest\.config\.'
+test_ok='^ops/release/tests/(local-update-e2e\.ps1|LocalFeedServer\.psm1)$'
+for f in $staged; do
+  if printf '%s\n' "$f" | grep -Eq "$test_re" && ! printf '%s\n' "$f" | grep -Eq "$test_ok"; then
+    printf '\nBLOCKED by pre-commit guard: tests are banned in this repo (%s).\n' "$f"
+    echo "Verify with the headless inspector (Wavee.exe --inspect: renders, traces, crossings, lint) and screenshots instead."
+    exit 1
+  fi
+done
+
 # 1) Path patterns that must never enter the public tree.
 path_re='(^|/)\.native/|(^|/)tmp_ghidra|(^|/)pyghidra|(^|/)Wavee\.PlayPlay/|tmp_.*playplay|playplay-probe-out|(^|/)x64_.*(decomp|derive|dispatch|vm_chain|consts)|fill_random_sweep|spotiload-offline-path|wavee-playplay-.*\.md|(^|/)playplay-[0-9].*\.md'
 

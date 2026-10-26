@@ -1,9 +1,13 @@
 // ── Shell/Shell.PlayerBar.UI.cs ────────────────────────────────────────────────────────────────────────────────────
-// the player bar, seek bar, responsive tiers, the device picker menu and the device roster it reads (ch 20 asks for
-// a home; the roster is a read of Spotify.Connect's cluster, not a new store), the four toggles — which write
-// Shell.Ui's rail state
+// the player bar's CORE pieces: the now-playing reads the face is drawn from, what the credits line states, the core hosts of the
+// shared seek rail (with its chapter decoration) and the time labels, the device picker's menu and rows, and the overflow's rows.
+// The bar's PICTURE (the row, the clusters, the buttons, the slots, the "⋯" and volume faces, the remote-device line, the speed
+// controls, the credits line) is the structure's since T6a: `Themes\Classic\Structure\Views\Player\ClassicPlayerBar*.cs`. The hooks
+// and decisions that feed it are `Shell.PlayerBarHost` (`Shell.PlayerBar.Host.cs`, [CoreHost]). The seek rail's, the chapter ticks',
+// the readout's and the time labels' pictures are the structure's too (leftovers P3: `Player.SeekRail`, `Player.SeekChapters`,
+// `Player.ChapterTip`, `Player.SeekReadout`, `Player.TimeLabel`, drawn by `ClassicTransport.cs`); their hosts here are [CoreHost].
 //
-// Role: UI
+// Role: CORE (the hosts and facts the bar, the stage and the on-media strip share)
 // Owner: I (stage B, I2)
 // Wave: 4
 // Budget: 2000 lines
@@ -19,12 +23,11 @@
 // `Environment.TickCount64` anchor of its own (0.2.9's `_tickWallMs`, deleted). The pixel-due interval that repaints it
 // is armed only while the playhead ADVANCES (`SeekRail.Advances`); a paused, loading or refilling bar wakes no frames.
 //
-// PROPS FREEZE AT MOUNT — the five places this surface meets it: the tier arrives as a SIGNAL; the marquee's text and
-// ink arrive as `Prop.Of` thunks that read everything they depend on; `BarSeekRail`'s enablement is derived in Render;
-// `BarVolumeButton` is remounted by a Key that encodes its form; `BarMoreMenu` is remounted by a Key over its command set
-// (its rows are built at OPEN time from live reads, so checked states can never be stale).
+// PROPS FREEZE AT MOUNT — the places this surface meets it: the tier arrives as a SIGNAL; the marquee's text and ink arrive as
+// `Prop.Of` thunks that read everything they depend on; `BarSeekRail`'s enablement is derived in its render; the volume button is
+// remounted by a Key that encodes its form and the "⋯" by a Key over its command set (both in the structure's view; the "⋯"
+// rows are built at OPEN time from live reads through `OverflowItem`, so checked states can never be stale).
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -37,50 +40,26 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
+using Wavee.Theming.Contracts;
+
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
 public static partial class Shell
 {
-    // ══ 0. THE MOUNT POINT AND THE SHARED VERBS ══════════════════════════════════════════════════════════════════════
+    // ══ 0. THE SHARED SURFACES ═══════════════════════════════════════════════════════════════════════════════════════
 
-    // MOUNT POINT (stage B contract)
-    /// <summary>The 72-DIP player dock. Named <c>PlayerBarDock</c>, not <c>PlayerBar</c>: `Shell.cs` §7 already declares
-    /// the nested class <c>Shell.PlayerBar</c> (the tier constants), and a method of the same name is CS0102.
-    /// The frame mounts it full-width at the bottom of the window column and UNMOUNTS it while video is fullscreen.</summary>
-    public static Element PlayerBarDock() => Embed.Comp(static () => new PlayerBarRoot());
+    // THE MOUNT POINT is the view key `Player.Bar` (`ShellFrameProps.PlayerBar`): the frame places it, the structure's template
+    // draws it and `PlayerBarHost` (below) is the core half the template runs first. Until T6a this was `Shell.PlayerBarDock()`.
 
-    /// <summary>THE play/pause intent — the bar's primary, the Space key, the palette and the deck faces all land here,
-    /// so there is one play button's worth of behaviour in the app.</summary>
-    public static void TogglePlayPause(string cause) => Playback.TogglePlay(cause);
+    // THE SHARED VERBS (play/pause, shuffle, repeat, retry, like, play-next drop…) and the transport fact set live in
+    // `Playback/PlayerVerbs.cs` (`PlayerVerbs.Default`, `PlayerVerbs.TransportFacts`): one play button's worth of behaviour
+    // in the app, called by the bar, the stage, the on-media transport, the palette and the queue pills.
 
-    public static void ToggleShuffle() => Playback.SetShuffle(!Playback.Shuffle.Peek());
-
-    /// <summary>Off → Context → Track → Off.</summary>
-    public static void CycleRepeat() => Playback.SetRepeat(PlayerBarRules.NextRepeat(Playback.Repeat.Peek()));
-
-    /// <summary>THE transport fact set every surface (the bar, the stage, the video overlay) reads for Previous / Next and
-    /// the shuffle / repeat satellites: one fold (<see cref="SkipRule"/>), so no surface arms a button the reducer refuses.
-    /// <paramref name="track"/> = false reads with Peek (menu rows built at open time).</summary>
-    internal static PlayerBarFacts TransportFacts(bool track = true)
-        => track
-            ? SkipRule.Facts(!Playback.CurrentId.Value.IsEmpty, Playback.Error.Value, Playback.PhaseSignal.Value,
-                Playback.Buffering.Value, Playback.Recovery.Value, Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value)
-            : SkipRule.Facts(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(), Playback.PhaseSignal.Peek(),
-                Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.PrevAllowedByContext.Peek(), Playback.NextAllowedByContext.Peek());
-
-    /// <summary>The errored primary: re-issue the current playable from where it stopped. 0.3 has no retry token (the
-    /// 0.2.9 bridge's <c>InvokePlaybackErrorAction</c>); a fresh <c>PlayNow</c> of the same row, context and cursor is
-    /// the same intent through the reducer's one door.</summary>
-    public static void RetryPlayback()
-    {
-        var s = Playback.Snap();
-        if (s.Current.IsNone) return;
-        Playback.PlayNow(s.Current, s.Context, s.Cursor, s.Kind, s.PosMs);
-    }
-
-    /// <summary>The transport's seek rail as a reusable surface — the immersive stage's identity block mounts the same
+    /// <summary>The transport's seek rail's core host as a reusable surface (it mounts <see cref="ViewKeys.SeekRail"/>) — the immersive
+    /// stage's transport card mounts the same
     /// one (ch 21). <paramref name="feed"/> is the on-media transport's <c>PlayerChromeFeed</c> (null for the player-bar
     /// instance, which has no idle machine to report to): a scrub is chrome activity, so the rail that drives it must be
     /// able to say so. A <c>PlayerChromeFeed</c> is inert without a <c>MediaPlayerElement</c> owner, so the fullscreen
@@ -93,7 +72,10 @@ public static partial class Shell
     public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
         => Embed.Comp(() => new BarSeekRail(feed, onScrubbing, reveal));
 
-    /// <summary>A transport time label. <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
+    /// <summary>The mini player bar's progress hairline (TC2): the same rail host, drawn as a line with no thumb and no hit test.</summary>
+    public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true));
+
+    /// <summary>A transport time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>). <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
     /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
     /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
@@ -101,588 +83,10 @@ public static partial class Shell
     public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null)
         => Embed.Comp(() => new BarTimeText(remaining, ink, reveal));
 
-    // ── the motion specs (ch 20 §5) ─────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>A breakpoint crossing: every structural node FLIPs to its new rect over 167 ms.</summary>
-    static readonly LayoutTransition BarMoveMotion = new(
-        TransitionChannels.Bounds, TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentPopOpen), SizeMode.Reveal);
-
-    /// <summary>A line entering/leaving a column: fade + size 0 → natural, so neighbours SLIDE over (Reflow is not
-    /// resize-gated, so it animates during a pointer resize too). 250 in, 167 out. ONLY the remote-device line and the
-    /// two time labels carry it: every command slot is fixed by the tier and lights its face instead
-    /// (<see cref="Slot(string, float, float, bool, Element)"/>), so nothing in the row enters or leaves with playback
-    /// STATE. The one exception is the video split, which exists iff the current track has a video and rides the
-    /// right box's <see cref="BarMoveMotion"/> when it comes or goes (user decision 2026-09-16).</summary>
-    static readonly LayoutTransition BarItemMotion = new(
-        TransitionChannels.Bounds | TransitionChannels.Opacity,
-        TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut),
-        SizeMode.Reflow,
-        Enter: new EnterExit(Opacity: 0f, Active: true),
-        Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut));
-
-    /// <summary>THE FACE SWAP. When the shown identity genuinely changes — <see cref="FaceArm.Live"/> onto a
-    /// DIFFERENT playable, the one change a skip cannot avoid — the identity block CROSS-FADES instead of cutting:
-    /// opacity 0 → 1 over <see cref="Design.Motion"/>'s Standard beat on <see cref="Easing.FluentDecelerate"/>,
-    /// played on the meta column's captured node (the same imperative shape the heart's like-pop uses, and for the
-    /// same reason: a keyed remount of the marquee host would reset it mid-swap).
-    ///
-    /// <para>OPACITY ONLY, never through the layout: no scale, no slide, no Bounds/Reflow channel — the row must not
-    /// move while it re-letters (the rule <see cref="BarFaceMotion"/> already follows for a lighting slot). The ART is
-    /// deliberately NOT on this timeline: the engine already dissolves an <c>ImageEl</c> whose source changes from the
-    /// old texture to the new (hold-last-good → <c>ImageCache.SwapCrossfadeMs</c>, 150 ms), and a second fade stacked
-    /// on top would double-dip the tile. The art blanked to shimmer before this change only because <c>BarArtUrl</c>
-    /// went NULL mid-skip and the tile un-mounted its image outright; holding the url is that whole fix.</para>
-    ///
-    /// <para>Reduced motion is a VALUE, not a branch: the token carries <see cref="ReducedMotionPolicy.KeepFade"/>,
-    /// the engine's own answer for an opacity cross-fade — a fade aids orientation, it is not motion.</para></summary>
-    static readonly MotionTokenDef BarFaceSwap =
-        MotionTokenDef.Eased(Design.Motion.Standard, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade);
-
-    /// <summary>The now-playing marquee's cadence: one slow pass every 14 s, a 3 s rest at each end and a 2 s hold on
-    /// the start before the first pass — slower than the 10 s / 2.5 s hover cadence it replaces, because this one runs
-    /// unattended.</summary>
-    const float BarMarqueeCycleMs = 14_000f, BarMarqueeEndPauseMs = 3_000f, BarMarqueeStartDelayMs = 2_000f, BarMarqueeSpeed = 18f;
-    const float SplitChevronGlyph = 10f;
-
-    /// <summary>The app-local critical ink for an errored title (≈ #ED6B73, ch 00 §12.2 magic number).</summary>
-    static readonly ColorF BarCriticalInk = new(0.93f, 0.42f, 0.45f, 1f);
-
     /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model
-    /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarContent"/> mirrors model → rail with an equality gate, and the
+    /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarHost"/> mirrors model → rail with an equality gate, and the
     /// rail's own writes go to the model through <see cref="Playback.SetVolume"/>.</summary>
     static readonly FloatSignal s_barVolume = new(1f);
-
-    static readonly Slider.SliderOptions s_volumeOptions = new()
-    {
-        ThumbToolTipValueConverter = static v => PlayerBarRules.VolumePercent(v),
-    };
-
-    // ══ 1. THE TIER OWNER ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Folds the viewport width into the coarse layout SIGNAL (with the 24-DIP narrowing hysteresis), so a
-    /// resize drag re-renders the bar only at a tier crossing — never per pixel.</summary>
-    sealed class PlayerBarRoot : Component
-    {
-        public override Element Render()
-        {
-            var viewport = UseContextSignal(Viewport.Size);
-            float initialWidth = viewport.Peek().Width;
-            var layout = UseSignal(PlayerBarLayout.Initial(initialWidth));
-            var initialized = UseRef(initialWidth > 0f);
-
-            UseSignalEffect(() =>
-            {
-                var previous = layout.Peek();
-                float width = viewport.Value.Width;
-                var next = PlayerBarLayout.Resolve(width, in previous, initialized.Value);
-                if (width > 0f) initialized.Value = true;
-                if (next.Equals(previous)) return;
-                // Always-on and cheap: a band change is a handful of events per session (0.2.9 gated this on an env var).
-                if (next.Tier != previous.Tier) Log.Debug("playerbar", "layout band " + previous.Tier + " -> " + next.Tier);
-                layout.Value = next;
-            });
-
-            return Embed.Comp(() => new PlayerBarContent(layout));
-        }
-    }
-
-    // ══ 2. THE BAR ═══════════════════════════════════════════════════════════════════════════════════════════════════
-
-    sealed class PlayerBarContent(IReadSignal<PlayerBarLayout> layout) : Component
-    {
-        readonly IReadSignal<PlayerBarLayout> _layout = layout;
-
-        /// <summary>The ONE wake a load costs. Nothing else re-renders the bar while a playable resolves: the face
-        /// hold and the top edge's grace are both DEADLINES, and a deadline that nothing is watching would leave the
-        /// bar showing the held face (or no sweep) forever. Two <c>UseTimeout</c>s below bump it; this render reads
-        /// it through <see cref="BarFaceNow"/>.</summary>
-        Action? _wake;
-
-        public override Element Render()
-        {
-            // ── hooks first, stable order ──
-            var titleLinkHover = UseSignal(false);      // the title's link ink (the marquees scroll unattended)
-            var likeNode = UseRef<NodeHandle>(default);
-            var likePrevious = UseRef((0, false));
-            var metaNode = UseRef<NodeHandle>(default);            // the text block the face swap cross-fades
-            var facePrevious = UseRef<EntityRef>(default);         // the identity that block last stated
-            var videoAnchor = UseRef<NodeHandle>(default);
-            var videoMenu = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            var hooks = UseContext(InputHooks.Current);
-            var begin = UseContext(SharedTransition.Begin);   // the Expand door opens the fullscreen stage with the art's flight captured first (null headless)
-            var barNode = UseRef<NodeHandle>(default);
-            float artScale = UseContext(Viewport.Scale);
-            var rowStamp = UseComputed<(EntityKind Kind, int Slot, uint Version)>(BarRowStamp);
-            UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.Volume.Value));
-
-            bool isEpisode = Playback.CurrentId.Value.Kind == EntityKind.Episode;
-            var L = isEpisode ? PodcastBarLayout(_layout.Value) : _layout.Value;
-            bool marquee = Prefs.Appearance.Marquee();
-            // F239: an unattended title is a perpetual compositor loop. It stays ALWAYS on every GPU tier and beside a playing
-            // video (motion policy, 2026-10-03: a visible title is not throttled for the hardware it runs on or for what
-            // plays next to it); what the engine does instead is pose it in whole device pixels at the display rate, so a
-            // frame in which the text has not crossed a pixel edge is byte-identical and elided, and park it only while the
-            // window is covered or cloaked (Marquee.Style.ParkWhenOccluded, default on).
-            const Marquee.TriggerMode barTrigger = Marquee.TriggerMode.Always;
-            const string titleKey = "np-title";
-            const string artistsKey = "np-artists";
-
-            // ── the low-frequency facts ──
-            _ = rowStamp.Value;
-            var current = Playback.Current.Value;
-            bool hasCurrent = !Playback.CurrentId.Value.IsEmpty;
-            var phase = Playback.PhaseSignal.Value;
-            bool buffering = Playback.Buffering.Value;
-            var recovery = Playback.Recovery.Value;
-            var facts = SkipRule.Facts(hasCurrent, Playback.Error.Value, phase, buffering, recovery,
-                Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value);
-            bool active = facts.Active;
-            bool playing = Playback.IsPlaying.Value;
-            // ── WHICH IDENTITY THE FACE SHOWS ───────────────────────────────────────────────────────────────────
-            // One arm for the whole block (art, title, artists, heart, both routes), so its parts cannot disagree
-            // while a skip lands. `BarFaceNow` is the same read the bound channels below make, so the marquee's text
-            // and this render's art can never be one frame apart.
-            var (faceArm, faceRef) = BarFaceNow();
-            bool identityShowing = PlayerBarRules.IdentityShowing(faceArm);
-            bool holding = faceArm == FaceArm.Hold;
-            bool titleKnown = BarPlayableTitle(current).Length > 0;
-            bool loadingNow = phase == Playback.Phase.Loading || buffering;
-            bool shuffle = Playback.Shuffle.Value;
-            var repeat = Playback.Repeat.Value;
-            bool ownsTransport = PlayerBarRules.OwnsTransport(Video.State.Transport.Value);
-            bool videoLive = Video.PlacementCore.IsActive(Video.State.Surface.Value);
-            bool railOpen = Ui.RailOpen.Value;
-            var railMode = Ui.Mode.Value;
-            bool isTrack = !current.IsNone && current.Kind == EntityKind.Track;
-            var track = isTrack ? new Track(current.Slot) : default;
-            bool hasVideo = isTrack && track.IsValid && track.HasVideo;
-            // The SAVE target is the face's row, not the deck's: while the face is held the heart states the held
-            // track's savedness (and is inert — see `likeEnabled`), so it cannot flicker off and back on a skip.
-            bool faceIsEpisode = faceRef.Kind == EntityKind.Episode;
-            string? playingUri = BarPlayingUri(faceRef);
-            var episode = faceIsEpisode ? new Episode(faceRef.Slot) : default;
-            bool liked = faceIsEpisode ? Spotify.Podcasts.IsSaved(episode)
-                : playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
-            bool saveReady = !faceIsEpisode || episode.IsValid && Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy;
-            uint savedEpoch = Entities.ScopeEpoch.Value;
-            UseLayoutEffect(() =>
-            {
-                if (isEpisode && !Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy)
-                    _ = Spotify.Podcasts.ReadSavedAsync(System.Threading.CancellationToken.None);
-            }, DepKey.From((int)savedEpoch, isEpisode ? 1 : 0));
-            bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State, identityShowing);
-            // Lit but INERT while held: the held row is no longer the deck row, and `BarToggleLike` saves the DECK.
-            // The slot is reserved either way, so this costs no geometry.
-            bool likeEnabled = likeLit && saveReady && !holding;
-
-            // ── the hold's bookkeeping, committed AFTER the render that read it ──────────────────────────────────
-            // Statics, not signals: the shell mounts exactly one dock, this component owns the writes, and the only
-            // thing a reader must REACT to — a deadline passing — is `BarFaceHold.Wake`, which the timers bump.
-            UseLayoutEffect(() =>
-            {
-                if (!current.Equals(BarFaceHold.Identity))
-                {
-                    BarFaceHold.Identity = current;
-                    BarFaceHold.ChangedAtMs = Playback.FrameNowMs();
-                }
-                // An empty deck CLEARS the held face: "Nothing playing" is its own authored copy, and pressing play
-                // from idle must not flash the previous session's track for 450 ms on the way in.
-                if (current.IsNone) { BarFaceHold.Held = default; BarFaceHold.Context = default; }
-                else if (titleKnown) { BarFaceHold.Held = current; BarFaceHold.Context = Playback.ContextUri.Peek(); }
-            }, DepKey.From((int)current.Kind, current.Slot, titleKnown ? 1 : 0, 0));
-            UseLayoutEffect(() => BarFaceHold.LoadingSinceMs = loadingNow ? Playback.FrameNowMs() : 0L,
-                DepKey.From(loadingNow ? 1 : 0));
-            // The primary's face is the INTENT: a load keeps whatever the answer settled on last.
-            UseLayoutEffect(() =>
-            {
-                if (facts.State != PlayerState.Loading) BarFaceHold.PlayingBeforeLoad = playing;
-            }, DepKey.From((int)facts.State, playing ? 1 : 0));
-            bool pauseGlyph = PlayerBarRules.ShowsPauseGlyph(facts.State, playing, BarFaceHold.PlayingBeforeLoad);
-            _wake ??= static () => BarFaceHold.Wake.Value = BarFaceHold.Wake.Peek() + 1;
-            UseTimeout(_wake, PlayerBarRules.FaceHoldMs, DepKey.From((int)current.Kind, current.Slot));
-            UseTimeout(_wake, PlayerBarRules.SweepDelayMs, DepKey.From(loadingNow ? 1 : 0));
-
-            // The heart pops on the SAME playable's save edge only — played on the captured node, because a keyed
-            // remount of a focusable button would reset its hover/focus mid-toggle.
-            int playingSlot = faceRef.IsNone ? 0 : faceRef.Slot;
-            UseLayoutEffect(() =>
-            {
-                var (previousSlot, previouslyLiked) = likePrevious.Value;
-                likePrevious.Value = (playingSlot, liked);
-                if (PlayerBarRules.LikePops(previousSlot, previouslyLiked, playingSlot, liked) && likeLit
-                    && !likeNode.Value.IsNull && Context.Anim is { } anim)
-                    anim.IconSwapIn(likeNode.Value);   // the kit recipe honours reduced motion itself
-            }, DepKey.From(playingSlot, liked ? 1 : 0));
-
-            float box = L.ButtonBox, glyph = L.ButtonGlyph;
-
-            // ── LEFT — the now-playing identity ──────────────────────────────────────────────────────────────────────
-            int remoteSlot = active && L.ShowRemoteDeviceLine
-                ? DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows)
-                : -1;
-            if (remoteSlot >= 0) _ = Playback.Devices.Changed.Value;
-
-            Prop<ColorF> titleInk = Prop.Of(() => titleLinkHover.Value && !BarTitleRoute().IsNone
-                ? Tok.AccentTextPrimary
-                : BarTitleInk(PlayerBarRules.InkOf(BarStateNow())));
-            bool titleNav = !BarTitleRoute().IsNone;
-            // Both lines are KEYED ("np-title"/"np-artists"): the remote-device line is a keyed insert that precedes
-            // them, and an unkeyed title would reuse the artists' mounted marquee host (#139).
-            // The plain (non-scrolling) title: the run is also the tooltip's measuring style (below).
-            var titleRun = new TextEl(Prop.Of<string>(BarTitleText))
-            {
-                Size = 14f, Weight = 700, Color = titleInk, Wrap = TextWrap.NoWrap, MaxLines = 1,
-                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
-            BoxEl titleEl = marquee
-                ? (BoxEl)Marquee.Of(Prop.Of<string>(BarTitleText), new Marquee.Style
-                {
-                    FontSize = 14f, Weight = 700, Foreground = titleInk,
-                    Speed = BarMarqueeSpeed, CycleMs = BarMarqueeCycleMs, EndPauseMs = BarMarqueeEndPauseMs,
-                    StartDelayMs = BarMarqueeStartDelayMs,
-                    // ALWAYS, at the slower cadence: a title exists to be read without aiming a pointer at it, and the
-                    // hover gate left a long title permanently cut off for anyone who never hovered. The 0.2.9 worry
-                    // (a 27-second idle scroll parked mid-word, S2 #12) is gone — the engine now glides the text home
-                    // on deactivation instead of freezing it wherever it was. `titleLinkHover` still drives the link ink.
-                    // SyncCycle: the title and the artist line
-                    // share one cycle length, so they start, travel and rest together and the window changes pixels in one
-                    // span (and, rows sharing the render thread's per-period sampling clock, on the same ticks).
-                    Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
-                })
-                : new BoxEl
-                {
-                    ClipToBounds = true, MinWidth = 0f,
-                    Children = [titleRun],
-                };
-            titleEl = titleEl with { Key = titleKey };
-            if (titleNav)
-                titleEl = titleEl with
-                {
-                    Cursor = CursorId.Hand, OnClick = static () => BarGo(BarTitleRoute()),
-                    Role = AutomationRole.Hyperlink, Focusable = true,
-                    OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
-                    OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
-                };
-
-            var metaKids = new List<Element>(3);
-            if (remoteSlot >= 0)
-                metaKids.Add(new BoxEl
-                {
-                    Key = "remote-device-line", Animate = BarItemMotion,
-                    Children = [Embed.Comp(static () => new BarRemoteDeviceLine())],
-                });
-            // A scrolling title shows itself in full; a plain one is cut at the slot, so its full text rides a tooltip
-            // that exists only while it is cut.
-            metaKids.Add(marquee ? titleEl : Controls.TrimTip(titleEl, BarTitleText(), titleRun) with { Key = titleKey });
-            if (PlayerBarRules.ShowsArtistLine(facts.State, L.ShowSubtitle))
-                metaKids.Add(marquee
-                    ? Marquee.Content(static () => new BarArtistsLine(compact: false), new Marquee.Style
-                    {
-                        Speed = BarMarqueeSpeed, CycleMs = BarMarqueeCycleMs, EndPauseMs = BarMarqueeEndPauseMs,
-                        StartDelayMs = BarMarqueeStartDelayMs,
-                        Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
-                    }) with { Key = artistsKey }
-                    : new BoxEl
-                    {
-                        Key = "np-artists", ClipToBounds = true, MinWidth = 0f,
-                        Children = [Embed.Comp(static () => new BarArtistsLine(compact: true))],
-                    });
-
-            var metaCol = new BoxEl
-            {
-                Key = "meta", Animate = BarMoveMotion,
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f,
-                Gap = 2f, Justify = FlexJustify.Center, ClipToBounds = true,
-                OnRealized = h => metaNode.Value = h,
-                Children = metaKids.ToArray(),
-            };
-            // The face's ONE authored change: the text block cross-fades when the identity it states actually swaps.
-            // Never on the way INTO a hold or out of it — the held face IS the outgoing one, so nothing changed.
-            UseLayoutEffect(() =>
-            {
-                var was = facePrevious.Value;
-                facePrevious.Value = faceRef;
-                if (was.IsNone || faceRef.IsNone || was.Equals(faceRef)) return;
-                if (metaNode.Value.IsNull || Context.Anim is not { } anim) return;
-                anim.Animate(metaNode.Value, AnimChannel.Opacity, 0f, 1f,
-                    BarFaceSwap.EffectiveDurationMs(AnimChannel.Opacity), Easing.FluentDecelerate);
-            }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
-
-            bool artNav = !BarArtRoute().IsNone;
-            var art = new BoxEl
-            {
-                Key = "art", Width = L.ArtSize, Height = L.ArtSize, Shrink = 0f,
-                Cursor = artNav ? CursorId.Hand : null,
-                OnClick = artNav ? static () => BarGo(BarArtRoute()) : null,
-                Role = artNav ? AutomationRole.Hyperlink : AutomationRole.None,
-                Focusable = artNav,
-                // The morph tag ONLY: the click above keeps today's navigation and there is NO double-click entry (a
-                // double-click's first click would still navigate, InputDispatcher.DoubleClickMs = 500). The Expand button
-                // is the bar's door; the flight captures this TAGGED art wherever the click lands. A morph-tagged slot
-                // mounts no shimmer and a frozen placeholder — accepted for a 48-DIP thumbnail.
-                Children = [Controls.Artwork(BarArtUrl(faceRef), L.ArtSize, L.ArtSize, 6f, morphKey: Stage.Entry.MorphKey, scale: artScale, keepWhileHidden: true)],
-            };
-            // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
-            var saveIcon = faceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
-            var saveButton = BarButton(saveIcon.Glyph ?? Icons.Add, static () => BarToggleLike(), likeEnabled, liked,
-                box, glyph, onRealized: h => likeNode.Value = h, platedWhenLatched: false) with { BlocksDragArm = true };
-            // Named for BOTH faces (the heart is an icon with no label of its own): an episode saves, a track likes.
-            Element saveFace = ToolTip.Wrap(saveButton, faceIsEpisode
-                ? Loc.Get(liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)
-                : Loc.Get(liked ? Strings.Menu.Saved : Strings.Menu.SaveToLiked));
-            var likeSlot = Slot("like", box, box, likeLit, saveFace);
-
-            var leftFlow = new BoxEl
-            {
-                Key = "left-flow", Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = L.LeftGap, ClipToBounds = true,
-                Children = isEpisode && L.Tier == PlayerBarTier.Minimal ? [art] : L.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
-            };
-            // No hover "…" here: the now-playing cluster's menu is the right-click / Menu key / long-press below (owner,
-            // 2026-10-02) — an overlay "…" landed between the title and the heart, over the end of the title.
-            var left = new BoxEl
-            {
-                Key = "left", Width = L.LeftW, Shrink = 0f, MinWidth = 0f, Animate = BarMoveMotion,
-                ZStack = true,
-                // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
-                // not a drag handle at all.
-                Draggable = isTrack ? Drag.Source(static () => BarDragPayload()) : null,
-                Children = [leftFlow],
-            };
-            // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
-            // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);
-            // unset, the factory answers null and nothing opens.
-            left = left.WithContextMenu(overlay, static () => BarTrackPeek().IsValid ? Stage.NowPlayingMenu?.Invoke() : null);
-
-            // ── CENTRE — transport + seek (empty while a full-bleed surface owns the transport) ─────────────────────
-            var transportKids = new List<Element>(3);
-            if (ownsTransport && L.ShowPrevNext)
-                transportKids.Add(BarButton(Icons.Previous, static () => Playback.Previous(), facts.PrevEnabled, false, box, glyph)
-                    with { Key = "prev" });
-            if (ownsTransport && isEpisode)
-                transportKids.Add(BarSeekStepButton(-10_000, box) with { Key = "seek-back-10" });
-            if (ownsTransport)
-                transportKids.Add(BarPrimaryButton(
-                        facts.State == PlayerState.Error ? PlaySolid : pauseGlyph ? PauseSolid : PlaySolid,
-                        facts.Primary, L.PrimaryBox, L.PrimaryGlyph)
-                    with { Key = "primary", Animate = BarMoveMotion });
-            if (ownsTransport && L.ShowPrevNext)
-                transportKids.Add(BarButton(Icons.Next, static () => Playback.Next(), facts.NextEnabled, false, box, glyph)
-                    with { Key = "next" });
-
-            if (ownsTransport && isEpisode)
-            {
-                transportKids.Add(BarSeekStepButton(10_000, box) with { Key = "seek-forward-10" });
-                transportKids.Add(Embed.Comp(static () => new BarEpisodeSpeed()) with { Key = "episode-speed" });
-            }
-
-            // Stable keys keep BarSeekRail's identity (scrub state, cached width) across the 760-DIP label breakpoint.
-            var seekKids = new List<Element>(3);
-            if (ownsTransport && L.ShowTimesElapsed)
-                seekKids.Add(new BoxEl { Key = "elapsed", Animate = BarItemMotion, Children = [TimeText(remaining: false)] });
-            if (ownsTransport)
-                seekKids.Add(new BoxEl
-                {
-                    Key = "seek", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Animate = BarMoveMotion,
-                    Children = [SeekBar()],
-                });
-            if (ownsTransport && L.ShowTimesRemaining)
-                seekKids.Add(new BoxEl { Key = "remaining", Animate = BarItemMotion, Children = [TimeText(remaining: true)] });
-
-            var centre = new BoxEl
-            {
-                Key = "centre", Grow = 1f, Shrink = 1f, MinWidth = 0f, Animate = BarMoveMotion,
-                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, Gap = L.ClusterGap,
-                // A drop on the transport is PLAY NEXT — a front-insert, never an immediate playback change.
-                DropTarget = Drop.Target<DragPayload>(Drag.Resource,
-                    accepts: static p => p.CanCopyTracks,
-                    onDrop: static (p, session) => BarPlayNextDrop(p),
-                    caption: static _ => Loc.Get(Strings.Drag.PlayNext),
-                    refusalCaption: static p => Loc.Get(p.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd),
-                    visualPolicy: DropTargetVisualPolicy.Spotlight),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "transport", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Animate = BarMoveMotion, Children = transportKids.ToArray(),
-                    },
-                    new BoxEl
-                    {
-                        Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
-                        Gap = L.SeekGap, Animate = BarMoveMotion, Children = seekKids.ToArray(),
-                    },
-                ],
-            };
-
-            // ── RIGHT — shuffle/repeat · volume · lyrics · video · queue · devices · expand · ⋯ ──────────────────────
-            // Every slot the TIER has is in the row at its fixed width (PlayerBarRules.RightSlots, in bit order) EXCEPT the
-            // video split, which exists iff the current track has a video — the cluster reclaims its 52 DIP otherwise
-            // rather than carrying an unlit hole (user decision 2026-09-16). Playback state only lights a face
-            // (PlayerBarRules.SlotFaceVisible). The cluster's width is therefore one of exactly TWO values per tier
-            // (with / without the split; the wider is L.RightWMax), a track starting WITHOUT a video moves nothing in the
-            // centre, and a video track landing eases the row once via BarMoveMotion on `right`.
-            void OpenVideoMenu()
-            {
-                if (videoMenu.Value is { IsOpen: true } open) { open.Close(); return; }
-                // The menu rises over the spot the anchor's tooltip bubble occupies (the bubble sits above the chevron, the menu
-                // opens above it too), and the pointer travelling to a row would sit inside the bubble's safe zone for the
-                // whole 5 s dwell. Opening the menu (a right-click or keyboard open sends no press to the wrapper) closes it.
-                ToolTip.CloseOpen();
-                var items = Video.PlacementMenu(includeFullscreen: true);
-                videoMenu.Value = overlay.Open(
-                    () => videoAnchor.Value,
-                    () => MenuFlyout.Create(items, () => videoMenu.Value?.Close()),
-                    FlyoutPlacement.TopEdgeAlignedLeft,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-                videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
-            }
-
-            // Materialised here (a Span cannot cross into the local function below); the "⋯" face is keyed over it.
-            Span<OverflowCommand> overflow = stackalloc OverflowCommand[PlayerBarRules.MaxOverflow];
-            int overflowCount = PlayerBarRules.Overflow(L, ownsTransport, active, hasVideo, overflow);
-            OverflowCommand[] overflowCommands = overflow[..overflowCount].ToArray();
-
-            Element RightSlotOf(RightSlot slot)
-            {
-                float w = PlayerBarRules.SlotWidth(slot, in L);
-                bool lit = PlayerBarRules.SlotFaceVisible(slot, facts.State, hasVideo);
-                switch (slot)
-                {
-                    case RightSlot.Shuffle:
-                        return Slot("shuffle", w, box, lit,
-                            BarButton(Icons.Shuffle, static () => ToggleShuffle(), facts.CanTransport, shuffle, box, glyph));
-                    case RightSlot.Repeat:
-                        return Slot("repeat", w, box, lit,
-                            BarButton(PlayerBarRules.RepeatGlyph(repeat), static () => CycleRepeat(), facts.CanTransport,
-                                repeat != RepeatMode.Off, box, glyph));
-                    case RightSlot.Volume:
-                    {
-                        bool popup = !L.ShowVolumeSlider;
-                        return Slot("volume", w, box, lit,
-                            Embed.Comp(() => new BarVolumeButton(popup, box, glyph))
-                                with { Key = (popup ? "volume-popup-" : "volume-inline-") + box + "-" + glyph });
-                    }
-                    case RightSlot.VolumeSlider:
-                        // The STOCK slider style — a 22-DIP ring, not 0.2.9's old 12-DIP grab; thickness clears the ring.
-                        return Slot("volume-slider", w, box, lit,
-                            Slider.Create(s_barVolume, static v => Playback.SetVolume(v), s_volumeOptions,
-                                length: PlayerBarLayout.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
-                    case RightSlot.Lyrics:
-                        return Slot("lyrics", w, box, lit,
-                            ToolTip.Wrap(BarButton(WaveeIcons.Lyrics, static () => Ui.Toggle(RailMode.Lyrics), lit,
-                                railOpen && railMode == RailMode.Lyrics, box, glyph, font: WaveeIcons.Font),
-                                Loc.Get(isEpisode ? "podcast.reader.transcript" : Strings.Player.Lyrics)));
-                    case RightSlot.Video:
-                        // Only built while hasVideo holds (the slot is in `slots` iff the track has a video); the face
-                        // additionally needs an Active playable, so it stays dark through Loading/Reconnecting/Error.
-                        return Slot("video", w, box, lit, new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center,
-                            OnRealized = h => videoAnchor.Value = h,
-                            OnContextRequested = _ => OpenVideoMenu(),
-                            Children =
-                            [
-                                ToolTip.Wrap(
-                                    BarButton(Icons.Movie, static () => Video.State.TogglePrimary(BarHasVideoPeek()), lit, videoLive, box, glyph),
-                                    Loc.Get(videoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
-                                // A disclosure never lights. Narrow but FULL-HEIGHT, so the two glyphs share one centre line.
-                                ToolTip.Wrap(
-                                    BarButton(Icons.ChevronDownSmall, OpenVideoMenu, lit, false, PlayerBarLayout.SplitChevronW, SplitChevronGlyph, boxHeight: box),
-                                    Loc.Get(Strings.Player.VideoOptions)),
-                            ],
-                        });
-                    case RightSlot.Queue:
-                        return Slot("queue", w, box, lit,
-                            BarButton(Icons.Queue, static () => Ui.Toggle(RailMode.Queue), true,
-                                railOpen && railMode == RailMode.Queue, box, glyph));
-                    case RightSlot.Devices:
-                        return Slot("devices", w, box, lit, Embed.Comp(() => new BarDevicesButton(box, glyph)));
-                    case RightSlot.Expand:
-                        // The bar's door to the fullscreen stage. The now-playing RAIL toggle moved to the "⋯" overflow
-                        // (OverflowCommand.NowPlaying), so the rail keeps a door; this button never latches.
-                        return Slot("expand", w, box, lit,
-                            ToolTip.Wrap(
-                                BarButton(Icons.FullScreen, () => Stage.Open(begin, "bar-expand"), true, false, box, glyph),
-                                Loc.Get(Strings.Player.Fullscreen)));
-                    default:
-                        // Reserved only where the idle menu is already non-empty, so the command set is never empty here.
-                        return Slot("more", w, box, lit, BarMoreButton(overflowCommands, box, glyph));
-                }
-            }
-
-            var slots = PlayerBarRules.RightSlots(in L, hasVideo);
-            var rightKids = new List<Element>(10);
-            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
-            {
-                var slot = (RightSlot)bit;
-                if ((slots & slot) != 0) rightKids.Add(RightSlotOf(slot));
-            }
-
-            var right = new BoxEl
-            {
-                Key = "right", Width = PlayerBarRules.RightWidth(in L, hasVideo), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                Gap = L.RightGap, Animate = BarMoveMotion, Children = rightKids.ToArray(),
-            };
-
-            // ── assemble: the top activity edge + the single centred row ────────────────────────────────────────────
-            // A load that has only just begun shows NO sweep; `BarFaceHold.LoadingSinceMs` is stamped by the layout
-            // effect above, so the render that OPENS the window reads 0 here and the wake timer brings the sweep in
-            // at SweepDelayMs if the load is still running.
-            float msInPhase = loadingNow && BarFaceHold.LoadingSinceMs > 0L
-                ? (float)(Playback.FrameNowMs() - BarFaceHold.LoadingSinceMs) : 0f;
-            Element topEdge = PlayerBarRules.TopEdgeSweeps(phase, buffering, recovery, msInPhase)
-                ? ProgressBar.Indeterminate(L.TopEdgeWidth)
-                : new BoxEl
-                {
-                    // The ONE seam on this edge. Light takes a black ALPHA literal, not StrokeCardDefault, which every
-                    // seeded light preset resolves OPAQUE.
-                    Height = 1f,
-                    Fill = Prop.Of(static () => FluentGpu.Dsl.Theme.Dark ? Tok.StrokeDividerDefault : ColorF.FromRgba(0, 0, 0, 0x0F)),
-                };
-
-            return new BoxEl
-            {
-                // NO fill, NO shadow, NO Elevation.DockTop: the dock is a paint-site omission over live Mica.
-                Direction = 1, Height = Design.Size.PlayerBarH, ClipToBounds = true,
-                IsolateLayout = true,   // the layout firewall: a title change re-solves THIS subtree only
-                Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
-                OnRealized = node => barNode.Value = node,
-                OnClick = () => hooks.FocusNode?.Invoke(barNode.Value, true),
-                OnKeyDown = e =>
-                {
-                    var intent = PlayerKey(e.KeyCode, hooks.GetFocus?.Invoke() == barNode.Value,
-                        e.Handled, e.Ctrl || e.Alt, e.Shift);
-                    if (intent == PlayerKeyIntent.None) return;
-                    e.Handled = true;
-                    switch (intent)
-                    {
-                        // The keyboard scrub ladder (D4): 5 s, 15 s, 30 s while held, Shift = 1 s; one seek commits when the key goes quiet.
-                        case PlayerKeyIntent.SeekBack: BarKeyStep(-1, fine: false); break;
-                        case PlayerKeyIntent.SeekForward: BarKeyStep(1, fine: false); break;
-                        case PlayerKeyIntent.SeekBackFine: BarKeyStep(-1, fine: true); break;
-                        case PlayerKeyIntent.SeekForwardFine: BarKeyStep(1, fine: true); break;
-                        case PlayerKeyIntent.VolumeDown: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() - .05f, 0f, 1f)); break;
-                        case PlayerKeyIntent.VolumeUp: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() + .05f, 0f, 1f)); break;
-                        case PlayerKeyIntent.Toggle: if (!e.IsRepeat) TogglePlayPause("playerbar.space"); break;
-                    }
-                },
-                Children =
-                [
-                    topEdge,
-                    new BoxEl
-                    {
-                        Key = "player-row", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = L.RowGap,
-                        Padding = new Edges4(L.RowPad, 0f, L.RowPad, 0f), Animate = BarMoveMotion,
-                        // ALWAYS three clusters: the row's shape is the tier's, never the state's.
-                        Children = [left, centre, right],
-                    },
-                ],
-            };
-        }
-    }
 
     // ── the now-playing reads (every one peeks or reads the model LIVE — never a render-time capture) ────────────────
 
@@ -699,79 +103,30 @@ public static partial class Shell
         return (r.Kind, r.Slot, (uint)r.Slot < (uint)table.Count ? table.Version[r.Slot] : 0u);
     }
 
-    /// <summary>THE HELD FACE. The last identity that fully RESOLVED, when the deck last changed under it, and when
-    /// the current load began — the three facts <see cref="PlayerBarRules.FaceOf"/> and
-    /// <see cref="PlayerBarRules.TopEdgeSweeps"/> need and the model does not carry.
-    ///
-    /// <para>Plain statics with ONE signal, deliberately: the shell mounts exactly one player dock, <see
-    /// cref="PlayerBarContent"/> owns every write (from layout effects, after the render that read them), and the only
-    /// thing a reader must RE-RUN for is a deadline passing — which is what <see cref="Wake"/> is. Making the values
-    /// themselves signals would publish them a frame late to the bound title channel and flash "Loading…" for exactly
-    /// the frame this whole change exists to remove.</para></summary>
-    static class BarFaceHold
-    {
-        /// <summary>The last playable whose title was known — the face the bar keeps through a short load.</summary>
-        public static EntityRef Held;
-
-        /// <summary>The playback context <see cref="Held"/> was resolved under, so a held art click still lands on the
-        /// playlist the held track came from rather than the one being loaded into.</summary>
-        public static EntityId Context;
-
-        /// <summary>The deck row <see cref="ChangedAtMs"/> belongs to.</summary>
-        public static EntityRef Identity;
-
-        /// <summary>Frame-clock stamp of the last identity change — the hold window's origin.</summary>
-        public static long ChangedAtMs;
-
-        /// <summary>Frame-clock stamp of the open loading/buffering window, or 0 — the sweep grace's origin.</summary>
-        public static long LoadingSinceMs;
-
-        /// <summary>The last SETTLED answer to "is it playing", i.e. the model's <c>IsPlaying</c> outside a load —
-        /// which is the user's intent through the gap a skip opens (<see cref="PlayerBarRules.ShowsPauseGlyph"/>).
-        /// <c>IsPlaying</c> is <c>Phase == Playing</c> and therefore FALSE for the 150 ms a skip takes; the primary's
-        /// face must not read that, or it flips pause → play → pause on every track change.</summary>
-        public static bool PlayingBeforeLoad;
-
-        /// <summary>Bumped by the bar's two grace timers: the ONLY thing that re-renders the bar for a deadline.</summary>
-        public static readonly Signal<int> Wake = new(0);
-    }
-
     /// <summary>WHICH identity the now-playing face shows, and the arm that chose it. Every part of the face reads
     /// THIS — the render for the art, the heart and the routes, the bound title channel, the artists line — so the
-    /// six things that used to change at once on a skip now change together or not at all.
+    /// six things that used to change at once on a skip now change together or not at all. The hold itself is the core
+    /// model <see cref="NowPlayingFace"/>; this is its reactive read.
     ///
-    /// <para>Reactive: it reads <c>Playback.Current</c>, the row's own table (through <see cref="BarPlayableTitle"/>)
-    /// and <see cref="BarFaceHold.Wake"/>, so a caller inside a bound channel re-runs when the face flips arm.</para></summary>
+    /// <para>Reactive: it reads <c>Playback.Current</c>, the row's own table (through <see cref="NowPlayingFace.TitleOf"/>)
+    /// and <see cref="NowPlayingFace.Wake"/>, so a caller inside a bound channel re-runs when the face flips arm.</para></summary>
     static (FaceArm Arm, EntityRef Ref) BarFaceNow()
     {
         var current = Playback.Current.Value;
-        _ = BarFaceHold.Wake.Value;                 // the hold deadline (nothing else wakes a reader for it)
-        var held = BarFaceHold.Held;
-        // A held row that has itself been evicted (its title no longer reads) is not a face worth showing.
-        bool hasHeldFace = !held.IsNone && !held.Equals(current) && BarPlayableTitle(held).Length > 0;
-        float sinceMs = current.Equals(BarFaceHold.Identity)
-            ? (float)(Playback.FrameNowMs() - BarFaceHold.ChangedAtMs)
-            : 0f;                                   // the change is landing in THIS render; the stamp follows it
-        var arm = PlayerBarRules.FaceOf(BarStateNow(), BarPlayableTitle(current).Length > 0, hasHeldFace, sinceMs);
-        return (arm, arm == FaceArm.Hold ? held : current);
+        var face = NowPlayingFace.Shared;
+        _ = face.Wake.Value;                        // the hold deadline (nothing else wakes a reader for it)
+        return face.Resolve(BarStateNow(), current, NowPlayingFace.TitleKnown, Playback.FrameNowMs());
     }
 
     static PlayerState BarStateNow()
         => PlayerBarRules.StateOf(!Playback.CurrentId.Value.IsEmpty, Playback.Error.Value, Playback.PhaseSignal.Value,
             Playback.Recovery.Value);
 
-    static ColorF BarTitleInk(NowPlayingInk ink) => ink switch
-    {
-        NowPlayingInk.Secondary => Tok.TextSecondary,
-        NowPlayingInk.Critical => BarCriticalInk,
-        _ => Tok.TextPrimary,
-    };
-
     /// <summary>The title line's text, read LIVE inside a bound channel (the marquee host freezes its ctor args).</summary>
     static string BarTitleText()
     {
         var (arm, r) = BarFaceNow();
-        string title = BarPlayableTitle(r);
+        string title = NowPlayingFace.TitleOf(r);
         // A HELD face states the outgoing title verbatim — never "Loading…", which is the placeholder's word and
         // was the loudest of the six things a 150 ms skip used to change.
         if (arm == FaceArm.Hold) return title;
@@ -786,41 +141,6 @@ public static partial class Shell
         };
     }
 
-    static string BarPlayableTitle(EntityRef r)
-    {
-        if (r.IsNone) return "";
-        switch (r.Kind)
-        {
-            case EntityKind.Track:
-            {
-                _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
-                _ = Entities.Current.Tracks.Changed.Value;
-                var t = new Track(r.Slot);
-                return t.IsValid && t.Knows(TrackFields.Title) ? t.Title : "";
-            }
-            case EntityKind.Episode:
-            {
-                _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
-                _ = Entities.Current.Episodes.Changed.Value;
-                var e = new Episode(r.Slot);
-                return e.IsValid && e.Knows(EpisodeFields.Title) ? e.Title : "";
-            }
-            default:
-                return "";
-        }
-    }
-
-    static string? BarPlayingUri(EntityRef r)
-    {
-        if (r.IsNone) return null;
-        return r.Kind switch
-        {
-            EntityKind.Track when new Track(r.Slot) is { IsValid: true } t => t.Uri.Text,
-            EntityKind.Episode when new Episode(r.Slot) is { IsValid: true } e => e.Uri.Text,
-            _ => null,
-        };
-    }
-
     static string? BarArtUrl(EntityRef r)
     {
         if (r.IsNone) return null;
@@ -831,14 +151,6 @@ public static partial class Shell
             _ => null,
         };
     }
-
-    static Track BarTrackPeek()
-    {
-        var r = Playback.Current.Peek();
-        return !r.IsNone && r.Kind == EntityKind.Track ? new Track(r.Slot) : default;
-    }
-
-    static bool BarHasVideoPeek() => BarTrackPeek() is { IsValid: true } t && t.HasVideo;
 
     /// <summary>Title → the album (a track) or the show (an episode). Resolved at INVOKE time, against the row the
     /// face is SHOWING: a click on a held title goes where the held title says, not where the row still loading
@@ -864,520 +176,173 @@ public static partial class Shell
         var t = r.Kind == EntityKind.Track ? new Track(r.Slot) : default;
         if (t.IsValid && LinkFor(t, LinkSlot.Art) is { IsNone: false } module) return module;
         // Held: the context the held row was RESOLVED under, not the one being loaded into.
-        var context = arm == FaceArm.Hold ? BarFaceHold.Context : Playback.ContextUri.Peek();
+        var context = arm == FaceArm.Hold ? NowPlayingFace.Shared.HeldContext : Playback.ContextUri.Peek();
         return context.IsEmpty ? Route.None : For(new EntityUri(context));
-    }
-
-    static void BarGo(in Route route)
-    {
-        if (!route.IsNone) GoTo(route);
-    }
-
-    static void BarToggleLike()
-    {
-        var r = Playback.Current.Peek();
-        if (!r.IsNone && r.Kind == EntityKind.Episode)
-        {
-            if (Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy) Spotify.Podcasts.ToggleSaved(new Episode(r.Slot));
-            return;
-        }
-        if (BarPlayingUri(r) is not { } uri || Controls.Library is not { } library) return;
-        library.ToggleSaved(uri, BarPlayableTitle(r));
     }
 
     static object? BarDragPayload()
     {
-        var t = BarTrackPeek();
+        var t = NowPlayingFace.TrackPeek();
         if (!t.IsValid) return null;
         string uri = t.Uri.Text;
         return new DragPayload(DragKind.Track, uri, uri, t.Title, new EntityRef(EntityKind.Track, t.Slot),
             Tracks: [t], ArtUrl: Controls.ArtUrl(t.ImageId));
     }
 
-    static void BarPlayNextDrop(DragPayload payload) => _ = BarPlayNextDropAsync(payload);
+    // ══ 3. THE CREDITS LINE ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The bar's one deposit: resolve the payload's tracks (cold — after the drop, never during the drag) and
-    /// FRONT-insert them, last first, so the dropped order is the play order. Said out loud with a success toast.</summary>
-    static async Task BarPlayNextDropAsync(DragPayload payload)
+    // The line's PICTURE (the links, their separators, the "+N" chip and where its menu opens) is the structure's (`ClassicPlayerBar.Credits.cs`,
+    // under `Player.Bar`); what it STATES is decided here, from the FACE's row: per-name links (a track's credits) or ONE link (an episode's show).
+
+    /// <summary>What the credits line states. A PARTIAL credit list states nothing: the line waits for the whole group, and a playable with
+    /// no credits is the empty row. Reads the face (so a caller's render subscribes it), the row and the credited artists.</summary>
+    static PlayerCredits BarCredits()
     {
-        Track[] tracks;
-        try { tracks = await payload.ResolveTracksAsync().ConfigureAwait(false); }
-        catch (Exception ex) { Log.Warn("playerbar", "play-next drop could not resolve its tracks", ex); return; }
-        if (tracks.Length == 0) return;
-        Playback.ToUi(() =>
+        // The FACE's row: a held face keeps its credits, so the line never empties on a skip.
+        var r = BarFaceNow().Ref;
+        if (r.IsNone) return PlayerCredits.None;
+
+        if (r.Kind == EntityKind.Episode)
         {
-            // G-211: nothing must answer with silence — a drop with no queue seam behind it still tells the user why,
-            // instead of the drag simply evaporating.
-            if (Actions.Services.PlayNext is not { } playNext)
-            {
-                Notify.Say(Loc.Get(Strings.Detail.QueueUnavailable), InfoBarSeverity.Warning);
-                return;
-            }
-            // The batch cap: take the FIRST MaxPlayNextDrop tracks of the drop (in drop order), still front-inserted
-            // last-first so the kept prefix plays in the order it was dropped.
-            int cap = PlayerBarRules.DropInsertCount(tracks.Length);
-            int n = 0;
-            for (int i = cap - 1; i >= 0; i--)
-            {
-                if (!tracks[i].IsValid) continue;
-                playNext(tracks[i].Uri);
-                n++;
-            }
-            if (n == 0) return;
-            bool truncated = PlayerBarRules.DropWasTruncated(tracks.Length);
-            Notify.Say(truncated
-                    ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(n))
-                    : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(n)),
-                InfoBarSeverity.Success);
-        });
-    }
-
-    // ══ 3. THE ARTISTS LINE ══════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Per-name links (a track's credits) or ONE link (an episode's show). Compact (marquee off): the first
-    /// name, ellipsised, plus the "+N" chip when there is more than one.</summary>
-    sealed class BarArtistsLine(bool compact) : Component
-    {
-        readonly bool _compact = compact;
-
-        public override Element Render()
-        {
-            _ = UseComputed<long>(ArtistLineStamp).Value;
-            // The FACE's row: a held face keeps its credits, so the line never empties and the text block never
-            // re-centres from two lines to one and back on a skip.
-            var r = BarFaceNow().Ref;
-            if (r.IsNone) return new BoxEl { Direction = 0 };
-
-            if (r.Kind == EntityKind.Episode)
-            {
-                var e = new Episode(r.Slot);
-                if (!e.IsValid || !e.Show.IsValid) return new BoxEl { Direction = 0 };
-                return new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Children = [MetaLink(e.Show.Title, For(e.Show.Uri, e.Show.Title), _compact, "show:" + e.Show.Slot)],
-                };
-            }
-
-            var t = new Track(r.Slot);
-            // A PARTIAL credit list must not render: the line waits for the whole group, and a playable with no
-            // credits renders an EMPTY row that still spends the column's 2-DIP gap (W20).
-            if (!t.IsValid || !t.Knows(TrackFields.Artists)) return new BoxEl { Direction = 0 };
-            var slots = t.ArtistSlots.ToArray();
-            if (slots.Length == 0) return new BoxEl { Direction = 0 };
-
-            if (_compact && slots.Length > 1)
-            {
-                var first = new Artist(slots[0]);
-                return new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Gap = Spacing.XS,
-                    Children =
-                    [
-                        MetaLink(first.Name, first.Uri.IsValid ? For(first.Uri, first.Name) : Route.None, true, "artist:" + slots[0]),
-                        Embed.Comp(() => new BarArtistOverflowChip(slots)) with { Key = "npmore:" + slots[0] + ":" + slots.Length },
-                    ],
-                };
-            }
-
-            var kids = new List<Element>(slots.Length * 2);
-            for (int i = 0; i < slots.Length; i++)
-            {
-                var a = new Artist(slots[i]);
-                string name = a.Name;
-                if (name.Length == 0) continue;
-                if (kids.Count > 0) kids.Add(new TextEl(", ") { Size = 12f, Color = Tok.TextSecondary });
-                // A name with no route is INERT, not styled-and-dead.
-                kids.Add(MetaLink(name, a.Uri.IsValid ? For(a.Uri, name) : Route.None, false, "artist:" + slots[i]));
-            }
-            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
+            var e = new Episode(r.Slot);
+            if (!e.IsValid || !e.Show.IsValid) return PlayerCredits.None;
+            return new PlayerCredits { Show = CreditLink(e.Show.Title, For(e.Show.Uri, e.Show.Title), "show:" + e.Show.Slot) };
         }
 
-        static Element MetaLink(string text, Route route, bool trim, string key)
-            => Embed.Comp(() => new BarMetaLink(text, route, trim)) with { Key = key + ":" + text };
+        var t = new Track(r.Slot);
+        if (!t.IsValid || !t.Knows(TrackFields.Artists)) return PlayerCredits.None;
+        var slots = t.ArtistSlots.ToArray();
+        if (slots.Length == 0) return PlayerCredits.None;
 
-        /// <summary>The track row's version folded with its credited artists' versions — re-render only when THESE
-        /// rows change.</summary>
-        static long ArtistLineStamp()
+        var links = new PlayerCreditLink[slots.Length];
+        for (int i = 0; i < slots.Length; i++)
         {
-            var r = BarFaceNow().Ref;
-            if (r.IsNone) return 0L;
-            if (r.Kind == EntityKind.Episode)
-            {
-                _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
-                _ = Entities.Current.Episodes.Changed.Value;
-                _ = Entities.Current.Shows.Changed.Value;
-                var e = new Episode(r.Slot);
-                return e.IsValid ? ((long)r.Slot << 32) ^ e.Version ^ (e.Show.IsValid ? (long)e.Show.Version << 16 : 0L) : 0L;
-            }
+            var a = new Artist(slots[i]);
+            string name = a.Name;
+            // A name with no route is INERT (a null verb), not styled-and-dead.
+            links[i] = CreditLink(name, a.Uri.IsValid ? For(a.Uri, name) : Route.None, "artist:" + slots[i]);
+        }
+        return new PlayerCredits
+        {
+            Artists = links,
+            OverflowKey = "npmore:" + slots[0] + ":" + slots.Length,
+            OverflowRows = () => CreditOverflowRows(slots),
+        };
+    }
+
+    static PlayerCreditLink CreditLink(string text, Route route, string key)
+        => new(text, route.IsNone ? null : () => PlayerVerbs.Default.Navigate(route), key);
+
+    /// <summary>The "+N" chip's menu: EVERY credited artist, resolved when the menu OPENS (the chip is keyed by its artist set, so the
+    /// frozen slots are the right ones).</summary>
+    static IReadOnlyList<MenuFlyoutItem> CreditOverflowRows(int[] slots)
+    {
+        var items = new MenuFlyoutItem[slots.Length];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            var a = new Artist(slots[i]);
+            var route = a.Uri.IsValid ? For(a.Uri, a.Name) : Route.None;
+            items[i] = new MenuFlyoutItem(a.Name, default, !route.IsNone, () => PlayerVerbs.Default.Navigate(route));
+        }
+        return items;
+    }
+
+    /// <summary>The track row's version folded with its credited artists' versions — the line re-renders only when THESE
+    /// rows change.</summary>
+    static long BarCreditsStamp()
+    {
+        var r = BarFaceNow().Ref;
+        if (r.IsNone) return 0L;
+        if (r.Kind == EntityKind.Episode)
+        {
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
-            _ = Entities.Current.Tracks.Changed.Value;
-            _ = Entities.Current.Artists.Changed.Value;
-            var t = new Track(r.Slot);
-            if (!t.IsValid) return 0L;
-            long h = ((long)r.Slot << 32) ^ t.Version;
-            var slots = t.ArtistSlots;
-            for (int i = 0; i < slots.Length; i++) h = h * 31 + new Artist(slots[i]).Version + slots[i];
-            return h;
+            _ = Entities.Current.Episodes.Changed.Value;
+            _ = Entities.Current.Shows.Changed.Value;
+            var e = new Episode(r.Slot);
+            return e.IsValid ? ((long)r.Slot << 32) ^ e.Version ^ (e.Show.IsValid ? (long)e.Show.Version << 16 : 0L) : 0L;
         }
+        _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
+        _ = Entities.Current.Tracks.Changed.Value;
+        _ = Entities.Current.Artists.Changed.Value;
+        var t = new Track(r.Slot);
+        if (!t.IsValid) return 0L;
+        long h = ((long)r.Slot << 32) ^ t.Version;
+        var slots = t.ArtistSlots;
+        for (int i = 0; i < slots.Length; i++) h = h * 31 + new Artist(slots[i]).Version + slots[i];
+        return h;
     }
 
-    /// <summary>A clickable now-playing meta link. It drives its OWN foreground: <c>TextEl.HoverColor</c> follows the
-    /// ancestor hover path, which would light every link while the pointer is anywhere on the meta column.</summary>
-    sealed class BarMetaLink(string text, Route route, bool trim) : Component
+    // ══ 4. THE "⋯" ROWS ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    // The overflow's FACE (the button, the menu's placement) is the structure's; WHICH rows it carries is core
+    // (`PlayerBarRules.Overflow`) and what a row says and does is built here, from live peeks at open time.
+
+    /// <summary>One overflow row, from LIVE peeks at open time.</summary>
+    static MenuFlyoutItem OverflowItem(OverflowCommand command, Action<string>? begin)
     {
-        readonly string _text = text;
-        readonly Route _route = route;
-        readonly bool _trim = trim;
-
-        public override Element Render()
+        var facts = PlayerVerbs.TransportFacts(track: false);
+        bool railOpen = Ui.RailOpen.Peek();
+        var mode = Ui.Mode.Peek();
+        switch (command)
         {
-            var hover = UseSignal(false);
-            bool enabled = !_route.IsNone;
-            var route = _route;
-            return new BoxEl
+            case OverflowCommand.Previous:
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Previous), Icons.Previous, facts.PrevEnabled, static () => PlayerVerbs.Default.Previous());
+            case OverflowCommand.Next:
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Next), Icons.Next, facts.NextEnabled, static () => PlayerVerbs.Default.Next());
+            case OverflowCommand.Shuffle:
+                return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Shuffle), Playback.Shuffle.Peek(), static () => PlayerVerbs.Default.ToggleShuffle(),
+                    Icons.Shuffle, facts.CanTransport);
+            case OverflowCommand.Repeat:
             {
-                Cursor = enabled ? CursorId.Hand : null,
-                OnClick = enabled ? () => GoTo(route) : null,
-                OnHoverMove = enabled ? _ => { if (!hover.Peek()) hover.Value = true; } : null,
-                OnPointerExit = enabled ? () => { if (hover.Peek()) hover.Value = false; } : null,
-                ClipToBounds = true, Shrink = 1f, MinWidth = _trim ? 0f : float.NaN,
-                Role = enabled ? AutomationRole.Hyperlink : AutomationRole.Text,
-                Children =
-                [
-                    new TextEl(_text)
-                    {
-                        Size = 12f, Color = hover.Value ? Tok.TextPrimary : Tok.TextSecondary,
-                        MaxLines = _trim ? 1 : 0, Trim = _trim ? TextTrim.CharacterEllipsis : TextTrim.None,
-                        MinWidth = _trim ? 0f : float.NaN,
-                    },
-                ],
-            };
-        }
-    }
-
-    /// <summary>The "+N" credits chip. Opens EVERY credited artist UPWARD from the dock (0.2.9 asked for
-    /// BottomEdgeAlignedLeft from a bottom dock and relied on the overlay re-fit; ch 20 W20 asks 0.3 to anchor it up).
-    /// Keyed by its artist set at the call site, so the frozen slot array is the right one.</summary>
-    sealed class BarArtistOverflowChip(int[] slots) : Component
-    {
-        readonly int[] _slots = slots;
-
-        public override Element Render()
-        {
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            var slots = _slots;
-
-            void Toggle()
-            {
-                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                var items = new MenuFlyoutItem[slots.Length];
-                for (int i = 0; i < slots.Length; i++)
-                {
-                    var a = new Artist(slots[i]);
-                    var route = a.Uri.IsValid ? For(a.Uri, a.Name) : Route.None;
-                    items[i] = new MenuFlyoutItem(a.Name, default, !route.IsNone, () => BarGo(route));
-                }
-                handle.Value = overlay.Open(
-                    () => anchor.Value,
-                    () => MenuFlyout.Create(items, () => handle.Value?.Close()),
-                    FlyoutPlacement.TopEdgeAlignedLeft,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-                handle.Value.ClosedAction = () => handle.Value = null;
+                var repeat = Playback.Repeat.Peek();
+                return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Repeat), repeat != RepeatMode.Off, static () => PlayerVerbs.Default.CycleRepeat(),
+                    PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport);
             }
-
-            return new BoxEl
+            case OverflowCommand.Lyrics:
+                return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
+                    static () => PlayerVerbs.Default.OpenPanel(RailMode.Lyrics), new IconRef { Glyph = WaveeIcons.Lyrics, Font = WaveeIcons.Font });
+            case OverflowCommand.Queue:
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), Icons.Queue, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.Queue));
+            case OverflowCommand.NowPlaying:
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), Icons.ChevronUp, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying));
+            case OverflowCommand.FullScreen:
+                // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
+            case OverflowCommand.Video:
             {
-                Shrink = 0f, Padding = new Edges4(Spacing.XXS, 0f, Spacing.XXS, 0f),
-                OnRealized = h => anchor.Value = h,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = Toggle, BlocksDragArm = true,
-                Children = [FluentGpu.Dsl.Ui.Caption("+" + (slots.Length - 1)) with { Weight = 600, Color = Tok.TextTertiary }],
-            };
-        }
-    }
-
-    // ══ 4. THE BUTTONS ═══════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>A transport TOGGLE / command glyph. The on-state is WinUI's AppBarToggleButton checked visual — an
-    /// accent glyph over <c>FillSubtleSecondary</c>, cross-faded over 83 ms — and the resting off-state is completely
-    /// unpainted (a row of resting plates would re-plate the dock). Flat 32/16 at every tier.
-    /// <para><paramref name="platedWhenLatched"/> false is the HEART: its saved state is already said twice — the glyph
-    /// swaps to the filled heart and takes the accent — so a checked plate behind it is a third, boxy signal next to the
-    /// title. It keeps the accent ink and stays unpainted, latched or not.</para></summary>
-    static BoxEl BarButton(string glyphText, Action onClick, bool enabled, bool latched, float box, float glyphSize,
-        Action<NodeHandle>? onRealized = null, string? font = null, float boxHeight = float.NaN,
-        bool platedWhenLatched = true)
-    {
-        ColorF ink = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextSecondary;
-        ColorF inkHover = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextPrimary;
-        bool plated = latched && enabled && platedWhenLatched;
-        ColorF plate = plated ? Tok.FillSubtleSecondary : ColorF.Transparent;
-        ColorF plateHover = plated ? Tok.FillSubtleTertiary : ColorF.Transparent;
-        return new BoxEl
-        {
-            Width = box, Height = float.IsNaN(boxHeight) ? box : boxHeight,
-            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = Radii.ControlAll,
-            Fill = plate, HoverFill = plateHover, PressedFill = plate,
-            BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
-            // Clicking never moves focus, so the shell's Space shortcut keeps working after a click.
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-            OnRealized = onRealized,
-            IsEnabled = enabled, OnClick = onClick, Cursor = enabled ? CursorId.Hand : null,
-            Children = [new TextEl(glyphText) { Size = glyphSize, FontFamily = font ?? FluentGpu.Dsl.Theme.IconFont, Color = ink, HoverColor = inkHover }],
-        };
-    }
-
-    /// <summary>A RESERVED slot in the bar's row: a fixed <paramref name="w"/>×<paramref name="h"/> box the tier owns,
-    /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over
-    /// the control token, never entered/exited, so a face lighting up moves NOTHING around it. The face's own
-    /// <c>IsEnabled</c> should follow <paramref name="lit"/> too, so a dark face is not a focus stop.</summary>
-    static BoxEl Slot(string key, float w, float h, bool lit, Element face) => new()
-    {
-        Key = key, Width = w, Height = h, Shrink = 0f,
-        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Opacity = lit ? 1f : 0f, HitTestVisible = lit,
-        // Opacity-only layout transition: a face lights or dims over the control-normal beat with NO bounds channel,
-        // so the slot's rect (and every neighbour's) never moves. Element.Transition alone would snap here — the
-        // reconciler routes it only through Enter/Exit synthesis, not a live static Opacity change.
-        Animate = BarFaceMotion,
-        Children = [face],
-    };
-
-    /// <summary>The face fade of a reserved slot (<see cref="Slot(string, float, float, bool, Element)"/>): opacity only,
-    /// never Bounds/Reflow, so lighting a button cannot reflow the row.</summary>
-    static readonly LayoutTransition BarFaceMotion = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
-
-    /// <summary>Segoe Fluent Icons' SOLID transport pair (PlaySolid / PauseSolid). The primary sits on a filled accent
-    /// disc, and the outline pair (<c>Icons.Play</c> / <c>Icons.Pause</c>) there reads as a thin dark wireframe on a
-    /// bright plate; on a filled plate the glyph has to be a filled shape too.</summary>
-    const string PlaySolid = "", PauseSolid = "";
-
-    /// <summary>The primary play/pause: a filled Fluent/WinUI transport circle (same verb as Stage.Play). Disabled, the
-    /// plate falls back to a subtle rest and the glyph to disabled ink. The glyph is drawn at 0.8× the tier's glyph size
-    /// — a solid shape carries more weight than the outline the size was tuned for — and the play triangle is nudged
-    /// right by a twelfth of its size, its optical centre (the pause bars are symmetric and stay put).</summary>
-    static BoxEl BarPrimaryButton(string glyphText, PrimaryVerb verb, float box, float glyphSize)
-    {
-        bool enabled = verb != PrimaryVerb.None;
-        float solid = MathF.Round(glyphSize * 0.8f);
-        float nudge = glyphText == PlaySolid ? MathF.Round(solid / 12f) : 0f;
-        return new BoxEl
-        {
-            Width = box, Height = box, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = Radii.Circle(box),
-            Fill = enabled ? Tok.AccentDefault : Tok.FillSubtleSecondary,
-            HoverFill = enabled ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
-            PressedFill = enabled ? Tok.AccentTertiary : Tok.FillSubtleSecondary,
-            BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-            IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null,
-            OnClick = verb == PrimaryVerb.Retry ? static () => RetryPlayback() : static () => TogglePlayPause("playerbar.button"),
-            Children =
-            [
-                new TextEl(glyphText)
-                {
-                    Size = solid, FontFamily = FluentGpu.Dsl.Theme.IconFont,
-                    Color = enabled ? Tok.TextOnAccentPrimary : Tok.TextDisabled,
-                    Margin = new Edges4(nudge, 0f, 0f, 0f),
-                },
-            ],
-        };
-    }
-
-    // ── the "⋯" overflow ────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The overflow button's FACE, remounted by a Key over its COMMAND SET (the slot around it is the tier's —
-    /// <see cref="Slot(string, float, float, bool, Element)"/> — so a command set changing with playback swaps the face in
-    /// place). Rows are built at open
-    /// time from live reads, so a latched toggle's check mark is fresh on every open without the key having to encode it.</summary>
-    static Element BarMoreButton(OverflowCommand[] commands, float box, float glyphSize)
-    {
-        int key = commands.Length;
-        for (int i = 0; i < commands.Length; i++) key = key * 11 + (int)commands[i] + 1;
-        return Embed.Comp(() => new BarMoreMenu(commands, box, glyphSize)) with { Key = "more#" + key };
-    }
-
-    sealed class BarMoreMenu(OverflowCommand[] commands, float box, float glyphSize) : Component
-    {
-        readonly OverflowCommand[] _commands = commands;
-        readonly float _box = box, _glyph = glyphSize;
-
-        public override Element Render()
-        {
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            var begin = UseContext(SharedTransition.Begin);   // the "Full screen" row captures the art's flight before the stage mounts
-            var commands = _commands;
-
-            void Toggle()
-            {
-                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                if (commands.Length == 0) return;
-                var items = new List<MenuFlyoutItem>(commands.Length);
-                for (int i = 0; i < commands.Length; i++) items.Add(OverflowItem(commands[i], begin));
-                // A PLAIN MenuFlyout upward — never CommandBarFlyout, whose second clip fought the reveal.
-                handle.Value = overlay.Open(
-                    () => anchor.Value,
-                    () => MenuFlyout.Create(items, () => handle.Value?.Close()),
-                    FlyoutPlacement.TopEdgeAlignedRight,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-                handle.Value.ClosedAction = () => handle.Value = null;
+                bool live = Video.PlacementCore.IsActive(Video.State.Surface.Peek());
+                // A cascading sub-menu over the SAME placement ladder the inline chevron opens.
+                return MenuFlyoutItem.SubMenu(Loc.Get(live ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo),
+                    Video.PlacementMenu(includeFullscreen: true), Icons.Movie);
             }
-
-            return new BoxEl
+            default:
             {
-                Width = _box, Height = _box, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
-                Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-                OnClick = Toggle, Cursor = CursorId.Hand, OnRealized = h => anchor.Value = h,
-                Children = [new TextEl(Icons.More) { Size = _glyph, FontFamily = FluentGpu.Dsl.Theme.IconFont, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
-            };
-        }
-
-        /// <summary>One overflow row, from LIVE peeks at open time.</summary>
-        static MenuFlyoutItem OverflowItem(OverflowCommand command, Action<string>? begin)
-        {
-            var facts = TransportFacts(track: false);
-            bool railOpen = Ui.RailOpen.Peek();
-            var mode = Ui.Mode.Peek();
-            switch (command)
-            {
-                case OverflowCommand.Previous:
-                    return new MenuFlyoutItem(Loc.Get(Strings.Player.Previous), Icons.Previous, facts.PrevEnabled, static () => Playback.Previous());
-                case OverflowCommand.Next:
-                    return new MenuFlyoutItem(Loc.Get(Strings.Player.Next), Icons.Next, facts.NextEnabled, static () => Playback.Next());
-                case OverflowCommand.Shuffle:
-                    return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Shuffle), Playback.Shuffle.Peek(), static () => ToggleShuffle(),
-                        Icons.Shuffle, facts.CanTransport);
-                case OverflowCommand.Repeat:
-                {
-                    var repeat = Playback.Repeat.Peek();
-                    return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Repeat), repeat != RepeatMode.Off, static () => CycleRepeat(),
-                        PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport);
-                }
-                case OverflowCommand.Lyrics:
-                    return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
-                        static () => Ui.Toggle(RailMode.Lyrics), new IconRef { Glyph = WaveeIcons.Lyrics, Font = WaveeIcons.Font });
-                case OverflowCommand.Queue:
-                    return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), Icons.Queue, true, static () => Ui.Toggle(RailMode.Queue));
-                case OverflowCommand.NowPlaying:
-                    return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), Icons.ChevronUp, true, static () => Ui.Toggle(RailMode.NowPlaying));
-                case OverflowCommand.FullScreen:
-                    // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
-                    return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => Stage.Open(begin, "bar-overflow"));
-                case OverflowCommand.Video:
-                {
-                    bool live = Video.PlacementCore.IsActive(Video.State.Surface.Peek());
-                    // A cascading sub-menu over the SAME placement ladder the inline chevron opens.
-                    return MenuFlyoutItem.SubMenu(Loc.Get(live ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo),
-                        Video.PlacementMenu(includeFullscreen: true), Icons.Movie);
-                }
-                default:
-                {
-                    bool muted = Playback.Muted.Peek();
-                    return new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute),
-                        muted ? Icons.Volume : Icons.Mute, true, static () => Playback.ToggleMute());
-                }
+                bool muted = Playback.Muted.Peek();
+                return new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute),
+                    muted ? Icons.Volume : Icons.Mute, true, static () => Playback.ToggleMute());
             }
         }
     }
 
-    // ══ 5. VOLUME ════════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 5. DEVICES ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The volume glyph. Inline form: a click MUTES. Popup form (Medium/Comfortable): a click opens the vertical
-    /// rail above it. Remounted by its Key when the form changes. It re-renders only when the MUTE GLYPH flips — a
-    /// volume drag moves the compositor rail, not this.</summary>
-    sealed class BarVolumeButton(bool popup, float box, float glyphSize) : Component
-    {
-        readonly bool _popup = popup;
-        readonly float _box = box, _glyph = glyphSize;
-
-        public override Element Render()
-        {
-            bool muted = Playback.Muted.Value;
-            var overlay = UseContext(Overlay.Service);
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            bool popupForm = _popup;
-
-            void Click()
-            {
-                if (!popupForm) { Playback.ToggleMute(); return; }
-                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                handle.Value = overlay.Open(
-                    () => anchor.Value,
-                    static () => new BoxEl
-                    {
-                        Width = 52f, Height = 168f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Padding = new Edges4(10f, 14f, 10f, 14f),
-                        Children =
-                        [
-                            Slider.Create(s_barVolume, static v => Playback.SetVolume(v),
-                                new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
-                                length: 124f, thickness: 32f),
-                        ],
-                    },
-                    FlyoutPlacement.TopCenter,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                        { ConstrainToRootBounds = false });
-                handle.Value.ClosedAction = () => handle.Value = null;
-            }
-
-            return BarButton(muted ? Icons.Mute : Icons.Volume, Click, true, false, _box, _glyph, h => anchor.Value = h);
-        }
-    }
-
-    // ══ 6. DEVICES ═══════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The Devices button. LATCHED only while playback is on ANOTHER device (the same owner-gated verdict the
-    /// "Playing on" line reads, so the two cannot disagree). It also opens ITSELF when the model bumps
-    /// <see cref="Playback.DevicePickerRequest"/> (a toast's "Choose device") — only for a request that post-dates its
-    /// mount, and the bar mounts exactly one of these, so the toast opens exactly one picker.</summary>
-    sealed class BarDevicesButton(float box, float glyphSize) : Component
-    {
-        readonly float _box = box, _glyph = glyphSize;
-
-        public override Element Render()
-        {
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            _ = Playback.Devices.Changed.Value;
-            bool latched = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
-            int request = Playback.DevicePickerRequest.Value;
-            var lastRequest = UseRef(request);
-
-            void Toggle() => BarToggleDevicePicker(overlay, anchor, handle);
-
-            UseEffect(() =>
-            {
-                if (request == lastRequest.Value) return;
-                lastRequest.Value = request;
-                if (handle.Value is not { IsOpen: true }) Toggle();
-            }, request);
-
-            return BarButton(Icons.Devices, Toggle, true, latched, _box, _glyph, h => anchor.Value = h);
-        }
-    }
+    // The Devices button and the "Playing on" line are the structure's (they call `ToggleDevicePicker`); the picker's MENU is the
+    // structure's too since T6b (`Player.DevicePicker`, `ClassicDevicePicker`), over the entries `RailWiring.ReadDevicePicker` decides.
+    // The overlay (where it opens, how it dismisses, the picker-opened side effect) stays here with the bar's toggle.
 
     /// <summary>One picker, two anchors (the Devices button, the "Playing on" line): upward, right-aligned to the
     /// anchor, light-dismiss, focus trap. The menu caps its own scroll height at <see cref="DeviceRoster.PickerMaxHeight"/>
     /// (window height − 96 DIP, G-210) rather than trusting the engine's own fixed 468-DIP <c>MenuFlyout</c> cap, which
-    /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window.</summary>
-    static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
+    /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window. The body re-renders WHILE OPEN
+    /// (a transfer landing swaps the checks in place, parity 79).</summary>
+    internal static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-        Playback.PickerOpened();                                               // the cluster hears it, as the official client's picker does
+        PlayerVerbs.Default.OpenDevicePicker();                                // the cluster hears it, as the official client's picker does
+        var props = RailWiring.DevicePicker(() => handle.Value?.Close());      // built once per open: the content builder may run again
         handle.Value = overlay.Open(
             () => anchor.Value,
-            () => Embed.Comp(() => new BarDevicePickerMenu(() => handle.Value?.Close())),
+            () => ViewSlots.View(ViewKeys.DevicePicker, props),
             FlyoutPlacement.TopEdgeAlignedRight,
             // The roster already caps itself to the window (PickerMaxHeight = height - 96), so it never needs to
             // escape the root bounds -- and NOT escaping is what keeps it on the engine's in-window acrylic path
@@ -1386,52 +351,9 @@ public static partial class Shell
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 
-    /// <summary>The picker body. It re-renders WHILE OPEN — a transfer landing swaps the checks in place (parity 79) —
-    /// and re-keys its menu presenter on every change, because the presenter freezes its rows at mount.</summary>
-    sealed class BarDevicePickerMenu(Action close) : Component
-    {
-        readonly Action _close = close;
-
-        public override Element Render()
-        {
-            uint roster = Playback.Devices.Changed.Value;
-            var owner = Playback.OwnerSignal.Value;
-            int activeSlot = Playback.ActiveDeviceSlot.Value;
-            var local = Playback.Audio.Devices.Value;
-            string? selected = Playback.Audio.SelectedOutputId.Value;
-            bool supported = Playback.Audio.Supported.Value;
-            float windowH = UseContextSignal(Viewport.Size).Value.Height;
-
-            // The verification row: the player's own echo, never a loopback of the setting (user's exact ask).
-            var observed = Playback.Audio.PlayingOpened;
-            var asked = PickerAskedQuality();
-            var items = DevicePickerMenuItems(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked)
-                .ToArray();
-
-            // G-210: a dozen Connect devices must scroll well before the window edge, not just the engine's own fixed
-            // 468-DIP cap — a short/undocked window is smaller than that.
-            float maxH = DeviceRoster.PickerMaxHeight(windowH);
-            var parts = new TemplateParts();
-            parts.Set<ScrollEl>(MenuFlyout.PartScrollViewer, s => s with { MaxHeight = maxH });
-
-            int version = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported, maxH,
-                HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked));
-            return new BoxEl
-            {
-                Direction = 1,
-                Children = [MenuFlyout.Create(items, _close, parts: parts) with { Key = "devices:" + version }],
-            };
-        }
-
-    }
-
-    /// <summary>The Spotify quality setting the picker's verification row compares the player's echo against.</summary>
-    internal static Spotify.Audio.Quality PickerAskedQuality()
-        => (Spotify.Audio.Quality)Math.Clamp(Platform.Settings.Get(Platform.Keys.PlaybackQuality),
-            Platform.Network.QualityMin, Platform.Network.QualityMax);
-
-    /// <summary>THE device picker's menu items: the bar's Devices flyout and the stage's "Playing on" flyout both call this
-    /// (over <see cref="DevicePicker.Items"/>), so the two surfaces cannot disagree about a row or what it does. Local
+    /// <summary>THE device picker's menu items for the stage's "Playing on" flyout, over the SAME <see cref="DevicePicker.Items"/> the
+    /// bar's picker composes its entries from (<c>RailWiring.ReadDevicePicker</c>), so the two surfaces cannot disagree about a row or
+    /// what it does. The stage mounts <c>Player.DevicePicker</c> instead when T7a moves its flyout, and this goes. Local
     /// (this-computer) rows are plain commands, not radios: choosing one persists the output for the next session and
     /// pulls playback here, but the engine does not yet re-route a live session to it, so no row claims to be "the
     /// endpoint in use".</summary>
@@ -1454,159 +376,95 @@ public static partial class Shell
                 DevicePickerRowKind.Header or DevicePickerRowKind.Empty or DevicePickerRowKind.Quality
                     => new MenuFlyoutItem(row.Label, default, false),
                 DevicePickerRowKind.LocalDefault => new MenuFlyoutItem(row.Label, Icons.ThisPc, row.Enabled,
-                        row.Enabled ? () => RunDeviceIntent(intent) : null)
+                        row.Enabled ? () => DeviceVerbs.Run(intent) : null)
                     with { AcceleratorText = row.Accelerator },
                 DevicePickerRowKind.LocalDevice => new MenuFlyoutItem(row.Label, DeviceRoster.LocalGlyph(row.LocalKind), row.Enabled,
-                        row.Enabled ? () => RunDeviceIntent(intent) : null)
+                        row.Enabled ? () => DeviceVerbs.Run(intent) : null)
                     with { AcceleratorText = row.Accelerator },
                 DevicePickerRowKind.ConnectDevice => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
-                    () => RunDeviceIntent(intent), DeviceRoster.ConnectGlyph(row.ConnectKind)),
+                    () => DeviceVerbs.Run(intent), DeviceRoster.ConnectGlyph(row.ConnectKind)),
                 _ => new MenuFlyoutItem(row.Label, default, false),
             });
         }
         return items;
     }
 
-    /// <summary>Execute a picker click. A this-computer row: persist the output (<c>Audio.Select</c>, persist-only), then,
-    /// if the intent says we are not the owner, <see cref="Playback.TakeOver"/> (a local claim; never a transfer to our own
-    /// hash, which the reducer refuses). A Connect row: transfer to that device, its roster slot resolved at CLICK time.</summary>
-    internal static void RunDeviceIntent(DeviceIntent intent)
-    {
-        switch (intent.Kind)
-        {
-            case DeviceIntentKind.SelectLocal:
-                Playback.Audio.Select(intent.LocalId.Length == 0 ? null : intent.LocalId);
-                if (intent.TakeOver) Playback.TakeOver();
-                break;
-            case DeviceIntentKind.TransferTo:
-            {
-                int slot = DeviceRoster.SlotOfId(Playback.Devices.Rows, intent.ConnectId);
-                if (slot >= 0) Playback.TransferTo(slot);
-                break;
-            }
-        }
-    }
-
-    /// <summary>"🖳 Playing on &lt;device&gt;" — 13 DIP, accent @ 88 % → full accent on hover, above the title. A second
-    /// anchor for the SAME picker.</summary>
-    sealed class BarRemoteDeviceLine : Component
-    {
-        public override Element Render()
-        {
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            _ = Playback.Devices.Changed.Value;
-            var rows = Playback.Devices.Rows;
-            int slot = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
-            if (slot < 0) return new BoxEl { Height = 0f, HitTestVisible = false };
-            string name = rows[slot].Name ?? "";
-
-            ColorF accent = Tok.AccentDefault;
-            ColorF rest = accent with { A = 0.88f };
-            return new BoxEl
-            {
-                Height = 13f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                MinWidth = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
-                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-                OnClick = () => BarToggleDevicePicker(overlay, anchor, handle), OnRealized = h => anchor.Value = h,
-                Children =
-                [
-                    new TextEl(Icons.Devices) { Size = 12f, FontFamily = FluentGpu.Dsl.Theme.IconFont, Color = rest, HoverColor = accent },
-                    new BoxEl
-                    {
-                        Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
-                        Children =
-                        [
-                            new TextEl(Strings.Player.PlayingOn(name))
-                            {
-                                Size = 12f, LineHeight = 16f, Weight = 600, Color = rest, HoverColor = accent,
-                                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-                            },
-                        ],
-                    },
-                ],
-            };
-        }
-    }
-
     // ══ 7. THE SEEK BAR ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The bespoke media rail (not a Slider): the SCRUB GATE, the smooth extrapolated playhead and
-    /// click-anywhere scrub committing ONE seek per gesture. The fill and thumb are compositor binds on
-    /// <see cref="_displayFrac"/>; the component re-renders only on enablement / mode / advancing edges.</summary>
-    sealed class BarSeekRail : Component
+    /// <summary>The bespoke media rail's CORE HOST: the SCRUB GATE, the smooth extrapolated playhead and click-anywhere scrub
+    /// committing ONE seek per gesture. The scrub itself (the gesture, the pixel dwell, the seek-generation hold, the keyboard
+    /// ladder) is the core <see cref="ScrubController"/>; this host keeps every hook the rail runs (the report effect, the pixel-due
+    /// stepper, the unmount abort), maps a pointer to a fraction, opens and closes the scrub readout, and mounts
+    /// <see cref="ViewKeys.SeekRail"/> with what to draw. The fill and thumb are compositor binds on
+    /// <see cref="ScrubController.Display"/> (built once here); the host re-renders only on enablement / mode / advancing edges.</summary>
+    [CoreHost]
+    sealed class BarSeekRail : Component, ISeekRailHost
     {
-        const float HitHeight = 32f;         // WinUI SliderHorizontalHeight
-        const float RingDiameter = 22f;      // Slider.DefaultStyle.ThumbRingDiameter
-
         readonly PlayerChromeFeed? _chromeFeed;
         readonly Action<bool>? _onScrubbing;   // the fullscreen stage's scrub seam (its idle machine's SetScrubbing); null on the bar
         readonly IReadSignal<bool>? _reveal;   // the on-media strip's chrome-visible signal (null = always live); see SeekBar
-        readonly Signal<bool> _scrubbing = new(false);
-        readonly FloatSignal _scrubFrac = new(0f);
-        readonly FloatSignal _displayFrac = new(0f);
-        readonly FloatSignal _railPx = new(0f);
+        readonly ScrubController _scrub;       // the gesture, the dwell, the seek-generation hold: core
         readonly FloatSignal _chapterHover = new(0f);
         readonly Signal<bool> _chapterHovering = new(false);
-        long _committedAtMs;
-        // V-PA12: the seek generation the bar SAW when it committed — sampled BEFORE the commit is posted (the drain that bumps the
-        // generation runs later), so the hold below ends on the first landing past it: the commit's own seek or a newer one's.
-        uint _committedGen;
 
         // The scrub READOUT (U-7, V-PA40): the time under the pointer, in a bubble over the thumb for the length of a pointer gesture. The thumb
         // ring is not hit-testable, so it cannot carry a tooltip of its own, and `ToolTip.Wrap` can neither follow a live value (it closes the
-        // bubble on every text change) nor survive a press (it dismisses on one) — so the rail opens the Slider's own kind of bubble, anchored
-        // to the thumb's NODE (a position source only), on the press and closes it on the release, the cancel and the unmount.
+        // bubble on every text change) nor survive a press (it dismisses on one) — so the rail opens the Slider's own kind of bubble
+        // (`Player.SeekReadout`), anchored to the thumb's NODE (a position source only), on the press and closes it on the release, the
+        // cancel and the unmount.
         NodeHandle _thumbNode;
         OverlayHandle? _readout;
         IOverlayService? _overlay;
         readonly Action<NodeHandle> _onThumbRealized;
         readonly Func<NodeHandle> _readoutAnchor;
         readonly Func<Element> _readoutContent;
-        readonly Prop<string> _readoutText;
 
         // Wired ONCE: a bind thunk and the handlers are fields, so a re-render allocates none of them.
         readonly Prop<Affine2D> _fillBind;
-        readonly Prop<Affine2D> _thumbBind;
+        Prop<Affine2D> _thumbBind;
+        float _thumbRing = float.NaN;
         readonly Action _recompute, _onReport, _onCommit, _onCancel;
+        readonly Func<SeekRailMode> _modeNow;
+        readonly Func<float> _dwellNow;
         readonly Action<Point2> _onDown, _onDrag, _onHover;
         readonly Action _onExit;
         readonly Action<RectF> _onBounds;
 
-        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
+        readonly bool _hairline;   // the mini bar's progress line (TC2): no thumb, no hit test, never a scrub
+
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false)
         {
+            _hairline = hairline;
             _chromeFeed = chromeFeed;
             _onScrubbing = onScrubbing;
             _reveal = reveal;
+            _scrub = ScrubController.ForPlayback(OnGesture);
             _onThumbRealized = node => _thumbNode = node;
             _readoutAnchor = () => _thumbNode;
-            _readoutText = Prop.Of<string>(ReadoutLabel);
-            _readoutContent = ReadoutBubble;
-            _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_displayFrac.Value, 0f, 1f), 1e-4f), 1f));
-            _thumbBind = Prop.Of(() => Affine2D.Translation(SeekRail.ThumbX(_railPx.Value, _displayFrac.Value, RingDiameter), 0f));
-            _recompute = Recompute;
+            var readout = new SeekReadoutProps { Text = ReadoutLabel };
+            _readoutContent = () => ViewSlots.View(ViewKeys.SeekReadout, readout);
+            _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_scrub.Display.Value, 0f, 1f), 1e-4f), 1f));
+            _recompute = _scrub.Recompute;
+            _modeNow = _scrub.Mode;
+            _dwellNow = _scrub.DwellMs;
             _onReport = OnReport;
             _onCommit = OnCommit;
             _onCancel = OnCancel;
             _onDown = OnDown;
             _onDrag = OnDragMove;
-            _onHover = local => { _chapterHovering.Value = true; _chapterHover.SetIfChanged(SeekRail.FractionAt(local.X, _railPx.Peek())); };
+            _onHover = local => { _chapterHovering.Value = true; _chapterHover.SetIfChanged(_scrub.FractionAt(local.X)); };
             _onExit = () => _chapterHovering.Value = false;
-            _onBounds = b => { if (b.W > 0f && MathF.Abs(b.W - _railPx.Peek()) > 0.5f) { _railPx.Value = b.W; Recompute(); } };
+            _onBounds = b => _scrub.SetRailWidth(b.W);
         }
 
         public override Element Render()
         {
-            bool hasCurrent = !Playback.CurrentId.Value.IsEmpty;
-            var error = Playback.Error.Value;
-            var phase = Playback.PhaseSignal.Value;
-            bool enabled = SeekRail.Enabled(hasCurrent, error, phase, Playback.CanSeek.Value);
-            bool advances = SeekRail.Advances(hasCurrent, error, phase, Playback.Buffering.Value);
+            var gate = _scrub.Gate();
+            bool enabled = gate.Enabled;
+            bool advances = gate.Advances;
             // The three-way SHAPE through a memo: a live window republishing several times a second re-renders nothing.
-            var mode = UseComputed(static () => SeekRail.ModeOf(Playback.Live.Value)).Value;
-            float dwell = UseComputed(() => SeekRail.DwellMs(
-                SeekRail.SpanMs(Playback.Live.Value, Playback.DurationMs.Value), _railPx.Value)).Value;
+            var mode = UseComputed(_modeNow).Value;
+            float dwell = UseComputed(_dwellNow).Value;
 
             // A report (position, duration, window, edge, phase) re-derives the RESTING fraction — an effect, not Render.
             UseSignalEffect(_onReport);
@@ -1619,108 +477,56 @@ public static partial class Shell
             _overlay = UseContext(Overlay.Service);
             // V-PA24/X5: the rail can be unmounted mid-gesture (the stage closing, a tier remount, a theme swap): a live scrub must not leave
             // the pump holding the main voice behind a grain voice nobody will ever release. `ScrubCancel` is idempotent.
-            UseEffect(() => () => { if (_scrubbing.Peek()) { Playback.ScrubCancel(); CloseReadout(); } }, DepKey.Empty);
+            UseEffect(() => () => { if (_scrub.AbortIfScrubbing()) CloseReadout(); }, DepKey.Empty);
 
-            // NOTHING TO REWIND: the rail stops pretending to be one. After every hook, so the hook order never varies.
-            if (mode == SeekRailMode.Line) return Embed.Comp(static () => new BarLiveLine());
+            // NOTHING TO REWIND: the rail stops pretending to be one (the view draws the live line). After every hook, so the hook
+            // order never varies.
+            if (mode == SeekRailMode.Line)
+                return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Line = true });
+            if (_hairline)
+                return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Hairline = true });
 
             var chapterId = Playback.CurrentId.Value;
             uint chapterEpoch = Entities.ScopeEpoch.Value;
-            bool chapterRail = chapterId.Kind == EntityKind.Episode && mode == SeekRailMode.Track;
+            bool chapterRail = PlayerBarFacts.Seek.ChapterRail(chapterId.Kind, mode);
             var chapterIdentity = new ChapterResources.Identity(chapterEpoch, Entities.Current.Key.Account, chapterId);
-            Element chapters = chapterRail
-                ? Embed.Comp(() => new BarChapterTimeline(chapterIdentity, _railPx, _chapterHover, _scrubFrac, _chapterHovering, _scrubbing))
+            Element? chapters = chapterRail
+                ? Embed.Comp(() => new BarChapterTimeline(chapterIdentity, _scrub.RailPx, _chapterHover, _scrub.Fraction, _chapterHovering, _scrub.Scrubbing))
                     with { Key = "player-chapters:" + chapterEpoch + ":" + chapterId.Text }
-                : new BoxEl { HitTestVisible = false };
-            var s = Slider.DefaultStyle;
-            var fill = new BoxEl
+                : null;
+            return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
             {
-                Grow = 1f, Height = s.TrackHeight, AlignSelf = FlexAlign.Center,
-                Fill = enabled ? s.ValueFill : s.ValueFillDisabled,
-                HoverFill = enabled ? s.ValueFillPointerOver : s.ValueFillDisabled,
-                PressedFill = enabled ? s.ValueFillPressed : s.ValueFillDisabled,
-                // Square: a scaled rounded rect shows cap slivers at the value edge.
-                Corners = CornerRadius4.All(0f), HitTestVisible = false,
-                TransformOriginX = 0f, Transform = _fillBind,
-            };
-            // The DVR rail's right end IS the live edge, so it is marked.
-            Element[] railKids = mode == SeekRailMode.Dvr
-                ? new Element[]
-                {
-                    fill,
-                    new BoxEl
-                    {
-                        Grow = 1f, Height = s.TrackHeight, Direction = 0, Justify = FlexJustify.End, HitTestVisible = false,
-                        Children = [new BoxEl { Width = 2f, Height = s.TrackHeight, Shrink = 0f, Fill = Tok.AccentDefault, HitTestVisible = false }],
-                    },
-                }
-                : new Element[] { fill };
-
-            float rest = enabled ? s.InnerRestScale : s.InnerDisabledScale;
-            var stack = new BoxEl
-            {
-                // Shrink + MinWidth 0 on every layer: the engine's flex items do not shrink by default, and a ZStack can
-                // measure its available width as its own size, so without them the rail keeps that width and paints under the
-                // right cluster to the window edge.
-                ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = HitHeight, AlignItems = FlexAlign.Center, HitTestVisible = false,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Height = s.TrackHeight, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Center,
-                        Fill = enabled ? s.RailFill : s.RailFillDisabled,
-                        Corners = CornerRadius4.All(s.TrackCornerRadius), ClipToBounds = true, ZStack = true,
-                        HitTestVisible = false, Children = railKids,
-                    },
-                    chapters,
-                    new BoxEl
-                    {
-                        Width = RingDiameter, Height = RingDiameter,
-                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Corners = CornerRadius4.All(s.ThumbCornerRadius),
-                        Fill = s.ThumbRing, HoverFill = s.ThumbRing, PressedFill = s.ThumbRing,
-                        BorderBrush = s.ThumbBorder, BorderWidth = s.ThumbBorderWidth,
-                        Opacity = 0f, HoverOpacity = enabled ? 1f : 0f, PressedOpacity = enabled ? 1f : 0f,
-                        HitTestVisible = false, Transform = _thumbBind, OnRealized = _onThumbRealized,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Width = s.InnerThumbDiameter, Height = s.InnerThumbDiameter,
-                                Corners = CornerRadius4.All(s.InnerThumbDiameter * 0.5f),
-                                Fill = enabled ? s.ThumbFill : s.ThumbFillDisabled,
-                                HoverFill = enabled ? s.ThumbFillPointerOver : s.ThumbFillDisabled,
-                                PressedFill = enabled ? s.ThumbFillPressed : s.ThumbFillDisabled,
-                                ScaleX = rest, ScaleY = rest,
-                                HoverScale = enabled ? s.InnerHoverScale / s.InnerRestScale : 1f,
-                                PressScale = enabled ? s.InnerPressScale / s.InnerRestScale : 1f,
-                                HoverDurationMs = Design.Motion.Standard, PressDurationMs = Design.Motion.Standard,
-                                HitTestVisible = false,
-                            },
-                        ],
-                    },
-                    // The keyboard ladder's commit clock (zero-size; the rail never re-renders for it): mounted wherever a rail is, so the bar,
-                    // the fullscreen stage and the on-media transport all commit their Left/Right steps.
-                    Embed.Comp(static () => new BarKeyLadderTick()) with { Key = "key-ladder-tick" },
-                ],
-            };
-
-            // Click-anywhere + drag scrub; OnClick is the drag-END commit edge. Chapter decoration never owns input.
-            return new BoxEl
-            {
-                Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = HitHeight, Direction = 0, AlignItems = FlexAlign.Center,
-                Role = AutomationRole.Slider, IsEnabled = enabled,
-                Cursor = enabled ? CursorId.Hand : null,
-                OnBoundsChanged = _onBounds,
-                OnPointerDown = enabled ? _onDown : null,
-                OnDrag = enabled ? _onDrag : null,
-                OnClick = enabled ? _onCommit : null,
-                OnDragCanceled = enabled ? _onCancel : null,
-                OnHoverMove = chapterRail && enabled ? _onHover : null,
-                OnPointerExit = chapterRail ? _onExit : null,
-                Children = [stack],
-            };
+                Host = this, Enabled = enabled, Dvr = mode == SeekRailMode.Dvr, ChapterRail = chapterRail, Chapters = chapters,
+            });
         }
+
+        // ── what the view binds and calls (ISeekRailHost): one instance, every member built once ──
+
+        Prop<Affine2D> ISeekRailHost.FillTransform => _fillBind;
+
+        Prop<Affine2D> ISeekRailHost.ThumbTransform(float ringDiameter)
+        {
+            if (ringDiameter != _thumbRing)
+            {
+                _thumbRing = ringDiameter;
+                _thumbBind = Prop.Of(() => Affine2D.Translation(SeekRail.ThumbX(_scrub.RailPx.Value, _scrub.Display.Value, ringDiameter), 0f));
+            }
+            return _thumbBind;
+        }
+
+        Action<Point2> ISeekRailHost.PointerDown => _onDown;
+        Action<Point2> ISeekRailHost.DragMove => _onDrag;
+        Action ISeekRailHost.Commit => _onCommit;
+        Action ISeekRailHost.Cancel => _onCancel;
+        Action<Point2> ISeekRailHost.HoverMove => _onHover;
+        Action ISeekRailHost.PointerExit => _onExit;
+        Action<RectF> ISeekRailHost.BoundsChanged => _onBounds;
+        Action<NodeHandle> ISeekRailHost.ThumbRealized => _onThumbRealized;
+        IReadSignal<bool> ISeekRailHost.Playing => Playback.IsPlaying;
+
+        // The keyboard ladder's commit clock (zero-size; the rail never re-renders for it): mounted wherever a rail is, so the bar,
+        // the fullscreen stage and the on-media transport all commit their Left/Right steps.
+        Element ISeekRailHost.KeyLadderTick() => Embed.Comp(static () => new BarKeyLadderTick()) with { Key = "key-ladder-tick" };
 
         void OnReport()
         {
@@ -1733,107 +539,50 @@ public static partial class Shell
             _ = Playback.IsBehindLive.Value;
             _ = Playback.PhaseSignal.Value;
             _ = Playback.LastSeekLandedGen.Value;    // a landing re-runs this even when no position moved with it
-            _ = s_keyPreviewMs.Value;                // the keyboard ladder's target moves the thumb too
-            // The drop-point hold ends on a LANDING past the generation the commit saw (V-PA12) — not on the first report after
-            // it: the committing drain's own publish is a report, and releasing there repaints the PRE-seek position for the whole
-            // flight of the seek. The same hold covers the bar, the flagship stage and the video overlay (all host this rail).
-            // No landing (a foreign owner, a parked deck) -> SeekRail.CommitHoldMs ends it.
-            if (_committedAtMs > 0L && !_scrubbing.Peek()
-                && Playback.SeekLandedAfter(_committedGen, Playback.LastSeekLandedGen.Peek())) _committedAtMs = 0L;
-            Recompute();
+            _ = ScrubController.KeyPreviewMs.Value;  // the keyboard ladder's target moves the thumb too
+            // The drop-point hold ends on a LANDING past the generation the commit saw (V-PA12), and re-derives the resting
+            // fraction (`ScrubController.OnModelReport`): the same hold covers the bar, the flagship stage and the video
+            // overlay (all host this rail). No landing (a foreign owner, a parked deck) -> SeekRail.CommitHoldMs ends it.
+            _scrub.OnModelReport();
         }
 
-        /// <summary>Re-derive the ONE value the binds read. Peeks only — it runs from the ticker and from effects.</summary>
-        void Recompute()
+        /// <summary>The gesture's edges, fanned out to the chrome-activity seams: <c>true</c> on press, <c>false</c> on commit or
+        /// cancel (a scrub is chrome activity, so the rail that drives it must be able to say so).</summary>
+        void OnGesture(bool active)
         {
-            var live = Playback.Live.Peek();
-            var mode = SeekRail.ModeOf(live);
-            long now = Playback.FrameNowMs();
-            bool holding = SeekRail.HoldsDrop(_committedAtMs, now);
-            float model = 0f;
-            if (!_scrubbing.Peek() && !holding)
-            {
-                bool advancing = SeekRail.Advances(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(),
-                    Playback.PhaseSignal.Peek(), Playback.Buffering.Peek());
-                // THE CLOCK: the model's timestamped sample, extrapolated on the clock it was stamped with — or, while the keyboard ladder
-                // is live (stepping, or committed and waiting for its seek to land), the ladder's target.
-                long key = s_keyPreviewMs.Peek();
-                long position = key >= 0L ? key
-                    : advancing ? Playback.Snap().Position(now)
-                    : mode == SeekRailMode.Dvr ? live.PositionMs : Playback.PositionMs.Peek();
-                model = SeekRail.ModelFraction(mode, position, Playback.DurationMs.Peek(), live, Playback.IsBehindLive.Peek());
-            }
-            float shown = SeekRail.Displayed(_scrubbing.Peek() || holding, _scrubFrac.Peek(), model);
-            _displayFrac.SetIfChanged(SeekRail.Quantize(shown, _railPx.Peek()));   // an unmoved pixel writes nothing
+            _chromeFeed?.SetScrubbing(active);
+            _onScrubbing?.Invoke(active);
         }
-
-        static bool EnabledNow() => SeekRail.Enabled(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(),
-            Playback.PhaseSignal.Peek(), Playback.CanSeek.Peek());
-
-        /// <summary>Where the pointer stands, in ms: the rail's own commit target (<see cref="SeekRail.CommitTargetMs"/> — a track through the
-        /// reducer's seek clamp, a DVR window into its edges), so what the scrub arms carry, what the labels show and what the release
-        /// commits are one number (U-8).</summary>
-        int ScrubTargetMs() => (int)Math.Clamp(
-            SeekRail.CommitTargetMs(_scrubFrac.Peek(), Playback.DurationMs.Peek(), Playback.Live.Peek()), 0L, int.MaxValue);
 
         void OnDown(Point2 local)
         {
-            if (!EnabledNow()) return;
-            _scrubbing.Value = true;
-            _chromeFeed?.SetScrubbing(true);
-            _onScrubbing?.Invoke(true);
-            _scrubFrac.Value = SeekRail.FractionAt(local.X, _railPx.Peek());   // jump to the press point
-            Playback.ScrubBegin(ScrubTargetMs());                               // the reducer decides: grains, or a visual-only scrub
+            if (!_scrub.Begin(_scrub.FractionAt(local.X))) return;   // jump to the press point; the reducer decides grains or a visual-only scrub
             OpenReadout();
-            Recompute();
         }
 
-        void OnDragMove(Point2 local)
-        {
-            if (!EnabledNow()) return;
-            _scrubFrac.Value = SeekRail.FractionAt(local.X, _railPx.Peek());
-            Playback.ScrubMove(ScrubTargetMs());
-            Recompute();
-        }
+        void OnDragMove(Point2 local) => _scrub.Update(_scrub.FractionAt(local.X));
 
+        /// <summary>The drag-END edge. The controller always releases the gate (a commit that cannot happen cancels), so the
+        /// readout closes either way.</summary>
         void OnCommit()
         {
-            // Always release the gate — bailing with it set would freeze the fill at the abandoned finger position.
-            if (!EnabledNow()) { OnCancel(); return; }
-            var live = Playback.Live.Peek();
-            long duration = Playback.DurationMs.Peek();
-            if (!SeekRail.CanCommit(live, duration)) { OnCancel(); return; }
-            _committedGen = Playback.SeekGen.Peek();   // BEFORE the post: a synchronous marshaller drains (and bumps it) inside ScrubEnd
-            Playback.ScrubEnd(ScrubTargetMs());        // the gesture's ONE seek (the reducer: an audible scrub's release, else an ordinary seek)
-            _committedAtMs = Math.Max(1L, Playback.FrameNowMs());
+            _scrub.Commit();
             CloseReadout();
-            _scrubbing.Value = false;
-            _chromeFeed?.SetScrubbing(false);
-            _onScrubbing?.Invoke(false);
-            Recompute();
         }
 
         void OnCancel()
         {
-            Playback.ScrubCancel();                    // idempotent: a gesture the reducer never began is nothing
+            _scrub.Cancel();
             CloseReadout();
-            _scrubbing.Value = false;
-            _chromeFeed?.SetScrubbing(false);
-            _onScrubbing?.Invoke(false);
-            _committedAtMs = 0L;
-            Recompute();
         }
 
         // ── the scrub readout (U-7) ──
 
-        /// <summary>The readout wants a time at the pointer where the rail is a plain track: not a DVR window (its labels say how far behind
-        /// live) and not an episode's chapter rail (its own timeline already names the chapter under the pointer).</summary>
-        bool ReadoutWanted()
-            => SeekRail.ModeOf(Playback.Live.Peek()) == SeekRailMode.Track && Playback.CurrentId.Peek().Kind != EntityKind.Episode;
-
+        /// <summary>Open the readout bubble where the controller wants one (<see cref="ScrubController.ReadoutWanted"/>: a plain
+        /// track, not a DVR window or an episode's chapter rail).</summary>
         void OpenReadout()
         {
-            if (_overlay is null || _readout is { IsOpen: true } || !ReadoutWanted()) return;
+            if (_overlay is null || _readout is { IsOpen: true } || !_scrub.ReadoutWanted) return;
             _readout = _overlay.Open(_readoutAnchor, _readoutContent, FlyoutPlacement.Top,
                 new PopupOptions(FocusTrap: false, DismissBehavior: DismissBehavior.None, Chrome: PopupChrome.Raw));
         }
@@ -1849,51 +598,9 @@ public static partial class Shell
         /// re-renders per move (the Slider's thumb tip does the same).</summary>
         string ReadoutLabel()
         {
-            float fraction = _scrubFrac.Value;
-            long ms = SeekRail.CommitTargetMs(fraction, Playback.DurationMs.Peek(), Playback.Live.Peek());
+            float fraction = _scrub.Fraction.Value;
+            long ms = _scrub.TargetMsAt(fraction);
             return s_clockText.Get(ms / 1000L, static sec => Playback.TimeFormat.Clock(sec * 1000L));
-        }
-
-        Element ReadoutBubble() => new BoxEl
-        {
-            Fill = ColorF.Transparent, Acrylic = Tok.AcrylicFlyout,
-            BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1f,
-            Corners = Radii.ControlAll, Shadow = Elevation.Flyout,
-            Padding = new Edges4(8f, 3f, 8f, 5f),
-            Children = [new TextEl(_readoutText) { Size = 15f, Color = Tok.TextPrimary }],
-        };
-    }
-
-    /// <summary>The rail for a broadcast with NOTHING TO REWIND: a 2-DIP accent line that breathes 0.55 ↔ 1 over 3 s —
-    /// only while playing, the window is active and motion is not reduced; otherwise the loop is REPLACED IN PLACE by a
-    /// finite flat track so the frame loop quiesces. Not a slider: no hit test, no role.</summary>
-    sealed class BarLiveLine : Component
-    {
-        static readonly Keyframe[] Breathe = [new(0f, 0.55f), new(0.5f, 1f), new(1f, 0.55f)];
-        static readonly Keyframe[] Flat = [new(0f, 1f), new(1f, 1f)];
-
-        public override Element Render()
-        {
-            bool playing = Playback.IsPlaying.Value;
-            bool windowActive = UseIsActive().Value;
-            bool breathe = playing && windowActive && !Design.Reduced;   // reduced motion is a VALUE, never a hook branch
-            UseKeyframes(AnimChannel.Opacity, breathe ? Breathe : Flat, breathe ? 3000f : 1f, breathe, DepKey.From(breathe));
-
-            // Shrink on both, like BarSeekRail (G-254): a grown line keeps its last arranged width across a narrowing
-            // resize unless it may shrink, and pushes the right cluster off the bar.
-            return new BoxEl
-            {
-                Grow = 1f, Shrink = 1f, Height = 32f, Direction = 0, AlignItems = FlexAlign.Center,
-                HitTestVisible = false, Role = AutomationRole.None,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = 2f, Corners = CornerRadius4.All(1f),
-                        Fill = Tok.AccentDefault, HitTestVisible = false,
-                    },
-                ],
-            };
         }
     }
 
@@ -1904,23 +611,44 @@ public static partial class Shell
     static readonly FormatCache<long> s_minusClockText = new();
     static readonly FormatCache<long> s_goLiveText = new();
 
-    /// <summary>One time label. The digits are a BOUND text channel — reading the position in Render would rebuild
-    /// the whole label at tick rate (0.2.9's steady-churn census finding). The structural reads (live or not) go
-    /// through a memo; the show-remaining preference is read INSIDE the bind.</summary>
+    /// <summary>"GO LIVE −m:ss", read inside the live slot's bind.</summary>
+    static readonly Func<string> s_goLiveLabel = static () => s_goLiveText.Get(Playback.Live.Value.BehindMs / 1000L,
+        static sec => Loc.Get(Strings.Play.GoLive) + " " + Strings.Play.Behind(Playback.TimeFormat.Clock(sec * 1000L)));
+
+    /// <summary>The live slot's DECIDED edge: behind a rewindable window it offers the way back.</summary>
+    static readonly Func<bool> s_offersGoLive = static () => TimeLabel.OffersGoLive(Playback.Live.Value, Playback.IsBehindLive.Value);
+
+    /// <summary>One time label's CORE HOST: it mounts <see cref="ViewKeys.TimeLabel"/>. The digits are a BOUND text channel —
+    /// reading the position in a render would rebuild the whole label at tick rate (0.2.9's steady-churn census finding). The
+    /// structural read (live or not) goes through a memo; the show-remaining preference is read INSIDE the bind.</summary>
+    [CoreHost]
     sealed class BarTimeText : Component
     {
         readonly bool _remaining;
         readonly ColorF? _ink;
         readonly IReadSignal<bool>? _reveal;   // the on-media strip's chrome-visible signal (null = always live)
         string _shown = "";                    // the last text the bind produced: what a concealed label keeps holding
-        readonly Prop<string> _label;
+        readonly Func<string> _label;
 
         public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null)
         {
             _remaining = remaining;
             _ink = ink;
             _reveal = reveal;
-            _label = Prop.Of<string>(Label);
+            _label = Label;
+            _widest = Widest;
+        }
+
+        readonly Func<string> _widest;
+
+        /// <summary>The widest this label can read for the playing track: the duration's clock with every digit a "0" (and the remaining slot's minus).</summary>
+        string Widest()
+        {
+            long duration = Playback.DurationMs.Value;
+            if (Playback.Live.Value.IsLive || duration <= 0L) return _remaining ? "-0:00" : "0:00";
+            var clock = Playback.TimeFormat.Clock(duration).ToCharArray();
+            for (int i = 0; i < clock.Length; i++) if (char.IsDigit(clock[i])) clock[i] = '0';
+            return (_remaining ? "-" : "") + new string(clock);
         }
 
         string Label()
@@ -1935,7 +663,7 @@ public static partial class Shell
             // U-7: while the pointer drags (the reducer's scrub model) or the keyboard ladder is live, the label follows the TARGET — the
             // elapsed slot counts up to it and the remaining slot counts down from it. A live broadcast keeps its own clock (tune-in).
             long scrub = Playback.ScrubPositionMs.Value;
-            long key = s_keyPreviewMs.Value;
+            long key = ScrubController.KeyPreviewMs.Value;
             if (!isLive) position = scrub >= 0L ? scrub : key >= 0L ? key : position;
             var (ms, minus) = TimeLabel.Of(_remaining, Prefs.PlayerBar.ShowRemaining(), position, duration, isLive, tunedIn,
                 isLive ? Playback.UnixNowMs() : 0L);
@@ -1948,83 +676,20 @@ public static partial class Shell
         public override Element Render()
         {
             bool isLive = UseComputed(static () => Playback.Live.Value.IsLive).Value;
-            if (TimeLabel.RightSlotIsLive(_remaining, isLive))
+            return ViewSlots.View(ViewKeys.TimeLabel, new TimeLabelProps
             {
-                var ink = _ink;
-                return Embed.Comp(() => new BarLiveSlot(ink));
-            }
-
-            bool right = _remaining;
-            var caption = FluentGpu.Dsl.Ui.Caption("");
-            return new BoxEl
-            {
-                // The slot is a reservation at rest (0:09 → 0:10 moves nothing) and a FLOOR while live (h:mm:ss).
-                Width = isLive ? float.NaN : TimeLabel.SlotW, MinWidth = TimeLabel.SlotW, Shrink = 0f,
-                Direction = 0, AlignItems = FlexAlign.Center,
-                Justify = right ? FlexJustify.Start : FlexJustify.End,   // the digits hug the rail
-                HoverFill = right ? (_ink is null ? Tok.FillSubtleSecondary : Design.OnMedia.GlassHover) : ColorF.Transparent,
-                PressedFill = right ? (_ink is null ? Tok.FillSubtleTertiary : Design.OnMedia.GlassPressed) : ColorF.Transparent,
-                Corners = Radii.ControlAll,
-                OnClick = right ? static () => Prefs.PlayerBar.ToggleRemaining() : null,
-                Cursor = right ? CursorId.Hand : null,
-                Children =
-                [
-                    _ink is { } inkColor
-                        ? caption with { Text = _label, Color = inkColor, Wrap = TextWrap.NoWrap }
-                        : caption with { Text = _label, Wrap = TextWrap.NoWrap },
-                ],
-            };
-        }
-    }
-
-    /// <summary>The right slot while live: ONE 104-DIP reservation, right-aligned, holding the LIVE word-mark or —
-    /// behind a rewindable window — the GO LIVE action. The swap moves nothing (parity 65); which of the two is the
-    /// model's DECIDED edge state, never a threshold here.</summary>
-    sealed class BarLiveSlot(ColorF? ink) : Component
-    {
-        readonly ColorF? _ink = ink;
-        readonly Prop<string> _goLive = Prop.Of(static () => s_goLiveText.Get(Playback.Live.Value.BehindMs / 1000L,
-            static sec => Loc.Get(Strings.Play.GoLive) + " " + Strings.Play.Behind(Playback.TimeFormat.Clock(sec * 1000L))));
-
-        public override Element Render()
-        {
-            bool offer = UseComputed(static () => TimeLabel.OffersGoLive(Playback.Live.Value, Playback.IsBehindLive.Value)).Value;
-            ColorF fg = _ink ?? Design.Accent.Decor;
-            Element face = offer
-                ? new BoxEl
-                {
-                    // A TEXT button, not a plate — a filled accent here would outrank the transport itself.
-                    MinWidth = 44f, Shrink = 0f, Height = 20f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = Radii.ControlAll,
-                    HoverFill = _ink is null ? Tok.FillSubtleSecondary : Design.OnMedia.GlassHover,
-                    PressedFill = _ink is null ? Tok.FillSubtleTertiary : Design.OnMedia.GlassPressed,
-                    HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
-                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                    OnClick = static () => Playback.GoLive(),
-                    Children = [new TextEl(_goLive) { Size = 9f, LineHeight = 12f, Weight = 600, Color = fg, Wrap = TextWrap.NoWrap }],
-                }
-                : new BoxEl
-                {
-                    Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Spacing.XXS,
-                    Children =
-                    [
-                        // STATIC red: a blinking dot would keep the frame loop awake for its whole life.
-                        new BoxEl { Width = 6f, Height = 6f, Shrink = 0f, Corners = CornerRadius4.All(3f), Fill = Tok.SystemFillCritical },
-                        new BoxEl
-                        {
-                            Height = 14f, Padding = new Edges4(Spacing.XXS, 0f, Spacing.XXS, 0f), Shrink = 0f,
-                            Corners = CornerRadius4.All(2f), BorderWidth = 1f, BorderColor = fg,
-                            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                            Children = [new TextEl(Loc.Get(Strings.Play.Live)) { Size = 9f, LineHeight = 12f, Weight = 600, Color = fg, Wrap = TextWrap.NoWrap }],
-                        },
-                    ],
-                };
-
-            return new BoxEl
-            {
-                Width = TimeLabel.LiveSlotW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                Children = [face],
-            };
+                Remaining = _remaining,
+                Ink = _ink,
+                IsLive = isLive,
+                // The right slot while live is the LIVE word-mark or the GO LIVE action: there is no duration to count.
+                LiveSlot = TimeLabel.RightSlotIsLive(_remaining, isLive),
+                Label = _label,
+                Widest = _widest,
+                ToggleRemaining = static () => PlayerVerbs.Default.ToggleRemaining(),
+                OffersGoLive = s_offersGoLive,
+                GoLiveText = s_goLiveLabel,
+                GoLive = static () => PlayerVerbs.Default.GoLive(),
+            });
         }
     }
 }

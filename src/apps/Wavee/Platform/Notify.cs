@@ -144,9 +144,6 @@ public readonly record struct NotificationPolicy(bool WindowsEnabled, bool Sound
         return (byte)level > (byte)ceiling ? ceiling : level;
     }
 
-    /// <summary>Should this topic appear in the in-app notification centre?</summary>
-    public bool ShowsInApp(NotifyLevel level) => Clamp2(level) != NotifyLevel.Off;
-
     /// <summary>Should this topic raise a Windows banner NOW (at <paramref name="local"/>)? Requires the master gate,
     /// the topic dialled to Windows, and the moment to be outside quiet hours. LIVE escalation only — a SCHEDULED
     /// toast asks <see cref="ScheduleAt"/> instead, because its delivery moment is not now.</summary>
@@ -224,12 +221,6 @@ public static class NotifyRows
         EntityUri uri, string name, string? imageUrl, string creator, string? albumType, bool played)
         => new(id, timestampMs, isUnread, NotifyCategory.NewRelease, Title: name, ImageUrl: imageUrl,
             Subject: uri, ReleaseKind: kind, Creator: creator, AlbumType: albumType, Played: played);
-
-    /// <summary>A local library-mutation entry — the Undo trail. The activity JOURNAL itself is `Entities/Store.cs`'s
-    /// (ch 19 §7 DATA GAP 3); this only shapes the row.</summary>
-    public static Notification ForActivity(string id, long timestampMs, bool isUnread, string title, string body,
-        EntityUri subject)
-        => new("act:" + id, timestampMs, isUnread, NotifyCategory.Activity, Title: title, Body: body, Subject: subject);
 }
 
 // ══ 3. THE SPOTIFY-FEED CLASSIFIER ══════════════════════════════════════════════════════════════════════════════════
@@ -475,19 +466,6 @@ public static partial class Notify
                        Platform.Settings.Get(Platform.Keys.NotifyQuietFromHour),
                        Platform.Settings.Get(Platform.Keys.NotifyQuietToHour)).Normalized());
 
-        /// <summary>Which categories the in-app centre may surface, derived from the per-topic dials. A category stays
-        /// visible while ANY of its topics is above Off — the pills are coarser than the dials, so hiding "Spotify"
-        /// because followers were silenced would also hide the concerts the user still wants.</summary>
-        public static bool ShowsCategory(NotifyCategory category) => category switch
-        {
-            NotifyCategory.NewRelease => Level(NotifyTopic.NewAlbums) != NotifyLevel.Off
-                                      || Level(NotifyTopic.NewEpisodes) != NotifyLevel.Off,
-            NotifyCategory.Social => Level(NotifyTopic.Concerts) != NotifyLevel.Off
-                                  || Level(NotifyTopic.Followers) != NotifyLevel.Off,
-            NotifyCategory.AppUpdate => Level(NotifyTopic.AppUpdates) != NotifyLevel.Off,
-            _ => Level(NotifyTopic.LibraryActivity) != NotifyLevel.Off,
-        };
-
         /// <summary>The topic a concrete row belongs to — the FINE answer the display category cannot give (its "New"
         /// pill covers albums AND episodes; its "Spotify" pill covers concerts AND followers).</summary>
         public static NotifyTopic TopicOf(in Notification n) => n.Category switch
@@ -511,9 +489,8 @@ public static partial class Notify
     /// bell badge read back.</para>
     /// <para>Bounded by construction: trimmed to <see cref="Cap"/> ids, oldest-first, and CLEARED whenever the
     /// watermark advances (a mark-all subsumes every individual id), so it cannot grow without limit.</para>
-    /// <para>Scans in place, no split and no allocation on the read path. The same codec shape as
-    /// <c>Shell.TipsCore</c>, deliberately NOT shared with it: a tip id is a dotted ASCII constant this app authored,
-    /// while these are opaque SERVER ids and need the separator guard + the cap.</para></summary>
+    /// <para>Scans in place, no split and no allocation on the read path. These are opaque SERVER ids, so the set needs
+    /// the separator guard and the cap.</para></summary>
     public static class ReadIds
     {
         /// <summary>The set separator. An id containing it is REFUSED by <see cref="Add"/> rather than corrupting the
@@ -1101,11 +1078,6 @@ public static partial class Notify
 
     // ══ 12. THE PANEL'S DECISIONS (ch 19 W14-W17) ══════════════════════════════════════════════════════════════════
 
-    /// <summary>The panel's fixed geometry: 380 wide, the whole panel caps at 520, and the feed scrolls at most 420 so the
-    /// header (48: 12 + 28 + 8) and the chip strip (50: 2 + <see cref="Controls.ChipRailExtent"/>) above it still fit
-    /// under the cap (48 + 50 + 420 = 518).</summary>
-    public const float PanelWidth = 380f, FeedMaxHeight = 420f, PanelMaxHeight = 520f;
-
     /// <summary>Relative times advance on this cadence while the panel is open (auto-paused when parked).</summary>
     public const int RelativeTickMs = 30_000;
 
@@ -1147,6 +1119,10 @@ public static partial class Notify
 
     /// <summary>"Clear" is rendered ONLY while the Activity pill is selected.</summary>
     public static bool ShowsClear(NotifyFilter filter) => filter == NotifyFilter.Activity;
+
+    /// <summary>Is a filter with no rows still WAITING on a remote feed it shows (the ladder's "Loading" rung below)? The feed's skeleton stands then.</summary>
+    public static bool FeedLoading(NotifyFilter filter, FeedState social, FeedState releases)
+        => EmptyMessageKey(filter, social, releases) == Strings.Notifications.Loading;
 
     /// <summary>THE EMPTY LADDER. A remote category with zero rows is only EMPTY when its feed actually loaded — a
     /// loading, failed or offline fetch must say so instead of masquerading as "no notifications". Returns a loc key.</summary>

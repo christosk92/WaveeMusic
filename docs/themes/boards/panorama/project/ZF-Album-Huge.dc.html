@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album panorama, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="huge" sel="library" ctx="Random Access Memories" items="Songs|More by Daft Punk|Details" sub-sel="{{zero}}" crumb="Library › Albums › Daft Punk" hint-size="2560px,136px"></dc-import>
+  <div style="height: 1220px; flex-shrink: 0; display: flex; min-height: 0">
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); border-right: 1px solid var(--stroke); border-top-right-radius: 8px">
+      <h1 title="Random Access Memories" style="margin: 0; padding: 12px 36px 0 36px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Random Access Memories</h1>
+      <div style="display: flex; gap: 48px; padding: 8px 36px 0 36px; min-height: 0; flex-grow: 1">
+        <section aria-label="Album" style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+          <span style="width: 340px; height: 340px; border-radius: 8px; background: linear-gradient(160deg, #4a3a26, #2a2118); display: block"></span>
+          <a href="#" style="font-size: 18px; line-height: 24px; color: var(--acct)">Daft Punk</a>
+          <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album · 2013 · 13 songs, 74 min</span>
+          <span style="display: flex; gap: 8px; align-items: center; padding-top: 6px">
+            <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+            <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Saved</button>
+            <button aria-label="Shuffle" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </span>
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px; padding-top: 14px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Credits</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">All credits</a></div>
+          <div style="display: flex; flex-direction: column">
+            <sc-for list="{{credits}}" as="c" hint-placeholder-count="6"><a href="#" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="font-size: 14px; line-height: 20px">{{c.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{c.role}}</span></a></sc-for>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px; padding-top: 14px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About Daft Punk</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">Artist page</a></div>
+          <p style="margin: 0; font-size: 14px; line-height: 20px; color: var(--t2)">Thomas Bangalter and Guy-Manuel de Homem-Christo met at school in Paris and spent almost three decades turning house music into an event, from Homework to this, their last studio album. <a href="#" style="color: var(--acct)">More</a></p>
+          <span style="font-size: 12px; line-height: 16px; color: var(--t2)"><span style="color: var(--acct)">24.6M monthly listeners</span> · 11M followers</span>
+        </section>
+        <section aria-label="Songs" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+          <div role="row" style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 220px 80px 40px 56px 32px; align-items: baseline; height: 36px"><h2 style="grid-column: 1 / 3; margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Songs</h2><span style="font-size: 12px; color: var(--t2)">Artists</span><span style="font-size: 12px; color: var(--t2); text-align: right">Plays</span><span></span><span style="font-size: 12px; color: var(--t2); text-align: right">Time</span><span></span></div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="13">
+            <div role="row" style="{{r.row}}">
+              <sc-if value="{{r.sel}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span></sc-if>
+              <span style="{{r.numStyle}}"><sc-if value="{{r.playing}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{r.showNum}}" hint-placeholder-val="{{ true }}">{{r.n}}</sc-if></span>
+              <span style="{{r.titleStyle}}">{{r.t}}</span>
+              <span style="font-size: 14px; line-height: 20px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px">{{r.a}}</span>
+              <span style="font-size: 12px; color: var(--t2); text-align: right; font-variant-numeric: tabular-nums">{{r.plays}}</span>
+              <span style="display: flex; align-items: center; justify-content: center"><sc-if value="{{r.liked}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Liked" role="img"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></sc-if></span>
+              <span style="{{r.timeStyle}}">{{r.time}}</span>
+              <span style="display: flex; align-items: center; justify-content: center"><sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="More" role="img"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></sc-if></span>
+            </div>
+          </sc-for>
+          <div style="display: flex; align-items: center; gap: 20px; height: 44px; padding: 0 12px; margin-top: 4px; border-top: 1px solid var(--div); font-size: 12px; color: var(--t2)"><span>13 songs · 74 min 13 s</span><span>Released 17 May 2013</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct); white-space: nowrap">Show the 10th anniversary edition (2023)</a></div>
+          <div style="display: flex; gap: 32px; padding-top: 24px; min-height: 0">
+            <section aria-label="Listen next" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+              <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Listen next</h2><span style="font-size: 12px; color: var(--t2)">If you like this record</span></div>
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px">
+                <sc-for list="{{next}}" as="n" hint-placeholder-count="10"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="{{n.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.title}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.sub}}</span></span></a></sc-for>
+              </div>
+            </section>
+            <section aria-label="Details" style="width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+              <div style="height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Details</h2></div>
+              <div style="padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); font-size: 14px; line-height: 20px; color: var(--t2)">Recorded over five years in Paris, New York and Los Angeles with live session players, the duo's fourth studio album won Album of the Year at the 56th Grammy Awards.</div>
+              <div role="table" aria-label="Release facts" style="display: flex; flex-direction: column">
+                <sc-for list="{{facts}}" as="f" hint-placeholder-count="5"><div role="row" style="display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; min-height: 40px; border-top: 1px solid var(--div); font-size: 14px; line-height: 20px"><span role="cell" style="color: var(--t2)">{{f.k}}</span><span role="cell" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.v}}</span></div></sc-for>
+              </div>
+            </section>
+          </div>
+        </section>
+        <section aria-label="More by Daft Punk" style="width: 400px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">More by Daft Punk</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">Show all 9</a></div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{more}}" as="m" hint-placeholder-count="6"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{m.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{m.n}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{m.y}}</span></a></sc-for>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px; padding-top: 18px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Fans also like</h2></div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{fans}}" as="f" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{f.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap">{{f.n}}</span></a></sc-for>
+          </div>
+        </section>
+      </div>
+    </main>
+    <div style="display: flex; flex-shrink: 0">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; background: var(--stroke)"></span>
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="lyrics" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+    </div>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="huge" variant="music" pane="queue" hint-size="2560px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const data = [['Give Life Back to Music', 'Daft Punk', '412M', '4:34', {}], ['The Game of Love', 'Daft Punk', '186M', '5:21', {}], ['Giorgio by Moroder', 'Daft Punk, Giorgio Moroder', '298M', '9:04', { liked: true }], ['Within', 'Daft Punk, Chilly Gonzales', '121M', '3:48', {}], ['Instant Crush', 'Daft Punk, Julian Casablancas', '1.1B', '5:37', { hover: true }], ['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', '640M', '5:53', {}], ['Touch', 'Daft Punk, Paul Williams', '98M', '8:18', { sel: true }], ['Get Lucky', 'Daft Punk, Pharrell Williams, Nile Rodgers', '2.1B', '6:09', { playing: true, liked: true }], ['Beyond', 'Daft Punk', '87M', '4:50', {}], ['Motherboard', 'Daft Punk', '79M', '5:41', {}], ['Fragments of Time', 'Daft Punk, Todd Edwards', '64M', '4:39', {}], ['Doin’ It Right', 'Daft Punk, Panda Bear', '402M', '4:11', { liked: true }], ['Contact', 'Daft Punk', '58M', '6:21', {}]];
+  const rows = data.map((d, i) => {
+    const f = d[4];
+    return { n: String(i + 1), t: d[0], a: d[1], plays: d[2], time: d[3], playing: !!f.playing, showNum: !f.playing, liked: !!f.liked && !f.hover, hover: !!f.hover, sel: !!f.sel,
+      row: 'position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) 220px 80px 40px 56px 32px; align-items: center; height: 40px; margin-top: 2px; border-radius: 4px; ' + ((f.hover || f.sel) ? 'background: var(--sub)' : ''),
+      numStyle: 'padding-left: 12px; display: flex; align-items: center; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-weight: 400; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t3)'),
+      titleStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; color: ' + (f.playing ? 'var(--acct)' : 'var(--t1)'),
+      timeStyle: 'text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t2)') };
+  });
+  const credits = [['Daft Punk', 'Producers · all songs'], ['Nile Rodgers', 'Guitar · 3 songs'], ['Pharrell Williams', 'Vocals · 2 songs'], ['Giorgio Moroder', 'Voice · Giorgio by Moroder'], ['Julian Casablancas', 'Vocals · Instant Crush'], ['Mick Guzauski', 'Mixing']].map((c) => ({ name: c[0], role: c[1] }));
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + c + '; display: block';
+  const more = [['Discovery', '2001', '#2f3a5a'], ['Homework', '1997', '#2a2a2a'], ['Human After All', '2005', '#5a2a2a'], ['Tron: Legacy', '2010 · Soundtrack', '#2a4a5a'], ['Alive 2007', '2007 · Live', '#3a3a5a'], ['Random Access Memories (10th Anniversary Edition)', '2023', '#4a3a26']].map((m) => ({ n: m[0], y: m[1], art: sq(m[2]) }));
+  const fans = [['Justice', '#3a2f4a'], ['Breakbot', '#5a3a2a'], ['Chromeo', '#2f4a5a'], ['Parcels', '#4a5a2f']].map((f) => ({ n: f[0], art: 'width: 84px; height: 84px; border-radius: 42px; display: block; background: ' + f[1] }));
+  const next = [['C’est Chic', 'Chic · 1978 · the guitar Nile Rodgers brought to Get Lucky', '#5a4a2f'], ['From Here to Eternity', 'Giorgio Moroder · 1977', '#2f3b5a'], ['Woman', 'Justice · 2016', '#3a2f4a'], ['Parcels', 'Parcels · 2018 · produced with Daft Punk’s help', '#4a5a2f'], ['Still Waters', 'Breakbot · 2016', '#5a3a2a'], ['Currents', 'Tame Impala · 2015', '#5a2f4a'], ['Hurry Up, We’re Dreaming', 'M83 · 2011 · in your library', '#3b4a6b'], ['Settle', 'Disclosure · 2013', '#2f4a5a'], ['Wolfgang Amadeus Phoenix', 'Phoenix · 2009', '#3a4a5a'], ['Moon Safari', 'Air · 1998', '#2f5a4a']].map((n) => ({ title: n[0], sub: n[1], art: 'width: 40px; height: 40px; border-radius: 4px; display: block; background: ' + n[2] }));
+  const facts = [['Label', 'Columbia Records'], ['Released', '17 May 2013'], ['Recorded', 'Paris, New York, Los Angeles'], ['Genres', 'Disco, funk, electronic, soft rock'], ['Awards', 'Grammy · Album of the Year 2014']].map((f) => ({ k: f[0], v: f[1] }));
+  return { vars, theme, accent, rows, credits, more, fans, next, facts, paneW: 380, midH: 1220, zero: 0, yes: true };
+}
+}
+</script>
+</body>
+</html>

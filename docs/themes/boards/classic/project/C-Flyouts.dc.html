@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flyouts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #282828; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="position: absolute; left: 32px; right: 32px; top: 24px; height: 44px; display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773); border-bottom: 1px solid rgba(255,255,255,0.082)">
+    <span style="display: inline-flex; align-items: center; height: 32px; border-radius: 4px; background: #60cdff; color: #000; font-size: 14px"><span style="width: 88px; text-align: center">▶ Play</span><span style="width: 1px; height: 20px; background: rgba(0,0,0,0.2)"></span><span style="width: 32px; text-align: center">⌄</span></span>
+    <span style="flex-grow: 1"></span>
+    <span style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 9px; border: 1px solid #60cdff; border-radius: 4px; background: rgba(96,205,255,0.14); color: #a6d8ff">⏚ Filter <span style="min-width: 18px; height: 18px; border-radius: 9px; background: #60cdff; color: #000; font-size: 11px; display: inline-flex; align-items: center; justify-content: center">2</span></span>
+    <span style="height: 32px; display: flex; align-items: center; padding: 0 10px; border-radius: 4px; background: rgba(96,205,255,0.11); color: #a6d8ff">⇅ Title <span style="margin-left: 6px">⌄</span></span>
+    <span style="width: 32px; text-align: center">⌕</span><span style="width: 32px; text-align: center">⋯</span>
+  </div>
+  <div role="menu" aria-label="More ways to play" style="position: absolute; left: 32px; top: 74px; width: 220px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); font-size: 14px">
+    <div style="height: 36px; display: flex; align-items: center; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059)">Add to queue</div><div style="height: 36px; display: flex; align-items: center; padding: 0 12px">Play next</div><div style="height: 36px; display: flex; align-items: center; padding: 0 12px">Start radio</div>
+  </div>
+  <section role="dialog" aria-label="Filter" style="position: absolute; left: 640px; top: 74px; width: 360px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 24px rgba(0,0,0,0.45)">
+    <div style="height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid rgba(255,255,255,0.08)"><span style="font-size: 16px; font-weight: 600">Filter</span><span style="font-size: 12px; color: rgba(255,255,255,0.773); flex-grow: 1">32 of 69 songs</span><a href="#" style="font-size: 14px; padding: 0 8px">Reset</a></div>
+    <div style="padding: 8px 4px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="7"><div style="height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 8px"><span style="{{r.ls}}">{{r.l}}</span><span style="{{r.combo}}">{{r.v}}<span style="position: absolute; right: 10px; color: rgba(255,255,255,0.773); font-size: 11px">⌄</span></span></div></sc-for>
+    </div>
+    <span style="display: block; height: 1px; margin: 0 8px; background: rgba(255,255,255,0.08)"></span>
+    <div style="padding: 8px 4px 8px">
+      <sc-for list="{{toggles}}" as="t" hint-placeholder-count="2"><div style="height: 44px; display: flex; align-items: center; padding: 0 8px"><span style="{{t.ls}}">{{t.l}}</span><span style="{{t.track}}"><span style="{{t.knob}}"></span></span></div></sc-for>
+    </div>
+  </section>
+  <div role="menu" aria-label="Sort" style="position: absolute; left: 1030px; top: 74px; width: 220px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); font-size: 14px">
+    <sc-for list="{{sort}}" as="s" hint-placeholder-count="9"><sc-if value="{{s.sep}}" hint-placeholder-val="{{false}}"><span style="display: block; height: 1px; margin: 4px 8px; background: rgba(255,255,255,0.082)"></span></sc-if><sc-if value="{{s.item}}" hint-placeholder-val="{{true}}"><div role="menuitemradio" aria-checked="{{s.on}}" style="{{s.s}}"><span style="width: 14px; color: #60cdff">{{s.m}}</span>{{s.l}}</div></sc-if></sc-for>
+  </div>
+  <div role="menu" aria-label="List options" style="position: absolute; left: 1150px; top: 480px; width: 240px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); font-size: 14px">
+    <div style="height: 36px; display: flex; align-items: center; padding: 0 12px">Select</div>
+    <div style="height: 36px; display: flex; align-items: center; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059)"><span style="flex-grow: 1">Row size</span>›</div>
+    <div style="height: 36px; display: flex; align-items: center; padding: 0 12px"><span style="flex-grow: 1">Columns</span>›</div>
+    <span style="display: block; height: 1px; margin: 4px 8px; background: rgba(255,255,255,0.082)"></span>
+    <div style="height: 36px; display: flex; align-items: center; padding: 0 12px">Copy to playlist</div>
+  </div>
+  <div role="menu" aria-label="Row size" style="position: absolute; left: 960px; top: 520px; width: 190px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); font-size: 14px">
+    <sc-for list="{{sizes}}" as="s" hint-placeholder-count="4"><div role="menuitemradio" aria-checked="{{s.on}}" style="height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px"><span style="width: 14px; color: #60cdff">{{s.m}}</span><span style="flex-grow: 1">{{s.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{s.h}}</span></div></sc-for>
+  </div>
+  <div style="position: absolute; left: 32px; top: 560px; width: 560px; font-size: 13px; line-height: 20px; color: rgba(255,255,255,0.773)">
+    <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 6px">What these replace</div>
+    <div>Play split menu: one accent control, 12 px chevron, always Add to queue · Play next · Start radio (D2).</div>
+    <div>Filter flyout B: replaces the long collapsible form; the count in the header and the badge on the button follow every change at once (D5).</div>
+    <div>Sort: one label and one chevron in the bar; direction is a radio group in the menu; the button is lit only off the page default (D6).</div>
+    <div>Row size, Select and Columns live in the list ⋯ (D3); Row size writes the Classic density option.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const combo = (on) => 'position: relative; width: 168px; height: 32px; box-sizing: border-box; display: flex; align-items: center; padding: 0 30px 0 11px; border-radius: 4px; font-size: 14px; ' + (on ? 'background: rgba(96,205,255,0.14); border: 1px solid #60cdff' : 'background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.09)');
+  const rows = [['Date added', 'Last 30 days', 1], ['Length', 'Any duration'], ['Tempo', 'Any tempo'], ['Explicit', 'Hide', 1], ['Video', 'Show'], ['Source', 'Any source'], ['Search in', 'Everything']].map(r => ({ l: r[0], v: r[1], ls: 'flex-grow: 1; font-size: 14px; color: ' + (r[2] ? '#fff' : 'rgba(255,255,255,0.773)'), combo: combo(!!r[2]) }));
+  const toggles = [['Only songs I liked', false], ['Hide songs I can’t play', true]].map(t => ({ l: t[0], ls: 'flex-grow: 1; font-size: 14px; color: ' + (t[1] ? '#fff' : 'rgba(255,255,255,0.773)'), track: 'position: relative; width: 40px; height: 20px; box-sizing: border-box; border-radius: 10px; ' + (t[1] ? 'background: #60cdff' : 'border: 1px solid #c5c5c5'), knob: 'position: absolute; top: ' + (t[1] ? 4 : 3) + 'px; left: ' + (t[1] ? 24 : 4) + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + (t[1] ? '#000' : '#c5c5c5') }));
+  const it = (l, on) => ({ item: true, sep: false, l, on: on ? 'true' : 'false', m: on ? '●' : '', s: 'height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 4px' + (on ? '; background: rgba(255,255,255,0.059)' : '') });
+  const sort = [it('Custom order'), it('Title', true), it('Artist'), it('Album'), it('Date added'), it('Duration'), { sep: true, item: false }, it('Ascending', true), it('Descending')];
+  const sizes = [['Compact', '40'], ['Default', '48', 1], ['Cozy', '56'], ['Comfortable', '64']].map(s => ({ l: s[0], h: s[1], on: s[2] ? 'true' : 'false', m: s[2] ? '●' : '' }));
+  return { rows, toggles, sort, sizes };
+}
+}
+</script>
+</body>
+</html>

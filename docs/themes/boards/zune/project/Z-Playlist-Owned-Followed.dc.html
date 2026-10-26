@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune playlist header: owned and followed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c8c8c8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 820px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; gap: 24px; padding: 28px 0 0 0; overflow: hidden">
+  <div style="font-size: 13px; color: #7a7a7a; padding: 0 48px">owned · the title and description are the editor (hover underlines them), the cover takes a drop, the access line is a sentence, ⋯ holds delete</div>
+  <div style="display: flex; gap: 32px; align-items: flex-end; padding: 32px 48px 24px 48px; background: #1f1a24">
+    <div style="width: 200px; height: 200px; flex-shrink: 0; position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr))">
+      <span style="background: #3b4a6b"></span><span style="background: #6b2f4a"></span><span style="background: #2f5b6b"></span><span style="background: #5b3b6b"></span>
+      <span style="position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; font-size: 13px">change cover</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; flex-grow: 1">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.25); text-underline-offset: 10px; text-decoration-thickness: 1px">late night drive</span>
+      <span style="font-size: 14px; line-height: 20px; color: #7a7a7a">add an optional description</span>
+      <span style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: #9c9c9c"><span style="width: 20px; height: 20px; border-radius: 10px; background: #5b6b3b"></span><a href="#" style="color: #ffffff">christos</a><span>· public playlist · anyone can find and view · collaborative · 2 collaborators · 42 songs · 2 hr 31 min</span></span>
+      <span style="display: flex; gap: 22px; align-items: center; padding-top: 8px; font-size: 14px">
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">+</span>invite</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">↗</span>share</button>
+        <button aria-label="more" style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">⋯</span></button>
+      </span>
+    </div>
+    <div style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #a8a8a8; align-self: flex-start; padding-top: 8px">
+      <span style="color: #ffffff">tune</span><span>mix settings for this playlist</span>
+      <span style="color: #ffffff; margin-top: 12px">recommended songs</span><span>a section under the table, with "add" words per row</span>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 22px; padding: 0 48px; font-size: 14px; color: #c8c8c8">
+    <a href="#" style="color: #ffffff">all</a><a href="#">pop</a><a href="#">synthwave</a><a href="#">electronic</a>
+    <span style="flex-grow: 1"></span>
+    <a href="#">filter</a><a href="#">sort: custom order</a><a href="#">row size</a><a href="#">find</a>
+  </div>
+  <div style="font-size: 13px; color: #7a7a7a; padding: 20px 48px 0 48px">followed · nothing edits; the owner is a person link, saves count, the heart means follow</div>
+  <div style="display: flex; gap: 32px; align-items: flex-end; padding: 32px 48px 24px 48px; background: #1a2024">
+    <div style="width: 200px; height: 200px; flex-shrink: 0; background: #2f3b6b"></div>
+    <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; flex-grow: 1">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">synthwave essentials</span>
+      <span style="font-size: 14px; line-height: 20px; color: #c8c8c8; max-width: 720px">Neon-lit retro-futurism: the essential synthwave tracks, from the pioneers to the new wave. <a href="#" style="color: #ffffff">more</a></span>
+      <span style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: #9c9c9c"><span style="width: 20px; height: 20px; border-radius: 10px; background: #1db954"></span><a href="#" style="color: #ffffff">Spotify</a><span>· 120 songs · 7 hr 48 min · 1,204,331 saves</span></span>
+      <span style="display: flex; gap: 22px; align-items: center; padding-top: 8px; font-size: 14px">
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ringOn}}">♥</span>following</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">↗</span>share</button>
+        <button aria-label="more" style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">⋯</span></button>
+      </span>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 22px; padding: 0 48px; font-size: 14px; color: #c8c8c8">
+    <a href="#" style="color: #ffffff">all</a><a href="#">synthwave</a><a href="#">retrowave</a><a href="#">darksynth</a>
+    <span style="flex-grow: 1"></span>
+    <a href="#">filter</a><a href="#">sort: custom order</a><a href="#">row size</a><a href="#">find</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":820}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  return {
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ringOn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid ' + accent + '; color: ' + accent + '; display: flex; align-items: center; justify-content: center; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

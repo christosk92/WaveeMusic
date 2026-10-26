@@ -45,8 +45,8 @@ A refused op pushes no undo and writes no file. Callers must check `Changed`.
 ## Data and feeds
 
 **Recent or New releases fetch while hidden.** Cause: the planner asked for a feed the layout does not show. Rule: a
-feed is demanded only while its section is shown (`SidebarFeedDemands`). Adding a feed means adding its demand rule
-and a test of that rule, not a fetch in the section.
+feed is demanded only while its section is shown (`SidebarFeedDemands`). Adding a feed means adding its demand rule,
+not a fetch in the section.
 
 **The pane does not re-plan when a new input changes.** Cause: the binder's revision did not fold the new input. Rule: a
 new planner input is folded into the binder's revision (`SidebarProjectionBinder`). `SidebarReplanCensus` names which
@@ -65,14 +65,13 @@ routes, never pins, and never written to the server pin set.
 **A write over the live file leaves a half-written `sidebar.json`.** Cause: a direct write that bypasses the store. Rule: `SidebarFileStore` writes a
 temp file, rotates the previous file to `.bak`, and sets an unreadable file aside as `.corrupt`. Route every write
 through the store. A document over `MaxDocumentBytes` (256 KiB) is dropped whole and reported as
-`SidebarSaveFault.DocumentTooLarge`; the file is not touched.
+`SidebarPersistenceFault.DocumentTooLarge` (`LastWriteResult`); the file is not touched.
 
 **A downgrade loses the user's layout.** Cause: the migration deleted the old settings values. Rule: keep the old values
 in `settings.json`. The `sidebar.bootstrap.version = 2` latch prevents a second read.
 
 **A new persisted field is silently dropped.** Cause: the DTO is missing from `SidebarStoreJsonCtx`, or the mapping
-skips it. Rule: a persisted field needs the DTO, the context registration and a round-trip test in
-`SidebarStoreV3Tests`. Unknown section ids are dropped on read and returned for logging. Do not write a field the reader
+skips it. Rule: a persisted field needs the DTO and the context registration. Unknown section ids are dropped on read and returned for logging. Do not write a field the reader
 will not understand.
 
 ## Drag and drop
@@ -102,5 +101,5 @@ tween for the sidebar, and never a `MotionTok.Disclosure*` token (they are delet
 ## Keys
 
 **Ctrl+Z or Ctrl+Y acts outside the sidebar.** Cause: the undo chord is handled above the sidebar, at frame level. Rule:
-Ctrl+Z and Ctrl+Y are taken by the sidebar's own key handlers (`Sidebar.UI.Edit.cs`), and only with focus in the pane,
+Ctrl+Z and Ctrl+Y are taken by the sidebar's own key handlers (`Views/Nav/ClassicNavEdit.cs`; the key table is `NavEditModel`), and only with focus in the pane,
 the head or the edit bar. They are never a frame chord.

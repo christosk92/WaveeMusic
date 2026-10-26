@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune recents · huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="recents › all" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="recents" sub="all,music,podcasts,artists" on="all" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; gap: 56px; padding: 8px 48px 0 48px; overflow: hidden">
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+          <sc-for list="{{days}}" as="d" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; flex-shrink: 0">
+              <div style="display: flex; align-items: center; gap: 16px; height: 56px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">{{d.label}}</span><span style="font-size: 13px; color: #7a7a7a">{{d.date}}</span><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.08)"></span><span style="font-size: 13px; color: #7a7a7a">{{d.count}}</span></div>
+              <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="4">
+                <div style="{{r.row}}">
+                  <span style="font-size: 12px; color: #7a7a7a">{{r.kind}}</span>
+                  <span style="{{r.art}}"></span>
+                  <span style="display: flex; flex-direction: column; min-width: 0; gap: 2px"><span style="{{r.title}}">{{r.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.caption}}</span></span>
+                  <span style="font-size: 13px; color: #9c9c9c">{{r.device}}</span>
+                  <span style="font-size: 13px; color: #9c9c9c; text-align: right; font-variant-numeric: tabular-nums">{{r.dur}}</span>
+                  <span style="font-size: 13px; color: #7a7a7a; font-variant-numeric: tabular-nums; text-align: right">{{r.time}}</span>
+                  <span style="font-size: 12px; color: #7a7a7a; text-align: center">{{r.chev}}</span>
+                </div>
+                <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; flex-direction: column; padding: 0 0 10px 136px">
+                    <sc-for list="{{r.tracks}}" as="t" hint-placeholder-count="6"><div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr) 80px 64px; align-items: center; height: 44px"><span style="{{t.num}}">{{t.n}}</span><span style="{{t.title}}">{{t.name}}</span><span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.artist}}</span><span style="font-size: 13px; color: #7a7a7a; text-align: right; font-variant-numeric: tabular-nums">{{t.at}}</span><span style="font-size: 13px; color: #9c9c9c; text-align: right">{{t.time}}</span></div></sc-for>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 4px">overview</span>
+          <sc-for list="{{months}}" as="m" hint-placeholder-count="2">
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px">
+              <span style="font-size: 13px; color: #a8a8a8">{{m.label}}</span>
+              <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px">
+                <sc-for list="{{m.cells}}" as="c" hint-placeholder-count="35"><span style="{{c}}"></span></sc-for>
+              </div>
+            </div>
+          </sc-for>
+          <span style="font-size: 12px; color: #7a7a7a; display: flex; align-items: center; gap: 8px">quieter <span style="display: flex; gap: 2px"><sc-for list="{{legend}}" as="l" hint-placeholder-count="4"><span style="{{l}}"></span></sc-for></span> busier <span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">jump to today</a></span>
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 16px">this month</span>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+            <sc-for list="{{stats}}" as="s" hint-placeholder-count="3"><span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 200; line-height: 48px">{{s.v}}</span><span style="font-size: 12px; color: #a8a8a8">{{s.k}}</span></span></sc-for>
+          </div>
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 12px">most played</span>
+          <sc-for list="{{top}}" as="t" hint-placeholder-count="4"><a href="#" style="display: grid; grid-template-columns: 36px 52px minmax(0, 1fr) auto; align-items: center; height: 56px; color: #ffffff"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; color: #7a7a7a">{{t.n}}</span><span style="{{t.art}}"></span><span style="font-size: 15px">{{t.name}}</span><span style="font-size: 12px; color: #7a7a7a">{{t.plays}}</span></a></sc-for>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="friends" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const trackList = [['Nightcall', 'Kavinsky', '14:32', '4:18', true], ['Midnight City', 'M83', '14:28', '4:03'], ['Resonance', 'HOME', '14:24', '3:32'], ['A Real Hero', 'College, Electric Youth', '14:20', '4:27'], ['Tech Noir', 'Gunship', '14:15', '4:55'], ['Sunset', 'The Midnight', '14:10', '5:36']];
+  const row = (kind, name, caption, device, dur, time, color, open, playing, round) => ({
+    kind, name, caption, device, dur, time, open, chev: open ? '▴' : '▾',
+    row: 'display: grid; grid-template-columns: 72px 64px minmax(0, 1fr) 180px 90px 72px 40px; align-items: center; height: 72px; flex-shrink: 0; ' + (open ? 'background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 56px; height: 56px; background: ' + color + '; display: block; border-radius: ' + (round ? '28px' : '2px'),
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? accent : '#ffffff'),
+    tracks: open ? trackList.map((t, i) => ({ n: t[4] ? '▮▮▮' : String(i + 1), name: t[0], artist: t[1], at: t[2], time: t[3], num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (t[4] ? 10 : 20) + 'px; letter-spacing: ' + (t[4] ? '1px' : '0') + '; color: ' + (t[4] ? accent : '#7a7a7a'), title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; color: ' + (t[4] ? accent : '#ffffff') })) : [],
+  });
+  const days = [
+    { label: 'today', date: 'thursday, october 30', count: '12 plays', rows: [row('playlist', 'late night drive', 'played 6 tracks · grouped from 9 plays', 'this pc', '26 min', '14:32', '#3b4a6b', true, true, false), row('album', 'Random Access Memories', 'Daft Punk · played 3 tracks', 'living room', '17 min', '11:05', '#3a2f22', false, false, false), row('podcast', 'The Rest Is Football', 'why the premier league keeps changing · 23 min', 'phone', '23 min', '08:40', '#2f4a3b', false, false, false)] },
+    { label: 'yesterday', date: 'wednesday, october 29', count: '31 plays', rows: [row('artist', 'The Midnight', 'played 8 tracks', 'this pc', '41 min', '22:18', '#6b4a2f', false, false, true), row('liked songs', 'Liked Songs', 'played 12 tracks · shuffled', 'this pc', '48 min', '19:02', '#5b2f6b', false, false, false), row('song', 'Supernova', 'aespa · Armageddon', 'phone', '3:00', '17:44', '#5b2f6b', false, false, false)] },
+    { label: 'tuesday', date: 'october 28', count: '18 plays', rows: [row('album', 'OutRun', 'Kavinsky · played 9 tracks', 'this pc', '38 min', '21:10', '#6b2f4a', false, false, false), row('audiobook', 'Project Hail Mary', 'chapter 13 · 28 min', 'phone', '28 min', '07:55', '#1f3a4a', false, false, false)] },
+  ];
+  const shade = (v) => v === 0 ? 'background: rgba(255,255,255,0.06)' : 'background: ' + accent + '; opacity: ' + (v === 1 ? 0.35 : v === 2 ? 0.65 : 1);
+  const pat = [0,1,2,1,0,3,2, 1,1,2,3,2,1,0, 2,3,3,2,1,1,2, 0,1,2,2,3,1,0, 1,2,0,0,0,0,0];
+  const pat2 = [1,2,2,3,1,2,3, 2,1,1,2,3,3,2, 1,2,3,2,1,2,1, 2,3,2,1,1,2,3, 1,2,1,0,0,0,0];
+  const months = [['october · 212 plays so far', pat], ['september · 486 plays', pat2]].map((m) => ({ label: m[0], cells: m[1].map((v) => 'height: 48px; display: block; ' + shade(v)) }));
+  const legend = [0, 1, 2, 3].map((v) => 'width: 12px; height: 12px; display: block; ' + shade(v));
+  const stats = [['212', 'plays'], ['14 hr', 'listening'], ['63', 'artists']].map((d) => ({ v: d[0], k: d[1] }));
+  const top = [['Kavinsky', '47 plays', '#6b2f4a'], ['The Midnight', '31 plays', '#6b4a2f'], ['Daft Punk', '24 plays', '#3a2f22'], ['aespa', '19 plays', '#5b3b6b']].map((d, i) => ({ n: String(i + 1), name: d[0], plays: d[1], art: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[2] }));
+  return { accent, days, months, legend, stats, top };
+}
+}
+</script>
+</body>
+</html>

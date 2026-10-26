@@ -8,7 +8,7 @@
 // Spec: docs/plans/wavee/privacy-diagnostics-tab-implementation.md §5.8
 //
 // ENGINE-FREE: plain data in, plain data out — no component, no signal, no token, no loc LOOKUP (the keys are returned,
-// the UI file resolves them), so `PrivacyDiagnosticsRulesTests` pins every decision over in-memory bundles.
+// the view resolves them), so `PrivacyDiagnosticsRulesTests` pins every decision over in-memory bundles.
 
 using System.Globalization;
 

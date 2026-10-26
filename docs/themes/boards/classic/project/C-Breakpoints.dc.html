@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Window size breakpoints</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2600px; box-sizing: border-box; overflow: hidden; padding: 64px 72px; display: flex; flex-direction: column; gap: 40px; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <header style="display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.529)">WAVEE CLASSIC (TUNED) · WINDOW SIZES</span>
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Breakpoints</h1>
+    <p style="margin: 0; max-width: 900px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Width picks the tier; height only trims (heroes, strips). Every threshold has hysteresis so a window resting on a line never flickers, and every change animates or holds its space: nothing snaps.</p>
+  </header>
+
+  <section aria-label="Width ruler" style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Window width (DIP)</h2>
+    <div style="display: grid; grid-template-columns: 228fr 480fr 912fr 1920fr; gap: 4px; height: 96px">
+      <sc-for list="{{tiers}}" as="t" hint-placeholder-count="4">
+        <div style="{{t.box}}">
+          <span style="font-size: 14px; line-height: 20px; font-weight: 600">{{t.name}}</span>
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); font-variant-numeric: tabular-nums">{{t.range}}</span>
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)">{{t.drawn}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: 228fr 480fr 912fr 1920fr; gap: 4px; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529); font-variant-numeric: tabular-nums">
+      <span>min 300 wide (Shell.Host.cs:258) · min 330 tall</span><span>to Small at ≥ 568 · back below 528</span><span>to Standard at ≥ 1048 · back below 1008</span><span>to Huge at ≥ 1920 · back below 1880 · Huge 4K uses the same rules at 3840</span>
+    </div>
+  </section>
+
+  <section aria-label="Why these numbers" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+    <sc-for list="{{why}}" as="w" hint-placeholder-count="3">
+      <div style="box-sizing: border-box; padding: 16px 20px; border-radius: 8px; background: rgba(58,58,58,0.298); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600">{{w.t}}</span>
+        <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">{{w.b}}</span>
+      </div>
+    </sc-for>
+  </section>
+
+  <section aria-label="What changes at each tier" style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">What changes, and how it moves</h2>
+    <div role="table" aria-label="Changes per tier" style="display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.098); background: rgba(58,58,58,0.298)">
+      <div role="row" style="display: grid; grid-template-columns: 150px repeat(4, minmax(0, 1fr)) 260px; column-gap: 16px; padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 12px; line-height: 16px; font-weight: 600; color: rgba(255,255,255,0.529)">
+        <span role="columnheader">Surface</span><span role="columnheader">Compact &lt; 528</span><span role="columnheader">Small 528–1007</span><span role="columnheader">Standard 1008–1919</span><span role="columnheader">Huge ≥ 1920</span><span role="columnheader">How it moves</span>
+      </div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+        <div role="row" style="{{r.style}}">
+          <span role="rowheader" style="font-weight: 600">{{r.s}}</span>
+          <span role="cell" style="color: rgba(255,255,255,0.773)">{{r.c}}</span>
+          <span role="cell" style="color: rgba(255,255,255,0.773)">{{r.m}}</span>
+          <span role="cell" style="color: rgba(255,255,255,0.773)">{{r.d}}</span>
+          <span role="cell" style="color: rgba(255,255,255,0.773)">{{r.h}}</span>
+          <span role="cell" style="color: #a6d8ff">{{r.mv}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section aria-label="Height and motion" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+    <div style="box-sizing: border-box; padding: 20px 24px; border-radius: 8px; background: rgba(58,58,58,0.298); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 14px; line-height: 20px; font-weight: 600">Short windows (height &lt; 680, leave ≥ 720)</span>
+      <sc-for list="{{short}}" as="x" hint-placeholder-count="5"><span style="display: flex; gap: 10px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)"><span aria-hidden="true" style="width: 4px; height: 4px; margin-top: 8px; flex-shrink: 0; border-radius: 2px; background: #60cdff"></span>{{x}}</span></sc-for>
+    </div>
+    <div style="box-sizing: border-box; padding: 20px 24px; border-radius: 8px; background: rgba(58,58,58,0.298); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 14px; line-height: 20px; font-weight: 600">No layout jumps</span>
+      <sc-for list="{{motion}}" as="x" hint-placeholder-count="5"><span style="display: flex; gap: 10px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)"><span aria-hidden="true" style="width: 4px; height: 4px; margin-top: 8px; flex-shrink: 0; border-radius: 2px; background: #60cdff"></span>{{x}}</span></sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tc = ['rgba(96,205,255,0.26)', 'rgba(96,205,255,0.18)', 'rgba(255,255,255,0.059)', 'rgba(96,205,255,0.10)'];
+  const tiers = [
+    ['Compact', '300–527', 'drawn 400 × 860'], ['Small', '528–1007', 'drawn 800 × 600'], ['Standard', '1008–1919', 'drawn 1440 × 960 (existing boards)'], ['Huge', '1920 and up', 'drawn 2560 × 1440 and 3840 × 2160']
+  ].map((t, i) => ({ name: t[0], range: t[1], drawn: t[2], box: 'box-sizing: border-box; padding: 12px 14px; border-radius: 8px; display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; background: ' + tc[i] + '; border: 1px solid ' + (i === 2 ? 'rgba(255,255,255,0.071)' : 'rgba(96,205,255,0.35)') }));
+  const why = [
+    ['528, not 640', 'Production already switches the sidebar to a drawer below 528 (bands 700 / 660 / 528). Compact starts exactly where the drawer does, so the tier and the nav change together.'],
+    ['1008 for Standard', 'Below 1008 a 320 sidebar plus a 340 side panel leaves less than 340 for the page (48 + 340 + 480 > 800), so the forced 48 rail and floating panels cover the whole Small band, widened from production’s 528–660.'],
+    ['1920 for Huge', 'Above 1920 the 1600 page max of Standard would leave dead margins. Huge lifts grids and shelves to 2400, docks two panels at once and opens side columns; type does not grow.']
+  ].map(w => ({ t: w[0], b: w[1] }));
+  const R = [
+    ['Nav', 'Drawer from ≡ (320, scrim); no rail', 'Forced 48 rail; ≡ opens the 320 pane as an overlay', 'Sidebar 320 (drag 180–460); collapses to the rail', 'Sidebar 320, covers allowed', 'Pane slides 200 ms; content never reflows under an overlay'],
+    ['Title bar', '≡, Back, Search icon, tab count', 'Search field, tabs collapse to a count', 'Tabs + search + account', '5+ tabs shown', 'Tabs fold into the count with a 150 ms fade'],
+    ['Player', 'Mini bar 56; opens a sheet', 'Medium tier (prev/next, times, volume, lyrics, queue)', 'Full tier (production 440/760/900/1100/1240)', 'Huge: 360 left zone, centred transport', 'Height constant 72 (56 mini); zones fade, never shift'],
+    ['Side panels', 'Bottom sheets at top 56', 'Float over the page (340, right 8)', 'Dock one (340)', 'Dock two at once (Lyrics + Queue)', 'Float → dock: page width animates 200 ms'],
+    ['Detail pages', 'Vertical hero (mode 3)', 'Two columns, rail 224 (mode 1)', 'Two columns, rail 280 / 240', 'Rail 320 + tracks + 520 side column', 'Rail width tweens; hero ↔ rail cross-fades once per crossing'],
+    ['Track rows', '2-line rows 56, ⋯ always visible', 'Drop Album, Date added, Plays', 'All lanes by table tier', 'All lanes + Plays, more rows', 'Lanes collapse width-first, then fade'],
+    ['Grids', '2 columns; shelves peek the 3rd', '3–5 columns', 'Auto-fill to 1600', 'Auto-fill to 2400 (shelf cards ≤ 220)', 'Column count changes move cards 250 ms'],
+    ['Artist hero', 'Narrow / Compact tier (32/40)', 'Medium, capped 288', 'Wide 440 (84/96)', 'Wide 560, copy max 1120', 'Hero tiers ±24 hysteresis, height tweens'],
+    ['Home', 'Daylist stacked; Recently played 1 column', 'Daylist 216; 3 × 2 tiles', 'Daylist + 4-column tiles', 'Daylist beside 2 × 5 tiles; 10-card shelves', 'Same order at every tier; only counts change'],
+    ['Full screen', 'Card layout (aspect class Compact)', 'Desktop class, Large cover', 'Desktop class', 'Ultrawide / large: gallery and Up next docked', 'Layout change cross-fades 300 ms'],
+    ['Settings', 'Controls wrap below text (< 476)', 'One column, max 1000', 'One column', 'Two columns of ≤ 1000', 'Card heights reserved; wrap animates'],
+    ['Dialogs, menus', 'Full width; menus are bottom sheets (rows 44)', 'Centred, max height H − 48', 'Centred', 'Two-pane where a preview helps', 'Sheets slide up 200 ms']
+  ];
+  const rows = R.map((r, i) => ({ s: r[0], c: r[1], m: r[2], d: r[3], h: r[4], mv: r[5], style: 'display: grid; grid-template-columns: 150px repeat(4, minmax(0, 1fr)) 260px; column-gap: 16px; padding: 12px 16px; font-size: 13px; line-height: 18px' + (i < R.length - 1 ? '; border-bottom: 1px solid rgba(255,255,255,0.082)' : '') }));
+  const short = [
+    'Heroes cap at 60 % of the content height (480 → 288).',
+    'Page top padding 16; daylist card 216 with the clock reduced to its countdown line.',
+    'Detail rail description clamps to 3 lines (production).',
+    'Full screen hides the spectrum strip; the transport card stays 96.',
+    'The player bar is always reserved: content scrolls, the bar never hides.'
+  ];
+  const motion = [
+    'Each threshold has 40 DIP hysteresis (production’s 24 for heroes and player tiers stays).',
+    'While the user drags the window edge, tiers re-evaluate only on pause (120 ms) so a sweep across three tiers animates once.',
+    'Panels that cannot dock float instead; the page under them keeps its width.',
+    'Space that comes and goes (InfoBars, list bars, selection bar) is reserved at its full height first.',
+    'Zoom (NQ1): Auto zoom is clamped so a window keeps its unzoomed tier; Manual zoom stops before the Compact floor.'
+  ];
+  return { tiers, why, rows, short, motion };
+}
+}
+</script>
+</body>
+</html>

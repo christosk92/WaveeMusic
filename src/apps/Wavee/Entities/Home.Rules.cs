@@ -12,7 +12,7 @@
 // Wave: 5
 // Budget: the pre-declared overflow partial of `Home.cs` (WP-5.P contract §1: used because Home.cs passed 2,340 lines)
 // Spec: ch 10 §8, ch 11 §8, ch 12 §8; plan §6.1 rows 10-12; 0.2.9 `Features/Home/{HomeTimelineMerge, HomeCardPlayRouting,
-//   HomeCards (:35-88, :248-264, :478-484, :1081-1088), HomeSectionRoutes, HomeSectionNavigation, HomeBrowseCards}.cs`
+//   HomeCards (:35-88, :248-264, :478-484, :1081-1088), HomeSectionNavigation, HomeBrowseCards}.cs`
 //
 // VERBATIM, with ONE type map (contract §2): `HomeFeed` → `HomeFeedView`, `HomeSection` → `HomeSectionView`,
 // `HomeCard`+`HomeCardMeta` → the `HomeCard` handle, a card's `Meta.X` → `card.X`, a card's uri comparison → its
@@ -46,7 +46,7 @@ public static class HomeWashSource
     {
         if (card is not { } c) return null;
         if (c.Accent != 0u)
-            return new HomeWashPick(Design.Palette.Lift(Design.Palette.ToColor(c.Accent)) with { A = 1f }, KeyOf(c));
+            return new HomeWashPick(ColorScience.Lift(ColorScience.ToColor(c.Accent)) with { A = 1f }, KeyOf(c));
         if (c.ImageUrl is { Length: > 0 } url && schemeFor(url) is { } scheme)
             return new HomeWashPick(Design.Palette.ChromeAccent(scheme) with { A = 1f }, KeyOf(c));
         return null;
@@ -68,7 +68,7 @@ public static class HomeWashSource
     }
 }
 
-// ══ 9. PLAY ROUTING, CARD TEXT, CARD COLOUR (0.2.9 HomeCardPlayRouting.cs, HomeCards.cs) ════════════════════════════
+// ══ 9. PLAY ROUTING AND CARD TEXT (0.2.9 HomeCardPlayRouting.cs, HomeCards.cs) ════════════════════════════════════
 
 /// <summary>How a card's ▶ starts playback.</summary>
 public static class HomeCardPlayRouting
@@ -95,16 +95,6 @@ public static class HomeCardText
         if (ms <= 0) return "";
         var c = CultureInfo.CurrentCulture;
         return ms >= 3600000 ? (ms / 3600000d).ToString("0.0", c) + " h" : Math.Round(ms / 60000d).ToString("0", c) + " m";
-    }
-
-    /// <summary>Play / listener counts: "1.2B", "3.4M", "5.6K", else the grouped number — culture-aware on the value.</summary>
-    public static string CompactNumber(long n)
-    {
-        var c = CultureInfo.CurrentCulture;
-        return n >= 1_000_000_000 ? (n / 1_000_000_000d).ToString("0.#", c) + "B"
-             : n >= 1_000_000 ? (n / 1_000_000d).ToString("0.#", c) + "M"
-             : n >= 1_000 ? (n / 1_000d).ToString("0.#", c) + "K"
-             : n.ToString("N0", c);
     }
 
     /// <summary>The first sentence of a blurb: STRIP FIRST (a raw fragment's first '.' is inside
@@ -146,74 +136,7 @@ public static class HomeCardText
     }
 }
 
-/// <summary>A card's identity colour — the ONE derivation (0.2.9 <c>HomeCards.RawAccent/Accent/SpineFallback/
-/// SpineAccent/AccentOrChrome</c>): the payload accent, else the graded cover's tinted base, else NOTHING. The hash
-/// palette only RE-HUES a real near-neutral seed; it never invents a colour for a card that has none.</summary>
-public static class HomeCardAccent
-{
-    /// <summary>The payload accent alone, or null.</summary>
-    public static ColorF? Raw(in HomeCard c) => c.Accent != 0u ? Design.Palette.ToColor(c.Accent) : null;
-
-    /// <summary>The identity seed: payload accent → the graded <c>BackgroundTintedBase</c> (else <c>BackgroundBase</c>) of
-    /// the card's cover → null. A card with no artwork is never asked.</summary>
-    public static ColorF? Seed(in HomeCard c, Func<string?, Scheme?> schemeFor)
-    {
-        if (Raw(in c) is { } payload) return payload;
-        if (c.ImageUrl is not { Length: > 0 } url || schemeFor(url) is not { } g) return null;
-        uint tone = g.BackgroundTintedBase != 0u ? g.BackgroundTintedBase : g.BackgroundBase;
-        return tone != 0u ? Design.Palette.ToColor(tone) : null;
-    }
-
-    /// <summary>The lifted identity colour, or null ("not graded yet" — paint nothing).</summary>
-    public static ColorF? Accent(in HomeCard c, Func<string?, Scheme?> schemeFor)
-        => Seed(in c, schemeFor) is { } seed ? Design.Palette.Lift(seed) : null;
-
-    /// <summary>The 2-DIP spine: null without a seed; a near-neutral seed is re-hued from the card's stable hash; then the
-    /// contrast-solved hairline (3.25:1, 3.55:1 hovered).</summary>
-    public static ColorF? SpineAccent(in HomeCard c, bool hovered, Func<string?, Scheme?> schemeFor)
-    {
-        if (Seed(in c, schemeFor) is not { } seed) return null;
-        var (_, saturation, _) = seed.ToHsv();
-        if (saturation <= Design.Palette.NeutralS) seed = SpineFallback(in c);
-        return hovered ? Design.Palette.HairlineHover(seed) : Design.Palette.Hairline(seed);
-    }
-
-    /// <summary>For chrome that must paint regardless (the hero's wash and Play): the identity colour, else
-    /// <paramref name="chrome"/> (the app accent the caller passes).</summary>
-    public static ColorF AccentOrChrome(in HomeCard c, ColorF chrome, Func<string?, Scheme?> schemeFor)
-        => Accent(in c, schemeFor) ?? chrome;
-
-    /// <summary>The theme-aware semantic role a near-neutral cover re-hues to, by the card identity's stable hash.</summary>
-    public static ColorF SpineFallback(in HomeCard c) => (StableHash(in c) & 3u) switch
-    {
-        0u => Tok.AccentDefault,
-        1u => Tok.SystemFillSuccess,
-        2u => Tok.SystemFillCaution,
-        _ => Tok.SystemFillCritical,
-    };
-
-    /// <summary>FNV-1a over the identity: the gid bytes, or the text form's characters — deterministic across runs.</summary>
-    public static uint StableHash(in HomeCard c)
-    {
-        uint h = 2166136261;
-        if (c.IsBlank) return h;
-        var id = c.Id;
-        if (id.Form == EntityForm.Gid)
-        {
-            Span<byte> gid = stackalloc byte[16];
-            id.WriteGid(gid);
-            for (int i = 0; i < gid.Length; i++) h = (h ^ gid[i]) * 16777619;
-        }
-        else
-        {
-            string text = Entities.Strings.Resolve(id.TextId);
-            for (int i = 0; i < text.Length; i++) h = (h ^ text[i]) * 16777619;
-        }
-        return h;
-    }
-}
-
-// ══ 10. SECTIONS: THE CHART FILTER AND THE ROUTES (ch 12 §8) ════════════════════════════════════════════════════════
+// ══ 10. SECTIONS: THE CHART FILTER (ch 12 §8) ═══════════════════════════════════════════════════════════════════════
 
 // The section's cursor arithmetic (`SectionPaging`, Home.cs) is the QUERY layer's now: a drill page demands its section
 // WHOLE and the provider walks it (Spotify/Spotify.Api.Browse.cs, `BrowseWalk`). The page-side ports that paged it —
@@ -243,28 +166,6 @@ public static class ChartTitleMatch
             if (TryFind(cards[i].Title, query, out _, out _)) hits.Add(cards[i]);
         return hits;
     }
-}
-
-/// <summary>The <c>home-section:</c> drill route. The ROUTE PREFIX, never the uri, selects the endpoint.</summary>
-public static class HomeSectionRoutes
-{
-    public const string Prefix = "home-section:";
-    /// <summary>A client-minted section identity: addresses nothing on any server, never a paging argument.</summary>
-    public const string LocalPrefix = "wavee:local:";
-
-    public static string Page(string sectionUri) => Prefix + sectionUri;
-    public static bool Is(string route) => route.StartsWith(Prefix, StringComparison.Ordinal);
-    public static string UriOf(string route) => Is(route) ? route[Prefix.Length..] : "";
-    public static bool IsLocal(string? uri) => uri is not null && uri.StartsWith(LocalPrefix, StringComparison.Ordinal);
-}
-
-/// <summary>The <c>browse-section:</c> drill route (answered through <c>browseSection</c>, whatever its uri looks like).</summary>
-public static class BrowseSectionRoutes
-{
-    public const string Prefix = "browse-section:";
-    public static string Page(string sectionUri) => Prefix + sectionUri;
-    public static bool Is(string route) => route.StartsWith(Prefix, StringComparison.Ordinal);
-    public static string UriOf(string route) => Is(route) ? route[Prefix.Length..] : "";
 }
 
 // ══ 11. THE CHARTS DECK (0.2.9 HomeBrowseCards.cs — the browse → home boundary) ══════════════════════════════════════

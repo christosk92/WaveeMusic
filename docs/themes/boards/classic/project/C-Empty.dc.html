@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Empty states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; background: #202020; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <section aria-label="New playlist" style="border-radius: 8px 0 0 0; background: #282828; border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); padding: 24px; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.529)">Playlist (owned, no songs)</span>
+    <div style="display: flex; gap: 14px; align-items: flex-end"><span style="width: 96px; height: 96px; border-radius: 8px; background: #2a2a2a; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.4)">♪</span><span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">New Playlist #4</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">0 songs</span></span></div>
+    <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 24px 0 8px"><span style="font-size: 28px; line-height: 36px; font-weight: 600">Nothing here yet</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Find songs to add, or start from the suggestions below.</span></div>
+    <div style="height: 32px; box-sizing: border-box; display: flex; align-items: center; padding: 0 10px; border-radius: 4px; background: rgba(30,30,30,0.7); border: 1px solid rgba(255,255,255,0.071); border-bottom: 2px solid #60cdff; font-size: 14px; color: rgba(255,255,255,0.6)">Search for songs or episodes</div>
+    <div style="display: flex; align-items: center; height: 40px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Recommended songs</span><span style="color: rgba(255,255,255,0.773)">↻</span></div>
+    <sc-for list="{{recs}}" as="r" hint-placeholder-count="4"><div style="height: 52px; display: flex; align-items: center; gap: 12px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">{{r.t}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.a}}</span></span><button aria-label="Add to playlist" style="width: 28px; height: 28px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: #fff">+</button></div></sc-for>
+  </section>
+  <section aria-label="Library, no podcasts" style="border-radius: 8px 0 0 0; background: #282828; border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); padding: 24px; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.529)">Library › Podcasts (nothing followed)</span>
+    <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400">Podcasts</span><span style="font-size: 14px; color: rgba(255,255,255,0.529)">0</span></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 4px; padding-bottom: 80px">
+      <svg width="48" height="48" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M8 7.5v6.5M6 14h4M5.2 4.8a4 4 0 0 0 0 5.4M10.8 4.8a4 4 0 0 1 0 5.4M3.5 3a6.5 6.5 0 0 0 0 9M12.5 3a6.5 6.5 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"></path></svg>
+      <span style="font-size: 28px; line-height: 36px; font-weight: 600; margin-top: 12px">No podcasts yet</span>
+      <span style="font-size: 12px; color: rgba(255,255,255,0.773)">Shows and episodes you follow will show up here.</span>
+      <button style="margin-top: 16px; height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Browse podcasts</button>
+    </div>
+  </section>
+  <section aria-label="Search, no results" style="border-radius: 8px 0 0 0; background: #282828; border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); padding: 24px; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.529)">Search (no match)</span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400">daft pnuk</span>
+    <div style="display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 14px"><span style="position: relative; padding: 8px 12px">All<span style="position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff"></span></span><span style="padding: 8px 12px; color: rgba(255,255,255,0.4)">Songs 0</span><span style="padding: 8px 12px; color: rgba(255,255,255,0.4)">Albums 0</span></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 4px; padding-bottom: 80px">
+      <span style="font-size: 28px; line-height: 36px; font-weight: 600">No results found</span>
+      <span style="font-size: 12px; color: rgba(255,255,255,0.773); max-width: 300px">Nothing matched “daft pnuk”. Try a different spelling or keyword.</span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const recs = [['Espresso', 'Sabrina Carpenter', '#4a7ab0'], ['Good Luck, Babe!', 'Chappell Roan', '#c06a8a'], ['APT.', 'ROSÉ, Bruno Mars', '#d06070'], ['Die With A Smile', 'Lady Gaga, Bruno Mars', '#3a3a3a']].map(r => ({ t: r[0], a: r[1], art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + r[2] }));
+  return { recs };
+}
+}
+</script>
+</body>
+</html>

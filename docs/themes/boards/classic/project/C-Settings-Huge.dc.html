@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings Appearance, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; overflow: hidden">
+      <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0"><svg width="24" height="24" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Settings</h1></div>
+      <div role="tablist" aria-label="Settings sections" style="display: flex; gap: 4px; margin: 12px 0 0 -12px; border-bottom: 1px solid rgba(255,255,255,0.082); flex-shrink: 0"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="7"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+      <div style="display: flex; gap: 32px; padding-top: 16px; align-items: flex-start">
+        <div style="width: 1000px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 1 0 0 12c.8 0 1-.6 1-1 0-.8-.6-1-.6-1.6 0-.6.4-1 1-1h1.3A3.3 3.3 0 0 0 14 7 6 6 0 0 0 8 2zM5 7.5h.01M6.5 5h.01M9.5 5h.01M11 7.5h.01" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg><span style="font-size: 14px; line-height: 20px; font-weight: 600">Theme</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">A theme changes how every page, the player and navigation look</span></div>
+          <div style="padding: 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)">
+            <div role="radiogroup" aria-label="Theme" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+              <sc-for list="{{themes}}" as="th" hint-placeholder-count="5">
+                <button role="radio" aria-checked="{{th.on}}" style="{{th.card}}">
+                  <span style="{{th.thumb}}"><span style="{{th.a}}"></span><span style="{{th.b}}"></span><span style="{{th.c}}"></span></span>
+                  <span style="display: flex; align-items: center; gap: 6px; padding: 8px 10px 2px"><span style="{{th.ls}}">{{th.l}}</span><sc-if value="{{th.active}}" hint-placeholder-val="{{false}}"><span style="font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: #60cdff; color: #000">Active</span></sc-if></span>
+                  <span style="padding: 0 10px 10px; font-size: 11px; line-height: 15px; color: rgba(255,255,255,0.7); text-align: left">{{th.d}}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+          <sc-for list="{{left}}" as="r" hint-placeholder-count="8">
+            <sc-if value="{{r.isH}}" hint-placeholder-val="{{false}}"><div style="{{r.hs}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-if>
+            <sc-if value="{{r.isCard}}" hint-placeholder-val="{{true}}"><div style="{{r.cs}}"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{r.g}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.d}}</span></span>
+              <sc-if value="{{r.tog}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><button role="switch" aria-checked="{{r.on}}" aria-label="{{r.l}}" style="{{r.track}}"><span style="{{r.knob}}"></span></button></sc-if>
+              <sc-if value="{{r.combo}}" hint-placeholder-val="{{false}}"><button aria-label="{{r.l}}" style="width: 200px; height: 32px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">{{r.v}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></sc-if>
+              <sc-if value="{{r.seg}}" hint-placeholder-val="{{false}}"><span role="radiogroup" aria-label="{{r.l}}" style="display: flex; flex-shrink: 0; padding: 2px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><button role="radio" aria-checked="{{o.on}}" style="{{o.s}}">{{o.l}}</button></sc-for></span></sc-if>
+              <sc-if value="{{r.chev}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.v}}</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{r.cd}}" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></sc-if>
+            </div></sc-if>
+            <sc-if value="{{r.isPick}}" hint-placeholder-val="{{false}}"><div style="padding: 12px 16px 16px 52px; border-radius: 4px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-wrap: wrap; gap: 16px 40px"><sc-for list="{{r.groups}}" as="p" hint-placeholder-count="3"><div role="radiogroup" aria-label="{{p.l}}" style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 14px; line-height: 20px">{{p.l}}</span><div style="display: flex; gap: 8px"><sc-for list="{{p.opts}}" as="o" hint-placeholder-count="2"><button role="radio" aria-checked="{{o.on}}" style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: #fff; font: inherit"><span style="{{o.card}}"><span style="{{o.l1}}"></span><span style="{{o.l2}}"></span><span style="{{o.l3}}"></span></span><span style="{{o.ls}}">{{o.l}}</span></button></sc-for></div></div></sc-for></div></sc-if>
+            <sc-if value="{{r.isItem}}" hint-placeholder-val="{{false}}"><div style="height: 52px; box-sizing: border-box; padding: 8px 16px 8px 58px; border-radius: 4px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 16px"><span style="flex-grow: 1; font-size: 14px; line-height: 20px">{{r.l}}</span><sc-if value="{{r.tog}}" hint-placeholder-val="{{true}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><button role="switch" aria-checked="{{r.on}}" aria-label="{{r.l}}" style="{{r.track}}"><span style="{{r.knob}}"></span></button></sc-if><sc-if value="{{r.btn}}" hint-placeholder-val="{{false}}"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">{{r.v}}</button></sc-if></div></sc-if>
+          </sc-for>
+        </div>
+        <div style="width: 1000px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+          <sc-for list="{{right}}" as="r" hint-placeholder-count="14">
+            <sc-if value="{{r.isH}}" hint-placeholder-val="{{false}}"><div style="{{r.hs}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-if>
+            <sc-if value="{{r.isCard}}" hint-placeholder-val="{{true}}"><div style="{{r.cs}}"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{r.g}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.d}}</span></span>
+              <sc-if value="{{r.tog}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><button role="switch" aria-checked="{{r.on}}" aria-label="{{r.l}}" style="{{r.track}}"><span style="{{r.knob}}"></span></button></sc-if>
+              <sc-if value="{{r.combo}}" hint-placeholder-val="{{false}}"><button aria-label="{{r.l}}" style="width: 200px; height: 32px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">{{r.v}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></sc-if>
+              <sc-if value="{{r.slider}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.v}}</span><span role="slider" aria-label="{{r.l}}" style="position: relative; width: 200px; height: 4px; flex-shrink: 0; border-radius: 2px; background: rgba(255,255,255,0.3)"><span style="{{r.fill}}"></span><span style="{{r.thumb}}"></span></span></sc-if>
+              <sc-if value="{{r.chev}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.v}}</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{r.cd}}" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></sc-if>
+            </div></sc-if>
+            <sc-if value="{{r.isPick}}" hint-placeholder-val="{{false}}"><div style="padding: 12px 16px 16px 52px; border-radius: 4px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-wrap: wrap; gap: 16px 40px"><sc-for list="{{r.groups}}" as="p" hint-placeholder-count="1"><div role="radiogroup" aria-label="{{p.l}}" style="display: flex; flex-direction: column; gap: 8px"><div style="display: flex; gap: 8px"><sc-for list="{{p.opts}}" as="o" hint-placeholder-count="4"><button role="radio" aria-checked="{{o.on}}" style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: #fff; font: inherit"><span style="{{o.card}}"><span style="{{o.l1}}"></span><span style="{{o.l2}}"></span><span style="{{o.l3}}"></span></span><span style="{{o.ls}}">{{o.l}}</span></button></sc-for></div></div></sc-for></div></sc-if>
+            <sc-if value="{{r.isItem}}" hint-placeholder-val="{{false}}"><div style="height: 52px; box-sizing: border-box; padding: 8px 16px 8px 58px; border-radius: 4px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 16px"><span style="flex-grow: 1; font-size: 14px; line-height: 20px">{{r.l}}</span><sc-if value="{{r.tog}}" hint-placeholder-val="{{true}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><button role="switch" aria-checked="{{r.on}}" aria-label="{{r.l}}" style="{{r.track}}"><span style="{{r.knob}}"></span></button></sc-if><sc-if value="{{r.btn}}" hint-placeholder-val="{{false}}"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">{{r.v}}</button></sc-if></div></sc-if>
+          </sc-for>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => ({ l, sel: i === 1 ? 'true' : 'false', s: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 1 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const ab = 'position: absolute; ';
+  const T = [
+    ['Wavee Classic', 'Today’s Wavee: sidebar, tabs, washes', '#202020', ab + 'left: 0; top: 0; bottom: 0; width: 26%; background: #1a1a1a', ab + 'left: 28%; top: 8px; right: 0; bottom: 0; background: #2b2b2b; border-top-left-radius: 6px', ab + 'left: 34%; top: 18px; width: 40%; height: 8px; border-radius: 2px; background: #60cdff', 1],
+    ['WinUI', 'Windows 11 Fluent, NavigationView', '#202020', ab + 'left: 0; top: 0; right: 0; height: 18%; background: #2c2c2c', ab + 'left: 0; top: 18%; bottom: 0; width: 24%; background: #1c1c1c', ab + 'left: 32%; top: 30%; width: 50%; height: 10px; border-radius: 2px; background: #fff; opacity: 0.8'],
+    ['Zune', 'Metro: pivots, big light type, pink', '#111', ab + 'left: 10%; top: 14%; width: 70%; height: 16px; background: transparent; border-bottom: 3px solid #ff3ca6', ab + 'left: 10%; top: 44%; width: 40%; height: 26px; background: #2b2b2b', ab + 'left: 55%; top: 44%; width: 30%; height: 26px; background: #ff3ca6; opacity: 0.8'],
+    ['Zune Fluent', 'Zune structure, WinUI style', '#202020', ab + 'left: 10%; top: 14%; width: 70%; height: 14px; border-bottom: 2px solid #60cdff', ab + 'left: 10%; top: 44%; width: 40%; height: 26px; border-radius: 4px; background: #2c2c2c', ab + 'left: 55%; top: 44%; width: 30%; height: 26px; border-radius: 4px; background: #60cdff; opacity: 0.7'],
+    ['Get more themes', 'Community themes you install', '#262626', ab + 'left: 40%; top: 30%; width: 20%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(14px)', ab + 'left: 49%; top: 30%; width: 2px; height: 30px; background: rgba(255,255,255,0.6)', ab + 'display: none']
+  ];
+  const themes = T.map(t => ({ l: t[0], d: t[1], on: t[6] ? 'true' : 'false', active: !!t[6],
+    card: 'padding: 0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; align-items: stretch; background: ' + (t[6] ? 'rgba(96,205,255,0.16)' : 'rgba(255,255,255,0.031)') + '; border: ' + (t[6] ? '2px solid #60cdff' : '1px solid rgba(255,255,255,0.082)') + '; color: #fff; font: inherit',
+    thumb: 'position: relative; display: block; height: 92px; background: ' + t[2], a: t[3], b: t[4], c: t[5],
+    ls: 'font-size: 13px; font-weight: ' + (t[6] ? 600 : 400) }));
+  const G = { palette: 'M8 2a6 6 0 1 0 0 12c.8 0 1-.6 1-1 0-.8-.6-1-.6-1.6 0-.6.4-1 1-1h1.3A3.3 3.3 0 0 0 14 7 6 6 0 0 0 8 2z', opts: 'M2.5 2.5h11v11h-11zM2.5 6h11M6 6v7.5', mode: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 2v12', zoom: 'M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2M5 7h4M7 5v4', marquee: 'M2 8h9M8.5 5.5 11 8l-2.5 2.5M13.5 4v8', rows: 'M2.5 4h11M2.5 8h11M2.5 12h11', table: 'M2.5 3h11v10h-11zM2.5 6.5h11M6 3v10', page: 'M2.5 2.5h4v11h-4zM8.5 2.5h5M8.5 5.5h5M8.5 8.5h5M8.5 11.5h3', clock: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 5v3l2 1.5', side: 'M2.5 2.5h11v11h-11zM6 2.5v11', lyr: 'M3 4h10M3 7h7M3 10h10M3 13h5', ai: 'M8 2l1.3 3.7L13 7l-3.7 1.3L8 12l-1.3-3.7L3 7l3.7-1.3z', full: 'M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10', viz: 'M3 13V9M6 13V5M9 13V7M12 13V3', sens: 'M2 8h2l2-4 3 8 2-4h3', calm: 'M2 9c2-3 4-3 6 0s4 3 6 0' };
+  let firstL = true, firstR = true;
+  const hs = (first) => 'display: flex; align-items: center; gap: 8px; margin: ' + (first ? 0 : 28) + 'px 0 4px';
+  const cs = 'min-height: 68px; box-sizing: border-box; padding: 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 16px';
+  const base = { isH: false, isCard: false, isPick: false, isItem: false, tog: false, combo: false, seg: false, slider: false, chev: false, btn: false };
+  const sw = (on) => ({ on: on ? 'true' : 'false', state: on ? 'On' : 'Off', track: 'width: 40px; height: 20px; flex-shrink: 0; padding: 0; box-sizing: border-box; border-radius: 10px; position: relative; ' + (on ? 'border: 0; background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.6); background: transparent'), knob: 'position: absolute; top: ' + (on ? 4 : 3) + 'px; left: ' + (on ? 24 : 4) + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + (on ? '#000' : 'rgba(255,255,255,0.773)') });
+  const H = (side, l, d, g) => { const f = side === 'L' ? firstL : firstR; if (side === 'L') firstL = false; else firstR = false; return Object.assign({}, base, { isH: true, l, d, g: G[g], hs: hs(f) }); };
+  const C = (l, d, g, ctl) => Object.assign({}, base, { isCard: true, l, d, g: G[g], cs }, ctl);
+  const tog = on => Object.assign({ tog: true }, sw(on));
+  const combo = v => ({ combo: true, v });
+  const seg = (vals, sel) => ({ seg: true, opts: vals.map((l, i) => ({ l, on: i === sel ? 'true' : 'false', s: 'height: 28px; padding: 0 12px; border: 0; border-radius: 3px; font: inherit; font-size: 13px; background: ' + (i === sel ? '#60cdff' : 'transparent') + '; color: ' + (i === sel ? '#000' : '#fff') })) });
+  const chev = (v, open) => ({ chev: true, v, cd: open ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4' });
+  const slider = (v, pct) => ({ slider: true, v, fill: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + pct + '%; border-radius: 2px; background: #60cdff', thumb: 'position: absolute; top: -8px; left: calc(' + pct + '% - 10px); width: 20px; height: 20px; box-sizing: border-box; border-radius: 10px; background: #454545; border: 5px solid #60cdff' });
+  const I = (l, ctl) => Object.assign({}, base, { isItem: true, l }, ctl);
+  const card = (on, w) => 'position: relative; width: ' + (w || 116) + 'px; height: 84px; box-sizing: border-box; border-radius: 8px; padding: 14px 10px; display: flex; flex-direction: column; gap: 6px; background: ' + (on ? 'rgba(96,205,255,0.16)' : 'rgba(255,255,255,0.031)') + '; border: ' + (on ? '2px solid #60cdff' : '1px solid rgba(255,255,255,0.082)');
+  const ln = (w, c, h) => 'display: block; height: ' + (h || 10) + 'px; width: ' + w + '%; border-radius: 2px; background: ' + c;
+  const opt = (l, on, a, b, c) => ({ l, on: on ? 'true' : 'false', card: card(on), l1: a, l2: b, l3: c, ls: 'font-size: 12px; font-weight: ' + (on ? 600 : 400) });
+  const P = (groups) => Object.assign({}, base, { isPick: true, groups });
+  const hair = 'display: block; height: 1px; background: rgba(255,255,255,0.25)', hair2 = 'display: block; height: 1px; margin-top: 10px; background: rgba(255,255,255,0.25)';
+  const left = [
+    C('Classic options', 'Row style, sidebar layout, surfaces, marquee, track pages, lyrics blur, full-screen layout', 'opts', chev('', true)),
+    P([
+      { l: 'Row style', opts: [opt('Modern', true, ln(90, 'rgba(255,255,255,0.08)'), ln(90, 'rgba(255,255,255,0.18)'), ln(90, 'rgba(255,255,255,0.08)')), opt('Classic', false, hair, hair2, hair2)] },
+      { l: 'Sidebar layout', opts: [opt('Classic', true, ln(50, 'rgba(255,255,255,0.4)'), ln(70, 'rgba(255,255,255,0.2)'), ln(60, 'rgba(255,255,255,0.2)')), opt('Library', false, ln(60, 'rgba(255,255,255,0.4)'), 'display: block; height: 10px; background: linear-gradient(90deg, #60cdff 0 30%, transparent 30% 34%, rgba(255,255,255,0.2) 34% 64%, transparent 64%)', ln(80, 'rgba(255,255,255,0.2)'))] },
+      { l: 'Surfaces', opts: [opt('Off', false, ln(100, '#2b2b2b'), ln(100, '#2b2b2b'), ln(100, '#2b2b2b')), opt('Subtle', true, ln(100, 'rgba(176,110,190,0.25)'), ln(100, '#2b2b2b'), ln(100, '#2b2b2b')), opt('Rich', false, ln(100, 'rgba(176,110,190,0.5)'), ln(100, 'rgba(176,110,190,0.25)'), ln(100, '#2b2b2b'))] }
+    ]),
+    I('Show covers in the sidebar', tog(true)),
+    I('Accent from artwork', tog(true)),
+    I('Now playing colours', tog(true)),
+    C('App mode', 'Every theme ships light and dark; a change cross-fades in 250 ms', 'mode', seg(['System', 'Light', 'Dark'], 0)),
+    C('Zoom', 'Final on the first frame; no rescale after launch', 'zoom', combo('Auto (100%)')),
+    C('Marquee text', 'Scroll overflowing titles instead of truncating them', 'marquee', tog(true))
+  ];
+  const right = [
+    H('R', 'Lists', 'How track lists look on every page', 'rows'),
+    C('Row density', 'How tall track rows are', 'rows', chev('Default', true)),
+    P([{ l: 'Row density', opts: [opt('Compact', false, ln(90, 'rgba(255,255,255,0.18)', 6), ln(90, 'rgba(255,255,255,0.18)', 6), ln(90, 'rgba(255,255,255,0.18)', 6)), opt('Default', true, ln(90, 'rgba(255,255,255,0.18)', 8), ln(90, 'rgba(255,255,255,0.18)', 8), ln(90, 'rgba(255,255,255,0.18)', 8)), opt('Cozy', false, ln(90, 'rgba(255,255,255,0.18)', 12), ln(90, 'rgba(255,255,255,0.18)', 12), 'display: none'), opt('Comfortable', false, ln(90, 'rgba(255,255,255,0.18)', 16), ln(90, 'rgba(255,255,255,0.18)', 16), 'display: none')] }]),
+    I('Always hide track artwork', tog(false)),
+    C('Track list style', 'Choose artwork-forward rows or a classic column table', 'table', chev('Modern', false)),
+    C('Track page layout', 'Cover rail beside the list, or always the vertical hero', 'page', chev('Automatic', false)),
+    C('Daylist clock', 'What the daylist card shows about the next update', 'clock', combo('Countdown and update time')),
+    H('R', 'Sidebar', 'Saved on this PC', 'side'),
+    C('Layout', 'Sections you can show, hide and reorder', 'side', chev('Classic', false)),
+    H('R', 'Lyrics', '', 'lyr'),
+    C('Lyrics blur', 'Blur intensity for the side-panel lyrics; 0 turns it off', 'lyr', slider('62', 62)),
+    C('Word-by-word lyrics with on-device AI', 'Word timing generated on this PC by AI. It can be off by a moment.', 'ai', tog(false)),
+    H('R', 'Full screen', '', 'full'),
+    C('Visualizer', 'What plays behind the lyrics in full screen', 'viz', combo('Bloom')),
+    C('Layout', 'Where the cover and lyrics sit on top of your visualizer', 'full', combo('Visualizer first')),
+    C('Sensitivity', 'How strongly the visualizer reacts to the music', 'sens', slider('', 50)),
+    C('Calm motion', 'Slower, softer movement in every visualizer', 'calm', tog(false))
+  ];
+  return { tabs, themes, left, right };
+}
+}
+</script>
+</body>
+</html>

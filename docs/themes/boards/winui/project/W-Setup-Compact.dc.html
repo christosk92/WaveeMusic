@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup sign-in: Compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding-left: 16px; font-size: 12px">
+    <span style="width: 16px; height: 16px; border-radius: 4px; background: #60cdff"></span><span>Wavee</span><span style="flex-grow: 1"></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+  </div>
+  <div role="dialog" aria-label="Sign in to Spotify" style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; background: #2b2b2b; border-top: 1px solid rgba(117,117,117,0.4)">
+    <div style="flex-grow: 1; min-height: 0; padding: 20px 20px 0 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <div style="width: 56px; height: 56px; border-radius: 8px; background: rgba(96,205,255,0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="32" height="32" viewBox="0 0 16 16" aria-hidden="true" style="color: #60cdff"><path d="M3 8.5c3-1.5 7-1.5 10 0M4 11c2.5-1 5.5-1 8 0M2.5 6c3.5-2 7.5-2 11 0" fill="none" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"></path><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="0.7"></circle></svg></div>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Sign in to Spotify</h1>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #c5c5c5">Sign in with your Spotify® account on the Spotify® website — or scan the code with your phone.</p>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px 16px; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <span style="display: flex; gap: 12px"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM1.5 8h13M8 1.5c-2.5 2-2.5 11 0 13M8 1.5c2.5 2 2.5 11 0 13" fill="none" stroke="currentColor" stroke-width="1"></path></svg><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">Continue in your browser</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Opens accounts.spotify.com in your default browser.</span></span></span>
+        <button style="height: 40px; width: 100%; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px">Log in</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: #9e9e9e"><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.0837)"></span>or<span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.0837)"></span></div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <span style="font-size: 14px; align-self: stretch">Scan the code with your phone</span>
+        <span style="width: 152px; height: 152px; border-radius: 4px; background: #ffffff; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 10px; box-sizing: border-box; gap: 3px"><sc-for list="{{qr}}" as="q" hint-placeholder-count="49"><span style="{{q.style}}"></span></sc-for></span>
+        <span style="font-size: 14px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em">WXRT-4K9Q</span>
+        <span style="font-size: 12px; color: #c5c5c5; margin-top: -8px">spotify.com/pair · Expires in 4:52</span>
+        <button style="height: 40px; align-self: stretch; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Copy code</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #c5c5c5"><svg width="18" height="18" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="11.5" fill="none" stroke="rgba(255,255,255,0.0837)" stroke-width="3"></circle><path d="M14 2.5a11.5 11.5 0 0 1 11.5 11.5" fill="none" stroke="#60cdff" stroke-width="3" stroke-linecap="round"></path></svg>Waiting for you to authorize…</div>
+    </div>
+    <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px 20px; background: #202020; border-top: 1px solid rgba(255,255,255,0.0837)">
+      <span style="display: flex; align-items: center; gap: 12px"><span style="font-size: 12px; color: #c5c5c5; white-space: nowrap">Step 2 of 4</span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.0837)"><span style="display: block; width: 50%; height: 4px; border-radius: 2px; background: #60cdff"></span></span></span>
+      <span style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <button style="height: 40px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Back</button>
+        <button style="height: 40px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Close</button>
+      </span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const m = '1111111010000001011101011011101001011101011000001101111111000000000110101111111010000000111010110111010010111010110000011011111110';
+  const qr = Array.from({ length: 49 }, (_, i) => ({ style: 'display: block; background: ' + (m[i] === '1' ? '#000' : '#fff') }));
+  return { qr };
+}
+}
+</script>
+</body>
+</html>

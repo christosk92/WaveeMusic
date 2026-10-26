@@ -37,7 +37,7 @@ static class Program
 
         // Platform.Boot parses argv itself; --headless on the command line keeps it from arming a factory reset.
         Platform.ProfileRoot = profile;
-        Platform.Boot();
+        Platform.Boot(Environment.GetCommandLineArgs());
         Platform.UseSettings(new Diagnostics.Headless.OverlaySettings(Platform.BackingSettings));
         Platform.UseCredentialSlot(new Diagnostics.Headless.ProtectedLocalStore(new FileLocalStore(Platform.StorePath), "headless",
             refused: static k => Console.Error.WriteLine("refused to remove " + k)), new DpapiProtector());

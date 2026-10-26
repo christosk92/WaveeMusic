@@ -17,7 +17,7 @@
 //      per-frame driver writes value-gated FloatSignals the word nodes BIND (opacity, transform — compositor-only) and
 //      three scene columns directly (a landing word's σ, a word's glyph-wipe split), allocation-free.
 //   2. MOTION SAMPLES THE FRAME CLOCK. "Now" is `Lyrics.MediaClock` fed the host's (position, stamp) sample and queried at
-//      `Design.FrameTime.NowQpc` — the lyrics view's clock, verbatim in shape.
+//      `FrameTime.NowQpc` — the lyrics view's clock, verbatim in shape.
 //   3. THE TICKER MOUNTS ONLY WHILE A LANE MOVES (`Verse.Lanes`): a sung line (its hairline), a landing word, a held word,
 //      a chorus echo. Between lines and through a break the face is asleep and a one-shot timeout wakes it at the next
 //      media instant (a hand-off, a count-in dot). Audio coupling (kick, bass, level, the cloud's bands) is NOT in the
@@ -42,8 +42,7 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Text;
 
-using Ink = Wavee.Design.StageInk;
-using FrameTime = Wavee.Design.FrameTime;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee;
 
@@ -186,7 +185,7 @@ public static partial class Verse
             _slab = p.Slab;
             var ctx = UseContext(Stage.StageContext);
             var L = ctx?.Layout.Value ?? Stage.Layout.Seed(p.W, p.H);
-            bool galleryOpen = ctx?.GalleryOpen.Value ?? false;
+            bool galleryOpen = ctx?.GalleryShown.Value ?? false;   // what is on screen (a Compact sheet that was never asked for is not)
             bool chrome = ctx?.Chrome.Value ?? true;
             _calm = ctx?.Calm.Value ?? false;
             _ = ctx?.Palette.Value;                       // the cover / theme epoch: a flip re-renders with the arm's inks
@@ -1091,7 +1090,7 @@ public static partial class Verse
                     : live ? Embed.Comp(() => new Frames(host._tick)) with { Key = "verse:frames" }
                     : wake.DelayMs >= 0f ? Embed.Comp(() => new Waker(host)) with { Key = "verse:wake" }
                     : null;
-                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = child is null ? [] : [child] };
+                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = child is null ? [] : [child.Value] };
             }
         }
 

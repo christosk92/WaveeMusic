@@ -2,7 +2,7 @@
 // Settings › General › Developer › "Send a test crash report" (#165): a FULL crash report without a crash. A real
 // exception is thrown through real Wavee frames and caught (`SimulatedCrashException.ThrowAndCatch`); the normal
 // managed bundle is written from it (summary.json, report.txt, log-tail.txt) plus a real minidump of the LIVE process,
-// written by the crash-handler child for the `test` dump kind. The UI half (`Screens/Settings.UI.cs`) then hands the
+// written by the crash-handler child for the `test` dump kind. The UI half (the Settings row's writer, `SettingsVerbs.SendTestCrashReport`) then hands the
 // bundle to the normal uploader (scrub → pack → outbox → POST) and shows the real outcome toast. Wavee keeps running.
 //
 // Role: SHELL (blocks on the child's dump reply — never call it on the UI thread)

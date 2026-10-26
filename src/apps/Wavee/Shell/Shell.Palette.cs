@@ -13,21 +13,22 @@
 //               into a CALLER-OWNED array, the `>` commands-only prefix and the "Search for …" row. No LINQ and no
 //               per-keystroke allocation beyond the query's own lowercase copy.
 //   2. SHELL  — invoking an entry, and the two shell verbs it lands on (theme, zoom) that had no 0.3 home.
-//   3. UI     — the lane (a ZStack sibling, top pad 64, hit-test transparent), the popup and the card.
+//   3. UI     — the host of the structure's `Shell.CommandPalette` view (T4c): the props and the session. The lane (a ZStack
+//               sibling, top pad 64, hit-test transparent), the popup's anchor and the card are `ClassicPalette.cs`.
 //
 // 0.2.9 names: `WaveeCommands` (the table) and `WaveeCommandPalette`/`WaveePaletteContent` (the card). Nothing here is
 // named `Palette`: inside `Shell` a nested `Palette` would shadow `Wavee.Palette`, the cover-colour table.
 
-using System;
 using System.Collections.Generic;
 
 using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -35,9 +36,9 @@ public static partial class Shell
 {
     // ══ 1. PURE — the command table and its keystroke filter ═════════════════════════════════════════════════════════
 
-    public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library }
+    public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, SidebarClassic, SidebarLibrary }
+    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -64,15 +65,14 @@ public static partial class Shell
         public string? RegistryKey;
         public ActionTargetMode RegistryTarget;
         public string? CatalogQuery;
+        /// <summary>What a <see cref="PaletteKind.ThemeOption"/> row does: the active theme's option applies itself (themes plan 8.2).</summary>
+        public Action? Run;
     }
 
     public static class CommandTable
     {
         /// <summary>The list never scrolls and never exceeds eight rows (ch 19 §0 item 3).</summary>
         public const int MaxResults = 8;
-
-        /// <summary>Builtin rows; registry rows are appended after them.</summary>
-        public const int BuiltinCount = 29;
 
         public const string CatalogId = "search.query";
 
@@ -99,8 +99,6 @@ public static partial class Shell
             SetRow("settings.npvPresentation", Loc.Get(Strings.Player.PresentationToggle), Icons.Picture, PaletteSettingsVerb.NpvTogglePresentation),
             SetRow("settings.npvNextStyle", Loc.Get(Strings.Player.PlayerStyleNext), Icons.Album, PaletteSettingsVerb.NpvNextStyle),
             SetRow("sidebar.edit", Loc.Get("sidebar.menu.edit"), Icons.Edit, PaletteSettingsVerb.EditSidebar),
-            SetRow("sidebar.classic", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.classic"))), Icons.List, PaletteSettingsVerb.SidebarClassic),
-            SetRow("sidebar.library", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.library"))), Icons.Library, PaletteSettingsVerb.SidebarLibrary),
             LibRow("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, PaletteLibraryVerb.NewPlaylist),
             LibRow("library.newFolder", Loc.Get(Strings.Sidebar.CreateFolder), Icons.Folder, PaletteLibraryVerb.NewFolder),
             // Home C1 (facet history + deep link, plan "Palette commands"): the four facet chip ids are the ones the
@@ -114,22 +112,40 @@ public static partial class Shell
             NavRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, RouteKind.HomeCustomize),
         ];
 
-        /// <summary>A fresh index for one open: the builtins, then every registry action that accepts a target the
-        /// palette can supply (now playing, the active page, or none). <paramref name="glyphOf"/> resolves a
-        /// descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.</summary>
-        public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf)
+        /// <summary>A fresh index for one open: the builtins, then the active theme's option commands
+        /// (<paramref name="themeCommands"/>: the options that asked for a palette row), then every registry action that
+        /// accepts a target the palette can supply (now playing, the active page, or none). <paramref name="glyphOf"/>
+        /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.
+        /// <paramref name="playerStyleRows"/> false drops the two now-playing style rows (<see cref="IsPlayerStyleRow"/>): they are
+        /// offered only where a style can change Now playing (<c>Rail.PlayerPrefs.StyleChoiceVisible</c>, #199).</summary>
+        /// <param name="caps">The active shell capabilities (P5 ZK); null = every capability on. A row whose feature the structure does
+        /// not offer is left out (<see cref="HiddenBy"/>).</param>
+        public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf,
+            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null, bool playerStyleRows = true, Theming.ShellCapabilities? caps = null)
         {
             var builtins = Builtins();
-            if (registryActions is null || registryActions.Count == 0) return builtins;
+            if (!playerStyleRows) builtins = Array.FindAll(builtins, static r => !IsPlayerStyleRow(r.Id));
+            if (caps is { } c && (!c.NavTree || !c.Tabs)) builtins = Array.FindAll(builtins, r => !HiddenBy(r.Id, c));
+            int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
-            for (int i = 0; i < registryActions.Count; i++)
-                if (TargetOf(registryActions[i].AcceptedTargets, out _)) extra++;
-            if (extra == 0) return builtins;
+            if (registryActions is not null)
+                for (int i = 0; i < registryActions.Count; i++)
+                    if (TargetOf(registryActions[i].AcceptedTargets, out _)) extra++;
+            if (extra == 0 && themeCount == 0) return builtins;
 
-            var all = new PaletteEntry[builtins.Length + extra];
+            var all = new PaletteEntry[builtins.Length + themeCount + extra];
             Array.Copy(builtins, all, builtins.Length);
             int w = builtins.Length;
-            for (int i = 0; i < registryActions.Count; i++)
+            for (int i = 0; i < themeCount; i++)
+            {
+                var command = themeCommands![i];
+                all[w++] = new PaletteEntry
+                {
+                    Id = command.Id, Label = command.Label, LabelLower = command.Label.ToLowerInvariant(), Glyph = Icons.Brush,
+                    Kind = PaletteKind.ThemeOption, Run = command.Run,
+                };
+            }
+            for (int i = 0; registryActions is not null && i < registryActions.Count; i++)
             {
                 var d = registryActions[i];
                 if (!TargetOf(d.AcceptedTargets, out var target)) continue;
@@ -143,6 +159,22 @@ public static partial class Shell
             }
             return all;
         }
+
+        /// <summary>The builtin rows that pick the hero's presentation or player style (the Cover/Player toggle, the next style).</summary>
+        public static bool IsPlayerStyleRow(string id) => id is "settings.npvPresentation" or "settings.npvNextStyle";
+
+        /// <summary>The builtin rows that act on the navigation tree (Edit the sidebar, New folder): a structure without one has nowhere for
+        /// them to land (P5 ZK).</summary>
+        public static bool IsNavTreeRow(string id) => id is "sidebar.edit" or "library.newFolder";
+
+        /// <summary>Rows that open or manage tabs: their ids start with <c>tabs.</c> (none is a builtin today; the rule is the filter's,
+        /// so a tab row added later is hidden without a theme check of its own).</summary>
+        public static bool IsTabRow(string id) => id.StartsWith("tabs.", StringComparison.Ordinal);
+
+        /// <summary>Is the row <paramref name="id"/> hidden under <paramref name="caps"/>? Nav-tree rows without a nav tree, tab rows without
+        /// tabs; every other row stays.</summary>
+        public static bool HiddenBy(string id, Theming.ShellCapabilities caps)
+            => (!caps.NavTree && IsNavTreeRow(id)) || (!caps.Tabs && IsTabRow(id));
 
         /// <summary>Which target a palette invocation supplies, in preference order NowPlaying → ActiveRoute → None.
         /// False = the descriptor needs a picked entity and earns no palette row.</summary>
@@ -262,24 +294,14 @@ public static partial class Shell
     /// <summary>"New folder" — owner J's folder command installs it. Null = the row does nothing.</summary>
     public static Action? OnNewFolder;
 
-    /// <summary>Flip light ⇄ dark IN PLACE over the engine's theme transition and persist the explicit mode. The ONE
-    /// theme-flip verb: the palette row, the profile menu's Theme row and any chord call it.</summary>
-    public static void ToggleTheme(Action<float>? requestTransition)
-    {
-        var next = Tok.Theme == ThemeKind.Dark ? ThemeKind.Light : ThemeKind.Dark;
-        if (SeedPalette is { } seed) seed(next); else Tok.Use(next);   // the installed Wavee palette, not the engine's
-        Platform.Settings.Set(Platform.Keys.ThemeMode, next == ThemeKind.Dark ? 2 : 1);
-        requestTransition?.Invoke(Design.Motion.Standard);
-    }
-
     /// <summary>App zoom, one ladder rung per call (0 = reset to 100 %). The ONE zoom verb: the Ctrl±/0 chords, the
     /// Ctrl+wheel hook and the palette rows land here. Persistence is the host's debounced zoom save, never here, so a
-    /// held chord does not write the settings store once per rung.</summary>
+    /// held chord does not write the settings store once per rung. A step that would take the layout under the Compact floor
+    /// on this window is refused (<see cref="ZoomService.ManualStep"/>, plan 3.2).</summary>
     public static void ZoomStep(int direction)
-        => FluentApp.SetZoom(direction == 0 ? ZoomLadder.Default
-            : direction > 0 ? ZoomLadder.In(FluentApp.Zoom) : ZoomLadder.Out(FluentApp.Zoom));
+        => ZoomService.Apply(ZoomService.ManualStep(FluentApp.Zoom, direction, ZoomService.WindowBaseWidth));
 
-    static void InvokePaletteEntry(PaletteEntry e, Action<float>? requestTheme)
+    static void InvokePaletteEntry(PaletteEntry e)
     {
         switch (e.Kind)
         {
@@ -292,17 +314,17 @@ public static partial class Shell
             case PaletteKind.Playback:
                 switch (e.PlaybackVerb)
                 {
-                    case PalettePlaybackVerb.PlayPause: TogglePlayPause("palette"); break;
+                    case PalettePlaybackVerb.PlayPause: PlayerVerbs.Default.TogglePlay("palette"); break;
                     case PalettePlaybackVerb.Next: Playback.Next(); break;
                     case PalettePlaybackVerb.Previous: Playback.Previous(); break;
-                    case PalettePlaybackVerb.Shuffle: ToggleShuffle(); break;
-                    case PalettePlaybackVerb.Repeat: CycleRepeat(); break;
+                    case PalettePlaybackVerb.Shuffle: PlayerVerbs.Default.ToggleShuffle(); break;
+                    case PalettePlaybackVerb.Repeat: PlayerVerbs.Default.CycleRepeat(); break;
                 }
                 break;
             case PaletteKind.Settings:
                 switch (e.SettingsVerb)
                 {
-                    case PaletteSettingsVerb.ToggleTheme: ToggleTheme(requestTheme); break;
+                    case PaletteSettingsVerb.ToggleTheme: Appearance.ToggleMode(); break;
                     case PaletteSettingsVerb.ToggleCrossfade:
                         bool on = !Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
                         Platform.Settings.Set(Platform.Keys.CrossfadeEnabled, on);
@@ -312,10 +334,10 @@ public static partial class Shell
                     case PaletteSettingsVerb.ZoomOut: ZoomStep(-1); break;
                     case PaletteSettingsVerb.ZoomReset: ZoomStep(0); break;
                     case PaletteSettingsVerb.NpvTogglePresentation:
-                        Rail.PlayerPrefs.TogglePresentation(Rail.NpvDiagnostics.SourcePalette);
+                        DeckPrefs.TogglePresentation(DeckPrefSource.Palette);
                         break;
                     case PaletteSettingsVerb.NpvNextStyle:
-                        Rail.PlayerPrefs.NextStyle(Rail.NpvDiagnostics.SourcePalette);
+                        DeckPrefs.NextStyle(DeckPrefSource.Palette);
                         break;
                     case PaletteSettingsVerb.HomeFollowingOn:
                     case PaletteSettingsVerb.HomeFollowingOff:
@@ -324,20 +346,13 @@ public static partial class Shell
                     case PaletteSettingsVerb.EditSidebar:
                         Sidebar.EnterEdit();
                         break;
-                    case PaletteSettingsVerb.SidebarClassic:
-                    case PaletteSettingsVerb.SidebarLibrary:
-                        // Q7: a layout switch is refused while editing; the palette says why instead of doing nothing.
-                        if (Sidebar.Editing.Peek())
-                        {
-                            Notify.Say(Loc.Get("sidebar.pane.finishEditing"), InfoBarSeverity.Informational, dedupeKey: "sidebar.pane.finish-editing");
-                            break;
-                        }
-                        Sidebar.SwitchLayout(e.SettingsVerb == PaletteSettingsVerb.SidebarLibrary ? SidebarLayoutId.Library : SidebarLayoutId.Classic);
-                        break;
                 }
                 break;
             case PaletteKind.Library:
                 (e.LibraryVerb == PaletteLibraryVerb.NewPlaylist ? OnNewPlaylist : OnNewFolder)?.Invoke();
+                break;
+            case PaletteKind.ThemeOption:
+                e.Run?.Invoke();
                 break;
             case PaletteKind.Registry:
                 if (e.RegistryKey is not { Length: > 0 } key) return;
@@ -370,171 +385,54 @@ public static partial class Shell
         if (target is not null) GoTo(new Route(RouteKind.Home, Arg: Entities.Strings.Intern(target)));
     }
 
-    // ══ 3. UI — the lane, the popup, the card ═══════════════════════════════════════════════════════════════════════
-
-    const float PaletteCardW = 560f, PaletteCardMaxH = 460f;
+    // ══ 3. UI — the host of the structure's view ═══════════════════════════════════════════════════════════════════
 
     /// <summary>The descriptor glyph resolver — the action platform's ONE semantic-key map (<c>Actions.UI.cs</c>).</summary>
     static readonly Func<string, string?> s_paletteGlyphOf = static key => ActionIcons.Resolve(key).Glyph;
 
-    // MOUNT POINT (stage B contract)
-    /// <summary>The command palette's lane: a hit-test-transparent ZStack sibling whose top pad puts the card's top edge
-    /// exactly 64 DIP down, centred, a hard 560 wide with no clamp (W1). Open state is <see cref="PaletteOpen"/>, which
-    /// Ctrl+K TOGGLES (the frame's chord). Because this is a sibling lane rather than an overlay entry, the frame's own
-    /// Escape handler must bail while it is open.</summary>
-    public static Element CommandPalette()
-        => new BoxEl
-        {
-            Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, HitTestVisible = false,
-            Padding = new Edges4(0f, Spacing.XXXL * 2f, 0f, 0f),
-            Children =
-            [
-                Popup.Create(
-                    new BoxEl { Width = PaletteCardW, Height = 0f },
-                    content: static () => Embed.Comp(static () => new PaletteCard()),
-                    isOpen: PaletteOpen,
-                    placement: FlyoutPlacement.BottomEdgeAlignedLeft,
-                    options: new PopupOptions(FocusTrap: true, Chrome: PopupChrome.Popup)),
-            ],
-        };
-
-    /// <summary>The card body. Popup mounts it FRESH per open, so the query and the selection reset for free; the index,
-    /// the result array and the catalog row are allocated once per mount (ch 19 §9.1 item 2).</summary>
-    sealed class PaletteCard : Component
+    /// <summary>The palette's props (T4c): the popup control wired to <see cref="PaletteOpen"/> (a controlled signal; light-dismiss and
+    /// a focus trap), the session factory and the close verb. Cached statics, so an equal record skips the template.</summary>
+    static readonly PaletteProps s_paletteProps = new()
     {
-        public override Element Render()
+        Popup = static (anchor, content) => Popup.Create(
+            anchor, content,
+            isOpen: PaletteOpen,
+            placement: FlyoutPlacement.BottomEdgeAlignedLeft,
+            options: new PopupOptions(FocusTrap: true, Chrome: PopupChrome.Popup)),
+        NewSession = static () => new PaletteSession(),
+        Close = static () => PaletteOpen.Value = false,
+    };
+
+    // MOUNT POINT (stage B contract)
+    /// <summary>The command palette: the structure's <c>Shell.CommandPalette</c> view (T4c), which draws the lane (a hit-test-transparent
+    /// ZStack sibling whose top pad puts the card's top edge exactly 64 DIP down, centred, a hard 560 wide with no clamp, W1) and the
+    /// card. Open state is <see cref="PaletteOpen"/>, which Ctrl+K TOGGLES (the frame's chord). Because the lane is a sibling rather
+    /// than an overlay entry, the frame's own Escape handler must bail while it is open.</summary>
+    public static Element CommandPalette() => ViewSlots.View(ViewKeys.ShellCommandPalette, s_paletteProps);
+
+    /// <summary>One open palette (the card's session): the command index, the result array and the catalog row, allocated once per
+    /// mount (ch 19 §9.1 item 2). The card mounts FRESH per open, so the session does too.</summary>
+    sealed class PaletteSession : IPaletteSession
+    {
+        readonly PaletteEntry[] _index = CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
+            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), playerStyleRows: Platform.Developer.Enabled.Peek() && !Diagnostics.StoreShot.Presenting.Peek(),   // Rail.PlayerPrefs.StyleChoiceVisible, peeked
+            caps: ShellCaps.Now);
+        readonly PaletteEntry[] _hits = new PaletteEntry[CommandTable.MaxResults];
+        readonly PaletteEntry _scratch = CommandTable.NewCatalogScratch();
+        int _count;
+
+        public int Filter(string query) => _count = CommandTable.Filter(_index, query, _hits, _scratch);
+
+        public string GlyphAt(int index) => _hits[index].Glyph;
+
+        public string LabelAt(int index) => _hits[index].Label;
+
+        public void Invoke(int index)
         {
-            var query = UseSignal("");
-            var sel = UseSignal(0);            // UNCLAMPED; the per-render clamp below is the second tier (§9.1 item 1)
-            var index = UseRef<PaletteEntry[]?>(null);
-            var dest = UseRef<PaletteEntry[]?>(null);
-            var scratch = UseRef<PaletteEntry?>(null);
-            var announced = UseRef(false);
-            var requestTheme = UseContext(ThemeControl.Request);
-
-            index.Value ??= CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf);
-            dest.Value ??= new PaletteEntry[CommandTable.MaxResults];
-            scratch.Value ??= CommandTable.NewCatalogScratch();
-
-            var hits = dest.Value;
-            string q = query.Value;
-            int count = CommandTable.Filter(index.Value, q, hits, scratch.Value);
-            int selected = count == 0 ? 0 : Math.Clamp(sel.Value, 0, count - 1);
-
-            // "Command palette" once on open, then the throttled count on every edit (W3).
-            UseEffect(() =>
-            {
-                if (!Announcer.IsAvailable) return;
-                if (!announced.Value)
-                {
-                    announced.Value = true;
-                    Announcer.Say(Loc.Get(Strings.Palette.Title));
-                }
-                Announcer.SayThrottled(count == 0 ? Loc.Get(Strings.Palette.NoMatches) : Strings.Palette.Matches(count));
-            }, (DepKey)q);
-
-            void Commit(int i)
-            {
-                if ((uint)i >= (uint)count) return;
-                var entry = hits[i];
-                PaletteOpen.Value = false;
-                InvokePaletteEntry(entry, requestTheme);
-            }
-
-            void OnKey(KeyEventArgs e)
-            {
-                switch (e.KeyCode)
-                {
-                    case Keys.Down:
-                        if (count > 0) sel.Value = (selected + 1) % count;
-                        e.Handled = true;
-                        break;
-                    case Keys.Up:
-                        if (count > 0) sel.Value = (selected - 1 + count) % count;
-                        e.Handled = true;
-                        break;
-                    case Keys.Enter:
-                        Commit(selected);
-                        e.Handled = true;
-                        break;
-                    case Keys.Escape:
-                        PaletteOpen.Value = false;
-                        e.Handled = true;
-                        break;
-                }
-            }
-
-            Element[] rows;
-            if (count == 0)
-            {
-                rows =
-                [
-                    new BoxEl
-                    {
-                        Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-                        Children = [global::Wavee.Design.Type.DenseMeta(Loc.Get(Strings.Palette.NoMatches)) with { Color = Tok.TextTertiary }],
-                    },
-                ];
-            }
-            else
-            {
-                rows = new Element[count];
-                string enter = Loc.Get(Strings.Palette.Enter);
-                for (int i = 0; i < count; i++)
-                {
-                    int at = i;
-                    bool active = at == selected;
-                    var entry = hits[at];
-                    rows[i] = new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                        MinHeight = Design.Size.ControlH, MinWidth = 0f,
-                        Padding = new Edges4(Spacing.L, Spacing.XS, Spacing.L, Spacing.XS),
-                        Corners = Radii.ControlAll,
-                        // Selection and hover paint the SAME fill; the accent glyph + "Enter" disambiguate (W34).
-                        Fill = active ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                        HoverFill = Tok.FillSubtleSecondary,
-                        OnClick = () => Commit(at),
-                        Children =
-                        [
-                            new TextEl(entry.Glyph)
-                            {
-                                Size = 14f, FontFamily = Theme.IconFont,
-                                Color = active ? Tok.AccentDefault : Tok.TextTertiary,
-                            },
-                            new BoxEl
-                            {
-                                Grow = 1f, MinWidth = 0f,
-                                Children =
-                                [
-                                    new TextEl(entry.Label)
-                                    {
-                                        Size = 14f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                                    },
-                                ],
-                            },
-                            active ? global::Wavee.Design.Type.MicroMeta(enter) with { Color = Tok.TextTertiary } : new BoxEl(),
-                        ],
-                    };
-                }
-            }
-
-            return new BoxEl
-            {
-                Direction = 1, Width = PaletteCardW, MaxHeight = PaletteCardMaxH, Gap = Spacing.XXS,
-                Padding = Edges4.All(Spacing.S),
-                OnKeyDown = OnKey,
-                Children =
-                [
-                    TextBox.Create(query, options: new TextBox.TextBoxOptions
-                    {
-                        Placeholder = Loc.Get(Strings.Palette.Placeholder),
-                        Width = PaletteCardW - Spacing.S * 2f,
-                    }),
-                    new BoxEl { Height = Spacing.XXS },
-                    new BoxEl { Direction = 1, Gap = 1f, Children = rows },
-                ],
-            };
+            if ((uint)index >= (uint)_count) return;
+            var entry = _hits[index];
+            PaletteOpen.Value = false;
+            InvokePaletteEntry(entry);
         }
     }
 }

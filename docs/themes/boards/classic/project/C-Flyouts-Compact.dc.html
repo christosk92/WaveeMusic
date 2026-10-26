@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact filter sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="heart:Liked Songs" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main aria-hidden="true" style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Liked Songs</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">1,284 songs · 71 hr 3 min</span></div>
+    <div style="height: 48px; flex-shrink: 0; padding: 0 4px 0 8px; display: flex; align-items: center; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773)"><span style="padding: 0 8px">Date added</span><span style="flex-grow: 1"></span><span style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid #60cdff; border-radius: 4px; background: rgba(96,205,255,0.14); color: #a6d8ff">Filter<span style="min-width: 18px; height: 18px; border-radius: 9px; background: #60cdff; color: #000; font-size: 11px; display: inline-flex; align-items: center; justify-content: center">2</span></span></div>
+    <dc-import name="C-TrackList" theme="dark" rs="modern" set="liked" tier="compact" n="10" hint-size="100%,560px"></dc-import>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 48px; bottom: 0; background: rgba(0,0,0,0.4)"></div>
+  <section role="dialog" aria-label="Filter" style="position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding-bottom: 12px; border-top-left-radius: 8px; border-top-right-radius: 8px; border-top: 1px solid rgba(255,255,255,0.08); background: #282828; box-shadow: 0 -8px 24px rgba(0,0,0,0.35); display: flex; flex-direction: column">
+    <div aria-hidden="true" style="height: 16px; display: flex; align-items: center; justify-content: center"><span style="width: 32px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.3)"></span></div>
+    <div style="height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid rgba(255,255,255,0.08)"><h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">Filter</h2><span role="status" style="font-size: 12px; color: rgba(255,255,255,0.773); flex-grow: 1">32 of 69 songs</span><button style="height: 40px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: #a6d8ff; font: inherit; font-size: 14px">Reset</button></div>
+    <div style="padding: 8px 8px 4px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="7"><div style="height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 8px"><span style="{{r.ls}}">{{r.l}}</span><button aria-label="{{r.l}}: {{r.v}}" style="{{r.combo}}">{{r.v}}<svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" style="position: absolute; right: 10px; color: rgba(255,255,255,0.773)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></button></div></sc-for>
+    </div>
+    <span style="display: block; height: 1px; margin: 0 16px; background: rgba(255,255,255,0.08)"></span>
+    <div style="padding: 4px 8px 0">
+      <sc-for list="{{toggles}}" as="t" hint-placeholder-count="2"><div style="height: 48px; display: flex; align-items: center; padding: 0 0 0 8px"><span style="{{t.ls}}">{{t.l}}</span><button role="switch" aria-checked="{{t.on}}" aria-label="{{t.l}}" style="width: 56px; height: 40px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="{{t.track}}"><span style="{{t.knob}}"></span></span></button></div></sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const combo = (on) => 'position: relative; width: 168px; height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; padding: 0 30px 0 11px; border-radius: 4px; color: #fff; font: inherit; font-size: 14px; text-align: left; ' + (on ? 'background: rgba(96,205,255,0.14); border: 1px solid #60cdff' : 'background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.09)');
+  const rows = [['Date added', 'Last 30 days', 1], ['Length', 'Any duration'], ['Tempo', 'Any tempo'], ['Explicit', 'Hide', 1], ['Video', 'Show'], ['Source', 'Any source'], ['Search in', 'Everything']].map(r => ({ l: r[0], v: r[1], ls: 'flex-grow: 1; font-size: 14px; color: ' + (r[2] ? '#fff' : 'rgba(255,255,255,0.773)'), combo: combo(!!r[2]) }));
+  const toggles = [['Only songs I liked', false], ['Hide songs I can’t play', true]].map(t => ({ l: t[0], on: t[1] ? 'true' : 'false', ls: 'flex-grow: 1; font-size: 14px; color: ' + (t[1] ? '#fff' : 'rgba(255,255,255,0.773)'), track: 'position: relative; display: block; width: 40px; height: 20px; box-sizing: border-box; border-radius: 10px; ' + (t[1] ? 'background: #60cdff' : 'border: 1px solid #c5c5c5'), knob: 'position: absolute; top: ' + (t[1] ? 4 : 3) + 'px; left: ' + (t[1] ? 24 : 4) + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + (t[1] ? '#000' : '#c5c5c5') }));
+  return { rows, toggles };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Artist, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|artist:Arash:#4a3b2f" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div style="position: relative; height: 200px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #4a3b2f">
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 140px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.62))"></div>
+      <div style="position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 2px">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: #e0e0e0"><span style="width: 14px; height: 14px; border-radius: 7px; background: #60cdff; display: inline-flex; align-items: center; justify-content: center"><svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="#000" stroke-width="2.2"></path></svg></span>Verified artist</div>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Arash</h1>
+        <div style="font-size: 12px; line-height: 16px; color: #e0e0e0">20,577,457 monthly listeners</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0">
+      <button style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+      <button aria-pressed="false" style="height: 40px; padding: 0 16px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Follow</button>
+      <button aria-label="Shuffle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Artist radio" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM5.5 10.5a3.5 3.5 0 0 1 0-5M10.5 5.5a3.5 3.5 0 0 1 0 5M3.5 12.5a6.5 6.5 0 0 1 0-9M12.5 3.5a6.5 6.5 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="More" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </div>
+    <div style="display: flex; gap: 4px; flex-shrink: 0; margin-right: -16px; overflow: hidden; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+      <sc-for list="{{views}}" as="v" hint-placeholder-count="6"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+    </div>
+    <section style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Popular</h2>
+      <sc-for list="{{popular}}" as="p" hint-placeholder-count="5">
+        <div style="{{p.style}}">
+          <span style="width: 20px; flex-shrink: 0; font-size: 14px; color: #9e9e9e; text-align: right; font-variant-numeric: tabular-nums">{{p.num}}</span>
+          <span style="width: 40px; height: 40px; border-radius: 4px; background: #4a3b2f; flex-shrink: 0"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1">
+            <span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.title}}</span>
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: #c5c5c5"><sc-if value="{{p.isNew}}" hint-placeholder-val="{{ false }}"><span style="height: 16px; display: inline-flex; align-items: center; padding: 0 4px; border-radius: 4px; background: rgba(255,255,255,0.0605); color: #ffffff">New</span></sc-if>{{p.plays}}</span>
+          </span>
+          <span style="width: 36px; flex-shrink: 0; text-align: right; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{p.time}}</span>
+          <button aria-label="More options for {{p.title}}" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </div>
+      </sc-for>
+      <a href="#" style="height: 40px; display: flex; align-items: center; padding: 0 8px; font-size: 14px">See more</a>
+    </section>
+    <a href="#" style="display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff">
+      <span style="width: 56px; height: 56px; border-radius: 4px; background: #5b3b3b; flex-shrink: 0"></span>
+      <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1"><span style="font-size: 12px; color: #c5c5c5">Latest release</span><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Dooset Daram (feat. Helena)</span><span style="font-size: 12px; color: #c5c5c5">Single · 12 Jun 2026</span></span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Discography</h2><a href="#" style="font-size: 14px">Show all</a></div>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 44px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Overview', true), vs('Albums', false), vs('Singles & EPs', false), vs('Compilations', false), vs('Appears on', false), vs('About', false)];
+  const pd = [['One Day (feat. Helena) - Radio Edit', '214,018,301 plays', '3:33', false], ['Broken Angel (feat. Helena)', '402,776,114 plays', '3:11', false], ['Dooset Daram (feat. Helena)', '12,340,882 plays', '3:24', true], ['Boro Boro', '88,201,540 plays', '3:47', false], ['Temptation (feat. Rebecca)', '61,998,003 plays', '3:20', false]];
+  const popular = pd.map((d, i) => ({ num: String(i + 1), title: d[0], plays: d[1], time: d[2], isNew: d[3],
+    style: 'display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 0 0 4px; border-radius: 4px; ' + (i === 2 ? 'background: rgba(255,255,255,0.0605)' : '') }));
+  return { views, popular };
+}
+}
+</script>
+</body>
+</html>

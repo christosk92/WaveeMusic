@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Panorama options, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="none" ctx="Settings" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|About" sub-sel="{{one}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 12px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <nav aria-label="Breadcrumb" style="display: flex; align-items: center; gap: 6px; height: 28px; font-size: 14px; color: var(--t2)"><a href="#" style="color: var(--t2); text-decoration: none">Appearance</a><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></nav>
+    <h1 style="margin: 0 0 8px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Panorama options</h1>
+    <sc-for list="{{opts}}" as="o" hint-placeholder-count="8">
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+        <span style="display: flex; align-items: center; gap: 12px"><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{o.label}}</span><sc-if value="{{o.hasHelp}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{o.help}}</span></sc-if></span><sc-if value="{{o.isSwitch}}" hint-placeholder-val="{{ false }}"><span style="font-size: 14px; color: var(--t2)">On</span><span role="switch" aria-checked="true" aria-label="{{o.label}}" style="width: 40px; height: 20px; border-radius: 10px; background: var(--acc); position: relative; display: block; flex-shrink: 0"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: var(--onacc)"></span></span></sc-if></span>
+        <sc-if value="{{o.isCombo}}" hint-placeholder-val="{{ true }}"><button style="width: 100%; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">{{o.value}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+        <sc-if value="{{o.isRadio}}" hint-placeholder-val="{{ false }}"><span role="radiogroup" aria-label="{{o.label}}" style="display: flex; flex-direction: column"><sc-for list="{{o.choices}}" as="c" hint-placeholder-count="2"><label style="height: 40px; display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{c.radio}}"><sc-if value="{{c.on}}" hint-placeholder-val="{{ false }}"><span style="width: 8px; height: 8px; border-radius: 4px; background: var(--onacc)"></span></sc-if></span>{{c.label}}<sc-if value="{{c.hasSw}}" hint-placeholder-val="{{ false }}"><span style="{{c.sw}}"></span></sc-if></label></sc-for></span></sc-if>
+      </div>
+    </sc-for>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const radio = (on) => on ? 'width: 20px; height: 20px; border-radius: 10px; background: var(--acc); display: flex; align-items: center; justify-content: center; flex-shrink: 0' : 'width: 20px; height: 20px; border-radius: 10px; box-sizing: border-box; border: 1px solid var(--strong); flex-shrink: 0';
+  const O = [
+    ['radio', 'Accent colour', '', [['Windows accent', true, '#60cdff'], ['Zune magenta', false, '#ff7ac3']]],
+    ['combo', 'Background', 'Behind pages; None keeps the plain layer', 'None'],
+    ['combo', 'Now playing', 'Layout Card, Large art, Centered or Artist; face Bloom, Mosaic, Type or Spotlight', 'Card · Bloom'],
+    ['radio', 'Navigation casing', 'The two pivot rows only; names are never re-cased', [['Sentence case', true], ['lowercase, like Zune', false]]],
+    ['combo', 'Panorama titles', 'Display 68 from 1000 px, Title Large below', 'Display (68)'],
+    ['switch', 'Big track numbers', 'Off uses Body 14 numbers in Text 3'],
+    ['combo', 'Row density', 'Rows with art stay 52 (a Panorama override)', 'Standard (40)']
+  ];
+  const opts = O.map((o) => ({ label: o[1], help: o[2], hasHelp: !!o[2], isRadio: o[0] === 'radio', isCombo: o[0] === 'combo', isSwitch: o[0] === 'switch', value: o[0] === 'combo' ? o[3] : '',
+    choices: o[0] === 'radio' ? o[3].map((c) => ({ label: c[0], on: c[1], radio: radio(c[1]), hasSw: !!c[2], sw: 'width: 16px; height: 16px; border-radius: 4px; margin-left: 4px; background: ' + (c[2] || 'transparent') })) : [] }));
+  return { vars, theme, accent, opts, one: 1 };
+}
+}
+</script>
+</body>
+</html>

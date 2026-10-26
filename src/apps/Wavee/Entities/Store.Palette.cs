@@ -53,8 +53,12 @@ public static partial class Store
             if (PalettePersistence.IsWorthPersisting(buf[i].Known)) rows.Add(buf[i]);
         if (rows.Count == 0) return;
 
-        Enqueue(() => WritePaletteCore(rows));
+        EnqueuePaletteWrite(rows);
     }
+
+    /// <summary>The flush's write, in its own method: a lambda in <see cref="FlushPalette"/> that captures <c>rows</c> made
+    /// the compiler allocate its closure on EVERY call, at method entry, before the "nothing armed" return (24 B per frame).</summary>
+    static void EnqueuePaletteWrite(List<Palette.PaletteRowSnapshot> rows) => Enqueue(() => WritePaletteCore(rows));
 
     /// <summary>STORE THREAD. One transaction, one upsert per dirty row — the whole write side of the palette cache.
     /// <c>known</c> is masked to <see cref="PalettePersistence.PersistedBits"/> before it is bound, so a stray

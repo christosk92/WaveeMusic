@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Playlist owned, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="playlist:Summer Songs 2026" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="summer" h="480" hint-size="48px,480px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(74,60,44,0.32); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <aside aria-label="About this playlist" style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(58,58,58,0.298); border-top-left-radius: 8px; overflow: hidden">
+        <button aria-label="Change cover" style="position: relative; width: 200px; height: 200px; flex-shrink: 0; padding: 0; border: 0; border-radius: 8px; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; box-shadow: 0 2px 8px rgba(0,0,0,0.33); color: #fff; font: inherit"><span style="background: #e0a050"></span><span style="background: #3b8a8a"></span><span style="background: #c0613e"></span><span style="background: #f0d080"></span><span style="position: absolute; inset: 0; background: rgba(0,0,0,0.52); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 600"><svg width="32" height="32" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h2.5l1-1.5h4L11 5h2.5v7.5h-11zM8 6.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4z" fill="none" stroke="#fff" stroke-width="0.9"></path></svg>Change cover</span></button>
+        <div style="display: flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; flex-shrink: 0; border-radius: 12px; background: linear-gradient(135deg, #8a5a44, #3b5b7a)"></span><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Chris</span><button style="height: 28px; padding: 0 10px; border-radius: 14px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 12px">Invite</button></div>
+        <div style="position: relative; margin: -2px -6px; padding: 2px 28px 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Summer Songs 2026</h1><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="position: absolute; right: 8px; top: 12px; color: rgba(255,255,255,0.773)"><path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></div>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">3 of 48 songs · 11 min <span style="color: rgba(255,255,255,0.529)">(filtered)</span></span>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="display: inline-flex; align-items: center; height: 32px; border-radius: 4px; background: #f0a35e; color: #000; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)"><button style="width: 80px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; height: 20px; background: rgba(0,0,0,0.2)"></span><button aria-label="More ways to play" style="width: 28px; height: 32px; border: 0; background: transparent; color: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></button></span>
+          <button aria-label="Shuffle" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <span style="font-size: 12px; line-height: 18px; color: rgba(255,255,255,0.529); font-style: italic">Add an optional description</span>
+      </aside>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0"></span>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 12px">
+        <div role="toolbar" aria-label="List tools" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 6px 8px 6px 6px; display: flex; align-items: center; gap: 2px">
+          <span style="display: inline-flex; align-items: center; height: 32px"><button style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 9px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); font: inherit; font-size: 12px; font-weight: 600"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h7M2.5 8h7M2.5 12h4M12 6v7M9.5 10.5l2.5 2.5 2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg>Play next</button><span style="width: 1px; height: 16px; background: rgba(255,255,255,0.082)"></span><button aria-label="More queue options" style="width: 24px; height: 32px; border: 0; background: transparent; color: rgba(255,255,255,0.529); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></span>
+          <button style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 9px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); font: inherit; font-size: 12px; font-weight: 600"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 9px; border: 1px solid #f0a35e; border-radius: 4px; background: rgba(240,163,94,0.14); color: #f7c9a0; font: inherit; font-size: 12px; font-weight: 600"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3-1.5V8.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg>Filter<span style="min-width: 18px; height: 18px; border-radius: 9px; background: #f0a35e; color: #000; font-size: 11px; display: flex; align-items: center; justify-content: center">2</span></button>
+          <button aria-label="Sort: Custom order" style="height: 32px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 9px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); font: inherit"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M3 5l2-2 2 2M11 13V3M9 11l2 2 2-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+          <button aria-label="Find in this list" style="width: 32px; height: 32px; margin-left: 4px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+          <button aria-label="Insights" aria-pressed="false" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7.5 20v-7M12 20V6M16.5 20v-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></button>
+          <button aria-label="More list options" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="padding-right: 8px">
+          <dc-import name="C-TrackList" theme="dark" rs="modern" set="playlist" tier="small" n="3" marks="1:playing" accent="#f0a35e" hint-size="100%,220px"></dc-import>
+        </div>
+        <section aria-label="Recommended songs" style="margin: 8px 16px 0 0; display: flex; flex-direction: column; gap: 2px">
+          <div style="height: 40px; display: flex; align-items: center; gap: 8px; padding-left: 8px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Recommended songs</span><button aria-label="Refresh recommendations" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+          <sc-for list="{{recs}}" as="r" hint-placeholder-count="3"><div style="height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 6px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.a}}</span></span><button aria-label="Add to playlist" style="width: 28px; height: 28px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button><span style="width: 40px; text-align: right; font-size: 12px; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-for>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const recs = [['Espresso', 'Sabrina Carpenter', '2:55', '#4a7ab0'], ['Good Luck, Babe!', 'Chappell Roan', '3:38', '#c06a8a'], ['APT.', 'ROSÉ, Bruno Mars', '2:49', '#d06070']].map(r => ({ t: r[0], a: r[1], d: r[2], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + r[3] }));
+  return { recs };
+}
+}
+</script>
+</body>
+</html>

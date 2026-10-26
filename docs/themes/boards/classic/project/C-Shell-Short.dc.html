@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Short shell, 330 tall</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 330px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|album:Random Access Memories" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 210px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="home" h="210" hint-size="48px,210px"></dc-import>
+    <main style="position: relative; flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <div role="tablist" aria-label="Home" style="display: flex; align-items: center; gap: 16px; height: 40px; margin-left: -8px; flex-shrink: 0">
+        <sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><button role="tab" aria-selected="{{f.sel}}" style="{{f.style}}">{{f.l}}</button></sc-for>
+      </div>
+      <section aria-label="Your daylist" style="position: relative; height: 126px; flex-shrink: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.098); background: radial-gradient(60% 90% at 30% 70%, #c0613e 0%, rgba(192,97,62,0) 70%), linear-gradient(115deg, #7a5a38 0%, #8a4e7a 55%, #9b6ac0 100%)">
+        <div style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(74,52,40,0.96) 0%, rgba(74,52,40,0.9) 42%, rgba(74,52,40,0.3) 72%, rgba(74,52,40,0) 100%)"></div>
+        <div style="position: relative; width: 420px; box-sizing: border-box; padding: 16px 8px 12px 24px; display: flex; flex-direction: column; gap: 2px">
+          <div style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Good evening, Chris · your daylist</div>
+          <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">korean r&amp;b k-indie sunday evening</div>
+        </div>
+      </section>
+      <section aria-label="Recently played" style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Recently played</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: #a6d8ff">Listening history</a></div>
+      </section>
+      <div style="position: absolute; right: 12px; bottom: 8px; box-sizing: border-box; height: 24px; padding: 0 10px; display: flex; align-items: center; border-radius: 4px; background: rgba(32,32,32,0.92); border: 1px solid rgba(255,255,255,0.082); font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap">330 tall: hero capped at 60 % (126), rail 48, pane overlays, player bar kept at 72, content scrolls</div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":330}}'>
+class Component extends DCLogic {
+renderVals() {
+  const facets = ['All', 'Music', 'Podcasts', 'Audiobooks'].map((l, i) => ({ l, sel: i === 0 ? 'true' : 'false', style: "height: 40px; flex-shrink: 0; padding: 2px 8px; border: 0; border-radius: 4px; background: transparent; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: " + (i === 0 ? 600 : 400) + '; color: ' + (i === 0 ? '#ffffff' : 'rgba(255,255,255,0.773)') }));
+  return { facets };
+}
+}
+</script>
+</body>
+</html>

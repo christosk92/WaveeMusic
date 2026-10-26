@@ -19,9 +19,7 @@
 // the rootlist itself.
 
 using FluentGpu.Controls;
-using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
@@ -37,16 +35,6 @@ public static partial class Sidebar
         DragPayload? _captionPayload;
         string? _caption;
 
-        static bool IsFiling(DragPayload p) => p.RootlistItem && p.Kind is DragKind.Playlist or DragKind.Folder;
-
-        static IReadOnlyList<RootlistItemRef> RefsOf(DragPayload p)
-        {
-            var roots = p.RootRefs();
-            var refs = new RootlistItemRef[roots.Length];
-            for (int i = 0; i < roots.Length; i++) refs[i] = new RootlistItemRef(roots[i].Key, roots[i].IsFolder);
-            return refs;
-        }
-
         /// <summary>The spotlight scrim is suppressed for an intra-sidebar organisation drag: dimming the app you are
         /// reordering inside promises something false (rule 6 / D15).</summary>
         static bool SpotlightFor(DragSession s) => Drag.Unwrap(s.Payload) is not { RootlistItem: true };
@@ -60,50 +48,17 @@ public static partial class Sidebar
             DragPayload? rootTarget = null, int rootPlanIndex = -1, Action? onSpringLoad = null, string? railCueUri = null,
             bool isPlaylistRow = false, SidebarRowFacts rootFacts = default)
         {
-            bool playlistRow = isPlaylistRow || playlistUri is { Length: > 0 };
-            bool canDepositHere = playlistUri is { Length: > 0 };
+            // The row's structural facts. Every decision below is NavDropRules': a pure table over (row, payload, loaded);
+            // what is left here is the pointer geometry, the cue and the caption cache.
+            var row = new NavDropRow(rootTarget, slot, playlistUri, isPlaylistRow, railCueUri is { Length: > 0 });
 
-            bool Filing(DragPayload source) => rootTarget is not null && IsFiling(source);
-
-            // The payload-only half of the refusal table — it can drive `accepts` (and so the not-allowed cue).
-            SidebarDropRefusal PayloadRefusal(DragPayload source)
-            {
-                if (rootTarget is not { } root || !Filing(source)) return SidebarDropRefusal.None;
-                if (!RootlistLoaded) return SidebarDropRefusal.NotLoaded;
-                // ONE owner of "is this row one of the items the drag carries" (a multi-select carries N refs). Every
-                // other legality question (cycle, no-op) is the marker stream's, per resolved destination.
-                if (Drag.IsSource(source, root.Id, root.Uri))
-                    return root.Kind == DragKind.Folder ? SidebarDropRefusal.IntoItself : SidebarDropRefusal.Self;
-                return SidebarDropRefusal.None;
-            }
-
-            // The pinned region refuses what can never be a pin, WITH the reason (design corner case). A pinned PLAYLIST
-            // row keeps its own track answer: it deposits, or refuses with "can't edit this playlist" (WhyRefused's
-            // existing arm), which names the real reason better than "Tracks can't be pinned".
-            string? PinRefusal(DragPayload source)
-                => slot >= 0 && !(playlistRow && source.CanCopyTracks)
-                    ? SidebarPinRules.RefusalKeyOf(source.Kind, source.Id, source.Uri)
-                    : null;
-
-            bool Compatible(DragPayload source)
-            {
-                if (Filing(source)) return PayloadRefusal(source) == SidebarDropRefusal.None;
-                if (PinRefusal(source) is not null) return false;
-                if (canDepositHere && source.CanCopyTracks) return true;
-                return slot >= 0 && source.CanPin;
-            }
-
-            SidebarRowFacts FactsFor(DragPayload source) => rootFacts with
-            {
-                CenterAccepts = rootFacts.IsFolder || (canDepositHere && source.CanCopyTracks),
-                SourceIsSelf = PayloadRefusal(source) is SidebarDropRefusal.Self or SidebarDropRefusal.IntoItself,
-                RootlistLoaded = RootlistLoaded,
-            };
+            bool Compatible(DragPayload source) => NavDropRules.Compatible(in row, source, RootlistLoaded);
 
             SidebarDropSlot SlotFor(DragPayload p, DragSession s)
             {
                 if (!Compatible(p)) return SidebarDropSlot.None;
-                if (Filing(p) && rootPlanIndex >= 0) return RootlistSlotFor(rootPlanIndex, FactsFor(p), p, s.Position);
+                if (NavDropRules.Filing(in row, p) && rootPlanIndex >= 0)
+                    return RootlistSlotFor(rootPlanIndex, NavDropRules.FoldFacts(in row, in rootFacts, p, RootlistLoaded), p, s.Position);
                 // A pin insertion, a track deposit, a rail tile: a whole-row INTO — the plate.
                 return rootPlanIndex >= 0
                     ? new SidebarDropSlot(rootPlanIndex, SidebarDropKind.Into, 0, SidebarDropRefusal.None)
@@ -128,9 +83,9 @@ public static partial class Sidebar
             {
                 // A same-band reorder is this section's own gesture: its feedback is the displacement.
                 if (s.Payload is ReorderPayload own && ReferenceEquals(own.Owner, ReorderFor(sectionId))) return null;
-                if (cue.Refusal != SidebarDropRefusal.None) return RefusalSentence(cue.Refusal);
-                if (rootTarget is { } root && Filing(p)) return RootlistCaption(in cue, root, p, playlistName);
-                if (canDepositHere && p.CanCopyTracks) return Drag.AddTo(playlistName ?? "");
+                if (cue.Refusal != SidebarDropRefusal.None) return NavDropRules.Sentence(cue.Refusal);
+                if (rootTarget is { } root && NavDropRules.Filing(in row, p)) return RootlistCaption(in cue, root, p, playlistName);
+                if (row.CanDeposit && p.CanCopyTracks) return Drag.AddTo(playlistName ?? "");
                 if (slot >= 0 && p.CanPin) return Drag.Pin(p.Name);
                 return null;
             }
@@ -148,60 +103,41 @@ public static partial class Sidebar
                 Leave(s);
                 // HOISTED: a same-band reorder commits through its own Reorderable. Below the deposit arm it copied a
                 // playlist's songs into it on the way past (D9).
-                if (slot >= 0 && s.Payload is ReorderPayload rp && ReferenceEquals(rp.Owner, ReorderFor(sectionId))) return;
-
-                if (Filing(source) && rootPlanIndex >= 0)
+                bool ownReorder = slot >= 0 && s.Payload is ReorderPayload rp && ReferenceEquals(rp.Owner, ReorderFor(sectionId));
+                switch (NavDropRules.CommitArm(in row, source, ownReorder, rootPlanIndex))
                 {
-                    // THE ROOTLIST ARM OWNS THIS DROP. A cue published by a NEIGHBOUR is a refusal with a logged reason,
-                    // never a fallback placement — guessing is what made "after the last child" land inside the folder.
-                    if (cue.PlanIndex != rootPlanIndex || !cue.IsArmed)
+                    case NavDropArm.Rootlist:
                     {
-                        RefuseDrop(cue.PlanIndex == rootPlanIndex && cue.Refusal != SidebarDropRefusal.None
-                                       ? cue.Refusal
-                                       : SidebarDropRefusal.Unavailable,
-                                   "cue=" + cue.Kind + "/" + cue.PlanIndex + " row=" + rootPlanIndex);
+                        // THE ROOTLIST ARM OWNS THIS DROP. A cue published by a NEIGHBOUR is a refusal with a logged reason,
+                        // never a fallback placement — guessing is what made "after the last child" land inside the folder.
+                        var refusal = NavDropRules.RootlistCueRefusal(in cue, rootPlanIndex);
+                        if (refusal != SidebarDropRefusal.None)
+                        {
+                            RefuseDrop(refusal, "cue=" + cue.Kind + "/" + cue.PlanIndex + " row=" + rootPlanIndex);
+                            return;
+                        }
+                        CommitRootlistSlot(source, in cue, playlistUri, playlistName);
                         return;
                     }
-                    CommitRootlistSlot(source, in cue, playlistUri, playlistName);
-                    return;
+                    case NavDropArm.Deposit:
+                        Model.Drop(source, NavDropTarget.Playlist(playlistUri!, playlistName ?? ""));
+                        return;
+                    case NavDropArm.Pin:
+                        AcceptForeign(sectionId, s.Payload, slot);
+                        return;
                 }
-                if (playlistUri is { Length: > 0 } target && source.CanCopyTracks)
-                {
-                    if (LibraryWrites?.DepositTracks is { } deposit) deposit(target, playlistName ?? "", source);
-                    else RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no deposit seam");
-                    return;
-                }
-                if (slot >= 0) AcceptForeign(sectionId, s.Payload, slot);
             }
 
             // TRANSPARENT = none of my business (an album/artist/show/route row a track drag is merely crossing).
-            bool Transparent(DragPayload source)
-            {
-                if (PinRefusal(source) is not null) return false;
-                if (railCueUri is { Length: > 0 } && Drag.RailTileTransparent(source.RootlistItem, source.CanCopyTracks))
-                    return true;
-                if (slot >= 0 && source.CanPin) return false;
-                if (Filing(source)) return false;
-                return source.CanCopyTracks && !playlistRow;
-            }
+            bool Transparent(DragPayload source) => NavDropRules.Transparent(in row, source);
 
             // REFUSED = you aimed here, and here is why.
-            string? WhyRefused(DragPayload source)
-            {
-                if (PinRefusal(source) is { } pinKey) return Loc.Get(pinKey);
-                var refusal = PayloadRefusal(source);
-                if (refusal != SidebarDropRefusal.None) return RefusalSentence(refusal);
-                if (playlistRow && !canDepositHere && source.CanCopyTracks) return Loc.Get("drag.cantEditPlaylist");
-                // An artist has no single obvious track set: refuse rather than guess.
-                return canDepositHere && !source.CanCopyTracks
-                    ? Loc.Get(source.Kind == DragKind.Artist ? "drag.cantAddArtist" : "drag.nothingToAdd")
-                    : null;
-            }
+            string? WhyRefused(DragPayload source) => NavDropRules.WhyRefused(in row, source, RootlistLoaded);
 
             return Drop.Target<DragPayload>(Drag.Resource,
                 accepts: Compatible, onDrop: CommitDrop, onEnter: Hover, onOver: Hover, onLeave: Leave,
                 transparent: Transparent,
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 refusalCaption: WhyRefused,
                 spotlightWhen: SpotlightFor,
                 // A COLLAPSED folder spring-loads open even when it refuses the payload: opening is navigation.
@@ -218,30 +154,17 @@ public static partial class Sidebar
             // folder destination never lit.
             string cueKey = folder.Id;
             string name = folder.Name;
+            // The destination. Accepting, refusing and moving are the model's (NavModel.Drop.cs).
+            var dest = NavDropTarget.Folder(folderId, name, target);
 
-            RootlistMoveCheck Check(DragPayload source)
-                => RootlistDropDecision.Check(RootlistMarkers, RefsOf(source),
-                                              new RootlistItemRef(folderId, IsFolder: true), RootlistDropPlacement.Inside);
+            bool Accepts(DragPayload source) => Model.RailFolderAccepts(source, in dest);
 
-            bool Accepts(DragPayload source)
-                => IsFiling(source) && RootlistLoaded && folderId.Length > 0
-                   && !Drag.IsSource(source, target.Id, target.Uri)
-                   && Check(source) == RootlistMoveCheck.Ok;
-
-            string? Why(DragPayload source)
-            {
-                if (!IsFiling(source)) return null;   // transparent below — a track drag is only crossing
-                if (!RootlistLoaded) return Loc.Get("drag.stillLoading");
-                if (Drag.IsSource(source, target.Id, target.Uri)) return Loc.Get("drag.cantMoveIntoItself");
-                return RefusalSentence(RootlistDropDecision.RefusalFor(Check(source)));
-            }
+            string? Why(DragPayload source) => Model.RailFolderWhy(source, in dest);
 
             void Commit(DragPayload source, DragSession s)
             {
                 _railDropUri.Value = null;
-                if (!Accepts(source)) return;
-                RootlistUndoAnchors.TryResolveMany(RootlistTree, SourceIds(source), out var undo);
-                MoveRootlist(source, new RootlistItemRef(folderId, IsFolder: true), RootlistDropPlacement.Inside, name, undo);
+                Model.Drop(source, in dest, Config.SortedListRefusalAction);
             }
 
             return Drop.Target<DragPayload>(Drag.Resource,
@@ -253,7 +176,7 @@ public static partial class Sidebar
                 onOver: (p, _) => _railDropUri.SetIfChanged(Accepts(p) ? cueKey : null),
                 onLeave: _ => { if (string.Equals(_railDropUri.Peek(), cueKey, StringComparison.Ordinal)) _railDropUri.Value = null; },
                 onDrop: Commit,
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 spotlightWhen: SpotlightFor);
         }
 
@@ -274,13 +197,13 @@ public static partial class Sidebar
             float t = Math.Clamp((contentY - top) / extent, 0f, 1f);
             // The list is the padded box's only child, so the viewport's left edge IS the row's left edge.
             float xInRow = pointer.X - rect.X;
-            var cue = RootlistSlotResolver.Resolve(planIndex, t, xInRow, extent, in facts, _dropSlot.Peek());
+            var cue = RootlistSlotResolver.Resolve(planIndex, t, xInRow, extent, in facts, _dropSlot.Peek(), Kit.TreeLadder);
             TryDecide(in cue, source, out _, out var refined);
             return refined;
         }
 
         /// <summary>The content-space top of a plan row — a closure-free prefix sum over the live extents (this runs on
-        /// every Over while a drag is live, so it must not allocate a delegate the way a <c>ContentYOf</c> call would).</summary>
+        /// every Over while a drag is live, so it must not allocate).</summary>
         float RowTopOf(int planIndex)
         {
             int stop = Math.Min(planIndex, Plan.Rows.Count);
@@ -301,7 +224,7 @@ public static partial class Sidebar
             string rowId = cue.Kind == SidebarDropKind.EndOfList ? ""
                          : TryRowEntry(cue.PlanIndex, out var entry) ? entry.Id
                          : "";
-            refined = RootlistDropDecision.Refine(in cue, rowId, RootlistTree, RootlistMarkers, RefsOf(source), out target);
+            refined = RootlistDropDecision.Refine(in cue, rowId, RootlistTree, RootlistMarkers, NavDropRules.RefsOf(source), out target);
             return refined.IsArmed;
         }
 
@@ -320,71 +243,20 @@ public static partial class Sidebar
                 // The retained centre gesture: a WRITABLE playlist under the pointer takes the payload's tracks.
                 if (playlistUri is not { Length: > 0 } uri)
                     RefuseDrop(SidebarDropRefusal.Unavailable, "deposit without a writable playlist");
-                else if (LibraryWrites?.DepositTracks is { } deposit)
-                    deposit(uri, playlistName ?? "", source);
-                else RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no deposit seam");
+                else
+                    Model.DepositTracks(uri, playlistName ?? "", source);
                 return;
             }
-            // Captured BEFORE the mutation (once the rootlist moved, where things were is unknowable). A batch resolves
-            // all or none: a partial Undo would scatter the rest of the selection.
-            RootlistUndoAnchors.TryResolveMany(RootlistTree, SourceIds(source), out var undo);
             // This gesture's own re-projection must not be parked by the freeze.
             _publishThroughFreeze = true;
-            MoveRootlist(source, target.Ref, target.Placement, target.DestinationName, undo);
+            // The model captures the undo anchors BEFORE the mutation, EXACTLY ONE mutation per drop.
+            Model.MoveRootlist(source, target.Ref, target.Placement, target.DestinationName, Config.SortedListRefusalAction);
         }
 
-        /// <summary>EXACTLY ONE mutation per drop, whatever the selection size — through the library seam, which awaits it
-        /// and only then announces, toasts and offers Undo (with <c>""</c> meaning "Your Library").</summary>
-        void MoveRootlist(DragPayload source, RootlistItemRef target, RootlistDropPlacement placement, string destinationName,
-                          IReadOnlyList<RootlistMove>? undo)
-        {
-            if (LibraryWrites?.MoveRootlist is not { } move)
-            {
-                RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no rootlist seam");
-                return;
-            }
-            move(RefsOf(source), target, placement, destinationName, undo);
-        }
-
-        /// <summary>The projection-entry ids a rootlist payload carries (undo anchors resolve against the TREE, the seam
-        /// moves refs — one conversion, here).</summary>
-        IReadOnlyList<string> SourceIds(DragPayload source)
-        {
-            var refs = source.RootRefs();
-            var tree = RootlistTree;
-            var ids = new List<string>(refs.Length);
-            for (int i = 0; i < refs.Length; i++)
-            {
-                var r = refs[i];
-                if (r.Key.Length == 0) continue;
-                if (tree is null) { ids.Add(r.Key); continue; }
-                for (int j = 0; j < tree.Count; j++)
-                {
-                    var e = tree[j];
-                    if (!string.Equals(RootlistTreeNav.RefOf(in e).Key, r.Key, StringComparison.Ordinal)) continue;
-                    ids.Add(e.Id);
-                    break;
-                }
-            }
-            return ids;
-        }
-
-        /// <summary>A drop that cannot be honoured says so: a log line for us, the refusal's own sentence for the user —
-        /// and "clear sorting to reorder" carries the one action a mode can fix it with (#85 H3).</summary>
+        /// <summary>A drop that cannot be honoured says so (the model's <see cref="NavModel.RefuseDrop"/>), offering the mode's one
+        /// fix for "clear sorting to reorder" (#85 H3).</summary>
         void RefuseDrop(SidebarDropRefusal refusal, string why)
-        {
-            if (refusal == SidebarDropRefusal.WritesUnavailable) { RefuseWrite(why); return; }
-            Log.Warn("sidebar", "rootlist drop refused at commit: " + refusal + " (" + why + ")");
-            if (RefusalSentence(refusal) is not { Length: > 0 } sentence) return;
-            if (refusal == SidebarDropRefusal.SortedList && Config.SortedListRefusalAction is { } fix)
-                Notify.Say(sentence, InfoBarSeverity.Informational, Loc.Get("sidebar.v3.sort.custom"), fix);
-            else
-                Notify.Say(sentence, InfoBarSeverity.Informational);
-        }
-
-        /// <summary>ONE sentence per refusal, shared by the accept-time reason and the positional caption.</summary>
-        static string? RefusalSentence(SidebarDropRefusal refusal)
-            => SidebarDropRefusalText.LocKey(refusal) is { Length: > 0 } key ? Loc.Get(key) : null;
+            => NavModel.RefuseDrop(refusal, why, Config.SortedListRefusalAction);
 
         /// <summary>What an ARMED rootlist slot says. Before/After at the row's own depth say nothing (the line is under
         /// the pointer); only the outdent and the end of the list carry a sentence, and the outdent names the folder the
@@ -445,7 +317,7 @@ public static partial class Sidebar
                 caption: static p => SidebarCreateDropRules.IsFiling(p)
                     ? Loc.Format("drag.newFolderFromThis", ("count", p.RootlistCount))
                     : Loc.Get("drag.newPlaylistFromThis"),
-                refusalCaption: static _ => RefusalSentence(SidebarDropRefusal.WritesUnavailable),
+                refusalCaption: static _ => NavDropRules.Sentence(SidebarDropRefusal.WritesUnavailable),
                 onEnter: (p, _) => HeaderCreateDropActive.SetIfChanged(CreateArmed(SidebarCreateDropRules.Header(p, LibraryWrites))),
                 onOver: (p, _) => HeaderCreateDropActive.SetIfChanged(CreateArmed(SidebarCreateDropRules.Header(p, LibraryWrites))),
                 onLeave: _ => HeaderCreateDropActive.Value = false,
@@ -455,12 +327,12 @@ public static partial class Sidebar
                     var writes = LibraryWrites;
                     switch (SidebarCreateDropRules.Header(p, writes))
                     {
-                        case SidebarCreateDrop.NewFolder: writes!.NewFolderWith!(null, RefsOf(p)); break;
+                        case SidebarCreateDrop.NewFolder: writes!.NewFolderWith!(null, NavDropRules.RefsOf(p)); break;
                         case SidebarCreateDrop.NewPlaylist: writes!.CreatePlaylistWith!(p); break;
-                        case SidebarCreateDrop.Refused: RefuseWrite("header create drop"); break;
+                        case SidebarCreateDrop.Refused: NavModel.RefuseWrite("header create drop"); break;
                     }
                 },
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 spotlightWhen: SpotlightFor);
 
         /// <summary>Playlists dropped on a folder row's "+" ⇒ a new SUB-folder inside it. A track set is transparent: it
@@ -470,7 +342,7 @@ public static partial class Sidebar
                 accepts: static p => SidebarCreateDropRules.Folder(p, LibraryWrites) == SidebarCreateDrop.NewFolder,
                 transparent: static p => SidebarCreateDropRules.Folder(p, LibraryWrites) == SidebarCreateDrop.Transparent,
                 caption: _ => Loc.Format("drag.newFolderInside", ("name", folderName)),
-                refusalCaption: static _ => RefusalSentence(SidebarDropRefusal.WritesUnavailable),
+                refusalCaption: static _ => NavDropRules.Sentence(SidebarDropRefusal.WritesUnavailable),
                 onEnter: (p, _) => active.SetIfChanged(CreateArmed(SidebarCreateDropRules.Folder(p, LibraryWrites))),
                 onOver: (p, _) => active.SetIfChanged(CreateArmed(SidebarCreateDropRules.Folder(p, LibraryWrites))),
                 onLeave: _ => active.Value = false,
@@ -479,37 +351,15 @@ public static partial class Sidebar
                     active.Value = false;
                     var writes = LibraryWrites;
                     if (SidebarCreateDropRules.Folder(p, writes) == SidebarCreateDrop.NewFolder)
-                        writes!.NewFolderWith!(folderId, RefsOf(p));
-                    else RefuseWrite("folder create drop");
+                        writes!.NewFolderWith!(folderId, NavDropRules.RefsOf(p));
+                    else NavModel.RefuseWrite("folder create drop");
                 },
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 spotlightWhen: SpotlightFor);
 
         /// <summary>The "+" plate lights only for a drop that will actually create something.</summary>
         static bool CreateArmed(SidebarCreateDrop outcome) => outcome is SidebarCreateDrop.NewFolder or SidebarCreateDrop.NewPlaylist;
 
-        // ── pins (the drop and the menus share these two mutations; both are recorded in the undo ring, §P4.4) ─────────
-
-        /// <summary>Pin through the ring (appended, or at a drop's <paramref name="slot"/>): its "Pinned … · Undo" toast (or
-        /// the batch that re-shows a hidden Pinned) is the ring's. Already pinned ⇒ a SILENT no-op (the store is idempotent;
-        /// a double invoke must never claim it did something).</summary>
-        internal static void PinWithToast(string pinId, SidebarEntryKind kind, string? uri, string? name, int slot = -1)
-        {
-            if (string.IsNullOrEmpty(pinId) || SidebarPinRules.IsFixedRoute(pinId)) return;
-            if (SidebarAccountKey.IsSignedOut(AccountKey))
-            {
-                Notify.Say(Loc.Get("sidebar.pin.signedOut"), InfoBarSeverity.Informational);
-                return;
-            }
-            var pin = new SidebarPin(pinId, kind, uri ?? "", name ?? "", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            PinRecorded(pin, name is { Length: > 0 } n ? n : SidebarMenus.PinName(pinId), slot);
-        }
-
-        /// <summary>Remove a pin through the ring: undo restores it at its FORMER index (the ring snapshots it before removal).</summary>
-        internal static void UnpinWithToast(string pinId, string? nameHint = null)
-        {
-            if (string.IsNullOrEmpty(pinId)) return;
-            UnpinRecorded(pinId, nameHint is { Length: > 0 } n ? n : SidebarMenus.PinName(pinId));
-        }
+        // The pin and unpin verbs (recorded in the undo ring, §P4.4) are the nav model's: Model.Pin / Model.Unpin.
     }
 }

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune release notes · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="settings › about › what's new" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="none" sub="" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+    <div style="position: absolute; left: 16px; top: -4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; opacity: 0.9">what's new</div>
+    <div style="position: absolute; left: 24px; right: 24px; top: 76px; bottom: 0; display: flex; gap: 32px">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: baseline; gap: 14px; white-space: nowrap">
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">wavee 1.6.0 "aurora"</span>
+          <span style="font-size: 12px; color: #a8a8a8; overflow: hidden; text-overflow: ellipsis">3 releases since you looked</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{highlights}}" as="h" hint-placeholder-count="3">
+            <div style="background: #1b1b1b; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-height: 112px; box-sizing: border-box"><span style="{{h.swatch}}"></span><span style="font-size: 14px; line-height: 19px">{{h.title}}</span><span style="font-size: 12px; color: #a8a8a8; line-height: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{h.text}}</span><a href="#" style="{{h.link}}">try it →</a></div>
+          </sc-for>
+        </div>
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; height: 34px; display: flex; align-items: flex-end; padding-bottom: 4px">{{g.title}}</span>
+            <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 14px"><span style="color: #c8c8c8; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.text}}</span><span style="{{r.chip}}">{{r.issue}}</span><span style="{{r.avatar}}"></span></div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <div style="width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 32px; margin-bottom: 6px">releases</span>
+        <sc-for list="{{releases}}" as="v" hint-placeholder-count="6">
+          <a href="#" style="{{v.row}}"><span style="{{v.name}}">{{v.v}}</span><span style="font-size: 11px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.tags}}</span></a>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const highlights = [['themes', 'classic, winui and zune: one app, three looks, each with its own options.', accent], ['the zune band', 'pivots across the top, your pins beside them, no sidebar.', '#60cdff'], ['liked songs, grouped', 'this week, last week, then the months.', '#8fd14f']].map((d) => ({ title: d[0], text: d[1], link: 'font-size: 13px; color: ' + accent + '; margin-top: auto', swatch: 'width: 20px; height: 20px; background: ' + d[2] + '; display: block' }));
+  const chip = (state) => 'font-size: 11px; padding: 2px 6px; white-space: nowrap; flex-shrink: 0; color: ' + (state === 'closed' ? '#8fd14f' : state === 'open' ? '#60cdff' : '#a8a8a8') + '; background: rgba(255,255,255,0.06)';
+  const avatar = (c) => 'width: 18px; height: 18px; border-radius: 9px; background: ' + c + '; display: block; flex-shrink: 0';
+  const groups = [
+    { title: 'added', rows: [['Themes: Classic, WinUI and Zune, each with its own options', '#210 closed', '#5b6b3b', 'closed'], ['Liked Songs groups by week and month when sorted by date added', '#203 closed', '#5b6b3b', 'closed'], ['The Zune band shows up to six pins beside the pivots', '#205 closed', '#6b2f4a', 'closed']] },
+    { title: 'changed', rows: [['The right panel sits inline from 820 wide and floats below that', '#198 closed', '#5b6b3b', 'closed'], ['Track rows: the playing song is drawn in the accent, with no plate', '#201 closed', '#5b6b3b', 'closed']] },
+  ].map((g) => ({ title: g.title, rows: g.rows.map((r) => ({ text: r[0], issue: r[1], avatar: avatar(r[2]), chip: chip(r[3]) })) }));
+  const releases = [['1.7.0-beta.1', 'beta', false], ['1.6.0', 'you · latest · stable', true], ['1.5.2', 'stable', false], ['1.5.0', '', false], ['1.4.1', '', false], ['1.4.0', '', false]].map((d) => ({ v: d[0], tags: d[1], row: 'display: flex; flex-direction: column; gap: 1px; padding: 6px 0; min-height: 36px; box-sizing: border-box; justify-content: center; ' + (d[2] ? 'box-shadow: inset 2px 0 0 ' + accent + '; padding-left: 12px' : ''), name: 'font-size: 15px; color: ' + (d[2] ? '#ffffff' : '#c8c8c8') + '; font-variant-numeric: tabular-nums' }));
+  return { accent, highlights, groups, releases };
+}
+}
+</script>
+</body>
+</html>

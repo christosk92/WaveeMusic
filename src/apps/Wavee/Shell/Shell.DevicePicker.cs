@@ -8,11 +8,14 @@
 // Before this, each surface decided "are we remote?" on its own (the bar by `DeviceRoster.RemoteSlot`, the stage by a bare
 // owner read) and each mapped a click on its own (the bar pulled home through a roster probe that asked Spotify to
 // transfer to OUR OWN hash — the reducer refuses that — while the stage never tried). Now a click is a DATA intent the
-// surface only executes (`Shell.RunDeviceIntent`): choosing a this-computer endpoint persists the output and, unless we
+// surface only executes (`Shell.DeviceVerbs.Run`): choosing a this-computer endpoint persists the output and, unless we
 // already own playback, takes playback over (`Playback.TakeOver`, a local claim — never a transfer to ourselves).
 
-using System;
 using System.Collections.Generic;
+
+using FluentGpu.Controls;
+
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -76,6 +79,34 @@ public static partial class Shell
                 items.Add(new DevicePickerItem(row, intent));
             }
             return items;
+        }
+
+        /// <summary>The items as the contract's entries (<c>Player.DevicePicker</c>, T6b): a theme draws a separator, an information row, a
+        /// command (a this-computer output: choosing it persists the output and pulls playback here) or a radio (a Connect device, checked
+        /// when it is the active one), each with the glyph the roster rules give it and the verb that executes its intent. A disabled
+        /// command row stands in as the section header (a menu has no header kind); the quality echo rides the same shape: informational,
+        /// never a radio. The roster, owner and outputs are read by the caller; nothing here subscribes.</summary>
+        public static DevicePickerEntry[] Entries(IReadOnlyList<DevicePickerItem> items)
+        {
+            var entries = new DevicePickerEntry[items.Count];
+            for (int i = 0; i < entries.Length; i++)
+            {
+                var row = items[i].Row;
+                var intent = items[i].Intent;
+                entries[i] = row.Kind switch
+                {
+                    DevicePickerRowKind.Separator => new DevicePickerEntry(DevicePickerEntryKind.Separator, "", "", false, false, null, null),
+                    DevicePickerRowKind.LocalDefault => new DevicePickerEntry(DevicePickerEntryKind.Command, row.Label, Icons.ThisPc,
+                        row.Enabled, row.IsChecked, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null) { Word = true, Chosen = row.Chosen },
+                    DevicePickerRowKind.LocalDevice => new DevicePickerEntry(DevicePickerEntryKind.Command, row.Label,
+                        DeviceRoster.LocalGlyph(row.LocalKind),
+                        row.Enabled, row.IsChecked, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null) { Chosen = row.Chosen },
+                    DevicePickerRowKind.ConnectDevice => new DevicePickerEntry(DevicePickerEntryKind.Radio, row.Label,
+                        DeviceRoster.ConnectGlyph(row.ConnectKind), true, row.IsChecked, null, () => DeviceVerbs.Run(intent)),
+                    _ => new DevicePickerEntry(DevicePickerEntryKind.Info, row.Label, "", false, false, null, null),
+                };
+            }
+            return entries;
         }
     }
 

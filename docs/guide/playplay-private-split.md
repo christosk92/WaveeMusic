@@ -15,8 +15,7 @@ public GitHub record.
 The build is absence-tolerant. The presence of `src/apps/Wavee.PlayPlay/Client/PlayPlayHost.cs` flips the
 `WAVEE_PLAYPLAY_LOCAL` MSBuild symbol (not the sibling csproj alone — a partial junction, or a 0.2.x package that has no
 `PlayPlayHost`, must not enable a call to a type that never compiles); the package's `**/*.cs` + `Protos/playplay.proto`
-then source-link into the `Wavee` assembly (`src/apps/Wavee/Wavee.csproj`), and `Wavee.Tests` links `Tests/` behind the
-same gate. The 0.3 package lives on the private repo's `feat/0.3` branch; 0.2.x keeps building from `main`.
+then source-link into the `Wavee` assembly (`src/apps/Wavee/Wavee.csproj`). The 0.3 package lives on the private repo's `feat/0.3` branch; 0.2.x keeps building from `main`.
 
 **The seam (Wavee 0.3).** The composition root makes ONE call, `PlayPlayHost.Install()`, under `#if WAVEE_PLAYPLAY_LOCAL`
 and outside `--fake` (`App.cs`). It fills four public seams, and the public tree names nothing else of the package:
@@ -25,7 +24,7 @@ and outside `--fake` (`App.cs`). It fills four public seams, and the public tree
 |---|---|---|
 | `Spotify.Audio.KeyDeriver` | `Spotify/Spotify.Audio.cs` | the key for a file the AP refused (license request + derivation); null while no runtime is bound, so the app says "unavailable on this build" honestly |
 | `Spotify.Audio.BodyDecryptorFor` | `Spotify/Spotify.Audio.cs` | a native body decryptor a derivation can leave for its file; the body decrypts through it instead of AES-CTR |
-| `Setup.Runtime.Host` (+ `Setup.Runtime.Status`) | `Screens/Setup.UI.Runtime.cs` | the setup card's catalog, download/install, folder registration, remove and refresh verbs, and the published runtime facts |
+| `Setup.Runtime.Host` (+ `Setup.Runtime.Status`) | `Screens/RuntimeModel.cs` | the setup card's catalog, download/install, folder registration, remove and refresh verbs, and the published runtime facts |
 | `Diagnostics.RuntimeReportSource` | `Screens/Diagnostics.cs` | the locate/verify report, computed off the UI thread |
 
 The license route presents the runtime build's client identity through `Spotify.Api.PostAsClient`. With the package

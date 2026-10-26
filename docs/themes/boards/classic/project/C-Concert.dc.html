@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concert</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="concert:Billie Eilish · Ziggo Dome" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <nav aria-label="Breadcrumb" style="height: 28px; display: flex; align-items: flex-end; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; flex-shrink: 0"><a href="#" style="color: rgba(255,255,255,0.773)">Browse</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Concerts</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Billie Eilish</a></nav>
+      <div style="display: flex; gap: 24px; min-height: 0">
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+          <section aria-label="Billie Eilish at Ziggo Dome" style="height: 300px; display: grid; grid-template-columns: 56fr 44fr; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)">
+            <div style="padding: 24px; display: flex; flex-direction: column; gap: 10px; justify-content: center">
+              <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.03em; color: #a6d8ff">Concert</span>
+              <h1 style="margin: 0; font-size: 28px; line-height: 36px; font-weight: 600">Billie Eilish — HIT ME HARD AND SOFT: THE TOUR</h1>
+              <span style="align-self: flex-start; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #393d1b; color: #6ccb5f">On sale</span>
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; font-size: 14px; color: rgba(255,255,255,0.773)"><span>▦ Sat, Mar 14, 2026</span><span>◷ Doors open 18:30</span><span>⌖ Ziggo Dome, Amsterdam</span><span>ⓘ Ages 18+</span></div>
+            </div>
+            <span style="background: linear-gradient(160deg, #3b5574, #0e1828)"></span>
+          </section>
+          <section aria-label="Lineup" style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column">
+            <span style="font-size: 20px; line-height: 28px; font-weight: 600; margin-bottom: 4px">Lineup</span>
+            <sc-for list="{{lineup}}" as="l" hint-placeholder-count="3"><div style="height: 60px; display: flex; align-items: center; gap: 12px"><span style="{{l.a}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">{{l.n}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{l.r}}</span></span><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 13px">{{l.f}}</button></div></sc-for>
+          </section>
+        </div>
+        <aside aria-label="Tickets" style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+          <span style="font-size: 20px; line-height: 28px; font-weight: 600">Tickets</span>
+          <sc-for list="{{tickets}}" as="t" hint-placeholder-count="2"><div style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 6px"><span style="font-size: 14px; font-weight: 600">{{t.p}}</span><span style="font-size: 20px; line-height: 28px; font-weight: 600">{{t.price}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{t.w}}</span><button style="margin-top: 6px; height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Buy tickets ↗</button></div></sc-for>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const lineup = [['Billie Eilish', 'Headliner', '#2f4a6b', 'Following'], ['Nat & Alex Wolff', 'Support', '#6b5b3b', 'Follow'], ['TV Girl', 'Support', '#8a3b5b', 'Follow']].map(l => ({ n: l[0], r: l[1], f: l[3], a: 'width: 44px; height: 44px; border-radius: 22px; background: ' + l[2] }));
+  const tickets = [['Ticketmaster', 'from €89', 'On sale until Mar 13'], ['Resale', 'from €120', 'Verified fan-to-fan resale']].map(t => ({ p: t[0], price: t[1], w: t[2] }));
+  return { lineup, tickets };
+}
+}
+</script>
+</body>
+</html>

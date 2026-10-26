@@ -238,12 +238,12 @@ public static partial class AiLyrics
                     if (added > 0 && ready > linesReady)
                     {
                         linesReady = ready;
-                        publish(BuildDoc(ready, final: false), new JobProgress(ready, LineCount, ctcPos / (double)Sr16, false));
+                        publish(BuildDoc(ready), new JobProgress(ready, LineCount, ctcPos / (double)Sr16, false));
                     }
                 }
 
                 _vit.Commit(0, final: true);
-                var doc = BuildDoc(LineCount, final: true);
+                var doc = BuildDoc(LineCount);
                 Elapsed.Stop();
                 publish(doc, new JobProgress(LineCount, LineCount, ctcPos / (double)Sr16, true));
                 return doc;
@@ -269,7 +269,7 @@ public static partial class AiLyrics
             return n;
         }
 
-        Lyrics.Doc BuildDoc(int readyLines, bool final)
+        Lyrics.Doc BuildDoc(int readyLines)
         {
             int n = LineCount;
             var times = new Align.WordTime[n][];

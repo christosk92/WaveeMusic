@@ -12,7 +12,7 @@ Wavee is released by hand from this machine. There is no CI release job: a CI ch
 | `Wavee.StoreSubmission.psm1` | Pure desired-package reconciliation, draft/ingested inventory checks and artifact-hash validation |
 | `feed-release-body.md` | the body of the rolling `wavee-stable` feed release - read it before touching that tag |
 | `wavee/<semver>/` | hand-authored release notes: `whatsnew.json` plus its `media/` (tagline, highlights, notices) |
-| `tests/` | Pester 3.4 tests over the pure helpers (`Wavee.Release.Tests.ps1`, `Wavee.Store.Tests.ps1`), plus `LocalFeedServer.psm1` (the loopback update feed) and `local-update-e2e.ps1` (the local update rehearsal) - `Invoke-Pester ops\release\tests` |
+| `tests/` | `LocalFeedServer.psm1` (the loopback update feed) and `local-update-e2e.ps1` (the local update rehearsal) |
 
 The build side lives next door in `ops/build` (`Wavee.Build.psm1`, `pack-wavee-msix.ps1`,
 `Wavee.AppInstaller.template.xml`, `Wavee.AppxManifest.xml`).

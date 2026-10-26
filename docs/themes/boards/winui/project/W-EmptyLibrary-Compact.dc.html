@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Empty library, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|albums:Library" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <h1 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Library</h1>
+      <button disabled aria-label="Sort: Recently added" style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #5d5d5d; font: inherit; font-size: 14px">Recently added<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div style="margin: 0 -16px; padding: 0 16px; overflow: hidden; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+      <div style="display: flex; align-items: center; gap: 4px; width: max-content">
+        <sc-for list="{{views}}" as="v" hint-placeholder-count="5"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+      </div>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding-bottom: 24px; text-align: center">
+      <span style="width: 64px; height: 64px; border-radius: 32px; background: rgba(255,255,255,0.0605); color: #c5c5c5; display: flex; align-items: center; justify-content: center"><svg width="28" height="28" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a2 2 0 0 1 2 2v4a2 2 0 0 1-4 0v-4a2 2 0 0 1 2-2zM4.5 7.5a3.5 3.5 0 0 0 7 0M8 11v3M6 14h4" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"></path></svg></span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">No podcasts yet</span>
+      <span style="max-width: 300px; font-size: 14px; line-height: 20px; color: #c5c5c5">Shows and episodes you follow will show up here.</span>
+      <button style="margin-top: 8px; height: 40px; padding: 0 20px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px">Browse podcasts</button>
+      <div style="align-self: stretch; display: flex; flex-direction: column; gap: 8px; padding-top: 28px; text-align: left">
+        <sc-for list="{{picks}}" as="p" hint-placeholder-count="3">
+          <a href="#" style="display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 12px 0 8px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff"><span style="{{p.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{p.s}}</span></span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: #c5c5c5"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; line-height: 16px; color: #9e9e9e">Popular with listeners like you</span>
+    </div>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; flex-shrink: 0; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Playlists', false), vs('Albums', false), vs('Artists', false), vs('Podcasts', true), vs('Audiobooks', false)];
+  const picks = [['Coffee & Code', 'Technology · Weekly', '#4a5b3b'], ['The Rest Is History', 'History · Twice weekly', '#6b4a2f'], ['Song Exploder', 'Music · Biweekly', '#2f4a6b']].map(p => ({ t: p[0], s: p[1], art: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: ' + p[2] }));
+  return { views, picks };
+}
+}
+</script>
+</body>
+</html>

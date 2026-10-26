@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shell part: NavigationView pane</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<nav aria-label="Main" style="{{s.root}}">
+  <sc-for list="{{items}}" as="n" hint-placeholder-count="12">
+    <sc-if value="{{n.header}}" hint-placeholder-val="{{ false }}">
+      <div style="{{n.style}}"><span style="flex-grow: 1">{{n.label}}</span><sc-if value="{{n.plus}}" hint-placeholder-val="{{ false }}"><button aria-label="Create playlist or folder" style="{{s.plus}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button></sc-if></div>
+    </sc-if>
+    <sc-if value="{{n.sep}}" hint-placeholder-val="{{ false }}"><span style="{{n.style}}"></span></sc-if>
+    <sc-if value="{{n.item}}" hint-placeholder-val="{{ true }}">
+      <a href="#" aria-label="{{n.label}}" style="{{n.style}}">
+        <span style="{{n.pill}}"></span>
+        <sc-if value="{{n.art}}" hint-placeholder-val="{{ false }}"><span style="{{n.artStyle}}"></span></sc-if>
+        <sc-if value="{{n.glyph}}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{n.d}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if>
+        <span style="{{n.text}}">{{n.label}}</span>
+        <sc-if value="{{n.chev}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{n.chevD}}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if>
+      </a>
+    </sc-if>
+  </sc-for>
+  <div style="flex-grow: 1"></div>
+  <a href="#" aria-label="Settings" style="{{s.footer}}">
+    <span style="{{s.footerPill}}"></span>
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
+    <span style="{{s.footerText}}">Settings</span>
+  </a>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"mode":{"editor":"enum","options":["open","compact"],"default":"open"},"sel":{"editor":"text","default":"home"},"hover":{"editor":"text","default":""},"height":{"editor":"int","default":800,"min":300,"max":1400},"$preview":{"width":280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const open = (this.props.mode ?? 'open') !== 'compact';
+  const T = dark
+    ? { mica: '#202020', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', sub: 'rgba(255,255,255,0.0605)', sub2: 'rgba(255,255,255,0.0419)', div: 'rgba(255,255,255,0.0837)', acc: '#60cdff' }
+    : { mica: '#f3f3f3', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', sub: 'rgba(0,0,0,0.0373)', sub2: 'rgba(0,0,0,0.0241)', div: 'rgba(0,0,0,0.0803)', acc: '#005fb8' };
+  const I = {
+    home: 'M2.5 8.5 8 3l5.5 5.5M4 7.5V13h8V7.5', browse: 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM10.5 5.5 9 9l-3.5 1.5L7 7z',
+    liked: 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z', albums: 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z',
+    artists: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4', podcasts: 'M8 1.5a2 2 0 0 1 2 2v4a2 2 0 0 1-4 0v-4a2 2 0 0 1 2-2zM4.5 7.5a3.5 3.5 0 0 0 7 0M8 11v3M6 14h4',
+    audiobooks: 'M2.5 3h4A1.5 1.5 0 0 1 8 4.5v9A1.5 1.5 0 0 0 6.5 12h-4zM13.5 3h-4A1.5 1.5 0 0 0 8 4.5v9A1.5 1.5 0 0 1 9.5 12h4z', episodes: 'M4 2h8v12l-4-3-4 3z',
+    folder: 'M2 4.5A1 1 0 0 1 3 3.5h3l1.5 1.5H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z', playlist: 'M2.5 4h8M2.5 8h8M2.5 12h5M13 11.5V4M11.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z'
+  };
+  const sel = String(this.props.sel ?? 'home'), hover = String(this.props.hover ?? '');
+  const width = open ? 280 : 48;
+  const H = Number(this.props.height ?? 800);
+  const def = [
+    { k: 'home', l: 'Home', g: 'home' }, { k: 'browse', l: 'Browse', g: 'browse' },
+    { h: 'Pinned' }, { k: 'episodes', l: 'Your Episodes', g: 'episodes' }, { k: 'rock', l: '90s rock permanent wave', art: '#6b3b5b' },
+    { h: 'Library' }, { k: 'liked', l: 'Liked Songs', g: 'liked' }, { k: 'albums', l: 'Albums', g: 'albums' }, { k: 'artists', l: 'Artists', g: 'artists' }, { k: 'podcasts', l: 'Podcasts', g: 'podcasts' }, { k: 'audiobooks', l: 'Audiobooks', g: 'audiobooks' },
+    { h: 'Playlists', plus: true }, { k: 'kpop', l: 'K-Pop Duets (러블리 듀엣)', art: '#6b3b4a' }, { k: 'lol', l: 'LoL Worlds Songs 2014–2026', art: '#5b5b5b' }, { k: 'mixes', l: 'Mixes', g: 'folder', chev: true }, { k: 'dm1', l: 'Daily Mix 1', art: '#5b3b6b', child: true }, { k: 'dm2', l: 'Daily Mix 2', art: '#3b5b6b', child: true }, { k: 'nl', l: '90’s Nederlandstalig', art: '#2f5b6b' }
+  ];
+  if (H >= 1100) def.push({ k: 'euro', l: 'Eurodance 2009–2012', art: '#3b5b7a' }, { k: 'late', l: 'Late night drive', art: '#2f3b5b' }, { k: 'gym', l: 'Gym 2026', art: '#5b3b2f' }, { k: 'drive', l: 'Long Drive Home', art: '#6b4a2f' }, { k: 'rain', l: 'Rainy Window', art: '#2f6b5b' });
+  const items = def.map(d => {
+    if (d.h) {
+      if (!open) return { sep: true, header: false, item: false, style: 'display: block; height: 1px; margin: 8px 8px; background: ' + T.div };
+      return { header: true, item: false, sep: false, label: d.h, plus: !!d.plus, style: 'height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 8px 6px 16px; box-sizing: border-box; font-size: 14px; font-weight: 600; color: ' + T.t1 };
+    }
+    const isSel = d.k === sel, isHover = d.k === hover;
+    const bg = isSel ? T.sub : (isHover ? T.sub2 : 'transparent');
+    const indent = open && d.child ? 'padding-left: 40px; ' : (open ? 'padding-left: 12px; ' : '');
+    const style = open
+      ? 'position: relative; height: 36px; margin: 2px 4px; flex-shrink: 0; ' + indent + 'padding-right: 8px; display: flex; align-items: center; gap: 16px; border-radius: 4px; font-size: 14px; color: ' + T.t1 + '; background: ' + bg
+      : 'position: relative; width: 40px; height: 36px; margin: 2px 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: ' + T.t1 + '; background: ' + bg;
+    return { item: true, header: false, sep: false, label: d.l, style,
+      pill: isSel ? 'position: absolute; left: 0; top: 10px; width: 3px; height: 16px; border-radius: 2px; background: ' + T.acc : 'display: none',
+      art: !!d.art, glyph: !d.art, d: I[d.g] || I.playlist,
+      fill: d.k === 'liked' ? 'currentColor' : 'none', stroke: d.k === 'liked' ? 'none' : 'currentColor',
+      artStyle: 'width: 16px; height: 16px; flex-shrink: 0; border-radius: 2px; background: ' + d.art,
+      text: open ? 'flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis' : 'display: none',
+      chev: open && !!d.chev, chevD: 'M3.5 10 8 5.5l4.5 4.5' };
+  });
+  const s = {
+    root: 'width: ' + width + 'px; height: ' + H + 'px; box-sizing: border-box; padding: 4px 0; display: flex; flex-direction: column; overflow: hidden; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; color: ' + T.t1 + '; background: ' + T.mica,
+    plus: 'width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.t2 + '; font: inherit',
+    footer: open
+      ? 'position: relative; height: 36px; margin: 2px 4px; flex-shrink: 0; padding: 0 8px 0 12px; display: flex; align-items: center; gap: 16px; border-radius: 4px; font-size: 14px; color: ' + T.t1 + '; background: ' + (sel === 'settings' ? T.sub : 'transparent')
+      : 'position: relative; width: 40px; height: 36px; margin: 2px 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: ' + T.t1 + '; background: ' + (sel === 'settings' ? T.sub : 'transparent'),
+    footerPill: sel === 'settings' ? 'position: absolute; left: 0; top: 10px; width: 3px; height: 16px; border-radius: 2px; background: ' + T.acc : 'display: none',
+    footerText: open ? 'flex-grow: 1' : 'display: none'
+  };
+  return { s, items };
+}
+}
+</script>
+</body>
+</html>

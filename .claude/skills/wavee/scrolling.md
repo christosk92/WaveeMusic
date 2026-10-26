@@ -55,7 +55,7 @@ Element scroll = ScrollView(body) with
   Read them in a bind or a coarse memo — a `Render()` that reads `Offset.Value` re-renders every scrolled frame. If the
   value only moves pixels, it should be a scroll effect (below), not a bind.
 - **Which section am I in** (pivot scroll-spy) is a pure, engine-free decision: `Detail.ScrollSpy.ActiveSectionOf`
-  (`Entities/Detail.ScrollSpy.cs`, tested by `ScrollSpySectionTests`) / `Detail.BandLayout.ActiveSection`, fed from the
+  (`Entities/Detail.ScrollSpy.cs`) / `Detail.BandLayout.ActiveSection`, fed from the
   handle's offset.
 
 ## Sticky, clip, collapse, parallax — declared, posed by the engine
@@ -72,11 +72,11 @@ Detail.Hero(…).Sticky(0f, TableScope)
 Chrome(…).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableScope, engaged: _compactInteractive);
 content.StickyClip(stickyInset, engaged: _bodyClipEngaged);        // rows guillotined under the pinned band
 
-// Entities/Detail.UI.Hero.cs — the expanded hero rides away and fades; the compact band reveals
+// Themes/Classic/Structure/Views/Detail/ClassicDetailHero.cs — the expanded hero rides away and fades; the compact band reveals
 presentation.Parallax(0.0, cd, 0f, -cd).Fade(VerticalLayout.ExpandedFadeStart(cd), cd, 1f, 0f);
 compactBand.Reveal(VerticalLayout.CompactRevealStart(cd), cd - VerticalLayout.CompactRevealStart(cd), dy);
 
-// Entities/Artist.UI.cs — the stretchy artist photo
+// Themes/Classic/Structure/Views/Pages/ClassicArtistHero.cs — the stretchy artist photo
 photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 ```
 
@@ -92,9 +92,9 @@ photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH)
 - **`StretchFromTop`** composes with a parallax on the same node (the engine folds a node's transform rows into one
   matrix).
 
-## Lyrics: Follow + MeasureAll (`Shell/Lyrics.UI.cs`)
+## Lyrics: Follow + MeasureAll (`Shell/Lyrics.UI.cs`, the list in `Themes/Classic/Structure/Lists/ClassicLyricsLines.cs`)
 
-- The line list sets `MeasureAll = lines.Count <= Surface.MeasureAllCap` (400, `Shell/Lyrics.cs`): every line is
+- The line list (the `StyleKeys.LyricsLines` style, T7b) sets `MeasureAll = lines.Count <= Surface.MeasureAllCap` (400, `Shell/Lyrics.cs`): every line is
   realized and measured, so the follow target for a line that was never on screen is its REAL offset, not an estimate.
 - Following playback is `_scroll.ScrollTo(target, ScrollMove.Follow)` — the engine's velocity-continuous glide that is
   **ignored while a user-driven plan (wheel/drag/fling/thumb) is live**, so a user grab always wins and the next resync
@@ -109,12 +109,12 @@ photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH)
   on every frame/plan/coverage/extent row, frames carry the pre-clamp `plan=` position, plans their `dest=`, and the
   UI/render rings are clipped to their common window; record at **Trace** for plan, coverage and touchpad/touch input
   rows).
-  Decisions are `ScrollDiagRules` (tested: `ScrollDiagRulesTests`).
+  Decisions are `ScrollDiagRules`.
 - **Diagnostics ▸ Tiles card** (`Screens/Diagnostics.Tiles.cs`): the always-on `AppHost.LastTileCensus`; a nonzero
   `ExposedMissing`, `DegradedSlices`, `CoverageClamps` or resident bytes over budget is a warning (all must be 0 / within
   budget). `StaleTiles` (a VALID, un-re-rastered tile whose pixels no longer match what the stream wants) is also a
   warning row. The **GPU pass timing** toggle (`AppHost.GpuPassTimingEnabled`) is a session knob — never persisted, off on
-  every launch. Decisions: `TileDiagRules` (`TileDiagRulesTests`).
+  every launch. Decisions: `TileDiagRules`.
 - **Diagnostics ▸ Evidence card** (`Screens/Diagnostics.Evidence.cs`): the engine's evidence ledgers surfaced for a
   developer — the stale-tile invariant, `PixelQuery`'s pixel-under-cursor pick, and **Export bundle** (all ledgers +
   `keyed.tsv` + the tile census zipped via `Screens/EvidenceBundle.cs`). Developer-only; never wakes the window.
@@ -152,5 +152,4 @@ photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH)
 1. Is it a declaration (key, handle, effect, scope, `MeasureAll`, `WheelTarget`)? Then it's app code.
 2. Is it a behaviour (how it moves, when rows appear, what the finger feels)? Then it's the engine — record it, gate it,
    fix it there.
-3. Any new pure decision (a spy, a follow policy, a card verdict) is an engine-free class with a `Wavee.Tests` unit test
-   — never a source-text test.
+3. Any new pure decision (a spy, a follow policy, a card verdict) is an engine-free class.

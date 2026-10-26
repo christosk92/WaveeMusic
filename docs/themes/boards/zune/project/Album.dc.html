@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune album track list</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 680px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 36px 48px; display: flex; gap: 48px">
+  <div style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px">
+    <div style="width: 260px; height: 260px; background: #3a2f22"></div>
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 30px; font-weight: 300; line-height: 36px">random access memories</div>
+    <div style="font-size: 14px; color: #a8a8a8">Daft Punk · 2013 · 13 songs, 74 min</div>
+  </div>
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; color: #a8a8a8; height: 40px; display: flex; align-items: center">disc 1</div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+      <div style="{{r.rowStyle}}">
+        <span style="{{r.numStyle}}">{{r.num}}</span>
+        <span style="display: flex; flex-direction: column; min-width: 0">
+          <span style="{{r.titleStyle}}">{{r.title}}</span>
+          <sc-if value="{{r.hasFeat}}" hint-placeholder-val="{{ false }}"><span style="font-size: 13px; color: #9c9c9c">{{r.feat}}</span></sc-if>
+        </span>
+        <span style="font-size: 13px; color: #8f8f8f; text-align: right; font-variant-numeric: tabular-nums">{{r.plays}}</span>
+        <span style="{{r.timeStyle}}">{{r.time}}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1280,"height":680}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const data = [
+    ['Give Life Back to Music', '', '412M', '4:34'], ['The Game of Love', '', '186M', '5:21'],
+    ['Giorgio by Moroder', 'Giorgio Moroder', '298M', '9:04'], ['Within', 'Chilly Gonzales', '121M', '3:48'],
+    ['Instant Crush', 'Julian Casablancas', '1.1B', '5:37'], ['Lose Yourself to Dance', 'Pharrell Williams', '640M', '5:53'],
+    ['Touch', 'Paul Williams', '98M', '8:18'], ['Get Lucky', 'Pharrell Williams, Nile Rodgers', '2.1B', '6:09'],
+    ['Beyond', '', '87M', '4:50'], ['Motherboard', '', '79M', '5:41'],
+  ];
+  const rows = data.map((d, i) => {
+    const play = i === 7, hover = i === 4;
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], feat: d[1], hasFeat: d[1].length > 0, plays: d[2], time: d[3],
+      rowStyle: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 80px 64px; align-items: center; min-height: 48px; padding: 4px 0; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a') + '; font-variant-numeric: tabular-nums',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+    };
+  });
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

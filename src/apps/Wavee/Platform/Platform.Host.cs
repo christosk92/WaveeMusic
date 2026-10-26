@@ -80,6 +80,10 @@ public static partial class Platform
     /// overlay over the facade would read itself.</summary>
     public static IAppSettings BackingSettings => s_backing ?? DefaultsOnlySettings.Instance;
 
+    /// <summary>The registry store at <c>HKCU\Software\{publisher}\{product}</c> — for a test that names its own scratch
+    /// publisher and product (never Wavee's), and deletes the key afterwards.</summary>
+    public static IAppSettings OpenRegistrySettingsForTests(string publisher, string product) => RegistryAppSettings.Open(publisher, product);
+
     /// <summary>The OS UI locale, from Win32 rather than <c>CultureInfo.CurrentUICulture</c>: this app builds with
     /// <c>InvariantGlobalization</c>, under which that property is always the invariant culture and "system" would
     /// silently resolve to English for everyone. 0.2.9 went to <c>GetUserDefaultLocaleName</c> for the same reason.</summary>
@@ -127,7 +131,7 @@ public static partial class Platform
             WaveeLogField.Of("framework", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription),
             WaveeLogField.Of("os", System.Runtime.InteropServices.RuntimeInformation.OSDescription));
         // The update end-to-end harness waits for this exact line: category app, event startup.
-        if (Array.IndexOf(Environment.GetCommandLineArgs(), RelaunchedAfterUpdateFlag) >= 0)
+        if (Array.IndexOf(Args.Argv, RelaunchedAfterUpdateFlag) >= 0)
             Log.Event(WaveeLogLevel.Info, "app", "startup", "relaunched by Windows after an update", null, -1, null,
                 WaveeLogField.Of("flag", RelaunchedAfterUpdateFlag));
 
@@ -154,7 +158,7 @@ public static partial class Platform
             {
                 try { Log.Warn("crash", "Crash bundle could not be written", writeEx); } catch { }
             }
-            // No RunMarker.MarkCrashed here: it is a settings write on the crashing thread (fatal off the UI thread, see
+            // No run-marker write here: it would be a settings write on the crashing thread (fatal off the UI thread, see
             // Crash.Host.OnManagedCrash). The bundle on disk plus the stale "running"/"frame" marker already say "crashed".
             try { Log.Flush(); } catch { }
         };
@@ -463,20 +467,43 @@ public sealed class FileAppSettings : IAppSettings
         {
             if (_data.TryGetValue(key.Name, out string? old) && old == text) return;
             _data[key.Name] = text;
-            try
-            {
-                string? dir = Path.GetDirectoryName(_path);
-                if (dir is not null) Directory.CreateDirectory(dir);
-                string tmp = _path + ".tmp";
-                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    fs.Write(JsonSerializer.SerializeToUtf8Bytes(_data, LocalStoreJson.Default.DictionaryStringString));
-                    fs.Flush(flushToDisk: true);
-                }
-                File.Move(tmp, _path, overwrite: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            WriteLocked();
         }
+    }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!Has(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name)
+    {
+        lock (_gate) return _data.ContainsKey(name);
+    }
+
+    public void Remove(string name)
+    {
+        lock (_gate)
+            if (_data.Remove(name)) WriteLocked();
+    }
+
+    void WriteLocked()
+    {
+        try
+        {
+            string? dir = Path.GetDirectoryName(_path);
+            if (dir is not null) Directory.CreateDirectory(dir);
+            string tmp = _path + ".tmp";
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(JsonSerializer.SerializeToUtf8Bytes(_data, LocalStoreJson.Default.DictionaryStringString));
+                fs.Flush(flushToDisk: true);
+            }
+            File.Move(tmp, _path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 }
 
@@ -552,6 +579,25 @@ sealed class RegistryAppSettings : IAppSettings
             if (typeof(T) == typeof(double)) { _store.SetDouble(key.Name, Unsafe.As<T, double>(ref value)); return; }
             if (typeof(T) == typeof(string)) { _store.SetString(key.Name, (string)(object)value); return; }
         }
+        catch { }
+    }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!Has(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name)
+    {
+        try { return _store is not null && _store.Contains(name); }
+        catch { return false; }
+    }
+
+    public void Remove(string name)
+    {
+        try { _store?.Remove(name); }
         catch { }
     }
 }
@@ -704,13 +750,6 @@ public static partial class Log
     public static void Flush()
     {
         try { DrainFileQueue(); } catch { }
-    }
-
-    /// <summary>Test hook: drain synchronously AND release the handle, so a test can read the file back.</summary>
-    public static void FlushAndClose()
-    {
-        Flush();
-        lock (s_writeGate) CloseStream();
     }
 
     /// <summary>The lines still QUEUED for the file, formatted exactly as the writer will write them, oldest first — a
@@ -966,6 +1005,8 @@ public static partial class Log
     /// up. The only record of what opening a menu cost the whole window.</item>
     /// <item><c>[window.move]</c> / <c>[window.size]</c> — the OS move/size loop edges. A stuck resize capture is a
     /// <c>begin</c> with no <c>end</c>, which is unreadable if the pair is Debug-gated.</item>
+    /// <item><c>[window.msg.slow]</c> — one line per OS message dispatch over 25 ms (the message and its time): the frame ledger's pump
+    /// phase says the UI thread sat in dispatch (a 1.18 s stall in a real-data bench, 2026-10-21) but not in which message.</item>
     /// <item><c>[pointer]</c> — one line per LOST primary contact (capture stolen, leave-while-down, the OS move loop
     /// taking the press). The stuck-drag class ("the window follows my cursor with no button down") is invisible
     /// without it: a pop-out session on 2026-09-22 had two <c>[window.move] begin</c> per gesture and no way to tell
@@ -986,12 +1027,15 @@ public static partial class Log
     /// </list></summary>
     static bool AlwaysOn(string s)
         => s.StartsWith("[video]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.untracked]", StringComparison.Ordinal)   // a jump in driver-internal GPU memory (it never comes back on UMA)
+        || s.StartsWith("[d3d12.mem]", StringComparison.Ordinal)         // the GPU memory breakdown at first present
         || s.StartsWith("[media.chrome]", StringComparison.Ordinal)
         || s.StartsWith("[overlay] wantWindowed", StringComparison.Ordinal)
         || s.StartsWith("[overlay.popup]", StringComparison.Ordinal)
         || s.StartsWith("[window.move]", StringComparison.Ordinal)
         || s.StartsWith("[window.loop]", StringComparison.Ordinal)
         || s.StartsWith("[window.size]", StringComparison.Ordinal)
+        || s.StartsWith("[window.msg.slow]", StringComparison.Ordinal)
         || s.StartsWith("[pointer]", StringComparison.Ordinal)
         || s.StartsWith("[detached]", StringComparison.Ordinal)
         || s.StartsWith("[video.surface]", StringComparison.Ordinal)
@@ -1027,7 +1071,8 @@ public static partial class Log
 public static partial class Glyphs
 {
     /// <summary>The icon face is the BUNDLED file, not the system family of the same name — see
-    /// <see cref="WaveeFonts.Icons"/>. Set BEFORE the harness runs: the host interns `Theme.IconFont` once for the
-    /// overlay scrollbar arrows and every control reads it at render.</summary>
-    static partial void RegisterHost() => Theme.IconFont = WaveeFonts.Icons;
+    /// <see cref="WaveeFonts.Icons"/>. Wavee's definition carries it (<see cref="Design.Definition"/>), installed BEFORE the
+    /// harness runs: the host interns the definition's icon font for the overlay scrollbar arrows and every control reads
+    /// it at render.</summary>
+    static partial void RegisterHost() => Tok.Use(Design.Definition, Tok.Theme);
 }

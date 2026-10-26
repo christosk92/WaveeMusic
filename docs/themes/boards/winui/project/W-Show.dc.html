@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Podcast show</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|show:Coffee &amp; Code:#4a5b3b" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="podcasts" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; gap: 24px; align-items: flex-end">
+        <div style="width: 168px; height: 168px; border-radius: 8px; background: #4a5b3b; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: #c5c5c5"><span>Podcast</span><span style="height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; background: rgba(255,255,255,0.0605)">Video</span></div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Coffee &amp; Code</h1>
+          <div style="font-size: 14px; line-height: 20px; color: #c5c5c5"><a href="#">Half Moon Recordings</a> · 4.7 ★ · 1,284 ratings · 14 episodes · weekly · since 2021</div>
+          <div style="font-size: 12px; line-height: 16px; color: #9e9e9e">3 played · 1 in progress · 10 to go · 2 new</div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Resume · 31 min left</button>
+            <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0837); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>Following</button>
+            <button aria-label="Play trailer" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></button>
+            <button aria-label="New-episode notifications aren’t available in Wavee yet" disabled="" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #5d5d5d; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a4 4 0 0 1 4 4v3l1.5 2h-11L4 9V6a4 4 0 0 1 4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 36px; min-height: 0">
+        <section aria-label="Episodes" style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+          <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+            <sc-for list="{{filters}}" as="v" hint-placeholder-count="4"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+            <span style="flex-grow: 1"></span>
+            <label style="width: 220px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Find in this show</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px; margin-left: 4px">Newest<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          </div>
+          <div style="height: 32px; display: flex; align-items: flex-end; padding-bottom: 4px; font-size: 14px; font-weight: 600">October 2026</div>
+          <sc-for list="{{episodes}}" as="e" hint-placeholder-count="4">
+            <div style="{{e.style}}">
+              <span style="{{e.bar}}"></span>
+              <span style="{{e.art}}"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+                <span style="display: flex; align-items: center; gap: 8px"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.title}}</span><span style="{{e.tag}}">{{e.tagText}}</span></span>
+                <span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.blurb}}</span>
+                <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: #9e9e9e"><span>{{e.meta}}</span><span style="{{e.prog}}"><span style="{{e.progFill}}"></span></span><span>{{e.left}}</span></span>
+              </span>
+              <span style="{{e.actions}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></span>
+              <button aria-label="{{e.playLabel}}" style="{{e.play}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{e.playD}}" fill="{{e.playFill}}" stroke="{{e.playStroke}}" stroke-width="2" stroke-linecap="round"></path></svg></button>
+            </div>
+          </sc-for>
+        </section>
+        <aside aria-label="About" style="display: flex; flex-direction: column; gap: 12px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About</h2>
+          <p style="margin: 0; font-size: 14px; line-height: 20px; color: #c5c5c5">Weekly conversations about building software that lasts: craft, latency, postmortems and the people behind the tools. New episodes every Monday.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-for list="{{topics}}" as="t" hint-placeholder-count="6"><a href="#" style="height: 28px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font-size: 12px">{{t.label}}</a></sc-for>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="font-size: 12px; color: #c5c5c5">Your rating</span><span style="font-size: 20px; letter-spacing: 2px; color: #fce100">★★★★★</span><a href="#" style="font-size: 12px">Rate Coffee &amp; Code</a></div>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="podcast" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const filters = [vs('All · 14', true), vs('Unplayed · 10', false), vs('In progress · 1', false), vs('Played · 3', false)];
+  const ep = [
+    { t: 'Latency, Honestly', b: 'Why p99 is a story, not a number — and what the dashboards hide.', m: '#42 · 23 Sep · 54 min', state: 'playing', pct: 43, left: '31 min left' },
+    { t: 'The Build Trap', b: 'Shipping features nobody asked for, and how to climb out.', m: '#41 · 16 Sep · 41 min', state: 'new' },
+    { t: 'On Craft', b: 'A conversation with Mara Ellison about taste, tools and time.', m: '#40 · 9 Sep · 48 min', state: 'hover' },
+    { t: 'Edge Cases', b: 'Every bug is an edge case until it’s the main case.', m: '#39 · 2 Sep · 37 min', state: 'played' }
+  ];
+  const episodes = ep.map(e => {
+    const playing = e.state === 'playing', hover = e.state === 'hover', played = e.state === 'played', isNew = e.state === 'new';
+    return { title: e.t, blurb: e.b, meta: e.m, left: e.left || '', tagText: isNew ? 'New' : (played ? '✓ Played' : ''),
+      style: 'position: relative; display: flex; align-items: center; gap: 12px; height: 76px; padding: 0 8px 0 12px; margin-top: 2px; border-radius: 4px; ' + (hover || playing ? 'background: rgba(255,255,255,0.0605);' : '') + (played ? 'opacity: 0.58;' : ''),
+      bar: playing ? 'position: absolute; left: 0; top: 30px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+      art: 'width: 56px; height: 56px; flex-shrink: 0; border-radius: 4px; background: #4a5b3b',
+      tag: (isNew || played ? 'display: inline-flex' : 'display: none') + '; height: 20px; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5; flex-shrink: 0',
+      prog: (e.pct ? 'display: block' : 'display: none') + '; width: 96px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.0837)',
+      progFill: 'display: block; width: ' + (e.pct || 0) + '%; height: 3px; border-radius: 2px; background: #60cdff',
+      actions: (hover ? 'display: flex' : 'display: none') + '; gap: 16px; align-items: center; color: #c5c5c5; padding: 0 8px',
+      play: 'width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 18px; font: inherit; ' + (playing ? 'background: #60cdff; color: #000' : 'background: rgba(255,255,255,0.0605); color: #fff'),
+      playLabel: playing ? 'Pause' : 'Play', playD: playing ? 'M5.5 3v10M10.5 3v10' : 'M4.5 2.8v10.4L13 8z', playFill: playing ? 'none' : 'currentColor', playStroke: playing ? 'currentColor' : 'none' };
+  });
+  const topics = ['Culture', 'Stories', 'Society', 'History', 'Interviews', 'Ideas'].map(l => ({ label: l }));
+  return { filters, episodes, topics };
+}
+}
+</script>
+</body>
+</html>

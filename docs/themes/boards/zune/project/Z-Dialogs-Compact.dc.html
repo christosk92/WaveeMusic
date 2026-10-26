@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune dialogs · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 16px; box-sizing: border-box; opacity: 0.35">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; color: #a8a8a8">wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <section aria-label="report a problem" style="flex-grow: 1; min-height: 0; background: #1f1f1f; display: flex; flex-direction: column">
+    <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 0 16px; overflow: hidden">
+      <div style="display: flex; align-items: center; height: 48px; margin-right: -8px">
+        <span style="flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; white-space: nowrap">report a problem</span>
+        <button aria-label="close" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 15px; padding: 0; flex-shrink: 0">✕</button>
+      </div>
+      <div style="display: flex; gap: 22px; font-size: 15px; height: 40px; align-items: center"><a href="#" style="color: #ffffff; font-weight: 600">bug</a><a href="#">feature</a><a href="#">question</a><a href="#">idea</a></div>
+      <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">title</span><input type="text" placeholder="one line that says what's wrong" style="height: 36px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 15px; padding: 0; outline: none"></label>
+      <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">what happened</span><textarea rows="2" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 15px; line-height: 20px; padding: 6px 0; outline: none; resize: none"></textarea></label>
+      <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">steps to reproduce</span><input type="text" style="height: 36px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 15px; padding: 0; outline: none"></label>
+      <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">expected behaviour</span><input type="text" style="height: 36px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 15px; padding: 0; outline: none"></label>
+      <label style="display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 19px; min-height: 44px"><span style="{{checkOn}}">✓</span>include diagnostics and the last 200 log lines</label>
+      <div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; color: #a8a8a8">report preview</span><div style="height: 96px; background: #141414; padding: 10px 12px; box-sizing: border-box; font-family: Consolas, 'Cascadia Code', monospace; font-size: 11px; line-height: 16px; color: #a8a8a8; overflow: hidden; white-space: nowrap">wavee 1.6.0 · windows 11 26340 · x64<br>theme zune · nav zune · panel sheet<br>gpu: [adapter] · last 200 log lines follow<br>14:32:01 info playback started · Nightcall<br>14:32:04 warn lyrics provider timed out</div><span style="font-size: 11px; line-height: 14px; color: #7a7a7a">personal paths, account details and secrets are removed. track names are kept.</span></div>
+    </div>
+    <div style="flex-shrink: 0; border-top: 1px solid rgba(255,255,255,0.08); padding: 8px 16px 12px 16px; display: flex; flex-direction: column; gap: 2px">
+      <div style="display: flex; align-items: center; height: 48px; font-size: 15px">
+        <button style="display: flex; align-items: center; gap: 12px; height: 48px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{goRing}}">→</span>open github</button>
+        <span style="flex-grow: 1"></span>
+        <button style="height: 40px; border: 0; background: transparent; color: #a8a8a8; font: inherit; padding: 0 4px">not now</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 24px; height: 40px; font-size: 14px"><a href="#" style="height: 40px; display: flex; align-items: center">copy report</a><a href="#" style="height: 40px; display: flex; align-items: center">save as…</a></div>
+    </div>
+  </section>
+  <div style="height: 30px; flex-shrink: 0; background: #0e0e0e; display: flex; align-items: center; padding: 0 16px; font-size: 11px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">crash report and "couldn't start" open as this same sheet</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  return {
+    accent,
+    goRing: 'width: 40px; height: 40px; border-radius: 20px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0',
+    checkOn: 'width: 20px; height: 20px; background: ' + accent + '; color: #000; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

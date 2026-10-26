@@ -5,10 +5,7 @@
   "type": "module",
   "description": "Cloudflare Worker ingest + query service for Wavee's opt-in crash reports (R2 + D1). Deployed by hand, no CI.",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "typecheck:test": "tsc --noEmit --project tsconfig.test.json",
     "dev": "npm --prefix ../dashboard run build && wrangler dev --local",
     "deploy": "npm --prefix ../dashboard run build && wrangler deploy"
   },

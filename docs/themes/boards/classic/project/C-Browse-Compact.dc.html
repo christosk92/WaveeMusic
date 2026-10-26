@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Browse</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="browse:Browse" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 16px 16px 0; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+    <h1 style="margin: 0; flex-shrink: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Browse</h1>
+    <section aria-label="Top" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <span style="{{eyebrow}}">Top</span>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{top}}" as="t" hint-placeholder-count="4"><a href="#" style="height: 40px; display: flex; align-items: center; padding: 0 16px; border-radius: 20px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); font-size: 14px; font-weight: 600">{{t}}</a></sc-for></div>
+    </section>
+    <section aria-label="Charts" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <a href="#" style="height: 28px; display: flex; align-items: center; gap: 6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Charts<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></a>
+      <sc-for list="{{charts}}" as="c" hint-placeholder-count="2"><a href="#" style="{{c.tile}}"><span style="position: relative; width: 52%; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 24px; line-height: 30px; font-weight: 400">{{c.t}}</span><span style="{{c.c1}}"></span><span style="{{c.c2}}"></span><span style="{{c.c3}}"></span></a></sc-for>
+    </section>
+    <section aria-label="For you" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <span style="{{eyebrow}}">For you</span>
+      <div style="display: flex; gap: 8px; margin-right: -16px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)"><sc-for list="{{foryou}}" as="f" hint-placeholder-count="6"><a href="#" style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); font-size: 14px"><span style="{{f.pip}}"></span>{{f.l}}</a></sc-for></div>
+    </section>
+    <section aria-label="Genres" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <span style="{{eyebrow}}">Genres</span>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px"><sc-for list="{{genres}}" as="g" hint-placeholder-count="8"><a href="#" style="height: 36px; display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)"><span style="{{g.pip}}"></span>{{g.l}}</a></sc-for></div>
+    </section>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const eyebrow = 'font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)';
+  const top = ['Music', 'Podcasts', 'Audiobooks', 'Live Events'];
+  const ch = [['Top 50 · Global', '#3b6b9b', ['#2f4a6b', '#9b7a3b', '#c0c0b0']], ['Viral 50 · Global', '#9b3b6b', ['#c08ab0', '#4a7ab0', '#6b2f3b']]];
+  const cv = (c, r, rot) => 'position: absolute; width: 92px; height: 92px; border-radius: 6px; background: ' + c + '; right: ' + r + 'px; top: 22px; transform: rotate(' + rot + 'deg); box-shadow: 0 4px 12px rgba(0,0,0,0.35)';
+  const charts = ch.map(c => ({ t: c[0], tile: 'position: relative; height: 136px; flex-shrink: 0; overflow: hidden; display: flex; align-items: flex-end; padding: 16px; box-sizing: border-box; border-radius: 8px; border: 1px solid rgba(0,0,0,0.098); box-shadow: 0 2px 8px rgba(0,0,0,0.2); background: radial-gradient(80% 120% at 85% 30%, ' + c[1] + '38, rgba(0,0,0,0) 70%), rgba(255,255,255,0.051)', c1: cv(c[2][0], 110, -11), c2: cv(c[2][1], 62, 5), c3: cv(c[2][2], 16, -2) }));
+  const pip = c => 'width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; background: ' + c;
+  const foryou = [['Made for you', '#60cdff'], ['New releases', '#6ccb5f'], ['Discover', '#c08ab0'], ['Mixes', '#fce100'], ['Radio', '#ff99a4'], ['Decades', '#9b6ac0']].map(f => ({ l: f[0], pip: pip(f[1]) }));
+  const pal = ['#c0613e', '#3b6b9b', '#6ccb5f', '#9b6ac0', '#fce100', '#ff99a4'];
+  const genres = ['Afro', 'Alternative', 'Blues', 'Classical', 'Country', 'Dance/Electronic', 'Folk & Acoustic', 'Hip-Hop', 'Indie', 'Jazz'].map((l, i) => ({ l, pip: pip(pal[i % 6]) }));
+  return { eyebrow, top, charts, foryou, genres };
+}
+}
+</script>
+</body>
+</html>

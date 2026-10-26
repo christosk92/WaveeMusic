@@ -270,7 +270,7 @@ public static partial class Crash
 
         static Action<Action>? s_post;
         static int s_draining, s_drainRequested, s_unconfiguredLogged;
-        static IDisposable? s_onlineSub;
+        static IDisposable? s_onlineSub;   // never read on purpose: holds the app-lifetime connectivity subscription
         static System.Threading.Timer? s_retryTimer;
         static readonly object s_gate = new();
         /// <summary>Report ids whose server-retry launch was already counted by THIS process (see <see cref="OutboxMeta.Launches"/>).</summary>

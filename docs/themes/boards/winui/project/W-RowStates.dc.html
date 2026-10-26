@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Row states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <sc-for list="{{cols}}" as="c" hint-placeholder-count="2">
+    <section aria-label="{{c.name}}" style="{{c.root}}">
+      <div style="display: flex; align-items: baseline; gap: 12px; padding: 0 0 12px 0"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">{{c.name}}</h1><span style="{{c.capStyle}}">track row, 48 px, two-line with 32 px art</span></div>
+      <sc-for list="{{c.rows}}" as="r" hint-placeholder-count="12">
+        <div style="display: grid; grid-template-columns: 148px minmax(0, 1fr); align-items: center; gap: 12px; height: 60px">
+          <span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.label}}</span><span style="{{c.capStyle}}">{{r.spec}}</span></span>
+          <div style="position: relative">
+            <span style="{{r.drop}}"></span>
+            <div role="row" style="{{r.style}}">
+              <span style="{{r.pill}}"></span>
+              <span style="{{r.lead}}"><span style="{{r.box}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="{{r.tick}}"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg></span><span style="{{r.numStyle}}">{{r.num}}</span><span style="{{r.eq}}"><span style="width: 3px; height: 8px; background: currentColor"></span><span style="width: 3px; height: 14px; background: currentColor"></span><span style="width: 3px; height: 5px; background: currentColor"></span><span style="width: 3px; height: 11px; background: currentColor"></span></span></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><span style="{{r.sub}}">{{r.a}}</span></span></span>
+              <span style="{{r.heart}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{r.heartFill}}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></span>
+              <span style="{{r.time}}">{{r.d}}</span>
+              <span style="{{r.more}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const themes = [
+    { name: 'Dark', bg: '#282828', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', dis: '#5d5d5d', hover: 'rgba(255,255,255,0.0605)', press: 'rgba(255,255,255,0.0419)', selHover: 'rgba(255,255,255,0.0837)', acc: '#60cdff', accText: '#99ebff', onAcc: '#000000', strong: 'rgba(255,255,255,0.5442)', focusOut: '#ffffff', focusIn: 'rgba(0,0,0,0.7)' },
+    { name: 'Light', bg: '#f9f9f9', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', dis: '#9f9f9f', hover: 'rgba(0,0,0,0.0373)', press: 'rgba(0,0,0,0.0241)', selHover: 'rgba(0,0,0,0.0578)', acc: '#005fb8', accText: '#003e92', onAcc: '#ffffff', strong: 'rgba(0,0,0,0.4458)', focusOut: 'rgba(0,0,0,0.8956)', focusIn: '#ffffff' }
+  ];
+  const states = [
+    ['Rest', 'no fill', {}], ['Hover', 'subtle fill 1 · heart, more appear', { bg: 'hover', tools: true, numPlay: true }], ['Pressed', 'subtle fill 2 · text 2', { bg: 'press', pressed: true, numPlay: true }],
+    ['Selected', 'subtle fill 1 + 3×16 accent pill', { bg: 'hover', pill: true }], ['Selected, hover', 'subtle fill 3 + pill', { bg: 'selHover', pill: true, tools: true }],
+    ['Playing', 'accent text title + accent eq', { playing: true }], ['Playing, selected', 'both rules, no new colour', { playing: true, bg: 'hover', pill: true }],
+    ['Keyboard focus', '2 px outer + 1 px inner ring, radius 6', { focus: true }], ['Multi-select', 'check column replaces #', { multi: true, checked: true, bg: 'hover' }],
+    ['Multi-select, unchecked', 'empty box, strong stroke', { multi: true }], ['Unavailable', 'disabled text, art at 35%', { dis: true }], ['Drag over', '2 px accent insertion line', { drop: true }]
+  ];
+  const cols = themes.map(T => ({
+    name: T.name,
+    root: 'box-sizing: border-box; padding: 28px 36px; display: flex; flex-direction: column; background: ' + T.bg + '; color: ' + T.t1,
+    capStyle: 'font-size: 12px; line-height: 16px; color: ' + T.t2,
+    rows: states.map(s => {
+      const o = s[2];
+      const bg = o.bg ? T[o.bg] : 'transparent';
+      const ink = o.dis ? T.dis : (o.playing ? T.accText : (o.pressed ? T.t2 : T.t1));
+      const ink2 = o.dis ? T.dis : T.t2;
+      return { label: s[0], spec: s[1], t: 'Stereo Love', a: 'Edward Maya, Vika Jigulina', d: o.dis ? 'Unavailable' : '4:07',
+        num: o.numPlay ? '▶' : '1',
+        style: 'position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr) 40px 72px 40px; align-items: center; height: 48px; border-radius: 4px; background: ' + bg + (o.focus ? '; outline: 2px solid ' + T.focusOut + '; outline-offset: 1px; box-shadow: inset 0 0 0 1px ' + T.focusIn : ''),
+        pill: o.pill ? 'position: absolute; left: 0; top: 16px; width: 3px; height: 16px; border-radius: 2px; background: ' + T.acc : 'display: none',
+        lead: 'display: flex; align-items: center; padding-left: 14px; color: ' + T.acc,
+        box: o.multi ? 'width: 20px; height: 20px; box-sizing: border-box; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: ' + T.onAcc + '; ' + (o.checked ? 'background: ' + T.acc : 'border: 1px solid ' + T.strong) : 'display: none',
+        tick: o.checked ? 'display: block' : 'display: none',
+        numStyle: (o.multi || o.playing ? 'display: none' : 'display: inline') + '; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (o.dis ? T.dis : (o.numPlay ? T.t1 : T.t3)),
+        eq: o.playing && !o.multi ? 'display: flex; align-items: flex-end; gap: 2px; height: 14px' : 'display: none',
+        art: 'width: 32px; height: 32px; flex-shrink: 0; border-radius: 4px; background: #3b5b7a' + (o.dis ? '; opacity: 0.35' : ''),
+        title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + ink,
+        sub: 'font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + ink2,
+        heart: (o.tools || o.playing ? 'display: flex' : 'visibility: hidden; display: flex') + '; align-items: center; justify-content: center; color: ' + (o.playing ? T.acc : T.t1),
+        heartFill: o.playing ? 'currentColor' : 'none',
+        time: 'text-align: right; padding-right: 8px; font-variant-numeric: tabular-nums; font-size: ' + (o.dis ? '12px' : '14px') + '; color: ' + ink2,
+        more: (o.tools ? 'display: flex' : 'visibility: hidden; display: flex') + '; align-items: center; justify-content: center; color: ' + T.t1,
+        drop: o.drop ? 'position: absolute; left: 0; right: 0; top: -2px; height: 2px; border-radius: 1px; background: ' + T.acc + '; z-index: 1' : 'display: none' };
+    })
+  }));
+  return { cols };
+}
+}
+</script>
+</body>
+</html>

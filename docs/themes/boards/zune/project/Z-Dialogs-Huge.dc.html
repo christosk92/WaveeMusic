@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune dialogs: huge window, report a problem, crash report prompt, recovery</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; width: 2560px; height: 48px; display: flex; align-items: center; padding: 0 0 0 48px; box-sizing: border-box; opacity: 0.35">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; color: #a8a8a8">wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div aria-hidden="true" style="position: absolute; left: 0; top: 48px; width: 2560px; bottom: 72px; overflow: hidden; opacity: 0.22">
+    <div style="position: absolute; left: 48px; top: 4px; display: flex; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 350; color: #a8a8a8"><span style="color: #ffffff; font-weight: 600">home</span><span>browse</span><span>library</span><span>recents</span></div>
+    <div style="position: absolute; left: 48px; top: 56px; display: flex; gap: 20px; font-size: 14px; color: #a8a8a8"><span style="color: #ffffff">all</span><span>music</span><span>podcasts</span><span>audiobooks</span></div>
+    <div style="position: absolute; left: 48px; top: 112px; display: flex; gap: 16px"><sc-for list="{{ghostPins}}" as="g" hint-placeholder-count="6"><span style="{{g}}"></span></sc-for></div>
+    <div style="position: absolute; left: 48px; right: 768px; top: 360px; height: 220px; background: #1b1b1b; display: flex"><span style="width: 440px; background: linear-gradient(135deg, #4a2f5b, #7a3b6b 60%, #1b1b1b)"></span></div>
+    <div style="position: absolute; left: 48px; right: 768px; top: 640px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px"><sc-for list="{{ghostMixes}}" as="g" hint-placeholder-count="8"><span style="{{g}}"></span></sc-for></div>
+    <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 720px; background: #1b1b1b"></div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; left: 0; bottom: 0; width: 2560px; height: 72px; background: #111111; opacity: 0.35"></div>
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.5)"></div>
+  <section role="dialog" aria-label="report a problem" style="position: absolute; left: 394px; top: 300px; width: 548px; background: #1f1f1f; box-shadow: 0 24px 64px rgba(0,0,0,0.6); padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; margin-right: -12px"><span style="flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">report a problem</span><button aria-label="close" style="width: 36px; height: 36px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 14px; padding: 0">✕</button></div>
+    <div style="display: flex; gap: 20px; font-size: 14px"><a href="#" style="color: #ffffff; font-weight: 600">bug</a><a href="#">feature</a><a href="#">question</a><a href="#">idea</a></div>
+    <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">title</span><input type="text" placeholder="one line that says what's wrong" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 6px 0; outline: none"></label>
+    <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">what happened</span><textarea rows="2" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 6px 0; outline: none; resize: none"></textarea></label>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">steps to reproduce</span><input type="text" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 6px 0; outline: none"></label>
+      <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">expected behaviour</span><input type="text" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 6px 0; outline: none"></label>
+    </div>
+    <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{checkOn}}">✓</span>include diagnostics and the last 200 log lines</label>
+    <div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; color: #a8a8a8">report preview</span><div style="height: 110px; background: #141414; padding: 10px 12px; box-sizing: border-box; font-family: Consolas, 'Cascadia Code', monospace; font-size: 11px; line-height: 16px; color: #a8a8a8; overflow: hidden">wavee 1.6.0 · windows 11 26340 · x64<br>theme zune · nav zune · panel docked 720<br>gpu: [adapter] · last 200 log lines follow<br>14:32:01 info playback started · Nightcall<br>14:32:04 warn lyrics provider timed out (retrying)</div><span style="font-size: 11px; color: #7a7a7a">personal paths, account details and secrets are removed. track names are kept.</span></div>
+    <div style="display: flex; align-items: center; gap: 20px; padding-top: 4px; font-size: 14px">
+      <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{goRing}}">→</span>open github</button>
+      <a href="#">copy report</a><a href="#">save as…</a><span style="flex-grow: 1"></span><a href="#">not now</a>
+    </div>
+  </section>
+  <section role="dialog" aria-label="wavee closed unexpectedly" style="position: absolute; left: 1040px; top: 300px; width: 548px; background: #1f1f1f; box-shadow: 0 24px 64px rgba(0,0,0,0.6); padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">wavee closed unexpectedly</span>
+    <span style="font-size: 13px; color: #ffcf7a">last run ended 3 minutes ago</span>
+    <span style="font-size: 14px; line-height: 20px; color: #c8c8c8">Last time, Wavee crashed. Send a report so it can be fixed?</span>
+    <div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+      <span style="font-size: 12px; color: #a8a8a8">what's in the report</span>
+      <span style="display: flex; gap: 10px"><span style="color: #8fd14f">✓</span>where it crashed and the last few seconds of the log</span>
+      <span style="display: flex; gap: 10px"><span style="color: #8fd14f">✓</span>your windows version, gpu and wavee version</span>
+      <span style="display: flex; gap: 10px"><span style="color: #8fd14f">✓</span>the track that was playing, by name</span>
+      <span style="display: flex; gap: 10px"><span style="color: #ff7a7a">✕</span>never your spotify account, password, name or files</span>
+      <a href="#" style="font-size: 13px">read the full report ▾</a>
+    </div>
+    <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{checkOn}}">✓</span>include a memory snapshot (12 mb)</label>
+    <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{checkOff}}"></span>always send reports, don't ask again</label>
+    <div style="display: flex; align-items: center; gap: 20px; padding-top: 4px; font-size: 14px">
+      <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{goRing}}">→</span>send report</button>
+      <a href="#">not now</a><span style="flex-grow: 1"></span><a href="#" style="font-size: 12px">privacy</a><a href="#" style="font-size: 12px">report on github instead</a>
+    </div>
+  </section>
+  <section role="dialog" aria-label="wavee couldn't start" style="position: absolute; left: 1686px; top: 300px; width: 480px; background: #1f1f1f; box-shadow: 0 24px 64px rgba(0,0,0,0.6); padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">wavee couldn't start</span>
+    <span style="font-size: 14px; line-height: 20px; color: #c8c8c8">It closed unexpectedly twice in a row. Your music and settings are still here.</span>
+    <div style="display: flex; flex-direction: column">
+      <a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; margin: 0 -12px; background: rgba(255,255,255,0.05); color: #ffffff"><span style="font-size: 15px">start wavee</span><span style="font-size: 12px; color: #a8a8a8">try again normally</span></a>
+      <a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; margin: 0 -12px; color: #ffffff"><span style="font-size: 15px">send the crash report</span><span style="font-size: 12px; color: #a8a8a8">then start wavee</span></a>
+      <a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; margin: 0 -12px; color: #ffffff"><span style="font-size: 15px">reset wavee…</span><span style="font-size: 12px; color: #a8a8a8">keeps your account, clears caches and settings</span></a>
+    </div>
+    <div style="display: flex; gap: 20px; font-size: 13px; padding-top: 4px"><a href="#">view report</a><a href="#">open folder</a><a href="#">copy</a><span style="flex-grow: 1"></span><a href="#">quit</a></div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const ghostPins = ['#3b4a6b', '#5b2f6b', '#6b2f4a', '#2f5b6b', '#3a2f22', '#5b3b6b'].map((c) => 'width: 180px; height: 180px; border-radius: 2px; display: block; background: ' + c);
+  const ghostMixes = ['#4a3b6b', '#6b3b5b', '#2f5b4a', '#5b4a2f', '#2f3b6b', '#3b5b6b', '#6b2f3b', '#4a4a4a'].map((c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; display: block; background: ' + c);
+  return {
+    accent, ghostPins, ghostMixes,
+    goRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 14px',
+    checkOn: 'width: 18px; height: 18px; background: ' + accent + '; color: #000; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    checkOff: 'width: 18px; height: 18px; box-sizing: border-box; border: 2px solid #7a7a7a; display: block; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -3,17 +3,15 @@
 // drag/menu). Split out of the superseded Wave-5 Home UI (Home.Cards.UI.cs, Home.UI.cs) when the Home page itself was
 // rebuilt (docs/plans/wavee/home-rebuild-implementation.md §7): these members render entity CARDS wherever Browse or
 // Search hosts a shelf/grid, and outlive the Home page redesign. Moved UNCHANGED — same names, same namespace — so
-// Browse.Page.cs / Browse.UI.cs / Search.UI.cs need no call-site edits. The CORE half of HomeCardNav (RouteFor,
+// the Browse and Search pictures needed no call-site edits (T10a2 moved those into Classic's `Views\Pages`, which call them directly). The CORE half of HomeCardNav (RouteFor,
 // SectionRoute, OneCardOpensCard) stays in Entities/Home.Rules.cs.
 
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -68,17 +66,19 @@ public static partial class HomeCards
     /// <para><paramref name="coverAspect"/> (width ÷ height) is the cover's ratio for THIS cell — 1 is the square every
     /// entity card has; a wide cell takes the item's <see cref="ShelfItem.WideArt"/> when it has one. The shape reserves
     /// what the card shows (its caption lines, its separate meta line), so its seed face is the live card's height; the
-    /// shelf's own extent stays the caller's <c>cardHeight</c>.</para></summary>
+    /// shelf's own extent stays the caller's <c>cardHeight</c>.</para>
+    /// <para><paramref name="flush"/> sets <see cref="SurfaceShape.Flush"/>: the cover meets the cell's edges (the caller's
+    /// <c>cardHeight</c> must then read <c>SurfaceGeometry.ShelfHeight(..., flush: true)</c>).</para></summary>
     public static Element ShelfCell(in ShelfItem item, float cardW, Action onNav, Action onPlay,
                                     DragSource? drag, IOverlayService? menuHost, Func<ContextMenuModel?>? menu,
-                                    float coverAspect = 1f)
+                                    float coverAspect = 1f, bool flush = false)
     {
         bool hasMenu = menu is not null && !Controls.IsNullOverlay(menuHost);
         int lines = item.CaptionLines < 1 ? 1 : item.CaptionLines;
         // An inline meta makes the card render its own caption paragraph (second + " · meta") from STRINGS — the
         // element subtitle is then absent, and no separate meta line exists.
         Element? second = !item.MetaInline && item.Second.Length > 0
-            ? Design.Type.TrackMeta(item.Second) with
+            ? R.Type.TrackMeta(item.Second) with
                 { MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
             : null;
         string? art = coverAspect != 1f ? item.WideArt ?? item.Art : item.Art;
@@ -89,7 +89,7 @@ public static partial class HomeCards
             Menu = hasMenu ? menu : null,
         };
         bool metaLine = !item.MetaInline && item.Meta is { Length: > 0 };
-        return Controls.Surface(data, Shape.Shelf(lines, metaLine), cardW);
+        return Controls.Surface(data, Shape.Shelf(lines, metaLine) with { Flush = flush }, cardW);
     }
 
     /// <summary>The GRID surface's data for a Home/Browse card — the one adapter every HomeCard grid uses (the drill page's
@@ -111,7 +111,7 @@ public static partial class HomeCards
         Action onClick = open is null ? () => HomeCardNav.Open(in card, HomeCardNav.HomeOrigin) : () => open(card);
         return new Controls.CardData(card.Uri, card.Title,
             sub.Length > 0
-                ? Design.Type.TrackMeta(sub) with
+                ? R.Type.TrackMeta(sub) with
                     { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
                 : null,
             card.ImageUrl, onClick, () => HomeCardNav.Play(in card),

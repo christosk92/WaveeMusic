@@ -65,9 +65,16 @@ public readonly record struct SurfaceShape(
     MenuPlacement Menu,
     PlayReveal Play,
     float MinHeight,
-    bool Labels)
+    bool Labels,
+    float PadX = 8f,
+    float ArtGap = 12f,
+    bool Flush = false)
 {
     public bool IsRow => Layout == SurfaceLayout.Row;
+
+    // Flush (a STACK dial; false keeps every surface as it was): the cover meets the cell's left and right edges, so a shelf's first cover lines up with
+    // its section title (WinUI's boards). The plate keeps its top and bottom padding and the cover → labels gap; the extent maths read the same bit
+    // (`SurfaceGeometry.PlateInsetX`), so the estimators and the renderer still agree to the DIP.
 
     /// <summary>The "top result" hero row: an art square above <see cref="Shape.LargeRowEdge"/> takes the page-hero title
     /// and the wider text gap — the same threshold <see cref="Shape.FabFor"/> reads for its 44 FAB.</summary>
@@ -221,14 +228,22 @@ public static class SurfaceGeometry
     /// line a wide tile shows. A card that shows less than its row reserves is merely shorter than the row (its plate
     /// stretches, the labels stay top-aligned).</summary>
     public static float ShelfHeight(float cardW, float coverAspect, int captionLines, bool metaLine)
+        => ShelfHeight(cardW, coverAspect, captionLines, metaLine, flush: false);
+
+    /// <summary><see cref="ShelfHeight(float, float, int, bool)"/> for a card whose cover is <paramref name="flush"/> with its cell
+    /// (<see cref="SurfaceShape.Flush"/>): the cover is the card's whole width, the vertical chrome unchanged.</summary>
+    public static float ShelfHeight(float cardW, float coverAspect, int captionLines, bool metaLine, bool flush)
     {
         // The chrome is whole DIP, summed FIRST so the cover is added exactly once (no float drift against `w + N`).
         float chrome = ShelfGutterTop + ShelfPlatePad + ShelfPlatePad + CardTitleLineH
                        + (captionLines > 0 ? CardLabelGap + CardCaptionLineH * captionLines : 0f)
                        + (metaLine ? CardLabelGap + CardCaptionLineH : 0f)
                        + ShelfPlatePad + ShelfGutterBottom;
-        return CoverHeight(cardW - 2f * ShelfPlatePad, coverAspect) + chrome;
+        return CoverHeight(cardW - 2f * PlateInsetX(flush), coverAspect) + chrome;
     }
+
+    /// <summary>A stack plate's left and right padding: <see cref="ShelfPlatePad"/>, or 0 for a <see cref="SurfaceShape.Flush"/> cover.</summary>
+    public static float PlateInsetX(bool flush) => flush ? 0f : ShelfPlatePad;
 
     /// <summary>The shelf card's vertical chrome, read by BOTH <see cref="ShelfHeight(float, float, int, bool)"/> and the
     /// renderer so the two cannot drift: the outer gutter over the plate (4 = <c>Spacing.XS</c>) and under it (0 — the
@@ -264,7 +279,7 @@ public static class SurfaceGeometry
     /// (grid) card — the layout measures it.</summary>
     public static float StackExtent(in SurfaceShape s, float cardW, float coverAspect)
         => float.IsNaN(cardW) ? float.NaN
-           : ShelfHeight(cardW, coverAspect, s.CaptionLines, s.MetaLine) + (s.TitleLines > 1 ? (s.TitleLines - 1) * CardTitleLineH : 0f);
+           : ShelfHeight(cardW, coverAspect, s.CaptionLines, s.MetaLine, s.Flush) +(s.TitleLines > 1 ? (s.TitleLines - 1) * CardTitleLineH : 0f);
 
     /// <summary>The row-height SEED of a fluid grid of <paramref name="s"/> cards at its minimum column: the square cover
     /// plus the label chrome. The layout measures the real rows; this only keeps the first estimate honest.</summary>

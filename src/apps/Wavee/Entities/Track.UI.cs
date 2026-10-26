@@ -1,7 +1,10 @@
 // ── Entities/Track.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────
-// the ROW and nothing else: grid + 11 lanes, the # state machine, both skins, the metadata line, the cells, the eager
-// row, `RowData` (the track adapter of the shared media surface), the "+N" artist chip. The track menu composition and
-// the thirteen track verbs are the named partial `Track.Menu.cs`.
+// the ROW's core half: the state a row reflects (`StateOf`, the like edge, `Invoke`), the width tracks, the eager row's HOST
+// (`EagerRow`), the lane wrappers and navigation the pages call, `RowData` (the track adapter of the shared media surface) and the
+// "+N" artist chip. The row's PICTURE moved to the structure in T8c: the eager grid, the # state machine, the heart, the metadata line,
+// the Classic title line and every other cell are `Themes\Classic\Structure\Lists\ClassicRowCells.cs`, the eager row's container
+// `ClassicEagerRow.cs` (`StyleKeys.EagerTrackRow`). The track menu composition and the thirteen track verbs are the named partial
+// `Track.Menu.cs`.
 //
 // Role: UI
 // Owner: M
@@ -11,9 +14,9 @@
 //
 // ── ONE CELL, EVERY SURFACE (ch 01 §0.1) ────────────────────────────────────────────────────────────────────────────
 //
-// `Grid` is the single definition of what a track row looks like. The album drawer, Recents, Home's top tracks and the
-// rails call it; the detail table's virtualized rows use its bound twin `BoundGrid` (Track.UI.Bound.cs — same lanes,
-// keys and wrappers, built once per slot). Callers vary only the `ColumnSet` and the container skin (the table's bound
+// `Grid` (now `ClassicRowCells.Grid`, reached through `EagerRowStyle.Grid`) is the single definition of what a track row looks
+// like. The album drawer, Recents, Home's top tracks and the rails call it; the detail table's virtualized rows use its bound twin
+// `BoundGrid` (`ClassicTrackTable`, from Track.UI.Bound.cs — same lanes, keys and wrappers, built once per slot). Callers vary only the `ColumnSet` and the container skin (the table's bound
 // skin, `EagerRow`). Everything here is built from RESOLVED values and re-run by the HOST — the only members that
 // subscribe on their own are the ones that say so (`StateOf`, `IsNowPlaying`, `RowData`, and the two component hosts:
 // the eager row and the "+N" chip).
@@ -32,15 +35,12 @@
 // interactive ancestor — the row skin — and survives the pointer crossing onto the button inside it (parity 10-11).
 // A click target inside a reveal is its own child box. Every in-row affordance sets `BlocksDragArm` (ch 01 §0.12).
 
-using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -56,7 +56,7 @@ public readonly partial struct Track
     public static class CellKey
     {
         public const string Num = "c.num", Heart = "c.heart", Art = "c.art", Title = "c.title", Artist = "c.artist",
-            Album = "c.album", By = "c.by", Date = "c.date", Video = "c.video", Plays = "c.plays", Tempo = "c.tempo",
+            Album = "c.album", By = "c.by", Date = "c.date", Plays = "c.plays", Tempo = "c.tempo",
             Duration = "c.dur", More = "c.more", Expand = "c.expand";
         /// <summary>The TRAILING ♥ lane. Its OWN key, not <see cref="Heart"/>'s: the two are mutually exclusive, so
         /// reusing one key would let the keyed diff MOVE the leading heart's node into the trailing ordinal instead of
@@ -65,18 +65,24 @@ public readonly partial struct Track
         public const string HeartTrailing = "c.heart.t";
     }
 
-    /// <summary>The per-row playback/library state the cells reflect.</summary>
-    public readonly record struct RowState(bool IsNow, bool IsPlaying, bool IsBuffering, bool IsTop, bool Saved);
+    /// <summary>The per-row playback/library state the cells reflect. <c>OnThisPc</c> (ZC2, owner Q29/NQ4): the
+    /// track's audio is fully cached on this computer at the current quality with its key saved
+    /// (<see cref="Playback.OnThisPc"/>). An indicator only, never offline playback; a theme that draws it labels it
+    /// <c>Loc.Get(Strings.Track.OnThisPc)</c>, and Classic draws nothing for it. Appended with a default so every existing
+    /// construction keeps its meaning.</summary>
+    public readonly record struct RowState(bool IsNow, bool IsPlaying, bool IsBuffering, bool IsTop, bool Saved,
+                                          bool OnThisPc = false);
 
     /// <summary>The row's state, read REACTIVELY: subscribes to <c>Playback.CurrentId</c> (always), and — only on the
     /// now-playing row — to <c>Playback.IsPlaying</c> / <c>Buffering</c> / <c>Pending.Load</c>, plus the Liked edge
-    /// table's <c>Changed</c>. <paramref name="extraBuffering"/> is the host's own "this row's play is in flight".</summary>
+    /// table's <c>Changed</c> and the "on this PC" facts' <c>Changed</c>. <paramref name="extraBuffering"/> is the host's own
+    /// "this row's play is in flight".</summary>
     public static RowState StateOf(Track t, bool isTop = false, bool extraBuffering = false)
     {
         bool isNow = IsNowPlaying(t);
         bool playing = isNow && Playback.IsPlaying.Value;
         bool buffering = extraBuffering || (isNow && (Playback.Buffering.Value || Playback.Pending.Load.Value));
-        return new RowState(isNow, playing, buffering, isTop, LikedNow(t));
+        return new RowState(isNow, playing, buffering, isTop, LikedNow(t), t.Slot > 0 && Playback.OnThisPc.Of(t.Id));
     }
 
     /// <summary>Is this the playable the deck is on? A subscribing read of <c>Playback.CurrentId</c> — compared by
@@ -105,7 +111,7 @@ public readonly partial struct Track
         startDifferent();
     }
 
-    static bool LikedNow(Track t)
+    internal static bool LikedNow(Track t)
     {
         _ = Entities.Current.Edges.Liked.Changed.Value;   // subscribe: an optimistic like re-skins the heart in the same frame
         var me = User.Me;
@@ -116,17 +122,23 @@ public readonly partial struct Track
 
     /// <summary>THE width tracks for a column set, cached per (set, art): the header and the rows read the SAME array
     /// instance (ch 04 §0.1), and a scroll frame never rebuilds one (ch 01 §9, "Where the plan is wrong" 7). Order:
-    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Video · Actions ·
-    /// Expand. The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
+    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Actions · Expand (no # where the set hides it).
+    /// The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
     /// trimming would hand the header and the rows two different instances for one shape. The KEY is the whole
     /// <see cref="ColumnSet"/>, so <see cref="ColumnSet.HeartTrailing"/> forks the cache by construction.</summary>
+    /// <summary>The time lane's width for <paramref name="set"/>: the structure's own (<see cref="ColumnSet.DurationWidth"/>) where it widens the core's,
+    /// else the hover lane's 64 (the heart and the "..." stand in it on row hover) or the plain 52. A hover lane widens too (Zune: a withheld row's resting
+    /// heart beside "Not on PC").</summary>
+    public static float DurationLaneOf(in ColumnSet set)
+        => set.HoverActions ? MathF.Max(Lane.DurationHover, set.DurationWidth) : set.DurationWidth > 0f ? set.DurationWidth : Lane.Duration;
+
     public static TrackSize[] TracksFor(in ColumnSet set, float art)
     {
         var key = (set, art);
         if (s_rowTrackCache.TryGetValue(key, out var cached)) return cached;
         var arr = new TrackSize[CellCount(in set)];
         int i = 0;
-        arr[i++] = TrackSize.Px(Lane.Num);
+        if (!set.IndexHidden) arr[i++] = TrackSize.Px(Lane.Num);
         if (set.Heart) arr[i++] = TrackSize.Px(Lane.Heart);
         if (set.Thumb) arr[i++] = TrackSize.Px(art);
         arr[i++] = TrackSize.Star(Lane.TitleStar);
@@ -140,9 +152,8 @@ public readonly partial struct Track
         if (RowMetrics.ShowTempo(in set)) arr[i++] = TrackSize.Px(Lane.Tempo);
         // The trailing ♥ — the SAME gate the cell reads, and it sits IMMEDIATELY before the duration (the reader's
         // 28 | 1fr | 32 | 52), never after it: the duration is the row's last fact, and a heart past it reads as chrome.
-        if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(Lane.HeartTrailing);
-        arr[i++] = TrackSize.Px(Lane.Duration);
-        if (set.Video) arr[i++] = TrackSize.Px(Lane.Video);
+        if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(set.HeartWidth > 0f ? set.HeartWidth : Lane.HeartTrailing);
+        if (RowMetrics.ShowDuration(in set)) arr[i++] = TrackSize.Px(DurationLaneOf(in set));
         if (set.Actions) arr[i++] = TrackSize.Px(Lane.Actions);
         if (set.Expand) arr[i++] = TrackSize.Px(Lane.Expand);
         s_rowTrackCache[key] = arr;
@@ -151,16 +162,14 @@ public readonly partial struct Track
 
     /// <summary>How many cells (and width tracks) a set produces. ONE count for both, so a row always emits exactly one
     /// cell per track.
-    /// <para>THREE builders size themselves from this: <see cref="Grid"/>, the bound twin <c>BoundGrid</c>
-    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). Only <see cref="Grid"/> emits the
-    /// TRAILING ♥ cell today, because only the eager reader row sets <see cref="ColumnSet.HeartTrailing"/> — a bound
-    /// TABLE that sets it must gain the matching cell in <c>BoundGrid</c> and an empty header cell in the same
-    /// position first, or its cells and its tracks fall out of step by one.</para></summary>
-    static int CellCount(in ColumnSet set)
-        => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
+    /// <para>THREE builders size themselves from this: <c>Grid</c>, the bound twin <c>BoundGrid</c>
+    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). All three emit the TRAILING ♥ cell (the eager
+    /// reader row's, and a quiet table's, D16) in the same position, so the cells and the tracks never fall out of step.</para></summary>
+    internal static int CellCount(in ColumnSet set)
+        => (set.IndexHidden ? 1 : 2) + (RowMetrics.ShowDuration(in set) ? 1 : 0) + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
            + (RowMetrics.ShowHeartTrailing(in set) ? 1 : 0)
-           + (set.Video ? 1 : 0) + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);
+           + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);
 
     // ══ 2. THE GRID ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -171,22 +180,20 @@ public readonly partial struct Track
     /// same reason.</para>
     /// <para><see cref="AddedAt"/> and <see cref="NowUnixSeconds"/> are UNIX seconds; <see cref="NowUnixSeconds"/> 0
     /// resolves the live clock (<c>Store.ToUnix(Entities.Now)</c> — <c>Entities.Now</c> itself is APP seconds).</para>
-    /// <para><see cref="HeartRevealOnHover"/> applies to the TRAILING heart lane only
-    /// (<see cref="ColumnSet.HeartTrailing"/>): a liked row paints its heart at rest, an unliked one reveals the outline
-    /// on ROW hover. The leading ♥ lane is unaffected — it is painted at rest on every row, which is ch 01 §0.3.</para></summary>
+    /// <para>Both ♥ lanes wear the row reveal (tuned Classic L2): a liked row paints its filled heart at rest, an unliked
+    /// one shows its outline only on ROW hover.</para></summary>
     public readonly record struct GridOptions(
         bool ShowTrackArtist = false, float Art = RowMetrics.ThumbSize, Action? OnPlay = null, Action? OnLike = null,
         int AddedAt = 0, User AddedBy = default, byte ChartStatus = 0, bool LikePop = false, Element? ActionsCell = null,
         bool ShowAlbumInMeta = false, bool ShowListBadges = false, Element? ExpandCell = null, bool MoreEnabled = true,
-        IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0,
-        bool HeartRevealOnHover = false);
+        IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0);
 
-    const float RowNotYetOutOpacity = 0.45f;   // ch 01 §0.7: the whole title column steps back, not a colour swap
-    const float RowEqualizerHeight = 13f;
-    const float RowTransportBox = 24f;
+    internal const float RowNotYetOutOpacity = 0.45f;   // ch 01 §0.7: the whole title column steps back, not a colour swap
+    internal const float RowEqualizerHeight = 13f;
+    internal const float RowTransportBox = 24f;
     const float RowMoreBox = 28f;
 
-    /// <summary>ONE decode size for every row thumbnail, on every density, in both the eager <see cref="Grid"/> and the
+    /// <summary>ONE decode size for every row thumbnail, on every density, in both the eager <c>Grid</c> and the
     /// bound <c>BoundArtwork</c>. It used to be <c>art * 2</c>, and <c>Controls.Artwork</c>'s own doc says why that was
     /// the bug: an explicit <c>decodePx</c> decodes a SQUARE at that exact literal and "a card and a detail cover that
     /// pass the SAME literal resolve to ONE cached texture and neither re-decodes". The art ladder is 32 · 40 · 48
@@ -196,7 +203,7 @@ public readonly partial struct Track
     internal const int RowArtDecodePx = 96;
 
     /// <summary>The cover a row paints: its OWN image, else its album's (ch 01 GAP, the same fallback
-    /// <c>Track.Table.Chrome.cs</c>'s pane thumbs and <c>Artist.Page.cs</c>'s video rail already make). A track row is
+    /// <c>Track.Table.Chrome.cs</c>'s pane thumbs and <c>ClassicArtistSections</c>'s video rail already make). A track row is
     /// an entry in an album, and a producer that staged the row without a cover — a playlist item, a search hit, a
     /// terminal "unavailable" verdict — leaves nothing but the flat placeholder tint behind otherwise. The album handle
     /// is checked for validity first: <c>Column&lt;T&gt;</c> is an unguarded slab, so <c>Album.ImageId</c> on
@@ -207,346 +214,14 @@ public readonly partial struct Track
     public static string? RowArtUrl(Track d)
         => Controls.ArtUrl(d.ImageId) ?? (d.Album.IsValid ? Controls.ArtUrl(d.Album.ImageId) : null);
 
-    /// <summary>THE row cell (ch 01 §0.1, TrackRow.Grid). Plain and diffable — no <c>Animate</c> — so a host re-render
-    /// patches cells in place. Every cell is keyed with <see cref="CellKey"/>; every wrapper takes <c>MinWidth = 0</c> +
-    /// <c>ClipToBounds</c> so a squeezed track yields instead of painting over its neighbour (ch 01 §9).
-    /// <para><paramref name="title"/> is the CALLER's (<see cref="TitleCell"/>): a plain ellipsis, or the marquee on the
-    /// now-playing row. A set that reserves the Actions / Expand lane always gets a cell there — an empty one when the
-    /// caller supplied none — so the cell count equals the track count by construction.</para></summary>
-    public static Element Grid(Track t, int displayIndex, in RowState st, in ColumnSet set, TrackSize[] tracks,
-                               float rowH, Element title, in GridOptions o)
-    {
-        long now = o.NowUnixSeconds > 0 ? o.NowUnixSeconds : Store.ToUnix(Entities.Now);
-        // The ONE not-yet-out predicate: the dim here, the play gate and the facts strip must never disagree (ch 01 W6).
-        bool notYetOut = t.NotYetOut(now);
-        // Ruled unavailable with NO release instant (a terminal envelope verdict): the same dim and play gate as a
-        // pending row, but the duration cell states "Unavailable" — there is no WHEN to state. The heart stays: it IS liked.
-        bool unplayable = t.Unplayable();
-        bool withheld = notYetOut || unplayable;
-        // THE DISPLAY ROW (Track.ForDisplay): a relinked id paints its canonical track's title, credits, album, art,
-        // duration and explicit mark. Everything that IS this row — the heart, the play target, the verdicts above, the
-        // plays and tempo lanes, the video chrome — keeps reading `t`.
-        Track d = t.ForDisplay;
-        bool classic = set.Classic;
-        bool classicNow = classic && st.IsNow;
-        ColorF secondaryInk = classicNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
-        ColorF tertiaryInk = classicNow ? Tok.AccentTextPrimary : Tok.TextTertiary;
-        float art = o.Art > 0f ? o.Art : RowMetrics.ThumbSize;
-        // A dedicated Classic artist lane owns the artists; the title line never repeats them.
-        bool artistInTitle = o.ShowTrackArtist && !set.Artist;
-        bool badge = o.ShowListBadges && d.IsExplicit;
-
-        var cells = new Element[CellCount(in set)];
-        int i = 0;
-
-        // Every cell is born with its CellKey (the factories take it) — a `with { Key = … }` afterwards would clone the
-        // 123-member BoxEl a second time per cell, per render (rule 13's recycle-frame budget).
-        // # — number / equalizer / star / spinner at rest, the transport on ROW hover; no hover play for a row that is
-        // not out or ruled unavailable (the play would be a button that does nothing, or one that can only fail).
-        cells[i++] = NumberCell(displayIndex, in st, withheld ? null : o.OnPlay, o.HoverPaused, o.ChartStatus, classic,
-                                o.Accent, CellKey.Num);
-
-        if (set.Heart)
-            cells[i++] = RowCenterCell(Heart(st.Saved, o.OnLike, o.LikePop, classic), CellKey.Heart);
-
-        if (set.Thumb)
-            cells[i++] = RowCenterCell(Controls.Artwork(RowArtUrl(d), art, art, Radii.Control,
-                                                        decodePx: RowArtDecodePx), CellKey.Art);
-
-        bool showMeta = !classic && (artistInTitle || o.ShowAlbumInMeta || badge);
-        Element titleLine = classic
-            ? ClassicTitleLine(d, title, artistInTitle, TableRules.ShowClassicInlineVideo(classic, t.HasVideo, set.Tier),
-                               badge, classicNow)
-            : title;
-        var titleCol = new BoxEl
-        {
-            // MinWidth 0: the STAR track collapses first under pressure; without the floor override the stack keeps its
-            // natural width and the runs paint across the row.
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
-            Opacity = withheld ? RowNotYetOutOpacity : 1f,
-            Children = showMeta
-                ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, classicNow ? Tok.AccentTextPrimary : null)]
-                : [titleLine],
-        };
-        cells[i++] = new BoxEl
-        {
-            Key = CellKey.Title, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
-            Children = [titleCol],
-        };
-
-        float factualSize = classic ? 14f : 12f, factualLine = classic ? 20f : 16f;
-        if (set.Artist)
-            cells[i++] = RowLeftCell(ArtistLinks(d, factualSize, factualLine, secondaryInk), CellKey.Artist);
-        if (set.Album)
-            cells[i++] = RowLeftCell(AlbumLink(d, secondaryInk, factualSize, factualLine), CellKey.Album);
-        if (set.By)
-            cells[i++] = AddedByCell(o.AddedBy, secondaryInk, classic, CellKey.By);
-        if (set.Date)
-            cells[i++] = RowLeftCell(RowFactualFillText(Format.DateAddedLabel(o.AddedAt, now), classic, secondaryInk), CellKey.Date);
-        if (set.Plays)
-            // A count of 0 is "not known yet" (kind 185 refuses to invent one), never "nobody played it" — and a pending
-            // track states the absence rather than a dismal real-looking number.
-            cells[i++] = RowEndCell(RowFactualText(withheld || t.PlayCount == 0 ? Format.Dash : Format.PlaysLabel(t.PlayCount),
-                                                   classic, tertiaryInk), CellKey.Plays);
-        if (RowMetrics.ShowTempo(in set))
-            cells[i++] = RowEndCell(TempoCell(t, classicNow ? Tok.AccentTextPrimary : null, classic), CellKey.Tempo);
-
-        // The TRAILING ♥ — the same heart, on the right, immediately before the duration (the library reader's
-        // 28 | 1fr | 32 | 52). Mutually exclusive with the leading lane; the gate is shared with the width track.
-        if (RowMetrics.ShowHeartTrailing(in set))
-            cells[i++] = RowCenterCell(TrailingHeart(t, in st, in o, classic), CellKey.HeartTrailing);
-
-        // A ruled-unavailable row with no instant states "Unavailable"; a pending track states WHEN (the live instant)
-        // rather than a dash; 0 ms is the same unknown as a zero count. Unplayable is tested FIRST: with no instant the
-        // not-yet-out predicate also holds, and it would print a dash where the verdict has a word.
-        string durationText = unplayable ? Loc.Get(Strings.Detail.TrackFacts.Unavailable)
-            : notYetOut ? (t.AvailableAt > now ? Format.ShortDate(t.AvailableAt, now) : Format.Dash)
-            : Format.DurationCell(d.DurationMs);
-        cells[i++] = RowEndCell(RowFactualText(durationText, classic,
-            classicNow ? Tok.AccentTextPrimary : withheld ? Tok.TextTertiary : Tok.TextSecondary), CellKey.Duration);
-
-        // Trailing chrome AFTER Duration so the film / "…" never wedges between Album and Tempo. Video carries the "…"
-        // on hover; Actions is its exact complement (the lane is reserved once — the ColumnSet decides that).
-        if (set.Video)
-            cells[i++] = RowCenterCell(VideoMoreCell(t.HasVideo, o.MoreEnabled), CellKey.Video);
-        // A caller-supplied cell that already carries the lane's key (the table row builds it once with `CellKey.More` /
-        // `CellKey.Expand`) is used as-is; any other is keyed here so the contract "every cell is keyed" still holds.
-        if (set.Actions)
-            cells[i++] = o.ActionsCell is { } actions ? Keyed(actions, CellKey.More) : RowCenterCell(new BoxEl(), CellKey.More);
-        if (set.Expand)
-            cells[i++] = o.ExpandCell is { } expand ? Keyed(expand, CellKey.Expand) : RowCenterCell(new BoxEl(), CellKey.Expand);
-
-        float padX = RowMetrics.PadXFor(set.Tier);
-        // Modern pads PadX − RowInset: with the skin's RowInset margin the first column still starts at PadX, aligned
-        // under the header's "#". Classic has no inset (margin 0), so it pads the full PadX.
-        float inner = classic ? padX : padX - RowMetrics.RowInset;
-        return new GridEl
-        {
-            Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
-            Padding = new Edges4(inner, 0f, inner, 0f),
-            Children = cells,
-        };
-    }
-
-    static readonly Marquee.Style s_rowMarqueeStyle = new()
+    internal static readonly Marquee.Style s_rowMarqueeStyle = new()
     {
         // The engine defaults for Speed/Gap/delays/fade (ch 30 §3.4, "now-playing ROW marquee"); only size, weight and
         // ink are the row's. The ink is a THUNK so a live theme flip re-tints the frozen style.
         FontSize = 14f, Weight = 600, Foreground = Prop.Of(static () => Tok.AccentTextPrimary),
     };
 
-    /// <summary>The row's title element (ch 01 W3). The MARQUEE only on the now-playing row and only when the Appearance
-    /// setting allows it (<paramref name="marquee"/> — the host reads <c>Prefs.Appearance.Marquee()</c>); every other row
-    /// is ONE plain ellipsis <c>TextEl</c> (a marquee per row was ~24 of ~60 components on a cold mount). Classic uses
-    /// the same 14/600 run; its artist fold is <see cref="Grid"/>'s.
-    /// <para>NAMED <c>TitleCell</c>, not the contract's <c>Title</c>: the struct already has a <c>Title</c> property and
-    /// C# forbids a method of the same name (owner M's correction).</para></summary>
-    public static Element TitleCell(Track t, bool isNow, bool classic, bool marquee)
-    {
-        _ = classic;   // one title rung for both skins; kept so a caller states the skin it is building for
-        if (isNow && marquee)
-        {
-            var track = t;
-            // Bound text: the marquee host freezes its props at mount, so a title that hydrates while the row plays must
-            // arrive through the thunk. The row swaps plain ↔ marquee by element TYPE, which remounts it. The redirect
-            // (`ForDisplay`) is re-taken inside the thunk for the same reason: the canonical row may land later.
-            return Marquee.Of(Prop.Of(() =>
-            {
-                _ = Entities.Current.Tracks.Changed.Value;
-                return track.ForDisplay.Title;
-            }), s_rowMarqueeStyle);
-        }
-        return Design.Type.TrackTitle(t.ForDisplay.Title) with
-        {
-            Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        };
-    }
-
-    /// <summary>The blank placeholder row a slot shows before its reveal edge (ch 01 W10, ch 03 §9.4): a <c>GridEl</c>
-    /// with the SAME tracks, gap, height and inner padding as the live row and one empty box per track, so the crossing
-    /// is a cross-fade and never a reflow. It stays a <c>GridEl</c> on purpose — the real row mounts inside a
-    /// <c>BoxEl</c> crossing wrapper, and the TYPE change is what makes the crossing a remount (ch 01 §9 trap 3).
-    /// <paramref name="padX"/> is the grid's resolved inner padding (<c>PadXFor(tier) − RowInset</c>, Classic
-    /// <c>PadXFor(tier)</c>).</summary>
-    public static Element ShimmerRow(in ColumnSet set, TrackSize[] tracks, float rowH, float padX)
-    {
-        var cells = new Element[tracks.Length];
-        for (int i = 0; i < cells.Length; i++) cells[i] = new BoxEl();
-        return new GridEl
-        {
-            Key = "row:shim",
-            Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
-            Padding = new Edges4(padX, 0f, padX, 0f),
-            Children = cells,
-        };
-    }
-
     // ══ 3. THE CELLS ═════════════════════════════════════════════════════════════════════════════════════════════════
-
-    static readonly Func<ColorF> s_rowAccentInk = static () => Tok.AccentTextPrimary;
-
-    /// <summary>The # cell — a state machine over THIS track's playback (ch 01 §0.2, W3-W5):
-    /// buffering → a 16-DIP ring (hovered or not); now-playing → the live equalizer (Classic: the Volume mark); the
-    /// album's top track → the star; otherwise the number, with the chart glyph beside it. On ROW hover the rest layer
-    /// fades out and a 24-DIP play/pause transport fades in.
-    /// <para>The equalizer is the persistent <c>Controls.Equalizer</c> host reading <c>Playback.IsPlaying</c> — a
-    /// play↔pause flip patches it in place, never a Key flip (ch 01 §9 trap 2) — with <paramref name="hoverPaused"/> (the
-    /// ROW's hover signal) as its pause gate, so invisible bars stop ticking. <paramref name="accent"/> tints the bars
-    /// (a page's ambient accent); null is <c>Tok.AccentTextPrimary</c>.</para>
-    /// <para>A null <paramref name="onPlay"/> (a not-yet-out row, a skeleton) reveals NOTHING on hover and keeps the
-    /// rest layer visible — ch 01 W6: no hover play button.</para></summary>
-    public static Element NumberCell(int displayIndex, in RowState st, Action? onPlay, IReadSignal<bool>? hoverPaused,
-                                     byte chartStatus, bool classic, Func<ColorF>? accent = null, string? key = null)
-    {
-        ColorF ink = Tok.AccentTextPrimary;
-        Element rest;
-        if (st.IsBuffering) rest = Spinner();
-        // Classic states now-playing with the Volume mark and leaves the other rest states empty (TrackRow.cs:1074-1077).
-        else if (classic) rest = st.IsNow ? Icon(Icons.Volume, 13f, ink) : new BoxEl();
-        else if (st.IsNow) rest = Controls.Equalizer(Playback.IsPlaying, accent ?? s_rowAccentInk, RowEqualizerHeight, hoverPaused);
-        else if (st.IsTop) rest = Icon(Icons.FavoriteStarFill, 11f, ink);
-        else
-        {
-            Element number = Caption(RowNumberLabel(displayIndex + 1)) with { Color = Tok.TextTertiary };
-            rest = ChartGlyph(chartStatus) is { } glyph
-                ? new BoxEl { Direction = 0, Gap = 2f, AlignItems = FlexAlign.Center, Children = [number, glyph] }
-                : number;
-        }
-
-        bool reveal = st.IsBuffering || onPlay is not null;
-        var restLayer = new BoxEl
-        {
-            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            HoverOpacity = reveal ? 0f : float.NaN,
-            Children = [rest],
-        };
-        if (!reveal)
-            return new BoxEl { Key = key, ZStack = true, MinWidth = 0f, ClipToBounds = true, Children = [restLayer] };
-
-        Element transport = st.IsBuffering
-            ? Spinner()
-            : new BoxEl
-            {
-                Width = RowTransportBox, Height = RowTransportBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                PressScale = Design.Motion.ScaleEmphatic.Press,   // a real button push; the row-driven reveal is the hover cue
-                Children = [Icon(st.IsNow && st.IsPlaying ? Icons.Pause : Icons.Play, 12f, st.IsNow ? ink : Tok.TextPrimary)],
-            };
-        Element revealed = onPlay is null
-            ? transport
-            : new BoxEl
-            {
-                // The click target fills the lane; the reveal sits on the non-interactive wrapper around it.
-                Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                OnClick = onPlay, Cursor = CursorId.Hand, Role = AutomationRole.Button, BlocksDragArm = true,
-                Children = [transport],
-            };
-        return new BoxEl
-        {
-            Key = key, ZStack = true, MinWidth = 0f, ClipToBounds = true,
-            Children =
-            [
-                restLayer,
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, AlignItems = onPlay is null ? FlexAlign.Center : FlexAlign.Stretch,
-                    Justify = FlexJustify.Center, Opacity = 0f, HoverOpacity = 1f,
-                    Children = [revealed],
-                },
-            ],
-        };
-    }
-
-    // The chart byte as `Spotify.Decode.ChartStatus` writes it (0 Unknown · 1 Equal · 2 Up · 3 Down · 4 New).
-    const byte ChartUp = 2, ChartDown = 3, ChartNew = 4;
-
-    /// <summary>The chart movement beside the plain number: green up / red down / "NEW" / nothing for Equal and Unknown —
-    /// never a guessed arrow (ch 01 W5).</summary>
-    static Element? ChartGlyph(byte status) => status switch
-    {
-        ChartUp => new TextEl("▲") { Size = 8f, LineHeight = 12f, Weight = 700, Color = Tok.SystemFillSuccess },
-        ChartDown => new TextEl("▼") { Size = 8f, LineHeight = 12f, Weight = 700, Color = Tok.SystemFillCritical },
-        ChartNew => new TextEl(Loc.Get(LocChartNew)) { Size = 8f, LineHeight = 12f, Weight = 700, Color = Tok.SystemFillSuccess },
-        _ => null,
-    };
-
-    static string?[] s_rowNumberLabels = new string?[256];
-
-    /// <summary>The row number as text, formatted ONCE per value for the life of the process — a recycle never formats a
-    /// number (ch 01 §9 trap 5).</summary>
-    static string RowNumberLabel(int n)
-    {
-        if (n < 0) return "";
-        if (n >= s_rowNumberLabels.Length)
-        {
-            if (n >= 1 << 16) return n.ToString(CultureInfo.InvariantCulture);
-            int size = s_rowNumberLabels.Length;
-            while (size <= n) size *= 2;
-            Array.Resize(ref s_rowNumberLabels, size);
-        }
-        return s_rowNumberLabels[n] ??= n.ToString(CultureInfo.InvariantCulture);
-    }
-
-    /// <summary>The heart's pop: an Enter-only overshoot spring (response 0.30, damping 0.55) from 0.25 scale, 0 opacity
-    /// and a 2-DIP blur. A SPRING, so the reduced-motion policy keeps it where it would drop a tween Enter. No Exit leg: a
-    /// scrolling list must never spawn exit orphans for recycled glyphs.</summary>
-    static readonly LayoutTransition s_heartPopIn = new(
-        TransitionChannels.Opacity,
-        TransitionDynamics.Spring(0.30f, 0.55f),
-        Enter: new EnterExit(Sx: 0.25f, Sy: 0.25f, Opacity: 0f, Active: true, Blur: Expressive.BlurSmall));
-
-    /// <summary>The per-row heart (ch 01 §0.3) — PAINTED AT REST on every row: filled accent when saved (Classic: primary),
-    /// outline tertiary when not (Classic: secondary). <paramref name="pop"/> is a caller-detected like EDGE
-    /// (<see cref="LikeEdge"/>); every other render mounts the keyed glyph with no animation, so a recycle never replays
-    /// it. A null <paramref name="onLike"/> is a static, non-interactive heart (no cursor, no click).</summary>
-    public static Element Heart(bool saved, Action? onLike, bool pop, bool classic)
-        => new BoxEl
-        {
-            Width = RowMetrics.HeartCol, Height = RowMetrics.HeartCol,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = Radii.Circle(RowMetrics.HeartCol),
-            Cursor = onLike is null ? null : CursorId.Hand, OnClick = onLike,
-            Role = onLike is null ? AutomationRole.None : AutomationRole.Button,
-            // Its own affordance: without this a press on the heart arms the row drag and the like never fires.
-            BlocksDragArm = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = saved ? "hg:on" : "hg:off",   // keyed CHILD of the stable circle — keys live in child arrays
-                    Animate = pop && saved ? s_heartPopIn : null,
-                    Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, 14f,
-                        saved ? (classic ? Tok.TextPrimary : Tok.AccentTextPrimary)
-                              : (classic ? Tok.TextSecondary : Tok.TextTertiary))],
-                },
-            ],
-        }.Interactive(Interaction.Subtle);
-
-    /// <summary>The TRAILING ♥ cell's content (<see cref="ColumnSet.HeartTrailing"/>). At
-    /// <see cref="GridOptions.HeartRevealOnHover"/> false it is the plain <see cref="Heart"/> — painted at rest either
-    /// way, exactly like the leading lane. At true it wears the library reader's reveal: a LIKED row keeps its filled
-    /// heart at rest, an UNLIKED one is invisible until the ROW is hovered and then fades its outline in.
-    /// <para>The reveal rides a NON-interactive wrapper around the heart's own click target, so the hover progress it
-    /// reads is the ROW skin's (the PointerBit every <c>HoverOpacity</c> descendant inherits — the same idiom
-    /// <see cref="NumberCell"/>'s rest/reveal layers use, and the reason the reveal survives the pointer crossing onto
-    /// the heart itself). <c>HoverOpacity</c> is 1 in BOTH states, so the one thing that differs is the REST opacity:
-    /// 1 → 1 is a liked heart that does not move, 0 → 1 is the reveal.</para>
-    /// <para>That rest opacity is a BOUND <c>Prop</c> over <see cref="LikedNow"/> — the same subscribing read
-    /// <see cref="StateOf"/> makes — and not <c>st.Saved</c>, which is a value frozen when this element record was
-    /// built. An optimistic like writes the Liked edge and the bound channel re-resolves in the same frame, with no
-    /// render and no dependence on whoever owns this row re-running.</para></summary>
-    static Element TrailingHeart(Track t, in RowState st, in GridOptions o, bool classic)
-    {
-        Element heart = Heart(st.Saved, o.OnLike, o.LikePop, classic);
-        if (!o.HeartRevealOnHover) return heart;
-        var track = t;
-        return new BoxEl
-        {
-            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Opacity = Prop.Of(() => LikedNow(track) ? 1f : 0f), HoverOpacity = 1f,
-            Children = [heart],
-        };
-    }
 
     /// <summary>Per-slot like-edge detector: true only when the SAME row flipped unsaved → saved since this slot's last
     /// render. A recycle binds a different slot, so scrolling never reports an edge (ch 01 §9, parity 22).</summary>
@@ -558,71 +233,48 @@ public readonly partial struct Track
         return edge;
     }
 
-    /// <summary>The trailing lane that doubles as the row's More affordance (ch 01 §0.5): the film glyph at rest on a row
-    /// that HAS a video, the quiet "…" at <c>Controls.MoreRestOpacity</c> on one that does not; the full-strength "…"
-    /// on row hover either way. A click raises <c>ClickRequestsContext</c>, so the row's own context menu opens
-    /// byte-identically to a right-click, anchored here.</summary>
-    public static Element VideoMoreCell(bool hasVideo, bool moreEnabled)
-    {
-        Element rest = hasVideo ? Icon(Icons.Movie, 13f, Tok.TextTertiary) : new BoxEl();
-        Element more = new BoxEl
-        {
-            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Cursor = moreEnabled ? CursorId.Hand : null,
-            ClickRequestsContext = moreEnabled,
-            HitTestVisible = moreEnabled,
-            Role = AutomationRole.Button,
-            BlocksDragArm = true,
-            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
-        };
-        return new BoxEl
-        {
-            ZStack = true, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl { Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f, Children = [rest] },
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    // Only a row with no film to show spends its resting slot on the quiet menu glyph.
-                    Opacity = moreEnabled && !hasVideo ? Controls.MoreRestOpacity : 0f,
-                    HoverOpacity = moreEnabled ? 1f : 0f,
-                    Children = [more],
-                },
-            ],
-        };
-    }
-
-    /// <summary>The dedicated "…" lane (sets with Video off): <c>Controls.MoreButton</c> — the shared affordance with its
+    /// <summary>The row's "…" lane: <c>Controls.MoreButton</c> — the shared affordance with its
     /// <c>ClickRequestsContext</c> and <c>BlocksDragArm</c> — at the row's 28-DIP circle (Modern, Emphatic hover/press) or
-    /// a square with no scale (Classic, ch 01 W8). The rest opacity rides a NON-interactive wrapper so it follows the ROW's
-    /// hover: 0.45 Modern, 0 Classic. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
-    /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.</summary>
-    public static Element MoreCell(bool enabled, bool classic, string? key = null)
+    /// a square with no scale (Classic, ch 01 W8). It is invisible at rest in both row styles and appears on ROW hover
+    /// (tuned Classic L2): the reveal rides a NON-interactive wrapper so it follows the row. <paramref name="shown"/> (a bound
+    /// row's focus fact) also shows it at rest, so the focused row offers it to the keyboard. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
+    /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.
+    /// <para><paramref name="box"/> above the 28 (the Compact row's 40 target, board C-RowStates-Compact) sizes the button, and
+    /// <paramref name="atRest"/> shows it at rest on every row (a Compact row has no hover to reveal it).</para></summary>
+    public static Element MoreCell(bool enabled, bool classic, string? key = null, Func<bool>? shown = null, float box = 0f, bool atRest = false)
+        => MoreCellLane(key, MoreCellReveal(enabled, classic, shown, box, atRest));
+
+    /// <summary>The bound row's hover "…": the same lane, its reveal mounted on the row's first hover / focus
+    /// (<see cref="Affordance"/>) — before that the lane draws nothing and holds no nodes.</summary>
+    internal static Element LazyMoreCell(BoundRow r, bool classic, string? key = null)
+        => MoreCellLane(key, Affordance(r, () => MoreCellReveal(true, classic, () => r.Focused, 0f, false)));
+
+    static BoxEl MoreCellLane(string? key, Element reveal) => new()
     {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
+        Children = [reveal],
+    };
+
+    static BoxEl MoreCellReveal(bool enabled, bool classic, Func<bool>? shown, float box, bool atRest)
+    {
+        float edge = box > RowMoreBox ? box : RowMoreBox;
         var button = Controls.MoreButton(null, requestsContext: enabled) with
         {
-            Width = RowMoreBox, Height = RowMoreBox,
-            Corners = classic ? CornerRadius4.All(Radii.None) : Radii.Circle(RowMoreBox),
-            HoverScale = classic ? 1f : Design.Motion.ScaleEmphatic.Hover,
-            PressScale = classic ? 1f : Design.Motion.ScaleEmphatic.Press,
+            Width = edge, Height = edge,
+            Corners = classic ? CornerRadius4.All(Radii.None) : Radii.Circle(edge),
+            HoverScale = classic ? 1f : R.Motion.ScaleEmphatic.Hover,
+            PressScale = classic ? 1f : R.Motion.ScaleEmphatic.Press,
             Opacity = 1f, HoverOpacity = float.NaN,
             Focusable = false,
         };
         if (!enabled) button = button with { OnClick = null, Cursor = null, HitTestVisible = false };
         return new BoxEl
         {
-            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = enabled ? (classic ? 0f : Controls.MoreRestOpacity) : 0f,
-                    HoverOpacity = enabled ? 1f : 0f,
-                    Children = [button],
-                },
-            ],
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Opacity = enabled && atRest ? (Prop<float>)1f
+                : enabled && shown is not null ? Prop.Of(() => shown() ? 1f : 0f) : (Prop<float>)0f,
+            HoverOpacity = enabled ? 1f : 0f,
+            Children = [button],
         };
     }
 
@@ -643,41 +295,14 @@ public readonly partial struct Track
             Children = [Icon(open ? Icons.ChevronDown : Icons.ChevronRight, 12f, open ? Tok.AccentTextPrimary : Tok.TextSecondary)],
         }, key);
 
-    /// <summary>The responsive metadata subline (ch 01 §1.1): [EPISODE eyebrow] · [E] · artists · album, one ellipsized
-    /// run whose artist and album parts are separate LINKS. Artists come from <c>Edges.TrackArtists</c> — one span per
-    /// artist, ", " joined — never the flat <c>ArtistLineId</c> (ch 01 §9 "Where the plan is wrong" 1). An EPISODE row
-    /// always carries its show. The press lands on the text leaf, so a link navigates without playing or selecting.</summary>
-    public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, bool explicitBadge, ColorF? ink)
-    {
-        bool episode = t.IsPodcast;
-        int artistCount = showArtists ? t.ArtistSlots.Length : 0;
-        var container = ContainerOf(t);
-        bool album = (showAlbum || episode) && container.Name.Length > 0;
-        TextSpan[]? spans = BuildLinkSpans(t, artistCount, album ? container : default);
+    /// <summary>The indeterminate fetch/buffer ring: 16 DIP in accent (ch 01 W4).</summary>
+    public static Element Spinner() => ProgressRing.Indeterminate(size: 16f, foreground: Tok.AccentTextPrimary);
 
-        int kidCount = (episode ? 1 : 0) + (explicitBadge ? 1 : 0) + (spans is null ? 0 : 1);
-        var kids = new Element[kidCount];
-        int k = 0;
-        if (episode)
-            kids[k++] = Design.Type.Eyebrow(Loc.Get(Strings.Detail.Badge.Episode)) with
-            {
-                Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
-            };
-        if (explicitBadge) kids[k++] = Controls.ExplicitBadge(14f);
-        if (spans is not null)
-            kids[k++] = new SpanTextEl(spans)
-            {
-                Size = 12f, LineHeight = 16f, Color = ink ?? Tok.TextSecondary,
-                Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
-                Grow = 1f, Basis = 0f, MinWidth = 0f,
-                OnSpanClick = LinkClick(t, artistCount, album),
-            };
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, MinWidth = 0f, ClipToBounds = true,
-            Children = kids,
-        };
-    }
+    // ── link spans ───────────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // Span layout, exactly allocated: [artist0 ", " artist1 …] [" · " container]. Artist i sits at span 2i; the
+    // container is the LAST span. A link is `IsLink` (never a per-span closure) and ONE `OnSpanClick` resolves the index
+    // against the CURRENT edge run at click time. The run is the data adapter's too (`RowSubtitle`), so it is core.
 
     /// <summary>The billed artists as one ellipsized run of per-artist links (Classic's Artist lane, the row data's subtitle, the
     /// queue). A span per artist, ", " joined; a name-only artist (no uri) is plain text. Empty box for no artists.</summary>
@@ -695,153 +320,7 @@ public readonly partial struct Track
         };
     }
 
-    /// <summary>The album lane as one link (an episode row's SHOW, routed by the ref's own kind). A name-less ref states
-    /// the absence with the em dash — in <c>TextTertiary</c> when the lane's ink is the ordinary secondary — and stays
-    /// CLICKABLE whenever a uri exists, because opening it is what hydrates its name (ch 01 W26, parity 30).</summary>
-    public static Element AlbumLink(Track t, ColorF color, float size, float lineHeight)
-    {
-        var container = ContainerOf(t);
-        bool named = container.Name.Length > 0;
-        ColorF ink = named || color != Tok.TextSecondary ? color : Tok.TextTertiary;
-        bool link = container.Uri.IsValid;
-        var track = t;
-        return new SpanTextEl(new[] { new TextSpan(named ? container.Name : Format.Dash, IsLink: link) })
-        {
-            Size = size, LineHeight = lineHeight, Color = ink,
-            Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
-            Grow = 1f, Basis = 0f, MinWidth = 0f,   // yield to a squeezed Album track instead of flooring at the name
-            OnSpanClick = link ? (Action<int>)(_ => GoToContainer(track)) : null,
-        };
-    }
-
-    /// <summary>The Added-by lane (ch 01 §3): a 24-DIP <c>PersonPicture</c> + an 8-DIP gap + a Caption name (Modern);
-    /// the bare name with no avatar (Classic, parity 79). The profile name when <c>UserFields.Identity</c> is known, else
-    /// and NOTHING until it lands: a uri fragment reads as a real name when it is only a guess, which is the rule
-    /// `Playlist.NameOf` follows for the owner and the sidebar follows for a pin. An empty cell for no adder.</summary>
-    public static Element AddedByCell(User by, ColorF ink, bool classic, string? key = null)
-    {
-        if (by.Slot <= 0) return RowLeftCell(new BoxEl(), key);
-        string name = by.Knows(UserFields.Identity) ? Entities.Strings.Resolve(by.NameId) : "";
-        if (name.Length == 0) return RowLeftCell(new BoxEl(), key);   // unresolved: blank, never the uri fragment
-        string label = name;
-        if (classic)
-            return RowLeftCell(RowFactualFillText(label, classic: true, ink), key);
-        return new BoxEl
-        {
-            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, Gap = Spacing.S,
-            MinWidth = 0f, ClipToBounds = true,
-            Children =
-            [
-                PersonPicture.Create("", Spacing.XXL, displayName: label, imageSourcePath: Controls.ArtUrl(by.ImageId)),
-                Caption(label) with
-                {
-                    Color = ink, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                },
-            ],
-        };
-    }
-
-    /// <summary>"[swatch] 101.5 · 8B" — the Camelot colour as a 6-DIP swatch at 0.85 through
-    /// <c>Design.Palette.DataDotInk</c> (a passthrough in dark, a hue-aware darkening in light), the BPM, then ONE key
-    /// token (Camelot preferred, else the tonic). EMPTY — not "0 BPM", not a dash — until kind 222 lands, because a
-    /// placeholder would flicker to a value a moment later (ch 01 §0.7, parity 28).</summary>
-    public static Element TempoCell(Track t, ColorF? ink, bool classic)
-    {
-        if (!t.Knows(TrackFields.Audio) || t.Tempo == 0) return new BoxEl();
-        string? key = Format.CamelotLabel(t.Camelot) ?? Format.KeyLabel(t.Key);
-        bool swatch = t.CamelotColor != 0;
-        var parts = new Element[(swatch ? 1 : 0) + 1 + (key is null ? 0 : 2)];
-        int i = 0;
-        if (swatch)
-            parts[i++] = new BoxEl
-            {
-                // Both the 6-DIP box and its 1.5 corner sit below their ramps on purpose: a colour SWATCH, not a surface.
-                Width = 6f, Height = 6f, Corners = CornerRadius4.All(1.5f), Opacity = 0.85f,
-                Fill = Design.Palette.DataDotInk(t.CamelotColor, Tok.Theme), AlignSelf = FlexAlign.Center,
-            };
-        parts[i++] = RowFactualText(Format.TempoLabel(t.Tempo), classic, ink ?? Tok.TextSecondary);
-        if (key is not null)
-        {
-            // Two bare numeric-ish tokens ("110 7B") read as one mangled value; the middot is the metadata joiner.
-            parts[i++] = RowFactualText("·", classic, ink ?? Tok.TextTertiary);
-            parts[i++] = RowFactualText(key, classic, ink ?? Tok.TextTertiary);
-        }
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Children = parts };
-    }
-
-    /// <summary>The indeterminate fetch/buffer ring: 16 DIP in accent (ch 01 W4).</summary>
-    public static Element Spinner() => ProgressRing.Indeterminate(size: 16f, foreground: Tok.AccentTextPrimary);
-
-    /// <summary>The Classic word-mark: the full localized "EXPLICIT" in a 14-high outlined box, pinned to the Title
-    /// lane's trailing edge (ch 01 W8, parity 24). Accent ink at full opacity on a now-playing row, else tertiary at
-    /// 0.6. Also the queue's Classic run and the artist chart's Classic rows (ch 21 §3, ch 08 W10).</summary>
-    public static Element ClassicExplicitBadge(ColorF? ink = null) => new BoxEl
-    {
-        Height = 14f, Padding = new Edges4(Spacing.XXS, 0f, Spacing.XXS, 0f), Shrink = 0f,
-        Corners = CornerRadius4.All(2f), BorderWidth = 1f, BorderColor = ink ?? Tok.TextTertiary,
-        Opacity = ink is null ? 0.6f : 1f,
-        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Children =
-        [
-            new TextEl(Loc.Get(Strings.Detail.Badge.Explicit)) { Size = 9f, LineHeight = 12f, Weight = 600, Color = ink ?? Tok.TextTertiary },
-        ],
-    };
-
-    /// <summary>Classic's one-line Title cell (ch 01 W8). With the artists folded in: ONE span run — title 600 · [film
-    /// glyph] · "  ·  " · linked artists — ellipsized as a whole. With a dedicated Artist lane: the caller's title plus a
-    /// 12-DIP film glyph. The EXPLICIT word-mark is pinned to the trailing edge behind a gap of 8 either way.</summary>
-    static Element ClassicTitleLine(Track t, Element title, bool showArtists, bool showVideo, bool showExplicit,
-                                    bool nowPlaying)
-    {
-        ColorF primary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextPrimary;
-        ColorF secondary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextSecondary;
-        ColorF tertiary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextTertiary;
-        Element leading;
-
-        if (showArtists)
-        {
-            int artistCount = t.ArtistSlots.Length;
-            leading = new SpanTextEl(BuildClassicSpans(t, artistCount, showVideo, primary, secondary, tertiary))
-            {
-                Size = 14f, LineHeight = 20f, Color = primary,
-                Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
-                Shrink = 1f, MinWidth = 0f,
-                OnSpanClick = ClassicLinkClick(t, artistCount, showVideo),
-            };
-        }
-        else
-        {
-            var clip = new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true, Children = [title] };
-            leading = new BoxEl
-            {
-                // It must claim its wrapper's solved width before its own Basis-0 title can grow; Shrink-only collapsed
-                // the intrinsic width to the glyph and left every plain Classic title at zero width.
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
-                Children = showVideo ? [clip, Icon(Icons.Movie, 12f, tertiary) with { Shrink = 0f }] : [clip],
-            };
-        }
-
-        var lead = new BoxEl
-        {
-            Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, ClipToBounds = true,
-            Children = [leading],
-        };
-        return new BoxEl
-        {
-            Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-            ClipToBounds = true,
-            Children = showExplicit ? [lead, ClassicExplicitBadge(nowPlaying ? Tok.AccentTextPrimary : null)] : [lead],
-        };
-    }
-
-    // ── link spans ───────────────────────────────────────────────────────────────────────────────────────────────────
-    //
-    // Span layout, exactly allocated: [artist0 ", " artist1 …] [" · " container]. Artist i sits at span 2i; the
-    // container is the LAST span. A link is `IsLink` (never a per-span closure) and ONE `OnSpanClick` resolves the index
-    // against the CURRENT edge run at click time.
-
-    static TextSpan[]? BuildLinkSpans(Track t, int artistCount, (EntityUri Uri, string Name) container)
+    internal static TextSpan[]? BuildLinkSpans(Track t, int artistCount, (EntityUri Uri, string Name) container)
     {
         bool hasContainer = container.Name is { Length: > 0 };
         var slots = t.ArtistSlots;
@@ -865,31 +344,8 @@ public readonly partial struct Track
         return spans;
     }
 
-    static TextSpan[] BuildClassicSpans(Track t, int artistCount, bool showVideo, ColorF primary, ColorF secondary,
-                                        ColorF tertiary)
-    {
-        int prefix = 1 + (showVideo ? 2 : 0) + (artistCount > 0 ? 1 : 0);
-        var spans = new TextSpan[prefix + (artistCount == 0 ? 0 : artistCount * 2 - 1)];
-        int n = 0;
-        spans[n++] = new TextSpan(t.Title, Weight: 600, Color: primary);
-        if (showVideo)
-        {
-            spans[n++] = new TextSpan(" ");
-            spans[n++] = new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Theme.IconFont);
-        }
-        if (artistCount > 0) spans[n++] = new TextSpan("  ·  ", Color: tertiary);
-        var slots = t.ArtistSlots;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) spans[n++] = new TextSpan(", ", Color: secondary);
-            var a = new Artist(i < slots.Length ? slots[i] : 0);
-            spans[n++] = new TextSpan(a.Slot > 0 ? a.Name : "", Color: secondary, IsLink: a.Slot > 0 && a.Uri.IsValid);
-        }
-        return spans;
-    }
-
     /// <summary>ONE click closure per run: span 2i → artist i; the trailing span → the container.</summary>
-    static Action<int> LinkClick(Track t, int artistCount, bool album)
+    internal static Action<int> LinkClick(Track t, int artistCount, bool album)
     {
         int artistSpans = artistCount == 0 ? 0 : artistCount * 2 - 1;
         return index =>
@@ -899,19 +355,10 @@ public readonly partial struct Track
         };
     }
 
-    static Action<int> ClassicLinkClick(Track t, int artistCount, bool showVideo)
-    {
-        int first = 1 + (showVideo ? 2 : 0) + 1;   // head, [" ", film], the separator
-        return index =>
-        {
-            int rel = index - first;
-            if (artistCount > 0 && rel >= 0 && (rel & 1) == 0) GoToArtistAt(t, rel / 2);
-        };
-    }
 
     /// <summary>The row's container: its album, or — for a podcast row, which carries its SHOW in the album slot — the
     /// show, read from the table the row's kind names (ch 04 DATA GAPS).</summary>
-    static (EntityUri Uri, string Name) ContainerOf(Track t)
+    internal static (EntityUri Uri, string Name) ContainerOf(Track t)
     {
         int slot = t.AlbumSlot;
         if (slot <= 0) return (default, "");
@@ -940,13 +387,13 @@ public readonly partial struct Track
         Shell.GoTo(Shell.For(a.Uri, a.Title));
     }
 
-    static void GoToArtistAt(Track t, int index)
+    internal static void GoToArtistAt(Track t, int index)
     {
         var slots = t.ArtistSlots;   // re-read at CLICK time: the run may have been re-committed since the render
         if ((uint)index < (uint)slots.Length) GoToArtist(new Artist(slots[index]));
     }
 
-    static void GoToContainer(Track t)
+    internal static void GoToContainer(Track t)
     {
         var (uri, name) = ContainerOf(t);
         if (uri.IsValid) Shell.GoTo(Shell.For(uri, name));
@@ -960,62 +407,46 @@ public readonly partial struct Track
 
     // Each wrapper takes the lane's key at construction: the grid never `with { Key = … }`-clones a cell after the fact.
 
-    static BoxEl RowCenterCell(Element content, string? key = null) => new()
+    internal static BoxEl RowCenterCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
         Children = [content],
     };
 
-    static BoxEl RowLeftCell(Element content, string? key = null) => new()
+    /// <summary>A centred lane for ONE fixed-size control that never overflows it (the trailing heart, 28 in its 32 lane): no clip, so the control's touch
+    /// slop (the host's hit floor at a Compact window) reaches past the lane's edge instead of being cut to it. Everything else keeps <see cref="RowCenterCell"/>.</summary>
+    internal static BoxEl RowControlCell(Element content, string? key = null) => new()
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f,
+        Children = [content],
+    };
+
+    internal static BoxEl RowLeftCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, MinWidth = 0f, ClipToBounds = true,
         Children = [content],
     };
 
-    static BoxEl RowEndCell(Element content, string? key = null) => new()
+    internal static BoxEl RowEndCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f, ClipToBounds = true,
         Children = [content],
     };
 
-    /// <summary>A caller-built cell keyed for its lane: returned as-is when it already carries <paramref name="key"/>
-    /// (the table row builds its "…" and chevron cells once, keyed), cloned with the key only otherwise.</summary>
-    static Element Keyed(Element cell, string key) => cell.Key == key ? cell : cell with { Key = key };
-
-    /// <summary>The ONE factual rung (ch 01 §0.6): Caption 12/16 Modern, 14/20 Classic, for every number, album, adder,
-    /// date, count, tempo and duration.</summary>
-    static TextEl RowFactualText(string text, bool classic, ColorF color) => new(text)
-    {
-        Size = classic ? 14f : 12f, LineHeight = classic ? 20f : 16f, Color = color,
-        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-    };
-
-    /// <summary><see cref="RowFactualText"/> that FILLS its lane (Grow 1 · Basis 0 · MinWidth 0 — the Date and Classic
-    /// Added-by lanes), built in one construction rather than a rung plus a `with` clone.</summary>
-    static TextEl RowFactualFillText(string text, bool classic, ColorF color) => new(text)
-    {
-        Size = classic ? 14f : 12f, LineHeight = classic ? 20f : 16f, Color = color,
-        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-        Grow = 1f, Basis = 0f, MinWidth = 0f,
-    };
-
     // The keys this file adds (scratchpad batch-loc WP-4.5-U1.json) — literal, so the file compiles before the merge
     // regenerates `Strings`.
-    const string LocChartNew = "detail.row.chartNew";
+    internal const string LocChartNew = "detail.row.chartNew";
     const string LocMoreArtists = "detail.row.moreArtists";
 
     // ══ 4. THE EAGER ROW ═════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>What an eager row varies. Construct with a named argument (see <see cref="GridOptions"/>'s record-struct
-    /// note): <c>default</c> would read <see cref="ShowTrackArtist"/> false.
-    /// <para><see cref="HeartRevealOnHover"/> is forwarded verbatim to <see cref="GridOptions.HeartRevealOnHover"/>: it
-    /// reaches the TRAILING ♥ lane only, and false (the default) leaves every existing caller's row untouched.</para></summary>
+    /// note): <c>default</c> would read <see cref="ShowTrackArtist"/> false.</summary>
     public readonly record struct EagerRowOptions(bool ShowTrackArtist = true, bool Zebra = false, Element? ActionsCell = null,
-                                                  Action? OnLike = null, Func<ContextMenuModel?>? Menu = null,
-                                                  bool HeartRevealOnHover = false);
+                                                  Action? OnLike = null, Func<ContextMenuModel?>? Menu = null);
 
     /// <summary>A self-contained, EAGER interactive row for short preview lists (Home "Top tracks", Recents) — the SAME
-    /// <see cref="Grid"/> inside a hover container that is the interactive ancestor, so the transport reveal, the
+    /// <c>Grid</c> inside a hover container that is the interactive ancestor, so the transport reveal, the
     /// equalizer and the heart behave exactly like the virtualized table (ch 01 W17). A component, so the row's hover
     /// signal (the reveal source AND the equalizer's pause gate) survives parent re-renders; it subscribes to playback,
     /// the Liked edge and the track table itself. Single click plays (<see cref="Invoke"/>); right-click / the "…" opens
@@ -1034,8 +465,7 @@ public readonly partial struct Track
             => other is not null && other.Track == Track && other.DisplayIndex == DisplayIndex && other.Set == Set
                && ReferenceEquals(other.Tracks, Tracks) && other.RowH.Equals(RowH)
                && other.Options.ShowTrackArtist == Options.ShowTrackArtist && other.Options.Zebra == Options.Zebra
-               && other.Options.HeartRevealOnHover == Options.HeartRevealOnHover
-               && ReferenceEquals(other.Options.ActionsCell, Options.ActionsCell);
+               && other.Options.ActionsCell.SameAs(Options.ActionsCell);
 
         public override int GetHashCode() => HashCode.Combine(Track.Slot, DisplayIndex, Set, RowH);
     }
@@ -1053,7 +483,11 @@ public readonly partial struct Track
             var p = UsePropsOrDefault<EagerRowProps>();
             var hovered = UseSignal(false);
             var svc = UseContext(Overlay.Service);
+            // The structure's eager-row templates (T8c): resolved once per host (the registry is ambient; a theme switch remounts the root).
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             if (p is null) return new BoxEl();
+            var style = _style ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.EagerTrackRow);
+            if (style is null) return new BoxEl();
             _latest = p;
             Action play = _play ??= PlayLatest;
             Action like = _like ??= LikeLatest;
@@ -1070,8 +504,8 @@ public readonly partial struct Track
             // call SITE (file+line) stays fixed every render — only reachability is conditional on `p`, same as the
             // whole-table read it replaces — so relative order among the earlier, always-called hooks is unchanged.
             // The compute closure reads `_latest` (a field), never a value captured at construction — same as
-            // `PlayLatest`/`LikeLatest`/`MenuLatest` below. This is not belt-and-braces: `Recents.Page.cs`'s
-            // `RowSlot` (a virtualized, RECYCLED row scope) calls `SingleRow`/`ChildRow` -> this `EagerRow` with NO
+            // `PlayLatest`/`LikeLatest`/`MenuLatest` below. This is not belt-and-braces: the Recents page's
+            // `ClassicRecentsRowSlot` (a virtualized, RECYCLED row scope) calls `SingleRow`/`ChildRow` -> this `EagerRow` with NO
             // `Key` of its own, so when that scope recycles to a different track `EagerTrackRowHost` is REUSED in
             // place — its props are re-pushed (a new `EagerRowProps`, new `Track.Slot`), never remounted. A slot
             // captured once at this memo's construction would silently keep scoring the row the host was FIRST built
@@ -1092,7 +526,7 @@ public readonly partial struct Track
             //    back to a whole-table read.
             // Now-playing / liked state need NO addition: `StateOf` (used below) already carries its own narrow
             // subscriptions (`Playback.CurrentId` always; `IsPlaying`/`Buffering`/`Pending.Load` only on the
-            // now-playing row) and `LikedNow` reads the Liked EDGE's own `Changed` (Track.UI.cs:108-113) — the heart
+            // now-playing row) and `LikedNow` reads the Liked EDGE's own `Changed` — the heart
             // was already independent of this whole-table read, not something this change has to preserve.
             var stamp = UseComputed(() =>
             {
@@ -1116,61 +550,31 @@ public readonly partial struct Track
                 ShowTrackArtist: p.Options.ShowTrackArtist, Art: RowMetrics.ThumbSize,
                 OnPlay: play, OnLike: like, LikePop: pop,
                 ActionsCell: p.Options.ActionsCell ?? (set.Actions ? MoreCell(true, set.Classic) : null),
-                MoreEnabled: true, HoverPaused: hovered, HeartRevealOnHover: p.Options.HeartRevealOnHover);
+                MoreEnabled: true, HoverPaused: hovered);
             // The title carries the full-text tooltip while it is cut (the plain run only; the marquee scrolls instead).
-            Element title = TitleCell(t, st.IsNow, set.Classic, marquee: false);
-            if (title is TextEl titleRun) title = Controls.TrimmedTitle(titleRun, t.ForDisplay.Title);
-            var grid = Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH, title, in options);
+            Element title = style.Title(t, st.IsNow);
+            var grid = style.Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH, title, in options);
 
-            // A row whose column set has no "…" lane (no Actions, no Video lane) still offers the menu: the standard "…" as
-            // a hover overlay at the row's end over an opaque chip, reserving no width.
-            bool overlayMore = !set.Actions && !set.Video && p.Options.ActionsCell is null && !Controls.IsNullOverlay(svc);
+            // A row whose column set has no "…" lane still offers the menu: the standard "…" as a hover overlay at the
+            // row's end over an opaque chip, reserving no width.
+            bool overlayMore = !set.Actions && p.Options.ActionsCell is null && !Controls.IsNullOverlay(svc);
 
-            var row = new BoxEl
+            var row = style.Skin(new global::Wavee.Theming.Contracts.EagerRowSkin
             {
-                ZStack = overlayMore,
-                Draggable = _drag ??= Drag.Source(DragLatest),
-                MinHeight = p.RowH, ClipToBounds = true,
-                Margin = new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
-                Corners = Radii.ControlAll,
-                Fill = oddZebra ? Design.Colors.RowZebra : ColorF.Transparent,
-                HoverFill = oddZebra ? Design.Colors.RowHoverZebra : Design.Colors.RowHover,
-                PressedFill = oddZebra ? Design.Colors.RowPressedZebra : Design.Colors.RowPressed,
-                // NO PressScale: a near-full-width row visibly shrinks and blurs its title mid-scale (ch 01 §0.11). The
-                // pressed fill is the row's only press acknowledgement.
-                BorderWidth = 1f,
-                BorderColor = oddZebra ? Tok.StrokeCardDefault : ColorF.Transparent,
-                HoverBorderColor = Tok.StrokeCardDefault,
-                Role = AutomationRole.Button, OnClick = play,
-                FocusVisualMargin = Design.FocusInsetRow,
+                Grid = grid, Classic = set.Classic, OddZebra = oddZebra, RowHeight = p.RowH, OverlayMore = overlayMore,
+                Draggable = _drag ??= Drag.Source(DragLatest), OnClick = play,
                 // Real enter/exit edges: the PointerBit every HoverOpacity descendant inherits AND the equalizer pause.
                 OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },
                 OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
-                Children = overlayMore ? [grid, MoreOverlay(set.Classic)] : [grid],
-            };
-            return Controls.IsNullOverlay(svc) ? row : ContextMenu.Attach(row, svc, menu);
+            });
+            return Controls.IsNullOverlay(svc) ? row : ContextSheets.Attach(row, svc, menu);
         }
 
         DragSource? _drag;
+        global::Wavee.Theming.Contracts.EagerRowStyle? _style;
 
         /// <summary>The row's drag (selection-less: the row's own track), built cold at drag promotion from the NEWEST props.</summary>
         DragPayload DragLatest() => RowPayload(_latest!.Track, null);
-
-        static Element MoreOverlay(bool classic) => new BoxEl
-        {
-            HitTestPassThrough = true, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(0f, 0f, Spacing.S, 0f),
-            Children =
-            [
-                new BoxEl
-                {
-                    Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, BlocksDragArm = true,
-                    Corners = Radii.ControlAll, Fill = Tok.FillControlSolid,
-                    Opacity = 0f, HoverOpacity = 1f,
-                    Children = [MoreCell(true, classic)],
-                },
-            ],
-        };
 
         void PlayLatest()
         {
@@ -1222,11 +626,14 @@ public readonly partial struct Track
     /// menu and drops the "…" button (the queue's rows and the rail's Next up: <see cref="QueueRowRules.ShowsMenuButton"/>,
     /// where the "…" overlay would cover the ✕). <see cref="MenuArgs"/> is the menu's own
     /// options (null = the defaults). <see cref="Trailing"/> is the right cluster (heart, duration, add) and
-    /// <see cref="Selected"/> the opened/chosen skin.</para></summary>
+    /// <see cref="Selected"/> the opened/chosen skin. <see cref="Tracked"/> false reads the track table WITHOUT subscribing the
+    /// caller: only for a caller whose host already re-pushes its props when one of ITS rows changes (the queue panels, whose host
+    /// gates on a digest of the shown rows' versions, <c>Queue.QueueSurface.RowsDigest</c>), so a publication of other tracks
+    /// re-renders nothing.</para></summary>
     public readonly record struct RowDataOptions(
         Action? OnClick, Action? OnPlay = null, bool ShowArtwork = true, bool ShowExplicit = true, bool ShowVideo = false,
         bool Draggable = true, bool ShowMenu = true, MenuOptions? MenuArgs = null, ulong? QueueItemId = null,
-        Element? Trailing = null, bool Selected = false)
+        Element? Trailing = null, bool Selected = false, bool Tracked = true)
     {
         /// <summary><c>new RowDataOptions()</c> means the defaults above (artwork, menu and drag on), not a zeroed struct.</summary>
         public RowDataOptions() : this(OnClick: null) { }
@@ -1242,8 +649,11 @@ public readonly partial struct Track
     /// own.</para></summary>
     public static Controls.CardData RowData(Track t, in RowDataOptions o)
     {
-        _ = Entities.ScopeEpoch.Value;                    // FIRST (G-179): a scope switch re-points the table read below
-        _ = Entities.Current.Tracks.Changed.Value;
+        if (o.Tracked)
+        {
+            _ = Entities.ScopeEpoch.Value;                // FIRST (G-179): a scope switch re-points the table read below
+            _ = Entities.Current.Tracks.Changed.Value;
+        }
         var track = t;
         int slot = t.Slot;
         var can = TrackRowRules.AffordancesOf(slot, o.Draggable);
@@ -1271,8 +681,42 @@ public readonly partial struct Track
     }
 
     /// <summary>The artists subtitle: [E badge] · [film] · the artist links, "·" between the parts that exist. Null when
-    /// there is nothing to say.</summary>
+    /// there is nothing to say.
+    /// <para>A <see cref="Controls.FromData{T}"/> component keyed by the data it shows (<see cref="SubtitleData"/>: the row, the scope, the parts and one digest of
+    /// the versions of the track row, its artist edge and each billed artist row), never the tree itself: the tree carries a
+    /// children array and the links' click closure, so it never compared equal, and <see cref="Controls.CardData"/>'s data-only
+    /// equality failed on it for every track surface. A parent re-render therefore re-rendered EVERY row surface it pushed (its
+    /// plate, labels, trim tooltip and chrome), whatever changed: the docked queue panel's 52-130 surfaces on every track-table
+    /// publication anywhere in the app, 3-16 ms a time (2026-10-21, the owner's logs). Now an unchanged row is an equal
+    /// push and costs nothing; a changed track or artist row changes the digest and re-renders that row alone.</para></summary>
     static Element? RowSubtitle(Track t, in TrackRowRules.SubtitleParts p)
+    {
+        if (p.Children == 0) return null;
+        return Controls.FromData(new SubtitleData(t.Slot, Entities.ScopeEpoch.Peek(), DataDigest(t), p),
+                                 static d => SubtitleTree(new Track(d.Slot), d.Parts) ?? new BoxEl());
+    }
+
+    /// <summary>The subtitle's data: what <see cref="SubtitleTree"/> reads, as values (an equal push does not re-render).</summary>
+    readonly record struct SubtitleData(int Slot, uint Scope, ulong Digest, TrackRowRules.SubtitleParts Parts);
+
+    /// <summary>Everything the subtitle reads, folded (FNV-1a over the words): the track row's version (explicit, video), its artist edge's
+    /// (who is billed) and each billed artist's name and identity (the link) — not the artist row's version, which an artist page's own
+    /// re-answer (bio, images, counts) bumps.</summary>
+    static ulong DataDigest(Track t)
+    {
+        var scope = Entities.Current;
+        int slot = t.Slot;
+        ulong h = 14695981039346656037UL;
+        static ulong Mix(ulong h, ulong v) => (h ^ v) * 1099511628211UL;
+        if (slot > global::Wavee.Table.None && slot < scope.Tracks.Count) h = Mix(h, scope.Tracks.Version[slot]);
+        h = Mix(h, scope.Edges.TrackArtists.Version(slot));
+        foreach (int a in t.ArtistSlots)
+            if (a > global::Wavee.Table.None && a < scope.Artists.Count)
+                h = Mix(h, ((ulong)(uint)scope.Artists.Name[a].Value << 32) | (uint)scope.Artists.Id[a].GetHashCode());
+        return h;
+    }
+
+    static Element? SubtitleTree(Track t, in TrackRowRules.SubtitleParts p)
     {
         if (p.Children == 0) return null;
         var kids = new Element[p.Children];
@@ -1318,7 +762,7 @@ public readonly partial struct Track
     {
         Width = RowMoreBox, Height = RowMoreBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = Radii.Circle(RowMoreBox), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-        HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+        HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
         Cursor = CursorId.Hand, OnClick = onAdd,
         Role = AutomationRole.Button, BlocksDragArm = true,
         Children = [Icon(Icons.Add, 15f, Tok.TextPrimary)],
@@ -1364,11 +808,11 @@ public readonly partial struct Track
                 for (int i = 0; i < slots.Length; i++)
                 {
                     var artist = new Artist(slots[i]);   // fresh per row: each navigates to its OWN artist
-                    items[i] = new MenuFlyoutItem(artist.Name, default, artist.Uri.IsValid, () => GoToArtist(artist));
+                    items[i] = new MenuFlyoutItem(artist.Name, default, artist.Uri.IsValid, () => GoToArtist(artist)) { Literal = true };
                 }
                 var opened = svc.Open(
                     () => anchor.Value,
-                    () => MenuFlyout.Create(items, () => handle.Value?.Close()),
+                    () => MenuFlyout.Create(items, () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.BottomEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                 handle.Value = opened;

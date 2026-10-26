@@ -273,7 +273,7 @@ public static partial class Fetch
     /// batch that fails, or that answers without naming a row, only clears that row's <c>Inflight</c>/<c>Asked</c>
     /// marks and publishes nothing; a surface whose verdict reads those marks (the track table's reveal gate,
     /// <c>TableRules.RowUnsettled</c>) re-reads here so "asked, nothing coming" reaches it. UI THREAD.</summary>
-    public static readonly Signal<uint> Settled = new(0);
+    public static readonly Signal<uint> Settled = new(0) { DebugName = "fetch.settled" };
 
     /// <summary>THE per-request entity ceiling — one extended-metadata POST. 0.2.9 carried seven copies of this 300
     /// (adornments, play counts, video detect, expansion, the closure, the paged hydrate, show episodes); here a page

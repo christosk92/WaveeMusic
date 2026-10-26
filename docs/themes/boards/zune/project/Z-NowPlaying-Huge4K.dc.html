@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune now playing: huge 4k</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 3840px; height: 2160px; box-sizing: border-box; background: #0a0a0a; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden; position: relative">
+  <sc-if value="{{isBloom}}" hint-placeholder-val="{{ true }}">
+    <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; overflow: hidden">
+      <span style="position: absolute; left: -400px; top: 500px; width: 1900px; height: 1900px; border-radius: 950px; background: #6b2f4a; filter: blur(280px); opacity: 0.95"></span>
+      <span style="{{bloomAccent}}"></span>
+      <span style="position: absolute; left: 1700px; top: 1100px; width: 2100px; height: 1500px; border-radius: 1050px; background: #3b2f5b; filter: blur(300px); opacity: 0.85"></span>
+      <span style="position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; background: rgba(10,10,10,0.42)"></span>
+    </div>
+  </sc-if>
+  <sc-if value="{{isMosaic}}" hint-placeholder-val="{{ false }}">
+    <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); grid-auto-rows: 158px; grid-auto-flow: dense; gap: 4px; padding: 2px; box-sizing: border-box; overflow: hidden">
+      <sc-for list="{{tiles}}" as="t" hint-placeholder-count="336"><span style="{{t.s}}"></span></sc-for>
+    </div>
+    <div style="position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; background: rgba(10,10,10,0.62)"></div>
+  </sc-if>
+  <sc-if value="{{isType}}" hint-placeholder-val="{{ false }}">
+    <div aria-hidden="true" style="position: absolute; left: -80px; top: 160px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 900px; font-weight: 300; line-height: 900px; letter-spacing: -18px; white-space: nowrap; color: rgba(255,255,255,0.06)">nightcall nightcall</div>
+  </sc-if>
+  <sc-if value="{{isSpotlight}}" hint-placeholder-val="{{ false }}">
+    <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; background: radial-gradient(ellipse 1300px 1600px at 1500px 760px, rgba(122,70,110,0.95) 0%, rgba(74,52,92,0.8) 35%, rgba(31,42,58,0.5) 65%, rgba(15,26,42,0) 100%)"></div>
+  </sc-if>
+  <div style="position: absolute; left: 0; top: 0; width: 3840px; height: 72px; box-sizing: border-box; display: flex; align-items: center; padding: 0 32px 0 96px; gap: 36px; font-size: 17px; color: #a8a8a8">
+    <span>now playing · full screen</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; gap: 36px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 350"><a href="#">lyrics</a><a href="#" style="color: #ffffff; font-weight: 600">visualizer</a><a href="#">up next</a><a href="#">artist</a></span>
+    <span style="flex-grow: 1"></span>
+    <a href="#">layout · artist</a><a href="#">{{faceName}}</a><a href="#">options</a><a href="#" style="color: #ffffff">exit full screen</a>
+  </div>
+  <div style="position: absolute; left: 96px; top: 128px; width: 640px; height: 180px; display: flex; gap: 24px; align-items: center; background: rgba(10,10,10,0.6); padding: 24px; box-sizing: border-box">
+    <span role="img" aria-label="OutRun cover" style="width: 132px; height: 132px; border-radius: 2px; background: #6b2f4a; display: block; flex-shrink: 0"></span>
+    <span style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 48px; font-weight: 300">nightcall</span><span style="font-size: 20px; color: {{accent}}">Kavinsky · OutRun</span><span style="font-size: 17px; color: #7a7a7a">playing from late night drive</span></span>
+  </div>
+  <div style="position: absolute; left: 96px; top: 360px; width: 640px; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 32px; line-height: 40px; font-weight: 600; color: rgba(255,255,255,0.85)">about the artist</span>
+    <span style="font-size: 20px; line-height: 30px; color: #c8c8c8">Vincent Belorgey, known as Kavinsky, is a French electro house artist whose 2010 single "Nightcall" became the sound of the film Drive.</span>
+    <span style="display: flex; gap: 28px; font-size: 17px"><a href="#" style="color: #ffffff">follow</a><a href="#">go to artist</a><a href="#">more like this</a></span>
+  </div>
+  <div style="position: absolute; left: 0; top: 0; width: 2640px; height: 1880px; overflow: hidden">
+    <div style="position: absolute; left: 60px; top: 1300px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 300px; font-weight: 200; line-height: 300px; letter-spacing: -6px; white-space: nowrap; color: rgba(255,255,255,0.92)">kavinsky</div>
+    <div style="position: absolute; left: 1700px; top: 220px; width: 640px; height: 1000px; border-radius: 320px 320px 0 0; background: linear-gradient(180deg, rgba(20,14,24,0) 0%, rgba(20,14,24,0.45) 60%, rgba(20,14,24,0.7) 100%)"></div>
+  </div>
+  <div style="position: absolute; right: 0; top: 72px; width: 1200px; height: 1808px; display: flex; background: rgba(10,10,10,0.55)">
+    <div style="width: 400px; flex-shrink: 0; box-sizing: border-box; padding: 24px 32px; display: flex; flex-direction: column; gap: 22px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px">lyrics</span>
+      <span style="font-size: 14px; color: #7a7a7a">synced · musixmatch</span>
+      <sc-for list="{{lyrics}}" as="l" hint-placeholder-count="9"><span style="{{l.style}}">{{l.text}}</span></sc-for>
+    </div>
+    <div style="width: 400px; flex-shrink: 0; box-sizing: border-box; padding: 24px 32px; display: flex; flex-direction: column">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; margin-bottom: 18px">up next</span>
+      <sc-for list="{{next}}" as="r" hint-placeholder-count="12"><a href="#" style="display: grid; grid-template-columns: 72px minmax(0, 1fr) 56px; align-items: center; height: 76px; color: #ffffff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 15px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.artist}}</span></span><span style="font-size: 14px; color: #7a7a7a; text-align: right; font-variant-numeric: tabular-nums">{{r.time}}</span></a></sc-for>
+    </div>
+    <div style="width: 400px; flex-shrink: 0; box-sizing: border-box; padding: 24px 32px; display: flex; flex-direction: column">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; margin-bottom: 18px">friends</span>
+      <sc-for list="{{friends}}" as="f" hint-placeholder-count="5"><a href="#" style="display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; min-height: 88px; color: #ffffff"><span style="{{f.avatar}}"></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 17px">{{f.name}} <span style="{{f.whenStyle}}">{{f.when}}</span></span><span style="{{f.trackStyle}}">{{f.track}}</span><span style="font-size: 14px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.context}}</span></span></a></sc-for>
+    </div>
+  </div>
+  <div style="position: absolute; left: 0; bottom: 0; width: 3840px; height: 280px; box-sizing: border-box; background: rgba(10,10,10,0.88); display: flex; flex-direction: column; padding: 0 96px">
+    <div style="display: flex; align-items: center; gap: 24px; height: 72px; font-size: 17px; color: #a8a8a8; font-variant-numeric: tabular-nums"><span>1:14</span><span style="flex-grow: 1; height: 3px; background: rgba(255,255,255,0.12); display: block"><span style="{{progress}}"></span></span><span>-3:04</span></div>
+    <div style="display: flex; align-items: center; height: 160px; gap: 36px">
+      <span style="width: 900px; font-size: 17px; color: #7a7a7a">playing from playlist · <span style="color: #ffffff">late night drive</span> · next <span style="color: #ffffff">Get Lucky</span> · Daft Punk</span>
+      <span style="flex-grow: 1; display: flex; align-items: center; justify-content: center; gap: 40px">
+        <button aria-label="shuffle" style="width: 56px; height: 56px; border: 0; background: transparent; color: {{accent}}; font-size: 26px; padding: 0">⇄</button>
+        <button aria-label="previous" style="width: 56px; height: 56px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="30" height="30" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+        <button aria-label="pause" style="{{playDisc}}"><svg width="36" height="36" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <button aria-label="next" style="width: 56px; height: 56px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="30" height="30" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+        <button aria-label="repeat" style="width: 56px; height: 56px; border: 0; background: transparent; color: #a8a8a8; font-size: 26px; padding: 0">↻</button>
+      </span>
+      <span style="width: 900px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 17px">
+        <button aria-label="save to liked songs" style="width: 56px; height: 56px; border: 0; background: transparent; color: #ffffff; font-size: 26px; padding: 0">♡</button>
+        <button aria-label="mute" style="width: 56px; height: 56px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button>
+        <span style="width: 220px; height: 3px; background: rgba(255,255,255,0.18); display: block"><span style="display: block; width: 70%; height: 3px; background: #ffffff"></span></span>
+        <button style="height: 56px; border: 0; background: transparent; color: #a8a8a8; font: inherit; padding: 0 12px">this computer ▾</button>
+        <button aria-label="more" style="width: 56px; height: 56px; border: 0; background: transparent; color: #a8a8a8; font-size: 26px; padding: 0">⋯</button>
+      </span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"face":{"editor":"enum","default":"bloom","options":["bloom","mosaic","type","spotlight","none"]},"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":3840,"height":2160}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const face = this.props.face ?? 'bloom';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const colors = ['#6b2f4a', '#3b4a6b', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#6b2f2f', '#4a6b2f', '#2f3b6b', '#3a2f22', '#5b2f6b', '#2f4a3b', '#4a2f3b'];
+  let seed = 7;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  const tiles = [];
+  for (let i = 0; i < 336; i++) tiles.push({ s: 'display: block; background: ' + colors[Math.floor(rnd() * colors.length)] + ([0, 33, 71, 120, 168, 230].indexOf(i) >= 0 ? '; grid-column: span 2; grid-row: span 2' : '') });
+  const lyrics = [['[THE LINE TWO BACK]', 0.2], ['[THE LINE JUST SUNG]', 0.36], ['[THE LINE BEING SUNG NOW]', 1], ['[THE NEXT LINE]', 0.62], ['[THE LINE AFTER THAT]', 0.4], ['[TWO LINES AHEAD]', 0.26], ['[THREE LINES AHEAD]', 0.16]].map((d) => ({ text: d[0], style: 'font-family: ' + D + '; font-size: ' + (d[1] === 1 ? 40 : 32) + 'px; line-height: ' + (d[1] === 1 ? 48 : 40) + 'px; font-weight: 300; color: ' + (d[1] === 1 ? accent : '#ffffff') + '; opacity: ' + d[1] }));
+  const next = [['Get Lucky', 'Daft Punk', '6:09', '#3a2f22'], ['Instant Crush', 'Daft Punk, Julian Casablancas', '5:37', '#3a2f22'], ['Resonance', 'HOME', '3:32', '#2f5b6b'], ['Tech Noir', 'Gunship', '4:56', '#5b3b6b'], ['Sunset', 'The Midnight', '5:07', '#6b4a2f'], ['Turbo Killer', 'Carpenter Brut', '3:16', '#6b2f2f'], ['A Real Hero', 'College, Electric Youth', '4:28', '#4a6b2f'], ['Midnight City', 'M83', '4:03', '#3b4a6b'], ['Running in the Night', 'FM-84', '4:31', '#4a3b2f'], ['Odd Look', 'Kavinsky, The Weeknd', '4:12', '#6b2f4a'], ['Fly by Night', 'Timecop1983', '5:12', '#2f3b4a'], ['Days of Thunder', 'The Midnight', '5:01', '#6b4a2f']].map((d) => ({ title: d[0], artist: d[1], time: d[2], art: 'width: 60px; height: 60px; border-radius: 2px; background: ' + d[3] + '; display: block' }));
+  const friends = [['jeroen', 'Get Lucky · Daft Punk', 'Random Access Memories', 'now', '#3b5b4a', true], ['anna', 'Supernova · aespa', 'Armageddon', '3 min', '#5b3b6b', false], ['sofia', 'Sunset · The Midnight', 'late night drive · your playlist', '12 min', '#6b4a2f', false], ['mark', 'Blinding Lights · The Weeknd', 'After Hours', '1 hr', '#2f4a6b', false], ['lena', 'Resonance · HOME', 'Chill Mix', '3 hr', '#4a2f3b', false]].map((d) => ({
+    name: d[0], track: d[1], context: d[2], when: d[5] ? '▮▮▮' : d[3],
+    avatar: 'width: 48px; height: 48px; border-radius: 24px; background: ' + d[4] + '; display: block',
+    trackStyle: 'font-size: 15px; color: ' + (d[5] ? accent : '#c8c8c8') + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    whenStyle: 'font-size: ' + (d[5] ? 11 : 14) + 'px; letter-spacing: ' + (d[5] ? '1px' : '0') + '; color: ' + (d[5] ? accent : '#7a7a7a') + '; margin-left: 8px',
+  }));
+  const faceNames = { bloom: 'face · bloom', mosaic: 'face · mosaic', type: 'face · type', spotlight: 'face · spotlight', none: 'face · none' };
+  return {
+    accent, tiles, lyrics, next, friends,
+    isBloom: face === 'bloom', isMosaic: face === 'mosaic', isType: face === 'type', isSpotlight: face === 'spotlight',
+    faceName: faceNames[face] || 'face · bloom',
+    bloomAccent: 'position: absolute; left: 2100px; top: -400px; width: 1700px; height: 1700px; border-radius: 850px; background: ' + accent + '; filter: blur(320px); opacity: 0.26',
+    progress: 'display: block; width: 29%; height: 3px; background: ' + accent,
+    playDisc: 'width: 96px; height: 96px; border-radius: 48px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

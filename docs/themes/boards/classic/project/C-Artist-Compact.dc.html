@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Artist</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|artist:Billie Eilish" sel="1" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(46,64,92,0.30), rgba(58,58,58,0.298) 396px); border-top: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <header style="position: relative; height: 300px; flex-shrink: 0; overflow: hidden">
+      <span role="img" aria-label="Billie Eilish" style="position: absolute; inset: 0; background: radial-gradient(48% 62% at 62% 34%, #5d7fa8 0%, rgba(93,127,168,0) 70%), radial-gradient(30% 40% at 70% 30%, #c9b9a2 0%, rgba(201,185,162,0) 70%), linear-gradient(160deg, #3b5574 0%, #1d2d45 55%, #0e1828 100%)"></span>
+      <span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 180px; background: linear-gradient(180deg, rgba(32,38,48,0) 0%, rgba(32,38,48,0.72) 55%, rgba(36,40,46,0.96) 100%)"></span>
+      <div style="position: absolute; left: 16px; right: 16px; bottom: 14px; display: flex; flex-direction: column; gap: 4px">
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600"><span aria-hidden="true" style="width: 16px; height: 16px; border-radius: 8px; background: #6a9be0; color: #000; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>Verified artist</span>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -0.01em">Billie Eilish</h1>
+        <span style="display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)"><b style="font-weight: 600; color: #a6c4f0">#3 in the world</b><span>20,577,457 monthly listeners</span></span>
+      </div>
+    </header>
+    <div role="toolbar" aria-label="Artist actions" style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; flex-shrink: 0">
+      <button style="width: 104px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 4px; background: #6a9be0; color: #000; font: inherit; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button>
+      <button aria-label="Shuffle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Follow" aria-pressed="false" style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c.4-2.6 2.2-4 4.5-4 1.2 0 2.2.3 3 1M12.5 9v5M10 11.5h5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg>Follow</button>
+      <button aria-label="Artist radio" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 9.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM5.2 5.2a4 4 0 0 0 0 5.6M10.8 5.2a4 4 0 0 1 0 5.6M3.2 3.2a6.8 6.8 0 0 0 0 9.6M12.8 3.2a6.8 6.8 0 0 1 0 9.6" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+    </div>
+    <section aria-label="Top tracks" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Top tracks</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div>
+      <div role="list" style="display: flex; flex-direction: column">
+        <sc-for list="{{tracks}}" as="t" hint-placeholder-count="5"><div role="listitem" style="{{t.style}}"><span style="{{t.ns}}">{{t.n}}</span><span style="{{t.art}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="{{t.ts}}">{{t.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.p}}</span></span><span style="{{t.heart}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></span><button aria-label="More options for {{t.t}}" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.529)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></div></sc-for>
+      </div>
+      <div style="display: flex; justify-content: center; align-items: center; gap: 4px; height: 40px">
+        <button aria-label="Previous page" style="width: 40px; height: 40px; border: 0; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button>
+        <sc-for list="{{dots}}" as="d" hint-placeholder-count="5"><span style="{{d}}"></span></sc-for>
+        <button aria-label="Next page" style="width: 40px; height: 40px; border: 0; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button>
+      </div>
+    </section>
+    <section aria-label="Albums" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+      <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Albums</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div>
+      <div style="display: flex; gap: 12px; padding-left: 16px; overflow: hidden">
+        <sc-for list="{{albums}}" as="a" hint-placeholder-count="3"><a href="#" style="width: 152px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px"><span style="{{a.c}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{a.s}}</span></a></sc-for>
+      </div>
+    </section>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const T = [['BIRDS OF A FEATHER', '3,948,721,698 plays', '#2f4a6b', 1], ['WILDFLOWER', '2,231,004,512 plays', '#3b5b7a', 0], ['lovely (with Khalid)', '3,102,557,890 plays', '#c0c0b0', 0], ['What Was I Made For?', '1,281,447,203 plays', '#d0c060', 1], ['ocean eyes', '1,402,889,120 plays', '#3b6b8a', 0]];
+  const tracks = T.map((t, i) => ({ n: i + 1, t: t[0], p: t[1],
+    style: 'height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 12px' + (i === 0 ? '; background: rgba(255,255,255,0.059)' : ''),
+    ns: 'width: 20px; flex-shrink: 0; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: ' + (i === 0 ? '#6a9be0' : 'rgba(255,255,255,0.529)'),
+    ts: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (i === 0 ? '#a6c4f0' : '#fff'),
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + t[2],
+    heart: 'width: 20px; flex-shrink: 0; display: flex; justify-content: center; color: #6a9be0; opacity: ' + (t[3] ? 1 : 0) }));
+  const dots = [1, 0, 0, 0, 0].map(on => 'width: 6px; height: 6px; margin: 0 3px; border-radius: 3px; background: ' + (on ? '#fff' : 'rgba(255,255,255,0.3)'));
+  const albums = [['HIT ME HARD AND SOFT', '2024 · Album', 'linear-gradient(160deg, #2f4a6b, #0e1828)'], ['Happier Than Ever', '2021 · Album', 'linear-gradient(160deg, #c0a080, #5a4a3a)'], ['WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?', '2019 · Album', 'linear-gradient(160deg, #3a3a3a, #111)']].map(a => ({ t: a[0], s: a[1], c: 'width: 152px; height: 152px; border-radius: 8px; background: ' + a[2] }));
+  return { tracks, dots, albums };
+}
+}
+</script>
+</body>
+</html>

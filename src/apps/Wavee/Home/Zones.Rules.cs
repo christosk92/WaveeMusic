@@ -1,4 +1,4 @@
-// ── Home/Zones.Rules.cs — pure rules Zones.UI.cs builds its zone bodies from (Wave 3, agent B2) ────────────────────────
+// ── Home/Zones.Rules.cs — pure rules the zone bodies (ClassicHomeZones.cs) are built from (Wave 3, agent B2) ──────────
 //
 // Role: CORE
 // Owner: B2
@@ -6,7 +6,7 @@
 // Spec: docs/plans/wavee/home-redesign-implementation.md "Workstream H", "Zone → controls → metrics" sheet
 //        (ReleaseList row 9 .rel "type badge" + "date col 88"; CoverShelf/RadioShelf row 6 "two-cell wide lead").
 //
-// Two small pure fragments pulled out of Zones.UI.cs so they are unit-testable with no engine running (the
+// Two small pure fragments pulled out of the zone bodies so they are unit-testable with no engine running (the
 // "no source-text tests" rule — these are exercised directly, not by grepping the UI file):
 //   • ReleaseListRules — the Releases list row's type badge label and trailing date column text.
 //   • ShelfLead        — merges a Zone's separately-carried Lead card back into its Items array for a PagedShelf's
@@ -16,15 +16,13 @@
 // Engine-free, pure: no hooks, no elements, no I/O. HomeCardKind/HomeCard are plain data reads (Entities/Home.cs),
 // the same convention Home/ZonePlanner.cs already uses for its own pure rules.
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
-using FluentGpu.Foundation;
 
 namespace Wavee.HomeUi;
 
 /// <summary>The Releases list row's two caller-owned text cells (<see cref="Items.ListRow"/>'s <c>typeLabel</c>/
-/// <c>dateLabel</c> params) — kept out of Zones.UI.cs so the ladder-vs-short-date choice is independently
+/// <c>dateLabel</c> params) — kept out of the zone bodies so the ladder-vs-short-date choice is independently
 /// testable.</summary>
 public static class ReleaseListRules
 {
@@ -91,3 +89,22 @@ public static class ShelfLead
     }
 }
 
+/// <summary>Which empty-facet words a zone gets, from the planner's own zone key (<c>home:audiobooks:empty</c>,
+/// <c>podcasts:empty</c>, <c>home:empty:{facet}</c>). Pure, so the mapping is testable without an element; the empty-facet view
+/// (Classic's `Home.Zone.EmptyFacet`) looks the three loc keys up.</summary>
+public static class EmptyFacetCopy
+{
+    public static (string Title, string Body, string Action) Keys(string zoneKey)
+    {
+        if (zoneKey.StartsWith("home:audiobooks", StringComparison.Ordinal))
+            return (Strings.Home.Empty.AudiobooksTitle, Strings.Home.Empty.AudiobooksBody, Strings.Home.Empty.AudiobooksAction);
+        if (zoneKey.StartsWith("podcasts", StringComparison.Ordinal))
+            return (Strings.Home.Empty.PodcastsTitle, Strings.Home.Empty.PodcastsBody, Strings.Home.Empty.PodcastsAction);
+        return (Strings.Home.Empty.GenericTitle, Strings.Home.Empty.GenericBody, Strings.Home.Empty.GenericAction);
+    }
+
+    /// <summary>The same three words for a Library show tab with nothing saved (Podcasts or Audiobooks, no filter typed): the library page's empty state
+    /// says what the kind is and offers the way to find some, as Home's empty facet does (audit B7 r2, V22).</summary>
+    public static (string Title, string Body, string Action) LibraryShows(bool podcasts)
+        => podcasts ? Keys("podcasts:empty") : Keys("home:audiobooks:empty");
+}

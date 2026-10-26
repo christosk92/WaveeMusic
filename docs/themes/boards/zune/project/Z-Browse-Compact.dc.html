@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune browse: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="browse" sub="top,for you,genres,charts,concerts" on="top" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; padding: 8px 16px 0 16px; overflow: hidden">
+    <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+      <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">charts</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">all charts</a></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <a href="#" style="display: flex; align-items: flex-end; height: 104px; padding: 12px; box-sizing: border-box; background: #8d2f5b; color: #ffffff; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">charts</a>
+        <a href="#" style="display: flex; align-items: flex-end; height: 104px; padding: 12px; box-sizing: border-box; background: #2f5b8d; color: #ffffff; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">podcast charts</a>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; flex-shrink: 0">
+      <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">for you</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">10 hubs</a></div>
+      <sc-for list="{{forYou}}" as="f" hint-placeholder-count="4"><a href="#" style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; height: 56px; color: #ffffff; font-size: 15px"><span style="{{f.tile}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.name}}</span><span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.sub}}</span></span><span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: #7a7a7a; font-size: 15px">›</span></a></sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+      <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">mood &amp; activity</span></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{moods}}" as="m" hint-placeholder-count="4"><a href="#" style="{{m.style}}">{{m.name}}</a></sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const forYou = [['Discover', 'new music picked for you', '#2f8d6b'], ['Made For You', 'daily mixes, daylist, radar', '#2f5b8d'], ['New Releases', 'out this friday', '#8d2f2f'], ['Fresh Finds', 'the next wave, before it breaks', '#8d6b2f']].map((d) => ({ name: d[0], sub: d[1], tile: 'width: 44px; height: 44px; background: ' + d[2] + '; display: block' }));
+  const moods = [['chill', '#2f5b6b'], ['focus', '#3b4a6b'], ['party', '#8d5b2f'], ['workout', '#6b2f8d'], ['sleep', '#2f3b6b'], ['travel', '#2f8d6b']].map((d) => ({ name: d[0], style: 'display: flex; align-items: flex-end; height: 88px; padding: 10px 12px; box-sizing: border-box; background: ' + d[1] + '; color: #ffffff; font-size: 15px' }));
+  return { accent, forYou, moods };
+}
+}
+</script>
+</body>
+</html>

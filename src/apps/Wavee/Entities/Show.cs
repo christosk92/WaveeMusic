@@ -84,7 +84,7 @@ public enum ShowFlags : uint
 
 /// <summary>How a show means to be heard (<c>Show.consumption_order</c>, field 75). The numbers ARE the wire's —
 /// metadata.proto numbers the enum from 1 (SEQUENTIAL) — so the decoder stores what came and 0 is "the show did not
-/// say". <c>Show.Rules</c> (listen-next, the ledger, neighbours) reads it: a serial walks forward from the newest
+/// say". <c>Show.Rules</c> (listen-next, the ledger) reads it: a serial walks forward from the newest
 /// finished episode, everything else takes the newest unplayed.</summary>
 public enum ConsumptionOrder : byte { Unknown = 0, Sequential = 1, Episodic = 2, Recent = 3 }
 
@@ -230,8 +230,6 @@ public readonly partial struct Show(int slot) : IEquatable<Show>
     /// <inheritdoc cref="ShowTable.Tone"/>
     public uint Tone => T.Tone[Slot];
 
-    /// <summary>The resident episodes, in the provider's order.</summary>
-    public ReadOnlySpan<int> EpisodeSlots => Entities.Current.Edges.ShowEpisodes.Targets(Slot);
     /// <summary>How many episodes the membership baseline has, resident or not — the "N episodes" line and the
     /// shimmer count while the list is partial.</summary>
     public int TotalEpisodes => Entities.Current.Edges.ShowEpisodes.Total(Slot);

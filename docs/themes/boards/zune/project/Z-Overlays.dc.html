@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune overlays</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 32px 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 32px 40px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">search · the pill widens on focus, suggestions hang flat under it, type labels in the margin</span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 360px; height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #ffffff; color: #a8a8a8"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" value="midnight" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"></label>
+    <div style="width: 360px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <sc-for list="{{suggest}}" as="s" hint-placeholder-count="6">
+        <a href="#" style="{{s.row}}"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span><span style="font-size: 12px; color: #a8a8a8">{{s.sub}}</span></span><span style="font-size: 11px; color: #7a7a7a; text-align: right">{{s.kind}}</span></a>
+      </sc-for>
+      <span style="height: 36px; display: flex; align-items: center; padding: 0 16px; font-size: 13px; color: #a8a8a8">see all results for "midnight"</span>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">account menu · 304 wide · theme lives here, not in the title bar</span>
+    <div style="width: 304px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 16px 0 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 0 16px 12px 16px"><span style="width: 40px; height: 40px; border-radius: 20px; background: #5b6b3b"></span><span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">christos</span><span style="font-size: 12px; color: {{accent}}">spotify premium</span></span></div>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">profile</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">settings</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff; justify-content: space-between">play <span style="color: #7a7a7a">▸</span></a>
+      <span style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 16px"></span>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">light theme</a>
+      <span style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 16px"></span>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">log out</a>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">device picker · opens upward from "devices" · headers are dim words, never plates</span>
+    <div style="width: 320px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <span style="height: 32px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #7a7a7a">this computer</span>
+      <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; background: #7a7a7a"></span>system default</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1px solid #7a7a7a; box-sizing: border-box"></span>headphones (realtek audio)</a>
+      <span style="height: 28px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #7a7a7a">playing at very high · 320 kbps</span>
+      <span style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 16px"></span>
+      <span style="height: 32px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #7a7a7a">spotify connect</span>
+      <a href="#" style="{{deviceOn}}"><span style="{{dotOn}}"></span>living room <span style="font-size: 12px; opacity: 0.8">· sonos · playing</span></a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1px solid #7a7a7a; box-sizing: border-box"></span>iphone</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1px solid #7a7a7a; box-sizing: border-box"></span>kitchen display</a>
+      <span style="height: 32px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #7a7a7a">open spotify on another device to see it here</span>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">track menu · a header, a strip of round verbs, then words · submenus show ▸</span>
+    <div style="width: 320px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 12px 0 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 0 16px 10px 16px"><span style="width: 40px; height: 40px; border-radius: 2px; background: #6b2f4a"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 15px">Nightcall</span><span style="font-size: 12px; color: #a8a8a8">Kavinsky · OutRun</span></span></div>
+      <div style="display: flex; gap: 18px; padding: 4px 16px 12px 16px">
+        <button aria-label="play" style="{{miniPlay}}">▶</button><button aria-label="play next" style="{{miniRing}}">⇥</button><button aria-label="add to queue" style="{{miniRing}}">+</button><button aria-label="like" style="{{miniRing}}">♡</button>
+      </div>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff; justify-content: space-between">add to playlist <span style="color: #7a7a7a">▸</span></a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">go to album</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">go to artist</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff; justify-content: space-between">share <span style="color: #7a7a7a">▸</span></a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">view credits</a>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">go to song radio</a>
+      <span style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 16px"></span>
+      <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">remove from this playlist</a>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">notifications · 380 wide · filters are sub-pivot words · undo is a word</span>
+    <div style="width: 380px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+      <div style="display: flex; align-items: baseline; gap: 16px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300">notifications</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 12px">mark all read</a><a href="#" style="font-size: 12px">clear</a></div>
+      <div style="display: flex; gap: 16px; font-size: 14px"><a href="#" style="color: #ffffff; font-weight: 600">all</a><a href="#">updates</a><a href="#">spotify</a><a href="#">new</a><a href="#">activity</a></div>
+      <sc-for list="{{notes}}" as="n" hint-placeholder-count="4">
+        <div style="display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 52px"><span style="{{n.art}}"></span><span style="display: flex; flex-direction: column; gap: 1px"><span style="color: #ffffff">{{n.text}}</span><span style="font-size: 12px; color: #7a7a7a">{{n.when}}</span></span><a href="#" style="font-size: 13px; color: {{accent}}">{{n.action}}</a></div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 0; justify-content: flex-end; align-items: flex-end">
+    <span style="font-size: 13px; color: #7a7a7a; align-self: flex-start">toasts · bottom right above the play bar · flat slab, a word for the action, at most three</span>
+    <div style="width: 360px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 14px 16px; display: flex; align-items: center; gap: 16px; font-size: 14px"><span style="flex-grow: 1">added 3 to queue</span><a href="#" style="color: {{accent}}">open queue</a></div>
+    <div style="width: 360px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 14px 16px; display: flex; align-items: center; gap: 16px; font-size: 14px"><span style="flex-grow: 1">link copied</span></div>
+    <div style="width: 360px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 14px 16px; display: flex; align-items: center; gap: 16px; font-size: 14px"><span style="display: flex; flex-direction: column; flex-grow: 1"><span>wavee 1.6.0 is ready to install</span><span style="font-size: 12px; color: #a8a8a8">restarts in a few seconds · playback continues</span></span><a href="#" style="color: {{accent}}">restart now</a></div>
+    <div style="width: 360px; background: #2a2416; padding: 12px 16px; display: flex; align-items: center; gap: 16px; font-size: 13px; color: #ffcf7a"><span style="flex-grow: 1">you're offline · cached content still works; playback and edits resume when you're back</span><a href="#" style="color: #ffcf7a">retry</a></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const suggest = [['Midnight City', 'M83', 'song', '#3b4a6b', false], ['The Midnight', '2.1M listeners', 'artist', '#6b4a2f', true], ['Midnights', 'Taylor Swift', 'album', '#4a3b5b', false], ['late night drive', 'christos · 42 songs', 'playlist', '#2f3b6b', false], ['Nightcall', 'Kavinsky', 'song', '#6b2f4a', false], ['Midnight Mass', 'podcast · 48 episodes', 'podcast', '#2f4a3b', false]].map((d) => ({
+    name: d[0], sub: d[1], kind: d[2], row: 'display: grid; grid-template-columns: 36px minmax(0, 1fr) 56px; align-items: center; gap: 12px; height: 44px; padding: 0 16px; ' + (d[4] ? 'background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 28px; height: 28px; background: ' + d[3] + '; ' + (d[2] === 'artist' ? 'border-radius: 14px' : 'border-radius: 2px'),
+  }));
+  const notes = [['liked "Nightcall"', 'just now', 'undo', '#6b2f4a'], ['added 3 to late night drive', '2 min', 'open', '#3b4a6b'], ['wavee 1.6.0 is available', '1 hr', 'see what\'s new', '#242424'], ['your daylist has refreshed · it moved on from morning', '3 hr', 'play', '#4a2f5b']].map((d) => ({ text: d[0], when: d[1], action: d[2], art: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[3] + (d[3] === '#242424' ? '; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.14)' : '') }));
+  return {
+    accent, suggest, notes,
+    deviceOn: 'height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: ' + accent,
+    dotOn: 'width: 8px; height: 8px; border-radius: 4px; background: ' + accent,
+    miniPlay: 'width: 32px; height: 32px; border-radius: 16px; border: 0; background: ' + accent + '; color: #000; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0',
+    miniRing: 'width: 32px; height: 32px; box-sizing: border-box; border-radius: 16px; border: 2px solid #ffffff; background: transparent; color: #fff; font-size: 13px; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

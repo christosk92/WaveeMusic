@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune playlist page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c8c8c8;text-decoration:none}a:hover{color:#ffffff;text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column">
+  <div style="display: flex; gap: 32px; align-items: flex-end; padding: 40px 48px 24px 48px; background: #1f1a24">
+    <div style="width: 220px; height: 220px; flex-shrink: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0">
+      <span style="background: #3b4a6b"></span><span style="background: #6b2f4a"></span><span style="background: #2f5b6b"></span><span style="background: #5b3b6b"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0; flex-grow: 1">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">late night drive</div>
+      <div style="font-size: 14px; line-height: 20px; color: #c8c8c8; max-width: 640px">Synths, neon and empty highways. Retro-wave for the hours after midnight, updated every Friday. <a href="#" style="color: #ffffff">more</a></div>
+      <div style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: #9c9c9c">
+        <span style="width: 20px; height: 20px; border-radius: 10px; background: #5b6b3b"></span>
+        <a href="#" style="color: #ffffff">christos</a><span>· 42 songs · 2 hr 31 min · 1,204 saves</span>
+      </div>
+      <div style="display: flex; gap: 22px; align-items: center; padding-top: 8px; font-size: 14px">
+        <sc-for list="{{actions}}" as="a" hint-placeholder-count="5">
+          <button aria-label="{{a.label}}" style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 14px; padding: 0">
+            <span style="{{a.ring}}">{{a.glyph}}</span><span>{{a.label}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 22px; padding: 14px 48px 6px 48px; font-size: 14px; color: #c8c8c8">
+    <a href="#" style="color: #ffffff">all</a><a href="#">pop</a><a href="#">synthwave</a><a href="#">electronic</a>
+    <span style="flex-grow: 1"></span>
+    <a href="#">filter</a><a href="#">sort: date added</a><a href="#">find</a>
+  </div>
+  <div style="padding: 0 48px">
+    <div style="display: grid; grid-template-columns: 56px 52px minmax(0, 3fr) minmax(0, 2fr) 120px 64px 40px; align-items: center; height: 32px; font-size: 13px; color: #8f8f8f">
+      <span></span><span></span><span>song</span><span>album</span><span>added</span><span style="text-align: right">time</span><span></span>
+    </div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+      <div style="{{r.rowStyle}}">
+        <span style="{{r.numStyle}}">{{r.num}}</span>
+        <span style="{{r.artStyle}}"></span>
+        <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px">
+          <span style="{{r.titleStyle}}">{{r.title}}</span>
+          <span style="{{r.subStyle}}">{{r.artist}}</span>
+        </span>
+        <span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</span>
+        <span style="font-size: 13px; color: #9c9c9c">{{r.added}}</span>
+        <span style="{{r.timeStyle}}">{{r.time}}</span>
+        <span></span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const ring = (fill) => 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 13px; ' + (fill ? 'background: ' + accent + '; color: #000' : 'border: 2px solid #ffffff; color: #ffffff');
+  const actions = [
+    { label: 'play', glyph: '▶', ring: ring(true) }, { label: 'shuffle', glyph: '⇄', ring: ring(false) },
+    { label: 'save', glyph: '♡', ring: ring(false) }, { label: 'share', glyph: '↗', ring: ring(false) }, { label: 'more', glyph: '⋯', ring: ring(false) },
+  ];
+  const data = [
+    ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', 'Sep 12', '4:03', '#3b4a6b'],
+    ['Nightcall', 'Kavinsky', 'OutRun', 'Sep 12', '4:18', '#6b2f4a'],
+    ['Resonance', 'HOME', 'Odyssey', 'Sep 20', '3:32', '#2f5b6b'],
+    ['Tech Noir', 'Gunship', 'Gunship', 'Sep 28', '4:56', '#5b3b6b'],
+    ['Sunset', 'The Midnight', 'Endless Summer', 'Oct 2', '5:07', '#6b4a2f'],
+    ['Turbo Killer', 'Carpenter Brut', 'Trilogy', 'Oct 4', '3:16', '#6b2f2f'],
+    ['A Real Hero', 'College, Electric Youth', 'Drive (OST)', 'Oct 6', '4:28', '#4a6b2f'],
+  ];
+  const rows = data.map((d, i) => {
+    const play = i === 1;
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], artist: d[1], album: d[2], added: d[3], time: d[4],
+      rowStyle: 'display: grid; grid-template-columns: 56px 52px minmax(0, 3fr) minmax(0, 2fr) 120px 64px 40px; align-items: center; height: 52px',
+      numStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a'),
+      artStyle: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[5],
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'font-size: 13px; color: ' + (play ? accent : '#9c9c9c'),
+      timeStyle: 'font-size: 13px; text-align: right; color: ' + (play ? accent : '#9c9c9c'),
+    };
+  });
+  return { rows, actions };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search results</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="none" query="midnight" crumb="Search" ctx="Results" items="All|Songs:412|Albums:38|Playlists:120|Artists:14|Podcasts &amp; shows:6|Episodes:41|Profiles:3" sub-sel="{{zero}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; padding: 20px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 48px">
+      <section style="width: 460px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Top result</h2>
+        <div style="display: flex; gap: 20px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+          <span style="width: 152px; height: 152px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(135deg, #3b4a6b, #6b2f6b)"></span>
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Midnight City</span>
+            <span style="font-size: 14px; line-height: 20px; color: var(--t2)">Song · <a href="#" style="color: var(--acct)">M83</a> · Hurry Up, We're Dreaming</span>
+            <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Matched the title and the lyrics</span>
+            <span style="flex-grow: 1"></span>
+            <span style="display: flex; gap: 8px; align-items: center">
+              <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+              <button aria-label="Add to queue" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button aria-label="Save to Liked Songs" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+            </span>
+          </div>
+        </div>
+      </section>
+      <section style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Best matches</h2>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px">
+          <sc-for list="{{hits}}" as="h" hint-placeholder-count="8"><a href="#" style="{{h.row}}"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.sub}}</span></span><span style="font-size: 12px; color: var(--t2); text-align: right">{{h.kind}}</span></a></sc-for>
+        </div>
+      </section>
+    </div>
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Playlists</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all 120</a></div>
+      <div style="display: flex; gap: 16px">
+        <sc-for list="{{lists}}" as="t" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 6px; width: 148px; flex-shrink: 0; color: var(--t1)"><span style="{{t.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for>
+      </div>
+    </section>
+    <div style="display: flex; gap: 48px">
+      <section style="display: flex; flex-direction: column; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Genres</h2><span style="display: flex; gap: 8px"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Synthwave</button><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Dream pop</button></span></section>
+      <section style="display: flex; flex-direction: column; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Related searches</h2><span style="display: flex; gap: 20px; font-size: 14px; line-height: 32px"><a href="#" style="color: var(--acct)">midnight city remix</a><a href="#" style="color: var(--acct)">the midnight</a><a href="#" style="color: var(--acct)">midnights taylor swift</a><a href="#" style="color: var(--acct)">m83</a></span></section>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const hits = [['The Midnight', '2.1M monthly listeners', 'Artist', '#6b4a2f', true, false], ['Midnights', 'Taylor Swift · 2022', 'Album', '#4a3b5b', false, true], ['Midnight City (Eric Prydz Remix)', 'M83, Eric Prydz', 'Song', '#2f4a5b', false, false], ['Midnight Memories', 'One Direction · 2013', 'Album', '#5b2f2f', false, false], ['late night drive', 'Christos · 42 songs', 'Playlist', '#3b4a6b', false, false], ['Midnight Mass', 'Podcast · 48 episodes', 'Podcast', '#2f4a3b', false, false], ['Nightcall', 'Kavinsky · OutRun', 'Song', '#6b2f4a', false, false], ['Midnight Sun', 'Nilüfer Yanya', 'Song', '#5b4a2f', false, false]].map((d) => ({ name: d[0], sub: d[1], kind: d[2],
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 64px; align-items: center; height: 52px; padding: 0 8px; margin-top: 2px; border-radius: 4px; color: var(--t1); ' + (d[5] ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; border-radius: ' + (d[4] ? '20px' : '4px') + '; background: ' + d[3] }));
+  const lists = [['Midnight Drive', 'Spotify', '#3b4a6b'], ['After Midnight', 'Spotify', '#5b3b6b'], ['Midnight Pop', 'Spotify', '#2f5b6b'], ['Midnight Synthwave', 'Retrowave Radio', '#6b2f4a'], ['midnight thoughts', 'emma.k', '#4a4a4a'], ['Midnight Jazz', 'Spotify', '#5b4a2f'], ['Midnight Lo-fi', 'Lofi Girl', '#2f4a3b'], ['Past Midnight', 'Spotify', '#3b2f5b']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 148px; height: 148px; border-radius: 8px; background: ' + d[2] + '; display: block' }));
+  return { vars, theme, accent, hits, lists, zero: 0 };
+}
+}
+</script>
+</body>
+</html>

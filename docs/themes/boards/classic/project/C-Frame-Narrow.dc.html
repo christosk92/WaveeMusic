@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Narrow tiers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; gap: 40px; padding: 0 40px; background: #161616; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; color: #fff; overflow: hidden">
+  <div style="width: 640px; height: 900px; flex-shrink: 0; display: flex; flex-direction: column; background: #202020; overflow: hidden">
+    <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="640" hint-size="640px,48px"></dc-import>
+    <div style="display: flex; height: 780px">
+      <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="home" h="780" hint-size="48px,780px"></dc-import>
+      <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+        <div style="display: flex; gap: 8px; height: 40px; align-items: center; margin-left: -8px"><sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><span style="{{f.s}}">{{f.l}}</span></sc-for></div>
+        <section style="position: relative; min-height: 320px; border-radius: 8px; overflow: hidden; background: linear-gradient(115deg, #7a5a38, #8a4e7a 55%, #9b6ac0)">
+          <div style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(74,52,40,0.96), rgba(74,52,40,0.92) 30%, rgba(74,52,40,0.35) 62%, rgba(74,52,40,0))"></div>
+          <div style="position: relative; width: 340px; padding: 24px 12px 20px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Good evening, Chris · your daylist</span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">korean r&amp;b k-indie sunday evening</span>
+            <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.6)">Playlist · Spotify · 50 songs</span>
+            <div style="display: flex; gap: 8px; margin-top: 12px"><span style="min-width: 120px; height: 32px; border-radius: 4px; background: #60cdff; color: #000; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center">Play</span><span style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.094); box-sizing: border-box; font-size: 14px; display: flex; align-items: center">Shuffle</span></div>
+          </div>
+        </section>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px"><sc-for list="{{tiles}}" as="t" hint-placeholder-count="4"><span style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); min-width: 0"><span style="{{t.a}}"></span><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.l}}</span></span></sc-for></div>
+      </main>
+    </div>
+    <dc-import name="C-PlayerBar" theme="dark" variant="music" w="640" hint-size="640px,72px"></dc-import>
+  </div>
+  <div style="position: relative; width: 420px; height: 900px; flex-shrink: 0; display: flex; flex-direction: column; background: #202020; overflow: hidden">
+    <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="420" hint-size="420px,48px"></dc-import>
+    <main style="height: 780px; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 16px 16px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; gap: 8px; height: 40px; align-items: center; margin-left: -8px"><sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><span style="{{f.s}}">{{f.l}}</span></sc-for></div>
+      <section style="min-height: 320px; border-radius: 8px; background: linear-gradient(115deg, #7a5a38, #8a4e7a 55%, #9b6ac0)"></section>
+    </main>
+    <dc-import name="C-PlayerBar" theme="dark" variant="music" w="420" hint-size="420px,72px"></dc-import>
+    <div style="position: absolute; left: 0; right: 0; top: 48px; bottom: 72px; background: rgba(0,0,0,0.2)"></div>
+    <div style="position: absolute; left: 0; top: 48px; width: 280px; height: 780px; border-top-right-radius: 8px; border-bottom-right-radius: 8px; border: 1px solid rgba(0,0,0,0.098); box-shadow: 0 8px 16px rgba(0,0,0,0.26); overflow: hidden">
+      <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" w="280" h="780" hint-size="280px,780px"></dc-import>
+    </div>
+  </div>
+  <div style="flex-grow: 1; padding-top: 48px; display: flex; flex-direction: column; gap: 18px; font-size: 13px; line-height: 19px; color: rgba(255,255,255,0.773)">
+    <div><div style="font-size: 14px; font-weight: 600; color: #fff">640 · compact rail band</div>Sidebar forced to the 48 rail (528–660). Search folds into an icon at the caption island; bell and friends move into the account menu. Player: Compact tier, Queue kept (P1). Facets switch to 20/28. Gutter 16.</div>
+    <div><div style="font-size: 14px; font-weight: 600; color: #fff">420 · minimal band</div>No rail; the pane toggle opens the sidebar as a drawer (acrylic, right corners r8, scrim 0x33). The card goes square and bleeds to the edge. Forward hides below 520. Player: Minimal tier.</div>
+    <div><div style="font-size: 14px; font-weight: 600; color: #fff">Short windows</div>A window MinHeight keeps title bar, a usable content area and the 72 player bar on screen (F8, #197).</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const facets = ['All', 'Music', 'Podcasts', 'Audiobooks'].map((l, i) => ({ l, s: "padding: 2px 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: " + (i ? 400 : 600) + '; color: ' + (i ? 'rgba(255,255,255,0.773)' : '#fff') }));
+  const tiles = [['Random Access Memories', '#6d6d6d'], ['Hype Cleaning Mix', '#3b4a9b'], ['Liked Songs', '#4a3b8a'], ['Vacation Mix', '#5b7a3b']].map(t => ({ l: t[0], a: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: ' + t[1] }));
+  return { facets, tiles };
+}
+}
+</script>
+</body>
+</html>

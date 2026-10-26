@@ -84,16 +84,7 @@ powershell -File ops/ai/New-AiLyricsPackManifest.ps1 -Manifest ops/ai/lyrics-pac
 ```
 
 The script embeds the JSON verbatim as a C# raw string under a fixed header. Its output is deterministic: a second run
-prints `up to date` and writes nothing. Never edit the `.cs` by hand; the Pester tests fail when it differs from what the
-script produces.
-
-Offline tests (manifest schema, part layout, generator round trip):
-
-```powershell
-Invoke-Pester -Path ops/ai/tests
-```
-
-These are separate from `ops/release/tests` and are not a release gate.
+prints `up to date` and writes nothing. Never edit the `.cs` by hand.
 
 ## Smoke check
 

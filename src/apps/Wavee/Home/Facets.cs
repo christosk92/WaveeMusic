@@ -61,6 +61,19 @@ public static class FacetPivot
     /// word's plain id rather than throwing, since it is pure projection, not validation.</summary>
     public static string Target(FacetWord w, bool followingOn) =>
         followingOn && w.HasSub && w.SubId is not null ? w.SubId : w.Id;
+
+    /// <summary>The word whose Following sub-chip the toggle drives while word <paramref name="selected"/> is selected: that word when it has a
+    /// sub-chip; otherwise, where the structure stands the toggle on EVERY word (<paramref name="everyWord"/>: Classic Huge, <c>C-Home-Huge</c> draws
+    /// "Following" beside "All"), the first word that has one, so the toggle on "All" opens Music's Following. -1 when the toggle has nothing to
+    /// drive (no word carries a sub-chip, or the selected word has none and the toggle is not on every word).</summary>
+    public static int FollowingWord(FacetWord[] words, int selected, bool everyWord)
+    {
+        if ((uint)selected < (uint)words.Length && words[selected].HasSub && words[selected].SubId is not null) return selected;
+        if (!everyWord) return -1;
+        for (int i = 0; i < words.Length; i++)
+            if (words[i].HasSub && words[i].SubId is not null) return i;
+        return -1;
+    }
 }
 
 /// <summary>Lifecycle of the facet content region during a switch. See <see cref="FacetSwitch"/> for the

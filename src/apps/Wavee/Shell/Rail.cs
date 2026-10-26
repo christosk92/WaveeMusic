@@ -8,7 +8,8 @@
 // Spec: ch 21 §9.5
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// The right rail's four engine-free decisions. `Rail.UI.cs` / `Rail.Styles.UI.cs` (stage 2) render what these decide.
+// The right rail's four engine-free decisions. `Rail.UI.cs` and Classic's panel views (`ClassicPanel.cs`,
+// `ClassicDeckFlyout.cs`) render what these decide.
 //
 //   • `Rail.VideoCoupling` — the two-way coupling between the rail's own open/closed + mode and the
 //     video surface's placement (`Shell/Video.cs`). Four rules that are each an edge case, collected here so they are
@@ -25,6 +26,8 @@
 // Rules: no allocation after warm-up (P8); no LINQ, no closures, no async, no boxing (P9); UI thread only (C1).
 
 using FluentGpu.Signals;
+
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -49,7 +52,7 @@ public static partial class Rail
         /// Rail-only: when the watch page's in-page stage is what will host the video, opening the rail into the
         /// video-first body would open a rail whose card is mounted somewhere else entirely — an empty takeover body
         /// next to the real picture.</param>
-        public static Shell.RailMode? ModeOnDock(bool railOpen, Shell.RailMode current, Video.DockedHost host)
+        public static Shell.RailMode? ModeOnDock(bool railOpen, Video.DockedHost host)
             => host != Video.DockedHost.Rail || railOpen ? null : Shell.RailMode.Video;
 
         /// <summary>The user closed the rail. What should happen to a docked video? Returns the DEMOTE target, or
@@ -96,6 +99,18 @@ public static partial class Rail
         /// and therefore no ordering between "the stage released it" and "the rail restored itself" to get wrong.</para></summary>
         public static Shell.RailMode BodyModeFor(Shell.RailMode mode, bool stageHostsVideo)
             => stageHostsVideo && mode is Shell.RailMode.Video or Shell.RailMode.NowPlaying ? Shell.RailMode.Queue : mode;
+
+        /// <summary>What occupies the NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both. The page stage hosting
+        /// the video leaves the hero tile alone (the stage owns the one surface); a docked video IS the slot; otherwise the tile, with
+        /// the Art | Video switch over its corner when the video could be docked here.</summary>
+        /// <param name="stageHosts">The page stage hosts the docked video.</param>
+        /// <param name="dockedResolved">The video's resolved placement is Docked.</param>
+        /// <param name="dockAllowed">Docking is among the placements available right now.</param>
+        public static PanelPinned PinnedFor(bool stageHosts, bool dockedResolved, bool dockAllowed)
+            => stageHosts ? PanelPinned.Art
+             : dockedResolved ? PanelPinned.DockedVideo
+             : !dockAllowed ? PanelPinned.Art
+             : PanelPinned.ArtWithVideoToggle;
     }
 
     // ── 2. the player-style catalog (ids and slugs are PERSISTED) ───────────────────────────────────────────────────
@@ -258,6 +273,11 @@ public static partial class Rail
         /// live, and so does the Store shot's presentation mode, which hides it.</summary>
         public static bool PresentationSwitchVisible() => Platform.Developer.Enabled.Value && !Diagnostics.StoreShot.Presenting.Value;
 
+        /// <summary>Are the player-style entries offered (the gear, the art menu, the Settings row, the palette rows)? Only where a style
+        /// can change Now playing: the presets drive the hero only through the Cover/‹Player› switch, which is developer-only, so outside
+        /// it the entries are hidden rather than inert (#199). The presets themselves stay. Reactive, like the switch.</summary>
+        public static bool StyleChoiceVisible() => PresentationSwitchVisible();
+
         /// <summary>Reactive read of the chosen preset id, clamped against the catalog.</summary>
         public static int Style() => ClampStyle(Prefs.NpvPlayer.Style(PlayerCatalog.Presets.Length));
 
@@ -355,9 +375,6 @@ public static partial class Rail
         /// <summary>The art / deck side: <c>round((railW − 2·S) / 4) · 4</c> — 184 / 324 / 484 at 200 / 340 / 500.</summary>
         public static float Side(float railWidth)
             => MathF.Round(MathF.Max(1f, railWidth - 2f * Inset) / SideQuantum) * SideQuantum;
-
-        /// <summary>The whole pinned block: 236 / 376 / 536 at 200 / 340 / 500.</summary>
-        public static float PinnedBlockH(float railWidth) => ArtTop + Side(railWidth);
     }
 
     // ── 6. the friends feed (stage B; FriendsPanel.cs, FriendsBridge.cs; ch 21 G6, §9.6 Q5) ─────────────────────────

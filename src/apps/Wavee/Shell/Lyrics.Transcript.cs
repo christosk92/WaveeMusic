@@ -3,6 +3,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using ViewRegistry = FluentGpu.Theming.ViewRegistry;
 
 namespace Wavee;
 
@@ -78,7 +79,7 @@ public static partial class Lyrics
     /// already carries the ring fade).</summary>
     public enum LineRole : byte { Active, Upcoming, Past }
 
-    /// <summary>Which ink RUNG a glyph paints with; <see cref="LineRow"/> resolves it against the live <c>Ink</c> —
+    /// <summary>Which ink RUNG a glyph paints with; <c>ClassicLyricsRow</c> resolves it against the live <c>Ink</c> —
     /// this side never touches a theme token, so it is plain, engine-free and unit-testable.</summary>
     public enum InkRung : byte { Accent, Primary, Secondary }
 
@@ -229,7 +230,7 @@ public static partial class Lyrics
         {
             try
             {
-                var result = Platform.Args.Fake ? PodcastReaderFixtures.Transcript
+                var result = Platform.Args.Fake ? await PodcastReaderFixtures.Answer(identity.Key.Episode.Text, PodcastReaderFixtures.Transcript, request.Token).ConfigureAwait(false)
                     : identity.Url.Length == 0 ? new Spotify.Podcasts.Transcript(identity.Key.Language, [], 404)
                     : await Spotify.Podcasts.TranscriptAsync(identity.Key, identity.Url, identity.Account, request.Token).ConfigureAwait(false);
                 var doc = FromTranscript(identity.Key.Episode.Text, result, duration);
@@ -281,6 +282,7 @@ public static partial class Lyrics
             TranscriptLease? _lease;
             public override Element Render()
             {
+                owner.BindStyle(UseContext(ViewRegistry.Context));
                 if (known && _lease is null)
                 {
                     if (!TranscriptLeases.TryGetValue(identity, out _lease))

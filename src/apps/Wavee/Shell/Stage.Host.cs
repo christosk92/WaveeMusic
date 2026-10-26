@@ -31,7 +31,7 @@ public static partial class Stage
 
         public static void NoteEnter(string cause)
         {
-            IsOpen = true; EnteredAtMs = Design.FrameTime.NowMs;
+            IsOpen = true; EnteredAtMs = FrameTime.NowMs;
             Log.Event(WaveeLogLevel.Info, Category, "stage.enter", "fullscreen stage opened via " + cause,
                 fields: [WaveeLogField.Of("cause", cause), WaveeLogField.Of("mode", LastMode.ToString()), WaveeLogField.Of("kind", LastKind.ToString())]);
             Bump();
@@ -40,7 +40,7 @@ public static partial class Stage
         public static void NoteExit(string cause)
         {
             IsOpen = false;
-            long dwellMs = EnteredAtMs == 0 ? 0 : Design.FrameTime.NowMs - EnteredAtMs;
+            long dwellMs = EnteredAtMs == 0 ? 0 : FrameTime.NowMs - EnteredAtMs;
             Log.Event(WaveeLogLevel.Info, Category, "stage.exit", "fullscreen stage closed via " + cause, elapsedMs: dwellMs,
                 fields: [WaveeLogField.Of("cause", cause), WaveeLogField.Of("mode", LastMode.ToString())]);
             Bump();

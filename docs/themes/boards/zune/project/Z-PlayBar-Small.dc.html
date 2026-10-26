@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune play bar, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative; padding-top: 12px">
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 0 24px; margin-bottom: 6px">narrow · 640 – 759 · title column 200 · volume and ⋯; everything else moves into ⋯</div>
+  <div style="width: 640px; flex-shrink: 0">
+    <dc-import name="Z-Part-PlayBar" tier="narrow" kind="music" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="640px,72px"></dc-import>
+  </div>
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 0 24px; margin: 12px 0 6px 0">podcast · medium · −10 / +10 and the speed word · transcript takes the place of lyrics</div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" kind="podcast" title="Why the Premier League keeps changing" artist="The Rest Is Football · 9 oct" art="#2f4a3b" progress="49" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 0 24px; margin: 12px 0 6px 0">music · medium at 800 · flyouts open upward from their word: speed, volume, ⋯</div>
+  <div style="flex-grow: 1; min-height: 0; position: relative">
+    <div style="position: absolute; left: 24px; bottom: 8px; width: 256px; background: #242424; box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; font-size: 13px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; line-height: 26px">playback speed</span>
+      <span style="width: 100%; height: 2px; background: rgba(255,255,255,0.18); position: relative; display: block"><span style="{{speedFill}}"></span><span style="position: absolute; left: 33%; top: -5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 6px; background: #ffffff; display: block"></span></span>
+      <span style="display: flex; justify-content: space-between; color: #a8a8a8"><span>1×</span><span style="color: #ffffff">1.5×</span><span>2×</span><span>3×</span></span>
+    </div>
+    <div style="position: absolute; left: 512px; bottom: 8px; width: 52px; height: 168px; background: #242424; box-shadow: 0 12px 32px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center">
+      <span style="width: 2px; height: 128px; background: rgba(255,255,255,0.18); position: relative; display: block"><span style="position: absolute; left: 0; bottom: 0; width: 2px; height: 70%; background: #ffffff; display: block"></span><span style="position: absolute; left: -5px; bottom: 70%; margin-bottom: -6px; width: 12px; height: 12px; border-radius: 6px; background: #ffffff; display: block"></span></span>
+    </div>
+    <div style="position: absolute; right: 12px; bottom: 8px; width: 200px; background: #242424; box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <sc-for list="{{menu}}" as="m" hint-placeholder-count="7"><a href="#" style="{{m.style}}"><span>{{m.name}}</span><span style="color: #7a7a7a">{{m.trail}}</span></a></sc-for>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" kind="music" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const menu = [['now playing', '', false], ['shuffle', '', true], ['repeat', '', false], ['queue', '', false], ['full screen', '', false], ['switch to video', '▸', false], ['mute', '', false]].map((d) => ({
+    name: d[0], trail: d[1],
+    style: 'height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; text-decoration: none; color: ' + (d[2] ? accent : '#ffffff'),
+  }));
+  return {
+    accent, menu,
+    speedFill: 'position: absolute; left: 0; top: 0; width: 33%; height: 2px; background: ' + accent + '; display: block',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune new empty playlist: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="library › playlists › my playlist #12" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="library" sub="songs,recommended" on="songs" title="my playlist #12" collapsed="false" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 10px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92">my playlist #12</div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 80px; bottom: 0; display: flex; flex-direction: column">
+      <div style="display: flex; gap: 16px; align-items: flex-end; flex-shrink: 0">
+        <button style="width: 120px; height: 120px; flex-shrink: 0; box-sizing: border-box; border: 1px dashed rgba(255,255,255,0.24); background: #1b1b1b; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 32px; font-weight: 200; line-height: 32px">+</span>choose a cover</button>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-bottom: 2px">
+          <span style="font-size: 13px; line-height: 18px; color: #7a7a7a">add an optional description</span>
+          <span style="display: flex; gap: 8px; align-items: center; font-size: 15px; line-height: 20px"><span style="width: 20px; height: 20px; border-radius: 10px; background: #5b6b3b; flex-shrink: 0"></span><a href="#" style="color: #ffffff">christos</a></span>
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">private · made just now</span>
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">no songs yet</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; height: 40px; margin-top: 16px; flex-shrink: 0">
+        <span style="{{discDim}}">▶</span>
+        <span style="{{ringDim}}">⇄</span>
+        <button aria-label="invite collaborators" style="{{ring}}">+</button>
+        <span style="flex-grow: 1"></span>
+        <button aria-label="more" style="{{ring}}">⋯</button>
+      </div>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-top: 24px">let's find something for this playlist</span>
+      <label style="display: flex; align-items: center; gap: 10px; height: 44px; margin-top: 12px; flex-shrink: 0; box-sizing: border-box; padding: 0 14px; border-radius: 22px; border: 2px solid #ffffff; color: #a8a8a8"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search for songs or episodes" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 15px; width: 100%; outline: none; min-width: 0"></label>
+      <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 20px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">you played recently</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">refresh</a></div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+        <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; height: 56px; flex-shrink: 0">
+          <span style="{{r.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span>
+          <button style="{{r.btn}}">{{r.verb}}</button>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const rows = [['Nightcall', 'Kavinsky · 4:18', '#6b2f4a', true], ['Supernova', 'aespa · 2:58', '#5b2f6b', false], ['Midnight City', 'M83 · 4:03', '#3b4a6b', false], ['Resonance', 'HOME · 3:32', '#2f5b6b', false]].map((d) => ({
+    t: d[0], a: d[1], verb: d[3] ? 'added ✓' : 'add',
+    art: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[2] + '; display: block',
+    btn: 'height: 40px; min-width: 72px; padding: 0 14px; box-sizing: border-box; border-radius: 20px; font: inherit; font-size: 13px; ' + (d[3] ? 'border: 0; background: transparent; color: ' + accent : 'border: 2px solid #ffffff; background: transparent; color: #ffffff'),
+  }));
+  return {
+    accent, rows,
+    discDim: 'width: 40px; height: 40px; border-radius: 20px; background: ' + accent + '; opacity: 0.35; color: #000; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0',
+    ringDim: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0',
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

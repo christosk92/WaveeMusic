@@ -1,13 +1,15 @@
 // ── Entities/Show.Page.cs ──────────────────────────────────────────────────────────────────────────────────────────
 // the show page: the frame spec (identity + the six podcast rail slots), the page's ONE model (filter · sort · find,
 // seeded from and persisted to `ShowViewPrefs`; one memoized snapshot of everything the rules derive), the READER — a
-// bound list with a sticky word rail as its persistent prefix — and `ShowReaderRules`, the page's pure decisions
+// bound list with a sticky word rail as its persistent prefix — and `ShowReaderRules`, the page's pure decisions.
+//
+// T9c (themes plan 6.1): the PICTURES of the page — the rail's slots, the satellites, the toolbar, the visit head, the headers, the foot, the
+// seed — are the structure's `ShowReaderStyle` (`StyleKeys.ShowReader`; Classic: `Themes\Classic\Structure\Views\Show\`). The hosts here keep
+// the model, the snapshot, the stamps, the hooks and the verbs and call the style's templates while they render.
 //
 // Role: UI (with a CORE section: ShowReaderRules)
 // Owner: P
 // Wave: P3 (the podcast rework)
-// Budget: 900 lines (podcast-show-rework-implementation.md §11) — landed ~1200: the four rail-slot components (§4) are
-//   the named split (a `Show.Rail.cs` partial) the P3 report asks for
 // Spec: podcast-show-rework-implementation.md §2 W1-W3, §3.1 (the component tree), §4 (the interaction contract), §5.6
 //       (the reader host), §6.1 (readiness), §7, §12 D-1/D-3/D-5/D-6 · as-built-20260919.md P1-R ("P3 notes"), P2-M (the
 //       slots), P2-T (ProgressSettled / ProgressFailed) · the prototype podcast-show-episode-mica.html (the show scene)
@@ -43,7 +45,6 @@
 // the prefix is guillotined at the rail's lower edge by ONE shared clip (`ItemClipTopInset` + the 24-DIP fade band), so
 // the rail needs no plate of its own — the page's tone ground shows through, as in the prototype.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -52,6 +53,7 @@ using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -77,7 +79,7 @@ public readonly partial struct Show
     readonly record struct PageFacts(
         ShowReaderRules.Head Head, ShowReaderRules.Primary Primary, ShowReaderRules.Primary Ghost,
         int ResumeLeft, int FirstNumber, bool Publisher, ShowFlags Flags,
-        int RatingX100, int RatingCount, int MyRating, bool HasTrailer, uint ToneArgb, string Meta, bool Topics)
+        int RatingX100, int RatingCount, int MyRating, bool HasTrailer, uint ToneArgb, string Meta, bool Topics, bool Empty = false)
     {
         public bool Badges => (Flags & (ShowFlags.Exclusive | ShowFlags.Explicit | ShowFlags.Video)) != 0;
         public bool Rating => RatingX100 > 0;
@@ -90,6 +92,7 @@ public readonly partial struct Show
         Show _show;
         string _routeKey = "";
         Element[]? _satellites;
+        ShowReaderStyle? _style;
         readonly Detail.FrameActions _actions;
         readonly Detail.FrameSlots?[] _slotSets = new Detail.FrameSlots?[32];
         readonly Func<bool, Element> _episodes;
@@ -102,8 +105,18 @@ public readonly partial struct Show
         readonly Action _demandShow, _demandTrailer, _persist, _playTrailer, _share;
         readonly Prop<bool> _heartShown, _trailerShown;
 
+        // ── row 2 (P5 Z6b2, contract 1.26): a band-style structure (Zune) draws the page's views and its follow word in its band's row 2, so the
+        // page host publishes them through the `PageChromeSink` the content host provides around the page: the view "episodes" (the page itself)
+        // and the action follow / following (the word follows the saved set). Gated on what they are built from. Classic draws its own rail and
+        // reads none of it. ──
+        PageChromeSink _sink = PageChromeSink.None;
+        readonly Action _publishChrome;
+        long _chromeSig = long.MinValue;
+        static readonly Action s_noView = static () => { };
+
         public PageHost(EntityUri subject)
         {
+            _publishChrome = PublishChrome;
             _m = new ReaderModel(subject);
             Controls.Library ??= User.LibrarySeam;               // the Follow primary and the ♥ satellite write through it
             _facts = ComputeFacts;
@@ -120,10 +133,12 @@ public readonly partial struct Show
             // Hero/vertical show layout plugs in HERE (`v => v ? VerticalReader(...) : Reader(...)`) and nowhere else;
             // nothing below hard-codes a two-column shape, and the rail/grip/splitter are Detail.UI.cs's, not this
             // page's, so the two-column arm needs no change to make room for it.
-            _episodes = _ => Embed.Comp(new ReaderProps(_m, _routeKey), static () => new ReaderHost());
+            // The arm reaches the reader as its OWN EDGE (contract 1.73): the vertical arm's reader runs to the window edge and pads its trailing
+            // gutter itself; the two-column arm's ends on the column edge, past which a margin-standing year strip stands.
+            _episodes = v => Embed.Comp(new ReaderProps(_m, _routeKey, OwnsEdge: v), static () => new ReaderHost());
             _primary = accent => Embed.Comp(new SlotProps(_m, accent), static () => new PrimarySlot()) with { Key = "show:primary" };
             _satellitesOf = () => _satellites ??= BuildSatellites();
-            _attribution = w => PublisherLine(_show, w);
+            _attribution = PublisherOf;
             _badges = () => Embed.Comp(new SlotProps(_m, null), static () => new BadgesSlot());
             _rating = w => Embed.Comp(new SlotProps(_m, null, w), static () => new RatingSlot());
             _ledger = w => Embed.Comp(new SlotProps(_m, null, w), static () => new LedgerSlot());
@@ -141,6 +156,7 @@ public readonly partial struct Show
             _ = scope.Edges.ShowEpisodes.Changed.Value;            // the meta line's loading bar
             var overlay = UseContext(Overlay.Service);
             if (!Controls.IsNullOverlay(overlay)) Track.DrawerOverlay = overlay;   // idempotent (contract §3)
+            _style ??= StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
 
             if (!ReferenceEquals(_scope, scope))
             {
@@ -159,6 +175,8 @@ public readonly partial struct Show
             // mounts the same reader without a page around it.
             UseEffect(_demandTrailer);
             UseEffect(_persist);
+            _sink = UseContext(PageChromeSink.Context);
+            UseEffect(_publishChrome);                          // auto-tracks the saved set: the follow word
 
             if (!show.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
             return Detail.Frame(new Detail.FrameSpec
@@ -215,7 +233,30 @@ public readonly partial struct Show
                 HasTrailer: known && show.Knows(ShowFields.Facts) && !show.TrailerId.IsEmpty,
                 ToneArgb: known && show.Knows(ShowFields.Appearance) ? show.Tone : 0u,
                 Meta: MetaOf(s.Total, s.Cadence, s.OldestYear),
-                Topics: known && show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty);
+                Topics: known && show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty,
+                Empty: s.EmptyShow);
+        }
+
+        /// <summary>Publishes row 2 (an auto-tracked effect: it reads the saved set, so a follow elsewhere re-words the action without re-rendering
+        /// the page).</summary>
+        void PublishChrome()
+        {
+            string uri = _m.SubjectText;
+            if (uri.Length == 0 || !_show.IsValid) return;
+            var lib = Controls.Library;
+            bool following = lib is not null && lib.IsSaved(uri);
+            string? name = _show.Knows(ShowFields.Title) && _show.Title.Length > 0 ? _show.Title : null;
+            long sig = HashCode.Combine(uri, following, lib is not null, name);
+            if (sig == _chromeSig) return;
+            _chromeSig = sig;
+            var views = new PageView[] { new("episodes", Loc.Get(Strings.Podcast.Episodes), true, s_noView) };
+            var actions = new List<PageAction>(1);
+            if (lib is not null)
+                actions.Add(new PageAction("follow", Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
+                    () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : ""),
+                    Reserve: Loc.Get(following ? Strings.Artist.Follow : Strings.Artist.Following)));
+            // The head unread (no title: Identity.HeaderPending's own test) keeps "follow" a shimmer with the head (contract 1.82, audit FU2b).
+            _sink.Publish(new PageChromeRow(views, actions, Title: name) { ActionsPending = !_show.Knows(ShowFields.Title) });
         }
 
         void DemandShow()
@@ -261,29 +302,32 @@ public readonly partial struct Show
             _m.SavedStatus = status;
             _m.SavedOrder = order;
             if (_m.PrefsId.Length == 0) return;
-            string blob = Platform.Settings.Get(Platform.Keys.PodcastViews);
-            string next = ShowReaderRules.Persist(blob, _m.PrefsId, status, order);
-            if (!string.Equals(next, blob, StringComparison.Ordinal)) Platform.Settings.Set(Platform.Keys.PodcastViews, next);
+            ShowViewPrefs.Save(_m.PrefsId, status, order);
         }
 
         /// <summary>The CTA's satellites (W1): ♥ (hidden while Follow is the primary) · trailer (when the show names one)
-        /// · the bell, DISABLED with its reason (D-10) · share · ⋯. Built once — a FIXED array per slot set; what comes
-        /// and goes binds its presence.</summary>
+        /// · the bell, DISABLED with its reason (D-10) · share · ⋯, drawn by the structure. Built once — a FIXED array per
+        /// slot set; what comes and goes binds its presence.</summary>
         Element[] BuildSatellites()
         {
+            if (_style is not { } style) return [];
             string name = _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : "";
-            return
-            [
-                new BoxEl { Key = "sat:heart", Visible = _heartShown, Children = [Detail.RailSatelliteSave(_m.SubjectText, name)] },
-                new BoxEl
-                {
-                    Key = "sat:trailer", Visible = _trailerShown,
-                    Children = [Detail.RailSatellite(Icons.TvMonitor, Loc.Get(Strings.Podcast.Trailer), _playTrailer)],
-                },
-                Detail.RailSatellite(Icons.Bell, Loc.Get(Strings.Podcast.Notify.Unavailable), null) with { Key = "sat:bell" },
-                Detail.RailSatellite(Icons.Share, Loc.Get(Strings.Menu.Share), _share) with { Key = "sat:share" },
-                Detail.RailSatelliteMore(_more),
-            ];
+            return style.Satellites(new ShowSatellitesArgs
+            {
+                Uri = _m.SubjectText, Name = name, HeartShown = _heartShown, TrailerShown = _trailerShown,
+                PlayTrailer = _playTrailer, Share = _share, More = _more,
+            });
+        }
+
+        /// <summary>The rail's publisher line (the Attribution slot — the publisher left the meta line, P2-M): the text the core resolved at
+        /// the rail's measure; the structure draws it.</summary>
+        Element PublisherOf(float width)
+        {
+            if (_style is not { } style) return new BoxEl();
+            var show = _show;
+            string text = show.IsValid && show.Knows(ShowFields.Publisher) && !show.PublisherId.IsEmpty
+                ? Entities.Strings.Resolve(show.PublisherId) : "";
+            return style.Publisher(text, width);
         }
 
         /// <summary>The trailer plays ALONE (it is not a member of the show context).</summary>
@@ -411,7 +455,7 @@ public readonly partial struct Show
             Subject = subject;
             SubjectText = subject.IsValid ? subject.Text : "";
             PrefsId = ShowReaderRules.PrefsId(SubjectText);
-            var (status, order) = ShowReaderRules.Seed(Platform.Settings.Get(Platform.Keys.PodcastViews), PrefsId);
+            var (status, order) = ShowReaderRules.Seed(ShowViewPrefs.Blob(), PrefsId);
             Status = new Signal<int>(status);
             Order = new Signal<int>(order);
             SavedStatus = status;
@@ -665,7 +709,12 @@ public readonly partial struct Show
 
     // ══ 3. THE READER ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record ReaderProps(ReaderModel Model, string RouteKey);
+    /// <param name="OwnsEdge">Whether the reader's trailing edge is the window's (or its pane's, a Compact drill-in): it then pads its trailing gutter
+    /// itself, a <c>YearsInMargin</c> strip standing inside it. False: the reader ends on the page column's edge, and such a strip stands past it.</param>
+    sealed record ReaderProps(ReaderModel Model, string RouteKey, bool OwnsEdge = true);
+
+    /// <summary>The reader's <see cref="ReaderProps.OwnsEdge"/>, provided to everything under it (the year strip a structure draws reads it).</summary>
+    internal static readonly Context<bool> ReaderOwnsEdge = new(true);
 
     /// <summary>The right column (§5.6): one bound list behind the membership's skeleton. Owns the width arms, the
     /// tone, the rows' context and the rail's words — everything built once.
@@ -695,6 +744,10 @@ public readonly partial struct Show
         readonly Func<int, float> _extentOf;
 
         internal Memo<bool>? Narrow;
+        /// <summary>Whether the reader pads a TRAILING gutter: always, unless the style's year strip stands in the frame's margin
+        /// (<c>ShowReaderStyle.YearsInMargin</c>) and the reader ends on the column edge (<see cref="ReaderProps.OwnsEdge"/> false).</summary>
+        internal Memo<bool>? Trailing;
+        readonly Func<bool> _trailingOf;
         /// <summary>Which rung of the toolbar's collapse ladder the toolbar's OWN measured width is on
         /// (<see cref="ShowToolbarLayout.For"/>) — the rail is ONE row at every one of them.</summary>
         internal Memo<ToolbarStage>? Toolbar;
@@ -713,6 +766,17 @@ public readonly partial struct Show
         /// <summary>The list rows' context (it carries <see cref="EpisodeSelection"/>) and the HEAD's — the visit head's
         /// "new since" rows render over a fixed scope that owns no selection state, so they never wear a check lane.</summary>
         internal Episode.RowContext? RowCtx, HeadRowCtx;
+        /// <summary>The structure's episode row (T8c): resolved once per host from the ambient registry; the list rows, the visit head's rows and the
+        /// cold skeleton all draw from it.</summary>
+        internal global::Wavee.Theming.Contracts.EpisodeRowStyle? EpisodeStyle;
+        /// <summary>The structure's show style (T9c): the toolbar, the head, the headers, the foot, the sticky month and the year strip, the cold seed. Resolved once
+        /// per host from the ambient registry; null (logged) draws nothing.</summary>
+        internal ShowReaderStyle? Style;
+        /// <summary>The count a status shows (the chip's number once progress is trusted, else ""): a read of the CURRENT model's snapshot.</summary>
+        internal readonly Func<int, string> StatusCountOf;
+        /// <summary>Play the SHOW context at an episode, and the trailer ALONE (not a member of the show context): both through <see cref="Episode.Invoke"/>.</summary>
+        internal Action<Episode> PlayEpisode => _play;
+        internal readonly Action<Episode> PlayAlone = static e => Episode.Invoke(e, () => Playback.PlayContext(e.Id));
         internal Controls.Words.Word[]? FilterWords, SortWords;
         /// <summary>The show's tone as a live read (a memo, so a bind re-fires only when the colour moves).</summary>
         internal readonly Func<ColorF> Tone;
@@ -742,7 +806,6 @@ public readonly partial struct Show
         // the month pinned at the list's top
         JumpGroup[] _groups = new JumpGroup[ShowDateIndex.MaxGroups];
         int _groupCount;
-        int[] _years = [];
         readonly Signal<int> _stickyMonth = new(-1);
         readonly Action<int> _jumpYear;
         readonly Func<int[]> _yearsOf;
@@ -758,11 +821,13 @@ public readonly partial struct Show
         public ReaderHost()
         {
             _narrowOf = () => ShowReaderRules.Narrow(_width?.Value ?? 0f);
+            _trailingOf = () => Style?.YearsInMargin != true || (_props.Value?.OwnsEdge ?? true);
             _toolbarStageOf = ToolbarStageOf;
             _syncSelectedWord = SyncSelectedWord;
             OnFiltersMeasured = FiltersMeasured;
             OnSortMeasured = SortMeasured;
             OnToolbarBounds = r => { if (MathF.Abs(r.W - ToolbarWidth.Peek()) > 0.5f) ToolbarWidth.Value = r.W; };
+            StatusCountOf = StatusCount;
             _extentOf = ExtentOf;
             _layout = RepeatLayout.Extents(_extentOf, ItemEstimate);
             Selection = new EpisodeSelection(EpisodeAt, () => _m?.Peek().ItemCount ?? 0, IsRowAt);
@@ -798,7 +863,7 @@ public readonly partial struct Show
             // Slot 0 — the persistent prefix — is the RAW sticky rail; every other slot a component (file header).
             _template = scope => scope.Row.Index.Peek() == 0 ? (_rail ??= RailElement()) : Embed.Comp(() => new ReaderSlot(this, scope));
             _content = () => ItemsView.CreateBound(_items!, _template, _layout, OptionsFor(_latest?.RouteKey ?? ""));
-            _shimmer = () => SeedList(Narrow?.Peek() ?? false);
+            _shimmer = Shimmer;
             _retry = () =>
             {
                 if (_m?.Peek().Show is { IsValid: true } show) Entities.RefreshEdge(FetchEdge.ShowEpisodes, show.Slot);
@@ -821,7 +886,8 @@ public readonly partial struct Show
         /// stage actually moves — never per resize frame.</summary>
         ToolbarStage ToolbarStageOf()
         {
-            var stage = ShowToolbarLayout.For(ToolbarWidth.Value, _needs.Value, ShowReaderRules.Narrow(_width?.Value ?? 0f), _stageShown);
+            var stage = ShowToolbarLayout.For(ToolbarWidth.Value, _needs.Value, ShowReaderRules.Narrow(_width?.Value ?? 0f), _stageShown,
+                                              Style?.NarrowToolbarGlyph ?? 0f, trailing: Trailing?.Value ?? true);
             _stageShown = stage;
             return stage;
         }
@@ -836,6 +902,12 @@ public readonly partial struct Show
         }
 
         void SortMeasured(float total, float[] words) => _needs.Value = _needs.Peek() with { Sort = total };
+
+        string StatusCount(int status)
+        {
+            var s = _m?.Read() ?? ReaderSnap.Empty;
+            return status switch { 1 => s.CountUnplayed, 2 => s.CountProgress, 3 => s.CountPlayed, _ => s.CountAll };
+        }
 
         float WordWidth(int word) => (uint)word < (uint)_filterWordW.Length ? _filterWordW[word] : 0f;
 
@@ -924,6 +996,27 @@ public readonly partial struct Show
             return n == years.Length ? years : years[..n];
         }
 
+        /// <summary>The month jump list a structure may open from a month header (<see cref="ShowGroupArgs.Jump"/>): made once per host.</summary>
+        internal ShowJumpList JumpList => _jumpList ??= new ShowJumpList { Months = MonthsOf, Go = JumpToMonth };
+        ShowJumpList? _jumpList;
+
+        /// <summary>The month keys of the current view's groups, in its order (projected afresh: the list opens at a tap, never per frame).</summary>
+        int[] MonthsOf()
+        {
+            var s = _m?.Peek() ?? ReaderSnap.Empty;
+            _groupCount = JumpIndex.Project<ReaderItem>(s.Items.AsSpan(0, s.ItemCount), s_isGroup, s_groupJumpKey, _groups);
+            var months = new int[_groupCount];
+            int n = 0;
+            for (int i = 0; i < _groupCount; i++) if (DateKeys.IsMonthKey(_groups[i].Key)) months[n++] = _groups[i].Key;
+            return n == months.Length ? months : months[..n];
+        }
+
+        void JumpToMonth(int monthKey)
+        {
+            for (int i = 0; i < _groupCount; i++)
+                if (_groups[i].Key == monthKey) { _ctl.StartBringItemIntoView(_groups[i].Index, alignmentRatio: 0f, animate: true); return; }
+        }
+
         void JumpToYear(int year)
         {
             int flat = ShowDateIndex.ResolveYear(_groups.AsSpan(0, _groupCount), year);
@@ -939,6 +1032,20 @@ public readonly partial struct Show
             return (uint)i < (uint)s.ItemCount ? s.Items[i].GroupKey : -1;
         }
 
+        /// <summary>The cold skeleton's source: the style's seed, given the trailing gutter a <c>YearsInMargin</c> seed leaves out where the reader
+        /// pads one (<see cref="Trailing"/>), so the shimmer rows end where the rows will.</summary>
+        Element Shimmer()
+        {
+            bool narrow = Narrow?.Peek() ?? false;
+            var seed = Style!.Seed(EpisodeStyle, narrow);
+            if (Style.YearsInMargin && (Trailing?.Peek() ?? true))
+                seed = new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, narrow ? ShowReaderRules.PadNarrow : ShowReaderRules.Pad, 0f), Children = [seed],
+                };
+            return seed;
+        }
+
         public void ApplyProps(object props)
         {
             var p = (ReaderProps)props;
@@ -951,10 +1058,14 @@ public readonly partial struct Show
         {
             _ = _props.Value;
             var overlay = UseContext(Overlay.Service);
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            EpisodeStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.EpisodeRow);
+            Style ??= StyleOf(registry);
             _accent = UseContext(Design.AccentCtx.Slot);
             _scrollScope = UseContext(Shell.PageScrollScope);
-            _width = UseMeasuredWidth(4f);
+            _width = UseMeasuredWidth("show:body", 4f);           // keyed (E17c): a remount starts at the remembered width
             Narrow = UseComputed(_narrowOf);
+            Trailing = UseComputed(_trailingOf);
             Toolbar = UseComputed(_toolbarStageOf);
             _tone = UseComputed(_toneOf);
             _selected = UseComputed(_selectedOf);
@@ -995,6 +1106,7 @@ public readonly partial struct Show
             // owner decision D3: 2+ selected rows always show the bar; ONE only while multi-select is armed
             int barCount = SelectionBarRules.Visible(selected, Selection.Selecting.Value) ? selected : 0;
             var years = _yearsMemo!.Value;
+            if (Style is not { } style) return new BoxEl();
             Element list = new BoxEl
             {
                 Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ZStack = true,
@@ -1004,18 +1116,22 @@ public readonly partial struct Show
                         Pending: _pending, Failed: _failed, Content: _content, ShimmerSource: _shimmer, OnFailed: _failedView,
                         Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
                     // the month pinned under the rail, and the selection bar docked at the list's foot
-                    StickyMonth(_stickyMonth, Narrow.Value ? ReaderPadNarrow : ReaderPad),
+                    style.StickyMonth(_stickyMonth, Narrow.Value),
                     Controls.SelectionBar(barCount, _selectionCommands, standalone: true, bottomPadding: BottomReserve, minCount: 1),
                 ],
             };
             // The strip's 30 DIP are ALWAYS reserved: a filter that leaves one year takes the strip's rows away, and a list
             // that widened by 30 for it (then narrowed again on the way back) reflowed every row sideways — and every
-            // width-derived thing in the head with it.
-            return new BoxEl
+            // width-derived thing in the head with it. A style whose strip stands in the frame's margin (`YearsInMargin`)
+            // reserves nothing here: its strip and its reserve place themselves past the list's edge, in a column that hands them the
+            // reader's height (a component's root fills its anchor only along a column: the template may be one).
+            Element strip = years.Length > 1 ? style.YearStrip(years, _stickyMonth, _jumpYear) : style.YearReserve();
+            if (style.YearsInMargin) strip = new BoxEl { Direction = 1, Shrink = 0f, MinWidth = 0f, Children = [strip] };
+            return Ctx.Provide(ReaderOwnsEdge, _latest?.OwnsEdge ?? true, new BoxEl
             {
                 Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [list, years.Length > 1 ? YearStrip(years, _stickyMonth, _jumpYear) : YearStripReserve()],
-            };
+                Children = [list, strip],
+            });
         }
 
         ListOptions<ReaderItem> OptionsFor(string routeKey)
@@ -1099,15 +1215,17 @@ public readonly partial struct Show
             {
                 ShowReaderShape.ItemKind.Head => Embed.Comp(() => new VisitHead(host)) with { Key = "rd:head" },
                 ShowReaderShape.ItemKind.Header => Embed.Comp(() => new EpisodesHeader(host)) with { Key = "rd:header" },
-                ShowReaderShape.ItemKind.Group => GroupLabel(new BoundItemScope<ReaderItem>(_row, _item)) with { Key = "rd:group" },
-                ShowReaderShape.ItemKind.Row => Episode.ReaderRow(new BoundItemScope<Episode.RowItem>(_row, row), host.RowCtx!, narrow) with { Key = "rd:row" },
+                ShowReaderShape.ItemKind.Group => GroupLabel(host, new BoundItemScope<ReaderItem>(_row, _item)) with { Key = "rd:group" },
+                ShowReaderShape.ItemKind.Row => Episode.ReaderRow(host.EpisodeStyle, new BoundItemScope<Episode.RowItem>(_row, row), host.RowCtx!, narrow) with { Key = "rd:row" },
                 ShowReaderShape.ItemKind.Foot => Embed.Comp(() => new ReaderFoot(host)) with { Key = "rd:foot" },
                 _ => new BoxEl(),
             };
             float pad = narrow ? ReaderPadNarrow : ReaderPad;
+            // A style whose year strip stands in the frame's margin pads no trailing gutter where the reader ends on the column edge: the rows run to it.
+            float trail = _host.Trailing?.Value ?? true ? pad : 0f;
             return new BoxEl
             {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(pad, 0f, pad, 0f),
+                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(pad, 0f, trail, 0f),
                 OnBoundsChanged = _onBounds,
                 Children = [body],
             };
@@ -1115,10 +1233,14 @@ public readonly partial struct Show
     }
 
     // ══ 4. THE RAIL'S SLOTS ══════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // Each slot is a core component that owns its tone memo, its facts and its verbs and hands them to the structure's `ShowReaderStyle`
+    // (`Primary`, `Ledger`, `Rating`, `Badges`; the topics are `Show.Podcasts.cs`), which draws them.
 
-    /// <summary>What a rail slot body is handed: the page's model, the frame's accent (Primary only) and the rail's
-    /// measure (NaN in the vertical header: fill the column).</summary>
-    sealed record SlotProps(ReaderModel Model, Func<ColorF>? Accent, float Width = float.NaN);
+    /// <summary>What a rail slot body is handed: the page's model, the frame's accent (Primary only), the rail's
+    /// measure (NaN in the vertical header: fill the column) and the primary's control size (the library pane's 40-DIP
+    /// Compact targets; contract 1.22).</summary>
+    sealed record SlotProps(ReaderModel Model, Func<ColorF>? Accent, float Width = float.NaN, ControlSize Size = ControlSize.Medium);
 
     /// <summary>The CTA's primary by visit (§4): New &amp; not following → Follow + a ghost ▶ (episode 1 for a serial,
     /// else the latest); Returning → Resume · N min left on listen-next's resume; otherwise ▶ the latest. Play is
@@ -1153,25 +1275,14 @@ public readonly partial struct Show
         {
             var p = UseProps<SlotProps>();
             _m = p.Model;
+            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
             var f = _m.Facts?.Value ?? default;
-            // Reports 11c/11d: the APP accent (never the show tone) and a label that WRAPS — Workstream B's
-            // Controls.PrimaryButton(wrap: true), not a bespoke pill (was Show.PrimaryPill).
-            Element pill = f.Primary switch
+            if (style is null) return new BoxEl();
+            return style.Primary(new ShowPrimaryArgs
             {
-                ShowReaderRules.Primary.Follow => Controls.PrimaryButton(Loc.Get(Strings.Artist.Follow), _follow, Tok.AccentDefault, Icons.Add, wrap: true),
-                ShowReaderRules.Primary.Resume => Controls.PrimaryButton(
-                    Loc.Get(Strings.Podcast.Resume) + " · " + Strings.Podcast.Left(Episode.DurationWords(f.ResumeLeft)), _resume, Tok.AccentDefault, wrap: true),
-                ShowReaderRules.Primary.PlayFirst => Controls.PrimaryButton(Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber)), _first, Tok.AccentDefault, wrap: true),
-                _ => Controls.PrimaryButton(Loc.Get(Strings.Podcast.Latest), _latest, Tok.AccentDefault, wrap: true),
-            };
-            if (f.Primary != ShowReaderRules.Primary.Follow) return pill;
-            Element ghost = f.Ghost == ShowReaderRules.Primary.PlayFirst
-                ? Button.Create(Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber)), _first, ButtonAppearance.Standard, glyph: Icons.Play)
-                : Button.Create(Loc.Get(Strings.Podcast.Latest), _latest, ButtonAppearance.Standard, glyph: Icons.Play);
-            return new BoxEl
-            {
-                Direction = 0, Wrap = true, Gap = Detail.RailLayout.SatelliteGap, AlignItems = FlexAlign.Center, Children = [pill, ghost],
-            };
+                Primary = f.Primary, Ghost = f.Ghost, ResumeLeft = f.ResumeLeft, FirstNumber = f.FirstNumber,
+                Follow = _follow, Resume = _resume, First = _first, Latest = _latest, Size = p.Size, Empty = f.Empty,
+            });
         }
     }
 
@@ -1210,34 +1321,20 @@ public readonly partial struct Show
             _m = p.Model;
             _accent = UseContext(Design.AccentCtx.Slot);
             _tone = UseComputed(_toneOf);
+            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
             var st = UseComputed(_stamp).Value;
-            float width = float.IsFinite(p.Width) ? p.Width : float.NaN;
-            if (st.Failed)
-                return new BoxEl
-                {
-                    Direction = 1, Width = width, MinWidth = 0f,
-                    Children = [Ui.Caption(Loc.Get(Strings.Podcast.ProgressUnavailable)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
-                };
-            int sum = st.Played + st.InProgress + st.ToGo;
-            float played = sum > 0 ? st.Played / (float)sum : 0f, progress = sum > 0 ? st.InProgress / (float)sum : 0f;
-            TextSpan[] line = st.Fresh > 0
-                ? [new TextSpan(Strings.Podcast.Ledger(st.Played, st.InProgress, st.ToGo) + " · "),
-                   new TextSpan(Strings.Podcast.LedgerNew(st.Fresh), Weight: 600, Color: _toneRead())]
-                : [new TextSpan(Strings.Podcast.Ledger(st.Played, st.InProgress, st.ToGo))];
-            return new BoxEl
+            if (style is null) return new BoxEl();
+            return style.Ledger(new ShowLedgerArgs
             {
-                Direction = 1, Gap = Detail.RailLayout.LedgerGap, Width = width, MinWidth = 0f,
-                Children =
-                [
-                    Controls.LedgerBar(played, progress, _toneRead),
-                    new SpanTextEl(line) { Size = Ui.Caption("").Size, LineHeight = Detail.RailLayout.LedgerLineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
-                ],
-            };
+                Failed = st.Failed, Played = st.Played, InProgress = st.InProgress, ToGo = st.ToGo, Fresh = st.Fresh,
+                Width = float.IsFinite(p.Width) ? p.Width : float.NaN, Tone = _toneRead,
+            });
         }
     }
 
     /// <summary>The rating row: ★ 4.8 · "12,431 ratings" (· "yours 5★") — a button that opens the rate flyout, whose
-    /// stars are DISABLED with their reason until the write lands (wave P10, D-10).</summary>
+    /// stars are DISABLED with their reason until the write lands (wave P10, D-10). The flyout's open / close and its
+    /// handle are this host's; the button is the structure's (<see cref="ShowReaderStyle.Rating"/>).</summary>
     sealed class RatingSlot : Component
     {
         ReaderModel? _m;
@@ -1274,29 +1371,19 @@ public readonly partial struct Show
             _overlay = UseContext(Overlay.Service);
             _accent = UseContext(Design.AccentCtx.Slot);
             _tone = UseComputed(_toneOf);
+            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
             var f = _m.Facts?.Value ?? default;
             string average = (f.RatingX100 / 100f).ToString("0.0", System.Globalization.CultureInfo.CurrentCulture);
             string count = Strings.Podcast.Ratings(f.RatingCount);
             if (f.MyRating > 0) count += " · " + Strings.Podcast.Yours(f.MyRating);
-            var button = new BoxEl
-            {
-                Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
-                Padding = new Edges4(4f, 2f, 4f, 2f), Corners = Radii.ControlAll, HoverFill = Tok.FillSubtleSecondary,
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = _toggle, OnRealized = _realized,
-                Children =
-                [
-                    Icon(Icons.FavoriteStarFill, 13f) with { Color = Prop.Of(_toneRead) },
-                    Design.Type.DenseTitle(average) with { Color = Tok.TextPrimary, MaxLines = 1 },
-                    Design.Type.DenseMeta(count) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-                ],
-            };
             var show = _m.Peek().Show;
             string name = show.IsValid && show.Knows(ShowFields.Title) ? show.Title : "";
-            return new BoxEl
+            if (style is null) return new BoxEl();
+            return style.Rating(new ShowRatingArgs
             {
-                Direction = 0, MinWidth = 0f, MaxWidth = float.IsFinite(p.Width) ? p.Width : float.NaN,
-                Children = [Controls.Named(button, Strings.Podcast.Rate.Title(name))],
-            };
+                Average = average, Count = count, Name = Strings.Podcast.Rate.Title(name),
+                Width = float.IsFinite(p.Width) ? p.Width : float.NaN, Tone = _toneRead, Toggle = _toggle, Realized = _realized,
+            });
         }
 
         void Toggle()
@@ -1346,16 +1433,9 @@ public readonly partial struct Show
             _m = p.Model;
             _accent = UseContext(Design.AccentCtx.Slot);
             _tone = UseComputed(_toneOf);
+            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
             var flags = _m.Facts?.Value.Flags ?? ShowFlags.None;
-            var chips = new List<Element>(3);
-            if ((flags & ShowFlags.Exclusive) != 0) chips.Add(Controls.Chip(Loc.Get(Strings.Podcast.Badge.Exclusive), tone: true, toneOf: _toneRead));
-            if ((flags & ShowFlags.Explicit) != 0) chips.Add(Controls.Chip("E"));
-            if ((flags & ShowFlags.Video) != 0) chips.Add(Controls.Chip(Loc.Get(Strings.Podcast.Badge.Video), Icons.Movie));
-            return new BoxEl
-            {
-                Direction = 0, Wrap = true, Gap = Detail.RailLayout.BadgeGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children = chips.ToArray(),
-            };
+            return style is null ? new BoxEl() : style.Badges(new ShowBadgesArgs { Flags = flags, Tone = _toneRead });
         }
     }
 }
@@ -1486,14 +1566,20 @@ public static class ShowReaderRules
     }
 
     /// <summary>The head's CONTENT width inside a reader <paramref name="readerWidth"/> wide: both gutters and the date
-    /// strip's reserve (always there, see the strip) taken off. 0 = not measured.</summary>
-    public static float HeadWidth(float readerWidth)
-        => readerWidth > 0f ? MathF.Max(0f, readerWidth - YearStripWidth - 2f * (Narrow(readerWidth) ? PadNarrow : Pad)) : 0f;
+    /// strip's reserve (always there, see the strip) taken off. 0 = not measured. <paramref name="yearsInMargin"/>: the reader pads no
+    /// trailing gutter (a <c>ShowReaderStyle.YearsInMargin</c> reader on the column edge); the strip's width still comes off, so the count never
+    /// assumes a width the head lacks.</summary>
+    public static float HeadWidth(float readerWidth, bool yearsInMargin = false)
+    {
+        if (!(readerWidth > 0f)) return 0f;
+        float pad = Narrow(readerWidth) ? PadNarrow : Pad;
+        return MathF.Max(0f, readerWidth - YearStripWidth - (yearsInMargin ? pad : 2f * pad));
+    }
 
     /// <summary>The door and up-next column counts for a reader <paramref name="readerWidth"/> wide.</summary>
-    public static (int Doors, int Minis) HeadColumns(float readerWidth)
+    public static (int Doors, int Minis) HeadColumns(float readerWidth, bool yearsInMargin = false)
     {
-        float w = HeadWidth(readerWidth);
+        float w = HeadWidth(readerWidth, yearsInMargin);
         return (Columns(w, DoorMin, TileGap, TileColumns), Columns(w, MiniMin, TileGap, TileColumns));
     }
 
@@ -1501,7 +1587,7 @@ public static class ShowReaderRules
     //
     // What the list ASSUMES an item is before it is measured. The seeds are estimates (a head's height is text, the foot's
     // is a shelf); the chrome whose height is ARITHMETIC — the rail, the month header, the "episodes" header — is exact,
-    // and `Show.UI.cs` states those heights on the elements themselves so the number here and the number there cannot drift
+    // and Classic's show pictures (`Views\Show\`) state those heights on the elements themselves so the number here and the number there cannot drift
     // (ReaderHost.CheckExtent logs the day they do).
 
     /// <summary>The sticky toolbar plane (<c>Show.RailHeight</c>).</summary>

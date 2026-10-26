@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Full screen stage, Small, options open</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; overflow: hidden; background: #0a0a0a; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(circle at 46% 52%, #c0613e 0%, #8a4e7a 22%, #2a1a2a 50%, #0a0a0a 75%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 300px; background: radial-gradient(60% 80% at 40% 100%, rgba(255,255,255,0.08), rgba(255,255,255,0) 70%)"></div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.22)"></div>
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; padding: 0 12px 0 16px; gap: 8px; background: linear-gradient(180deg, rgba(0,0,0,0.42), rgba(0,0,0,0))">
+    <span aria-hidden="true" style="width: 18px; height: 18px; flex-shrink: 0; border-radius: 4px; background: #60cdff"></span><span style="font-size: 12px; font-weight: 600">Wavee</span>
+    <span style="flex-grow: 1"></span>
+    <div role="tablist" aria-label="Full screen view" style="display: flex; gap: 4px; padding: 2px; border-radius: 6px; background: rgba(255,255,255,0.1)"><sc-for list="{{modes}}" as="m" hint-placeholder-count="4"><button role="tab" aria-selected="{{m.sel}}" style="{{m.s}}">{{m.l}}</button></sc-for></div>
+    <span style="flex-grow: 1"></span>
+    <button aria-label="Full screen options" aria-expanded="true" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.14); color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.1); color: #fff; font: inherit; font-size: 13px">Exit full screen</button>
+  </header>
+  <div style="position: absolute; left: 24px; top: 64px; width: 300px; height: 88px; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(44,44,44,0.7); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(30px); display: flex; gap: 12px; align-items: center">
+    <span role="img" aria-label="Random Access Memories cover" style="width: 64px; height: 64px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(135deg,#111,#bdbdbd 52%,#111)"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 20px; line-height: 28px; font-weight: 600">Get Lucky</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Daft Punk · Random Access Memories</span></span>
+  </div>
+  <div style="position: absolute; left: 24px; width: 496px; bottom: 136px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center">
+    <span style="font-size: 18px; line-height: 24px; font-weight: 600; opacity: 0.35">counting windows, one by one</span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 34px; line-height: 42px; font-weight: 600; text-shadow: 0 0 10px rgba(96,205,255,0.45), 0 2px 10px rgba(0,0,0,0.5)">a light left on <span style="opacity: 0.45">in the hall</span></span>
+  </div>
+  <section aria-label="Playback" style="position: absolute; left: 16px; right: 16px; bottom: 16px; height: 96px; box-sizing: border-box; padding: 10px 16px; border-radius: 8px; background: rgba(44,44,44,0.72); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(30px); display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.8); font-variant-numeric: tabular-nums"><span>2:40</span><span role="slider" aria-label="Seek" aria-valuenow="43" style="flex-grow: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.3); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 43%; border-radius: 2px; background: #60cdff"></span></span><span>-3:29</span></div>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.6)">Playing from album</span><a href="#" style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Random Access Memories</a></span>
+      <button aria-label="Previous" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3v10M13 3 6 8l7 5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Pause" style="width: 48px; height: 48px; border: 0; border-radius: 24px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg></button>
+      <button aria-label="Next" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M12 3v10M3 3l7 5-7 5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <span style="flex: 1"></span>
+    </div>
+  </section>
+  <section role="dialog" aria-label="Full screen" style="position: absolute; right: 24px; top: 24px; width: 440px; height: 552px; box-sizing: border-box; border-radius: 8px; background: rgba(44,44,44,0.86); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 24px rgba(0,0,0,0.35); backdrop-filter: blur(30px); display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 8px 0 20px"><h2 style="margin: 0; flex-grow: 1; font-size: 20px; line-height: 28px; font-weight: 600">Full screen</h2><button aria-label="Close" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button></div>
+    <div role="tablist" aria-label="Options" style="height: 40px; flex-shrink: 0; display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.082)"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="2"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+    <div style="padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 6px; overflow: hidden">
+      <p style="margin: 0 0 4px; font-size: 13px; line-height: 18px; color: rgba(255,255,255,0.8)">Where the cover and lyrics sit on top of your visualizer.</p>
+      <div role="radiogroup" aria-label="Layout" style="display: flex; flex-direction: column; gap: 4px">
+        <sc-for list="{{layouts}}" as="r" hint-placeholder-count="4"><button role="radio" aria-checked="{{r.on}}" style="{{r.s}}"><span style="{{r.dot}}"><span style="{{r.inner}}"></span></span><span style="position: relative; width: 84px; height: 48px; flex-shrink: 0; border-radius: 4px; overflow: hidden; background: {{r.bg}}"><span style="{{r.a}}"></span><span style="{{r.b}}"></span><span style="{{r.c}}"></span></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0; text-align: left"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.7)">{{r.d}}</span></span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{r.check}}"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600">Spectrum under the cover</span>
+        <div role="radiogroup" aria-label="Spectrum under the cover" style="display: flex; padding: 2px; border-radius: 6px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><sc-for list="{{spec}}" as="s" hint-placeholder-count="4"><button role="radio" aria-checked="{{s.on}}" style="{{s.s}}">{{s.l}}</button></sc-for></div>
+      </div>
+      <div style="height: 40px; display: flex; align-items: center; margin-top: 4px"><span style="flex-grow: 1; font-size: 14px">Show lyrics over the photo</span><button role="switch" aria-checked="true" aria-label="Show lyrics over the photo" style="position: relative; width: 40px; height: 20px; border: 0; border-radius: 10px; background: #60cdff"><span style="position: absolute; right: 4px; top: 4px; width: 12px; height: 12px; border-radius: 6px; background: #000"></span></button></div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const modes = ['Lyrics', 'Visualizer', 'Up next', 'Artist'].map((l, i) => ({ l, sel: i === 1 ? 'true' : 'false', s: 'height: 32px; padding: 0 12px; border: 0; border-radius: 4px; font: inherit; font-size: 13px; background: ' + (i === 1 ? '#60cdff' : 'transparent') + '; color: ' + (i === 1 ? '#000' : '#fff') }));
+  const tabs = ['Visualizer', 'Layout'].map((l, i) => ({ l, sel: i === 1 ? 'true' : 'false', s: 'position: relative; height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; font-weight: ' + (i === 1 ? 600 : 400) + '; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.7)'), bar: i === 1 ? 'position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const cov = 'linear-gradient(135deg,#111,#bdbdbd 52%,#111)';
+  const N = 'display: none';
+  const L = [
+    ['Visualizer first', 'Your visualizer full screen, a small card', 'radial-gradient(circle at 50% 55%, #c0613e, #2a1a2a 60%, #0a0a0a)', 'position: absolute; left: 6px; top: 6px; width: 28px; height: 9px; border-radius: 2px; background: rgba(44,44,44,0.8)', 'position: absolute; left: 20px; right: 20px; bottom: 12px; height: 3px; border-radius: 2px; background: #fff', 'position: absolute; left: 4px; right: 4px; bottom: 3px; height: 5px; border-radius: 1px; background: rgba(44,44,44,0.8)'],
+    ['Large cover', 'Cover beside the lyrics', '#151515', 'position: absolute; left: 8px; top: 8px; width: 24px; height: 24px; border-radius: 2px; background: ' + cov, 'position: absolute; left: 40px; top: 12px; width: 34px; height: 3px; border-radius: 2px; background: #fff; box-shadow: 0 6px 0 rgba(255,255,255,0.4), 0 12px 0 rgba(255,255,255,0.25)', 'position: absolute; left: 8px; right: 8px; bottom: 6px; height: 5px; background: linear-gradient(90deg, rgba(96,205,255,0.7) 50%, transparent 50%); background-size: 3px 5px'],
+    ['Centered cover', 'The cover in the middle, no lyrics', 'radial-gradient(circle at 50% 45%, #333, #0a0a0a 70%)', 'position: absolute; left: 30px; top: 6px; width: 24px; height: 24px; border-radius: 5px; background: ' + cov, 'position: absolute; left: 28px; top: 34px; width: 28px; height: 3px; border-radius: 2px; background: #fff', N],
+    ['Artist photo', 'Slow pan and zoom, big name', 'linear-gradient(160deg, #6b5b3b, #2a2218 60%, #0a0a0a)', 'position: absolute; left: 6px; bottom: 10px; width: 40px; height: 8px; border-radius: 2px; background: #fff', 'position: absolute; left: 6px; bottom: 5px; width: 26px; height: 2px; border-radius: 1px; background: rgba(255,255,255,0.6)', N]];
+  const layouts = L.map((r, i) => ({ l: r[0], d: r[1], bg: r[2], a: r[3], b: r[4], c: r[5], on: i === 0 ? 'true' : 'false',
+    s: 'height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: 6px; font: inherit; color: #fff; ' + (i === 0 ? 'background: rgba(96,205,255,0.16); border: 1px solid rgba(96,205,255,0.5)' : 'background: transparent; border: 1px solid transparent'),
+    dot: 'width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 9px; display: flex; align-items: center; justify-content: center; border: ' + (i === 0 ? '0; background: #60cdff' : '1px solid rgba(255,255,255,0.6)'),
+    inner: i === 0 ? 'width: 8px; height: 8px; border-radius: 4px; background: #000' : N,
+    check: i === 0 ? 'flex-shrink: 0; color: #60cdff' : 'flex-shrink: 0; opacity: 0' }));
+  const spec = ['Bars', 'Ring', 'Line', 'Off'].map((l, i) => ({ l, on: i === 0 ? 'true' : 'false', s: 'flex: 1; height: 28px; border: 0; border-radius: 4px; font: inherit; font-size: 13px; background: ' + (i === 0 ? '#60cdff' : 'transparent') + '; color: ' + (i === 0 ? '#000' : '#fff') }));
+  return { modes, tabs, layouts, spec };
+}
+}
+</script>
+</body>
+</html>

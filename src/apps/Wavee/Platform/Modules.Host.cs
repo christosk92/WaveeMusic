@@ -20,7 +20,7 @@
 // …and the 0.3 composition that replaces 0.2.9's provider registry, because 0.3 has none: a module playable is a
 // TRACK ROW (`RowFor`, an `Authority.Full` staged commit), its audio is `Playback.Audio.ModuleOpen`, its video is a
 // tier in front of `Playback.VideoResolver` (`VideoSource.Clear`, G-148), a row the reducer met with no identity is a
-// `FetchProvider` answer, and a pasted link is `Shell.MatchLink`. Under `--fake` the one module is an in-process demo
+// `FetchProvider` answer, and a pasted link is `PlayLinkRouter.Match`. Under `--fake` the one module is an in-process demo
 // (`DemoModule`) driven through the SAME wire over in-memory pipes, so the whole host path runs offline.
 //
 // Threads: module traffic runs on the pool (the JSON-RPC pumps); every table write hops through `Playback.ToUi` (C1).
@@ -53,8 +53,9 @@ public static partial class Modules
 
     /// <summary>Discover the modules and compose the host. PRE-LOGIN by design: pasting a YouTube link needs no session.
     /// Nothing is launched until a match, resolve or page needs a module. Under <c>--fake</c> the catalogue is the one
-    /// in-process demo module (ch 31 row 33) — the disk modules would reach the network.</summary>
-    public static void Boot()
+    /// in-process demo module (ch 31 row 33) — the disk modules would reach the network. <paramref name="startIdleTimer"/>
+    /// is false only for the shell test host, whose process outlives every mount the timer would sweep.</summary>
+    public static void Boot(bool startIdleTimer = true)
     {
         if (s_host is not null) return;
         ModuleCatalog catalog;
@@ -74,7 +75,7 @@ public static partial class Modules
         }
 
         var host = new ModuleHost(catalog, CurrentPrefs, new ModuleHostServices(), spawn, Platform.Version.SemVer,
-            Platform.Locale.UiCulture, startIdleTimer: true, dataRoot: dataRoot);
+            Platform.Locale.UiCulture, startIdleTimer: startIdleTimer, dataRoot: dataRoot);
         Attach(host);
         host.MetadataChanged += OnModuleMetadata;
         Fetch.Register(new ModuleFetchProvider());
@@ -423,7 +424,7 @@ public static partial class Modules
         CancellationTokenSource? _pumpCts;
         ModuleProcessState _state = ModuleProcessState.Stopped;
         string[] _capabilities = [];
-        int _negotiatedProtocol, _consecutiveFailedStarts, _openStreamLeases, _inFlight, _disposed;
+        int _consecutiveFailedStarts, _openStreamLeases, _inFlight, _disposed;
         string? _lastError;
         DateTimeOffset _retryNotBefore = DateTimeOffset.MinValue, _lastUsedUtc;
         long _generation;
@@ -452,7 +453,6 @@ public static partial class Modules
         public int? ProcessId { get { lock (_stateGate) return _channel is { HasExited: false } c ? c.ProcessId : null; } }
         public string? LastError { get { lock (_stateGate) return _lastError; } }
         public IReadOnlyList<string> Capabilities { get { lock (_stateGate) return _capabilities; } }
-        public int NegotiatedProtocol { get { lock (_stateGate) return _negotiatedProtocol; } }
 
         /// <summary>The module's last <c>module/status</c> card, or null.</summary>
         public ModuleStatus? Status { get; internal set; }
@@ -614,7 +614,6 @@ public static partial class Modules
                     _pumpCts = cts;
                     _state = ModuleProcessState.Ready;
                     _capabilities = result.Capabilities ?? [];
-                    _negotiatedProtocol = result.ProtocolVersion;
                     _consecutiveFailedStarts = 0;
                     _retryNotBefore = DateTimeOffset.MinValue;
                     _lastError = null;
@@ -996,20 +995,6 @@ public static partial class Modules
             Registration[] snapshot;
             lock (_gate) { snapshot = new Registration[_services.Count]; _services.Values.CopyTo(snapshot, 0); }
             for (int i = 0; i < snapshot.Length; i++) snapshot[i].Install(module, connection, snapshot[i].Permission);
-        }
-
-        public IReadOnlyList<string> Methods
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    var names = new string[_services.Count];
-                    _services.Keys.CopyTo(names, 0);
-                    Array.Sort(names, StringComparer.Ordinal);
-                    return names;
-                }
-            }
         }
 
         readonly record struct Registration(string Permission, Action<InstalledModule, JsonRpcConnection, string> Install);
@@ -1698,7 +1683,7 @@ public static partial class Modules
         readonly byte[] _buf;
         readonly object _gate = new();   // Monitor.Wait/PulseAll below: a System.Threading.Lock cannot be waited on
         int _head, _count;
-        long _written, _dropped;
+        long _dropped;
         bool _completed, _disposed;
         Exception? _error;
 
@@ -1711,7 +1696,6 @@ public static partial class Modules
         public int Capacity => _buf.Length;
         public int Available { get { lock (_gate) return _count; } }
         public long TotalDropped { get { lock (_gate) return _dropped; } }
-        public long TotalWritten { get { lock (_gate) return _written; } }
 
         public void Write(ReadOnlySpan<byte> data)
         {
@@ -1719,7 +1703,6 @@ public static partial class Modules
             lock (_gate)
             {
                 if (_disposed || _completed) return;
-                _written += data.Length;
                 if (data.Length >= _buf.Length)
                 {
                     _dropped += _count + (data.Length - _buf.Length);
@@ -1918,7 +1901,6 @@ public static partial class Modules
         public string? StationName { get; private set; }
         public int BitrateKbps { get; private set; }
         public int MetaInt { get; private set; }
-        public long DroppedBytes => _ring.TotalDropped;
 
         /// <summary>A station title change (the producer thread).</summary>
         public event Action<string>? TitleChanged;
@@ -2737,12 +2719,12 @@ public static partial class Modules
         Playback.VideoResolver = (id, gid, ct) => id.Provider == EntityProvider.Module ? VideoSourceFor(id, ct) : prior(id, gid, ct);
     }
 
-    // ══ 13. THE LINK ROUTER (Shell.MatchLink) ══════════════════════════════════════════════════════════════════════
+    // ══ 13. THE LINK ROUTER (PlayLinkRouter.Match) ══════════════════════════════════════════════════════════════════════
 
-    /// <summary>THE <c>Shell.MatchLink</c> seam: match → resolve through the host; the one play verb commits the row and
+    /// <summary>THE <c>PlayLinkRouter.Match</c> seam: match → resolve through the host; the one play verb commits the row and
     /// plays it (lighting the video surface first when the answer is video). A module's own failure THROWS with its own
     /// words, which the card shows.</summary>
-    public static async Task<Shell.LinkMatch?> MatchLinkAsync(string text, string? pinnedModuleId, CancellationToken ct)
+    public static async Task<LinkMatch?> MatchLinkAsync(string text, string? pinnedModuleId, CancellationToken ct)
     {
         if (s_host is not { } host) return null;
         ModuleMatch? match = await host.MatchAsync(text, pinnedModuleId, ct).ConfigureAwait(false);
@@ -2750,7 +2732,7 @@ public static partial class Modules
         string uri = ModuleUri.Encode(match.Module.Id, match.Match.PlayableId);
         ResolvedPlayable resolved = match.Resolved;
         string name = Trimmed(match.Module.Manifest.DisplayName) ?? match.Module.Id;
-        return new Shell.LinkMatch(name, Trimmed(resolved.Title) ?? Trimmed(match.Match.Title), resolved.IsLive, () => Play(uri, resolved));
+        return new LinkMatch(name, Trimmed(resolved.Title) ?? Trimmed(match.Match.Title), resolved.IsLive, () => Play(uri, resolved));
     }
 
     /// <summary>Play one module playable now. UI THREAD: commit its row, light the video surface for a video answer,

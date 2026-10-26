@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="home" items="All|Music|Podcasts|Audiobooks" sub-sel="{{zero}}" lower="{{lower}}" back="{{no}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; padding: 16px 24px 0 24px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 40px; flex-shrink: 0">
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Pins</h2><a href="#" style="font-size: 14px; color: var(--acct)">Edit</a></div>
+        <div style="display: flex; gap: 12px">
+          <sc-for list="{{pins}}" as="t" hint-placeholder-count="3"><a href="#" style="display: flex; flex-direction: column; gap: 6px; width: 100px; color: var(--t1)"><span style="{{t.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span></a></sc-for>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">History</h2><a href="#" style="font-size: 14px; color: var(--acct)">See all</a></div>
+        <div style="display: flex; gap: 12px">
+          <sc-for list="{{history}}" as="t" hint-placeholder-count="3"><a href="#" style="display: flex; flex-direction: column; gap: 6px; width: 100px; color: var(--t1)"><span style="{{t.art}}"></span><span style="{{t.nameStyle}}">{{t.name}}</span></a></sc-for>
+        </div>
+      </section>
+    </div>
+    <section aria-label="Your daylist" style="height: 132px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 12px; box-sizing: border-box; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+      <span style="width: 108px; height: 108px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(135deg, #4a2f5b, #7a3b6b)"></span>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Your daylist · next at 18:00</span>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">sad girl synth-pop tuesday afternoon</span>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)"><a href="#" style="color: var(--acct)">Synthpop</a> · <a href="#" style="color: var(--acct)">Dream pop</a> · 50 songs</span>
+        <span style="display: flex; gap: 8px; align-items: center; padding-top: 8px">
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Shuffle</button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </span>
+      </div>
+    </section>
+    <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Made for you</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all</a></div>
+  </main>
+  <sc-if value="{{hasPanel}}" hint-placeholder-val="{{ false }}"><div style="position: absolute; right: 0; top: 136px"><dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="{{panel}}" mode="overlay" h="{{panelH}}" hint-size="340px,380px"></dc-import></div></sc-if>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="music" pane="{{panel}}" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"panel":{"editor":"enum","options":["none","queue","lyrics","details"],"default":"none"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const panel = this.props.panel ?? 'none';
+  const art = (c) => 'width: 100px; height: 100px; border-radius: 8px; display: block; background: ' + c;
+  const pins = [['late night drive', '#3b4a6b'], ['Liked Songs', 'linear-gradient(135deg, #4a3b8b, #7a8bd1)'], ['OutRun', '#6b2f4a']].map((d) => ({ name: d[0], art: art(d[1]) }));
+  const history = [['OutRun', '#6b2f4a', true], ['Endless Summer', '#6b4a2f', false], ['Trilogy', '#6b2f2f', false]].map((d) => ({ name: d[0], art: art(d[1]),
+    nameStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[2] ? 'var(--acct)' : 'var(--t1)') }));
+  return { vars, theme, accent, pins, history, panel, hasPanel: panel !== 'none', panelH: 380, zero: 0, no: false, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

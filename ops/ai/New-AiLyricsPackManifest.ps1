@@ -7,7 +7,7 @@
     The JSON is embedded verbatim (CRLF line endings, outer whitespace trimmed) as a C# raw string, so the
     compiled-in manifest is exactly the reviewed file. The output is deterministic: running the script twice
     is a no-op, and it does not rewrite the .cs when only its line endings differ.
-    Docs: docs/guide/ai-lyrics-pack.md. Tests: Invoke-Pester -Path ops/ai/tests
+    Docs: docs/guide/ai-lyrics-pack.md.
 
     Usage:
         powershell -File ops/ai/New-AiLyricsPackManifest.ps1
