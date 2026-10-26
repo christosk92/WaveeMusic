@@ -133,7 +133,15 @@ internal static class ZuneLyricsLines
                 int idx = i;
                 var line = lines[idx];
                 var emphasis = host.EmphasisOf(idx);
-                return Embed.Comp(() => new ZuneLyricsRow(host, idx, line, emphasis)) with { Key = host.RowKey(idx) };
+                // Where the NEXT line's accent appears: its first sung syllable on a word-synced line (its fill starts there, not at the line's start), else
+                // its start. Until then this line keeps the accent (ZuneLyricsRow: the line still sung).
+                long nextStart = long.MaxValue;
+                if (idx + 1 < lines.Count)
+                {
+                    var next = lines[idx + 1];
+                    nextStart = next.IsWordByWord && next.Syllables.Count > 0 ? next.Syllables[0].StartMs : next.StartMs;
+                }
+                return Embed.Comp(() => new ZuneLyricsRow(host, idx, line, emphasis, nextStart)) with { Key = host.RowKey(idx) };
             },
             keyOf: host.RowKey) with
         {
@@ -242,27 +250,32 @@ internal sealed class ZuneLyricsRow : Component
     readonly int _index;
     readonly Lyrics.Line _line;
     readonly Signal<int> _emphasis;
+    readonly long _nextStart;
     readonly Func<int> _shape;
     readonly Action _retargetOpacity;
     readonly Action<NodeHandle> _onLine, _onDof;
     readonly Action _onClick;
+    readonly Func<ColorF> _justLeftInk;
     float _seedOpacity = float.NaN;
 
     static readonly SpringParams s_opacitySpring = SpringParams.FromResponse(0.18f, 1.0f);
 
     static readonly SpringParams s_scaleSpring = SpringParams.FromResponse(0.30f, 0.90f);
 
-    public ZuneLyricsRow(ILyricsHost host, int index, Lyrics.Line line, Signal<int> emphasis)
+    public ZuneLyricsRow(ILyricsHost host, int index, Lyrics.Line line, Signal<int> emphasis, long nextStart)
     {
         _host = host;
         _index = index;
         _line = line;
         _emphasis = emphasis;
+        _nextStart = nextStart;
         _shape = () => Lyrics.RowRender.ShapeOf(emphasis.Value);
         _retargetOpacity = RetargetOpacity;
         _onLine = h => host.ReportLineNode(index, h);
         _onDof = h => host.ReportDofNode(index, h);
         _onClick = () => host.SeekToLine(index);
+        // The line just left (see Render): the accent until the next line starts on the lyrics clock, then the surface's ink.
+        _justLeftInk = () => host.Now.Value < _nextStart ? host.Accent?.Value ?? R.Ink.AccentAction : host.Ink.Primary;
     }
 
     void RetargetOpacity()
@@ -303,6 +316,11 @@ internal sealed class ZuneLyricsRow : Component
         // browsing an episode that does not play) highlights nothing.
         ColorF accent = host.Accent is { } stageAccent && isActive && !neutral ? stageAccent.Value : R.Ink.AccentAction;
         ColorF lineInk = ZuneListRules.LyricsLineInk(isActive && !neutral, accent, neutral ? ink.Secondary : ink.Primary);
+        // THE LINE STILL SUNG: the emphasis hands off on the LEAD-shifted clock (Lyrics.LeadMs before the next line starts), so the line the singer is still on
+        // lost its accent early while the next one waited for its first word: for a moment no line was lit (owner video 2026-10-25). The line just left
+        // keeps the accent on TRUE time, until the next line starts, then rests; a bound ink over the lyrics clock, so the flip costs no render.
+        bool justLeft = !neutral && !isActive && (e & Lyrics.Emphasis.PastBit) != 0 && Lyrics.Emphasis.DistOf(e) == 1 && _nextStart != long.MaxValue;
+        Prop<ColorF> boundInk = justLeft ? Prop.Of(_justLeftInk) : lineInk;
         var weight = rhythm is null ? R.Type.LyricsLine("").ResolvedWeight : rhythm.Weight;
 
         // WORD TIMING (Z-Lyrics): on a word-synced line the sung line's words FILL as they are sung: the accent sweeps across the line over the dimmed ink, on the
@@ -319,7 +337,7 @@ internal sealed class ZuneLyricsRow : Component
         Element main = new TextEl(line.Text)
         {
             Size = m.FontSize, Weight = weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
-            Color = lineInk, MaxLines = 0, Trim = TextTrim.None, OnRealized = _onLine, Wipe = wipe,
+            Color = boundInk, MaxLines = 0, Trim = TextTrim.None, OnRealized = _onLine, Wipe = wipe,
             BrushTransitionMs = Design.Motion.Fast,   // the rest <-> accent flip never snaps in one frame
         };
         if (rhythm is not null) main = main.As<TextEl>() with { FontFamily = R.Type.DisplayFace, CharSpacing = rhythm.Tracking };
