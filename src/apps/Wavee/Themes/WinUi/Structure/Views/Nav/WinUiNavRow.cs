@@ -213,7 +213,7 @@ internal sealed class WinUiNavRow : Component
         bool track = entry.IsTrack;
         string? route = entry.RouteKey;
         bool routeEntry = entry.Kind == SidebarEntryKind.AppRoute;
-        // A route pin, Liked Songs and a folder wear a 16 glyph; every other entity a 16 thumbnail (the board's two leading forms).
+        // A route pin, Liked Songs and a folder wear a 16 glyph; every other entity a 16 thumbnail (the board's two leading forms), 28 on a rail tile.
         bool glyphRow = WinUiNavArt.IsGlyph(in entry);
         // The label, its pin state and whether it is a stand-in are the model's (NavRowFacts.LabelOf): a PIN is never a blank
         // row (design D9), an authoritative miss keeps the last-known name dimmed with the warning mark (design Q9), and a
@@ -273,9 +273,9 @@ internal sealed class WinUiNavRow : Component
             Tile = compact,
             Shape = shape,
             Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
-            ArtSize = WinUiNavGeometry.ArtOf(shape),
+            ArtSize = compact ? WinUiNavGeometry.RailArt : WinUiNavGeometry.ArtOf(shape),
             Ink = placeholderTitle || unavailable || offline ? Tok.TextTertiary : null,
-            Leading = glyphRow ? null : Quieted(WinUiNavArt.Thumb(in snapshot), offline),
+            Leading = glyphRow ? null : Quieted(WinUiNavArt.Thumb(in snapshot, rail: compact), offline),
             Glyph = glyphRow ? WinUiNavArt.GlyphOf(_o, in snapshot) : null,
             // The warning mark is the unavailable pin's trailing mark, the offline mark the offline pin's, so both show in
             // every row shape.

@@ -102,8 +102,8 @@ internal static class WinUiSkeletons
     };
 }
 
-/// <summary>The leading visual of an entry row: a 16 glyph for a route, Liked Songs and a folder, a 16 r2 thumbnail (a 2x2 mosaic for a cover-less
-/// playlist, a circle for an artist) for everything else.</summary>
+/// <summary>The leading visual of an entry row: a 16 glyph for a route, Liked Songs and a folder, a 16 r2 thumbnail (28 r4 on a rail tile; a 2x2 mosaic
+/// for a cover-less playlist, a circle for an artist) for everything else.</summary>
 internal static class WinUiNavArt
 {
     /// <summary>Does the entry wear a glyph (a route pin, Liked Songs, a folder) rather than a thumbnail?</summary>
@@ -118,11 +118,12 @@ internal static class WinUiNavArt
     public static string GlyphOf(INavRowHost host, in SidebarLibraryEntry e)
         => e.Kind == SidebarEntryKind.Folder ? Icons.Folder : host.DestOf(IsLiked(in e) ? SidebarCatalogue.LikedRoute : e.Id).Glyph;
 
-    /// <summary>The thumbnail: the image, else a 2x2 mosaic of the first four tiles (or the first one), else the neutral tile.</summary>
-    public static Element Thumb(in SidebarLibraryEntry e)
+    /// <summary>The thumbnail: the image, else a 2x2 mosaic of the first four tiles (or the first one), else the neutral tile; the pane row's 16, or the
+    /// compact rail's larger tile art (<paramref name="rail"/>).</summary>
+    public static Element Thumb(in SidebarLibraryEntry e, bool rail = false)
     {
-        float size = WinUiNavGeometry.ArtSlot;
-        float radius = e.Circular || e.Kind == SidebarEntryKind.Artist ? size * 0.5f : WinUiNavGeometry.ThumbRadius;
+        float size = rail ? WinUiNavGeometry.RailArt : WinUiNavGeometry.ArtSlot;
+        float radius = e.Circular || e.Kind == SidebarEntryKind.Artist ? size * 0.5f : rail ? WinUiNavGeometry.RailThumbRadius : WinUiNavGeometry.ThumbRadius;
         string? url = Controls.ArtUrl(e.Cover);
         if (url is null && e.MosaicTiles is { Count: > 0 } tiles)
         {

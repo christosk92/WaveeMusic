@@ -83,6 +83,9 @@ public static class WinUiNavGeometry
 
     /// <summary>A thumbnail's corner radius (the board's 2) and its decode bucket.</summary>
     public const float ThumbRadius = 2f;
+    /// <summary>A compact-rail tile's thumbnail: 28 in the 40x36 tile (6 clear each side, 4 over and under) and its radius. The rail has no labels, so
+    /// the cover is all that tells one playlist from the next; the pane row's 16 read as a speck there (owner screenshot 2026-10-26). Glyphs stay 16.</summary>
+    public const float RailArt = 28f, RailThumbRadius = 4f;
     public const int ThumbDecodePx = 64;
 
     /// <summary>The Playlists head's "+" glyph.</summary>
