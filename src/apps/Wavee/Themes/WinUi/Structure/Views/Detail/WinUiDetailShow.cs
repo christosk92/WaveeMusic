@@ -31,7 +31,8 @@ internal static partial class WinUiDetailFrame
         float line = measure > 0f ? measure : float.NaN;
 
         var rows = new List<Element>(8);
-        if (form.Eyebrow && (id.Eyebrow.Length > 0 || slots.Badges is not null))
+        bool hasEyebrow = form.Eyebrow && (id.Eyebrow.Length > 0 || slots.Badges is not null);
+        if (hasEyebrow)
         {
             var eyebrow = new List<Element>(2);
             if (id.Eyebrow.Length > 0) eyebrow.Add(WinUiDetailKit.EyebrowRun(id.Eyebrow, form));
@@ -60,7 +61,8 @@ internal static partial class WinUiDetailFrame
         rows.Add(Block("hero-actions", Actions(id, spec.Config, p.Actions, slots, p.Play, tier, form, words: !form.Stacked, center: form.Stacked)));
 
         Element cover = Cover(id, slots, p.Actions, form);
-        Element header = Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap }, center: form.Stacked);
+        Element header = Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap }, center: form.Stacked,
+            hang: hasEyebrow ? form.EyebrowLine + form.InfoGap : 0f);
         // A header whose show or episode has not been read yet is its own DERIVED shimmer: the same rows, the title and the meta as bars in their line
         // boxes, the verbs as quiet shapes, never an empty title over a lone "·" with a live Play (audit B7, A2's finding). One region at every state,
         // so the read landing swaps the shimmer for the rows in place.
