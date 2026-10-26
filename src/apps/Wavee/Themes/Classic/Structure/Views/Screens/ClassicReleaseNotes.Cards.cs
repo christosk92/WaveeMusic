@@ -1,8 +1,8 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicReleaseNotes.Cards.cs — the highlight strip and the highlight card (themes plan 6.1, T11c) ─────
 //
-// From `Screens\ReleaseNotes.UI.cs` §3: the strip (at most three cards, an eyebrow over the row), the card (poster band, kind pill, title, the fixed 68-DIP body
-// slot with its true alpha edge fade, "Read more"; the Store card with its footer button) and the poster band shared with the viewer's kind pill. The card is shared
-// by the page and the after-update plate (compact = the plate's lone-card cap).
+// The page's highlights (a heading over WinUI cards that carry the whole text, 2026-10-26) and the after-update plate's cards: the poster-over-copy card (poster band,
+// kind pill, title, the fixed 68-DIP body slot with its true alpha edge fade, "Read more"; the Store card with its footer button) and the ROW card at Compact, plus
+// the poster band shared with the viewer's kind pill.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -20,69 +20,136 @@ namespace Wavee.Themes.Classic;
 
 internal static partial class ClassicReleaseNotes
 {
-    /// <summary>Three is a cap, not a layout. No highlights ⇒ a 0-height, hit-invisible box: the eyebrow AND the row vanish. The record sets the form: one row of
-    /// poster cards (Standard, Huge: under a 20/28 heading), two columns of ROW cards (Small) or one column of them (Compact).
-    /// <para>A tier crossing never rebuilds a card it keeps (plan 3.3): the row cards of Compact and Small are ONE grid whose track count is the form's, so
-    /// 528 moves the same cards into their new cells (a position and size FLIP, <see cref="ClassicTierMotion.Reflow"/>); the poster strip and the row cards are different trees (1008), so the two families
-    /// are keyed apart and cross-fade.</para></summary>
-    static Element Strip(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore, ClassicReleaseNotesLayout layout)
+    /// <summary>The highlights the way the Microsoft Store leads its home page: the FIRST highlight is the hero, the picture filling a big tile with its title, two
+    /// lines of its body and "See details" over a dark foot; the others are smaller tiles with their title alone (the whole text is one click away, in the viewer).
+    /// Wide (Standard, Huge): the hero takes two thirds of the row and the others stack 16:9 beside it, so that column sets the row's height. Narrow and medium
+    /// (Compact, Small): the hero across the top, the others side by side under it. Three is a cap, not a layout; two sit as equal tiles in the wide form and one
+    /// is the hero alone. No highlights ⇒ a 0-height, hit-invisible box.
+    /// <para>The two arrangements are different trees (1008), so they are keyed apart and cross-fade; within one, a crossing only resizes the tiles.</para></summary>
+    static Element Highlights(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore, ClassicReleaseNotesLayout layout)
     {
         if (highlights.Count == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
         int n = Math.Min(highlights.Count, HighlightMax);
-        var form = layout.HighlightForm;
-        var cards = new Element[n];
-        for (int i = 0; i < n; i++)
+        bool wide = layout.HighlightForm == ClassicReleaseHighlightForm.Bento;
+        BoxEl Tile(int i, bool hero)
         {
-            int idx = i;   // the row's own index, not the closed-over loop variable
-            Element card = form == ClassicReleaseHighlightForm.Strip
-                ? CardFor(highlights[i], () => open(idx), openStore, compact: false)
-                : RowCard(highlights[i], () => open(idx), openStore, layout, inRow: form == ClassicReleaseHighlightForm.Grid2);
-            cards[i] = form == ClassicReleaseHighlightForm.Strip
-                ? card with { Key = "hl:" + SlideId(highlights[i], i) }
-                // A re-fit (528: one track <-> two) moves the same row card into its new cell AND resizes it (the first card keeps its origin and only
-                // changes width): the card glides on both, its size revealed, as the section cells do. Position-only (Shove) snapped the width.
-                : card with { Key = "hl:" + SlideId(highlights[i], i), Layout = ClassicTierMotion.Reflow };
+            int idx = i;   // the tile's own index, not the closed-over loop variable
+            return HighlightTile(highlights[i], () => open(idx), openStore, layout, hero) with { Key = "hl:" + SlideId(highlights[i], i) };
         }
-        Element heading = layout.HighlightsHeading
-            ? new TextEl(Loc.Get(Strings.WhatsNew.Highlights)) { Size = K.HeadingSize, LineHeight = K.HeadingLine, Weight = 600, Color = Tok.TextPrimary }
-            : R.Type.Eyebrow(Loc.Get(Strings.WhatsNew.Highlights)) with { Color = Tok.TextTertiary };
-        Element body = form == ClassicReleaseHighlightForm.Strip
-            ? new BoxEl
+
+        var others = new Element[n - 1];
+        for (int i = 1; i < n; i++) others[i - 1] = Tile(i, hero: false) with { AspectRatio = M.PosterAspect, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f };
+        Element arrangement;
+        if (wide && n >= 3)
+            arrangement = new BoxEl
             {
-                Key = "rn:hl:strip", Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
-                Children = cards,
-            }
-            // Rows of two equal columns (Small) or one column (Compact): a lone last card keeps its column's width; a row is as tall as its tallest card.
-            : new GridEl
-            {
-                Key = "rn:hl:rows", Columns = form == ClassicReleaseHighlightForm.Grid2 ? s_twoTracks : s_oneTrack,
-                ColGap = layout.HighlightGap, RowGap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch,
-                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
-                Children = cards,
+                Direction = 0, Gap = layout.HighlightGap, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children =
+                [
+                    Tile(0, hero: true) with { Grow = K.HeroShare, Shrink = 1f, Basis = 0f, MinWidth = 0f },
+                    new BoxEl { Direction = 1, Gap = layout.HighlightGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = others },
+                ],
             };
+        else if (wide && n == 2)
+            arrangement = new BoxEl
+            {
+                Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children = [Tile(0, hero: true) with { AspectRatio = M.PosterAspect, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f }, others[0]],
+            };
+        else
+        {
+            var stack = new List<Element>(2) { Tile(0, hero: true) with { AspectRatio = M.PosterAspect, AlignSelf = FlexAlign.Stretch } };
+            if (others.Length > 0)
+                stack.Add(new BoxEl { Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = others });
+            arrangement = new BoxEl { Direction = 1, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = stack.ToArray() };
+        }
+
         return new BoxEl
         {
-            Direction = 1, Gap = K.StripGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-            Children = [heading, body],
+            Direction = 1, Gap = K.HeadingGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Children =
+            [
+                SectionHeading(Loc.Get(Strings.WhatsNew.Highlights)),
+                new BoxEl
+                {
+                    Key = wide ? "rn:hl:wide" : "rn:hl:stacked", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                    Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    Children = [arrangement],
+                },
+            ],
         };
     }
 
-    // The row cards' track lists (shared, never mutated: a grid keeps its track array by reference).
-    static readonly TrackSize[] s_oneTrack = [TrackSize.Star()];
-    static readonly TrackSize[] s_twoTracks = [TrackSize.Star(), TrackSize.Star()];
+    /// <summary>One tile: the poster filling it (a tinted plate without one), a foot under the words in the app mode's ground, and the words at the bottom left in
+    /// the mode's ink. The hero carries its body (two lines) and "See details"; a smaller tile its title alone. The tile is
+    /// one button that opens the viewer (the "See details" on it is its label, not a second button); the Store tile is not, its accent button goes to the Store.</summary>
+    static BoxEl HighlightTile(HighlightItem item, Action open, Action openStore, ClassicReleaseNotesLayout layout, bool hero)
+    {
+        var h = item.Highlight;
+        bool store = HighlightVisibility.IsStore(h);
+        float title = hero ? layout.HeroTitleSize : layout.TileTitleSize;
+        var words = new List<Element>(3)
+        {
+            new TextEl(h.Title) { Size = title, LineHeight = title + K.HeadlineLeading, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        };
+        if (hero && layout.HeroBody)
+            words.Add(new TextEl(Plain(MarkdownLite.Tokenize(h.Body)))
+            {
+                Size = K.BodySize, LineHeight = K.BodyLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
+                MinWidth = 0f, MaxWidth = K.HighlightTextMaxWidth,
+            });
+        if (store)
+            words.Add(new BoxEl { Direction = 0, Margin = new Edges4(0f, Spacing.S, 0f, 0f), Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), openStore, ButtonAppearance.Accent, ControlSize.Medium, layout.Target)] });
+        else if (hero)
+            words.Add(new BoxEl
+            {
+                Direction = 0, Margin = new Edges4(0f, Spacing.M, 0f, 0f), HitTestVisible = false,
+                Children = [Btn(Loc.Get(Strings.WhatsNew.SeeDetails), Inert, ButtonAppearance.Standard, ControlSize.Medium, 0f) with { Focusable = false }],
+            });
 
-    /// <summary>The ROW card (Compact and Small, boards `C-ReleaseNotes-Compact` / `-Small`; also the after-update plate's cards at Compact): a 120 x 68 poster beside the
-    /// kind pill, the title and "Read more". A new path: the poster-over-copy <see cref="CardView"/> and its plate arithmetic are untouched. The whole card is the hit
+        var layers = new List<Element>(3);
+        if (item.Poster is { Length: > 0 } poster)
+            layers.Add(new ImageEl
+            {
+                Source = poster, Fit = ImageFit.Cover, DecodePx = K.PosterDecodePx, Placeholder = Tok.FillSubtleSecondary,
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+            });
+        layers.Add(new BoxEl
+        {
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+            Gradient = GradientDown(new GradientStop(0f, K.TileFootClear), new GradientStop(hero ? K.HeroFootStart : K.TileFootStart, K.TileFootClear),
+                new GradientStop(hero ? K.HeroFootEnd : K.TileFootEnd, K.TileFoot), new GradientStop(1f, K.TileFoot)),
+        });
+        if (IsVideo(h))
+            layers.Add(new BoxEl { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false, Children = [PlayGlyph(h)] });
+        layers.Add(new BoxEl
+        {
+            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 1, Gap = K.HighlightTitleGap, MinWidth = 0f, HitTestVisible = store,
+            Padding = Edges4.All(hero ? layout.HeroPad : K.TilePad),
+            Children = words.ToArray(),
+        });
+
+        var frame = new BoxEl
+        {
+            ZStack = true, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+            Corners = CornerRadius4.All(Radii.Card), Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
+            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverBorderColor = Tok.StrokeCardDefault, BrushTransitionMs = Design.Motion.Faster,
+            Children = layers.ToArray(),
+        };
+        return store
+            ? frame
+            : frame.Interactive(Interaction.Card) with { Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open, Children = layers.ToArray() };
+    }
+
+    /// <summary>The ROW card (the after-update plate's cards at Compact): a 120 x 68 poster beside the kind pill, the title and "Read more". The whole card is the hit
     /// region (at least the tier's target tall: the poster alone is 68); the Store card keeps its button a SIBLING of the hit region, as the poster card does.</summary>
-    static Element RowCard(HighlightItem item, Action open, Action openStore, ClassicReleaseNotesLayout layout, bool inRow)
+    static Element RowCard(HighlightItem item, Action open, Action openStore, ClassicReleaseNotesLayout layout)
     {
         var h = item.Highlight;
         bool store = HighlightVisibility.IsStore(h);
         var frame = new BoxEl
         {
-            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = layout.Target,
-            Grow = inRow ? 1f : 0f, Shrink = 1f, Basis = inRow ? 0f : float.NaN,
+            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = layout.Target, Shrink = 1f,
             Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
             Fill = Tok.FillCardDefault, BorderWidth = 1f,
             BorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,

@@ -16,10 +16,7 @@ namespace Wavee.Themes.Classic;
 /// <summary>The constants of Classic's release-notes page, highlight viewer and after-update plate.</summary>
 public static class ClassicReleaseNotesRules
 {
-    // ── the page's frame, states and since banner ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The since banner's gap. (The frame's gap to the rail is the tier record's: <c>ClassicReleaseNotesLayout.FrameGap</c>.)</summary>
-    public const float SinceGap = 10f;
+    // ── the page's frame and states ───────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The loading ring and the empty state's text measure.</summary>
     public const float LoadingRingSize = 28f, EmptyTextMaxWidth = 360f;
@@ -27,25 +24,40 @@ public static class ClassicReleaseNotesRules
     /// <summary>The empty spacer under the last section of the page.</summary>
     public const float PageTailHeight = 24f;
 
-    /// <summary>The 12 DIP meta size (divider label, meta items, section count, scope), the section badge glyph and the 14 DIP body size.</summary>
+    /// <summary>The type ramp's Caption (12) and Body (14) sizes.</summary>
     public const float MetaSize = 12f, BodySize = 14f;
 
-    // ── the hero ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── the release head ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The hero's meta row gap, the headline's size, the tagline's measure and the meta item's gap.</summary>
-    public const float HeroMetaGap = 14f, HeroHeadlineSize = 30f, HeroTaglineMaxWidth = 640f, MetaItemGap = 5f;
+    /// <summary>The tagline's measure.</summary>
+    public const float HeroTaglineMaxWidth = 640f;
 
-    // ── the strip, the card chrome, the kind pill ─────────────────────────────────────────────────────────────────────────
+    // ── the cards, the kind pill ──────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The strip's eyebrow-to-row gap. (The gap between cards is the tier record's: <c>ClassicReleaseNotesLayout.HighlightGap</c>.)</summary>
-    public const float StripGap = 6f;
-
-    /// <summary>The ROW card (Compact and Small highlights): the poster's size and decode width, the card's padding, the gap between the poster and the copy and between the
-    /// copy's lines, and the Highlights heading's size and line (Huge).</summary>
+    /// <summary>The ROW card (the after-update plate's cards at Compact): the poster's size and decode width, the card's padding, the gap between the poster and the
+    /// copy and between the copy's lines; and a block heading's size and line (the type ramp's Subtitle, 20/28).</summary>
     public const float RowPosterW = 120f, RowPosterH = 68f, RowPosterDecodePx = 240f, RowCardPad = 8f, RowCardGap = 12f, RowCopyGap = 4f, HeadingSize = 20f, HeadingLine = 28f;
 
     /// <summary>The release picker's width where it is a combo (Small) and the form swap's fade (the rail and the picker cross-fade when a tier crossing swaps them).</summary>
     public const float PickerWidth = 190f;
+
+    /// <summary>The WinUI page (2026-10-26): the type ramp's line heights (Body 14/20, Caption 12/16, BodyLarge 18/24), the Title's leading over its size, a block
+    /// heading's air above it and under it, the highlight card's padding, the gap between its poster and its words and between its title and body, the widest
+    /// a card's or a change's text runs, the group heading's foot, the gap between changes, a wrapping change header's air, and the rail's inset, row air and
+    /// selection pill.</summary>
+    public const float BodyLine = 20f, MetaLine = 16f, TaglineSize = 18f, TaglineLine = 24f, HeadlineLeading = 8f, HeadingTop = 12f, HeadingGap = 8f;
+    public const float HighlightTitleGap = 4f, HighlightTextMaxWidth = 620f;
+
+    /// <summary>The highlight tiles (the Microsoft Store's home): the hero's share of the wide row against the stacked tiles' 1, a smaller tile's padding, and the
+    /// foot under the words: clear down to its start, solid by its end, solid to the bottom (the hero's starts higher, its words take more room). The pictures are
+    /// whole app windows, busy where the words sit, so the words get a near-solid band rather than a soft fade (the soft one passed contrast and still read as
+    /// text on a screenshot). The foot follows the app mode as the pictures do (each release ships a light capture): 90 % of the page ground in dark and light.
+    /// Properties: they follow a mode switch.</summary>
+    public const float HeroShare = 2f, TilePad = 12f, HeroFootStart = 0.15f, HeroFootEnd = 0.45f, TileFootStart = 0.3f, TileFootEnd = 0.62f;
+    public static ColorF TileFoot => Tok.Theme == ThemeKind.Light ? ColorF.FromRgba(243, 243, 243, 230) : ColorF.FromRgba(28, 28, 28, 230);
+    public static ColorF TileFootClear => TileFoot with { A = 0f };
+    public const float GroupHeadingBottom = 4f, ChangeGap = 4f, ChangeRowMinHeight = 48f, ChangeHeaderPadY = 12f, ChangeTextMaxWidth = 680f;
+    public const float RailInset = 12f, RailRowPadY = 8f, RailPillW = 3f, RailPillH = 16f;
 
     /// <summary>The rail / picker swap and the section / card re-flow fade in and out together over <c>Design.Motion.Fast</c>.</summary>
     public static LayoutTransition FormFade => new(TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut),
@@ -58,19 +70,10 @@ public static class ClassicReleaseNotesRules
     /// <summary>The decode width of a poster (the authored width: without it the poster is a smear).</summary>
     public const float PosterDecodePx = 1200f;
 
-    // ── a changelog section, its rows, the chips and the avatars ──────────────────────────────────────────────────────────
+    // ── a change's text and contributors ──────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The section's gap, header badge and header height.</summary>
-    public const float SectionGap = 6f, SectionBadge = 22f, SectionHeaderMinHeight = 28f;
-
-    /// <summary>The scope eyebrow's size.</summary>
-    public const float ScopeSize = 11f;
-
-    /// <summary>A row's reference-chip row gap, the chip's gap, dot (diameter) and the code span's size.</summary>
-    public const float RowRefGap = 6f, ChipGap = 4f, ChipDot = 7f, CodeSpanSize = 12f;
-
-    /// <summary>The chip's height.</summary>
-    public const float ChipHeight = 18f;
+    /// <summary>A code span's size (one step under the body, the WinUI inline-code convention).</summary>
+    public const float CodeSpanSize = 12f;
 
     /// <summary>An avatar's disc, its ring, the initials' size and the overflow count's size; at most <see cref="AvatarMax"/> discs show. The
     /// initial and the count sit at the type floor (11; they were 9 and 10, under it): one letter still fits the 18 disc.</summary>
@@ -88,8 +91,8 @@ public static class ClassicReleaseNotesRules
 
     // ── the release rail ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The rail's gap, its row list's gap, a row's gap, radio ring (diameter and stroke), unread dot and the title row's gap. (Its width is the tier record's.)</summary>
-    public const float RailGap = 6f, RailListGap = 2f, RailRowGap = 6f, RailRadio = 9f, RailRadioRing = 1.5f, RailDot = 6f;
+    /// <summary>The rail's gap under its heading and its row list's gap. (Its width is the tier record's.)</summary>
+    public const float RailGap = 6f, RailListGap = 2f;
 
     // ── the kind pill's shadow (issue #89 L3: 0/1/4 #00000066) ────────────────────────────────────────────────────────────
 
@@ -101,8 +104,10 @@ public static class ClassicReleaseNotesRules
     /// <summary>Deliberate literals (ch 28 §4.6): rgba(0,0,0,.72) — the media scrim (.55) reads thin stacked over the plate's own smoke.</summary>
     public static readonly ColorF ViewerVeil = ColorF.FromRgba(0, 0, 0, 184);
 
-    /// <summary>The pips' white 82 / 140.</summary>
-    public static readonly ColorF PipOff = ColorF.FromRgba(255, 255, 255, 82), PipOffHover = ColorF.FromRgba(255, 255, 255, 140);
+    /// <summary>The unselected pips and their hover: the theme's strong control fill and secondary ink, so they read on the plate in
+    /// light as well as dark (the white 82 / 140 they were vanished on the light plate). Properties: tokens follow a theme switch.</summary>
+    public static ColorF PipOff => Tok.FillControlStrong;
+    public static ColorF PipOffHover => Tok.TextSecondary;
 
     /// <summary>The chrome's dimmed and hover media-scrim alphas (.40 / .70).</summary>
     public const float ChromeDimmedAlpha = 0.40f, ChromeHoverAlpha = 0.70f;
