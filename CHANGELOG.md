@@ -12,406 +12,231 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
-- **A Zune theme.** Settings > Appearance > Theme > Zune gives Wavee the Zune HD look: big lowercase type, pivots across
-  the top, colour washes from the playing cover and the side panel as one surface with the page. It covers every page,
-  dialog and menu at every window size, in dark and light.
-- **A WinUI theme.** Settings > Appearance > Theme > WinUI gives Wavee a Windows 11 look: tabs in the title bar, a
-  navigation pane, card lists and WinUI-style controls. Settings are grouped into seven tabs, the BPM and Key column
+- **A Zune theme that brings back the Zune HD look.** Settings > Appearance > Theme > Zune gives Wavee big lowercase
+  type, pivots across the top, colour washes from the playing cover and a side panel that is one surface with the page.
+  It covers every page, dialog and menu, in dark and light.
+- **A WinUI theme that looks like Windows 11.** Settings > Appearance > Theme > WinUI gives Wavee tabs in the title bar,
+  a navigation pane, card lists and WinUI-style controls. Settings are grouped into seven tabs, the BPM and Key column
   is optional and off by default, long artist names shrink to fit before they are cut, and the docked side panel moves
   with the page and resizes live while you drag its edge.
+- **Every page now has a design for every window size, from a phone-sized narrow window to 4K.** Narrow windows get
+  one-column pages with buttons large enough to tap, medium windows leave out what does not fit, and very large windows
+  use the extra room for more columns, bigger covers and wider side columns. The first frame is already laid out for the
+  window's size, and the entries under Changed list what each area does.
+- **Three Classic options for how much colour the artwork brings.** Settings > Appearance > Wavee Classic options >
+  Surfaces has "Tinted surfaces" as three preview cards: Off, Subtle (the look until now, and the default) and a new
+  Rich that tints the title bar, sidebar, page ground and Home's washes more strongly. "Accent from artwork" (on by
+  default) lets Play, Follow, hearts and links take their colour from the cover, and "Now playing colours" (on by
+  default) does the same for full screen, its lyrics and the queue's now-playing chip. Turn either off to use your
+  Windows accent or neutral colours.
+- **The sidebar can show its playlists as plain text rows.** A new "Show covers" switch in Settings > Appearance > Wavee
+  Classic options > Sidebar (on by default, Classic layout only) turns playlist, album and pin rows into compact text
+  rows when you switch it off. Folders keep their icon, child rows stay indented, and the icon rail keeps its covers.
 
 ### Changed
 
-- **Wavee holds less memory while you browse and listen.** Covers no longer stay in memory after they reach the screen, the
-  cover cache keeps to its size instead of doubling on some machines, small thumbnails no longer take twice their room on
-  the GPU, and the window's background, sidebar, title bar and player bar are drawn directly instead of being kept as cached
-  pixels (about 25 MB less on every page).
-- **Moving between pages with the queue open is smoother.** Opening an album, artist or playlist no longer redraws the
-  queue panel and every row in it, and moving or resizing the window no longer redraws the page twice. Frames that take
-  longer than 8 ms while you click through pages are about eight times rarer.
-- **Artist and profile pages fit every window size.** On a 4K window the artist's name and buttons now line up with Top tracks instead of
-  sitting at the far left. Huge windows show a row of section links under the artist photo, a More button after Radio, Top tracks in three
-  columns of five (four by four on 4K) and the artist's next concert under their pick. Narrow windows show the albums, singles and
-  compilations as a row of covers you swipe through. Song lists in an opened album sit in four columns on Huge windows and two on smaller
-  ones. On narrow windows the album song rows, the release-type tabs, the section links on artist and profile pages and the concert filter
-  buttons are large enough to tap. Profiles show a "Profile" label over the name on narrow, small and Huge windows. On Huge windows a concert
-  page shows the lineup beside a grid of related concert dates. The artist's stats on a narrow window no longer leave a wide gap when they
-  wrap to a second line.
-- **Full screen fits every window size.** On a 4K screen the lyrics have an Up next column and visualizer bars beside them. On Huge screens
-  the visualizer gallery runs to the bottom with the controls beside it. Narrow windows show the track as a compact card with a visualizer
-  chip and no longer open the gallery on their own. The Huge video panel has like and more buttons next to the title.
-- **Album, playlist and Liked Songs pages say when they hold songs you can't play.** A bar over the list reads, for example, "2 songs here
-  can't be played: one isn't available in your country, one isn't out yet." Its **Hide them** button turns on the filter's "Hide songs I can't
-  play". In a narrow window it uses the short sentence and a 40-tall button. It slides open and closed instead of moving the list.
-- **The now-playing sheet in a narrow window has its own header and a Devices button.** The header has a close chevron, "Playing from" with the
-  album or playlist name (tap it to open that page) and a "⋯" button that opens the track menu. A Devices button between Lyrics and Queue shows
-  where playback is and opens the device picker.
-- **Detail pages fit narrow and medium windows better.** Under 528 wide, playlists and Liked Songs drop the "#" column (albums keep their
-  track numbers), Filter is a single 40 × 40 icon, and playlists show Recommended songs under their songs. An empty playlist opens with
-  "Nothing here yet" and a field that searches for songs to add. From 528 to 1007 wide, Sort is an icon (the order is in its tooltip), and
-  the album and playlist side column is padded 16/12 with its rows 10 apart, its other actions on their own line under Play.
-- **Home and Search use the room they have.** From 1920 wide, Home's "Following" button stands at the end of the facet row on every word,
-  "All" included (on All it opens Music's Following). Search puts the top result's art at the top left (round for an artist) above a large
-  title, under a "Top result" header, and adds an Artists row of round cards under the playlists. Under 528 wide, Home's facet row ends in a
-  40 × 40 Friend activity button (the words fade out at their edge instead of pushing it off), and section headers drop their subtitles.
-- **Settings follows its narrow, medium and huge designs.** The page title has a gear before it under 1008 wide and from 1920 wide. From 528
-  wide, a section's description sits on the same line as its name and ends in "…" when it is too long (in the 1008-1919 layout it stays under
-  the name). Section spacing follows each design. On a resize the gear fades, the title slides and the headers ease to their new height.
-- **The library and Recents use their designs for medium and huge windows.** From 528 to 1007 wide, the library's list rests at 240 with two
-  96-wide covers a row. From 1920 wide the list is tinted, and an album shows "Also by … in your library" in a 300-wide column beside its
-  songs instead of under them. Recents shows its Overview calendar beside an 1100-wide list; the Overview button shows or hides it, and a
-  click on a day scrolls the list to that day. Under 528 wide, a podcast or audiobook's Follow/Play button, heart and "⋯" are 40 × 40.
-
-- **The library sorts with one button on a medium window.** From 528 to 1007 wide, the albums list shows Sort as a single button with the
-  current word and a menu instead of the row of sort words (Artists and Podcasts keep their words); when the window grows or shrinks across
-  that step, the button and the row of words fade into each other without the list jumping. The album and show page beside it has a 96-wide
-  cover in a shorter header with a 24-point title and a smaller left margin, and the rows of the list's header sit a little further apart.
-  The covers of the library's grid are spaced as each design draws them: 16 across and 12 down on medium windows, 8 and 16 on Huge ones,
-  12 and 16 on narrow ones.
-
-- **Recents on a medium window matches its design.** From 528 to 1007 wide, the title and the summary line sit closer together, the time
-  of each row has its own aligned column, the arrow that opens a row is a 28-point button, and the day scrollbar sits against the list and
-  close to the window's edge.
-
-- **An empty playlist asks you to add songs on every window size.** Medium, standard and Huge windows now show "Nothing here yet", the line
-  under it and the field that searches for songs to add, the way a narrow window does, with the Recommended songs below. The room the message
-  takes is held while you resize, so the page doesn't jump.
-
-- **The artist's pick has a heading on Huge windows.** From 1920 wide the pick beside Top tracks stands under an "Artist pick" heading, like
-  Top tracks does.
-
-- **Huge windows use their room on album, playlist and library pages.** From 1920 wide an album page has a right-hand column with About this
-  release, the artist (a large photo, monthly listeners, the bio), Fans also like in rows of four and More by; they leave the left column and the
-  space under the songs, and the songs keep their margin instead of running to the window's edge. On a 4K window the column is 640 wide and the
-  cover on the left grows to 336. A playlist shows its recommended songs and Insights in a 440 column (Insights alone, 400, on a playlist you
-  follow), and Liked Songs opens with its Insights column showing; close it and it stays closed for that visit. The library's list starts 560
-  wide (400 for Artists) with four covers a row and a bigger album header, and the sidebar starts at 320, until you drag them yourself; your own
-  widths are kept. The library's sort words no longer fade out at the end: the ones that do not fit go into a "more" menu.
-- **The stock controls are 40 big in a narrow window.** Under 528 wide every dialog's buttons are 40 tall and share the row in two equal
-  columns (two of them now fit side by side even in a 300-wide window, where they used to stack), dropdowns are the normal dropdown with a
-  40-tall field and roomier rows (it was a separate button that opened a menu), the crossfade and storage-budget number boxes are 40 tall,
-  the rows of every menu that opens from a button (sort, filter, the "..." menus) are 40 tall, the log viewer keeps its Settings ›
-  Privacy & diagnostics › Logs trail with 40 by 40 crumbs, and a toast is the window's full width less 8 on each side with a 40-tall action
-  button, so it no longer runs off a 300-wide window. The title bar drops its 14-wide gap after ☰ and keeps a 16-wide drag strip instead of
-  48, so the tab-count button now always fits, and Back joins it from 332 wide. Wider windows look exactly as before.
-- **The library, Recents and Local files are laid out for every window size.** Under 600 wide the library is one column: kind chips (Albums,
-  Artists, Podcasts, Audiobooks, Liked Songs) over the title, the sort as a 40-tall button that opens a menu of its words next to 40 big
-  list and grid buttons, a 40-tall filter, and a tap on a row opens its album, show or artist with a breadcrumb back (the old rule folded at
-  640 and came back at 664; it now folds under 576 and comes back at 624, and a window opened narrow is already one column in its first
-  frame). The change between the columns and the single column fades instead of jumping. The pane's edges are 16 instead of 20, and in a
-  narrow window its Play, Shuffle, save and "..." buttons are 40 big. A column width you dragged is never changed by a window size; a
-  pane that would get too small takes the room from the list instead. In a narrow window Recents puts a row's type and time under its
-  subtitle, its chevron is a 40-big button, its Overview button and kind tabs are 40 tall and the day rail steps aside; the calendar's
-  month cards sit 16 apart in a very large window and 24 in a small one. A 1440-wide window keeps its tuned layout (the pane is 360 at
-  least beside the list).
-- **Local files** is the playlist page, so it follows the same layout at every window size.
-- **Settings fits every window size.** In a narrow window (under 528 wide) the tabs are one 44-tall strip that scrolls sideways and fades at
-  its end, every setting sits under its name with its control full width (choices open as a 40-tall picker, switches keep their row in a
-  48 by 40 cell), buttons, links, sliders, selectors and radio buttons are at least 40 big, the About card stacks, and the theme picker is
-  two columns of thumbnails. In a small window the tabs scroll and fade and the theme cards are one strip you scroll sideways. In a very
-  large window (1920 wide and up) each tab's sections share two columns of up to 1000 each, left-aligned, and the theme cards share one row that fits
-  the column, up to 184 wide each, so five always sit side by side. When the window crosses 1920 wide the sections slide between one
-  and two columns and keep your scroll position, open sections and focus, and the theme cards slide to their new places when the
-  window changes size instead of being rebuilt.
-- **Setup: the wizard has a layout for every window size.** Compact is a full-screen sheet with a stacked footer and 40-DIP buttons; Small
-  drops the icon column and shows the two sign-in cards side by side; Huge is a larger 960 x 600 plate. The 770-pixel icon breakpoint is gone.
-- **What's new follows the window size.** Compact swaps the release rail for a 40-high release picker under the title, stacks the hero's
-  actions as a two-column grid of 40-high buttons, lists the highlights as one column of poster rows and gives every control a 40-point
-  target; Small puts a picker beside the title and shows the highlights in two columns; Huge caps the notes at 1600 (left-aligned) beside a
-  wider rail, with the changelog in three columns. The after-update plate fits narrow windows (its cards stack at Compact and its footer
-  buttons can no longer be cut off in a short window) and the highlight viewer's close, arrows and pager dots are 40-point targets at Compact.
-- **The report-a-problem dialog and the crash prompt fit every window.** At Compact they fill the window less 16, the report preview folds
-  behind a 40-tall row, and the fields, pickers, check boxes, links and the Send / Cancel buttons are at least 40 tall. At Huge they open
-  as a two-pane 1040-wide card with the live report beside the form.
-
-- **Artist, profile and concert pages are laid out for every window size.** In a narrow Classic window (under 528 wide) the artist's photo
-  fills the top of the page with the name and the listener counts on it, and Play, Shuffle, Follow and Radio sit in a row of 40-big
-  buttons under it; Top tracks is one column, the shelves are a strip whose next card peeks, and the discography shows two albums
-  across. A profile is centred with a 128 picture, 40-big stats and buttons; a concert's photo sits above its title and the Buy button is
-  40 tall. In a small window the artist's name and buttons sit at the bottom left of the photo, and a profile is a 200-tall row with its
-  buttons on the right. In a short window (under 680 tall) an artist or profile header takes at most 288, and in a window only 330 tall
-  it is a 126 strip with just the name. In a very large window (1920 wide and up) the artist photo is 560 to 640 tall, Top tracks takes up
-  to four columns, the shelves show ten cards, a profile header is 320 tall with a 240 picture, and a concert's tickets sit in a 360
-  column. The photo viewer's buttons are 40 tall in a narrow window and its thumbnails scroll instead of running off the window. A
-  1440-wide window is unchanged.
-- **Full screen fits a narrow or short window.** In a narrow, tall window (a phone-shaped window under 600 wide) full screen is one
-  column: the cover and title, the lyrics, Up next or the artist under them, and the playback card across the bottom with heart, previous,
-  play, next and "…" (the other controls stay in "…" and the player bar); every button there is at least 40 big. When the playback card
-  cannot fit all its buttons in one row it uses that same short row instead of letting buttons run off the card, and in a window only
-  330 tall full screen keeps the cover, the title and the controls apart (the lyric line under the cover gives way). In a small window the
-  playback card is 96 tall with a smaller play button and the lyrics are 30 instead of 36; in a narrow window they are 26. In a very large
-  window (2560 wide and up) the lyrics stop growing at 48 instead of 64. A 1440-wide window is unchanged.
-- **The queue and the video mini player are easier to tap in a narrow window.** Under 528 wide the queue's hearts, remove buttons, the
-  Shuffle / Repeat / Autoplay toggles, "Clear" and "Playing from" are at least 40 big, the lyrics' Resync button is 40 tall, and the video
-  mini player shows full screen and close as 40-big buttons all the time instead of only on hover.
-
-- **Album, playlist, Liked Songs, show and episode pages are laid out for every window size.** In a narrow Classic window (under 528
-  wide) the song rows are 56 tall with 40-DIP art, the heart sits at the end of the row before an always-visible 40-DIP "…", the
-  column header and the versions chevron give way, and a song's length moves under its title; the Play button, the actions beside it
-  and the list's Sort, Filter, Find, Insights and "…" are all 40 by 40, the sort word leads the list bar, the selection bar takes the
-  page accent, and Filter opens as a bottom sheet. In a small window (528 to 1007) the Album and Plays columns give way (Liked Songs
-  keeps its date). In a very wide window (1920 and up) the side rail rests at 320, the rows are a size larger, the page uses up to 2400
-  of the width, and Insights opens as a 360-wide column beside the list instead of covering it. Changing between the hero layout and
-  the side-rail layout, and the columns a width admits, now happens once the window has settled and cross-fades instead of snapping,
-  and leaving the hero layout no longer jumps past the side-rail sizes in between.
-- **The player bar and the side panels fit every window size.** Below 528 DIP wide the player bar is a 56-tall mini bar (a thin
-  progress line, the song as one button that opens Now playing as a sheet, the heart and play), and lyrics, the queue, friends and
-  Now playing open as a sheet from the bottom that a tap outside closes. From 528 to 1007 the bar keeps previous, next, the times,
-  volume, lyrics and the queue, and a side panel floats over the page (340 wide) instead of squeezing it. From 1008 one panel docks
-  beside the page (it used to float between 1008 and about 1140, and to dock in some smaller windows). From 1920 the bar spreads into
-  three zones with the controls centred, and the queue opens in its own panel beside lyrics or Now playing, both at least 380 wide.
-  Changing the window size moves the panels and the bar smoothly instead of jumping. In a narrow window the account and the
-  notifications are at the top of the ☰ drawer, and the title bar's tab button is never cut off.
-- **Menus, dialogs, toasts and the empty, error and offline states fit a narrow window.** In a narrow Classic window (under 528 wide) a
-  right-click or "…" menu opens as a bottom sheet instead of a popup: the song's art and name, the Play, Play next, Play after and Save
-  buttons in one row, then 44-tall rows, with sub-menus opening in place and a short window scrolling the sheet; every target is at
-  least 40 tall. Dialogs (Set up local playback, rename, confirm, the log-out and play-a-link cards, the playlist picker, credits) fill
-  the window less 16 on each side and keep their buttons in the window, a dialog taller than the window scrolls its body instead of
-  pushing its buttons off screen, and none of them stretches in a very wide window. Toasts sit centred just above the mini player,
-  the offline bar is 40 tall edge to edge with a 40-tall Retry, the offline and empty pages use the smaller title with stacked
-  40-tall buttons (and drop their glyph in a very short window so everything fits), and the notification panel and the account menu
-  never leave a 300-wide window. Wider windows are unchanged.
-- **History, the Home customizer, the log viewer, the diagnostics pages, module pages and the not-found page fit every window
-  size.** In a narrow window each is one column: a label sits above its value, a wide table becomes stacked rows, buttons,
-  links, fields and pickers are at least 40 DIP, the history head stacks over a full-width search, and the log viewer shows each
-  entry on two lines. In a short window their heads scroll with the page instead of covering it. In a very large window their
-  content stops at a comfortable width instead of stretching across the screen.
-- **The window adapts to its size in four steps.** Below 528 DIP wide the sidebar is a drawer behind the ☰ button, the page
-  card runs square to the window's edge and the title bar folds its tabs into one count button that lists them (with Back and
-  the search button beside it); from 528 to 1007 the sidebar is the 48-DIP rail (it used to expand again from 660); from 1008
-  it is the full, resizable sidebar; and from 1920 the title bar's search grows to 480 and tabs to 240. Each step waits 40 DIP
-  before it changes back (widening past 528 and 1008, narrowing past 1920), so a window resting on a line never flickers.
-  Pages now share one margin that follows the space they have: 16 when narrow, 32 in a small window, 36 from 880 wide.
-- **Home, Browse, a Browse category and Search are designed for every window size.** In a narrow window Home stacks the daylist (the art on
-  top, the actions 40 tall, the clock a countdown over four bars), Recently played is two 56-tall tiles across, the shelves are a strip
-  whose next card peeks, and the failed-tab message is a 72-tall bar with a 40-tall Retry. A small window gets a 216-tall daylist
-  banner and three tiles across. A very large window caps the page at 2400 and shows ten covers across a shelf, the daylist as a
-  400-tall hero beside the Recently played tiles, and three release columns. A window under 480 tall caps the daylist at a 126-tall strip so the page
-  shows content. Browse shows two genre columns when narrow and small, three standard, six huge; the Charts tiles stack one per row (136 and 140 tall) when
-  narrow, the Mood plates are two, five and twelve across, For you is one scrolling line of 40-tall chips, and a category's shelves are a
-  strip when narrow and ten across when huge. Search runs edge to edge in a narrow window (60-tall rows, a 44-tall scrolling tab strip), scrolls its tabs
-  in a small one, and at huge size puts the top result beside Best matches. The first frame is already laid out for the window's size: Home and Browse no
-  longer build one 1100-wide frame and correct it.
-- **The artist page's header reads better at ordinary window sizes, and Top tracks arrives with the page.** The name, bio
-  and stats now end a little past the middle of the header (they used to run across nine-tenths of it, over the bright
-  half of the photo at a medium or 1440-wide window), and the dark side of the photo now reaches exactly as far as the
-  text before fading out. Follow (on artists, profiles and search results) shows a person instead of a heart, so it no longer
-  looks like Like: a person with a plus before you follow, the person once you do. Top tracks now appears together with
-  the rest of the page instead of fading in a moment after it.
-- **Three Classic options for how much colour the artwork brings.** Settings › Appearance › Classic options › Surfaces now
-  has "Tinted surfaces" as three preview cards, Off, Subtle (today's look, the default) and a new Rich that tints the
-  title bar, the sidebar, the page ground and Home's washes more strongly; in the light theme a page's card stays one step
-  lighter than the sidebar beside it, so Rich never makes the card darker than the chrome. Off now also takes the colour
-  out of the artist photo's veil (it still darkens the photo under the name). "Accent from artwork" (on by default) lets
-  Play, Follow, hearts and links take their colour from the cover; turn it off to use your Windows accent everywhere.
-  "Now playing colours" (on by default) does the same for full screen, its lyrics, the queue's now-playing chip and the
-  now-playing cover's placeholder; off, they stay neutral.
-- **Offline, failures and loading placeholders no longer move the page.** While you are offline, pages you have saved show a
-  slim "You're offline · showing saved content." bar above the page (with Retry) instead of a floating card over its
-  title, and a page with nothing saved says "You're offline" with "<page> needs a connection", Retry and a "Go to Your
-  Library" link, instead of "Something went wrong". When a Home view (Music, Podcasts, Following…) fails to load, its error
-  bar now lies in its own slot over the top of the content instead of pushing every section down. Podcast episode lengths
-  ("27 min", "1 hr 5 min", "… left") follow the app's language. The loading placeholders now match what replaces them:
-  the library list's rows stand at the real rows' spacing, the narrow album/playlist header shows exactly the buttons the
-  page will have and the song list's bar in its real shape, and the library's album and show header placeholders line
-  up with the title and add the missing details line.
-- **More loading placeholders now match what replaces them.** In Your Library, an album's song list in the Classic row style
-  shimmers at the Classic rows' height under the Classic column header (it used to shimmer the taller Modern rows), and the
-  grid views shimmer cards in the grid's own columns instead of list rows. An album or playlist that has no web link (a
-  local one) no longer shows a placeholder square for Share. Liked Songs' loading rows start below the first date
-  heading's space, so the songs no longer land lower than their placeholders, and the artist header's placeholder text
-  lines are as tall as the name, bio and stats they stand for.
-- **Liked Songs is a list with a title, not a cover and a rail.** At a normal window the page is the title, the song count and one
-  bar: Play (with its ⌄ for more ways to play), Shuffle, then the genre chips inline, fading out where more wait, and on the
-  right Filter, Date added, Find, Insights and ⋯. The rows run the full width without stripes, titles are regular weight,
-  and the heart sits before the duration and shows only on the song you point at (every song here is liked). While the
-  list is sorted by Date added it is grouped: "This week", then one group per month ("September · 41 songs"). The cover
-  and its style picker stay on the narrow-window header.
-- **The library page is one surface, and its controls match the rest of the app.** The library list and the album or
-  artist detail beside it now sit on the same content card, split only by a thin divider, instead of three differently
-  tinted panels; the artist list's "in your library · newest" bar is a plain section too. The artist header's buttons are
-  one row: Play all, Follow, then Shuffle and Open artist page as quiet icon buttons, the same in a narrow window (where
-  Play all used to be a round button); when the row would not fit, Shuffle and Open artist page fold into a ⋯ menu. The sidebar library's sort reads "Recents ⌄" (one label and a chevron, no arrows)
-  and keeps its label at the default sidebar width more often. Browse's Top and For you links use the same square-cornered
-  chips as every filter in the app, and Search's "matched title" / "lyrics match" tags use the same small badge as podcasts.
-- **Track rows are quieter at rest.** A song shows a heart only when you like it; the outline heart and the "…" button
-  appear when you point at the row or move to it with the keyboard, and the artist page's top tracks follow the same
-  rule. The versions chevron now appears only on songs that have another version (a music video or an alternate recording) and points down, turning as the versions open; other songs reach the same panel
-  through "Track details" in their menu. A song with a music video no longer shows a film icon at the end of the row (it
-  read like a checkbox on Liked Songs): a small film icon follows its title instead, in both row styles. A song you
-  can't play states why in its time column, "Unavailable" or its release date in smaller text, and pointing at that
-  shows the full reason ("This song isn't available to play", "Releases …").
-- **Album, playlist and Liked Songs pages lead with one Play split.** The rail (and the narrow-window header) now starts with
-  one accent control, Play with a small ⌄ beside it ("More ways to play": Add to queue, Play next, Start radio), followed
-  by Shuffle, the heart, Share and ⋯. Albums get their ⋯ in the rail too, and your own playlists no longer show a heart
-  (a playlist you follow keeps it, to unfollow). The split reads as one button: one border, a quiet divider and a
-  12-point chevron. Every Play button in the app now uses the colour it is given instead of a paler shade of it, and a
-  colour taken from the artwork always keeps 4.5:1 contrast for the Play label, the hearts and accent text: a colour
-  that is too light or too dark steps to a darker or lighter shade, and falls back to your system accent when none fits.
-  The "Add to playlist" item in a playlist's list menu reads "Copy to playlist" for every playlist.
-- **The song list's bar is simpler, and Insights opens over the list on every page that has it.** Above an album's, a playlist's
-  or Liked Songs' songs the bar now holds Play next and Shuffle on the left and Filter, the sort, Find, Insights and ⋯ on the
-  right; Row size, Select and the column switches moved into ⋯. The sort shows one name and one chevron ("Album order" on an
-  album) and is highlighted only when you changed it from the page's own order. While a find or a filter narrows the list,
-  the count under the title reads "3 of 48 songs · 11 min (filtered)". Insights (the "This week", tempo and rediscover
-  cards) is now a 320-point sheet over the list on every playlist, followed ones included, and on Liked Songs, at every
-  window size: it stays closed until you press Insights and no longer sits in the left column. The column header's line
-  now starts exactly where the song rows' highlight starts.
-- **The title bar search widens while you use it, and its suggestions line up with it.** Clicking into the search box
-  widens it by up to 80 points, box and text together, without ever covering a tab or your profile picture; it eases back
-  when you leave it. The suggestions list is now exactly as wide as the search box and starts at its left edge, instead of
-  overhanging a narrow box. The light/dark button left the title bar: switch with Settings > Appearance > App mode or the
-  theme row in the profile menu. **Ctrl+,** opens Settings.
-- **Page heads have one title and a small breadcrumb.** A Browse category or section, a Home section and the Concerts pages
-  no longer spell their parents out in large dimmed text: the page shows one 40-point title with a small "Home › Browse" trail
-  of its parents above it (none when the page is only two levels deep), and the Concerts hub and a concert's page no longer
-  repeat their title above their own header card. The discography and profile list pages ("Followers", "Albums") get the
-  same small trail instead of repeating the title twice. Library, Settings and What's new use the same large page title
-  as Browse and Search, and the library's album pane shows its title one size up on one line. Settings drops the gear
-  next to its title and the empty gap above the first section, and switching Settings tabs now cross-fades like a page.
-- **Settings > Appearance is regrouped.** The tab now starts with a Theme picker (one card per installed theme), then one
-  expandable "Wavee Classic options" card that holds the sidebar, track list, track page and surface settings that used to
-  be spread over the Lists, Sidebar and Theme sections, followed by App mode, Zoom and Marquee text. The daylist clock
-  moved to its own Home section. Every setting keeps its value; nothing was removed. The command palette (Ctrl+K) lists
-  a theme's options that ask for a command.
-- **The sidebar layout and density are now Wavee Classic's "Layout" and "Density" options.** They sit at the top of
-  Settings > Appearance > Wavee Classic options > Sidebar (the layout as the same two preview cards, the density as the
-  same drop-down), and the layout and density you had carry over. The command palette's "Use Classic layout" and "Use
-  Library layout" rows are now "Layout: Classic" and "Layout: Library"; picking one while you are editing the sidebar
-  ends the editing instead of being refused. The setup wizard's second page is now the Theme page: the theme cards plus
-  these options (and the colour washes switch), instead of only the two layout cards.
-- **Color washes are now Wavee Classic's "Color washes" option.** Settings > Appearance > Wavee Classic options > Surfaces
-  shows the same on/off switch as before (generated with the theme's other options, without the old brush icon), and your
-  choice carries over. With the washes off, the Recents page's accent colour now still follows the artwork, like every other
-  page's.
-- **Lyrics blur: the Auto choice is gone; the intensity slider is the one setting (0 turns it off).** Settings >
-  Appearance > Lyrics no longer has an "Auto" link next to the slider. The blur is the 0-100 slider, 100 by default; if
-  you had Auto, your lyrics keep the full blur (100) until you move the slider.
-- **"Track list style" (Modern or Classic rows) is now a Wavee Classic option.** It stays the first card of the "Track lists"
-  group of the "Wavee Classic options" card, with the same two miniature rows, and your current choice carries over.
-  "Reset options" now puts it back to Modern together with the card's other options.
-- **Row density and "Always hide track artwork" are now Wavee Classic options.** They stay in the "Track lists" group of the
-  "Wavee Classic options" card (the artwork switch now comes before the density cards) and work as before, including the
-  Row size slider in a track list's toolbar; your current choices carry over. "Reset options" now puts them back to
-  their defaults (Default density, artwork shown) together with the card's other options.
-- **The track page layout, "Keep left-rail same size" and "Clear all remembered sizes" are now Wavee Classic options.** They
-  sit in Settings > Appearance > Wavee Classic options > Track pages with the same two layout cards, the same switch and
-  the same confirmed button, and show and hide exactly as before (the switch only with the Automatic layout, the reset only
-  while the rails are not shared). Your layout, your shared-rail choice and every rail width you set carry over.
-  "Reset options" now also puts the layout back to Automatic and the rails to per-kind.
-- **The developer-only "Page motion" setting is gone.** Settings > Appearance no longer offers it (it only showed in
-  developer mode). Pages always animate with the standard fade-through that everyone already had; a value stored by an
-  older build is ignored.
-- **The sidebar can show its playlists as plain text rows, and a pin is a button.** A new "Show covers" switch in Settings >
-  Appearance > Wavee Classic options > Sidebar (on by default, Classic layout only) turns the playlist, album and pin rows
-  into compact 36-high text rows when you switch it off: no cover, the name 16 from the edge, a folder icon on folders with
-  their name at 40, child rows indented. The rail keeps its covers. A pinned row's pin is now a real 24-wide "Unpin" button
-  that unpins it in one click (it stays visible when you point at the row; only the count gives way to the ⋯ button, in
-  the same spot), and "Pin to sidebar" / "Unpin from sidebar" is a top-level item of a playlist's or folder's right-click
-  menu instead of sitting inside "Organize".
-- **Auto zoom is smaller on some large monitors, and it applies at once.** With Zoom on Auto, a window at least 1920
-  wide (before zoom) is no longer zoomed so far that the page gets narrower than 1920: there is more room and the text
-  is a little smaller. On a 1440p-class monitor at 100 % (2560 × 1440) and a 4K monitor at 150 % Auto
-  now picks 125 % instead of 150 %; 4K at 125 % goes from 175 % to 150 %, 1440p at 125 % and 4K at 175 % from 125 % to
-  100 %. 1080p monitors and 4K at 100 % are unchanged (100 % and 200 %). Widening the window never lowers the zoom. The
-  new zoom is also applied in the same frame when you maximize, restore, snap or release a window edge, or move the
-  window to another monitor, instead of half a second later; only a quick series of resizes still waits for the last
-  one. Zoom picked by hand (the Zoom row, Ctrl+Plus/Minus, Ctrl+wheel) now stops before the page would get narrower than
-  300, instead of zooming a small window into a sliver.
-- **The player bar keeps the Queue button from the compact width up.** From a 440-wide window the Queue button sits in
-  the bar, ahead of Lyrics, Volume and Shuffle/Repeat (it used to appear only from 1100 wide, after the volume slider); the
-  seek bar gives up the room, the buttons stay 32 wide. Lyrics, Queue, Devices and the video button now share one "on"
-  plate, and the video button's plate covers its arrow too.
+- **Wavee needs less graphics memory.** The window's background and chrome are drawn directly instead of being kept as
+  cached pixels (about 20 MB less while you browse), small thumbnails take less GPU room, and the peak over a long
+  session is about 12 % lower. On Snapdragon PCs the cover cache now keeps to its size instead of growing to twice it,
+  up to 45 MB less after browsing many pages. Covers no longer stay in memory after they reach the screen.
+- **Moving between pages is lighter.** Opening an album, artist or playlist with the queue open no longer redraws the
+  queue, and a short pause after every page change, spent reading the app's own memory use, is gone.
+- **Auto zoom picks a smaller zoom on 1440p and 4K monitors, and applies at once.** On a large monitor Auto no longer
+  zooms so far that a wide window gets narrower pages, so there is more room and the text is a little smaller; 1080p
+  monitors are unchanged. The new zoom applies in the same frame when you maximize, restore, snap, release a window edge
+  or change monitor. A zoom you pick by hand (the Zoom row, Ctrl+Plus/Minus, Ctrl+wheel) stops before the page gets too
+  narrow.
+- **The window adapts to its size in four steps.** In a narrow window the sidebar is a drawer behind the ☰ button, the
+  page runs to the window's edge, and the title bar folds its tabs into one count button with Back and search beside it.
+  Medium windows get the slim icon rail, large windows the full resizable sidebar, and very large windows a wider title
+  bar search and wider tabs. A window resting on a step no longer flickers between the two layouts, and pages share one
+  margin that grows with the window.
+- **Home, Browse and Search use the room they have.** Narrow windows stack the daylist, show Recently played two tiles
+  across, turn shelves into strips you swipe and run Search edge to edge with a scrolling tab strip; Home's facet row
+  ends in a Friend activity button. Very large windows show ten covers across a shelf, the daylist as a hero beside
+  Recently played, more genre columns in Browse, and in Search the top result beside Best matches with an Artists row of
+  round cards. A short window caps the daylist so the page shows content.
+- **Album, playlist, Liked Songs, show and episode pages fit every window size.** In a narrow window song rows are
+  compact with the heart and "…" always visible, the song's length sits under its title, buttons are large enough to
+  tap, Filter opens as a bottom sheet, and playlists and Liked Songs drop the "#" column and show Recommended songs
+  below the list. Medium windows turn Sort into an icon and drop the Album and Plays columns. An empty playlist shows
+  "Nothing here yet" and a field that searches for songs to add at every size, and Local files follows the same layouts.
+- **Very large windows use their room on album, playlist and Liked Songs pages.** An album gets a right-hand column with
+  About this release, the artist (a large photo, monthly listeners, the bio), Fans also like and More by, and the songs
+  keep their margin instead of running to the window's edge. A playlist shows its recommended songs and Insights in a
+  side column, and Liked Songs opens with Insights showing; close it and it stays closed for that visit. Changing
+  between the hero and side-rail layouts now cross-fades once the window has settled instead of snapping.
+- **Artist, profile and concert pages fit every window size.** In a narrow window the artist's photo fills the top with
+  the name and listener counts on it, buttons sit in a row below, Top tracks is one column, shelves are strips you
+  swipe, and profiles and concerts get a centred, tappable layout; short windows cap the header height. Very large
+  windows show a row of section links under the photo, a More button after Radio, Top tracks in more columns, an "Artist
+  pick" heading with the artist's next concert under it, and a concert's lineup beside related dates. The photo viewer's
+  buttons are tap-sized and its thumbnails scroll instead of running off the window.
+- **The artist header reads better, and Follow no longer looks like Like.** The name, bio and stats now end a little
+  past the middle of the header instead of running over the bright half of the photo, and the dark side of the photo
+  reaches exactly as far as the text. Follow on artists, profiles and search results shows a person (with a plus before
+  you follow) instead of a heart, and Top tracks appears together with the rest of the page instead of fading in after
+  it.
+- **The library and Recents fit every window size.** In a narrow window the library is one column with kind chips over
+  the title, a Sort button that opens a menu, list and grid buttons and a breadcrumb back from an opened album, show or
+  artist; the change between columns and one column fades instead of jumping. Medium windows show Sort as one button,
+  two covers a row and a tidier Recents with an aligned time column. Very large windows tint the list, show four covers
+  a row, put "Also by … in your library" beside an album's songs, and start the library list and sidebar wider until you
+  drag them yourself; sort words that do not fit go into a "more" menu. Recents shows its Overview calendar beside the
+  list, and clicking a day scrolls the list to it.
+- **The library page is one surface, and its controls match the rest of the app.** The list and the album or artist
+  detail beside it sit on one content card split by a thin divider instead of three differently tinted panels. The
+  artist header's buttons are one row (Play all, Follow, then Shuffle and Open artist page as quiet icons that fold into
+  a ⋯ menu when the row is too narrow), the sidebar library's sort reads "Recents ⌄", and Browse's Top and For you links
+  use the same chips as every other filter.
+- **Settings and the utility pages fit every window size.** In a narrow window the tabs are one strip that scrolls
+  sideways, each setting sits under its name with its control full width, controls are large enough to tap and the theme
+  picker is two columns. Very large windows put each tab's sections in two columns and the theme cards in one row, and
+  sections slide between one and two columns without losing your scroll position, open sections or focus. History, the
+  Home customizer, the log viewer, the diagnostics and module pages and the not-found page become one column in a narrow
+  window and stop at a comfortable width in a very large one.
+- **Full screen and lyrics fit every window size.** In a phone-shaped window full screen is one column: cover and title,
+  lyrics, Up next or the artist, and a playback card across the bottom, with every button tap-sized and a visualizer
+  chip instead of the gallery opening on its own. Medium windows get a smaller playback card and smaller lyrics. Very
+  large windows add an Up next column and visualizer bars beside the lyrics, let the visualizer gallery run to the
+  bottom with the controls beside it, and put like and more buttons next to the video title. In a window only 330 tall
+  the cover, title and controls stay apart.
+- **The player bar, side panels and queue fit every window size.** In a narrow window the player bar is a mini bar with
+  a thin progress line, the song as one button that opens Now playing as a sheet, the heart and play; lyrics, the queue,
+  friends and Now playing open as bottom sheets that a tap outside closes. Medium windows keep previous, next, the
+  times, volume, lyrics and the queue in the bar, with side panels floating over the page, while large windows dock one
+  panel beside it. Very large windows spread the bar into three zones and open the queue in its own panel beside lyrics
+  or Now playing, and the Queue button now stays in the bar from narrow widths up.
+- **The now-playing sheet and the queue are easier to use in a narrow window.** The sheet has a header with a close
+  chevron, "Playing from" with the album or playlist name (tap it to open the page) and a "⋯" button for the track menu,
+  and a Devices button between Lyrics and Queue opens the device picker. The queue's hearts, remove buttons, toggles and
+  Clear are tap-sized, and the video mini player shows full screen and close all the time instead of only on hover.
+- **Menus, toasts and the empty, error and offline pages fit a narrow window.** A right-click or "…" menu opens as a
+  bottom sheet with the song's art and name, a row of Play, Play next, Play after and Save, then large rows, with
+  sub-menus opening in place. Toasts are as wide as the window and sit just above the mini player, the offline bar and
+  its Retry button are full width, the offline and empty pages stack their buttons, and the notification panel and
+  account menu never leave a narrow window.
+- **Dialogs and the stock controls fit a narrow window.** Dialogs (Set up local playback, rename, confirm, log out, play
+  a link, the playlist picker, credits) fill the window, keep their buttons in view and scroll their body when they are
+  taller than the window; the report-a-problem dialog and the crash prompt fold the report preview behind a row, and in
+  a very large window they open as a two-pane card with the live report beside the form. Dialog buttons share the row,
+  dropdowns, number boxes and menu rows are taller, and none of it stretches in a very large window.
+- **Setup fits every window size.** In a narrow window setup is a full-screen sheet with a stacked footer, medium windows
+  show the two sign-in cards side by side, and very large windows get a larger setup plate.
+- **What's new is easier to read, and its pictures follow light and dark mode.** The release's highlights lead the page
+  the way the Microsoft Store does, one large tile and smaller ones beside or under it, and open in full with a click.
+  Every change is one line you can open for the details, grouped by Added, Changed, Fixed and so on, with a bar to show
+  one group. The release list is a plain list, and in a narrow window a picker under the title. Highlight pictures have a
+  light version in light mode, and the highlight viewer's page dots and text are readable in light mode. The after-update
+  plate fits narrow windows and its footer buttons are no longer cut off in a short window.
+- **Offline and loading states no longer move the page.** While you are offline, saved pages show a slim "You're offline
+  · showing saved content." bar with Retry above the page, and a page with nothing saved says "You're offline" with
+  Retry and a "Go to Your Library" link instead of "Something went wrong". A failed Home view shows its error bar over
+  the top of the content instead of pushing the sections down, and loading placeholders now match what replaces them in
+  the library, on album and playlist pages, in Liked Songs and in the artist header. Podcast episode lengths follow the
+  app's language.
+- **Album, playlist and Liked Songs pages say when they hold songs you can't play.** A bar over the list reads, for
+  example, "2 songs here can't be played: one isn't available in your country, one isn't out yet." Its **Hide them**
+  button turns on the filter's "Hide songs I can't play", and the bar slides open and closed instead of moving the list.
+- **Liked Songs is a list with a title, not a cover and a rail.** The page is the title, the song count and one bar with
+  Play (and its ⌄ for more ways to play), Shuffle, genre chips and on the right Filter, Date added, Find, Insights and
+  ⋯. Rows run the full width, the heart shows only on the song you point at, and a list sorted by Date added is grouped
+  into "This week" and one group per month. The cover and its style picker stay on the narrow-window header.
+- **Track rows are quieter at rest.** A song shows a heart only when you like it, and the outline heart and the "…"
+  button appear when you point at the row or move to it with the keyboard. The versions chevron appears only on songs
+  that have another version, a song with a music video gets a small film icon after its title, and a song you can't play
+  says why in its time column ("Unavailable" or its release date) with the full reason on hover.
+- **Album, playlist and Liked Songs pages lead with one Play button and a simpler song list bar.** Play has a small ⌄
+  beside it (Add to queue, Play next, Start radio), followed by Shuffle, the heart, Share and ⋯; your own playlists no
+  longer show a heart. The bar above the songs holds Play next and Shuffle on the left and Filter, the sort, Find,
+  Insights and ⋯ on the right, and Insights now opens as a sheet over the list on every playlist and on Liked Songs. A
+  colour taken from the artwork always keeps enough contrast for the Play label, hearts and accent text, and "Add to
+  playlist" in a playlist's list menu reads "Copy to playlist".
+- **The title bar search and page heads are tidier.** Clicking into the search box widens it without covering a tab or
+  your profile picture, and its suggestions line up exactly with the box. Ctrl+, opens Settings. Browse categories, Home
+  sections and the Concerts pages show one large title with a small "Home › Browse" trail above it instead of dimmed
+  parent titles, and Settings drops the empty gap above its first section and cross-fades between tabs like a page.
+- **Settings > Appearance is regrouped around themes.** It starts with a Theme picker, then one expandable "Wavee
+  Classic options" card holding the sidebar, track list, track page and surface settings that used to be spread over
+  several sections, followed by App mode, Zoom and Marquee text; the daylist clock moved to its own Home section.
+  Sidebar layout and density, Color washes, Track list style, row density, "Always hide track artwork" and the track
+  page layout are now Classic options with your current choices carried over, and "Reset options" puts them back
+  together. The command palette lists a theme's options ("Layout: Classic", "Layout: Library"), and the setup wizard's
+  second page is now the Theme page.
+- **A pinned row's pin is a button.** A pinned sidebar row shows a real "Unpin" button that unpins in one click, and
+  "Pin to sidebar" / "Unpin from sidebar" is a top-level item of a playlist's or folder's right-click menu instead of
+  sitting inside "Organize".
 - **Player style is hidden until it changes Now playing.** The gear above the Now playing art, the art's "Player style…"
   menu, the Settings > Appearance > Now playing section and the command palette's two player-style commands are only
-  offered in developer mode, where the styles actually show; elsewhere Now playing shows the cover, as it already did. (#199)
-- **Dutch and Korean cover the new layouts.** The text added for the theme work (the tiered pages, the theme picker and its options,
-  the "can't be played" bar and the narrow-window sheets) now has Dutch (nl) and Korean (ko-KR) text instead of falling back to English.
-  These are unreviewed drafts, so both languages stay out of the language picker until their tables are reviewed.
+  offered in developer mode, where the styles actually show; elsewhere Now playing shows the cover, as it already did.
+  (#199)
+- **Dutch and Korean cover the new layouts.** The text added for the themes, the theme picker and its options, the
+  "can't be played" bar and the narrow-window sheets now has Dutch (nl) and Korean (ko-KR) text instead of falling back
+  to English. These are unreviewed drafts, so both languages stay out of the language picker until their tables are
+  reviewed.
+
+### Removed
+
+- **The developer-only "Page motion" setting.** Settings > Appearance no longer offers it. Pages always animate with the
+  standard fade-through that everyone already had, and a value stored by an older build is ignored.
+- **The lyrics blur "Auto" choice.** The intensity slider in Settings > Appearance > Lyrics is the one setting, and 0
+  turns the blur off. If you had Auto, your lyrics keep the full blur until you move the slider.
+- **The light/dark button in the title bar.** Switch with Settings > Appearance > App mode or the theme row in the
+  profile menu.
 
 ### Fixed
 
 - **Repeated songs in another device's queue are separate rows again.** When you watch the queue of a phone or another
-  computer that repeats its album or playlist, every copy of a song acted as the first one: clicking the second copy played
-  the first. Clicking a copy now plays that copy, and the queue no longer redraws every row each time the other device
-  updates it. The same holds when another device edits the queue on this one.
-- **The audio cache keeps caching once it is full.** When the cache sat just under its size limit, it refused every new piece of
-  a song instead of making room, so new music stopped being cached until something else freed space. It now evicts the songs you
-  played longest ago to fit the new one.
-- **The library no longer flashes its one-column view when the window narrows past 1008 wide.** For a few frames the albums list
-  briefly turned into the drill-in view and back, because the page measured itself beside the navigation pane before the pane
-  narrowed. The page now waits for that layout before it changes form.
-- **"Choose device" opens the Devices list in a narrow window.** In a window under 528 wide, where Now playing is a sheet that covers the
-  player bar, the "Choose device" button on a message (and the tray's Devices entry) now slides the Now playing sheet up if it is down, shows
-  its Now playing page if it was on Lyrics or Queue, and opens the same device list as the sheet's Devices button; with the sheet already
-  open it just opens the list. The sheet's Lyrics, Devices and Queue buttons now sit 14 under the playback controls, as designed (it was 8).
-- **Browse's Charts and Search's Best matches no longer jump when the window crosses a size step.** Widening or narrowing Browse past the
-  point where Charts turns from a row of cards you page through into a list of tiles (or back) used to swap them in one frame and shove the
-  sections below; the two now cross-fade while the sections below slide to their new place. Search's Best matches kept the row size it opened
-  with: in a narrow window its rows now become the narrow 60-tall rows with smaller covers (and grow back to 64 when widened) without being
-  rebuilt, and the list resizes smoothly. Its pages also follow the new width (three rows in one column, two by two, three by three) instead of
-  keeping the grid it opened with.
-- **Resizing the window past a size step no longer rebuilds parts of the page.** Crossing 528, 1008 or 1920 wide (or the page widths 600,
-  880 and 1600) used to throw away Home's shelves, the "See all" grid, Browse and Search shelves and grids, the Recents tabs, the Settings
-  tab strip and number boxes, the What's new picker, cards and sections, the log list and the artist page's shelves, chart and albums, and
-  build them fresh: they lost their scroll position, page or focus and popped in. They now stay the same and glide into their new size and
-  place; a list or grid keeps the item at its top, and only parts that really change shape (the What's new rail and picker, its poster and
-  row cards) fade from one to the other.
-- **The artist page's Top tracks no longer rebuilds when a very wide window crosses 3200 wide.** It switches between three columns of five
-  and four columns of four in place: it keeps its page and your selected songs, and its height glides to the new size instead of jumping.
-- **The narrow-window drawer, the Now Playing sheet and the other bottom sheets behave like overlays.** In a narrow Classic
-  window the mouse wheel and the touchpad scrolled the page under an open drawer or sheet; they now scroll the drawer's or
-  the sheet's own list, and the page behind never moves. The drawer shows the full navigation under the account row again
-  (it had shrunk to a small card with only the account row). The Now Playing sheet fits the window: the cover shrinks so
-  the title, the playback controls and the Lyrics and Queue buttons stay on screen, and the rest scrolls; it now has its
-  own seek bar and play, previous, next, shuffle and repeat buttons, since it covers the player bar. Drag a sheet down by
-  its handle to close it, like on a phone: it follows the pointer, closes when you pull far or flick, and springs back
-  otherwise (the context-menu sheet too). Opening a drawer or sheet moves keyboard focus into it, Tab stays inside it,
-  Escape closes the sheet, and reopening one mid-close no longer jumps.
-- **Store screenshots are no longer dimmed.** The opaque form of the Store screenshot capture (`wavee://diag?cmd=shot`) composited the
-  window's see-through title bar, sidebar and page fills over black, so every shot came out with a grey cast and black chrome; it now
-  composites them over the window's own background colour, which is what the window shows.
-- **The window can no longer be dragged down to a title-bar strip.** It now stops at 330 DIP tall, which keeps the title bar,
-  a usable page and the player bar on screen (#197).
-- **The album and playlist side column shows again.** In Classic the left column of an album or playlist page (the cover,
-  title, artist, song count and the Play button) was blank; it now fills the page's height and shows its content. The
-  collapsed column also keeps its expand arrow at the bottom again.
-- **An album or playlist page takes its cover's colour when the colour arrives after the page opened.** The page ground
-  used to stay neutral until you opened the page again whenever the cover's colour was not known yet (in Classic), and
-  turning Surfaces off with a page open left that page's colour behind it.
-- **Page changes move as one.** The Browse and Concerts title (the masthead) now leaves with the page it belongs to and
-  fades in with the next one, instead of the new title appearing over the old page for a moment. The window colour taken
-  from a page's artwork changes when the new page arrives instead of under the leaving one, and an album opened from
-  another album no longer shows the previous album's colour behind its loading placeholders. Home's loading bar now fades
-  in and out in its fixed place under the facet titles instead of popping on and off. The page change itself (90 ms out,
-  210 ms in) is unchanged.
-- **Switching between light and dark fades the album and playlist page colour too.** The tinted ground behind a track
-  page used to jump to the new mode while everything else faded; it now takes the same 250 ms fade.
-- **The window opens on a finished frame.** Wavee now shows its window only once the first frame has been drawn, so you no
-  longer see an empty window background first, and on a first start (or when you need to sign in again) the setup screen
-  is already up when the window appears. Pages and their animations start on the first frame you actually see.
-- **The sidebar says what it cannot show.** A sidebar name cut short by the pane now shows in full as a tooltip, also when a
-  pin mark or a count stands beside it, and in the rail's folder and section flyouts. A pinned playlist, album, artist or
-  podcast that cannot load while you are offline keeps its last name and cover, dimmed, with a "Not available offline"
-  mark in place of the pin, instead of turning into a grey "Playlist". When Your Library cannot be refreshed, a banner
-  under its toolbar says "Couldn't refresh your library. Showing what was loaded." with a Retry button (or, if nothing
-  loaded, the error state with Retry), instead of loading forever; the grid view now shows placeholder tiles while it
-  loads instead of an empty pane.
-- **Lyrics say when they need a connection.** Offline, a song whose lyrics are not saved on this PC now shows "Lyrics need
-  a connection" with a Retry button instead of "No lyrics available", and the lyrics appear by themselves when you are back
-  online. Saved lyrics still show offline.
-- **Full-screen lyrics no longer jump when the text size steps.** Resizing the full-screen view so the lyrics grow or shrink
-  now reflows the lines in place and keeps the current line where it was, instead of rebuilding the whole column.
-- **Full-screen visualizers read one light/dark setting.** Every visualizer face now picks its light or dark look from the
-  same place as the rest of the full-screen view, and the darkening over a face behind the cover or lyrics now depends on
-  the face (deeper behind Bloom and Ring, lighter behind the others) instead of one flat value.
-- **Pages you return to no longer re-flow on their first frame.** When a page is opened again after it left the page
-  cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
-  Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout
-  at once, instead of showing a default-width layout for one frame and then snapping to the real one.
-- **No zoom jump right after Wavee starts.** With Zoom on Auto, a zoom saved on another window or monitor used to be
-  replaced by the right one half a second after the first frame, so the whole app visibly resized. The first frame
-  now opens at the zoom Auto picks for the window.
+  computer that repeats its album or playlist, clicking the second copy of a song used to play the first. Clicking a
+  copy now plays that copy, and the queue no longer redraws every row each time the other device updates it.
+- **The audio cache keeps caching once it is full.** A cache just under its size limit used to refuse every new piece of
+  a song, so new music stopped being cached. It now evicts the songs you played longest ago to make room.
+- **Resizing the window past a size step no longer jumps or rebuilds the page.** Home's shelves, Browse and Search
+  grids, the Recents tabs, the Settings tab strip, the What's new picker, the log list and the artist page's shelves,
+  chart and albums used to be rebuilt and lost their scroll position, page or focus; they now glide into their new size.
+  Browse's Charts and Search's Best matches cross-fade instead of shoving the sections below, the library no longer
+  flashes its one-column view as the window narrows, and Top tracks and full-screen lyrics resize in place.
+- **Pages you return to and the first frame appear at their final layout.** A page opened again after leaving the page
+  cache no longer shows a default-width layout for one frame and then snaps. Wavee shows its window only once the first
+  frame is drawn, the setup screen is already up on a first start, and with Zoom on Auto the first frame opens at the
+  right zoom instead of resizing half a second later.
+- **"Choose device" opens the Devices list in a narrow window.** The button on a message (and the tray's Devices entry)
+  now brings up the Now playing sheet and its device list, and the sheet's Lyrics, Devices and Queue buttons sit at the
+  designed distance under the playback controls.
+- **The narrow-window drawer, the Now Playing sheet and the other bottom sheets behave like overlays.** The mouse wheel
+  and touchpad now scroll the drawer or sheet instead of the page behind it, and the drawer shows the full navigation
+  again. The Now Playing sheet fits the window and has its own seek bar and playback buttons, and you can drag any sheet
+  down by its handle to close it. Opening one moves keyboard focus into it, Tab stays inside, and Escape closes it.
+- **Store screenshots are no longer dimmed.** They used to come out with a grey cast and black chrome; they now show the
+  window's own background colour.
+- **The window can no longer be dragged down to a title-bar strip.** It now stops at 330 tall, which keeps the title
+  bar, a usable page and the player bar on screen. (#197)
+- **The album and playlist side column shows again, in the cover's colour.** In Classic the left column of an album or
+  playlist page (cover, title, artist, song count and Play) was blank, and the collapsed column lost its expand arrow.
+  The page also takes its cover's colour when that colour arrives after the page opened, and turning Surfaces off with a
+  page open no longer leaves its colour behind.
+- **Page changes move as one.** The Browse and Concerts title now leaves with its page and fades in with the next one,
+  the window colour from a page's artwork changes when the new page arrives, and an album opened from another album no
+  longer shows the previous album's colour behind its placeholders. The tinted ground behind an album or playlist now
+  fades when you switch between light and dark, and Home's loading bar fades in its fixed place instead of popping.
+- **The sidebar says what it cannot show.** A cut-short sidebar name shows in full as a tooltip. A pinned item that
+  cannot load while you are offline keeps its last name and cover, dimmed, with a "Not available offline" mark. When
+  Your Library cannot be refreshed, a banner says "Couldn't refresh your library. Showing what was loaded." with Retry
+  instead of loading forever, and the grid shows placeholder tiles while it loads.
+- **Lyrics say when they need a connection.** Offline, a song whose lyrics are not saved shows "Lyrics need a
+  connection" with Retry instead of "No lyrics available", and the lyrics appear by themselves when you are back online.
+  Saved lyrics still show offline.
+- **Full-screen visualizers share one light/dark setting.** Every visualizer face now picks its light or dark look from
+  the same place as the rest of full screen, and the darkening behind the cover or lyrics suits each face (deeper behind
+  Bloom and Ring, lighter behind the others).
+
+### Known limitations
+
+- **WinUI theme: the artist page can jump while a side panel closes.** The page restacks as the panel goes away, and the
+  content can shift for a moment.
+- **WinUI theme: the side panel's tab strip is cut off at its narrowest width.**
+- **WinUI theme: the player bar cuts long song credits without "…".** It also does not follow the scrolling-text
+  (Marquee) setting yet.
 
 ## [0.3.5] - 2026-10-13
 
