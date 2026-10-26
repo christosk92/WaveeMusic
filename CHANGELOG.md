@@ -169,7 +169,6 @@ versions separately under `v*` and is not tracked in this file.)
 - **Player style is hidden until it changes Now playing.** The gear above the Now playing art, the art's "Player style…"
   menu, the Settings > Appearance > Now playing section and the command palette's two player-style commands are only
   offered in developer mode, where the styles actually show; elsewhere Now playing shows the cover, as it already did.
- 
 - **Dutch and Korean cover the new layouts.** The text added for the themes, the theme picker and its options, the
   "can't be played" bar and the narrow-window sheets now has Dutch (nl) and Korean (ko-KR) text instead of falling back
   to English. These are unreviewed drafts, so both languages stay out of the language picker until their tables are
