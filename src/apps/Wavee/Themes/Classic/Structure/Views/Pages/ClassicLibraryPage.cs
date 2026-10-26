@@ -77,13 +77,14 @@ internal static partial class ClassicLibraryPage
             // KEYED, and so is `Collapsed`'s root: see the note in the file header.
             inner = new BoxEl
             {
+                // Shrink and MinHeight 0 (and on the root): the card owns the page's height, so a height easing inside a pane never grows the page past it.
                 Key = "lib:wide", Animate = s_arm,
-                Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
+                Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
                 Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props, cache.Dragging), right],
             };
         }
         // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
-        return new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = [inner] };
+        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = [inner] };
     }
 
     // ══ THE PER-INSTANCE CACHE ═══════════════════════════════════════════════════════════════════════════════════════

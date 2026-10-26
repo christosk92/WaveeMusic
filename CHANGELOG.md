@@ -31,6 +31,8 @@ versions separately under `v*` and is not tracked in this file.)
 - An artist page no longer flashes its bare photograph for a frame when the colours from its photo load.
 - Synced lyrics no longer show the whole column at its next position for one frame before scrolling there, which made
   some line changes look like a jump.
+- The player bar no longer slides down out of the window and back when you select an album in your library or the page
+  under it resizes.
 
 ## [0.3.6] - 2026-10-26
 
