@@ -10,13 +10,13 @@
 //     share and "..." pushed to its end), the description when the page has one, then the table's list bar. The table pins it (`Sticky(0)`) and collapses
 //     it (`Collapse`) into the STUCK band (56): the title and the byline beside the table's Find · Filter · Play words; the selection arm swaps the band's
 //     content at the same height; the expanded search field takes the title's place;
-//   · the COLUMNS form: the panorama over [the identity column | the column gap | the list head ("songs", the list bar) | the aside]. The table pins it
+//   · the COLUMNS form: the panorama over [the identity column | the column gap | the list head (the list bar) | the aside]. The table pins it
 //     whole; the identity column and the aside HANG below it (their slots lay out 0 tall), beside the rows, which the table insets by exactly their widths
 //     (`Style.ListInsets`). The identity column is the cover at the column's width OVER the artist and the meta, the ring row (share and "...": play, saved
 //     and shuffle live in the band's row 2 from Small up, audit A4), the status rows, the release's courtesy lines and the description;
 //   · what one form has and the other has not enters and leaves on a declared swap fade (`ZuneMotion.SwapFade`): the play and saved rings (the band's verbs
 //     at the columns form), the column's owner, badges, rating, status, topics, about, countdown and release rows (the band under the rows holds the
-//     countdown and the release at the hero form: `Detail.VerticalTrailing`), a playlist's leading description, the "songs" heading's words, the stuck band.
+//     countdown and the release at the hero form: `Detail.VerticalTrailing`), a playlist's leading description, the stuck band.
 //
 // THE NUMBERS AGREE (the hero form). Its height is ONE rule (`ZuneDetailRules.HeroHeight`: the panorama band, the cover row, the action row and its air, the
 // description's reserved lines, the bottom air, the list bar's block), every block laid out at exactly that height, and the stuck band's collapse distance is
@@ -212,9 +212,6 @@ internal static class ZuneDetailHero
             bool dock = columns && Docks(cols?.Aside, lay);
 
             // ── the body: [identity | gap | list head | aside], a row at the columns form, stacked at the hero form ──
-            bool songs = columns && hasRail;
-            var shown = rail?.Shown;
-            Prop<float> headingH = !songs ? 0f : shown is null ? Z.HeadingRowH : Prop.Of(() => shown.Value.EmptyLead ? 0f : Z.HeadingRowH);
             Element listHead = new BoxEl
             {
                 // Laid out at its final place and size from the commit (its siblings' widths land at once and only their pictures ease), so the list bar inside
@@ -223,17 +220,7 @@ internal static class ZuneDetailHero
                 Key = "hero:list-head", Direction = 1, Grow = columns ? 1f : 0f, Shrink = 0f, Basis = columns ? 0f : float.NaN, OnBoundsChanged = _measureHead,
                 MinWidth = columns ? Detail.Breakpoints.TwoColumnContentMinW : 0f,
                 Layout = ZuneMotion.GroupResize,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = Z.SongsHeadingKey, Direction = 0, AlignItems = FlexAlign.Center, Height = headingH, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-                        Animate = ZuneMotion.HeightResize, Opacity = songs ? 1f : 0f,
-                        Padding = new Edges4(Z.SongsHeadingInset, 0f, Z.SongsHeadingInset, 0f),
-                        Children = [K.Heading(Loc.Get(Strings.Theme.Zune.Detail.Songs))],
-                    },
-                    ToolbarBlock(parts, columns, hasRail),
-                ],
+                Children = [ToolbarBlock(parts, columns, hasRail)],
             };
             Element body = new BoxEl
             {

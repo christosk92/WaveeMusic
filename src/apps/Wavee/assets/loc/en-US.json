@@ -2923,8 +2923,6 @@
         "category": "Category"
       },
       "detail": {
-        "$comment": "Z6a1: the heading over a detail page's track list. Written as people say it; the style's case roles lower it.",
-        "songs": "Songs",
         "$commentPlaylist": "Z6b1: the playlist's words. Written as people say them; the style's case roles lower them. chooseCover is the empty cover tile's word; emptyTitle and emptyLine lead an empty playlist (Z-State-Empty-Playlist); refresh and add are the recommended section's words.",
         "chooseCover": "Choose a cover",
         "emptyTitle": "Let’s find something for this playlist",

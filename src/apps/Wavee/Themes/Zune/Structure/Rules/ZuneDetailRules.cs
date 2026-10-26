@@ -65,9 +65,9 @@ public static class ZuneDetailRules
 {
     // ── the node keys (the tests find them) ──────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The frame's root, the panorama band, the identity column, the list column's heading, the aside slot and its column.</summary>
+    /// <summary>The frame's root, the panorama band, the identity column, the aside slot and its column.</summary>
     public const string FrameKey = "zune.detail.frame", PanoramaKey = "zune.detail.panorama", RailKey = "zune.detail.rail",
-        CompactRailKey = "zune.detail.compact-rail", SongsHeadingKey = "zune.detail.songs", AsideKey = "zune.detail.aside",
+        CompactRailKey = "zune.detail.compact-rail", AsideKey = "zune.detail.aside",
         AsideColumnKey = "zune.detail.aside-column", HeroKey = "zune.detail.hero", HeroBandKey = "zune.detail.hero-band",
         NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
         ColumnGapKey = "zune.detail.column-gap";
@@ -206,12 +206,6 @@ public static class ZuneDetailRules
 
     /// <summary>The panorama's opacity (the boards' 0.92: the title sits a breath back from the ink).</summary>
     public const float PanoramaOpacity = 0.92f;
-
-    /// <summary>The "songs" heading row over the list (Z-Album: 40), and the list's inset under it (the rows' own 8 already stand in).</summary>
-    public const float HeadingRowH = 40f;
-
-    /// <summary>The "songs" heading's side inset (A5): none, so the heading, the bar's first glyph and the header's hairline share the list's x.</summary>
-    public const float SongsHeadingInset = 0f;
 
     /// <summary>The identity column's cover decode bucket (the shelf's: a warm texture on arrival) and its saturation.</summary>
     public const int CoverDecodePx = 512;
