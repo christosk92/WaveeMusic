@@ -188,7 +188,7 @@ internal static class ZuneFeedback
                 fields.Add(new BoxEl
                 {
                     Direction = 1, Shrink = 0f, Width = column,
-                    Children = [InfoBar.Create(severity, Loc.Get(Strings.Report.CrashTitle), message, isClosable: false, availableWidth: column)],
+                    Children = [InfoBar.Create(severity, Loc.Get(Strings.Report.CrashTitle), message, isClosable: false)],
                 });
             }
 

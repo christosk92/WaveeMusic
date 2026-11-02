@@ -158,7 +158,7 @@ internal static class WinUiFeedback
             var fields = new List<Element>(12);
             fields.AddRange(args.Head);
             if (isCrash)
-                fields.Add(new BoxEl { Direction = 1, Shrink = 0f, Width = column, Children = [CrashInfoBar(form, current, column)] });
+                fields.Add(new BoxEl { Direction = 1, Shrink = 0f, Width = column, Children = [CrashInfoBar(form, current)] });
 
             fields.Add(TextBox.Create(title, null, new TextBox.TextBoxOptions
             {
@@ -336,10 +336,10 @@ internal static class WinUiFeedback
         });
 
         /// <summary>Three honest states (the form's): still composing, a report with its summary, or genuinely no report.</summary>
-        static Element CrashInfoBar(IFeedbackForm form, Feedback.ComposedReport? current, float width)
+        static Element CrashInfoBar(IFeedbackForm form, Feedback.ComposedReport? current)
         {
             var (message, severity) = form.CrashNotice(current);
-            return InfoBar.Create(severity, Loc.Get(Strings.Report.CrashTitle), message, isClosable: false, availableWidth: width);
+            return InfoBar.Create(severity, Loc.Get(Strings.Report.CrashTitle), message, isClosable: false);
         }
     }
 }
