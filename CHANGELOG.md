@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.8] - unreleased
+
+### Fixed
+
+- **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
+  other instead of squeezing side by side and wrapping, at any width.
+
 ## [0.3.7] - 2026-10-26
 
 ### Changed
