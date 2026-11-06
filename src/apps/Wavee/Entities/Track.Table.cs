@@ -58,6 +58,9 @@ public readonly partial struct Track
         public abstract int Count { get; }
         /// <summary>Declared total (≥ Count).</summary>
         public abstract int Total { get; }
+        /// <summary>How many rows the loading table should shimmer before any is resident: what the source already knows of its length (the album's own track
+        /// count before its track list answers, else the declared total), 0 when nothing does.</summary>
+        public virtual int ExpectedRows => Total;
         /// <summary>Unknown ⇒ shimmer, never "Nothing here yet"; Failed only while nothing is resident (G-050).</summary>
         public abstract EdgeState State { get; }
         /// <summary>The edge version for this parent.</summary>
@@ -125,6 +128,8 @@ public readonly partial struct Track
         public override EntityUri Context => _album.Uri;
         public override int Count => Edge.Count(_album.Slot);
         public override int Total => Edge.Total(_album.Slot);
+        // The header states "2 songs" from the album row before the track list answers: the shimmer stands that many rows, not a full chunk.
+        public override int ExpectedRows => _album.Knows(AlbumFields.TrackCount) && _album.TrackCount > 0 ? _album.TrackCount : Total;
         public override EdgeState State => Edge.Readiness(_album.Slot);
         public override uint Version => Edge.Version(_album.Slot);
         public override Track At(int index)
@@ -852,7 +857,10 @@ public readonly partial struct Track
             var lanes = TableRules.LanesOf(in s);
             float gap = RowMetrics.ColGapFor(s.Tier), pad = RowMetrics.PadXFor(s.Tier);
             _reliefLanes = lanes; _reliefGap = gap; _reliefPad = pad;
-            return TableRules.ReliefFor(in lanes, _lastW, gap, pad, _relief.Value, _tierMeasured.Value);
+            // The LIST column's width, as OnColumnBounds measures it (the table less the hero list's insets), never the table's: in the columns form the
+            // head's side column stands inside the table, and the table's width told this render the floors cleared, undoing the bounds' relief (a
+            // playlist beside its cover kept Plays and BPM·Key and squeezed the title to a letter).
+            return TableRules.ReliefFor(in lanes, _listW.Peek(), gap, pad, _relief.Value, _tierMeasured.Value);
         }
 
         /// <summary>Measure → tier → relief, value-gated so a drag re-renders only where a lane changes hands. The first
@@ -1850,7 +1858,14 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             int visible = _rowItems!.Count.Value;
             var state = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
-            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] };
+            // The placeholder's key sits on a CHILD: this item and row 1 are one slot (the first suffix slot becomes the first track row when the rows
+            // land), and a slot root ignores its key, so a keyed root patched the shimmer's nodes into row 1, which then glided in from the
+            // placeholder's layout (the one row that slid in from the right on a playlist load). Under an unkeyed root the row mounts fresh.
+            return new BoxEl
+            {
+                Direction = 1, HitTestPassThrough = true,
+                Children = [new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] }],
+            };
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
@@ -1924,7 +1939,10 @@ public readonly partial struct Track
         {
             Edges4 inset = !shape.Set.Classic && (!VerticalArm || ColumnsForm) ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
-            var rows = new Element[Design.RevealRamp.Chunk];
+            // As many rows as the source already knows it has (a 2-song single shimmered a 12-row chunk, and the section under it climbed 400 DIP when the
+            // rows landed: "About this album", owner video 2026-10-25), a full chunk when nothing is known yet.
+            int expected = _latest.Source.ExpectedRows;
+            var rows = new Element[expected > 0 ? Math.Min(expected, Design.RevealRamp.Chunk) : Design.RevealRamp.Chunk];
             for (int i = 0; i < rows.Length; i++)
             {
                 rows[i] = ShimmerGrid(in shape, i);

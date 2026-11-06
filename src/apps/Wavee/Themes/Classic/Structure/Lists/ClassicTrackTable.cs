@@ -92,7 +92,7 @@ internal static class ClassicTrackTable
         int i = 0;
 
         if (!set.IndexHidden) cells[i++] = BoundNumberCell(r, classic);
-        if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.Heart);
+        if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeartLane(r, classic), CellKey.Heart);
         if (set.Thumb) cells[i++] = Track.RowCenterCell(BoundArtwork(r, artSize), CellKey.Art);
         cells[i++] = BoundTitleCell(r, in set, classic);
         if (set.Artist) cells[i++] = Track.RowLeftCell(BoundArtistLinks(r, classic), CellKey.Artist);
@@ -101,7 +101,7 @@ internal static class ClassicTrackTable
         if (set.Date) cells[i++] = Track.RowLeftCell(BoundDateCell(r, classic), CellKey.Date);
         if (set.Plays) cells[i++] = Track.RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
-        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.HeartTrailing);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(BoundHeartLane(r, classic), CellKey.HeartTrailing);
         if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
         // The Compact row's "…" is a 40 target shown on every row (C-RowStates-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
@@ -252,19 +252,14 @@ internal static class ClassicTrackTable
 
     // ── heart · art ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The heart lane's row reveal (tuned Classic L2): a liked row keeps its filled heart at rest, an unliked one
-    /// shows nothing until the ROW is hovered and then fades its outline in. The reveal rides a NON-interactive wrapper
-    /// around the heart's own click target, so the hover it reads is the row skin's (the same idiom as the # cell's
-    /// layers); the rest opacity is bound to the presentation and the slot's focus, so a like re-resolves it with no rebuild
-    /// and the focused row shows its outline to the keyboard.</summary>
-    // Mounts on the row's first hover / focus, or (outside a quiet list) once the row is saved — the resting filled heart.
-    static Element BoundHeartReveal(BoundRow r, bool classic, bool quiet) => Track.Affordance(r, () => new BoxEl
+    /// <summary>The heart lane (<see cref="ClassicRowCells.HeartLane"/>'s bound twin): the heart is painted at rest on every row,
+    /// filled when liked and the outline when not, in every list, Liked Songs too (owner 2026-10-25: "in classic mode, always show
+    /// the heart"; it replaces the hover reveal of tuned Classic L2 and the quiet list's heartless rest of D16).</summary>
+    static Element BoundHeartLane(BoundRow r, bool classic) => new BoxEl
     {
         Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        // A quiet list (Liked Songs, D16) rests with no heart at all: every row is liked, so only the hovered or focused row shows it.
-        Opacity = quiet ? Prop.Of(() => r.Focused ? 1f : 0f) : Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
         Children = [BoundHeart(r, classic)],
-    }, quiet ? null : () => r.P.State.Saved);
+    };
 
     /// <summary>The heart (ch 01 §0.3) as three glyphs under one circle: the resting filled heart, the popping filled
     /// heart (a real mount on the like EDGE, so the Enter spring replays exactly once) and the outline.</summary>

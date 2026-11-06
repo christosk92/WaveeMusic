@@ -71,6 +71,7 @@ internal static class WinUiArtistPivot
         {
             Justify = FlexJustify.End, Gap = WinUiArtistRules.PivotPillGap, Padding = new Edges4(0f, 0f, 0f, WinUiArtistRules.PivotPillLift),
         },
+        [SelectorBar.PartPill] = static e => e with { Animate = WinUiArtistMotion.PivotPill },
     };
 
     sealed class PivotHost : Component, IPropsHost

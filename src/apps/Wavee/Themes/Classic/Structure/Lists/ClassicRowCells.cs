@@ -2,7 +2,7 @@
 //
 // From `Entities/Track.UI.cs` (sections 2 and 3, "the grid" and "the cells"): the ONE-SHOT row the eager lists build (Home's top
 // tracks, the library reader's blocks, Recents, the album drawer's rows, the chart's # and ♥ cells) and the cells it is made of —
-// the # state machine, the heart and its row reveal, the metadata line, the artist and album links, the Added-by name,
+// the # state machine, the heart and its lane, the metadata line, the artist and album links, the Added-by name,
 // the tempo lane, the Classic title line and its explicit word-mark. `ClassicEagerRow` draws the eager row's container around
 // `Grid`; `ClassicArtistChart` reuses `NumberCell`, `Heart` and `ClassicExplicitBadge`; `ClassicTrackTable` reuses `RowNumberLabel`
 // and the heart's pop. They were `Track.Grid`, `Track.NumberCell`... and moved here verbatim.
@@ -86,7 +86,7 @@ internal static class ClassicRowCells
         // The control cell (no clip), like the trailing heart's: the 28 heart fills its 28 lane, so a clipping cell cut the host's Compact hit
         // slop to 28 wide (a 28 x 40 target under the 40 floor: Recents' rows at 520, audit B6b).
         if (set.Heart)
-            cells[i++] = Track.RowControlCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.Heart);
+            cells[i++] = Track.RowControlCell(HeartLane(Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.Heart);
 
         if (set.Thumb)
             cells[i++] = Track.RowCenterCell(Controls.Artwork(Track.RowArtUrl(d), art, art, Radii.Control,
@@ -133,7 +133,7 @@ internal static class ClassicRowCells
         // The TRAILING ♥ — the same heart, on the right, immediately before the duration (the library reader's
         // 28 | 1fr | 32 | 52). Mutually exclusive with the leading lane; the gate is shared with the width track.
         if (RowMetrics.ShowHeartTrailing(in set))
-            cells[i++] = Track.RowControlCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.HeartTrailing);
+            cells[i++] = Track.RowControlCell(HeartLane(Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.HeartTrailing);
 
         // The clock, or a withheld row's SHORT reason ("Unavailable", the release date) at the reason rung with the LONG
         // reason as its tooltip (tuned Classic L4) — the bound table's lane, word for word (`Track.DurationLabel`).
@@ -315,29 +315,13 @@ internal static class ClassicRowCells
             ],
         }.Interactive(Interaction.Subtle);
 
-    /// <summary>The heart lanes' row reveal (tuned Classic L2), both the leading and the TRAILING lane: a LIKED row keeps
-    /// its filled heart at rest, an UNLIKED one is invisible until the ROW is hovered and then fades its outline in.
-    /// <para>The reveal rides a NON-interactive wrapper around the heart's own click target, so the hover progress it
-    /// reads is the ROW skin's (the PointerBit every <c>HoverOpacity</c> descendant inherits — the same idiom
-    /// <see cref="NumberCell"/>'s rest/reveal layers use, and the reason the reveal survives the pointer crossing onto
-    /// the heart itself). <c>HoverOpacity</c> is 1 in BOTH states, so the one thing that differs is the REST opacity:
-    /// 1 → 1 is a liked heart that does not move, 0 → 1 is the reveal.</para>
-    /// <para>That rest opacity is a BOUND <c>Prop</c> over <c>Track.LikedNow</c> — the same subscribing read
-    /// <c>Track.StateOf</c> makes — and not the row state's <c>Saved</c>, which is a value frozen when this element record
-    /// was built. An optimistic like writes the Liked edge and the bound channel re-resolves in the same frame, with no
-    /// render and no dependence on whoever owns this row re-running.</para></summary>
-    static Element HeartReveal(Track t, Element heart)
-    {
-        var track = t;
-        return HeartReveal(heart, () => Track.LikedNow(track));
-    }
-
-    /// <summary>The ONE heart reveal every row shares (the eager lanes above, the artist chart): rest opacity 1 while
-    /// <paramref name="shown"/> holds (a liked row, or a row that holds the list's focus), 0 otherwise; 1 on ROW hover.</summary>
-    internal static Element HeartReveal(Element heart, Func<bool> shown) => new BoxEl
+    /// <summary>The heart lane every Classic row shares (the eager lanes above, the artist chart; the bound table's twin is
+    /// <c>ClassicTrackTable.BoundHeartLane</c>), both the leading and the TRAILING lane: the heart is PAINTED AT REST on every
+    /// row, filled when liked and the outline when not (owner 2026-10-25: "in classic mode, always show the heart"; it replaces
+    /// the hover reveal of tuned Classic L2).</summary>
+    internal static Element HeartLane(Element heart) => new BoxEl
     {
         Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Opacity = Prop.Of(() => shown() ? 1f : 0f), HoverOpacity = 1f,
         Children = [heart],
     };
 

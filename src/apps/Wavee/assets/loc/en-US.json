@@ -2923,8 +2923,6 @@
         "category": "Category"
       },
       "detail": {
-        "$comment": "Z6a1: the heading over a detail page's track list. Written as people say it; the style's case roles lower it.",
-        "songs": "Songs",
         "$commentPlaylist": "Z6b1: the playlist's words. Written as people say them; the style's case roles lower them. chooseCover is the empty cover tile's word; emptyTitle and emptyLine lead an empty playlist (Z-State-Empty-Playlist); refresh and add are the recommended section's words.",
         "chooseCover": "Choose a cover",
         "emptyTitle": "Let’s find something for this playlist",
@@ -3096,14 +3094,7 @@
         "nowPlaying": "Now playing"
       },
       "screens": {
-        "$comment": "W8b (P6): the screens. The seven Settings tabs (WinUiSettingsGrouping), the theme card and its options, the keyboard list's Ctrl+Tab row.",
-        "tabGeneral": "General",
-        "tabAppearance": "Appearance",
-        "tabPlayback": "Playback",
-        "tabNotifications": "Notifications",
-        "tabStorage": "Storage & cache",
-        "tabPrivacy": "Privacy & diagnostics",
-        "tabAbout": "About",
+        "$comment": "W8b (P6): the screens. The theme card and its options, the keyboard list's Ctrl+Tab row.",
         "themeSection": "Theme",
         "themeSectionSub": "Which theme draws Wavee, and the options that theme defines",
         "themeTitle": "Theme",
@@ -3535,6 +3526,12 @@
     "showAll": "Show all {count}",
     "asOf": "Issue states as of {date}",
     "releases": "Releases",
+    "allChanges": "All changes",
+    "all": "All",
+    "filterItem": "{label} ({count})",
+    "changeCount": "{count, plural, one {# change} other {# changes}}",
+    "issueCount": "{count, plural, one {# issue} other {# issues}}",
+    "installed": "Installed",
     "railFoot": "Notes are fetched once per release and cached offline. Older releases load on demand.",
     "you": "You",
     "latest": "Latest",

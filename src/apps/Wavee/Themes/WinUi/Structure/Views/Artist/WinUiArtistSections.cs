@@ -26,6 +26,16 @@ internal sealed class WinUiArtistLatch
     /// <summary>The structure's media-surface templates: the pick card's clickable shell is the surface's.</summary>
     public SurfaceStyle? Surface;
 
+    /// <summary>The hero card is on screen (its first realize): from then on the card's plated actions open their width when they come back from the Compact
+    /// row. Before it, they land with the card at their width (<see cref="WinUiArtistMotion.CardActionsLanding"/>): opening them as the page landed squeezed the
+    /// one-line name's auto-fit, which shrank the name and walked the buttons left on every artist page load (owner video 2026-10-25).</summary>
+    public bool HeroLive;
+
+    /// <summary>The card's realize hook (<see cref="HeroLive"/>), allocated once.</summary>
+    public readonly Action<NodeHandle> MarkHeroLive;
+
+    public WinUiArtistLatch() => MarkHeroLive = _ => HeroLive = true;
+
     Artist _menuArtist;
     Func<ContextMenuModel?>? _menu;
 

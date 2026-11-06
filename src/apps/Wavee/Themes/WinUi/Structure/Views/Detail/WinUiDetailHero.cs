@@ -3,7 +3,8 @@
 // `Detail.Hero` is item 0 of the core's vertical list: a plain box the table pins with `Sticky(0)` and collapses with `Collapse` around the view this file draws.
 // The view draws two presentations of ONE page identity and the table's scroll binds cross them:
 //
-//   · THE EXPANDED HERO (boards W-Album, -Small, -Huge, -Huge4K; -Compact stacked): the cover (r8, the card shadow) beside the words, bottom-aligned: the eyebrow,
+//   · THE EXPANDED HERO (boards W-Album, -Small, -Huge, -Huge4K; -Compact stacked): the cover (r8, the card shadow) beside the words, bottom-aligned while
+//     they fit beside it, top-aligned once they outgrow it: the eyebrow,
 //     the title (Title Large 40/52), the billed artists with their avatars and the meta on one line, the action row; under it the table's own list bar (Find,
 //     the order, Filter, Select). A SHORT window (under 720 tall, W-Shell-Short) draws the short form: a 104 cover, the title 28/36, no eyebrow.
 //   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, on a layer of its
@@ -109,7 +110,10 @@ internal static partial class WinUiDetailFrame
             float avatar = form.AvatarFor(id.Kind);
             var rows = new List<Element>(6);
             string description = HomeCards.PlainText(id.DescriptionHtml);
-            if (form.Eyebrow && EyebrowOf(id, form, description) is { Length: > 0 } eyebrow)
+            // How far the cover may sink beside words taller than it: the eyebrow's row (the cover's top no lower than the title's; Compose).
+            string eyebrow = form.Eyebrow ? EyebrowOf(id, form, description) : "";
+            float hang = eyebrow.Length > 0 ? (ChipRow(id, spec.Config) ? form.ChipHeight : form.EyebrowLine) + form.InfoGap : 0f;
+            if (eyebrow.Length > 0)
                 rows.Add(Block("hero-eyebrow", ChipRow(id, spec.Config)
                     ? WinUiDetailKit.EyebrowWithChip(eyebrow, form, WinUiDetailKit.SaveTargetOf(id).Text, center)
                     : WinUiDetailKit.EyebrowRun(eyebrow, form) with { AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto }, late: true, formPiece: true));
@@ -141,7 +145,7 @@ internal static partial class WinUiDetailFrame
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
             // A head not read yet (audit B7 r2: blank reserved lines beside a live Play) shimmers its words in place: the loading band's own rows at their
             // sizes, the Play split and the verbs as bones, one cross-dissolve when the header answers; the cover and the list bar stay real.
-            Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form), center,
+            Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form), center, hang,
                 pending: _headerPending, shimmer: () => SkeletonWords(spec, tier, form, center, avatar));
 
             Element expanded = new BoxEl { Direction = 1, Animate = HeroHeightMotion, OnBoundsChanged = _measure, Children = [hero] };
@@ -368,8 +372,9 @@ internal static partial class WinUiDetailFrame
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
     }
 
-    /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned), or over them, both centred (stacked); then the toolbar.</summary>
-    static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar, bool center,
+    /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned while they fit beside it, top-aligned once taller), or over
+    /// them, both centred (stacked); then the toolbar.</summary>
+    static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar, bool center, float hang,
         Func<bool>? pending = null, Func<Element[]>? shimmer = null)
     {
         // The words FLIP with the cover's resize (the same 280 ms): laid out at the new cover's edge at once, they sat on the still-shrinking cover
@@ -383,11 +388,16 @@ internal static partial class WinUiDetailFrame
             AlignSelf = form.Stacked && !center ? FlexAlign.Stretch : FlexAlign.Auto,
             Children = pending is null || shimmer is null ? words : [Words(form, center, words, pending, shimmer)],
         };
+        // The horizontal row STRETCHES its two sides to the taller one. Words shorter than the cover stand on its foot (the info's End justify, W-Album).
+        // Words taller than it sink the cover to the action row's foot only while they overrun it by the eyebrow's row at most (W-Playlist's words stand a
+        // hair taller than the cover); past that the spacer stops growing and the cover hangs level with the title, not a cover's height under the eyebrow
+        // beside a two-line title, the description, the facts, a daylist's strip and the actions (owner screenshot 2026-10-26).
+        Element coverColumn = new BoxEl { Direction = 1, Shrink = 0f, Children = [new BoxEl { Grow = 1f, MaxHeight = hang }, cover] };
         Element row = new BoxEl
         {
             Direction = form.Stacked ? (byte)1 : (byte)0, Gap = form.Gap, Animate = HeroReflowMotion,
-            AlignItems = form.Stacked ? FlexAlign.Center : FlexAlign.End, MinWidth = 0f,
-            Children = [cover, info],
+            AlignItems = form.Stacked ? FlexAlign.Center : FlexAlign.Stretch, MinWidth = 0f,
+            Children = [coverColumn, info],
         };
         return new BoxEl
         {

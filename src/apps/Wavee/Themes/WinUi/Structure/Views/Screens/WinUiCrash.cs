@@ -78,7 +78,7 @@ internal static class WinUiCrash
             return (Action?)(() => props.InstallSubmit(null));
         }, DepKey.Empty);
 
-        var children = new List<Element>(10) { HeaderInfoBar(props.HeaderMessage, column) };
+        var children = new List<Element>(10) { HeaderInfoBar(props.HeaderMessage) };
         if (!props.FromList) children.Add(Lead(props.Lead, column));
         children.Add(WhatIsSentBox(showReport, preview.Value, layout, column));
         if (props.HasDump) children.Add(IncludeDumpRow(includeDump, props.IncludeDumpLabel, layout, column));
@@ -126,8 +126,8 @@ internal static class WinUiCrash
         };
     }
 
-    static Element HeaderInfoBar(string message, float width)
-        => InfoBar.Create(InfoBarSeverity.Warning, "", message, isClosable: false, availableWidth: width);
+    static Element HeaderInfoBar(string message)
+        => InfoBar.Create(InfoBarSeverity.Warning, "", message, isClosable: false);
 
     static Element Lead(string text, float width) => new TextEl(text)
     {

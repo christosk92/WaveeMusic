@@ -1,11 +1,10 @@
 // ── Themes/WinUi/WinUiTheme.cs — WinUI = WinUi.Structure x WinUi.Style (themes plan 6.2; P6 W0) ────────────────────────────────────────
 //
-// The composition file of the theme (WVTH001: it may reference every layer, and every theme). WinUI is DEVELOPER-only (P6; W9 asserts it):
-// with Developer mode off, `ThemeCatalog.Resolve("winui")` answers Classic and the stored `theme.id` is kept, so WinUI comes back when
-// Developer mode does.
+// The composition file of the theme (WVTH001: it may reference every layer, and every theme). WinUI is PUBLIC since 0.3.6: every user can
+// pick it in Settings > Appearance, Developer mode or not.
 //
 // THE STAND-IN. Until every WinUI family has landed (P6 W9: the WinUI registry-completeness test), the structure is handed Classic's
-// registration as its stand-in, exactly as Zune was (`WinUiStructure.cs` explains the key-by-key merge): a Developer who picks WinUI gets a
+// registration as its stand-in, exactly as Zune was (`WinUiStructure.cs` explains the key-by-key merge): a user who picks WinUI gets a
 // working app, Classic's views under WinUI's style, policies, tiers and capabilities. Remove the stand-in in the PR that makes WinUI's own
 // registry complete.
 
@@ -30,7 +29,7 @@ public static class WinUiTheme
         StructureId: WinUiStructure.LayerId,
         StyleId: WinUiStyle.LayerId,
         InheritsFrom: null,
-        Availability: ThemeAvailability.Developer,
+        Availability: ThemeAvailability.Public,
         // No preview images ship yet: the picker draws its UI-native miniature where an asset is missing.
         Preview: new ThemePreview("themes/winui-light.png", "themes/winui-dark.png"),
         DescriptionKey: Strings.Theme.Winui.Description);

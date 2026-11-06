@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.7",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Two new looks, Zune and WinUI, and a design for every window size from a narrow phone-sized window to 4K.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "themes",
+      "title": "Two new looks: Zune and WinUI",
+      "body": "Zune brings back the Zune HD: big lowercase type, pivots across the top and colour washes from the cover that's playing. WinUI makes Wavee a Windows 11 app, with tabs in the title bar, a navigation pane and Windows controls. Both cover every page, in dark and light. Pick one in Settings > Appearance > Theme.",
+      "kind": "new",
+      "deepLink": "wavee://open?route=settings",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/themes.jpg",
+        "srcLight": "media/themes-light.jpg",
+        "alt": "Wavee in the Zune theme, with an album page in the WinUI theme in front of it",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "every-size",
+      "title": "Made for every window size",
+      "body": "Every page now has a layout for a narrow, phone-sized window, a medium one, the usual desktop size and very large screens up to 4K. Narrow windows get one column and buttons big enough to tap; large ones use the room for more columns and bigger covers. Resizing glides between layouts instead of jumping.",
+      "kind": "improved",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/every-size.jpg",
+        "srcLight": "media/every-size-light.jpg",
+        "alt": "Wavee's Home in a wide window and in a narrow, phone-sized window side by side",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "lighter",
+      "title": "Lighter on memory",
+      "body": "About 20 MB less graphics memory while you browse, and a peak about 12 % lower over a long session. On Snapdragon PCs the cover cache keeps to its size: up to 45 MB less after browsing many pages. A short pause after every page change is gone too.",
+      "kind": "improved",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/lighter.jpg",
+        "srcLight": "media/lighter-light.jpg",
+        "alt": "Wavee 0.3.6 against 0.3.5: about 20 MB less graphics memory while browsing, a 12 % lower peak, and up to 45 MB less for covers on Snapdragon PCs",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

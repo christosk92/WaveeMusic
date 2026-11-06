@@ -98,9 +98,8 @@ public static class App
         RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
         // The compositions, once and before any surface mounts: it resolves the stored theme id and publishes the active theme's registry, options and facts. FULLY QUALIFIED because
         // inside `namespace Wavee` the simple name `Themes` is the namespace `Wavee.Themes` (the theme packages), not the class.
-        // Zune is Developer-only: with Developer mode off a stored "zune" resolves to Classic (and is kept for when it is on again).
-        // A `--screenshot` run's `--theme <id>` selects that theme for the run (a review capture of a Developer-only theme such as Zune in a --fake
-        // profile): Developer mode on and the id stored in the run's settings, which --fake keeps in memory. Ignored without --screenshot, so the
+        // A Developer-only theme (none today) resolves to Classic with Developer mode off, the stored id kept for when it is on again.
+        // A `--screenshot` run's `--theme <id>` selects that theme for the run (a review capture in a --fake profile): Developer mode on and the id stored in the run's settings, which --fake keeps in memory. Ignored without --screenshot, so the
         // owner's launches never see it.
         string[] argv = Environment.GetCommandLineArgs();
         int themeAt = Array.IndexOf(argv, "--theme");
@@ -287,6 +286,8 @@ public static class App
         string logFolder;
         try { logFolder = Platform.LogFolder; }
         catch { logFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs"); }
+        // `--fg frame-trace` without a path writes beside the app log (FrameTrace.cs): the folder the owner already sends.
+        FluentGpu.Hosting.FrameTrace.DefaultDirectory = logFolder;
         int bootFailures = Crash.Host.BootFailures(logFolder);   // a file in the crash folder: readable even when Boot() threw
         if (recoverySwitch || bootThrew || Crash.RecoveryPolicy.Enter(false, bootFailures, false))
         {

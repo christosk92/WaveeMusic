@@ -68,7 +68,7 @@ internal static partial class ClassicReleaseNotes
             {
                 int idx = i;
                 Element card = ov.CardsColumn
-                    ? RowCard(cards[i], () => openCard(idx), props.OpenStoreListing, rowLayout, inRow: false)
+                    ? RowCard(cards[i], () => openCard(idx), props.OpenStoreListing, rowLayout)
                     : CardFor(cards[i], () => openCard(idx), props.OpenStoreListing, compact: true);
                 row[i] = card with { Key = "dlg-hl:" + (cards[i].Highlight.Id is { Length: > 0 } id ? id : idx.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
             }

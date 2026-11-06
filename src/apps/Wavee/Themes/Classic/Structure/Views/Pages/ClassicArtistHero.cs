@@ -137,8 +137,11 @@ internal static class ClassicArtistHero
             {
                 // Eases its height with the photograph's band on a crossing, the veil stretched over it (its stretch arm), so no strip of the
                 // photograph shows unveiled while the hero's height eases.
+                // The top of the hero carries no copy: the veil fades in over the form's share of it, so the photograph shows there. Linear, so the
+                // veil starts rising at the very edge: a smoothstep left a bare strip that read as a veil cut short.
                 Width = w, Height = height, ZStack = true, HitTestVisible = false, Animate = ClassicTierMotion.HeightReflow,
                 TransformOriginX = 0.5f, TransformOriginY = 0f,
+                EdgeFade = form.VeilFadeTop > 0f ? new EdgeFadeSpec(EdgeMask.Top, 0f, form.VeilFadeTop * height, 0f, 0f, FadeFalloff.Linear) : null,
                 Children =
                 [
                     Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, float.NaN, key: "artist-veil:" + uri,
@@ -232,10 +235,12 @@ internal static class ClassicArtistHero
             }
             : new BoxEl();
 
+        // The photo arms' name is set one line first (it shrinks toward its floor before it wraps), and the Display name eases toward the Title step
+        // with the page's width: a resize or the queue pane's drag never snaps it a size at the Wide edge, nor flips it between one big line and two.
         TextEl name = form.Name switch
         {
-            ClassicArtistName.Display => R.Type.ArtistDisplay(text.Name),
-            ClassicArtistName.Title => R.Type.ArtistTitle(text.Name),
+            ClassicArtistName.Display => FluidName(text.Name, w) with { FitMode = TextFitMode.OneLineFirst },
+            ClassicArtistName.Title => R.Type.ArtistTitle(text.Name) with { FitMode = TextFitMode.OneLineFirst },
             _ => R.Type.ArtistCompactTitle(text.Name),
         };
         name = name with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
@@ -272,6 +277,21 @@ internal static class ClassicArtistHero
                     Actions(text.Name, uri, accent, acts, form),
                 ]
                 : [new BoxEl { Direction = 1, Gap = form.CopyGap, MinWidth = 0f, Children = [verified, nameLine, bio, meta] }],
+        };
+    }
+
+    /// <summary>The Display name on a <paramref name="w"/>-wide page: every metric of <c>ArtistDisplay</c> eased toward <c>ArtistTitle</c>'s by
+    /// <see cref="ClassicArtistTiers.HeroNameBlend"/> (the Display step on a Wide page, the Title step at the Medium edge), the auto-fit floor too.</summary>
+    static TextEl FluidName(string name, float w)
+    {
+        TextEl display = R.Type.ArtistDisplay(name), title = R.Type.ArtistTitle(name);
+        float k = ClassicArtistTiers.HeroNameBlend(w);
+        return display with
+        {
+            Size = float.Lerp(title.Size, display.Size, k),
+            LineHeight = float.Lerp(title.LineHeight, display.LineHeight, k),
+            CharSpacing = float.Lerp(title.CharSpacing, display.CharSpacing, k),
+            MinSize = float.Lerp(title.MinSize, display.MinSize, k),
         };
     }
 

@@ -893,8 +893,22 @@ public struct Column<T> where T : unmanaged
 /// boxing (P9).</para></summary>
 public abstract class Publishable
 {
-    /// <summary>Bumped once per publication in which this table changed. A bound list reads it to re-run.</summary>
-    public readonly Signal<uint> Changed = new(0);
+    /// <summary>Bumped once per publication in which this table changed. A bound list reads it to re-run. Named after the table's
+    /// type, so the render census's <c>by=</c> says WHICH table woke a component (<c>Signal&lt;UInt32&gt;:TrackTable</c>).</summary>
+    public readonly Signal<uint> Changed;
+
+    protected Publishable() => Changed = new(0) { DebugName = DiagName(GetType()) };
+
+    static string DiagName(Type t)
+    {
+        if (!t.IsGenericType) return t.Name;
+        string name = t.Name;
+        int tick = name.IndexOf('`');
+        if (tick > 0) name = name[..tick];
+        var args = t.GetGenericArguments();
+        for (int i = 0; i < args.Length; i++) name += (i == 0 ? "<" : ",") + args[i].Name;
+        return name + ">";
+    }
 
     internal bool Dirty;
 
@@ -1980,7 +1994,7 @@ public static partial class Entities
     /// against the new set: the new tables' signals are then the ones it subscribes to.
     /// <para>A generation and not <see cref="Scope.Epoch"/>: a re-Boot mints a fresh scope at epoch 0 again, and a
     /// value that did not change would not wake anyone. UI thread only (C1), like every write here.</para></summary>
-    public static readonly Signal<uint> ScopeEpoch = new(0);
+    public static readonly Signal<uint> ScopeEpoch = new(0) { DebugName = "entities.scopeEpoch" };
 
     static uint s_scopeGeneration;
 

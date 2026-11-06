@@ -297,14 +297,15 @@ public static partial class Diagnostics
         /// <summary>Mount the frame on the best devices this machine has (see the file header): the offscreen surface (real
         /// pixels and text), else the recording device with DirectWrite (true text, no pixels), else (`--text headless`) the
         /// shell tests' devices.</summary>
-        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false)
+        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false, float dtMs = 16f)
         {
+            var frameTime = new FluentGpu.Hosting.FixedFrameTimeSource(dtMs);
             // Without `images=real` the engine's fake decoder paints every image: the palette's luminance maps measure what it paints.
             Palette.FakePixels = !realImages;
             if (!_realText)
             {
                 _devices = "headless";
-                return Wavee.Shell.Headless.Mount(widthDip, heightDip, scale);
+                return Wavee.Shell.Headless.Mount(widthDip, heightDip, scale, frameTime);
             }
             StringTable strings = Entities.Strings;
             string why = "gpu=none";
@@ -333,7 +334,7 @@ public static partial class Diagnostics
                     };
                     _surface = surface;
                     _devices = "offscreen (" + surface.BackendName + ")";
-                    return Wavee.Shell.Headless.Mount(devices);
+                    return Wavee.Shell.Headless.Mount(devices, frameTime);
                 }
                 why = reason ?? "the offscreen surface could not be created";
             }
@@ -342,7 +343,7 @@ public static partial class Diagnostics
             var fallback = new Wavee.Shell.HeadlessDevices(window, window, new FluentGpu.Rhi.Headless.HeadlessGpuDevice(), dwrite,
                 Release: dwrite.Dispose);
             _devices = "headless-gpu+dwrite (" + why + ")";
-            return Wavee.Shell.Headless.Mount(fallback);
+            return Wavee.Shell.Headless.Mount(fallback, frameTime);
         }
 
         // ── the dispatcher ──────────────────────────────────────────────────────────────────────────────────────────
@@ -806,7 +807,13 @@ public static partial class Diagnostics
             };
             string images = a.Str("images", "fake").ToLowerInvariant();
             if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
-            _shell = MountOn(w0, h0, scale, gpu, images == "real");
+            string materials = a.Str("materials", "on").ToLowerInvariant();
+            if (materials is not ("on" or "off")) { error = "materials is on or off"; return false; }
+            // The one switch the engine reads for "no acrylic" besides the OS's two (Materials.AcrylicEnabled); every mount sets it.
+            FluentGpu.Dsl.Materials.EnergySaver = materials == "off";
+            float dt = a.Float("dt", 16f);
+            if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
+            _shell = MountOn(w0, h0, scale, gpu, images == "real", dt);
             _frames++;
             _mounts++;
             mounted = true;
@@ -1001,7 +1008,7 @@ public static partial class Diagnostics
                 InspectKit.ActivateTheme(theme);
                 return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
             }
-            // Mounted: the user's path, a live theme transaction (prewarm, freeze, swap, remount, thaw). Zune is Developer-only.
+            // Mounted: the user's path, a live theme transaction (prewarm, freeze, swap, remount, thaw).
             if (ThemeInspection.IsDeveloperOnly(theme)) Platform.Developer.Enabled.Value = true;
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;

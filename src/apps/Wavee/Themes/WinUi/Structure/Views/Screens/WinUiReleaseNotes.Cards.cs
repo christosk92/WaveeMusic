@@ -20,69 +20,16 @@ namespace Wavee.Themes.WinUi;
 
 internal static partial class WinUiReleaseNotes
 {
-    /// <summary>Three is a cap, not a layout. No highlights ⇒ a 0-height, hit-invisible box: the eyebrow AND the row vanish. The record sets the form: one row of
-    /// poster cards (Standard, Huge: under a 20/28 heading), two columns of ROW cards (Small) or one column of them (Compact).
-    /// <para>A tier crossing never rebuilds a card it keeps (plan 3.3): the row cards of Compact and Small are ONE grid whose track count is the form's, so
-    /// 528 moves the same cards into their new cells (a position and size FLIP, <see cref="WinUiScreenMotion.Reflow"/>); the poster strip and the row cards are different trees (1008), so the two families
-    /// are keyed apart and cross-fade.</para></summary>
-    static Element Strip(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore, WinUiReleaseNotesLayout layout)
-    {
-        if (highlights.Count == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
-        int n = Math.Min(highlights.Count, HighlightMax);
-        var form = layout.HighlightForm;
-        var cards = new Element[n];
-        for (int i = 0; i < n; i++)
-        {
-            int idx = i;   // the row's own index, not the closed-over loop variable
-            Element card = form == WinUiReleaseHighlightForm.Strip
-                ? CardFor(highlights[i], () => open(idx), openStore, compact: false)
-                : RowCard(highlights[i], () => open(idx), openStore, layout, inRow: form == WinUiReleaseHighlightForm.Grid2);
-            cards[i] = form == WinUiReleaseHighlightForm.Strip
-                ? card with { Key = "hl:" + SlideId(highlights[i], i) }
-                // A re-fit (528: one track <-> two) moves the same row card into its new cell AND resizes it (the first card keeps its origin and only
-                // changes width): the card glides on both, its size revealed, as the section cells do. Position-only (Shove) snapped the width.
-                : card with { Key = "hl:" + SlideId(highlights[i], i), Layout = WinUiScreenMotion.Reflow };
-        }
-        Element heading = layout.HighlightsHeading
-            ? new TextEl(Loc.Get(Strings.WhatsNew.Highlights)) { Size = K.HeadingSize, LineHeight = K.HeadingLine, Weight = 600, Color = Tok.TextPrimary }
-            : R.Type.Eyebrow(Loc.Get(Strings.WhatsNew.Highlights)) with { Color = Tok.TextTertiary };
-        Element body = form == WinUiReleaseHighlightForm.Strip
-            ? new BoxEl
-            {
-                Key = "rn:hl:strip", Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Enter = WinUiScreenMotion.SwapFade, Exit = WinUiScreenMotion.SwapFade, Transition = WinUiScreenMotion.SwapFadeMotion,
-                Children = cards,
-            }
-            // Rows of two equal columns (Small) or one column (Compact): a lone last card keeps its column's width; a row is as tall as its tallest card.
-            : new GridEl
-            {
-                Key = "rn:hl:rows", Columns = form == WinUiReleaseHighlightForm.Grid2 ? s_twoTracks : s_oneTrack,
-                ColGap = layout.HighlightGap, RowGap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch,
-                Enter = WinUiScreenMotion.SwapFade, Exit = WinUiScreenMotion.SwapFade, Transition = WinUiScreenMotion.SwapFadeMotion,
-                Children = cards,
-            };
-        return new BoxEl
-        {
-            Direction = 1, Gap = K.StripGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-            Children = [heading, body],
-        };
-    }
-
-    // The row cards' track lists (shared, never mutated: a grid keeps its track array by reference).
-    static readonly TrackSize[] s_oneTrack = [TrackSize.Star()];
-    static readonly TrackSize[] s_twoTracks = [TrackSize.Star(), TrackSize.Star()];
-
-    /// <summary>The ROW card (Compact and Small, boards `C-ReleaseNotes-Compact` / `-Small`; also the after-update plate's cards at Compact): a 120 x 68 poster beside the
-    /// kind pill, the title and "Read more". A new path: the poster-over-copy <see cref="CardView"/> and its plate arithmetic are untouched. The whole card is the hit
-    /// region (at least the tier's target tall: the poster alone is 68); the Store card keeps its button a SIBLING of the hit region, as the poster card does.</summary>
-    static Element RowCard(HighlightItem item, Action open, Action openStore, WinUiReleaseNotesLayout layout, bool inRow)
+    /// <summary>The ROW card (the after-update plate's cards at Compact): a 120 x 68 poster beside the kind pill, the title and "Read more". The whole card is the
+    /// hit region (at least <paramref name="target"/> tall: the poster alone is 68); the Store card keeps its button a SIBLING of the hit region, as the poster card
+    /// does.</summary>
+    static Element RowCard(HighlightItem item, Action open, Action openStore, float target)
     {
         var h = item.Highlight;
         bool store = HighlightVisibility.IsStore(h);
         var frame = new BoxEl
         {
-            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = layout.Target,
-            Grow = inRow ? 1f : 0f, Shrink = 1f, Basis = inRow ? 0f : float.NaN,
+            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = target, Shrink = 1f,
             Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
             Fill = Tok.FillCardDefault, BorderWidth = 1f,
             BorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,
@@ -92,7 +39,7 @@ internal static partial class WinUiReleaseNotes
         var row = new BoxEl
         {
             Direction = 0, Gap = K.RowCardGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Padding = Edges4.All(K.RowCardPad),
-            Children = [RowPoster(item.Poster, store), RowCopy(h, store, layout)],
+            Children = [RowPoster(item.Poster, store), RowCopy(h, store)],
         };
         if (!store)
             return frame.Interactive(Interaction.Card) with
@@ -108,7 +55,7 @@ internal static partial class WinUiReleaseNotes
                 new BoxEl
                 {
                     Direction = 0, Padding = new Edges4(K.RowCardPad, 0f, K.RowCardPad, K.RowCardPad),
-                    Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), openStore, ButtonAppearance.Accent, ControlSize.Medium, layout.Target)],
+                    Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), openStore, ButtonAppearance.Accent, ControlSize.Medium, target)],
                 },
             ],
         };
@@ -128,14 +75,14 @@ internal static partial class WinUiReleaseNotes
             : [],
     };
 
-    static Element RowCopy(ReleaseHighlight h, bool store, WinUiReleaseNotesLayout layout)
+    static Element RowCopy(ReleaseHighlight h, bool store)
     {
         var kids = new List<Element>(3)
         {
             new BoxEl { AlignSelf = FlexAlign.Start, Children = [KindPill(h.Kind, store)] },
             new TextEl(h.Title)
             {
-                Size = layout.RowTitleSize, LineHeight = layout.RowTitleLine, Weight = 600, Color = Tok.TextPrimary,
+                Size = K.RowTitleSize, LineHeight = K.RowTitleLine, Weight = 600, Color = Tok.TextPrimary,
                 Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
             },
         };
@@ -148,7 +95,7 @@ internal static partial class WinUiReleaseNotes
         };
     }
 
-    /// <summary>One highlight card (shared by the page's strip and the after-update plate's row).</summary>
+    /// <summary>One highlight card (the after-update plate's row above Compact).</summary>
     static Element CardFor(HighlightItem item, Action open, Action openStore, bool compact) => Embed.Comp(() => new CardView(item, open, openStore, compact));
 
     /// <summary>The poster band: 16:9 from the card's own width, and a band EVEN WITHOUT a poster (a tinted plate) — a card
