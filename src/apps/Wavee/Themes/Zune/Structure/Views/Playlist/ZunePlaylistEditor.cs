@@ -200,15 +200,6 @@ internal static partial class ZunePlaylist
         };
     }
 
-    /// <summary>The field root's layers after its content row (its lines), set in from the leading edge by <paramref name="past"/>.</summary>
-    static Element[] StandBack(Element[] layers, float past)
-    {
-        var kids = new Element[layers.Length];
-        for (int i = 0; i < layers.Length; i++)
-            kids[i] = i > 0 && layers[i].Is(out BoxEl line) ? line with { Margin = new Edges4(past, 0f, 0f, 0f) } : layers[i];
-        return kids;
-    }
-
     static Element EditArm(PlaylistEditorProps p, InputHooks? hooks, Action<Action> post, ZunePlaylistLayout lay, float past)
     {
         bool description = p.Description;
@@ -220,14 +211,12 @@ internal static partial class ZunePlaylist
         // Focus WITHOUT a visual cue; with PlaceCaretAtEndOnFocus the caret sits at the end and nothing is selected.
         var parts = new TemplateParts
         {
-            // The field keeps the read arm's origin (its words hang like the title's); its lines (every layer after the content row: the resting
-            // underline, the focus bar) stand back to the column where the hang reaches past the column's old clip (`past`, audit FU2d).
-            [EditableText.PartRoot] = b => b with
-            {
-                OnRealized = n => post(() => hooks?.FocusNode?.Invoke(n, false)),
-                Children = past > 0f ? StandBack(b.Children, past) : b.Children,
-            },
+            [EditableText.PartRoot] = b => b with { OnRealized = n => post(() => hooks?.FocusNode?.Invoke(n, false)) },
         };
+        // The field keeps the read arm's origin (its words hang like the title's); its lines (the resting underline, the focus bar) stand back to the
+        // column where the hang reaches past the column's old clip (`past`, audit FU2d), as the read arm's hairline does.
+        if (past > 0f)
+            parts[EditableText.PartLine] = b => b with { Margin = new Edges4(past, 0f, 0f, 0f) };
         string placeholder = Loc.Get(description ? Strings.Detail.Edit.DescriptionPlaceholder : Strings.Detail.Edit.NamePlaceholder);
         return new BoxEl
         {
