@@ -288,6 +288,11 @@ public readonly partial struct User
         /// a selection that came FROM the list is already revealed by the engine, so the re-assert effect must not also
         /// bring it into view (that would be the D8 "unanimated jump" for a row the user is already looking at).</summary>
         bool _pickedFromList;
+        /// <summary>Set when the page comes back on screen (<see cref="OnArrive"/>), consumed by <see cref="SyncNav"/>: the selected row is brought into view once,
+        /// after the arrival's own reorder (a visit to an artist's page moves that artist to the top of "recents" and the selected row down past the fold).</summary>
+        bool _revealOnArrive;
+        Action<Action>? _post;
+        readonly Action _endArrive;
 
         int[] _filtered = new int[64], _perm = new int[64], _sorted = new int[64], _counts = new int[64], _songs = new int[64];
         long[] _played = new long[64];
@@ -358,7 +363,7 @@ public readonly partial struct User
         readonly Func<bool> _isSearching;
         readonly Func<string> _filterText;
         readonly Func<uint> _runSearch;
-        readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum, _applyNavPlace, _holdNavPlace;
+        readonly Action _demandEdge, _demandRows, _syncNav, _onArrive, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum, _applyNavPlace, _holdNavPlace;
         readonly Action _onNavSel, _commitLeft, _commitMid, _restLeft;
         /// <summary>The user has set the navigator's width (contract 1.21): no tier re-rests it from here on.</summary>
         bool _leftCustomized;
@@ -479,6 +484,8 @@ public readonly partial struct User
             _demandEdge = DemandEdge;
             _demandRows = DemandRows;
             _syncNav = SyncNav;
+            _onArrive = OnArrive;
+            _endArrive = () => _revealOnArrive = false;
             _syncLetters = SyncLetters;
             _syncLoad = SyncNavLoad;
             _saveState = SaveState;
@@ -575,6 +582,8 @@ public readonly partial struct User
             UseEffect(_demandRows);                                                     // re-runs as the relation lands
             UseEffect(_restLeft);                                                       // auto-tracked: a content-tier crossing re-rests an undragged navigator
             UseSignalEffect(_watchLetters);                                             // the sticky letter off the nav scroll
+            _post = UsePost();
+            UseActivation(onActivated: _onArrive);                                      // back on screen: the selected row comes into view
             // The structure's LAYOUT ladder over the page's measured width (themes plan 3.3): the first frame resolves from the seed (the content region the frame resolved the
             // window tiers on), so a page mounted at Compact is one column from its first frame; a crossing after it commits on the first non-resized frame and animates.
             _viewport = UseContextSignal(Viewport.Size);
@@ -1134,6 +1143,24 @@ public readonly partial struct User
             {
                 SyncSelect(idx, float.NaN);
             }
+            else if (_revealOnArrive)
+            {
+                _navCtl.StartBringItemIntoView(idx, float.NaN);
+            }
+            _revealOnArrive = false;
+        }
+
+        /// <summary>The page is back on screen (a keep-alive route re-activated): bring the selected row into view, minimally (a row already on screen does
+        /// not move). The detail pane showed an artist whose row sat below the fold, and nothing on the list said which one it was (owner video 2026-10-25).
+        /// Once now, for an order that stood still, and once more from <see cref="SyncNav"/> after the arrival's own reorder.</summary>
+        void OnArrive()
+        {
+            _revealOnArrive = true;
+            _post?.Invoke(_endArrive);   // the arrival's frame only: a later reorder (a play re-ranking "recents") never yanks the list
+            if (_fullSearch || _sortedCount == 0) return;
+            string key = SelectedKey.Peek();
+            int idx = key.Length == 0 ? -1 : IndexOfSlot(SlotOfKey(_entity, key));
+            if (idx >= 0) _navCtl.StartBringItemIntoView(idx, float.NaN);
         }
 
         /// <summary>The truthful line for a mount that DID happen (see <see cref="OnNavMounted"/> for the one that

@@ -65,9 +65,9 @@ public static class ZuneDetailRules
 {
     // ── the node keys (the tests find them) ──────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The frame's root, the panorama band, the identity column, the list column's heading, the aside slot and its column.</summary>
+    /// <summary>The frame's root, the panorama band, the identity column, the aside slot and its column.</summary>
     public const string FrameKey = "zune.detail.frame", PanoramaKey = "zune.detail.panorama", RailKey = "zune.detail.rail",
-        CompactRailKey = "zune.detail.compact-rail", SongsHeadingKey = "zune.detail.songs", AsideKey = "zune.detail.aside",
+        CompactRailKey = "zune.detail.compact-rail", AsideKey = "zune.detail.aside",
         AsideColumnKey = "zune.detail.aside-column", HeroKey = "zune.detail.hero", HeroBandKey = "zune.detail.hero-band",
         NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
         ColumnGapKey = "zune.detail.column-gap";
@@ -75,7 +75,7 @@ public static class ZuneDetailRules
     /// <summary>The album's pieces: the artist line, the release facts, the countdown, the trailing band's sections, one list stack, the aside.</summary>
     public const string ArtistLineKey = "zune.album.artist", ReleaseKey = "zune.album.release", CountdownKey = "zune.album.countdown",
         SectionsKey = "zune.album.sections", StackKey = "zune.album.stack", AlbumAsideKey = "zune.album.aside", FansKey = "zune.album.fans",
-        UnresolvedKey = "zune.album.unresolved", AboutKey = "zune.album.about", CreditsKey = "zune.album.credits";
+        UnresolvedKey = "zune.album.unresolved", AboutKey = "zune.album.about", CreditsKey = "zune.album.credits", AboutCardKey = "zune.album.about-card";
 
     /// <summary>The ring actions' key prefix (the vertical hero's and the identity column's): "play", "save", "share", "shuffle", "more".</summary>
     public const string RingPrefix = "zune.detail.ring:";
@@ -206,12 +206,6 @@ public static class ZuneDetailRules
 
     /// <summary>The panorama's opacity (the boards' 0.92: the title sits a breath back from the ink).</summary>
     public const float PanoramaOpacity = 0.92f;
-
-    /// <summary>The "songs" heading row over the list (Z-Album: 40), and the list's inset under it (the rows' own 8 already stand in).</summary>
-    public const float HeadingRowH = 40f;
-
-    /// <summary>The "songs" heading's side inset (A5): none, so the heading, the bar's first glyph and the header's hairline share the list's x.</summary>
-    public const float SongsHeadingInset = 0f;
 
     /// <summary>The identity column's cover decode bucket (the shelf's: a warm texture on arrival) and its saturation.</summary>
     public const int CoverDecodePx = 512;
@@ -377,7 +371,17 @@ public static class ZuneDetailRules
     public const float FanCardW = 148f;
 
     /// <summary>The trailing skeleton: a heading bar, a row bar, the gap between rows.</summary>
-    public const float SkelHeadingW = 160f, SkelHeadingH = 20f, SkelRowH = 64f, SkelRowGap = 4f, SkelVideoH = 116f;
+    public const float SkelHeadingW = 160f, SkelHeadingH = 20f, SkelRowH = 64f, SkelRowGap = 4f, SkelVideoH = 116f, SkelAboutH = 140f;
+
+    /// <summary>The album's about-the-artist CARD below Huge (owner 2026-10-25: restored as it was before audit FU2's round 1; at Huge the aside draws
+    /// Z-Album-Huge's own form instead, <see cref="AboutKey"/>). Zune's own in the aside, flat: the artist's image as a 120 band, the words' inset under it,
+    /// their gap, the name (20/28, two lines) with its tick, the follow pill STACKED under the name (audit B: beside the name it ellipsised "Mia S..." at 260),
+    /// the listeners and the bio (14/20, four lines). Under the rows (no aside) the shared card (<c>Controls.ArtistAboutCard</c>).</summary>
+    public const float CardPadX = 20f, CardPadTop = 16f, CardPadBottom = 20f, CardWordsGap = 6f, CardNameSize = 20f, CardNameLine = 28f,
+        CardFollowTop = 4f, CardCheck = 12f, CardCheckTop = 8f, CardBand = 120f;
+
+    /// <summary>See <see cref="CardPadX"/>.</summary>
+    public const int CardNameLines = 2, CardBioLines = 4;
 
     /// <summary>The countdown's unit tiles: the numeral over its unit word, 12 apart.</summary>
     public const float CountdownGap = 12f, CountdownUnitGap = 2f, CountdownPad = 16f;

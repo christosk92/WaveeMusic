@@ -1,6 +1,6 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.cs — Classic's `Pages.Settings` (themes plan 6.1, T11b) ───────────────────────────
 //
-// From `Screens\Settings.UI.cs` (`SettingsPageView`, §3 the row grammar, §4 the glyphs). The page's PICTURE: the masthead, the twelve-area pivot over a
+// From `Screens\Settings.UI.cs` (`SettingsPageView`, §3 the row grammar, §4 the glyphs). The page's PICTURE: the masthead, the seven-tab pivot (the structure's grouping of the twelve areas) over a
 // per-tab keyed scroll lane, and the shared row grammar every tab builds with (the section header, the card, the expander item, the value tag, the
 // compact toggle over a document row). The tabs' bodies are `ClassicSettings.<Tab>.cs`; the theme picker, the options and the sidebar layout cards are
 // `ClassicSettings.Theme.cs` (they are their own keys: the setup wizard mounts them too).
@@ -68,12 +68,16 @@ internal static partial class ClassicSettings
         // The route is keep-alive: a PARKED page is not unmounted, so the same teardown rides the deactivation edge.
         hooks.UseActivation(onDeactivated: static () => EnterPlayback(false));
 
-        int area = Math.Clamp(props.Area, 0, Settings.AreaSlugs.Length - 1);
-        hooks.UseEffect(() => EnterPlayback(area == (int)Settings.Area.Playback), DepKey.From(area));
+        // The structure's grouping (`SettingsGrouping.Seven`): seven tabs over the twelve areas. A page mounted with the default grouping draws one tab per area.
+        var grouping = props.Grouping;
+        int group = Math.Clamp(props.Group, 0, Math.Max(0, grouping.Count - 1));
+        var parts = grouping.PartsOf(group);
+        bool playback = HasTab(parts, Tab.Playback);
+        hooks.UseEffect(() => EnterPlayback(playback), DepKey.From(playback ? 1 : 0));
 
-        Element body = AreaBody((Settings.Area)area, props);
+        Element body = GroupBody(parts, props);
 
-        string slug = Settings.AreaSlugs[area];
+        string slug = grouping.Count > 0 ? grouping.Tabs[group].Slug : Settings.AreaSlugs[Math.Clamp(props.Area, 0, Settings.AreaSlugs.Length - 1)];
         // The body swaps with the page cross-fade (Q38): the lane is keyed per tab, so a switch is a real unmount the
         // engine fades out under the arriving tab, and each tab keeps its own offset. Every tab is an ordinary scrolling
         // lane (N8's unscrolled Logs lane is retired: the viewer is the route `logs`).
@@ -159,12 +163,23 @@ internal static partial class ClassicSettings
 
     /// <summary>The tab strip (board: the tabs under the title). Where the lane runs off the edge (Compact, Small) it scrolls, bleeding to the card's edges, its
     /// end fading where more wait; otherwise it ends at the column (its rule inside the gutters). The first label sits on the gutter either way. ONE tree at every
-    /// tier (the strip always rides its scroller; the tier sets the scroller's height, its fade and the rule's inset), so a crossing keeps the SAME selector bar —
+    /// tier (the strip always rides its scroller; the tier sets the items' height, its fade and the rule's inset), so a crossing keeps the SAME selector bar —
     /// the selected tab's pill and the focused tab survive — instead of swapping one form for the other.</summary>
     static Element TabStrip(ClassicSettingsLayout layout, float gutter, SettingsPageProps props)
     {
+        // The grouping's tabs (`settings:tabitem:<slug>`: a driver finds and clicks a tab by its slug). A click opens the tab's first home area
+        // (`SettingsPageProps.OpenGroup`), so the area cell stays the page's one state.
+        var grouping = props.Grouping;
+        var labels = new string[grouping.Count];
+        var keys = new string?[grouping.Count];
+        for (int i = 0; i < labels.Length; i++)
+        {
+            labels[i] = Loc.Get(grouping.Tabs[i].TitleKey);
+            keys[i] = "settings:tabitem:" + grouping.Tabs[i].Slug;
+        }
+        int group = Math.Clamp(props.Group, 0, Math.Max(0, labels.Length - 1));
         var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight, LeadingInset = ClassicSettingsRules.TabLeadingInset } : null;
-        Element bar = SelectorBar.Create(AreaLabels(), props.AreaCell(), style: style, itemKeys: s_areaTabKeys);
+        Element bar = SelectorBar.Create(labels, new Signal<int>(group), onChange: props.OpenGroup, style: style, itemKeys: keys);
         return new BoxEl
         {
             Key = "settings:tabs", Direction = 1, Shrink = 0f,
@@ -172,8 +187,11 @@ internal static partial class ClassicSettings
             [
                 ScrollView(new BoxEl { Direction = 0, Padding = new Edges4(gutter, 0f, gutter, 0f), Children = [bar] }, horizontal: true) with
                 {
-                    Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight > 0f ? layout.TabHeight : float.NaN, SuppressScrollBar = true,
-                    AutoEdgeFade = layout.TabsScroll, ScrollKey = "settings:tabs",
+                    // The bar's own height (its items plus its 4-DIP padding above and below), never the tier's item height: a scroller held to
+                    // the item height clipped the bar's foot, and the selected tab's pill with it (no selected state at Compact and Small).
+                    Grow = 0f, Shrink = 0f, MinWidth = 0f, SuppressScrollBar = true,
+                    // Every tier: the fade draws only where tabs wait past the edge (twelve areas overrun a Standard column too).
+                    AutoEdgeFade = true, ScrollKey = "settings:tabs",
                 },
                 Divider() with { Margin = layout.TabsScroll ? default : new Edges4(gutter, 0f, gutter, 0f) },
             ],

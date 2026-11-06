@@ -913,6 +913,8 @@ public static partial class ReleaseNotes
                     list.Add(new ReleaseMediaEntry(m.Src, IsMotionMedia(m.Kind, m.Src)));
                 if (!string.IsNullOrWhiteSpace(m.Poster) && seen.Add(m.Poster!))
                     list.Add(new ReleaseMediaEntry(m.Poster!, false));
+                if (!string.IsNullOrWhiteSpace(m.SrcLight) && seen.Add(m.SrcLight!))
+                    list.Add(new ReleaseMediaEntry(m.SrcLight!, false));
             }
             return list;
         }

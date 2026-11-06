@@ -280,7 +280,7 @@ public static class ListOpen
 
     /// <summary>Bumps when a record is taken, joined, settled, dropped or its hold runs out of budget. Read it (tracked)
     /// wherever <see cref="Holding"/> is read.</summary>
-    public static readonly Signal<uint> Changed = new(0);
+    public static readonly Signal<uint> Changed = new(0) { DebugName = "playlist.open.changed" };
 
     /// <summary>OPEN a playlist's list from <paramref name="surface"/>: read the facts, ask <see cref="ListOpenPolicy.Decide"/>,
     /// make the edge-door call it names, stamp the list, and record (or join) the revalidation. UI thread, from an EFFECT

@@ -20,12 +20,18 @@
 
 .EXAMPLE
   .\New-ReleaseImage.ps1 -Shot artifacts\media-src\home.png -Shot2 artifacts\media-src\settings.png -Out artifacts\media-src\twoup.jpg -Variant twoup
+
+.EXAMPLE
+  .\New-ReleaseImage.ps1 -Variant stats -Stats artifacts\media-src\stats.json -Out ops\release\wavee\0.3.6\media\faster.jpg
+  No screenshot: up to four tiles of measured numbers (icon, figure, unit, optional before/after bars by version).
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)][string]$Shot,
+  [string]$Shot,
   [Parameter(Mandatory)][string]$Out,
-  [ValidateSet('card','detail','twoup')][string]$Variant = 'card',
+  [ValidateSet('card','detail','twoup','stats')][string]$Variant = 'card',
+  [ValidateSet('dark','light')][string]$Appearance = 'dark',   # the app mode of the shots: light ones get a light field (a highlight's srcLight)
+  [string]$Stats,   # stats: a JSON file, [{ "icon", "value", "unit", "before", "after", "from", "to" }] (frame.html)
   [string]$Shot2,
   [string]$TintA = '#3d5a8f',
   [string]$TintB = '#6b3a63',
@@ -125,9 +131,21 @@ function Format-Num($Value) {
 # inputs
 # ---------------------------------------------------------------------------------------------------
 
-if (-not (Test-Path -LiteralPath $Shot)) { throw "Shot not found: $Shot" }
-$shotPath = (Resolve-Path -LiteralPath $Shot).ProviderPath
-$shotSize = Get-PngSize $shotPath
+$statsJson = '[]'
+if ($Variant -eq 'stats') {
+  if (-not $Stats -or -not (Test-Path -LiteralPath $Stats)) { throw "-Variant stats needs -Stats <json file>." }
+  # validated by parsing, injected as written: Windows PowerShell's ConvertTo-Json would wrap a piped array in an object
+  $statsJson = (Get-Content -LiteralPath $Stats -Raw -Encoding UTF8).Trim()
+  $null = $statsJson | ConvertFrom-Json
+  if (-not $statsJson.StartsWith('[')) { throw "-Stats must hold a JSON array of tiles: $Stats" }
+  $shotPath = ''
+  $shotSize = [pscustomobject]@{ Width = 0; Height = 0 }
+}
+else {
+  if (-not $Shot -or -not (Test-Path -LiteralPath $Shot)) { throw "Shot not found: $Shot" }
+  $shotPath = (Resolve-Path -LiteralPath $Shot).ProviderPath
+  $shotSize = Get-PngSize $shotPath
+}
 
 $shot2Path = $shotPath
 if ($Shot2) {
@@ -208,11 +226,13 @@ try {
   $html = Get-Content -LiteralPath $template -Raw
   $map = [ordered]@{
     '__VARIANT__' = $Variant
-    '__SHOT2__'   = (ConvertTo-FileUrl $shot2Path)
-    '__SHOT__'    = (ConvertTo-FileUrl $shotPath)
+    '__SHOT2__'   = $(if ($shot2Path) { ConvertTo-FileUrl $shot2Path } else { '' })
+    '__SHOT__'    = $(if ($shotPath) { ConvertTo-FileUrl $shotPath } else { '' })
+    '__STATS__'   = $statsJson
     '__W__'       = "$Width"
     '__H__'       = "$Height"
-    '__BASE__'    = '#202020'
+    '__BASE__'    = $(if ($Appearance -eq 'light') { '#f3f3f3' } else { '#202020' })
+    '__KIND__'    = $Appearance
     '__TINT_A__'  = $TintA
     '__TINT_B__'  = $TintB
     '__RADIUS__'  = "$Radius"

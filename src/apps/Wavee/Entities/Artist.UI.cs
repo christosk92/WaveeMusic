@@ -288,6 +288,15 @@ public static class ArtistSections
     /// failure. A pending ask, or a chart that has not failed, keeps the skeleton.</summary>
     public static bool PageFailed(bool overviewKnown, bool overviewPending, EdgeState chartReadiness)
         => !overviewKnown && !overviewPending && chartReadiness == EdgeState.Failed;
+
+    /// <summary>Has the overview stopped coming? A group of it is missing that nobody asks for any more, with nothing in flight for the row: the planner gave
+    /// up on it (a seal after repeated misses, a terminal failure), so no answer can complete the overview and only a Retry can. Read only after the page
+    /// asked (an unasked group is "not asked yet" before that).</summary>
+    public static bool OverviewStopped(uint known, uint asked, uint inflight)
+    {
+        uint missing = (uint)ArtistFields.Overview & ~known;
+        return missing != 0 && (asked & missing) != missing && inflight == 0;
+    }
 }
 
 // ══ 4. THE HERO'S FACTS AND THE LIGHTBOX'S CORE ═══════════════════════════════════════════════════════════════════════

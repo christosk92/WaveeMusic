@@ -4,15 +4,17 @@
 // -Huge4K (the 400 / 440 aside: "about <artist>" with the photo band, "more by" as a two-column grid of covers, "fans also like" as four circles a row),
 // Z-Album-Small / -Compact (no aside: the same sections under the rows). Every section opens on Zune's heading (26/32 light, lowercased; a heading that carries a NAME, "More by Daft Punk", keeps
 // the name's casing) and its link word at the end ("discography" on an artist's releases, else "show all 12", one-way: the stack lengthens in place).
-// "about" is the Huge aside's only (owner 2026-10-25, audit FU2b: Z-Album-Huge draws it, Z-Album and the narrower boards do not): ONE keyed block in
-// every aside, folded to nothing below Huge, so the 1920 crossing eases it in and out and keeps its parts (no tier in a key). "credits" is drawn only
+// "about <artist>" in the board's own form is the Huge aside's (owner 2026-10-25, audit FU2b: Z-Album-Huge draws it); below Huge the earlier "about the
+// artist" card stands in its place (owner 2026-10-25, audit FU2d: restored as it was before audit FU2's round 1), in the aside above "more by" and under
+// the rows (no aside) before fans also like. In the aside each is ONE keyed block folded to nothing where the other stands, so the 1920 crossing eases
+// one out and the other in and keeps their parts (no tier in a key), and the aside never shows two. "credits" is drawn only
 // when the core has a paragraph to state (`AlbumAsideProps.Credits`), which it has not yet: the section draws nothing, not even its heading.
 //
 //   · the REGION (`Album.Trailing`): one skeleton boundary shimmering from the first frame and revealing once, keyed on the shape the host decided;
-//   · the SECTIONS (`Album.Sections`, under the rows): the music videos (one: the wide card; two or more: the paged shelf), fans also like, then
-//     the list stacks (more by, the similar albums, featured on, merch), in that fixed order;
-//   · the ASIDE (`Album.Aside`, the docked column): "more by", fans also like. The release facts stay in the identity column (Z-Album draws its ℗
-//     line there), so the aside never repeats them;
+//   · the SECTIONS (`Album.Sections`, under the rows): the music videos (one: the wide card; two or more: the paged shelf), about the artist, fans also
+//     like, then the list stacks (more by, the similar albums, featured on, merch), in that fixed order;
+//   · the ASIDE (`Album.Aside`, the docked column): about the artist (the card below Huge, Z-Album-Huge's form at Huge), "more by", credits, fans also
+//     like. The release facts stay in the identity column (Z-Album draws its ℗ line there), so the aside never repeats them;
 //   · the STACK (`Album.TrailStack`): rows of the shared media surface (Zune's surface style), or, in a Huge aside, the grid of covers.
 //
 // The hosts keep every gate, stamp and verb (`Entities\Album.Page.cs`, `Album.UI.cs`); the rows reach these views as plain records with closures.
@@ -72,6 +74,11 @@ internal static class ZuneAlbumTrailing
         if (!p.Any) return new BoxEl();
         var sections = new List<Element>(7);
         if (p.Videos.Count > 0) sections.Add(Section("section:videos", null, Videos(p.Videos, p.CustomVideo, p.Overlay)));
+        // About the artist under the rows, wherever no aside holds it (Compact, Small, a panel's narrower page): the shared card, before fans also like
+        // (owner 2026-10-25: restored as it was before audit FU2's round 1).
+        if (p.About is { } lead)
+            sections.Add(Section("section:about", K.Heading(Loc.Get(Strings.Detail.AboutTheArtist)),
+                Controls.ArtistAboutCard(lead, AboutLayout.Page) with { Key = "about:" + lead.Uri.Text }) with { Enter = enter, Exit = ZuneMotion.SwapFade });
         if (p.Fans.Count > 0)
             sections.Add(Section(Z.FansKey, K.Heading(Loc.Get(Strings.Detail.FansAlsoLike)), FansRow(p.Fans)) with { Enter = enter, Exit = ZuneMotion.SwapFade });
         for (int i = 0; i < p.Lists.Count; i++)
@@ -212,7 +219,118 @@ internal static class ZuneAlbumTrailing
         return new BoxEl
         {
             Key = Z.AlbumAsideKey, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-            Children = p.About is { } artist ? [About(artist, lay), sections] : [sections],
+            Children = p.About is { } artist ? [AboutCardFold(artist, lay, enter), About(artist, lay), sections] : [sections],
+        };
+    }
+
+    /// <summary>About the artist below Huge (owner 2026-10-25: restored as it was before audit FU2's round 1): the heading over Zune's flat card, above "more
+    /// by". ONE keyed block at every aside tier, folded to nothing at Huge, where the board's own form stands instead (<see cref="About"/>): a crossing
+    /// eases one closed and the other open through real layout, so the aside never shows two and nothing mounts mid-crossing. It moves between the band
+    /// under the rows and the aside on the 1008 crossing (the swap's family, cross-faded), as fans also like does.</summary>
+    static Element AboutCardFold(Artist artist, ZuneDetailLayout lay, EnterExit? enter)
+    {
+        bool shown = lay.AboutBand <= 0f;
+        Element content = new BoxEl
+        {
+            Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
+            Padding = new Edges4(0f, 0f, 0f, Z.AsideSectionGap),   // the gap to the next section, folded with the block
+            Children =
+            [
+                K.HeadingRow(Z.AboutCardKey + ":head", K.Heading(Loc.Get(Strings.Detail.AboutTheArtist)), null, Z.AsideHeadingH),
+                AboutCard(artist, lay) with { Key = "aside:about:" + artist.Uri.Text },
+            ],
+        };
+        return new BoxEl
+        {
+            Key = Z.AboutCardKey, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, Shrink = 0f,
+            Height = shown ? float.NaN : 0f, HitTestVisible = shown, Layout = Design.Reduced ? null : ZuneMotion.HeightResize,
+            Enter = enter, Exit = ZuneMotion.SwapFade,
+            Children = [content],
+        }.Skeletonized(shown);
+    }
+
+    /// <summary>Zune's aside artist card, flat: the artist's image as a band, then the name (20/28, two lines, as written) with the follow pill STACKED under
+    /// it (audit B, Album at 1440: beside the name the pill ellipsised in the 260 aside), the monthly listeners in the accent and the bio (four lines). The
+    /// band and the name are the card's one link (to the artist); the pill is its sibling, never a button inside a button.</summary>
+    static Element AboutCard(Artist artist, ZuneDetailLayout lay)
+    {
+        string name = artist.Name;
+        string uri = artist.Uri.Text;
+        string? image = Controls.ArtUrl(artist.HeroImageId) is { Length: > 0 } hero ? hero : Controls.ArtUrl(artist.ImageId);
+        string bio = ArtistVerbs.Text(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
+        Action open = () => Track.GoToArtist(artist);
+        Element band = new BoxEl
+        {
+            Key = "about:band", Height = Z.CardBand, ZStack = true, ClipToBounds = true, Fill = R.Layer.RowHover, Animate = Z.SlotReveal,
+            Children = image is { Length: > 0 } url ? [Ui.Image(url, ImageFit.Cover, decodePx: Z.AboutImageDecode)] : [],
+        };
+        Element nameRow = new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Start, Gap = Spacing.S, MinWidth = 0f,
+            Children =
+            [
+                R.Type.TrackTitle(name) with
+                {
+                    Size = Z.CardNameSize, LineHeight = Z.CardNameLine, Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                    Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.CardNameLines, Trim = TextTrim.CharacterEllipsis,
+                },
+                artist.IsVerified
+                    ? Ui.Icon(Icons.Check, Z.CardCheck, Tok.AccentTextPrimary) with { Shrink = 0f, Margin = new Edges4(0f, Z.CardCheckTop, 0f, 0f) }
+                    : new BoxEl { Width = 0f, Shrink = 0f },
+            ],
+        };
+        Element link = new BoxEl
+        {
+            Key = "about:link", Direction = 1, Gap = Z.CardWordsGap, MinWidth = 0f,
+            HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+            Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = open,
+            Children =
+            [
+                band,
+                new BoxEl
+                {
+                    Direction = 1, Gap = Z.CardWordsGap, MinWidth = 0f, Padding = new Edges4(Z.CardPadX, Z.CardPadTop, Z.CardPadX, 0f),
+                    Children =
+                    [
+                        R.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist)) with
+                        {
+                            Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        },
+                        nameRow,
+                    ],
+                },
+            ],
+        };
+        var words = new List<Element>(2);
+        if (artist.MonthlyListeners > 0)
+            words.Add(R.Type.DenseMeta(Detail.Text.CompactCount(artist.MonthlyListeners) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with
+            {
+                Size = Z.AboutBodySize, LineHeight = Z.AboutBodyLine, Color = Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Label),
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        if (!string.IsNullOrWhiteSpace(bio))
+            words.Add(R.Type.DenseMeta(bio) with
+            {
+                Size = Z.AboutBodySize, LineHeight = Z.AboutBodyLine, Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords,
+                MaxLines = Z.CardBioLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Children =
+            [
+                link,
+                new BoxEl
+                {
+                    Key = "about:follow", Direction = 0, MinWidth = 0f, Padding = new Edges4(Z.CardPadX, Z.CardFollowTop, Z.CardPadX, 0f),
+                    Children = [Embed.Comp(() => new ZuneArtistHero.FollowPill { Uri = uri, Name = name, Height = lay.Target }) with { Key = "about:follow:" + uri }],
+                },
+                new BoxEl
+                {
+                    Key = "about:words", Direction = 1, Gap = Z.CardWordsGap, MinWidth = 0f,
+                    Padding = new Edges4(Z.CardPadX, Z.CardWordsGap, Z.CardPadX, Z.CardPadBottom), Children = words.ToArray(),
+                },
+            ],
         };
     }
 
@@ -493,9 +611,9 @@ internal static class ZuneAlbumTrailing
 
     static Element Skeleton(in PageRules.TrailingShape shape)
     {
-        // No About block: Zune draws no about card on the album (the shape's About is the core's reserve for a theme that does).
-        var sections = new List<Element>(2 + shape.RowBlocks);
+        var sections = new List<Element>(3 + shape.RowBlocks);
         if (shape.Video) sections.Add(SkelSection(K.Bar(Z.VideoThumbW, Z.SkelVideoH), heading: shape.VideoShelf));
+        if (shape.About) sections.Add(SkelSection(new BoxEl { Height = Z.SkelAboutH, AlignSelf = FlexAlign.Stretch, Corners = R.Shape.All(ShapeRole.Card) }, heading: true));
         if (shape.Fans)
         {
             var circles = new Element[PageRules.FansCap];

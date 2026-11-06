@@ -72,6 +72,9 @@ public static class WinUiArtistRules
     /// <summary>The Display face's natural line box per em: the name's box is the taller of it and its line height (what the scrim's bands measure).</summary>
     public const float NameNaturalLine = 1.33f;
 
+    /// <summary>The most lines the hero's name takes: a name the floor cannot hold on one line wraps onto a second.</summary>
+    public const int NameLines = 2;
+
     /// <summary>The name's size (Display 68) and line (80), its auto-fit floor; the meta line's size and line; the Verified words'.</summary>
     public const float NameSize = 68f, NameLine = 80f, NameFloor = 40f, MetaSize = 14f, MetaLine = 20f, VerifiedSize = 12f, VerifiedLine = 16f;
 
@@ -295,6 +298,19 @@ public static class WinUiArtistMotion
     public static readonly LayoutTransition CardActions = new(TransitionChannels.Size | TransitionChannels.Opacity,
         TransitionDynamics.Tween(FadeOutMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width,
         Enter: ActionsSwap, Exit: ActionsSwap);
+
+    /// <summary><see cref="CardActions"/> for actions that mount WITH their card (the page landing): no Enter, so they stand at their width from the first frame
+    /// and the name beside them is laid out at its final size; they still close as they leave.</summary>
+    public static readonly LayoutTransition CardActionsLanding = CardActions with { Enter = default };
+
+    /// <summary>The pivot's pill: it scales in under the lit tab (the stock 167 ms open from a quarter of its width) and the one it leaves goes at once, as WinUI's
+    /// SelectorBar snaps it. The scroll spy relights the pivot on every section a glide passes, and the stock reverse fade left a trail of fading pills under the
+    /// tabs behind it, two or three underlines at once (owner video 2026-10-25).</summary>
+    public static readonly LayoutTransition PivotPill = new(TransitionChannels.Opacity, TransitionDynamics.Tween(Motion.ControlFast, Easing.FluentPopOpen),
+        Enter: new EnterExit(Sx: PivotPillFrom, Opacity: 0f, Active: true));
+
+    /// <summary>The pill's opening width, a share of its own (the stock SelectorBar's 4-wide base under a 16-wide pill).</summary>
+    public const float PivotPillFrom = 0.25f;
 
     /// <summary>A block inside the side column (the latest release, the upcoming card, the pick, the discography preview): it moves and resizes with the
     /// column inside one arrangement, the size laid out at once and revealed.</summary>

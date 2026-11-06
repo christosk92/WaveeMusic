@@ -1,6 +1,6 @@
 // ── Themes/WinUi/Structure/Views/Screens/WinUiSettings.Areas.cs — the area composer and the four sections the document gained (themes plan 6.1) ──
 //
-// The page shows the seven TABS of WinUI's grouping (`WinUiSettingsGrouping`) over the twelve AREAS of `Settings.Areas.cs` (account · appearance · playback · audio · lyrics · devices &
+// The page shows the seven TABS of the boards' grouping (`SettingsGrouping.Seven`) over the twelve AREAS of `Settings.Areas.cs` (account · appearance · playback · audio · lyrics · devices &
 // connect · storage · notifications · keyboard · privacy · feedback & help · about); each tab draws the document sections its areas hold, so every theme draws the same sections in its own style. A tab's body (`GeneralTab`,
 // `PlaybackTab`, ...) is a flat run of cards in which every section starts at a `Mark(section)`; `GroupBody` asks each tab once, keeps the runs the grouping names, and hands
 // them to `TabStack` (one column). The four sections below have no old tab: Account, Devices, Keyboard (a READ-ONLY reference of

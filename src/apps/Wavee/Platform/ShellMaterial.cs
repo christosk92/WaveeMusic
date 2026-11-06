@@ -172,22 +172,26 @@ public sealed class MaterialPort
 /// exists to prevent.</para>
 /// <para><b>The fix:</b> every swap before the ladder has produced a DEFINITIVE first answer (a real grading hit,
 /// or Definite because nothing better can ever arrive — no url, or a url the endpoint cannot grade) exits INSTANTLY
-/// (no Exit spec ⇒ immediate structural removal, no deferred fade) instead of animating. The incoming node can
-/// still fade its Enter in on its own — with the outgoing one already gone, there is nothing left for it to
-/// composite against, so at most one veil is ever live. Once settled, later changes (a live re-grading, a theme
-/// flip) cross-fade normally, same as before this fix.</para>
+/// (no Exit spec ⇒ immediate structural removal, no deferred fade) instead of animating, and the incoming node
+/// appears at once too: an Enter fading in over nothing unveils the photo for the length of the fade. The Enter
+/// follows the state ENTERING the frame (the outgoing node's Exit was built from it), never the state after it:
+/// the render the grading lands in is settled AFTERWARDS, and keying its Enter on that faded the graded node in
+/// from 0 right after the payload veil was removed at once (a bare photo on screen). Once settled, later changes
+/// (a live re-grading, a theme flip) cross-fade normally, same as before this fix.</para>
 /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Controls.cs</c>), and the
-/// invariant is pinned by a fact in <c>Wavee.Tests</c>.</para></summary>
+/// invariant is the owner's (no bare photo on screen).</para></summary>
 public static class VeilSettlement
 {
-    /// <summary>Advances the leaf's settled state for this frame and says whether the node this frame's re-key
-    /// REPLACES may animate its Exit. <paramref name="alreadySettled"/> is the leaf's state entering the frame;
+    /// <summary>Advances the leaf's settled state for this frame and says whether the node this frame builds may
+    /// animate its Exit (<c>ExitAnimates</c>: the state after this frame) and its Enter (<c>EnterAnimates</c>: only
+    /// when the node it replaces was built settled, so that one fades out under it).
+    /// <paramref name="alreadySettled"/> is the leaf's state entering the frame;
     /// the returned <c>Settled</c> is what the leaf should hold for the NEXT frame. Settlement is one-way — once
     /// true it stays true for the life of the component instance (a fresh mount, e.g. navigating to a different
     /// artist, gets a fresh instance and starts unsettled again).</summary>
-    public static (bool Settled, bool ExitAnimates) Advance(bool alreadySettled, AccentLadder.Rung rung, bool definite)
+    public static (bool Settled, bool ExitAnimates, bool EnterAnimates) Advance(bool alreadySettled, AccentLadder.Rung rung, bool definite)
     {
         bool settled = alreadySettled || rung == AccentLadder.Rung.Graded || definite;
-        return (settled, settled);
+        return (settled, settled, alreadySettled);
     }
 }

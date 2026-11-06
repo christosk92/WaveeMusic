@@ -328,17 +328,26 @@ public static partial class Queue
                       DepKey.From(ContextId.GetHashCode() ^ (Wire.Referrer.GetHashCode() * 31)));
             UseEffect(s_observeContext);
             bool viewer = Playback.OwnerSignal.Value == Playback.Owner.Foreign;
-            _ = Platform.SettingsChanged.Value;
-            Autoplay = Shell.QueueModel.AutoplayEnabled();
+            // The autoplay SETTING and the context's NAME through value memos: the host re-renders when they change, not on every settings
+            // write or every publication of the context's whole table (an artist page answering albums re-rendered the docked queue panel
+            // whenever the queue played from an album — the owner's 2026-10-25 census, audit PERF r3 MOTION).
+            Autoplay = UseComputed(s_autoplay).Value;
             bool shuffle = rail ? Playback.Shuffle.Value : Playback.Shuffle.Peek();
             RepeatMode repeat = rail ? Playback.Repeat.Value : Playback.Repeat.Peek();
-            QueuePlayingFrom? playingFrom = rail ? Shell.QueueModel.PlayingFromOf(ContextId, in Wire) : null;
+            string? contextName = UseComputed(s_contextName).Value;
+            QueuePlayingFrom? playingFrom = rail ? Shell.QueueModel.PlayingFromOf(contextName, ContextTarget(ContextId, in Wire)) : null;
             Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : Playback.Snap().Cursor.Index, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
             if (!rail) Model = Model with { History = ReadHistory() };
         }
 
         static readonly Func<ulong> s_rowsDigest = RowsDigest;
+        static readonly Func<bool> s_autoplay = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayEnabled(); };
+        static readonly Func<string?> s_contextName = static () =>
+        {
+            var wire = Playback.ContextLabel.Value;
+            return ContextName(Playback.ContextUri.Value, in wire);
+        };
 
         /// <summary>One digest over what every row a queue surface can show reads (<see cref="TextOf"/>'s and the row adapters' reads): the
         /// deck's current row and each queue row (the track and its display row by version, its album's title, its artist edge and each
@@ -362,8 +371,7 @@ public static partial class Queue
             h = FoldRow(h, scope, Playback.Current.Value);
             var refs = Queue.PackedRefs;
             for (int i = 0; i < refs.Length; i++) h = FoldRow(h, scope, Queue.RefAt(i));
-            EntityId context = ContextTarget(Playback.ContextUri.Value, Playback.ContextLabel.Value);
-            if (Entities.TableFor(context.Kind) is { } ct && ct.TryGetSlot(context, out int cs)) h = FoldVersion(h, ct, cs);
+            // The context ("Playing from") is no longer folded here: the host reads its NAME through its own memo (s_contextName).
             return h;
         }
 
@@ -377,18 +385,26 @@ public static partial class Queue
             h = Fold(h, ((ulong)(byte)r.Kind << 56) | (uint)r.Slot);
             if (r.Kind == EntityKind.Track && r.Slot > global::Wavee.Table.None)
             {
+                // The track by what the row SHOWS of it (QueueRowText and Track.RowData read exactly these), not by its row version: a
+                // re-answer of the same facts — a page or a list re-asking rows the queue also holds — bumps the version and must not
+                // re-render the queue (the owner's census, 2026-10-25: ~2 whole-panel re-renders per navigation).
                 var t = new Track(r.Slot);
-                h = FoldVersion(h, scope.Tracks, r.Slot);
                 var d = t.ForDisplay;
-                if (d.Slot != r.Slot) h = FoldVersion(h, scope.Tracks, d.Slot);
-                // The album and the artists by what a row SHOWS of them (the album's title, each artist's name and identity), not by their row
-                // versions: an artist or album page re-answering its own row (bio, images, counts) must not re-render the queue.
+                h = Fold(h, ((ulong)(uint)d.Slot << 32) | (t.Unplayable() ? 1UL : 0UL) | (d.Knows(TrackFields.Title) ? 2UL : 0UL));
+                h = Fold(h, ((ulong)(uint)d.TitleId.Value << 32) | (uint)d.ArtistLineId.Value);
+                h = Fold(h, ((ulong)(uint)d.ImageId.Value << 32) | (uint)d.DurationMs);
+                h = Fold(h, d.FlagBits);   // explicit, video, availability
+                // The album and the artists by what a row SHOWS of them (the album's title and cover, each artist's name and identity, who is
+                // billed), not by their row versions: an artist or album page re-answering its own row must not re-render the queue.
                 int al = d.Album.Slot;
-                h = Fold(h, al > global::Wavee.Table.None && al < scope.Albums.Count ? (uint)scope.Albums.Title[al].Value : 0UL);
-                h = Fold(h, scope.Edges.TrackArtists.Version(d.Slot));
-                foreach (int a in d.ArtistSlots)
+                h = Fold(h, al > global::Wavee.Table.None && al < scope.Albums.Count
+                    ? ((ulong)(uint)scope.Albums.Title[al].Value << 32) | (uint)scope.Albums.Image[al].Value : 0UL);
+                var billed = d.ArtistSlots;
+                h = Fold(h, (ulong)billed.Length);
+                foreach (int a in billed)
                     if (a > global::Wavee.Table.None && a < scope.Artists.Count)
                         h = Fold(h, ((ulong)(uint)scope.Artists.Name[a].Value << 32) | (uint)scope.Artists.Id[a].GetHashCode());
+                    else h = Fold(h, (uint)a);
             }
             else if (r.Kind == EntityKind.Episode && r.Slot > global::Wavee.Table.None)
             {

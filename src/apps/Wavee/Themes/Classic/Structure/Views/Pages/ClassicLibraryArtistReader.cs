@@ -85,7 +85,8 @@ internal static partial class ClassicLibraryArtistReader
     /// the wide arm, left-aligned. The reason is arithmetic rather than taste: one row spends <see cref="Artist.ReaderShape.WideBandFixedW"/> (460 DIP, with the 56-DIP spine beside it) on what
     /// never shrinks, and the name column — the only flexible child — is what pays.</para>
     ///
-    /// <para>Each arm's root is KEYED ("band:w" / "band:s") as a CHILD of the slot's root — a single-child slot's own Key is inert — so the swap is a real remount; and each DECLARES
+    /// <para>Each arm's root is KEYED ("band:w" / "band:s") as a CHILD of the slot's root — a single-child slot's own Key is inert — so the swap is a real remount, played as the
+    /// declared tier cross-fade (<see cref="ClassicTierMotion.SwapFade"/>: two compositions, never one with a flag); and each DECLARES
     /// <see cref="Artist.ReaderShape.BandHeight"/>, the number the extent table seeds and the core corrects to. With stated heights inside, the declaration restates the measurement rather
     /// than overriding it, and the core's chrome check says so if it ever does not.</para></summary>
     static Element Band(IArtistReaderHost host, in ArtistReaderBand band)
@@ -98,6 +99,7 @@ internal static partial class ClassicLibraryArtistReader
             return new BoxEl
             {
                 Key = "band:w", Direction = 0, Gap = Artist.ReaderShape.BandGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicArtistTiers.ArmFadeMotion,
                 Height = Artist.ReaderShape.BandH, MinWidth = 0f, OnBoundsChanged = host.OnBandBounds,
                 Padding = new Edges4(Artist.ReaderShape.BandPadX, Artist.ReaderShape.BandPadTop, Artist.ReaderShape.BandPadX, Artist.ReaderShape.BandPadBottom),
                 Children =
@@ -110,6 +112,7 @@ internal static partial class ClassicLibraryArtistReader
         return new BoxEl
         {
             Key = "band:s", Direction = 1, Gap = Artist.ReaderShape.BandStackRowGap, Shrink = 0f,
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicArtistTiers.ArmFadeMotion,
             Height = Artist.ReaderShape.BandStackedH, MinWidth = 0f, OnBoundsChanged = host.OnBandBounds,
             Padding = new Edges4(Artist.ReaderShape.BandStackPadX, Artist.ReaderShape.BandStackPadTop, Artist.ReaderShape.BandStackPadX, Artist.ReaderShape.BandPadBottom),
             Children =

@@ -3,7 +3,7 @@
 // The playback-runtime banner (ch 19 W22/W23, section 6.8), moved from `Shell.Overlays.UI.cs`. It floats at the top of the overlay lane
 // and never reflows the page. No motion: gated off it is a bare zero-footprint box (the lane's cell keeps its width cap). The card is an
 // opaque base under the InfoBar's translucent caution tint (the banner floats over artwork, not chrome) plus the overlay elevation InfoBar
-// does not carry itself. NO availableWidth: only the 60-character rule decides the InfoBar's orientation (noPack is the one vertical).
+// does not carry itself.
 // The core banner host decides whether it shows (`OverlayGates.ShowsRuntimeBanner`), which text the runtime's issue speaks, and what
 // close and "Set up" do.
 
