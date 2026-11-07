@@ -51,21 +51,43 @@ public static partial class Deck
     /// <summary>The deck's square edge at the default rail width (340 − 2·8 = 324).</summary>
     public static float DefaultSide => Shell.RailDefaultW - 2f * Spacing.S;
 
-    /// <summary>The now-playing player deck for the rail's hero slot: a <c>side × side</c> square that fills the rail's
-    /// content width. It reads its own inputs — <see cref="Shell.Ui.RailWidth"/> (quantised to the 4-DIP grid) and the
-    /// chosen preset (<see cref="Rail.PlayerPrefs"/>) — and keys one host on <c>"deck:&lt;slug&gt;"</c>: a preset change is a
-    /// remount (another deck), a rail resize past a quantum re-pushes the side and the deck redraws at it in place (its model,
-    /// clock and gesture keep running; audit FU item 8). The caller owns the hero slot's
-    /// "nothing is playing" arm (ch 21: the slot mounts no deck without a current item).</summary>
+    /// <summary>The now-playing player deck for a hero slot: a <c>side × side</c> square that fills the hero's deck column. It reads its own
+    /// inputs — <see cref="Shell.Ui.RailWidth"/> less the hero's <paramref name="chrome"/> (its horizontal padding, both sides together),
+    /// quantised to the 4-DIP grid, and the chosen preset (<see cref="Rail.PlayerPrefs"/>) — and keys one host on <c>"deck:&lt;slug&gt;"</c>:
+    /// a preset change is a remount (another deck), a rail resize past a quantum re-pushes the side and the deck redraws at it in place (its
+    /// model, clock and gesture keep running; audit FU item 8). The caller owns the hero slot's "nothing is playing" arm (ch 21: the slot
+    /// mounts no deck without a current item).</summary>
     // MOUNT POINT (stage B contract)
-    public static Element View() => Embed.Comp(static () => new ViewHost());
+    public static Element View(float chrome, IReadSignal<float>? column = null)
+        => Embed.Comp(new ViewChrome(chrome, column), static () => new ViewHost());
+
+    /// <summary>The hero's horizontal padding around the deck's column (both sides together), and the column's measured width when the
+    /// hero measures it (NaN until its first layout).</summary>
+    sealed record ViewChrome(float Chrome, IReadSignal<float>? Column);
 
     sealed class ViewHost : Component
     {
+        float _inset;
+        IReadSignal<float>? _column;
+        Func<float>? _side;
+
         public override Element Render()
         {
+            // The side is the column the hero lays the deck in, on the 4-DIP grid. A hero that measures its column decides by it (a Compact
+            // sheet is the window's width, not the rail's), never wider than it; before its first layout, and for a hero that does not
+            // measure, it is the rail less the hero's chrome (half each side: a WinUI or Zune hero pads wider than the rail's own 8, and a
+            // deck sized for 8 spilled past the pane's right edge).
+            var chrome = UseProps<ViewChrome>();
+            _inset = 0.5f * chrome.Chrome;
+            _column = chrome.Column;
+            _side ??= () =>
+            {
+                if (_column is null) return ClockRules.SideFor(Shell.Ui.RailWidth.Value, _inset);
+                float w = _column.Value;
+                return ClockRules.SideWithin(float.IsFinite(w) && w > 0f ? w : Shell.Ui.RailWidth.Value - 2f * _inset);
+            };
             // A memo, so a splitter drag re-renders this only when the quantised side actually changes.
-            var side = UseComputed(static () => ClockRules.SideFor(Shell.Ui.RailWidth.Value, Spacing.S));
+            var side = UseComputed(_side);
             float s = side.Value;
             var preset = Rail.PlayerPrefs.CurrentPreset();   // subscribes the prefs epoch
             return Embed.Comp(new HostSide(s), () => new Host { Preset = preset }) with { Key = "deck:" + preset.Slug };
@@ -190,10 +212,44 @@ public static partial class Deck
                 Animate = Entrance,
                 Children =
                 [
-                    BuildFace(in Preset, side, Sig, host),
+                    // THE LOOK SLOT. A face is absolute geometry built from its options, so an option that moves or resizes a part (12" ->
+                    // 7", the sleeve, CD -> MiniDisc, a shell, a skin) would SNAP if the face were rebuilt in place (and a part coming or
+                    // going shifted the canvas's unkeyed children, remounting the platter and the arm). The face sits under a key naming
+                    // its look instead: an option pick or a reset (one write, one key change) cross-fades the old face out and the new
+                    // one in over the same square. The model, the clock and the gesture live on this host and never remount.
+                    new BoxEl
+                    {
+                        Width = side, Height = side, Shrink = 0f, ZStack = true,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = LookKey(in Preset), Width = side, Height = side, Shrink = 0f, ZStack = true,
+                                Enter = LookFade, Exit = LookFade, Transition = MotionTok.ControlFast,
+                                Children = [BuildFace(in Preset, side, Sig, host)],
+                            },
+                        ],
+                    },
                     Embed.Comp(() => new Clock { Host = host }) with { Key = "deck-clock" },
                 ],
             };
+        }
+
+        static readonly EnterExit LookFade = new(Opacity: 0f, Active: true);
+
+        /// <summary>The face's look as a key: the preset and every option that changes the picture (the speed and a model option only
+        /// change motion, so a pick there restyles nothing and cross-fades nothing). Built on an epoch render, never per frame.</summary>
+        static string LookKey(in Rail.PlayerCatalog.Preset preset)
+        {
+            string? model = Models.ModelOptionSlug(preset.Id);
+            var key = new System.Text.StringBuilder("look:").Append(preset.Slug);
+            for (int i = 0; i < preset.Options.Length; i++)
+            {
+                var o = preset.Options[i];
+                if (o.Slug == "rpm" || o.Slug == model) continue;
+                key.Append('.').Append(Rail.PlayerPrefs.Choice(in preset, in o));
+            }
+            return key.ToString();
         }
     }
 
@@ -510,13 +566,27 @@ public static partial class Deck
     static ColorF Black(float a) => new(0f, 0f, 0f, a);
     static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
 
-    /// <summary>A bundled deck texture (grooves, wood grain, CD rainbow, marble, reel flange, Winamp title bar), tinted.
-    /// The placeholder is TRANSPARENT: a missing or undecoded texture shows the fallback under it, never a grey plate.</summary>
-    static Element Texture(string assetFile, float w, float h, CornerRadius4 corners, ColorF tint) => new ImageEl
-    {
-        Source = AssetPath(assetFile), Width = w, Height = h, Fit = ImageFit.Cover, Corners = corners,
-        ColorOverlay = tint, Placeholder = ColorF.Transparent,
-    };
+    /// <summary>A bundled ALPHA texture (a groove ring, a reel flange, the Winamp title bar) painted in an INK: the texture's alpha is the
+    /// shape, <paramref name="ink"/>'s colour fills it (the image overlay composites atop the texture's own pixels, so its transparent parts
+    /// stay transparent) and <paramref name="ink"/>'s alpha is the strength. The placeholder is TRANSPARENT: a missing or undecoded texture
+    /// shows the fallback under it, never a grey plate.</summary>
+    static Element Texture(string assetFile, float w, float h, CornerRadius4 corners, ColorF ink)
+        => Strength(new ImageEl
+        {
+            Source = AssetPath(assetFile), Width = w, Height = h, Fit = ImageFit.Cover, Corners = corners,
+            ColorOverlay = new ColorF(ink.R, ink.G, ink.B, 1f), Placeholder = ColorF.Transparent,
+        }, w, h, ink.A);
+
+    /// <summary>A bundled texture in its OWN colours (the wood grain, the CD rainbow, the marble) at <paramref name="strength"/>.</summary>
+    static Element OwnTexture(string assetFile, float w, float h, CornerRadius4 corners, float strength = 1f)
+        => Strength(new ImageEl
+        {
+            Source = AssetPath(assetFile), Width = w, Height = h, Fit = ImageFit.Cover, Corners = corners, Placeholder = ColorF.Transparent,
+        }, w, h, strength);
+
+    /// <summary>The texture at a strength: a plain box opacity (multiplied into the draw, no layer: these sit on nodes that turn per frame).</summary>
+    static Element Strength(ImageEl image, float w, float h, float strength)
+        => strength >= 1f ? image : new BoxEl { Width = w, Height = h, Shrink = 0f, Opacity = strength, HitTestVisible = false, Children = [image] };
 
     static string AssetPath(string assetFile)
     {
@@ -753,6 +823,8 @@ public static partial class Deck
         const uint ArmInk = 0xCFD4DD, ArmDarkInk = 0x9AA1AD, WoodTop = 0x6B4A2E, WoodBottom = 0x4A301B;
         const uint VinylBlack = 0x15171C, SplatterBase = 0xF5F1EA, MarbleBase = 0x6B4FA8, SpindleInk = 0xE6E9EF;
         const uint AlbumFallback = 0x1C4F9A, ZuneGrey = 0x9AA1AD;
+        /// <summary>The grooves' ink strength per finish, and the marble swirl's.</summary>
+        const float GrooveBlack = 0.16f, GrooveClear = 0.30f, GrooveAlbum = 0.20f, GrooveSplatter = 0.16f, GrooveMarble = 0.22f, MarbleStrength = 0.9f;
 
         public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host, RecordVariant variant)
         {
@@ -832,8 +904,8 @@ public static partial class Deck
 
         static void Plinth(List<CanvasChild> kids, float s)
         {
-            // The grain PNG is alpha: tinted white, with the stain OVER it so the grain reads through.
-            kids.Add(new CanvasChild(0f, 0f, Texture("wood-grain-1024.png", s, s, CornerRadius4.All(Radii.Card), White(1f))));
+            // The grain in its own colours (an opaque photograph), with the stain OVER it so the grain reads through.
+            kids.Add(new CanvasChild(0f, 0f, OwnTexture("wood-grain-1024.png", s, s, CornerRadius4.All(Radii.Card))));
             kids.Add(new CanvasChild(0f, 0f, new BoxEl
             {
                 Width = s, Height = s, Shrink = 0f, Corners = CornerRadius4.All(Radii.Card),
@@ -933,14 +1005,15 @@ public static partial class Deck
                     AddDot(layers, d, dot, 0.82f, 0.70f, 0x06D6A0);
                     AddDot(layers, d, dot, 0.45f, 0.12f, 0x06D6A0);
                 }
-                if (finish == "marble") layers.Add(Texture("marble-1024.png", d, d, Radii.Circle(d), White(0.9f)));
+                if (finish == "marble") layers.Add(OwnTexture("marble-1024.png", d, d, Radii.Circle(d), MarbleStrength));
+                // The grooves in an ink over the finish (the ring's alpha is the shape): a faint light on dark vinyl, a faint dark on light.
                 layers.Add(Texture("grooves-1024.png", d, d, Radii.Circle(d), finish switch
                 {
-                    "clear" => White(0.12f),
-                    "album" => White(0.08f),
-                    "splatter" => Black(0.08f),
-                    "marble" => Black(0.18f),
-                    _ => White(0.035f),
+                    "clear" => White(GrooveClear),
+                    "album" => White(GrooveAlbum),
+                    "splatter" => Black(GrooveSplatter),
+                    "marble" => Black(GrooveMarble),
+                    _ => White(GrooveBlack),
                 }));
             }
 
@@ -1145,6 +1218,7 @@ public static partial class Deck
             Latch _latch;
 
             const string Display = "Segoe UI Variable Display";
+            const float LineFloor = 11f;
 
             public override Element Render()
             {
@@ -1153,7 +1227,8 @@ public static partial class Deck
                 float s = Side;
                 string title = TitleOf(_latch.Shown).ToLowerInvariant();
                 string artist = ArtistsOf(_latch.Shown);
-                float titleSize = 0.11f * s, lineSize = 0.036f * s;
+                // The grey line never drops under the 11-DIP type floor (a Zune hero's deck is 296 wide: 0.036 of it read 10.7).
+                float titleSize = 0.11f * s, lineSize = MathF.Max(LineFloor, 0.036f * s);
                 // Two runs rather than one span: this boundary only moves when the title does. < 3 chars: no accent run.
                 int cut = title.Length >= 3 ? title.Length - title.Length / 3 : title.Length;
                 var sig = Sig;

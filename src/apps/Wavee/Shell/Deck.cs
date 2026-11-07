@@ -1571,6 +1571,10 @@ public static partial class Deck
         public static float SideFor(float railWidth, float inset)
             => MathF.Max(SideQuantum, MathF.Round((railWidth - 2f * inset) / SideQuantum) * SideQuantum);
 
+        /// <summary>The deck's square edge inside a column <paramref name="width"/> wide: on the 4-DIP grid and never wider than it.</summary>
+        public static float SideWithin(float width)
+            => MathF.Max(SideQuantum, MathF.Floor(width / SideQuantum) * SideQuantum);
+
         /// <summary>A cross-kind row identity: a track slot and an episode slot are the same <c>int</c>, so the kind
         /// rides in the high byte. 0 (and any non-positive slot) is "nothing".</summary>
         public static int RowKey(byte kind, int slot) => slot <= 0 || kind == 0 ? 0 : (kind << 24) | (slot & 0x00FF_FFFF);

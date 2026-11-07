@@ -32,6 +32,9 @@ public interface IDeckStyleVerbs
     /// <summary>Pick one option of a style from the flyout (the index is clamped against the option's choices).</summary>
     void SetChoice(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option, int index);
 
+    /// <summary>Put every option of a style back on its default from the flyout's "Reset options" (one write: the deck restyles once).</summary>
+    void ResetChoices(in Rail.PlayerCatalog.Preset preset);
+
     /// <summary>A controlled mirror of one option's choice for a segmented row: a fresh one per render ON PURPOSE (the option SET
     /// changes with the style, so a hook per option would be a conditional hook). The store, not the mirror, is the truth.</summary>
     Signal<int> ChoiceMirror(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option);
@@ -45,6 +48,10 @@ public interface IDeckStyleVerbs
     /// <summary>The gear: open the flyout if it is closed, close it if open.</summary>
     void ToggleStyleFlyout();
 }
+
+/// <summary>Builds the deck for a hero whose deck column is <paramref name="chrome"/> DIP narrower than the rail (its horizontal padding, both
+/// sides together).</summary>
+public delegate Element DeckView(float chrome = 2f * Rail.Hero.Inset, IReadSignal<float>? column = null);
 
 /// <summary>The props of <see cref="ViewKeys.DeckStyleFlyout"/>.</summary>
 public sealed record DeckStyleFlyoutProps
@@ -73,8 +80,11 @@ public sealed record NowPlayingHeroProps
 
     // ── the hero ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The deck (core). The hero places it under the keyed wrapper and never builds it.</summary>
-    public required Func<Element> Deck { get; init; }
+    /// <summary>The deck (core). The hero places it under the keyed wrapper and never builds it. The hero passes its CHROME: the horizontal
+    /// padding around the deck's column, both sides together (default: the rail's own 8 + 8), so the deck's side is the rail width less
+    /// exactly that and fills the column instead of overflowing it; and, where the column is not the rail's (a Compact sheet is the window's
+    /// width), the column's measured width, which then decides (the chrome answers only before the first layout).</summary>
+    public required DeckView Deck { get; init; }
 
     /// <summary>Every write the hero and its flyout make.</summary>
     public required IDeckStyleVerbs Style { get; init; }

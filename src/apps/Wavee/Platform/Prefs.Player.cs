@@ -104,6 +104,14 @@ public static partial class Prefs
         public static void NextStyle(int presetCount)
             => SetStyle(presetCount <= 0 ? 0 : (Style(presetCount) + 1) % presetCount, presetCount);
 
+        /// <summary>Put the listed options of one preset back on their defaults (choice 0, always the first listed) and bump ONCE: the
+        /// flyout's "Reset options". The same keys <see cref="SetChoice"/> writes, so a reset is exactly N option picks.</summary>
+        public static void ResetChoices(string presetSlug, ReadOnlySpan<string> optionSlugs)
+        {
+            foreach (string o in optionSlugs) Platform.Settings.Set(Platform.Keys.NpvOption(presetSlug, o), 0);
+            Bump();
+        }
+
         /// <summary>Persist one preset option's choice and bump.</summary>
         public static void SetChoice(string presetSlug, string optionSlug, int index, int choiceCount)
         {

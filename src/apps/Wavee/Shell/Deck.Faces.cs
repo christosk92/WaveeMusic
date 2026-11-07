@@ -488,7 +488,7 @@ public static partial class Deck
                         new CanvasChild(0f, 0f, new BoxEl
                         {
                             Width = d, Height = d, Shrink = 0f, Opacity = 0.75f,
-                            Children = [Texture("cd-rainbow-512.png", d, d, Radii.Circle(d), ColorF.Transparent)],
+                            Children = [OwnTexture("cd-rainbow-512.png", d, d, Radii.Circle(d))],
                         }),
                         new CanvasChild((d - innerD) * 0.5f, (d - innerD) * 0.5f, Ring(innerD, 0.008f * d, White(0.18f))),
                         new CanvasChild((d - holeD) * 0.5f, (d - holeD) * 0.5f, new BoxEl

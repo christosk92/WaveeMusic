@@ -45,6 +45,10 @@ public static partial class Shell
             DeckPrefSource source)
             => Rail.PlayerPrefs.SetChoice(in preset, in option, index, SourceName(source));
 
+        /// <summary>Put every option of a style back on its default (one write, one epoch bump).</summary>
+        public static void ResetChoices(in Rail.PlayerCatalog.Preset preset, DeckPrefSource source)
+            => Rail.PlayerPrefs.ResetChoices(in preset, SourceName(source));
+
         /// <summary>Show the cover (<see cref="Rail.PlayerPrefs.Cover"/>) or the player (<see cref="Rail.PlayerPrefs.Player"/>).</summary>
         public static void SetPresentation(int presentation, DeckPrefSource source)
             => Rail.PlayerPrefs.SetPresentation(presentation, SourceName(source));

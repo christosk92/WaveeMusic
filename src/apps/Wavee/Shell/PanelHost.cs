@@ -227,11 +227,7 @@ public static partial class Shell
 
     sealed class PanelEnv : IPanelEnv
     {
-        public bool NowTrackHasVideo()
-        {
-            var r = Playback.Current.Peek();
-            return r.Kind == EntityKind.Track && new Track(r.Slot).HasVideo;
-        }
+        public bool NowTrackHasVideo() => Video.DeckHasVideo(Playback.DeckVideo.Peek(), Playback.CurrentId.Peek());
 
         public void OpenVideoAt(Video.SurfacePlacement at, bool hasVideo) => PlayerVerbs.Default.SetVideoPlacement(at, hasVideo);
 
