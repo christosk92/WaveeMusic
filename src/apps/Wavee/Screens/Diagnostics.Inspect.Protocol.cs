@@ -98,7 +98,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -391,6 +391,7 @@ public static partial class Diagnostics
                              IntArg("next", "queue this many tracks after a spotify:track:tr<k>", "0", 0, 64),
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
+                             IntArg("at", "with context=: start at this row of the rows (0 = the uri's own), as a click on a row further down the page does", "0", 0, 64),
                              Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
             },
             new(Verb.Option, "option", "List the active theme's user options, or set one (id, value) the way Settings does", "option style.density Compact")
@@ -551,6 +552,14 @@ public static partial class Diagnostics
                              Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; the app runs with 8192, an inspector mount with 0)") with { Min = 0 },
                              IntArg("frames", "frames to run after the change when not restoring (parked frames while parked)", "2", 0, 100_000)], s_settleArgs),
             },
+            new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
+            {
+                Positional = ["do", "value"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead"),
+                             Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
+                             Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
+                             Arg("ms", ArgType.Int, "the seek target", "0")], s_settleArgs),
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -574,7 +583,7 @@ public static partial class Diagnostics
             "help" => Verb.Help, "status" or "ping" => Verb.Status, "mount" => Verb.Mount, "unmount" => Verb.Unmount,
             "goto" or "go" or "navigate" => Verb.GoTo, "resize" => Verb.Resize, "frames" => Verb.Frames, "settle" => Verb.Settle,
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
-            "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
+            "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
             "quit" or "exit" => Verb.Quit,

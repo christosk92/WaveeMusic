@@ -59,6 +59,7 @@ public static partial class Playback
         Span<byte> text = stackalloc byte[256];
         int length = context.Format(text);
         if (!RemotePlan.AutoplayContinues(text[..length])) { Post(Input.Autoplayed(context, 0, nowMs: now)); return; }
+        if (s_fakeAutoplay is { } fake) { AnswerFakeAutoplay(context, fake(context, FakeAutoplayRows), now); return; }
         if (!Spotify.Current.IsOnline)
         {
             Log.Info("playback", "autoplay deferred: the session is not online yet");
@@ -142,6 +143,52 @@ public static partial class Playback
             });
         });
         if (!queued) Post(Input.Autoplayed(context, 0, nowMs: now));
+    }
+
+    // ── 1b. the --fake answer ─────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>How many rows the <c>--fake</c> autoplay answer appends per ask.</summary>
+    const int FakeAutoplayRows = 5;
+
+    static Func<EntityId, int, EntityId[]>? s_fakeAutoplay;
+
+    /// <summary><c>--fake</c> only (App.cs, beside <c>OnThisPc.UseFake</c>): the offline demo answers autoplay from its own catalogue,
+    /// so the end of a context and the Autoplay setting behave as they do online. Null: the network answers.</summary>
+    public static void UseFakeAutoplay(Func<EntityId, int, EntityId[]> answer) => s_fakeAutoplay = answer;
+
+    /// <summary>Append the demo's answer as Autoplay NextUp and tell the reducer, as the network answer does.</summary>
+    static void AnswerFakeAutoplay(EntityId context, EntityId[] ids, long now)
+    {
+        int appended = 0;
+        if (ids.Length > 0 && context.Equals(s_state.Context) && Entities.Current is not null && Queue.LocalQueueWritable(s_state.Own.Kind))
+        {
+            int existing = Queue.Count, cap = existing + ids.Length;
+            int[] packed = ArrayPool<int>.Shared.Rent(cap);
+            QueueEdge[] rows = ArrayPool<QueueEdge>.Shared.Rent(cap);
+            try
+            {
+                Queue.PackedRefs.CopyTo(packed);
+                Queue.Rows.CopyTo(rows);
+                int n = existing;
+                foreach (EntityId id in ids)
+                {
+                    int target = Queue.Pack(Entities.Ref(id));
+                    if (target == 0) continue;
+                    packed[n] = target;
+                    rows[n] = new QueueEdge(Queue.MintItemIds(1), (byte)QueueProvider.Autoplay, (byte)QueueBucket.NextUp);
+                    n++;
+                }
+                appended = n - existing;
+                if (appended > 0) Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+            }
+            finally
+            {
+                ArrayPool<int>.Shared.Return(packed);
+                ArrayPool<QueueEdge>.Shared.Return(rows);
+            }
+        }
+        Log.Info("playback", "autoplay (fake) appended " + appended + " row(s)");
+        Post(Input.Autoplayed(context, appended, morePages: false, retry: false, nowMs: now));
     }
 
     // ── 2. the answer's pages ─────────────────────────────────────────────────────────────────────────────────────

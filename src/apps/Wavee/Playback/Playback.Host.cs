@@ -1231,6 +1231,9 @@ public static partial class Playback
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
     public static void Previous() => Post(Input.Prev(FrameNowMs()));
+    /// <summary>Diagnostics (the inspector's <c>transport do=end</c>): the row on the deck ran out with nothing prepared, as the
+    /// pump's Ended reports it, so a case can walk the natural-end path without waiting out a track.</summary>
+    public static void EndNow() => Post(Input.Ended(s_state.LoadEpoch, FrameNowMs()));
     // The local play/pause verbs take a `cause`: the UI entry that pressed it ("space", "playerbar.button", "tray", …).
     // ALWAYS-ON attribution, one line per user action (the SMTC twin is "smtc transport button: …", inbound Connect is
     // "[connect] cmd endpoint=…"). Without it a resume that claims the parked restored row (`connect.owner Nobody → Us
