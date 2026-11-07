@@ -8,66 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.3.9] - unreleased
-
-### Added
-
-- **Music videos with Spotify Connect.** Wavee now tells your other devices which songs have a music video, as the
-  official app does, so Spotify on your phone or computer shows its video switch while Wavee plays. Switching between
-  the video and the song from another device switches Wavee too, and a music video started from another device opens
-  as a video in Wavee.
-- **Switch another device's video.** While a phone, computer or speaker plays, Wavee's video button switches that
-  device between the video and the song. Instead of a "Loading…" that never ended, the video panel says which device is
-  playing, with a Play here button, and "Up next" shows the songs in that device's queue.
-- **Playlists that play their videos.** Spotify's "Video" choice on a playlist now plays the music videos. Playlists
-  without it, such as Today's Top Videos, have a Video option in their "…" menu, and Wavee remembers it for each
-  playlist. A playlist set to video shows how long each video is.
-- **Pin by dragging in Zune.** Drag a playlist, album or artist onto "pinned" to pin it, and right-click a pin to open
-  it, unpin it or move it. While you drag a playlist, the preview shows the playlist itself.
-
-### Changed
-
-- **The video mark in every song list.** A song with a music video shows the video mark in every list. The playlist,
-  album and Liked Songs tables of the WinUI theme were missing it.
-- **"Watch the official video" plays it.** The card on an album page now plays the music video.
-- **Spotify links open in Wavee.** A link to Spotify in Wavee's notifications, Windows notifications, playlist
-  descriptions, artist biographies and these release notes opens the page in Wavee instead of the browser, and a link
-  to a song plays it.
-- **The first video opens sooner.** Wavee gets video playback ready as soon as a song that has a music video plays, so
-  the first video opens up to about a second sooner. Listening to songs without a video does none of this work.
-- **Exact seeks in a video are about 30 % faster.**
-- **A smoother queue.** The queue draws only the songs you can see, so pressing Play does about half the work and
-  starting a playlist no longer hitches. Dragging a song in the queue slides the others into place.
-- **Menus stay open while you use them.** Clicking inside a flyout no longer closes it. Submenus open after a short
-  pause and stay open while you move the pointer toward them, also several levels deep, and the arrow keys move
-  through them.
-- **The WinUI artist page stays put when the navigation pane opens or closes.** Its right-hand column used to fly
-  across the page; it now reflows in place, and other pages resize the same way while you drag the window's edge.
-- **Now playing's player styles (Developer mode).** The style gear sits next to the heart instead of on a row of its
-  own, and its options open at the gear. The player fits the panel, so the record is no longer cut off; black vinyl,
-  marble, reel and wood look as they should; changing an option cross-fades; and "Reset options" puts a style back as
-  it was. A new "Background: Canvas" option per style plays the song's Canvas loop behind the player.
-
-### Fixed
-
-- **The time keeps running in video mode.** The time and the total no longer stand still and then jump while a video
-  plays.
-- **Turning video off resumes the song where the video was.**
-- **Dragging the seek bar no longer freezes the video.**
-- **No "protected content" error on the first video.** A rare failure stopped the first music video after starting
-  Wavee.
-- **No wait when turning video on.** Turning video on could stall for up to 10 seconds.
-- **Video plays at Wavee's volume from the start.**
-- **Full screen opens on the monitor the video window is on.**
-- **Video stays on when you skip.** Going to the next song keeps the video on when that song has one.
-- **Spotify's mixes can be saved again.** Mixes Spotify makes for you, such as "Comforting Mix", were treated as your
-  own playlists, so there was no way to save them. In every theme.
-- **One selected item in the sidebar.** In the Classic and WinUI themes the sidebar could show two items selected at
-  once.
-- **The "Playing on …" line fits in Classic.** A long device name now ends in "…" instead of being cut off.
-- **No restart on Snapdragon X PCs.** Blurring in the background could crash the graphics driver and restart Windows
-  on Snapdragon X devices.
-
 ## [0.3.8] - unreleased
 
 ### Added
@@ -89,6 +29,18 @@ versions separately under `v*` and is not tracked in this file.)
   without a Canvas looks the same as before.
 - **Show Canvas** setting under Settings > Playback > Video, on by default. Turned off, no Canvas is fetched or shown
   anywhere.
+- **Music videos with Spotify Connect.** Wavee now tells your other devices which songs have a music video, as the
+  official app does, so Spotify on your phone or computer shows its video switch while Wavee plays. Switching between
+  the video and the song from another device switches Wavee too, and a music video started from another device opens
+  as a video in Wavee.
+- **Switch another device's video.** While a phone, computer or speaker plays, Wavee's video button switches that
+  device between the video and the song. Instead of a "Loading…" that never ended, the video panel says which device is
+  playing, with a Play here button, and "Up next" shows the songs in that device's queue.
+- **Playlists that play their videos.** Spotify's "Video" choice on a playlist now plays the music videos. Playlists
+  without it, such as Today's Top Videos, have a Video option in their "…" menu, and Wavee remembers it for each
+  playlist. A playlist set to video shows how long each video is.
+- **Pin by dragging in Zune.** Drag a playlist, album or artist onto "pinned" to pin it, and right-click a pin to open
+  it, unpin it or move it. While you drag a playlist, the preview shows the playlist itself.
 
 ### Changed
 
@@ -133,6 +85,34 @@ versions separately under `v*` and is not tracked in this file.)
 - **No crash loop on playback.** If starting a song crashes Wavee twice within a few launches, Wavee shows those songs
   as unavailable for that version instead of crashing on every start. An update, or a week without the crash, brings
   them back. (#217)
+- **The video mark in every song list.** A song with a music video shows the video mark in every list. The playlist,
+  album and Liked Songs tables of the WinUI theme were missing it.
+- **"Watch the official video" plays it.** The card on an album page now plays the music video.
+- **Spotify links open in Wavee.** A link to Spotify in Wavee's notifications, Windows notifications, playlist
+  descriptions, artist biographies and these release notes opens the page in Wavee instead of the browser, and a link
+  to a song plays it.
+- **The first video opens sooner.** Wavee gets video playback ready as soon as a song that has a music video plays, so
+  the first video opens up to about a second sooner. Listening to songs without a video does none of this work.
+- **Exact seeks in a video are about 30 % faster.**
+- **A smoother queue.** The queue draws only the songs you can see, so pressing Play does about half the work and
+  starting a playlist no longer hitches. Dragging a song in the queue slides the others into place.
+- **Menus stay open while you use them.** Clicking inside a flyout no longer closes it. Submenus open after a short
+  pause and stay open while you move the pointer toward them, also several levels deep, and the arrow keys move
+  through them.
+- **The WinUI artist page stays put when the navigation pane opens or closes.** Its right-hand column used to fly
+  across the page; it now reflows in place, and other pages resize the same way while you drag the window's edge.
+- **Now playing's player styles (Developer mode).** The style gear sits next to the heart instead of on a row of its
+  own, and its options open at the gear. The player fits the panel, so the record is no longer cut off; black vinyl,
+  marble, reel and wood look as they should; changing an option cross-fades; and "Reset options" puts a style back as
+  it was. A new "Background: Canvas" option per style plays the song's Canvas loop behind the player.
+- **Menus and drop-down lists mark your choice in each theme's style.** In Zune the chosen item has an accent dot and
+  accent-coloured words, in Classic an accent dot on a lightly highlighted row, and in WinUI the check and the pill of
+  Windows 11's own controls.
+- **WinUI drop-down lists react to a press.** The selected item's pill squishes when you press it, as in Windows 11.
+- **Save from the "…" menu in Zune.** An album's or playlist's "…" menu now has "save to your library" (or "remove
+  from your library"), the same as the save button in the band. Your own playlists don't show it.
+- **The video menu says what is set.** Its rows show the current aspect, quality and speed, check marks show what is
+  playing, and right-clicking the video opens the same menu.
 
 ### Fixed
 
@@ -187,6 +167,31 @@ versions separately under `v*` and is not tracked in this file.)
   170 px of empty space under its date cards, and the gallery about 70, because their rows were sized for album
   covers. Each row is now as tall as its own cards, in every theme. Merch cards all share one height, so a two-line
   name no longer runs past the row.
+- **The time keeps running in video mode.** The time and the total no longer stand still and then jump while a video
+  plays.
+- **Turning video off resumes the song where the video was.**
+- **Dragging the seek bar no longer freezes the video.**
+- **No "protected content" error on the first video.** A rare failure stopped the first music video after starting
+  Wavee.
+- **No wait when turning video on.** Turning video on could stall for up to 10 seconds.
+- **Video plays at Wavee's volume from the start.**
+- **Full screen opens on the monitor the video window is on.**
+- **Video stays on when you skip.** Going to the next song keeps the video on when that song has one.
+- **Spotify's mixes can be saved again.** Mixes Spotify makes for you, such as "Comforting Mix", were treated as your
+  own playlists, so there was no way to save them. In every theme.
+- **One selected item in the sidebar.** In the Classic and WinUI themes the sidebar could show two items selected at
+  once.
+- **The "Playing on …" line fits in Classic.** A long device name now ends in "…" instead of being cut off.
+- **No restart on Snapdragon X PCs.** Blurring in the background could crash the graphics driver and restart Windows
+  on Snapdragon X devices.
+- **Playback speed works for video podcasts.** Changing the speed of a video podcast used to leave it playing at normal
+  speed. For a music video the speed is greyed out and says "Podcasts only".
+- **A video's quality no longer carries over.** A quality you picked for one video no longer holds the next video at
+  the wrong quality.
+- **Auto quality switches promptly.** Turning a quality choice back to Auto used to keep the lower quality for over a
+  minute; the best quality for your connection now returns within seconds.
+- **Always on top stays off when you turn it off.** A video window that went back into Wavee while on top came out on
+  top again even after you turned Always on top off.
 
 ### Security
 

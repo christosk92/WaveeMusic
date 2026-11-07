@@ -4,7 +4,7 @@
   "version": "0.3.8",
   "packageVersion": "",
   "name": "Crest",
-  "tagline": "Album credits in Zune, fewer hitches while scrolling, and two crashes fixed.",
+  "tagline": "Music videos with Spotify Connect, album credits in Zune, and a smoother, steadier Wavee.",
   "date": "",
   "channel": "stable",
   "lang": "en",
@@ -20,26 +20,50 @@
   },
   "highlights": [
     {
+      "id": "connect-video",
+      "title": "Music videos with Spotify Connect",
+      "body": "Spotify on your phone or computer now shows its video switch while Wavee plays a song with a music video, and switching there switches Wavee. When another device is playing, Wavee's video button switches that device, with Play here to move it to this PC. Spotify's \"Video\" choice on a playlist plays the videos, and other playlists get a Video option in their \"…\" menu.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/connect-video.jpg",
+        "srcLight": "media/connect-video-light.jpg",
+        "alt": "The video panel while a song plays on another device, saying Playing on Kitchen with a Play here button",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
       "id": "album-credits",
       "title": "Album credits in Zune",
       "body": "An album page now says who wrote, produced and played on the record, gathered from its songs' credits. Select \"all credits\" for everyone, grouped by role. A song's own credits sheet lists everyone again in Zune and WinUI.",
       "kind": "new",
       "deepLink": "wavee://open?route=albums",
-      "issues": []
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/album-credits.jpg",
+        "srcLight": "media/album-credits-light.jpg",
+        "alt": "An album's full credits in Zune, grouped into performers, songwriters and producers",
+        "width": 1200,
+        "height": 675
+      }
     },
     {
       "id": "smoother",
-      "title": "Fewer hitches while you browse",
-      "body": "Wavee reuses graphics memory instead of handing it back to the driver mid-frame, so the slowest frames while moving between pages take about half as long. Pages that slide in are drawn from one picture instead of being redrawn every frame. Large Zune titles are never cut at the left, and pages settle without jumping as they load.",
+      "title": "Smoother and steadier",
+      "body": "The slowest frames while moving between pages take about half as long, the queue draws only the songs you can see, and the first video opens up to a second sooner. Menus stay open while you use them. Restoring Wavee after a long time minimized no longer crashes it, a graphics driver crash on Snapdragon X PCs is fixed, and Wavee now runs on .NET 11, which fixes a security issue in the Brotli decoder.",
       "kind": "improved",
-      "issues": []
-    },
-    {
-      "id": "steadier",
-      "title": "Steadier",
-      "body": "Restoring Wavee after a long time minimized no longer crashes it, and neither does a song starting at the moment the play log saves. Wavee now runs on .NET 11, which also fixes a security issue in the Brotli decoder, and crash reports explain sudden closes.",
-      "kind": "fixed",
-      "issues": []
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/smoother.jpg",
+        "srcLight": "media/smoother-light.jpg",
+        "alt": "An album's menu with its Add to playlist submenu open, beside the queue",
+        "width": 1200,
+        "height": 675
+      }
     }
   ],
   "sections": [],
