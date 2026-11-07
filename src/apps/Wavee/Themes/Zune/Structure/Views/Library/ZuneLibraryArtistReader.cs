@@ -245,7 +245,7 @@ internal static partial class ZuneLibraryArtistReader
         h.RailScope = scope;
         h.RailSort = sort;
         h.RailNarrow = narrow;
-        return (h.SubRail = SubRail(p.Host, scope, sort, narrow)).Value;
+        return (h.SubRail = SubRail(p.Host, scope, sort, narrow).Freeze()).Value;   // built in a row's realize, kept past it (PERF r3 MODEL M4b)
     }
 
     /// <summary>The two word groups, scope (in your library · all releases · N), a spacer, sort (newest · oldest · a-z), over the page's own Signal INSTANCES, PINNED at the
