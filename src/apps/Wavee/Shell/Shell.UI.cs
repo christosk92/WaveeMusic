@@ -1024,6 +1024,9 @@ public static partial class Shell
             case "cold-rows": Entities.StageColdRows(); return true;
             case "cold-warm": Entities.StageColdWarm(); return true;
             case "cold-faces": Entities.StageColdFaces(); return true;
+            // The album's credits (Entities.Fake.Album.cs): al2's members' credits asked and unanswered, then answered (`goto` al2 first).
+            case "cold-credits": Entities.StageColdCredits(); return true;
+            case "credits-land": Entities.LandFakeCredits(); return true;
             default: return false;
         }
     }

@@ -93,6 +93,14 @@
     "moreBy": "More by {name}",
     "moreByHeading": "More by",
     "allCredits": "All credits",
+    "creditsLine": {
+      "writtenAndProducedBy": "written and produced by",
+      "writtenBy": "written by",
+      "producedBy": "produced by",
+      "with": "with",
+      "and": "and",
+      "allSongs": "all songs"
+    },
     "similarAlbums": "Similar albums",
     "preReleaseEyebrow": "Coming soon",
     "preReleaseOut": "Out now",

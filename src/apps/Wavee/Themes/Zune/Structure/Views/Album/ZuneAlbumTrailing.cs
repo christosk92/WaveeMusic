@@ -7,8 +7,10 @@
 // "about <artist>" in the board's own form is the Huge aside's (owner 2026-10-25, audit FU2b: Z-Album-Huge draws it); below Huge the earlier "about the
 // artist" card stands in its place (owner 2026-10-25, audit FU2d: restored as it was before audit FU2's round 1), in the aside above "more by" and under
 // the rows (no aside) before fans also like. In the aside each is ONE keyed block folded to nothing where the other stands, so the 1920 crossing eases
-// one out and the other in and keeps their parts (no tier in a key), and the aside never shows two. "credits" is drawn only
-// when the core has a paragraph to state (`AlbumAsideProps.Credits`), which it has not yet: the section draws nothing, not even its heading.
+// one out and the other in and keeps their parts (no tier in a key), and the aside never shows two. "credits" (contract 1.86: the core folds the
+// members' CreditsV2 roles into a paragraph) is ONE keyed block in the aside after "more by", and under the rows after the lists where no aside holds
+// it: a shimmer while the members' credits are asked, the paragraph once they answer, folded to nothing (no heading, no gap) when there is nothing to
+// state; its height eases through real layout, so the landing slides what is under it instead of shoving it.
 //
 //   · the REGION (`Album.Trailing`): one skeleton boundary shimmering from the first frame and revealing once, keyed on the shape the host decided;
 //   · the SECTIONS (`Album.Sections`, under the rows): the music videos (one: the wide card; two or more: the paged shelf), about the artist, fans also
@@ -89,6 +91,8 @@ internal static class ZuneAlbumTrailing
                 Enter = enter, Exit = ZuneMotion.SwapFade,
                 Children = [p.Lists[i]],
             });
+        // Credits last: where no aside holds them (Compact, Small), in their fold (a docked aside's band passes none, and the fold stays shut).
+        sections.Add(CreditsFold(Z.CreditsKey + ":band", p.Credits, p.CreditsPending, aside: false, enter));
         return new BoxEl
         {
             Key = Z.SectionsKey, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, Z.SectionBottom),
@@ -205,16 +209,17 @@ internal static class ZuneAlbumTrailing
         var lay = ZuneDetailTiers.Of(ctx.Tier());
         float w = lay.AsideW > 0f ? lay.AsideW : ZuneDetailRules.Standard.AsideW;
         var kids = new List<Element>(3);
+        // Each section carries its gap to the next one (no column gap): the credits' fold, shut, then leaves no air between "more by" and the fans.
         if (p.MoreBy is { } moreBy)
             kids.Add(new BoxEl
             {
                 Key = "aside:" + moreBy.Key, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Enter = enter, Exit = ZuneMotion.SwapFade,
+                Padding = new Edges4(0f, 0f, 0f, Z.AsideSectionGap),
                 Children = [moreBy],
             });
-        // Credits only when there is a paragraph to state (contract 1.82); today the core has none (Album.PageRules.CreditsOf), so nothing draws.
-        if (p.Credits is { Runs.Count: > 0 } credits) kids.Add(Credits(credits) with { Enter = enter, Exit = ZuneMotion.SwapFade });
+        kids.Add(CreditsFold(Z.CreditsKey, p.Credits, p.CreditsPending, aside: true, enter));
         if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, w) with { Enter = enter, Exit = ZuneMotion.SwapFade });
-        Element sections = new BoxEl { Direction = 1, Gap = Z.AsideSectionGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+        Element sections = new BoxEl { Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
         // "about" stands above them in its own fold: its gap to the next section is its own (inside the fold), so a folded block leaves no air behind.
         return new BoxEl
         {
@@ -426,30 +431,92 @@ internal static class ZuneAlbumTrailing
         }.Skeletonized(shown);
     }
 
-    /// <summary>Z-Album's "credits": the heading (22/28, as the aside's named headings) over the core's paragraph, its names in the primary ink as links and
-    /// "all credits" at the end (contract 1.82).</summary>
-    static Element Credits(AlbumCredits credits)
+    /// <summary>Z-Album's "credits" (contract 1.86): ONE keyed block in every state. While the members' credits are asked it shimmers at the paragraph's
+    /// shape (the heading's bar over four lines); once they answer, the heading (the aside's 22/28, or a section heading under the rows) over the core's
+    /// paragraph, its names in the primary ink as links and "all credits" at the end; with nothing to state it folds to nothing. The block's height eases
+    /// through real layout (the skeleton reveal fades shimmer and words), and its gap (the aside's gap to the next section, or the section's top under
+    /// the rows) is inside the fold, so a shut block leaves no air.</summary>
+    static Element CreditsFold(string key, AlbumCredits? credits, bool pending, bool aside, EnterExit? enter)
+    {
+        bool stated = credits is { Runs.Count: > 0 };
+        bool shown = stated || pending;
+        Func<Element> content = stated ? () => CreditsBody(key, credits!, aside) : s_nothing;
+        Element region = new SkelRegionEl(
+            Pending: pending ? s_always : s_never, Failed: s_never, Content: content, ShimmerSource: aside ? s_asideShimmer : s_bandShimmer, OnFailed: null,
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+        return new BoxEl
+        {
+            Key = key, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, Shrink = 0f,
+            Height = shown ? float.NaN : 0f, HitTestVisible = shown, Layout = Design.Reduced ? null : ZuneMotion.HeightResize,
+            Enter = enter, Exit = ZuneMotion.SwapFade,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
+                    Padding = aside ? new Edges4(0f, 0f, 0f, Z.AsideSectionGap) : new Edges4(Z.SectionInset, Z.SectionTop, Z.SectionInset, 0f),
+                    Children = [region],
+                },
+            ],
+        };
+    }
+
+    static readonly Func<bool> s_always = static () => true;
+    static readonly Func<Element> s_nothing = static () => new BoxEl();
+
+    /// <summary>The heading over the paragraph (see <see cref="CreditsFold"/>).</summary>
+    static Element CreditsBody(string key, AlbumCredits credits, bool aside)
     {
         var spans = new List<TextSpan>(credits.Runs.Count + 2);
         foreach (var run in credits.Runs)
             spans.Add(run.Name ? new TextSpan(run.Text, Color: Tok.TextPrimary, OnClick: run.Open, IsLink: run.Open is not null) : new TextSpan(run.Text));
         if (credits.AllCredits is { } all)
             spans.Add(new TextSpan(" · " + Loc.Get(Strings.Detail.AllCredits).ToLowerInvariant(), OnClick: all, IsLink: true));
+        Element head = aside
+            ? new BoxEl
+            {
+                Key = key + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
+                Children = [K.Heading(Loc.Get(Strings.Player.Credits)) with { Size = Z.AsideNamedSize, LineHeight = Z.AsideNamedLine }],
+            }
+            : K.HeadingRow(key + ":head", K.Heading(Loc.Get(Strings.Player.Credits)), null, Z.AsideHeadingH);
         return new BoxEl
         {
-            Key = Z.CreditsKey, Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Direction = 1, Gap = aside ? Z.AsideRowGap : Z.SectionGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Children =
             [
-                new BoxEl
-                {
-                    Key = Z.CreditsKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
-                    Children = [K.Heading(Loc.Get(Strings.Player.Credits)) with { Size = Z.AsideNamedSize, LineHeight = Z.AsideNamedLine }],
-                },
+                head,
                 new SpanTextEl(spans.ToArray())
                 {
                     Size = Z.CreditsSize, LineHeight = Z.CreditsLine, Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords, MinWidth = 0f,
                 },
             ],
+        };
+    }
+
+    static readonly Func<Element> s_asideShimmer = static () => CreditsShimmer(Z.AsideRowGap), s_bandShimmer = static () => CreditsShimmer(Z.SectionGap);
+
+    /// <summary>The credits' shimmer: the heading's bar on the heading's row, then the paragraph's lines (the last one short), the body's gap between.</summary>
+    static Element CreditsShimmer(float gap)
+    {
+        var lines = new Element[Z.SkelCreditsLines + 1];
+        lines[0] = new BoxEl { Height = Z.AsideHeadingH, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(Z.SkelHeadingW, Z.SkelHeadingH)] };
+        for (int i = 1; i <= Z.SkelCreditsLines; i++)
+        {
+            float share = i == Z.SkelCreditsLines ? Z.SkelCreditsLast : 1f;
+            lines[i] = new BoxEl
+            {
+                Height = Z.CreditsLine, Direction = 0, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Height = Z.CreditsSize, Grow = share, Basis = 0f, MinWidth = 0f, Corners = CornerRadius4.All(Z.SkelRadius) },
+                    new BoxEl { Grow = 1f - share, Basis = 0f, MinWidth = 0f },
+                ],
+            };
+        }
+        return new BoxEl
+        {
+            Direction = 1, Gap = gap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Children = [lines[0], new BoxEl { Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = lines[1..] }],
         };
     }
 

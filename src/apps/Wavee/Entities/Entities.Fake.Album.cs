@@ -48,6 +48,27 @@ public static partial class Entities
 {
     static partial void SeedAlbumSurfaces(long now0) => AlbumSeed.Run(now0);
 
+    /// <summary>The album the inspector's credits stages act on (al2: every row states credits).</summary>
+    public static string FakeCreditsAlbumUri => AlbumSeed.CreditsAlbumUri;
+
+    static bool s_creditsCold;
+
+    /// <summary>`state kind=cold-credits`: al2's members' credits unanswered again and their asks out (marked asked, so the album's demand waits
+    /// as it would on the wire): the album's credits shimmer until <see cref="LandFakeCredits"/> answers them, one batch.</summary>
+    public static void StageColdCredits()
+    {
+        s_creditsCold = true;
+        AlbumSeed.ColdCredits();
+    }
+
+    /// <summary>`state kind=credits-land` (and the next mount after a cold stage): al2's members' credits answered again, all at once.</summary>
+    public static void LandFakeCredits()
+    {
+        if (!s_creditsCold) return;
+        s_creditsCold = false;
+        AlbumSeed.LandCredits();
+    }
+
     /// <summary>The album/show seed, namespaced so its helpers cannot collide with the other owners' seed partials.
     /// Inside it `Album`, `Track`, `Show` … are Entities' FACTORY METHODS, so the handle types are spelled
     /// <c>global::Wavee.*</c>. Partial: the podcast visits are <c>Entities.Fake.Podcast.cs</c>.</summary>
@@ -487,7 +508,12 @@ public static partial class Entities
                     Artists(slot, artists[..Credited(a, k, artists)], targets);
                     Tags(slot, pool, IsDrawerRow(a, k), zeros, tags);
                     if (IsDrawerRow(a, k)) Drawer(slot, pool, a, k, artists, targets, zeros);
-                    else Traits(slot);
+                    else
+                    {
+                        Traits(slot);
+                        // al2 states its credits on every row (the album's credits paragraph folds them, contract 1.86), not only on the drawer rows.
+                        if (a == RichAlbum) RowCredits(slot, a, k, artists, targets);
+                    }
                     if (a == ShortAlbum) RelatedArtists(slot, targets);
                 }
 
@@ -556,6 +582,56 @@ public static partial class Entities
             e.TrackCredits.ReplaceRun(track, default, default);
         }
 
+        /// <summary>A row's credits: performers (linked), songwriters (one linked, one not), a producer with no artist page.</summary>
+        static void RowCredits(int track, int a, int k, Span<int> artists, Span<int> targets)
+        {
+            var e = Current.Edges;
+            int n = Credited(a, k, artists);
+            Span<CreditEdge> credits = stackalloc CreditEdge[8];
+            int rows = 0;
+            for (int i = 0; i < n && rows < 4; i++)
+            {
+                targets[rows] = SlotOf(Current.Artists, ArtistUri(artists[i]));
+                credits[rows++] = Credit(s_artistNames[Wrap(artists[i], ArtistCount)], i == 0 ? "Main Artist" : "Featured Artist", "Performers");
+            }
+            targets[rows] = SlotOf(Current.Artists, ArtistUri(artists[0]));
+            credits[rows++] = Credit(s_artistNames[Wrap(artists[0], ArtistCount)], "Composer", "Songwriters");
+            targets[rows] = Table.None;
+            credits[rows++] = Credit("Mara Ellison", "Lyricist", "Songwriters");
+            targets[rows] = Table.None;
+            credits[rows++] = Credit("Theo Vance", "Producer", "Producers");
+            e.ReleaseCreditText(track);
+            e.TrackCredits.Replace(track, targets[..rows], credits[..rows], EdgeState.Complete, rows);
+
+            static CreditEdge Credit(string name, string role, string group)
+                => new(Retained(Intern(Utf8(name))), Retained(Intern(Utf8(role))), Retained(Intern(Utf8(group))));
+        }
+
+        public static string CreditsAlbumUri => AlbumUri(RichAlbum);
+
+        static int MemberSlot(int a, int k) => SlotOf(Current.Tracks, TrackUri(Wrap(PoolStart(a) + k, TrackCount)));
+
+        public static void ColdCredits()
+        {
+            var e = Current.Edges;
+            for (int k = 0; k < TracksIn(RichAlbum); k++)
+            {
+                int slot = MemberSlot(RichAlbum, k);
+                e.ReleaseCreditText(slot);
+                e.TrackCredits.Replace(slot, ReadOnlySpan<int>.Empty, ReadOnlySpan<CreditEdge>.Empty, EdgeState.Unknown, 0);
+                e.TrackCredits.MarkAsked(slot, 0);
+            }
+            Current.PublishAll();
+        }
+
+        public static void LandCredits()
+        {
+            Span<int> artists = stackalloc int[4];
+            Span<int> targets = stackalloc int[8];
+            for (int k = 0; k < TracksIn(RichAlbum); k++) RowCredits(MemberSlot(RichAlbum, k), RichAlbum, k, artists, targets);
+            Current.PublishAll();
+        }
+
         static void RelatedArtists(int track, Span<int> targets)
         {
             for (int i = 0; i < 6; i++) targets[i] = SlotOf(Current.Artists, ArtistUri(6 + i));
@@ -595,23 +671,7 @@ public static partial class Entities
             finally { System.Buffers.ArrayPool<WaveSample>.Shared.Return(wave); }
             e.TrackBeats.ReplaceRun(track, default, default);   // no grid under --fake: Pulse takes the seeded tempo
 
-            // credits: performers (linked), songwriters (one linked, one not), a producer with no artist page
-            int n = Credited(a, k, artists);
-            Span<CreditEdge> credits = stackalloc CreditEdge[8];
-            int rows = 0;
-            for (int i = 0; i < n && rows < 4; i++)
-            {
-                targets[rows] = SlotOf(Current.Artists, ArtistUri(artists[i]));
-                credits[rows++] = Credit(s_artistNames[Wrap(artists[i], ArtistCount)], i == 0 ? "Main Artist" : "Featured Artist", "Performers");
-            }
-            targets[rows] = SlotOf(Current.Artists, ArtistUri(artists[0]));
-            credits[rows++] = Credit(s_artistNames[Wrap(artists[0], ArtistCount)], "Composer", "Songwriters");
-            targets[rows] = Table.None;
-            credits[rows++] = Credit("Mara Ellison", "Lyricist", "Songwriters");
-            targets[rows] = Table.None;
-            credits[rows++] = Credit("Theo Vance", "Producer", "Producers");
-            e.ReleaseCreditText(track);
-            e.TrackCredits.Replace(track, targets[..rows], credits[..rows], EdgeState.Complete, rows);
+            RowCredits(track, a, k, artists, targets);
 
             // versions: the self row is the drawer's own; the edge names the OTHER renditions
             Span<VersionEdge> kinds = stackalloc VersionEdge[2];
@@ -627,9 +687,6 @@ public static partial class Entities
                 kinds[versions++] = new VersionEdge(TrackVersionKind.Audio);
             }
             e.TrackVersions.Replace(track, targets[..versions], kinds[..versions], EdgeState.Complete, versions);
-
-            static CreditEdge Credit(string name, string role, string group)
-                => new(Retained(Intern(Utf8(name))), Retained(Intern(Utf8(role))), Retained(Intern(Utf8(group))));
         }
 
         static void LandShows()
