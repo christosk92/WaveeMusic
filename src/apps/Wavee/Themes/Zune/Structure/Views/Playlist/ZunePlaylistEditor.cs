@@ -153,7 +153,8 @@ internal static partial class ZunePlaylist
         // The hairline is the run's underline (the boards: a text decoration, faint at rest, raised on hover), not a rule across the column: the run
         // hugs its words (it still wraps at the column) and the hairline takes the run's width, offset clear of its descenders.
         // `past` (the panorama's hang past the column's old clip): the arm stands at the column and its words alone hang back over that room, so the
-        // hairline, the hit area and the focus ring keep the column's edge (the ring opens no wider there) and the words wrap at the same measure.
+        // hairline and the hit area keep the column's edge and the words wrap at the same measure. The focus ring wraps the words (on their box's
+        // leading edge, inside the viewport's bleed; the template's 3 outside them elsewhere), so it never cuts through the first glyph's stem.
         Edges4 hang = past > 0f ? new Edges4(-past, 0f, 0f, 0f) : default;
         Element words = run.Is(out TextEl t) ? t with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f, Margin = hang }
             : run.Is(out SpanTextEl s) ? s with { Grow = 0f, Basis = float.NaN, Shrink = 1f, MinWidth = 0f, Margin = hang }
@@ -162,7 +163,7 @@ internal static partial class ZunePlaylist
         {
             Key = Z.EditorReadKey, Direction = 1, MinWidth = 0f,
             Margin = past > 0f ? new Edges4(past, 0f, 0f, 0f) : default,
-            FocusVisualMargin = past > 0f ? new Edges4(0f, -3f, -3f, -3f) : null,
+            FocusVisualMargin = past > 0f ? new Edges4(-past, -3f, -3f, -3f) : null,
             Role = AutomationRole.Button, Cursor = CursorId.IBeam, Focusable = true, AllowFocusOnInteraction = false, OnClick = p.Begin,
             OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => hovered.Value = false,
