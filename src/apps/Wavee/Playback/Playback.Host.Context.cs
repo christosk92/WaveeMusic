@@ -298,7 +298,7 @@ public static partial class Playback
             s_orderRows = null;
             FillQueueIds(playlist, packed.AsSpan(0, n), rows.AsSpan(0, n));
             if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
-            Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+            Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n), contextStart: deck + 1);   // the old context stays history, outside the radio's wrap
             s_uids.Retain(Queue.Rows);
             Entities.Publish();                            // the rail answers the click in its own frame (PlayRows' rule)
             long now = FrameNowMs();
@@ -529,7 +529,7 @@ public static partial class Playback
         {
             int n = 0;
             if (start > 0)
-                for (int k = Math.Max(0, start - RemotePlan.HistoryCap); k < start; k++)
+                for (int k = RemotePlan.HistoryFrom(start, context.Length); k < start; k++)
                     AddRow(buffer, in context[k], QueueBucket.History, refs, rows, ref n);
             int at = n;
             if (start >= 0) AddRow(buffer, in context[start], QueueBucket.NowPlaying, refs, rows, ref n);
@@ -997,7 +997,7 @@ public static partial class Playback
             {
                 int n = 0;
                 if (at > 0)
-                    for (int k = Math.Max(0, at - RemotePlan.HistoryCap); k < at; k++)
+                    for (int k = RemotePlan.HistoryFrom(at, ctxTracks.Length); k < at; k++)
                         AddRow(buffer, in ctxTracks[k], QueueBucket.History, refs, rows, ref n);
                 deck = n;
                 AddRow(buffer, in ctxTracks[at], QueueBucket.NowPlaying, refs, rows, ref n);

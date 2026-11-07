@@ -135,6 +135,13 @@ public static partial class Playback
         /// context queue's job (owner Q), not this planner's.</summary>
         public const int MaxRows = 500;
 
+        /// <summary>The first context row a layout keeps as history in front of <paramref name="start"/> (#215): the WHOLE
+        /// context when it fits in <see cref="MaxRows"/>, so a repeat-context wrap reaches its first row and a shuffle covers
+        /// every row (a context started at row 60 used to lose rows 0-9 for good); otherwise as many as fit, and never fewer
+        /// than <see cref="HistoryCap"/>. PURE.</summary>
+        public static int HistoryFrom(int start, int length)
+            => Math.Max(0, Math.Min(start - HistoryCap, length - MaxRows));
+
         /// <summary>The row an inbound load starts at: the uid, then the uri, then the index — 0.2.9's order. -1 when
         /// none of the three names a row in <paramref name="tracks"/>.</summary>
         public static int StartIndex(Spotify.Decode.ClusterBuffer text, ReadOnlySpan<Spotify.Decode.ClusterTrack> tracks,
@@ -304,7 +311,7 @@ public static partial class Playback
         }
 
         /// <summary>Lay a context the caller already HOLDS (a page's visible order, one track) out as the queue, in reading
-        /// order: up to <see cref="HistoryCap"/> rows before <paramref name="start"/> as history, the start row on the deck,
+        /// order: the rows before <paramref name="start"/> as history (<see cref="HistoryFrom"/>), the start row on the deck,
         /// the <see cref="KeptQueue"/> rows, the rest of the context as next up, then the <see cref="KeptAutoplay"/> tail —
         /// at most <see cref="MaxRows"/> and the outputs' length. An unrepresentable packed target (0) is skipped. Answers
         /// the rows written and the deck row's index in <paramref name="deck"/>; −1, with nothing written, when the start
@@ -316,7 +323,7 @@ public static partial class Playback
             int cap = Math.Min(Math.Min(packedOut.Length, rowsOut.Length), MaxRows);
             if ((uint)start >= (uint)context.Length || context[start] <= 0 || cap == 0) return 0;
             int n = 0;
-            for (int k = Math.Max(0, start - HistoryCap); k < start && n < cap - 1; k++)
+            for (int k = HistoryFrom(start, context.Length); k < start && n < cap - 1; k++)
                 Put(context[k], ContextRow(QueueBucket.History), packedOut, rowsOut, ref n);
             deck = n;
             Put(context[start], ContextRow(QueueBucket.NowPlaying), packedOut, rowsOut, ref n);
@@ -839,13 +846,14 @@ public static partial class Playback
     /// stepped past, so the pump never prepares a stream that cannot open — the same walk <c>Advance</c> runs), the wrap
     /// row under repeat-context (<see cref="Queue.WrapIndex"/> — the first row the context itself provided; a context
     /// with a page still to fetch continues into that page instead, G-242), nothing under repeat-track (the same row
-    /// reloads; there is nothing to hand off) or at the end.</summary>
+    /// reloads; there is nothing to hand off) or at the end. An autoplay row only while autoplay may continue the context
+    /// (<see cref="AutoplayAllowed"/>, #215).</summary>
     static EntityRef NaturalNext(in State s, out QueueCursor cursor)
     {
         cursor = QueueCursor.None;
         if (s.Cursor.IsNone || s.Repeat == RepeatMode.Track) return default;
         int next = Queue.NextPlayable(Queue.Rows, default(LiveRows), s.Cursor.Index, forward: true,
-                                      wrap: s.Repeat == RepeatMode.Context && !s.MorePages);
+                                      wrap: s.Repeat == RepeatMode.Context && !s.MorePages, AutoplayAllowed(in s), Queue.ContextStart);
         if (next < 0) return default;
         cursor = Queue.CursorOf(next);
         return Queue.RefAt(next);
@@ -871,7 +879,7 @@ public static partial class Playback
         if (podcast && !s.EndingSoon) id = default;
         if (!podcast && !id.IsEmpty)
         {
-            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), nextCursor.Index, forward: true, wrap: false);
+            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), nextCursor.Index, forward: true, wrap: false, AutoplayAllowed(in s));
             if (at >= 0 && at != s.Cursor.Index)
             {
                 EntityRef row = Queue.RefAt(at);
@@ -931,8 +939,9 @@ public static partial class Playback
     {
         if (s.EndingSoon || !s.RoutesLocal) return;
         s.EndingSoon = true;
-        // Under repeat-context a context still paging asks for its page first (NaturalNext does not wrap past it).
-        if ((s.Repeat == RepeatMode.Off || (s.Repeat == RepeatMode.Context && s.MorePages))
+        // Under repeat-context a context still paging asks for its page first (NaturalNext does not wrap past it); autoplay
+        // is asked only while it may continue the context (repeat off, the setting on: #215).
+        if ((s.MorePages ? s.Repeat != RepeatMode.Track : AutoplayAllowed(in s))
             && s.Autoplay == AutoplayPhase.None && !s.Context.IsEmpty
             && NaturalNext(in s, out _).IsNone)
         {
@@ -1055,6 +1064,8 @@ public static partial class Playback
     {
         if (!s.RoutesLocal) return;
         EntityRef next = NaturalNext(in s, out QueueCursor cursor);
+        // The joined row is a repeat-context wrap: the rows after it become the next lap (Advance's rule).
+        if (!next.IsNone && s.Repeat == RepeatMode.Context && cursor.Index <= s.Cursor.Index) fx.Lap = true;
         if (next.IsNone || !next.Id.Equals(i.Id) || KindOfRow(next, s.VideoWanted) != PlayableKind.Audio)
         {
             // The listener hears a row the queue no longer puts next (an edit, a shuffle or a repeat change raced the
@@ -1340,6 +1351,9 @@ public static partial class Playback
     /// context autoplay cannot continue — ends the phase.</summary>
     static void EndOfContext(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
+        // Nothing more of the context to page and autoplay may not continue it (repeat on, or the setting off): playback
+        // ends here, with no ask (#215).
+        if (!s.MorePages && !AutoplayAllowed(in s)) { EndOfQueue(ref s, in i, ref fx, why); return; }
         // Exhausted with an autoplay page still held pages it; deferred (offline) ends here and SessionOnline asks again.
         bool exhausted = s.Autoplay == AutoplayPhase.Exhausted && !s.MorePages && !s.AutoplayPages;
         if (exhausted || s.Autoplay == AutoplayPhase.Deferred || s.Context.IsEmpty) { EndOfQueue(ref s, in i, ref fx, why); return; }

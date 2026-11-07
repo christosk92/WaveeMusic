@@ -462,6 +462,13 @@ public static partial class Playback
                     StepOne(in i);
                 }
 
+                // A repeat-context wrap's next lap (#215), the context alone: before the follow, so the follow, the next-row arm
+                // and the announce read it.
+                if (s_fx.Lap)
+                {
+                    s_fx.Lap = false;
+                    if (FollowsQueue(in s_state, Queue.RefAt(s_state.Cursor.Index)) && Queue.Lap(in s_state.Cursor)) WatchQueue(now);
+                }
                 FollowQueue(now);
                 Execute();
                 s_forward.Clear();                         // every staged forward was folded in this drain (G-248)

@@ -179,7 +179,7 @@ public static partial class Playback
                     n++;
                 }
                 appended = n - existing;
-                if (appended > 0) Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+                if (appended > 0) Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n), Queue.ContextStart);
             }
             finally
             {
@@ -274,7 +274,7 @@ public static partial class Playback
             {
                 if (provider == QueueProvider.Autoplay && station.Length > 0) s_autoplay.SetStation(context, station);
                 FillQueueIds(context, packed.AsSpan(0, n), rows.AsSpan(0, n));
-                Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+                Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n), Queue.ContextStart);
             }
             s_uids.Retain(Queue.Rows);
             s_autoplay.Retain(Queue.Rows);

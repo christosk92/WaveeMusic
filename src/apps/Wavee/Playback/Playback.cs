@@ -1527,6 +1527,9 @@ public static partial class Playback
         /// context's own order.</summary>
         public bool Reorder;
         public bool ReorderShuffle;
+        /// <summary>A repeat-context WRAP moved the cursor back to the context's first row: the rows after it become the next
+        /// lap, the context alone (<see cref="Queue.Lap"/>). The host applies it before it follows the queue, inside the drain.</summary>
+        public bool Lap;
         /// <summary>The context is running out: ask autoplay for <see cref="AutoplayContext"/> (the host declines when
         /// the setting is off) and answer with <see cref="Input.Autoplayed"/>.</summary>
         public bool Autoplay;
@@ -1740,7 +1743,7 @@ public static partial class Playback
         if (!cursor.IsNone && Entities.Current is not null && Queue.RefAt(in cursor) == row
             && !(row == s.Current && cursor == s.Cursor) && !RowPlayable(row))
         {
-            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), cursor.Index, forward: true, wrap: false);
+            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), cursor.Index, forward: true, wrap: false, AutoplayAllowed(in s));
             if (at >= 0) { cursor = Queue.CursorOf(at); row = Queue.RefAt(at); id = row.Id; fromMs = 0; }
         }
 
@@ -1786,35 +1789,54 @@ public static partial class Playback
             return;
         }
 
-        // Repeat-one re-plays the same row rather than moving: the one place the cursor stands still under a transport
-        // verb. A natural end reloads the row (its session has ended); a click restarts the live one. An explicit
-        // Previous past the first three seconds also restarts the row instead of stepping back.
+        // Repeat-one re-plays the same row on its NATURAL end: the one place the cursor stands still under a transport
+        // verb. A MANUAL Next moves on and turns repeat-one off, leaving repeat-context on (#215; librespot "when we skip in
+        // repeat track, we don't repeat the current track anymore", connect/src/state/tracks.rs:106-109; ncspot drops to
+        // repeat-playlist, src/queue.rs:374-378): the listener asked for another song. An explicit Previous past the first
+        // three seconds restarts the row instead of stepping back (librespot spirc.rs:1747-1766, go-librespot
+        // daemon/controls.go:1034-1037, librespot-java Player.java:646-662: 3 s).
         if (jumpTo >= 0 && !(forward && default(LiveRows).IsPlayable(jumpTo))) jumpTo = -1;   // a dead named row: the plain walk
-        if (jumpTo < 0 && forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
+        if (forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
         {
-            if (!natural) { Restart(ref s, in i, ref fx, why); return; }
-            ReportEnd(ref s, ref fx, why, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-            PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, s.Kind, 0, paused: false);
-            s.StartReason = why;
-            EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
-            return;
+            if (natural && jumpTo < 0)
+            {
+                ReportEnd(ref s, ref fx, why, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
+                PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, s.Kind, 0, paused: false);
+                s.StartReason = why;
+                EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
+                return;
+            }
+            if (!natural) s.Repeat = RepeatMode.Context;   // announced by the load below (EmitLoad) or the end of the queue
         }
         if (!forward && s.Phase != Phase.Idle && s.Position(i.NowMs) > RestartWindowMs) { Restart(ref s, in i, ref fx, why); return; }
 
         // The walk steps past every row the catalog has ruled dead (`RowPlayable`): the deck never lands on a row whose
         // load can only fail, in either direction, and a context whose remaining rows are all dead has run out exactly
-        // like one with none left. Under repeat-context (and no page still to fetch — a context with a page pages
+        // like one with none left. Under repeat-context (and no page still to fetch: a context with a page pages
         // first, or the rows past its first page would never play, G-242) the walk wraps to the first row the CONTEXT
-        // provided (`Queue.WrapIndex`): a consumed queued or autoplay row must not replay.
+        // provided (`Queue.WrapIndex`) and the rows after it become the next lap, the context alone (`Effects.Lap`): a
+        // consumed queued or autoplay row must not replay. An autoplay row is landed on only while autoplay may continue
+        // the context (`AutoplayAllowed`, #215).
         bool wrap = forward && s.Repeat == RepeatMode.Context && !s.MorePages;
-        int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), s.Cursor.Index, forward, wrap);
+        int from = s.Cursor.Index;
+        int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), from, forward, wrap, AutoplayAllowed(in s), Queue.ContextStart);
+        if (at < 0 && !forward && s.HasCurrent && s.Phase != Phase.Idle)
+        {
+            // Previous on the context's first row: repeat-context goes round to its last row (librespot-java
+            // StateWrapper.java:1312-1314, ncspot src/queue.rs:402-412); otherwise the row starts again (go-librespot
+            // daemon/controls.go:1048-1067, librespot-java StateWrapper.java:1316, psst queue.rs:124-131).
+            int last = s.Repeat == RepeatMode.Context && !s.MorePages ? Queue.LastContextRow(Queue.Rows, default(LiveRows), Queue.ContextStart) : -1;
+            if (last <= from) { Restart(ref s, in i, ref fx, why); return; }
+            at = last;
+        }
         if (at < 0)
         {
-            if (!forward) return;                     // the head of history (or only dead rows behind us): stay
+            if (!forward) return;                     // nothing on the deck to restart
             if (!wrap) { EndOfContext(ref s, in i, ref fx, why); return; }
             EndOfQueue(ref s, in i, ref fx, why);        // repeat-context with nothing playable anywhere in it
             return;
         }
+        if (wrap && at <= from) fx.Lap = true;
         QueueCursor cursor = Queue.CursorOf(at);
         EntityRef row = Queue.RefAt(at);
 
@@ -1824,6 +1846,14 @@ public static partial class Playback
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
         fx.Snapshot = true;
     }
+
+    /// <summary>May the end of the context continue into autoplay? Only with repeat OFF (repeat-context wraps and
+    /// repeat-track replays, never a suggestion: librespot connect/src/state/tracks.rs:298-310; go-librespot
+    /// daemon/controls.go:1164-1176; librespot-java StateWrapper.java:1283-1291) and with the Autoplay setting on
+    /// (Spotify's "Autoplay", default on; librespot-java <c>player.autoplayEnabled</c> default true, go-librespot
+    /// <c>disable_autoplay</c> default false). #215.</summary>
+    public static bool AutoplayAllowed(in State s)
+        => s.Repeat == RepeatMode.Off && Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
 
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
@@ -1936,6 +1966,7 @@ public static partial class Playback
             if (verdict.Kind == ResumeStart.VerdictKind.StartNext)
             {
                 EntityRef next = NaturalNext(in s, out QueueCursor nextCursor);
+                if (!next.IsNone && s.Repeat == RepeatMode.Context && nextCursor.Index <= s.Cursor.Index) fx.Lap = true;   // a wrap: the next lap
                 if (!next.IsNone) { row = next; id = next.Id; cursor = nextCursor; }
                 fromMs = 0;
             }
