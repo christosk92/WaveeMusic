@@ -96,6 +96,7 @@ public static partial class Entities
         var kind = EntityUri.KindOf(uri.AsSpan());
         int slot = ResolveSeedSlot(kind, uri);
         if (slot == Table.None) return false;
+        if (kind == EntityKind.Artist) return StageChartLate(slot);
         Scope s = Current;
         (Table Table, Column<StringId> Title)? head = kind switch
         {
@@ -115,9 +116,65 @@ public static partial class Entities
         return true;
     }
 
+    // ── an artist page's chart rows still in flight after everything else is known (`state kind=head uri=<artist>`, then `head-land`) ──
+    // The owner's endless shimmer (2026-11-07, Fly By Midnight): the overview, the chart bit and the popular list were all warm (a now-playing
+    // prefetch), so the only answers still to come were the charted rows' own fields, and they were the last thing to land. The stage takes those
+    // fields away from the showcase artist's charted rows, asked and in flight; the landing puts them back the way an answer does (known, the
+    // in-flight mark cleared, the row's version bumped, the track table published) and nothing else moves.
+
+    /// <summary>The charted rows <see cref="StageChartLate"/> took the fields of, and what each knew.</summary>
+    static (int[] Slots, uint[] Known)? s_chartLate;
+
+    /// <summary>The request stamp of the staged chart rows' fetch (cleared by the landing).</summary>
+    const uint ChartLateStamp = 0xC4A7u;
+
+    /// <summary>Take the charted rows' <see cref="ArtistReadiness.ChartRowGroup"/> away from <paramref name="artist"/>'s popular list: unknown,
+    /// asked and in flight, so the chart gate reads "still coming". False when the artist has no chart.</summary>
+    static bool StageChartLate(int artist)
+    {
+        var targets = Current.Edges.ArtistPopular.Targets(artist);
+        if (targets.Length == 0) return false;
+        var t = Current.Tracks;
+        uint group = ArtistReadiness.ChartRowGroup;
+        var slots = targets.ToArray();
+        var known = new uint[slots.Length];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            int slot = slots[i];
+            known[i] = t.Known[slot];
+            t.Known[slot] &= ~group;
+            t.Asked[slot] |= group;
+            t.Inflight[slot] = ChartLateStamp;
+            t.Version[slot]++;
+        }
+        s_chartLate = (slots, known);
+        t.MarkDirty();
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>The landing of <see cref="StageChartLate"/>: the rows' fields back, as an answer lands them. Nothing when none is staged.</summary>
+    static void RestoreChartLate()
+    {
+        if (s_chartLate is not { } c) return;
+        s_chartLate = null;
+        var t = Current.Tracks;
+        for (int i = 0; i < c.Slots.Length; i++)
+        {
+            int slot = c.Slots[i];
+            if (slot <= Table.None || slot >= t.Count) continue;
+            t.Known[slot] = c.Known[i];
+            t.Inflight[slot] = 0;
+            t.Version[slot]++;
+        }
+        t.MarkDirty();
+        Current.PublishAll();
+    }
+
     /// <summary>The header <see cref="StageHead"/> took away, back in place (the landing); nothing when none is staged.</summary>
     public static void RestoreHead()
     {
+        RestoreChartLate();
         if (s_head is not { } h) return;
         s_head = null;
         h.Title[h.Slot] = h.Value;

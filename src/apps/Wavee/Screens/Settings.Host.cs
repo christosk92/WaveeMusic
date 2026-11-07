@@ -205,6 +205,9 @@ public static partial class Settings
         if (active && s_storageLoad.Peek() == StorageLoadPhase.NotStarted) RefreshStorage();
     }
 
+    /// <summary>The AI models bytes of the last census (0 before one lands): what enables the row's Remove, so it agrees with the size shown.</summary>
+    internal static long CensusAiModelsBytes => s_storage?.AiModels ?? 0;
+
     /// <summary>The census as the props carry it. Read from the host's render, so a census that lands re-renders the page (the
     /// phase is a signal; the rest is posted with it).</summary>
     static SettingsStorageProps StorageFacts()
@@ -273,9 +276,36 @@ public static partial class Settings
         long audio = status?.Bytes ?? TreeBytes(AudioCacheDirectory());
         long keys = Spotify.Audio.KeyStore.DiskBytes();      // the whole WAL set, not just the main file
         long images = TreeBytes(ImageCacheDirectory());
-        return new StorageSnapshot(library, runtime, logs, logFiles, store, audio, keys, images,
-            library + runtime + logs + store + audio + keys + images);
+        // The AI lyrics folder whole: what the card's (and this tab's) Remove deletes, so the row frees what it says.
+        long ai = TreeBytes(AiLyrics.Root);
+        int aiLanguages = ai > 0 ? AiLanguagesInstalled() : 0;
+        long other = OtherAppDataBytes(root, logs, images);
+        return new StorageSnapshot(library, runtime, logs, logFiles, store, audio, keys, images, ai, aiLanguages, other,
+            library + runtime + logs + store + audio + keys + images + ai + other);
     }
+
+    /// <summary>The aligner languages whose every file is verified and in place (the pack's own test, <see cref="AiLyrics.Pack.Missing"/>).</summary>
+    static int AiLanguagesInstalled()
+    {
+        int n = 0;
+        try
+        {
+            foreach (var (_, files) in AiLyrics.PackManifest.Embedded.Languages)
+                if (AiLyrics.Pack.Missing(files).Count == 0) n++;
+        }
+        catch (Exception ex) { Log.Warn("settings", "AI language census failed", ex); }
+        return n;
+    }
+
+    /// <summary>What else the app writes under the profile and no other category counts: the lyrics cache (lyrics\, at most
+    /// 50 MB), the crash reports and diagnostic captures beside the app logs (logs\ minus the app logs; crash bundles are
+    /// capped at 200 MB), the other caches (cache\ minus the image cache: What's new, podcast transcripts, cover uploads)
+    /// and the modules (modules\, modules-data\). The two differences are floored at 0: they are read at two instants.</summary>
+    static long OtherAppDataBytes(string root, long appLogs, long images)
+        => TreeBytes(Path.Combine(root, "lyrics"))
+           + Math.Max(0, TreeBytes(Platform.LogFolder) - appLogs)
+           + Math.Max(0, TreeBytes(Path.Combine(root, "cache")) - images)
+           + TreeBytes(Path.Combine(root, "modules")) + TreeBytes(Path.Combine(root, "modules-data"));
 
     /// <summary>After a budget write: trim to the new policy (the cache re-reads the settings on every operation) and
     /// re-read its status, off the UI thread — the meter and the reserve line follow without a full census.</summary>
@@ -340,6 +370,18 @@ public static partial class Settings
     internal static void ClearSavedKeys() => ClearThenRecount(static () => ClearLicenseKeys?.Invoke(), Strings.Settings.Storage.LicenseKeysCleared);
 
     internal static void ClearMetadata() => ClearThenRecount(static () => ClearMetadataCache?.Invoke(), Strings.Settings.Storage.MetadataCleared);
+
+    /// <summary>The AI models row's Remove: the AI lyrics card's own verb (<see cref="AiLyrics.RemoveFiles"/>), never a second
+    /// deleter. It cancels the running job and any download, unloads the NPU sessions and deletes the folder on the AI worker
+    /// after that unload, so no session still maps a file; a runtime DLL this process loaded goes at the next start (the
+    /// toast says so). The card falls back to its download state, so the models download again on demand. UI thread.</summary>
+    internal static void RemoveAiModels()
+        => AiLyrics.RemoveFiles(static deferred =>
+        {
+            Notify.Say(Loc.Get(deferred ? Strings.Settings.Lyrics.Ai.RemoveDeferred : Strings.Settings.Storage.AiModelsRemoved),
+                deferred ? InfoBarSeverity.Informational : InfoBarSeverity.Success);
+            RefreshStorage();
+        });
 
     static void ClearThenRecount(Action work, string toastKey)
     {

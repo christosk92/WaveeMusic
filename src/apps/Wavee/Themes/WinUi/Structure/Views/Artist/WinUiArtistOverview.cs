@@ -39,10 +39,19 @@ internal static class WinUiArtistOverview
         var overlay = p.Overlay;
         var surface = latch.Surface;
         long stamp = PreviewStamp(a);
-        Func<int, float, PreviewState, PopularHold, Element> build = (rung, slot, state, hold) =>
+        int tierRows = WinUiArtistTiers.ChartRowsOf(tier);
+        int fitMax = Math.Max(tierRows, Math.Min(a.PopularSlots.Length, WinUiArtistRules.PopularFitMaxRows));
+        float pitch = WinUiOptions.ArtworkInRows() ? WinUiArtistChartLayout.RowHeight : WinUiArtistChartLayout.OneLineRowHeight;
+        Func<int, float, PreviewState, PopularHold, ChartFit, Element> build = (rung, slot, state, hold, fit) =>
         {
             int columns = latch.Columns = WinUiArtistTiers.OverviewColumnsOf(rung, tier);
-            Element? chart = popular ? new BoxEl { Key = "ov:chart", Direction = 1, MinWidth = 0f, Children = [Artist.Chart(a, accentSignal)] } : null;
+            // Beside the side column (two columns) Popular takes as many rows as fill the side column's height, never fewer than the tier's (owner
+            // 2026-11-07: a tall side column left a large empty area under five rows; balanced columns keep five). The fit is measured, not tiered.
+            bool fits = columns == 2 && popular;
+            fit.Arm(fits, tierRows, fitMax, pitch);
+            Element? chart = popular
+                ? new BoxEl { Key = "ov:chart", Direction = 1, MinWidth = 0f, OnBoundsChanged = fits ? fit.OnChart : null, Children = [Artist.Chart(a, accentSignal, rows: fits ? fit.Rows : null)] }
+                : null;
             // W-Artist: the latest release, then Discography; the upcoming card and the artist's pick (no board draws one) follow under Discography, the pick
             // compact (no photograph band) so it never outweighs the column.
             float target = WinUiDetailRules.TargetOf(tier);
@@ -85,7 +94,7 @@ internal static class WinUiArtistOverview
             side.AddRange(after);
             bool two = columns == 2;
             float grow = two ? 1f : 0f;
-            Element sideColumn = Column(SideKey(columns), grow * WinUiArtistRules.OtherGrow, side.ToArray());
+            Element sideColumn = Column(SideKey(columns), grow * WinUiArtistRules.OtherGrow, side.ToArray()) with { OnBoundsChanged = two ? fit.OnSide : null };
             // Stacked without a chart, an empty Popular column would add a section gap above the side column.
             if (!two && chart is null) return Grid(1, WinUiArtistRules.SectionGap, sideColumn);
             return Grid((byte)(two ? 0 : 1), two ? WinUiArtistRules.ColumnGap : WinUiArtistRules.SectionGap,
@@ -127,7 +136,7 @@ internal static class WinUiArtistOverview
         Key = "ov:grid", Direction = direction, Gap = gap, MinWidth = 0f, AlignItems = direction == 0 ? FlexAlign.Start : FlexAlign.Stretch,
         Padding = new Edges4(0f, WinUiArtistRules.PopularHitRoom, WinUiArtistRules.PopularHitRoom, 0f),
         Margin = new Edges4(0f, -WinUiArtistRules.PopularHitRoom, -WinUiArtistRules.PopularHitRoom, 0f),
-        Layout = WinUiArtistMotion.OverviewHeight, Children = columns,
+        Layout = WinUiArtistMotion.OverviewHeight, Children = columns, EntranceGroup = true,   // its columns' blocks stagger in (WinUiPageMotion)
     };
 
     /// <summary>A column: in a row it grows by its weight from a zero basis; stacked (<paramref name="grow"/> 0) it takes its content's height.</summary>
@@ -136,7 +145,7 @@ internal static class WinUiArtistOverview
         Key = key, Direction = 1, Gap = WinUiArtistRules.SectionGap, Grow = grow, Basis = grow > 0f ? 0f : float.NaN, MinWidth = 0f,
         // Popular's height never follows its width (the chart's rows are fixed), so it re-lays at the eased width once the side column has faded; the side
         // column fades through a restack (it is keyed by the arrangement).
-        Layout = key == PopularKey ? WinUiArtistMotion.Column : WinUiArtistMotion.Side, Children = kids,
+        Layout = key == PopularKey ? WinUiArtistMotion.Column : WinUiArtistMotion.Side, Children = kids, EntranceGroup = true,
         // Popular holds its old width while the side column fades out (laid out at it when the restack widens it, presented at it when the restack
         // narrows it): the clip keeps the chart's far edge (the count, the durations) inside the held width instead of over the outgoing column.
         ClipToBounds = key == PopularKey,
@@ -173,6 +182,73 @@ internal static class WinUiArtistOverview
     /// <summary>The side column's key in an arrangement of <paramref name="columns"/> columns: a restack replaces it, which is the fade-through.</summary>
     static string SideKey(int columns) => columns switch { <= 1 => "ov:col:side:1", 2 => "ov:col:side:2", _ => "ov:col:side:3" };
 
+    /// <summary>Popular's rows beside the side column (two columns): the chart takes as many rows as the side column's measured height holds, from the
+    /// tier's five up to <see cref="WinUiArtistRules.PopularFitMaxRows"/> and the tracks there are, and the pager's pages follow. The grid aligns both
+    /// columns at the top, so the chart's own box (never the Popular column, whose height eases through a layout transition and reports its eased
+    /// bounds) against the side column's height decides it: a side column a row or more taller than the chart adds rows, one shorter takes them back.
+    /// It grows on a whole row of room and shrinks on any overhang, so it holds inside a row's height and never oscillates; Popular never grows past
+    /// the side column, so the overview's height (the side column's) never moves with it: the added rows fill the empty area under the chart and
+    /// nothing below shifts when the side column's content lands late.
+    /// <para>A written count waits for the chart's box to answer it (its height changes by the rows written, which the cap keeps true) before the next
+    /// decision, so a side measure in between never counts the same room twice. The fit is owned by the grid host so it outlives a restack, and is let
+    /// go (the tier's rows) in any other arrangement.</para></summary>
+    sealed class ChartFit
+    {
+        /// <summary>The rows the chart takes (0: the tier's), written from the bounds callbacks, never from a render.</summary>
+        public readonly Signal<int> Rows = new(0);
+        public readonly Action<RectF> OnChart, OnSide;
+        float _chart = float.NaN, _side = float.NaN, _pitch = 1f, _asked = float.NaN;
+        int _base = 5, _max = 5;
+        bool _armed, _frozen;
+
+        public ChartFit()
+        {
+            OnChart = r =>
+            {
+                // A write is answered once the chart's height has moved off the height it was written at.
+                if (!float.IsNaN(_asked) && MathF.Abs(r.H - _asked) < 0.5f) return;
+                _asked = float.NaN;
+                _chart = r.H;
+                Fit();
+            };
+            OnSide = r => { _side = r.H; Fit(); };
+            Thaw = () => { if (!_frozen) return; _frozen = false; Fit(); };
+        }
+
+        /// <summary>Holds the count through a restack: the side column fades out, Popular resizes and the new side column fades in at a preview laid out
+        /// at the page's live width, so its height passes through values it does not keep (a fit taken from them grew Popular a row and took it back,
+        /// re-mounting the pager's pips). The count the last two-column arrangement settled on stands meanwhile; <see cref="Thaw"/> fits again.</summary>
+        public void Freeze() => _frozen = true;
+
+        /// <summary>Ends <see cref="Freeze"/> and fits to the settled measures.</summary>
+        public readonly Action Thaw;
+
+        /// <summary>Called by the arrangement's render: whether the fit applies (two columns with a chart), the tier's rows, the cap and a row's pitch.
+        /// Leaving the fit forgets the measures (the next arrangement measures afresh); the chart then reads the tier's rows (its rows prop is null).</summary>
+        public void Arm(bool on, int tierRows, int max, float pitch)
+        {
+            if (!on && _armed) { _chart = float.NaN; _side = float.NaN; _asked = float.NaN; }
+            _armed = on;
+            _base = tierRows;
+            _max = Math.Max(tierRows, max);
+            _pitch = MathF.Max(1f, pitch);
+        }
+
+        void Fit()
+        {
+            if (!_armed || _frozen || !float.IsNaN(_asked) || float.IsNaN(_chart) || float.IsNaN(_side)) return;
+            int now = Rows.Peek();
+            int cur = now > 0 ? now : _base;
+            float room = _side - _chart;
+            int next = room >= 0f ? cur + (int)MathF.Floor(room / _pitch) : cur - (int)MathF.Ceiling(-room / _pitch);
+            next = Math.Clamp(next, _base, _max);
+            int want = next == _base ? 0 : next;
+            if (want == now) return;
+            _asked = _chart;
+            Rows.Value = want;
+        }
+    }
+
     /// <summary>The preview's choices (the type and the order), owned by the grid host so they outlive the side column a restack replaces.</summary>
     sealed class PreviewState
     {
@@ -185,7 +261,7 @@ internal static class WinUiArtistOverview
     /// <summary>The grid host's props: the arrangement for a column rung, the page inset (the page is the slot plus the inset either side), the page
     /// width the host measured (the slot's seed before the first measure) and the committed column rung (<see cref="WinUiArtistTiers.OverviewRung"/>).
     /// The builder is a live closure (a fresh one rebuilds with the page).</summary>
-    sealed record GridProps(Func<int, float, PreviewState, PopularHold, Element> Build, Func<int, float, float> PopularWidth, float Inset, float Seed,
+    sealed record GridProps(Func<int, float, PreviewState, PopularHold, ChartFit, Element> Build, Func<int, float, float> PopularWidth, float Inset, float Seed,
         int Rung);
 
     /// <summary>The overview's arrangement. The column rung is the policy's content-axis mark, which the core resolves from the content width the shell
@@ -199,13 +275,14 @@ internal static class WinUiArtistOverview
     {
         readonly Signal<float> _slot = new(0f);   // a version: the width a render uses is _slotNow
         readonly PreviewState _state = new();
+        readonly ChartFit _fit = new();
         readonly Action<RectF> _onBounds;
         readonly Signal<int> _held = new(0);   // a version: bumped when Popular's hold below is let go
         readonly Action _releaseHold;
         float _inset, _measured, _slotNow;
         float _hold = float.NaN;   // Popular's old width, held through a widening restack's fade-out (NaN: none)
         bool _holdReleased, _following;   // _following: a restack's rung is ahead of the page's width (the overview follows the live width)
-        int _rung = -1, _holds;
+        int _rung = -1, _holds, _fitHolds;
 
         public GridHost()
         {
@@ -253,8 +330,12 @@ internal static class WinUiArtistOverview
                 _holdReleased = false;
                 _hold = from + 0.5f < to ? from : float.NaN;
                 if (!float.IsNaN(_hold)) _holds++;
+                _fit.Freeze();
+                _fitHolds++;
             }
             UseTimeout(_releaseHold, WinUiArtistMotion.FadeOutMs, DepKey.From(_holds));
+            // Popular's fit waits for the restack to finish (the side column's fade-in at its new slot), then fits to what stands.
+            UseTimeout(_fit.Thaw, WinUiArtistMotion.FadeInDelayMs + WinUiArtistMotion.FadeInMs, DepKey.From(_fitHolds));
             // The measured box follows the page, and the overview inside it with it.
             return new BoxEl
             {
@@ -262,7 +343,7 @@ internal static class WinUiArtistOverview
                 Children = [new BoxEl
                 {
                     Direction = 1, MinWidth = 0f,
-                    Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased))],
+                    Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased), _fit)],
                 }],
             };
         }

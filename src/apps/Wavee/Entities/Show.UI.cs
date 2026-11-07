@@ -234,6 +234,7 @@ public readonly partial struct Show
                 {
                     CanLoadMore = st.CanLoadMore, Paging = st.Paging, LoadMore = _host.Model.LoadMore,
                     Similar = Embed.Comp(new PodcastReaderUI.SimilarProps(_host.Similar), static () => new PodcastReaderUI.SimilarShelf()),
+                    Aside = style.Aside is null ? null : Embed.Comp(new SlotProps(_host.Model, null), static () => new AsideSlot()) with { Key = "show:aside:foot" },
                 })
                 : new BoxEl();
         }
@@ -243,18 +244,19 @@ public readonly partial struct Show
 
     /// <summary>The meta line: "128 episodes · weekly · since 2023" — the cadence only when the rule names one, the
     /// year only when the membership is complete (the oldest resident is then the first).</summary>
+    /// <summary>The cadence's word ("weekly"), "" when the rule names none.</summary>
+    internal static string CadenceWord(ShowCadence.Kind cadence) => cadence switch
+    {
+        ShowCadence.Kind.Daily => Loc.Get(Strings.Podcast.Cadence.Daily),
+        ShowCadence.Kind.Weekly => Loc.Get(Strings.Podcast.Cadence.Weekly),
+        ShowCadence.Kind.Fortnightly => Loc.Get(Strings.Podcast.Cadence.Fortnightly),
+        ShowCadence.Kind.Monthly => Loc.Get(Strings.Podcast.Cadence.Monthly),
+        _ => "",
+    };
+
     internal static string MetaOf(int total, ShowCadence.Kind cadence, int sinceYear)
     {
-        string meta = Strings.Podcast.EpisodeCount(total);
-        string word = cadence switch
-        {
-            ShowCadence.Kind.Daily => Loc.Get(Strings.Podcast.Cadence.Daily),
-            ShowCadence.Kind.Weekly => Loc.Get(Strings.Podcast.Cadence.Weekly),
-            ShowCadence.Kind.Fortnightly => Loc.Get(Strings.Podcast.Cadence.Fortnightly),
-            ShowCadence.Kind.Monthly => Loc.Get(Strings.Podcast.Cadence.Monthly),
-            _ => "",
-        };
-        meta = Joined(meta, word);
+        string meta = Joined(Strings.Podcast.EpisodeCount(total), CadenceWord(cadence));
         return sinceYear > 0 ? Joined(meta, Strings.Podcast.Since(sinceYear.ToString(CultureInfo.InvariantCulture))) : meta;
     }
 }

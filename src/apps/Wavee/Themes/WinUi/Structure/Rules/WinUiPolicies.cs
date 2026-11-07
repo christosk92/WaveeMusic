@@ -111,6 +111,7 @@ public static partial class WinUiPolicies
             ArtistTiers = artistTiers,
             LibraryTiers = libraryTiers,
             Settings = SettingsGrouping.Seven,   // W8b: the board's seven tabs over the twelve areas
+            PageMotion = WinUiPageMotion.Policy, // WinUI's navigation transitions per kind of swap, its units staggered (winui page motion)
         };
     }
 

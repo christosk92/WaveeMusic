@@ -117,7 +117,7 @@ internal static class WinUiHomeZones
         }
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, EntranceGroup = true,   // a page entrance staggers the chapters (WinUiPageMotion)
             Children = spaced.ToArray(),
         };
     }
@@ -138,7 +138,7 @@ internal static class WinUiHomeZones
     static Element Beside(Zone a, Zone b, int index, IOverlayService? overlay, WinUiHomeLayout layout, float share, float otherShare) => new BoxEl
     {
         Key = "zone:" + a.Key + "+" + b.Key, Direction = 0, Gap = WinUiHomeTiers.HeroGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-        Layout = WinUiDiscoveryMotion.Reflow,
+        Layout = WinUiDiscoveryMotion.Reflow, EntranceGroup = true,
         Children =
         [
             Chapter(a, index, overlay, layout) with { Grow = share, Shrink = 1f, Basis = 0f },
@@ -159,6 +159,8 @@ internal static class WinUiHomeZones
         {
             Key = "zone:" + zone.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             ScrollScope = zone.Key,
+            // A page entrance enters the inner box, the one the mount entrance moves (the FLIP box stays a frame).
+            EntranceGroup = true,
             // A width change moves and resizes the SAME zone: it FLIPs into its new box. The entrance (its stagger) rides the inner box.
             Layout = WinUiDiscoveryMotion.Reflow,
             Children =

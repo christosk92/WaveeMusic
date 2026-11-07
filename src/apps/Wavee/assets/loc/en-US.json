@@ -853,6 +853,15 @@
     "subtitleSong": "Song"
   },
   "podcast": {
+    "details": {
+      "publisher": "Publisher",
+      "episodes": "Episodes",
+      "since": "Since",
+      "format": "Format",
+      "ratings": "Ratings",
+      "audio": "Audio",
+      "audioVideo": "Audio and video"
+    },
     "episodes": "Episodes",
     "show": "Podcast",
     "episodeCount": "{count, plural, one {# episode} other {# episodes}}",
@@ -1624,6 +1633,16 @@
       "localStoreSub": "store.json, navigation history",
       "imageCache": "Image cache",
       "imageCacheSub": "cache\\images - album art and other remote images",
+      "aiModels": "AI models",
+      "aiModelsSub": "ai\\lyrics - lyrics timing models that run on this PC",
+      "aiModelsCount": "ai\\lyrics - lyrics timing models · {count} languages",
+      "aiModelsCountOne": "ai\\lyrics - lyrics timing models · 1 language",
+      "aiModelsNone": "ai\\lyrics - none downloaded. AI word timing in the Lyrics settings downloads them.",
+      "removeAiModels": "Remove AI models",
+      "removeAiModelsBody": "Remove the AI models, their NPU caches and the word timing made with them? Word-by-word lyrics made on this PC stop until you download the models again in the Lyrics settings.",
+      "aiModelsRemoved": "Removed the AI models",
+      "otherData": "Other app data",
+      "otherDataSub": "lyrics cache, crash reports, What's new, podcast transcripts, modules",
       "openFolder": "Open folder",
       "deleteOldLogs": "Delete old logs",
       "playbackCache": "Playback cache",
@@ -3066,6 +3085,7 @@
       },
       "library": {
         "$comment": "WinUI's library and show controls (winui menus/podcasts): sentence-case sort, view and scope words for the DropDownButton menus and the SelectorBar pivots.",
+        "title": "Library",
         "sortBy": "Sort by",
         "sort": {
           "recents": "Recents",
@@ -3125,6 +3145,9 @@
         "latestRelease": "Latest release",
         "discography": "Discography",
         "readMore": "Read more",
+        "showLess": "Show less",
+        "showDetails": "Show details",
+        "youMightAlsoLike": "You might also like",
         "viewGrid": "Grid",
         "viewList": "List",
         "verifiedArtist": "Verified artist",
