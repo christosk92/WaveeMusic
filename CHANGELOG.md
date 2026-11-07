@@ -82,6 +82,13 @@ versions separately under `v*` and is not tracked in this file.)
   first letter whole, and its focus ring and edit underline sit where they belong.
 - **Pages settle without jumping.** A show's header grows smoothly as its details load instead of dropping the episode
   list in one step, and the Zune band keeps its place until the next page has landed.
+- **Artist pages no longer load forever.** An artist page could stay on its grey placeholders for good, most often
+  when you opened the artist of the song that was playing: its top tracks arrived last and the page never noticed.
+  It now shows as soon as everything has arrived, and an artist whose details stopped coming shows "Something went
+  wrong" with Retry instead of loading forever.
+- **No page waits forever.** If an artist, album, playlist, show or episode page is still loading after a few
+  seconds with nothing on its way, Wavee asks again once, and if that does not help it shows "Something went wrong"
+  with Retry. The log names the page and what it was waiting for (`page.stuck`).
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
 
