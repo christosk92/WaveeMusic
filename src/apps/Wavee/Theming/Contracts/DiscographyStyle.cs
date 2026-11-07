@@ -1,8 +1,8 @@
 // ── Theming/Contracts/DiscographyStyle.cs — what a structure supplies for the discography (themes plan 6.1, T10b2) ─────────────────
 //
 // The discography is the artist page's three inline facet sections (Albums, Singles & EPs, Compilations) and the standalone `disco:` page's one facet: an
-// accent-spined, pinned facet header over a virtualized grid of album cards whose clicked card opens an inline album drawer (the tracklist, its selection
-// bar, the "Show all" row) under its row, with a caret apexed on the card. The structure registers a `DiscographyStyle` under `StyleKeys.Discography`; the
+// accent-spined, pinned facet header over a virtualized grid of album cards: a card opens its album, and the disclosure button after its meta line opens
+// an inline album drawer (the tracklist, its selection bar, the "Show all" row) under its row, with a caret apexed on the card. The structure registers a `DiscographyStyle` under `StyleKeys.Discography`; the
 // core components (`Entities\Artist.Discography.cs`: `FacetHost`, `DiscoGridHost`, `DiscoCell`, `DrawerPanel`, `DrawerSlot`, `DrawerRowHost`) keep every
 // hook, memo, effect and decision and call the templates while they render, so their subscriptions, keys and effect timing are exactly what they were.
 //
@@ -66,8 +66,12 @@ internal sealed class DiscoCardArgs
     /// <summary>The cover url.</summary>
     public string? Cover { get; init; }
 
-    /// <summary>The card's click: open / close its drawer.</summary>
+    /// <summary>The card's click (the cover, the title, Enter on the card): open the album's page.</summary>
     public required Action Click { get; init; }
+
+    /// <summary>The disclosure button's click (the chevron after the meta line, its own tab stop): open / close the card's
+    /// inline drawer. One delegate for the cell's life, so the button's props stay equal across re-pushes.</summary>
+    public required Action Toggle { get; init; }
 
     /// <summary>The cover's play.</summary>
     public required Action Play { get; init; }
@@ -220,8 +224,9 @@ internal delegate Element DiscoFacetFailedTemplate(Action retry);
 /// <summary>Builds a card's data (the shared surface draws it).</summary>
 internal delegate Controls.CardData DiscoCardTemplate(DiscoCardArgs args);
 
-/// <summary>Builds the OPENED variant of a card's data (the accent skin and the up chevron).</summary>
-internal delegate Controls.CardData DiscoOpenedTemplate(Controls.CardData plain, string meta, Func<ColorF> accent);
+/// <summary>Builds the OPENED variant of a card's data (the accent skin and the disclosure button turned up) from the plain one and
+/// the args it was built from.</summary>
+internal delegate Controls.CardData DiscoOpenedTemplate(Controls.CardData plain, DiscoCardArgs args, Func<ColorF> accent);
 
 /// <summary>Builds the seed's data (no row yet) at the card's pinned height.</summary>
 internal delegate Controls.CardData DiscoSeedTemplate(float height);

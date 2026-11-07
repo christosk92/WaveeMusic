@@ -234,7 +234,9 @@
     },
     "discography": {
       "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",
-      "showAllTracks": "Show all {n} tracks"
+      "showAllTracks": "Show all {n} tracks",
+      "showTracks": "Show tracks",
+      "hideTracks": "Hide tracks"
     },
     "access": {
       "$comment": "Who can reach this playlist, said as the meaning of the CURRENT setting rather than as a label for the switch — the access flyout's public toggle swaps between these two.",
