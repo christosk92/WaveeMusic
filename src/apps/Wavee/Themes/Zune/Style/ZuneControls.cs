@@ -15,6 +15,8 @@
 //   · slider      a 2-DIP line: 12 % ink rail, accent value; the 12 accent thumb shows only while the pointer is over the control.
 //   · check box   an 18 square: accent fill and on-accent check when on, a tertiary ring when off.
 //   · menus       square #242424 plates (white on light) with no ring, the flyout shadow, 36 rows inset 16, an 8 % hairline 6 above and below.
+//                 The choice is Metro's: a ring per option, the accent disc and accent words on the chosen one, no plate; a combo's chosen row the
+//                 accent words, no pill (Z-Video, Z-Overlays).
 //   · dialog      a square 548 plate (#1f1f1f on dark), 24 in, a 26/300 title, commands as words with the primary as the accent disc.
 //   · fields      a text box is a rule (1 DIP at 18 % ink, the ink when focused); the search box is the one rounded field: the 16-corner pill
 //                 with an 18 % ring.
@@ -219,6 +221,14 @@ public static class ZuneControls
         LabelSize = 14f, ShowIcons = false, LabelCase = TextCase.Lower,   // Z-Overlays: a menu is lowercase words (a name, `MenuFlyoutItem.Literal`, keeps its case)
         SeparatorColor = Tok.StrokeDividerDefault, SeparatorThickness = 1f,
         SeparatorMargin = new Edges4(16f, 5f, 16f, 5f),
+        // The choice (Z-Video, Z-Overlays' device picker): the Metro radio. Every option of a group carries an 8 ring in the dim ink at rest and the
+        // chosen one an 8 accent disc, its words (and its accelerator) in the accent ink, 20 from the row's inset to the words; no row plate marks it
+        // (the WP ListBoxItem Selected state is the accent foreground, nothing else). A checked toggle is the accent check beside accent words. A
+        // cascade is the small solid caret in the dim ink.
+        MarkColumnWidth = 20f, RadioMark = MenuRadioMark.Dot, DotSize = 8f, RingAtRest = true, RingWidth = 1f, RingColor = Tok.TextTertiary,
+        MarkColor = R.Ink.AccentSelection, MarkHoverColor = R.Ink.AccentSelection, MarkPressedColor = R.Ink.AccentSelection,
+        SelectedLabelColor = R.Ink.AccentDecor,
+        SubMenuGlyph = IconGlyphs.CaretRightSolid8, SubMenuGlyphSize = 6f, SubMenuGlyphColor = Tok.TextTertiary,
     };
 
     /// <summary>The track menu: 320 wide with no divider under its header (Z-Overlays); the header (a 40 tile, the title over the subtitle) and the strip of round verbs (the
@@ -266,8 +276,16 @@ public static class ZuneControls
         UnderlineThickness = 0f, FocusBarThickness = 0f,
     };
 
-    /// <summary>A combo box: the ruled field and the menu plate.</summary>
-    public static ComboBox.Style Combo() => ComboBox.FluentStyle() with { Field = RuledField(), DropdownPlate = MenuPlate() };
+    /// <summary>A combo box: the ruled field and the menu plate; the rows square, the 5 % wash on hover, and the chosen one written in the accent ink with
+    /// no pill and no plate (the menu's choice, the WP list picker's).</summary>
+    public static ComboBox.Style Combo() => ComboBox.FluentStyle() with
+    {
+        Field = RuledField(), DropdownPlate = MenuPlate(),
+        ItemPill = false, ItemRadius = 0f,
+        ItemHoverFill = Ink(ZuneTokens.HoverA), ItemPressedFill = Ink(ZuneTokens.PressedA),
+        SelectedItemFill = ColorF.Transparent, SelectedItemHoverFill = Ink(ZuneTokens.HoverA), SelectedItemPressedFill = Ink(ZuneTokens.PressedA),
+        SelectedItemForeground = R.Ink.AccentDecor,
+    };
 
     // ── status ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
