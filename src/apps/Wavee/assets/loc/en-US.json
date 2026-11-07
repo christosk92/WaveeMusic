@@ -1541,6 +1541,8 @@
       "videoQualityUnlimited": "Unlimited",
       "videoPrepareAhead": "Prepare videos ahead of time",
       "videoPrepareAheadSub": "Fetch video licences before you switch, so opening a music video is near-instant. Uses a little extra data for videos you may not watch.",
+      "showCanvas": "Show Canvas",
+      "showCanvasSub": "Play the short looping visuals artists add to their tracks in Now playing and full screen. Silent, and only for the song that is playing.",
       "qualityNormal": "Normal",
       "qualityNormalSub": "96 kbps - about 0.04 GB/hour",
       "qualityHigh": "High",

@@ -95,6 +95,10 @@ public static partial class SettingsDoc
             Make(T.Playback, "Video", "videoPrepareAhead", K.Toggle, Strings.Settings.Playback.VideoPrepareAhead,
                 SettingsWriter.OfToggle("video.prepareAhead", SettingsVerbs.SetVideoPrepareAhead),
                 captionKey: Strings.Settings.Playback.VideoPrepareAheadSub, value: BoolOf(Playback.Video.PrepareAhead)),
+            // Spotify Canvas (Shell/Canvas.cs), DEFAULT ON as in Spotify: off, no canvas is asked, fetched or shown anywhere.
+            Make(T.Playback, "Video", "showCanvas", K.Toggle, Strings.Settings.Playback.ShowCanvas,
+                SettingsWriter.OfToggle("playback.canvas", CanvasVideo.SetEnabled),
+                captionKey: Strings.Settings.Playback.ShowCanvasSub, value: BoolOf(CanvasVideo.ShowKey)),
             // "Clear all" is the ONE confirmed verb (N times, no per-row undo); no roster store → the whole row greys, no control.
             Make(T.Playback, "Video", "videoOverrides", K.Action, Strings.VideoOverride.SettingsHeader,
                 SettingsWriter.OfAction("video.overrides.clearAll", SettingsVerbs.ClearAllVideoOverrides),

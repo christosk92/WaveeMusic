@@ -167,6 +167,7 @@ public static partial class Settings
             new(Tab.Playback, "Video", "videoQuality", "TvMonitor"),
             new(Tab.Playback, "Video", "videoMetered", "RadioTower"),
             new(Tab.Playback, "Video", "videoPrepareAhead", "Download"),
+            new(Tab.Playback, "Video", "showCanvas", "Picture"),
             new(Tab.Playback, "Video", "videoOverrides", "Edit"),
             new(Tab.Playback, "Player bar", "playerBarRemaining", "Clock"),
 
