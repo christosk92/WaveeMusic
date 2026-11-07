@@ -186,8 +186,10 @@ public static partial class Entities
             p4.ChartRankType = Text(s, "weekly");
 
             // P5 / P6 — the two tunable mixes (their options land through ApplyTuning below).
+            // P5 is also the personalised "made for you" mix's capability grant: Spotify owns it and grants the listener permission
+            // administration (the owner's Comforting Mix, 2026-11-07). It is not the account's own: Save shows (Playlist.IsOwnPlaylist).
             ref var p5 = ref Restate(s, 5, PlaylistFields.Capabilities | PlaylistFields.Format, SpotifyUserUri);
-            p5.Caps = (byte)PlaylistCaps.CanView;
+            p5.Caps = (byte)(PlaylistCaps.CanView | PlaylistCaps.CanAdministratePermissions);
             p5.Format = (byte)PlaylistFormat.DailyMix;
             ref var p6 = ref Restate(s, 6, PlaylistFields.Capabilities | PlaylistFields.Format, SpotifyUserUri);
             p6.Caps = (byte)PlaylistCaps.CanView;

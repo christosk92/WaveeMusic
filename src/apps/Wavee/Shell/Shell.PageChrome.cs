@@ -424,6 +424,8 @@ public static partial class Shell
             // The chrome's own page (it follows the landing): a detail page's row 2 keeps its title until the swap lands, even when the click lit a destination.
             ChromeIsDetail = static () => BandRules.IndexOf(OnScreenRoute().Kind) < 0,
             Pins = static () => Sidebar.Model.BandPins(ShellCaps.PinCap(ShellCaps.Tracked)),
+            // Drag to pin (contract 1.88): the pins take an entity or a route dropped on them (NavModel.Band.cs).
+            PinDrop = NavModel.BandDrop,
             Chrome = s_current,
             Scroll = s_scroll,
             Hub = HubList,

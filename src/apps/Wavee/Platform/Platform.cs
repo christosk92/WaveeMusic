@@ -165,6 +165,9 @@ public static partial class Platform
         /// <summary>The concerts the listener marked "interested" (a LOCAL set: the concert API has no interested / saved state of its own): ONE capped blob,
         /// newest first, the concert uris joined by a space. Read and written ONLY through <see cref="ConcertInterest"/>, which owns the format.</summary>
         public static readonly SettingKey<string> ConcertInterested = new("concert.interested", "");
+        /// <summary>The playlists whose "Video" toggle is on (play their music videos): ONE capped blob, most recent first, the playlist uris
+        /// joined by a space. Read and written ONLY through <see cref="PlaylistVideo"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> PlaylistVideoFirst = new("playlist.videoFirst", "");
 
         // ── podcasts ──
         /// <summary>The show reader's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
