@@ -24,7 +24,11 @@
 //   · the drill's zoom in runs 500 ms, not 783 (DrillInScaleMs): the same spline, which is within a pixel of the end by 350 ms, while a zoom
 //     re-records the page every frame (a translate is a composite parameter, a scale is not);
 //   · the drill's outgoing zoom and fade run evenly (DrillAway): WinUI's fast spline moved the page edges half their way on the first frame;
-//   · the pivot slide has no exit leg and no fade: the page jumps to the section and what shows slides in, as WinUI's incoming slide does.
+//   · the pivot slide has no exit leg and no fade: the page jumps to the section and what shows slides in, as WinUI's incoming slide does;
+//   · a sideways slide keeps every part inside the page (EntranceCascade.KeepInRoot): a part travels at most the room between it and the
+//     page's edge on the side it comes from (the gutter, for a part that starts at it; the whole 200 for one with room beside it), and parts
+//     side by side travel the same distance. WinUI slides the whole frame, which the frame's edge cuts; parted into sections, that edge cut
+//     a list's covers and titles off for most of the slide (owner, 2026-11-07).
 //
 // Reduced motion ("Animation effects" off): a quick cross-fade (ControlFaster each way), no slide, no scale, no stagger.
 //
@@ -118,8 +122,10 @@ public static class WinUiPageMotion
 
     static readonly EntranceCascade s_riseUnits = Units(new EnterExit(Dy: RiseDy, Opacity: 0f), InDelayMs);
     static readonly EntranceCascade s_fadeUnits = Units(new EnterExit(Opacity: 0f), InDelayMs);
-    static readonly EntranceCascade s_fromRightUnits = Units(new EnterExit(Dx: SlideInDx, Opacity: 0f), InDelayMs);
-    static readonly EntranceCascade s_fromLeftUnits = Units(new EnterExit(Dx: -SlideInDx, Opacity: 0f), InDelayMs);
+    // A sideways slide inside a page keeps every part inside the page (KeepInRoot): a part by the page's gutter moves as far as the gutter,
+    // one with room beside it the whole 200. The page edge cut a list's covers and titles off for most of the slide (owner, 2026-11-07).
+    static readonly EntranceCascade s_fromRightUnits = Units(new EnterExit(Dx: SlideInDx, Opacity: 0f), InDelayMs) with { KeepInRoot = true };
+    static readonly EntranceCascade s_fromLeftUnits = Units(new EnterExit(Dx: -SlideInDx, Opacity: 0f), InDelayMs) with { KeepInRoot = true };
     static readonly EntranceCascade s_drillUnits = Units(new EnterExit(Dy: DrillUnitDy, Opacity: 0f), DrillUnitDelayMs);
     static readonly EntranceCascade s_drillBackUnits = Units(new EnterExit(Opacity: 0f), DrillUnitDelayMs);
 
@@ -154,8 +160,8 @@ public static class WinUiPageMotion
 
     // No fade: the jump to the section is the hand-over, so a unit that faded in from 0 left the frame after it blank. WinUI's slide does not
     // fade its incoming page either (its opacity steps to 1 as the slide starts, ThemeTransitions.cpp:1571-1574).
-    static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx), 0f);
-    static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx), 0f);
+    static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx), 0f) with { KeepInRoot = true };
+    static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx), 0f) with { KeepInRoot = true };
 
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
     public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor) { ReducedFade = s_reduced, Pivot = static fromRight => FluentGpu.Dsl.Motion.ReducedMotion ? null : PivotCascade(fromRight) };
