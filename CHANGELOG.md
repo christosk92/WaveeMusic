@@ -15,6 +15,11 @@ versions separately under `v*` and is not tracked in this file.)
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
 
+### Security
+
+- **Built on .NET 10.0.14.** Wavee carries its own .NET runtime, and this release ships the one that fixes an
+  out-of-bounds write in the Brotli decoder (CVE-2026-111497).
+
 ## [0.3.7] - 2026-10-26
 
 ### Changed
