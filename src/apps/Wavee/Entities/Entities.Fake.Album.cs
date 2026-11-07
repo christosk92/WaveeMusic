@@ -511,7 +511,7 @@ public static partial class Entities
                     else
                     {
                         Traits(slot);
-                        // al2 states its credits on every row (the album's credits paragraph folds them, contract 1.86), not only on the drawer rows.
+                        // al2 states its credits on every row (the album's credits paragraph folds them, contract 1.84), not only on the drawer rows.
                         if (a == RichAlbum) RowCredits(slot, a, k, artists, targets);
                     }
                     if (a == ShortAlbum) RelatedArtists(slot, targets);

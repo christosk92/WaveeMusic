@@ -1,4 +1,4 @@
-// ── Entities/Album.Credits.cs — the album's credits: folded from its tracks' CreditsV2 roles (album credits, contract 1.86) ──────────────────
+// ── Entities/Album.Credits.cs — the album's credits: folded from its tracks' CreditsV2 roles (album credits, contract 1.84) ──────────────────
 //
 // Role: CORE (the fold, the demand's filter, the "all credits" sheet host)
 //

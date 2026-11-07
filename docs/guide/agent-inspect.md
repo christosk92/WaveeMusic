@@ -914,7 +914,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | Arg | Meaning |
 |---|---|
 | `frames` | Frames to run (1 to 5000; positional: `trace 90`). A trace that watched no node (no `keys`/`prefix`, or none matched) says so in `warning`: its snaps and jumps read 0 because nothing was watched. |
-| `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`. |
+| `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`, and each node keeps its label from frame to frame (a node mounting or leaving earlier in reading order renumbers nothing; a new node takes a label no node held the frame before, or a lone key's replaced node's). |
 | `scroll` | `main` (the shown vertical scroller with the most room, re-picked each frame) or a node key (the first scroller under it). |
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |

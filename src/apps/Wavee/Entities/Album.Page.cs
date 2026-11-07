@@ -788,7 +788,7 @@ public readonly partial struct Album
             var members = a.TrackSlots;
             // Similar albums are SEEDED by a track (Album.SimilarSeedUri): ask once the tracklist is in hand.
             if (members.Length > 0) Ask(FetchEdge.AlbumSimilar, e.AlbumSimilar, slot, FetchPriority.Prefetch);
-            // The album's credits (contract 1.86): every member's CreditsV2 in one batched metadata POST, only under a structure that states them.
+            // The album's credits (contract 1.84): every member's CreditsV2 in one batched metadata POST, only under a structure that states them.
             if (members.Length > 0 && ShellCaps.Tracked.AlbumCredits) AskCredits(members);
 
             bool shortRelease = PageRules.IsShortRelease(a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
@@ -982,7 +982,7 @@ public readonly partial struct Album
             int fanCount = Math.Min(fans.Length, PageRules.FansCap);
             Span<PageRules.AlbumVideo> videos = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
             int videoCount = PageRules.SelectVideos(members, videos);
-            // The credits (contract 1.86): each member's credits version and readiness, folded only under a structure that states them.
+            // The credits (contract 1.84): each member's credits version and readiness, folded only under a structure that states them.
             ulong credits = 0;
             if (ShellCaps.Tracked.AlbumCredits)
             {
@@ -1043,7 +1043,7 @@ public readonly partial struct Album
             int slot = a.Slot;
             int featured = e.AlbumRecommendations.Count(slot), merch = e.AlbumMerch.Count(slot);
             int similar = e.AlbumSimilar.Count(slot), moreBy = e.AlbumMoreBy.Count(slot);
-            // The credits paragraph (contract 1.86), under a structure that states them (the stamp folds them, so a landing re-renders this host).
+            // The credits paragraph (contract 1.84), under a structure that states them (the stamp folds them, so a landing re-renders this host).
             var credits = ShellCaps.Now.AlbumCredits ? PageRules.Credits(a, () => OpenCredits(a)) : default;
             if (asideArm)
             {

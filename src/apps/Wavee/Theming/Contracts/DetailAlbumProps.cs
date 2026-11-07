@@ -142,12 +142,12 @@ public sealed record AlbumCredits(IReadOnlyList<AlbumCreditRun> Runs, Action? Al
 public sealed record AlbumAsideProps
 {
     /// <summary>The album's credits paragraph, or null: nothing to state, and a theme draws no credits section at all (no heading, no gap). Contract
-    /// 1.82; folded from every member's CreditsV2 roles since 1.86 (<c>Album.PageRules.Credits</c>), and only under a structure that states them
+    /// 1.82; folded from every member's CreditsV2 roles since 1.84 (<c>Album.PageRules.Credits</c>), and only under a structure that states them
     /// (<c>ShellCapabilities.AlbumCredits</c>).</summary>
     public AlbumCredits? Credits { get; init; }
 
     /// <summary>The credits are still being asked (a member's credits unanswered): a theme that draws them reserves the section as a shimmer, so the
-    /// paragraph lands in place. Appended (contract 1.86).</summary>
+    /// paragraph lands in place. Appended (contract 1.84).</summary>
     public bool CreditsPending { get; init; }
 
     /// <summary>About this release (the `Album.ReleasePanel` host, without outer padding); null before the album row exists.</summary>
@@ -201,11 +201,11 @@ public sealed record AlbumSectionsProps
     /// <summary>The list sections, in order: each a keyed `Album.StackHost` (it owns its expand state and its stamp).</summary>
     public required IReadOnlyList<Element> Lists { get; init; }
 
-    /// <summary>The album's credits paragraph where no aside holds it (null: none, or the docked aside states it). Appended (contract 1.86).</summary>
+    /// <summary>The album's credits paragraph where no aside holds it (null: none, or the docked aside states it). Appended (contract 1.84).</summary>
     public AlbumCredits? Credits { get; init; }
 
     /// <summary>The credits are still being asked (see <see cref="AlbumAsideProps.CreditsPending"/>); false where the docked aside holds them.
-    /// Appended (contract 1.86).</summary>
+    /// Appended (contract 1.84).</summary>
     public bool CreditsPending { get; init; }
 
     /// <inheritdoc />

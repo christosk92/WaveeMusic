@@ -7,7 +7,7 @@
 // "about <artist>" in the board's own form is the Huge aside's (owner 2026-10-25, audit FU2b: Z-Album-Huge draws it); below Huge the earlier "about the
 // artist" card stands in its place (owner 2026-10-25, audit FU2d: restored as it was before audit FU2's round 1), in the aside above "more by" and under
 // the rows (no aside) before fans also like. In the aside each is ONE keyed block folded to nothing where the other stands, so the 1920 crossing eases
-// one out and the other in and keeps their parts (no tier in a key), and the aside never shows two. "credits" (contract 1.86: the core folds the
+// one out and the other in and keeps their parts (no tier in a key), and the aside never shows two. "credits" (contract 1.84: the core folds the
 // members' CreditsV2 roles into a paragraph) is ONE keyed block in the aside after "more by", and under the rows after the lists where no aside holds
 // it: a shimmer while the members' credits are asked, the paragraph once they answer, folded to nothing (no heading, no gap) when there is nothing to
 // state; its height eases through real layout, so the landing slides what is under it instead of shoving it.
@@ -431,7 +431,7 @@ internal static class ZuneAlbumTrailing
         }.Skeletonized(shown);
     }
 
-    /// <summary>Z-Album's "credits" (contract 1.86): ONE keyed block in every state. While the members' credits are asked it shimmers at the paragraph's
+    /// <summary>Z-Album's "credits" (contract 1.84): ONE keyed block in every state. While the members' credits are asked it shimmers at the paragraph's
     /// shape (the heading's bar over four lines); once they answer, the heading (the aside's 22/28, or a section heading under the rows) over the core's
     /// paragraph, its names in the primary ink as links and "all credits" at the end; with nothing to state it folds to nothing. The block's height eases
     /// through real layout (the skeleton reveal fades shimmer and words), and its gap (the aside's gap to the next section, or the section's top under

@@ -185,6 +185,13 @@ public sealed record DetailTierPolicy(DetailTierLayout Compact, DetailTierLayout
     /// <summary>The window-width rung of the structure's <see cref="TierPolicy.Rungs"/> from which a Huge window reads <see cref="HugeWide"/>. Appended (contract 1.21).</summary>
     public string? HugeWideRung { get; init; }
 
+    /// <summary>The most the structure's display title HANGS left of the page column at any tier (Zune's panorama, set left of the column by the light
+    /// face's side bearing so its stems stand on the margin: Z-Album). The hero arm's clipping containers, which sit on that column (the list's drop
+    /// surface, the album's scroller), reach this far further out and inset their contents by as much, so the hang is drawn and nothing else moves.
+    /// One number for every tier: those containers fix it at mount, and a crossing must never leave a wider hang than the room. 0: no hang, the
+    /// containers are the column. Appended (contract 1.83, audit FU2d).</summary>
+    public float LeadBleed { get; init; }
+
     /// <summary>Is the facts' window a Huge one past <see cref="HugeWideRung"/>?</summary>
     public bool IsHugeWide(in TierFacts facts)
         => HugeWide is not null && HugeWideRung is { } rung && facts.Policy is { } policy && facts.Window >= WidthTier.Huge

@@ -210,7 +210,10 @@
 // `TrailCardData.TypeYear` (a release row's kind and year).
 // 1.82 (audit FU2b): `AlbumAsideProps.Credits` (`AlbumCredits`, `AlbumCreditRun`: the album's credits paragraph; null until a source exists) and
 // `PageChromeRow.ActionsPending` (the page's head has not answered: a band draws its actions as a shimmer until it has).
-// 1.86 (album credits): the album's credits have a source (every member's CreditsV2 roles, folded by person: `Album.PageRules.Credits`).
+// 1.83 (audit FU2d): `DetailTierPolicy.LeadBleed` (the most the structure's display title hangs left of the page column: the hero arm's clipping
+// containers leave that much room, so the hang is drawn and not cut); `BandProps.ChromeIsDetail` (whether the page whose chrome a band shows is a
+// detail page: it follows the swap's landing, as the chrome does, where `Current` follows the click).
+// 1.84 (album credits): the album's credits have a source (every member's CreditsV2 roles, folded by person: `Album.PageRules.Credits`).
 // `ShellCapabilities.AlbumCredits` (the structure states them: only then does the core ask the members' credits), `AlbumAsideProps.CreditsPending`
 // and `AlbumSectionsProps.Credits` / `.CreditsPending` (the paragraph under the rows where no aside holds it; pending: reserve it as a shimmer).
 //
@@ -228,7 +231,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 86;
+    public const int Minor = 84;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

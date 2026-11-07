@@ -113,7 +113,7 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
 
     /// <summary>The album page states its credits (Zune's Z-Album "credits": a paragraph the core folds from every member's CreditsV2 roles). Only under a
     /// structure that draws them does the core ask each member's credits (one batched metadata request per album); default false: nothing is asked
-    /// and the album props carry no credits. Appended (contract 1.86, album credits).</summary>
+    /// and the album props carry no credits. Appended (contract 1.84, album credits).</summary>
     public bool AlbumCredits { get; init; }
 
     /// <summary>The title row draws the tab strip: tabs are offered and the strip is not hidden.</summary>
