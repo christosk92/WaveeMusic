@@ -135,7 +135,7 @@ public static partial class Shell
              : recovery == Playback.RecoveryKind.Network ? PlayerState.Reconnecting
              : PlayerState.Active;
 
-        /// <summary>The whole fold. <c>canTransport = active || buffering || reconnecting</c> verbatim; Previous/Next
+        /// <summary>The whole fold. <c>canTransport = active || loading || reconnecting || buffering</c>; Previous/Next
         /// additionally AND the model's folded restriction bits (a context the cluster says cannot skip greys them —
         /// 0.3's <c>CanSkipNext</c>/<c>CanSkipPrev</c>, which 0.2.9 did not have).
         ///
@@ -150,7 +150,10 @@ public static partial class Shell
             Playback.RecoveryKind recovery, bool canSkipPrev, bool canSkipNext)
         {
             var state = StateOf(hasCurrent, error, phase, recovery);
-            bool canTransport = state == PlayerState.Active || buffering || state == PlayerState.Reconnecting;
+            // Loading arms the transport too: the reducer accepts shuffle, repeat and a skip while a row loads (`State.CanTransport` is
+            // HasCurrent with no fault), and 0.2.9's `active || buffering || reconnecting` greyed shuffle, previous, next and repeat for the
+            // 100-250 ms every skip spends loading, then lit them again: a flash per skip, and a second skip refused mid-load.
+            bool canTransport = state is PlayerState.Active or PlayerState.Loading or PlayerState.Reconnecting || buffering;
             // Previous/Next stay ARMED under a fault: the reducer's `Advance` has no error guard and heals the fault
             // through `PutOnDeck`, so skipping off a dead row is the user's way OUT of it — otherwise the only verb on
             // offer is Retry against the same row. (The reducer's own `State.CanSkipNext` folds `CanTransport`, which is
@@ -226,12 +229,12 @@ public static partial class Shell
             => owner is Video.TransportOwner.GlobalBar or Video.TransportOwner.PopOut or Video.TransportOwner.Docked;
 
         /// <summary>The video split button's slot exists on a level that carries it (<c>PlayerBarSlots.VideoSplit</c>: its own bit since
-        /// the queue moved down to Compact, tuned Classic P1) AND only while the current track has a video:
-        /// with no video the cluster RECLAIMS the 52 DIP rather than carrying an unlit hole beside lyrics (user decision
-        /// 2026-09-16, narrowing the earlier tier-only rule). <paramref name="hasVideo"/> is the ONE state input to the
-        /// right cluster's width; <c>active</c> is still not one (§0 item 12) — a track starting without a video widens
-        /// nothing. Whether the face is lit is separate: <see cref="SlotFaceVisible"/>.</summary>
-        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowVideoSplit && hasVideo;
+        /// the queue moved down to Compact, tuned Classic P1), whatever the track. 2026-09-16 made it exist only while the current track had a
+        /// video (the cluster reclaimed the 52 DIP); that made the right cluster's width a function of the TRACK, so every skip between a video
+        /// and a plain track moved the cluster's neighbours and, through the row, the transport (owner, 2026-11-07: "the buttons move every time
+        /// I skip"). The slot is the level's now; a track without a video shows the split DISABLED in place (the theme draws it with
+        /// <c>PlayerBarView.HasVideo</c>), never a hole and never a reflow. Whether the face shows at all is <see cref="SlotFaceVisible"/>.</summary>
+        public static bool VideoSlotReserved(in PlayerBarLayout layout) => layout.ShowVideoSplit;
 
         /// <summary>The "⋯" slot is reserved wherever the IDLE bar already has rows in its menu — the tier-only rows
         /// (shuffle/repeat, queue, now-playing). Every state-dependent row (lyrics, video, mute) only ever ADDS to a menu
@@ -243,17 +246,16 @@ public static partial class Shell
             return Overflow(layout, ownsTransport: false, active: false, hasVideo: false, scratch) > 0;
         }
 
-        /// <summary>Which slots the right cluster HAS, in row order. The tier decides every slot but the video split,
-        /// whose presence <paramref name="hasVideo"/> decides (<see cref="VideoSlotReserved"/>); <see cref="PlayerState"/>
-        /// is deliberately NOT an input.</summary>
-        public static RightSlot RightSlots(in PlayerBarLayout layout, bool hasVideo)
+        /// <summary>Which slots the right cluster HAS, in row order: the tier's alone. Neither the track nor <see cref="PlayerState"/>
+        /// is an input, so a skip never changes the cluster's width.</summary>
+        public static RightSlot RightSlots(in PlayerBarLayout layout)
         {
             var slots = RightSlot.None;
             if (layout.ShowShuffleRepeat) slots |= RightSlot.Shuffle | RightSlot.Repeat;
             if (layout.ShowVolumeButton) slots |= RightSlot.Volume;
             if (layout.ShowVolumeSlider) slots |= RightSlot.VolumeSlider;
             if (layout.ShowLyrics) slots |= RightSlot.Lyrics;
-            if (VideoSlotReserved(layout, hasVideo)) slots |= RightSlot.Video;
+            if (VideoSlotReserved(layout)) slots |= RightSlot.Video;
             if (layout.ShowQueue) slots |= RightSlot.Queue;
             if (layout.ShowDevices) slots |= RightSlot.Devices;
             if (layout.ShowExpand) slots |= RightSlot.Expand;
@@ -270,12 +272,11 @@ public static partial class Shell
             _ => layout.ButtonBox,
         };
 
-        /// <summary>The right cluster's width — the slot sum plus the gaps between them. A function of the tier and
-        /// <paramref name="hasVideo"/> ONLY, so the centre's seek bar has exactly TWO widths per tier (with / without
-        /// the video split) and the wider one is <see cref="PlayerBarLayout.RightWMax"/>.</summary>
-        public static float RightWidth(in PlayerBarLayout layout, bool hasVideo)
+        /// <summary>The right cluster's width — the slot sum plus the gaps between them. A function of the tier ONLY, so the
+        /// centre's seek bar has one width per tier (<see cref="PlayerBarLayout.RightWMax"/>).</summary>
+        public static float RightWidth(in PlayerBarLayout layout)
         {
-            var slots = RightSlots(layout, hasVideo);
+            var slots = RightSlots(layout);
             float w = 0f;
             int n = 0;
             for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
@@ -288,15 +289,18 @@ public static partial class Shell
             return n == 0 ? 0f : w + layout.RightGap * (n - 1);
         }
 
-        /// <summary>Does a present slot show its face? Lyrics need a playable; the video split — which only EXISTS with
-        /// a video (<see cref="VideoSlotReserved"/>) — additionally needs an Active playable. Every other slot is always
-        /// lit.</summary>
-        public static bool SlotFaceVisible(RightSlot slot, PlayerState state, bool hasVideo) => slot switch
+        /// <summary>Does a present slot show its face? Lyrics and the video split need a playable on the deck: Active, and the
+        /// Loading or Reconnecting it passes through. Keying them on Active made both vanish for the 100-250 ms every skip spends
+        /// loading and pop back when the new row played (two changes for one skip). Whether the video split can be PRESSED is the
+        /// track's (<c>PlayerBarView.HasVideo</c>; a track without one shows it disabled). Every other slot is always lit.</summary>
+        public static bool SlotFaceVisible(RightSlot slot, PlayerState state) => slot switch
         {
-            RightSlot.Lyrics => state == PlayerState.Active,
-            RightSlot.Video => state == PlayerState.Active && hasVideo,
+            RightSlot.Lyrics or RightSlot.Video => StatesPlayable(state),
             _ => true,
         };
+
+        /// <summary>A playable is on the deck (playing, loading or reconnecting): nothing missing, nothing failed.</summary>
+        public static bool StatesPlayable(PlayerState state) => state is not (PlayerState.NoTrack or PlayerState.Error);
 
         /// <summary>The heart's slot is the tier's (<see cref="PlayerBarLayout.ShowLikeSlot"/>); its face needs an
         /// IDENTITY on screen to like — <paramref name="identityShowing"/>, i.e. <see cref="IdentityShowing"/> of the
@@ -472,7 +476,7 @@ public static partial class Shell
             ShowTitleBlock = Has(slots, Theming.PlayerBarSlots.Title),
             LeftW = float.IsNaN(level.PodcastLeftW) ? layout.LeftW : level.PodcastLeftW,
         };
-        return next with { RightWMax = PlayerBarRules.RightWidth(in next, hasVideo: true) };
+        return next with { RightWMax = PlayerBarRules.RightWidth(in next) };
     }
 
     public static class SeekRail
@@ -489,6 +493,11 @@ public static partial class Shell
         /// <summary>May the rail be dragged? Derived every render from the model, never a ctor flag.</summary>
         public static bool Enabled(bool hasCurrent, Playback.Fault error, Playback.Phase phase, bool canSeek)
             => hasCurrent && error == Playback.Fault.None && phase != Playback.Phase.Loading && canSeek;
+
+        /// <summary>Is the rail refused only because the deck's row is LOADING (a skip's 100-250 ms)? The view then draws it as it draws an
+        /// enabled rail and wires no input, so a skip neither greys the rail nor hides its thumb for the length of the load.</summary>
+        public static bool Pending(bool hasCurrent, Playback.Fault error, Playback.Phase phase)
+            => hasCurrent && error == Playback.Fault.None && phase == Playback.Phase.Loading;
 
         /// <summary>Does the playhead MOVE on its own? The ticker is mounted only while this holds, so a paused or
         /// refilling bar wakes no frames.</summary>

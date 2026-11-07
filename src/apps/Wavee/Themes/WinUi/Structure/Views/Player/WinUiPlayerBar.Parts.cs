@@ -180,8 +180,9 @@ internal static partial class WinUiPlayerBar
         }
     }
 
-    /// <summary>The video split (Medium up, while the track has a video): the switch (the film glyph; latched while the video is on) and the
-    /// chevron that opens "Where to play the video", in one bordered 32 control.</summary>
+    /// <summary>The video split (Medium up, its slot the level's whatever the track): the switch (the film glyph; latched while the video is on)
+    /// and the chevron that opens "Where to play the video", in one bordered 32 control. A track without a video shows it DISABLED in place
+    /// (WinUI's disabled control: the disabled fill and ink, no hover), so a skip between a video and a plain track moves nothing.</summary>
     static Element VideoSplit(PlayerBarProps props, PlayerBarView v, bool lit, IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> menu)
     {
         var verbs = props.Verbs;
@@ -201,8 +202,9 @@ internal static partial class WinUiPlayerBar
         return new BoxEl
         {
             Height = PL.SplitH, Direction = 0, AlignItems = FlexAlign.Center, Corners = CornerRadius4.All(PL.ButtonCorner), ClipToBounds = true,
-            Fill = on ? Tok.FillSubtleTertiary : Tok.FillSubtleSecondary, BorderColor = Tok.StrokeControlDefault, BorderWidth = 1f,
-            OnRealized = h => anchor.Value = h, OnContextRequested = _ => OpenMenu(),
+            Fill = !lit ? Tok.FillControlDisabled : on ? Tok.FillSubtleTertiary : Tok.FillSubtleSecondary, BorderColor = Tok.StrokeControlDefault, BorderWidth = 1f,
+            BrushTransitionMs = Design.Motion.Faster,
+            OnRealized = h => anchor.Value = h, OnContextRequested = lit ? _ => OpenMenu() : null,
             Children =
             [
                 ToolTip.Wrap(Button(Icons.Movie, () => verbs.ToggleVideo(), lit, on, PL.SplitMainW, PL.SplitInnerH, PL.Glyph),

@@ -1341,10 +1341,9 @@ public static partial class Shell
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
                 RightWMax: 0f,
                 ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit));
-            // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,
-            // hasVideo: true). The live cluster is that or the same less the split (the one state input, user decision
-            // 2026-09-16); the 300-DIP seek-bar floor and any arithmetic that must hold in the widest case use this.
-            return layout with { RightWMax = PlayerBarRules.RightWidth(in layout, hasVideo: true) };
+            // The right cluster's width at this tier (PlayerBarRules.RightWidth: the level's slots, the video split's whatever the track);
+            // the 300-DIP seek-bar floor and any arithmetic over the cluster use this.
+            return layout with { RightWMax = PlayerBarRules.RightWidth(in layout) };
         }
     }
 

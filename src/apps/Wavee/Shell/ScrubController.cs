@@ -29,6 +29,7 @@ public static partial class Shell
         bool CanSeek)
     {
         public bool Enabled => SeekRail.Enabled(HasCurrent, Error, Phase, CanSeek);
+        public bool Pending => SeekRail.Pending(HasCurrent, Error, Phase);
         public bool Advances => SeekRail.Advances(HasCurrent, Error, Phase, Buffering);
     }
 

@@ -43,6 +43,11 @@ versions separately under `v*` and is not tracked in this file.)
 - **WinUI podcasts and shows follow the WinUI design.** A show's episodes are filtered with a WinUI pivot ("All · 14",
   "Unplayed · 10"), sorted with a "Newest" menu, and the headings, the Continue card and the episode rows use WinUI's
   type and the accent color instead of the show cover's color. Following a show reads "Following" next to Resume.
+- **The player bar stays still when you skip.** Skipping a song no longer moves the play controls, the seek bar, the
+  heart or the buttons on the right. In the WinUI theme the play controls sit in the middle of the bar, the song title
+  has a fixed space, and the video button stays in its place, greyed out for a song without a video. The controls,
+  the lyrics button and the times also stay as they are while the next song loads, instead of greying out or
+  showing 0:00 for a moment.
 - **No crash after a long time minimized.** Restoring Wavee after it sat minimized for hours on a big playlist, artist
   or Liked Songs page could crash it on the first frame.
 - **No crash when a song starts as the play log saves.** The play log and the visit history now take their snapshot on

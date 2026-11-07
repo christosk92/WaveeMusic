@@ -218,6 +218,9 @@
 // and `AlbumSectionsProps.Credits` / `.CreditsPending` (the paragraph under the rows where no aside holds it; pending: reserve it as a shimmer).
 // 1.85 (winui menus/podcasts): the optional `StyleKeys.LibraryControls` (`LibraryControlsStyle`: the library page's sort, Podcasts' modes, the
 // view toggle and its menu, the artists' reader's scope and sort, the Compact head's kinds), so a structure that borrows another's library page draws its own controls there.
+// 1.86 (the stable player bar): `SeekRailProps.Pending` (a rail that cannot seek only because the row is loading: drawn enabled, inert). The
+// player bar's `RightSlot.Video` is the level's slot whatever the track (`PlayerBarView.HasVideo` says whether it can be pressed), and
+// `PlayerBarView.Lit` lights lyrics and video for a playable that is loading or reconnecting too, not only an active one.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -233,7 +236,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 85;
+    public const int Minor = 86;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

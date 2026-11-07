@@ -161,7 +161,8 @@ public sealed record PlayerBarView
 
     /// <summary>The slots the cluster has, in row order.</summary>
     public RightSlot Slots { get; init; }
-    /// <summary>The slots whose face is lit (a present slot may be dark: lyrics and video need a playable).</summary>
+    /// <summary>The slots whose face is lit (a present slot may be dark: lyrics and video need a playable on the deck). The video split is
+    /// pressable only while <see cref="HasVideo"/>; a lit split without one is drawn disabled in its slot.</summary>
     public RightSlot Lit { get; init; }
     /// <summary>The cluster's width.</summary>
     public float RightWidth { get; init; }

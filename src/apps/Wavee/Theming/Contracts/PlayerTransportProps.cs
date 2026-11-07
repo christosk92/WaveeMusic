@@ -68,6 +68,11 @@ public sealed record SeekRailProps
     /// <summary>The scrub gate: a rail that can seek (enabled fills, hover and press, the handlers wired).</summary>
     public bool Enabled { get; init; }
 
+    /// <summary>The rail cannot seek only because the deck's row is loading (contract 1.86): draw it as an enabled rail (its fills, its thumb at
+    /// the playhead) but wire no input. A skip spends 100-250 ms loading, and a rail drawn disabled for it greyed and lost its thumb on every
+    /// skip, then came back.</summary>
+    public bool Pending { get; init; }
+
     /// <summary>A sliding DVR window: the rail's right end is the live edge, so it is marked.</summary>
     public bool Dvr { get; init; }
 
