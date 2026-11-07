@@ -1144,10 +1144,14 @@ public readonly partial struct Album
             /// FIFO and folded in one batch, so the placement input lands before the load and <c>KindOfRow</c> already
             /// reads <c>videoWanted = true</c>. Play first and the user gets a beat of audio and then a switch.</summary>
             RequestThenPlay,
+            /// <summary>This row's VIDEO is already what plays: the card wears the pause glyph (its relation is the video's own
+            /// uri, <c>PlayRelation</c>), so a press is the transport's play/pause, never another surface request.</summary>
+            Toggle,
         }
 
-        public static WatchAction WatchFor(bool canHostVideo, bool isDeckRow)
-            => !canHostVideo ? WatchAction.AudioOnly
+        public static WatchAction WatchFor(bool canHostVideo, bool isDeckRow, bool deckShowsVideo)
+            => isDeckRow && deckShowsVideo ? WatchAction.Toggle
+             : !canHostVideo ? WatchAction.AudioOnly
              : isDeckRow ? WatchAction.SwitchInPlace
              : WatchAction.RequestThenPlay;
 

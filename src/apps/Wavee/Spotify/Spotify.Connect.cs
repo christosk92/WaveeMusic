@@ -589,12 +589,12 @@ public static partial class Spotify
         {
             if (RetireRouteOf(!Current.ConnectionId.IsEmpty, Hello is not null, ownsPlayback: true) == RetireRoute.SignOutNow)
             {
-                Playback.ToUi(() => { Playback.RetireForSignOut(out _); signOut(); });
+                Playback.ToUi(() => { RetireOrNothing(out _); signOut(); });
                 return;
             }
             Playback.ToUi(() =>
             {
-                bool owed = Playback.RetireForSignOut(out Playback.Snapshot inactive);
+                bool owed = RetireOrNothing(out Playback.Snapshot inactive);
                 if (RetireRouteOf(!Current.ConnectionId.IsEmpty, Hello is not null, owed) == RetireRoute.SignOutNow)
                 {
                     signOut();
@@ -610,6 +610,20 @@ public static partial class Spotify
                 });
                 if (!queued) signOut();
             });
+        }
+
+        /// <summary>UI thread: <c>Playback.RetireForSignOut</c>, where a failure owes nothing instead of stranding the caller. The
+        /// sign-out or the window close it precedes must still happen: a throw here (a video row's null format label in the
+        /// telemetry, 2026-11-07) left every quit while a video played with the window open and the video playing.</summary>
+        static bool RetireOrNothing(out Playback.Snapshot inactive)
+        {
+            try { return Playback.RetireForSignOut(out inactive); }
+            catch (Exception ex)
+            {
+                Log.Warn("spotify", "retire before sign-out failed: going on without the BecameInactive", ex);
+                inactive = default;
+                return false;
+            }
         }
 
         /// <summary>API THREAD: the sign-out's BecameInactive, sent while the session still has its connection and bearer.

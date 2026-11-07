@@ -38,11 +38,11 @@
 // `State.FoldForTrack(hasVideo, boundary: false)`, whose upgrade is DEFERRED (`Video.DeferUpgrade`): the badge lights now, the surface waits for the user's click.
 //
 // AND THAT FOLD IS A BELT, NOT THE BRACES. `HostObserver`'s availability effect already re-folds on every tracks
-// publication (`Video.Host.Wiring.cs`: `CurrentHasVideo(subscribe: true)`), so the `Bump` + `Publish` below lights
+// publication (the deck facts watch republishes `Playback.DeckVideo`, which the fold reads), so the `Bump` + `Publish` below lights
 // the badge by itself wherever the observer is mounted. The direct call covers the two cases it cannot: no observer
 // yet, and an attachment on a playable with no track ROW at all. It is idempotent either way — `BoundaryFold.Commits`
 // returns false when the fold changes nothing. What neither can cover is the MODULE plane (ch 01 GAP 8): the
-// observer's `CurrentHasVideo` answers false for a non-track playable, so it will fold that one back.
+// deck facts (`Video.DeckHasVideo`) answer false for a non-track playable, so it will fold that one back.
 //
 // THREAD. UI thread, and no marshalling — every producer of `Changed` is already on it: the five verbs in
 // `Entities/Track.Menu.Video.cs` (inside a menu invoke, around a modal picker that must run on the window's thread),

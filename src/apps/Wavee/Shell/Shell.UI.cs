@@ -750,7 +750,7 @@ public static partial class Shell
     /// player the element consumes F11 first (focused routing precedes accelerators), so exactly one of them fires.</summary>
     internal static void ToggleVideoFullscreen()
     {
-        switch (FrameRules.F11(Video.State.Resolved == Video.SurfacePlacement.Fullscreen, Video.State.IsActive, Ui.ImmersiveLyrics.Peek()))
+        switch (FrameRules.F11(Video.State.IsFullscreen, Video.State.IsActive, Ui.ImmersiveLyrics.Peek()))
         {
             case FrameRules.FullscreenToggle.Enter: Video.State.EnterFullscreen(); break;
             case FrameRules.FullscreenToggle.Exit: Video.State.ExitFullscreen(); break;
@@ -774,7 +774,7 @@ public static partial class Shell
         if (e.KeyCode == Keys.Escape)
         {
             switch (FrameRules.Escape(false, PaletteOpen.Peek(), Ui.ImmersiveLyrics.Peek(),
-                        Video.State.Resolved == Video.SurfacePlacement.Fullscreen))
+                        Video.State.IsFullscreen))
             {
                 case FrameRules.EscapeAction.CloseImmersiveLyrics:
                     Stage.Close(null, "escape-shell");   // the stage root normally takes Esc first; this is the unfocused fallback

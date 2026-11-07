@@ -460,6 +460,27 @@ public static partial class Playback
         /// <summary>What one tick posts for the player's state (<see cref="HostRules.Fold"/>).</summary>
         public enum TickFold : byte { None, Started, Position, Paused, Buffering, Ended, Failed }
 
+        /// <summary>The deck's timeline while a video plays. A track's music video is its own media with its own length
+        /// (Vluchtstrook: video 2:36, FLAC 2:28; "Nu Wij Niet Meer Praten": video 3:20, catalogue 3:12), and nothing on the wire
+        /// relates the two (the v9 manifest's <c>start_time_millis</c>/<c>end_time_millis</c> bound the video's own window, no
+        /// field ties it to the audio). So the mapping is offset 0, scale 1, both ways: a hand-off lands on the same position
+        /// it always did, and a song position needs no conversion into the video (the session clamps a seek into its own
+        /// duration). What changes is the deck: it stays on the ROW's timeline. Its duration is the row's (the audio's, else the
+        /// catalogue's) and never the video's, and a video position past it (an outro the album cut does not have) holds at the
+        /// row's end until the video ends. A row duration of 0 (unknown: a local file, a module) makes the video its own
+        /// timeline. Pure.</summary>
+        public static class SongTimeline
+        {
+            /// <summary>A video position on the row's timeline.</summary>
+            public static long ToSong(long videoMs, int songDurMs) => songDurMs > 0 ? Math.Clamp(videoMs, 0, songDurMs) : Math.Max(0, videoMs);
+
+            /// <summary>The instant, on the frame clock, at which a clock sample stamped <paramref name="sampleQpc"/> was true:
+            /// <paramref name="nowFrameMs"/> less the sample's age. A report anchored there extrapolates from when its position
+            /// held, so a sample that arrives late corrects the playhead instead of freezing it.</summary>
+            public static long SampleFrameMs(long sampleQpc, long nowQpc, long nowFrameMs, long frequency)
+                => nowQpc > sampleQpc ? nowFrameMs - (nowQpc - sampleQpc) * 1000 / frequency : nowFrameMs;
+        }
+
         // ── 2. host state ───────────────────────────────────────────────────────────────────────────────────────────
 
         const int TickMs = 200;                  // the ONE named video timer (P10); position, liveness, the watchdog
@@ -473,6 +494,16 @@ public static partial class Playback
         static readonly ConcurrentQueue<MediaPlayer> s_toDispose = new();
 
         static MediaPlayer? s_player;
+
+        /// <summary>Diagnostics (the video probe's stuck check): the bound player's state and position, or "(no player)".</summary>
+        internal static (string State, double PositionS, long Rendered, long Dropped) ProbeSnapshot()
+        {
+            MediaPlayer? p;
+            lock (s_gate) p = s_player;
+            if (p is null) return ("(no player)", -1, -1, -1);
+            PlaybackStatistics st = p.Statistics.Peek();
+            return (p.State.Peek().ToString(), p.Position.Peek().TotalSeconds, st.FramesRendered, st.FramesDropped);
+        }
         static long s_generation;
         static AdaptiveBitrateController? s_abr;
         static ProtectedMediaBackend? s_backend;
@@ -496,7 +527,8 @@ public static partial class Playback
         static uint s_epoch;                     // the reducer's LoadEpoch this load belongs to
         static bool s_playIntent, s_intentPaused, s_progressed, s_errorReported, s_firstFrameFired;
         static float s_desiredRate = 1;
-        static long s_reportedDurMs;
+        static long s_reportedDurMs;             // the video's own duration as last relayed: only while it IS the deck's timeline (SongTimeline)
+        static int s_songDurMs;                  // the row's duration this load reports on (LoadRequest.SongDurMs; 0 = the video is its own timeline)
         static LiveWindow s_reportedLive;
         static bool s_liveReported;
         static StartWatchdog s_watchdog = new();
@@ -544,7 +576,7 @@ public static partial class Playback
         static long s_openCallMs = -1, s_openDoneSinceSwitchMs = -1;
 
         // the pump
-        readonly record struct LoadRequest(VideoSource Source, long StartAtMs, uint Epoch);
+        readonly record struct LoadRequest(VideoSource Source, long StartAtMs, uint Epoch, int SongDurMs);
         static LoadRequest? s_pending;
         static bool s_pendingClear, s_running;
         static long s_pumpEpoch;
@@ -599,11 +631,13 @@ public static partial class Playback
         /// session and says so. Installed by `Video.Install`; invoked on the UI thread.</summary>
         public static Action<string, string>? OnOverrideFailed { get; set; }
 
-        /// <summary>Preload the native PlayReady component — the ONE-SHOT half of the app's warm (the continuous half is
-        /// <see cref="KeepWarm"/>'s beat). Called by `Video.Install` at composition rather than on the first switch: the
-        /// DLL's load plus its whole MF/PlayReady import chain is part of what a cold <c>runtime.create</c> pays for, and
-        /// it is the only warm left when the user turns <see cref="PrepareAhead"/> off. Idempotent; a missing DLL
-        /// degrades to a typed DRM error rather than a `DllNotFoundException` in the frame loop.</summary>
+        /// <summary>Preload the native PlayReady component and start the CDM's once-per-process initialisation (the DLL's load
+        /// plus its MF/PlayReady import chain, and the ~1.2 s first <c>CreateContentDecryptionModuleFactory</c>, all of which a cold
+        /// <c>runtime.create</c> would otherwise pay) — the ONE-SHOT half of the app's warm (the continuous half is
+        /// <see cref="KeepWarm"/>'s beat). ON DEMAND, from the keeper only: the first time a row that carries a video (the local
+        /// deck's, or a foreign owner's that offers the switch to video) is PLAYING, whatever <see cref="PrepareAhead"/> says, so
+        /// a user who only plays songs never loads it. Idempotent, once per process; a missing DLL degrades to a typed DRM error
+        /// rather than a `DllNotFoundException` in the frame loop.</summary>
         public static void Boot()
         {
             if (s_warmed) return;
@@ -622,10 +656,15 @@ public static partial class Playback
         /// arrives while another is in flight REPLACES it. <paramref name="paused"/> opens paused at the position; a
         /// <see cref="Pause"/> or <see cref="Play"/> issued before the open lands is honoured by it.
         /// <paramref name="seekGen"/> is the reducer's seek generation (<c>State.SeekGen</c>) at the moment the load starts: the
-        /// <c>Position</c> reports of this load carry it (V-PA2), so the first one is already current.</summary>
-        public static void Load(VideoSource source, uint epoch, int fromMs, bool paused, uint seekGen, bool muted = false)
+        /// <c>Position</c> reports of this load carry it (V-PA2), so the first one is already current.
+        /// <paramref name="songDurMs"/> is the ROW's duration (the audio's, else the catalogue's; 0 = unknown): the deck's timeline,
+        /// which this load reports on (<see cref="SongTimeline"/>) and which the video's own, often longer, duration never replaces.</summary>
+        public static void Load(VideoSource source, uint epoch, int fromMs, bool paused, uint seekGen, bool muted, int songDurMs)
         {
-            Boot();
+            Timeline.Mark("load.ui", "epoch=" + epoch + " from=" + fromMs + " paused=" + paused + " muted=" + muted);
+            // The deck shows the row's duration from the first frame: a cold video load put it on deck with none (PutOnDeck), and
+            // nothing but this load knows the catalogue's. A reload keeps the audio's, which this already is.
+            if (songDurMs > 0 && s_state.LoadEpoch == epoch && s_state.DurationMs != songDurMs) Post(Input.Duration(songDurMs, epoch));
             float rate = RateFor(s_state.CurrentId, s_state.VideoWanted);
             s_owed = default;                    // a new load owes the old one's seek nothing
             CancellationTokenSource superseded;
@@ -641,7 +680,7 @@ public static partial class Playback
                 s_pumpEpoch++;
                 superseded = s_loadCts;          // F155: the request this replaces stops waiting and stops opening
                 s_loadCts = new CancellationTokenSource();
-                s_pending = new LoadRequest(source, Math.Max(0, fromMs), epoch);
+                s_pending = new LoadRequest(source, Math.Max(0, fromMs), epoch, Math.Max(0, songDurMs));
                 s_pendingClear = false;
                 s_intentPaused = paused;
                 // THE CLAIM (§6.2 G1 rule 1), taken on the UI thread before any of the physical work: from this line on
@@ -713,6 +752,20 @@ public static partial class Playback
         {
             Seek(atMs, accurate: true);
             Play();
+        }
+
+        /// <summary>The live session's clock NOW, on the deck's timeline (<see cref="SongTimeline"/>): the engine's latest sample
+        /// advanced to this instant while it runs. -1 when this load's session has no clock to read. What the video-off hand-off
+        /// resumes the song at: the reducer's playhead is the last report extrapolated, the session clock is where the picture and
+        /// its sound are. Any thread; no allocation.</summary>
+        public static long ClockPositionMs()
+        {
+            MediaPlayer? p;
+            IMediaSession? baseSession;
+            int songDur;
+            lock (s_gate) { p = s_player; baseSession = s_baseSession; songDur = s_songDurMs; }
+            if (p is null || !HostRules.OwnsTick(p.Session, baseSession) || !p.TryReadClock(out MediaClockSample clock)) return -1;
+            return SongTimeline.ToSong((long)clock.At(System.Diagnostics.Stopwatch.GetTimestamp()).TotalMilliseconds, songDur);
         }
 
         /// <summary>F151: hold (or release) the attach window's report hold and restart its clock. While held the tick posts no
@@ -1467,6 +1520,7 @@ public static partial class Playback
         static async Task ApplyAsync(LoadRequest req, long epoch, CancellationToken ct)
         {
             if (IsStale(req, epoch)) return;       // superseded before it began: nothing below may run for it
+            Timeline.Mark("worker.apply", "epoch=" + req.Epoch);
             MediaPlayer? live;
             string liveKey;
             bool faulted, faultRetryable;
@@ -1487,7 +1541,9 @@ public static partial class Playback
             // condemn one aimed elsewhere. `warm=` is then the truth about the open that follows — which is what the
             // §4.3 gate reads it for.
             var row = new RowKey(req.Source.PlayableUri, req.Source.Key);
+            long adoptTs = System.Diagnostics.Stopwatch.GetTimestamp();
             await ResolvePrepareAsync(row, plan is SwitchAction.Switch or SwitchAction.Rebuild, req, epoch, ct).ConfigureAwait(false);
+            Timeline.Span("worker.adopt", Timeline.MsSince(adoptTs), "plan=" + plan + " why=" + why + " warm=" + WarmFor(req.Source));
             // F155: superseded while it waited for the prepare — no open (a stale attach is a licence challenge, a native
             // session and a destroy ahead of the newer load's attach), and no ReleasePrepared below, which would dispose a
             // prepare for the newer row that already landed.
@@ -1525,6 +1581,7 @@ public static partial class Playback
             {
                 if (IsStale(req, epoch)) return;
                 s_epoch = req.Epoch;
+                s_songDurMs = req.SongDurMs;
                 s_lastState = PlaybackState.Idle;      // the live session announces itself again under the NEW epoch: a Started (or Paused) and the duration,
                 s_reportedDurMs = 0;                   // which the reducer's Loading phase waits for (a held window suppresses the fold until its release)
                 RestartAttachWindow();
@@ -1563,7 +1620,10 @@ public static partial class Playback
         static async Task BuildAndOpenAsync(LoadRequest req, long epoch, CancellationToken ct)
         {
             ResetLoadState();
+            long buildTs = System.Diagnostics.Stopwatch.GetTimestamp();
             MediaPlayer built = BuildPlayer();
+            Timeline.Span("rebuild.build", Timeline.MsSince(buildTs));
+            long volTs = System.Diagnostics.Stopwatch.GetTimestamp();
             // F185: the player's own signals are written on the UI thread only; the worker never touches them.
             await RunOnUiAsync(() =>
             {
@@ -1574,9 +1634,12 @@ public static partial class Playback
                 built.SetMuted(muted);
             }).ConfigureAwait(false);
 
+            Timeline.Span("rebuild.volumehop", Timeline.MsSince(volTs));
             MediaPlayer? old;
             lock (s_gate) old = s_player;
-            bool closed = old is null || await CloseBoundedAsync(old).ConfigureAwait(false);   // detach the old session; a clean facade stays bound until the swap
+            long closeTs = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool closed = old is null || await CloseBoundedAsync(old).ConfigureAwait(false);
+            Timeline.Span("rebuild.closeold", Timeline.MsSince(closeTs), old is null ? "none" : closed ? "closed" : "timeout");   // detach the old session; a clean facade stays bound until the swap
 
             if (IsStale(req, epoch))
             {
@@ -1604,6 +1667,7 @@ public static partial class Playback
             PostBufferingUnlessHeld(req.Epoch);
             StartTicker();                         // BEFORE the open: an open that never completes must still tick
             long startedAt = FrameNowMs();
+            Timeline.Mark("open.call", "rebuild");
             try
             {
                 await built.OpenAsync(BuildMediaSource(req.Source, forPrepare: false), options, ct).AsTask()
@@ -1623,6 +1687,7 @@ public static partial class Playback
             if (IsStale(req, epoch)) return;
             if (built.Error.Peek() is { } err) { ReportFault(req.Epoch, HostRules.MapError(err), err.Message, err); return; }
             Log.Info("video", OpenOkLine(req, startedAt, rebuild: true));
+            Timeline.Mark("open.done", "rebuild");
             ReleasePrepared(keepKey: null);        // the open took it (the dispose is then a no-op) or never will
             SettleIntent(built, req, epoch);
         }
@@ -1655,6 +1720,7 @@ public static partial class Playback
             PostBufferingUnlessHeld(req.Epoch);
             StartTicker();
             long startedAt = FrameNowMs();
+            Timeline.Mark("open.call", "switch");
             try
             {
                 await live.OpenAsync(BuildMediaSource(req.Source, forPrepare: false), options, ct).AsTask()
@@ -1745,6 +1811,7 @@ public static partial class Playback
                 s_firstFrameFired = false;
                 Volatile.Write(ref s_firstFrameAtMs, 0);   // F225: the previous load's first frame is not this one's
                 s_reportedDurMs = 0;
+                s_songDurMs = 0;
                 s_lastState = PlaybackState.Idle;
                 s_baseSession = null;
                 s_baseError = null;
@@ -1842,9 +1909,12 @@ public static partial class Playback
                 finally { done.TrySetResult(); }
             };
             if (Volatile.Read(ref s_disposed) || Platform.UiThreadId is null) { guarded(); return; }
+            long hopTs = System.Diagnostics.Stopwatch.GetTimestamp();
             ToUi(guarded);
             try { await done.Task.WaitAsync(TimeSpan.FromMilliseconds(TeardownTimeoutMs)).ConfigureAwait(false); }
             catch (TimeoutException) { Log.Warn("video", "the UI thread did not run a player write within its budget"); }
+            double hopMs = Timeline.MsSince(hopTs);
+            if (hopMs >= 8.0) Timeline.Span("uihop.slow", hopMs);
         }
 
         static async Task DisposeBoundedAsync(MediaPlayer p)
@@ -1895,6 +1965,7 @@ public static partial class Playback
                 s_key = req.Source.Key;
                 s_live = req.Source;
                 s_epoch = req.Epoch;
+                s_songDurMs = req.SongDurMs;
                 RestartAttachWindow();
                 paused = s_intentPaused;
                 s_playIntent = !paused;
@@ -2102,12 +2173,23 @@ public static partial class Playback
             bool owned = HostRules.OwnsTick(session, baseSession);
             PlaybackState state = PlaybackState.Idle;
             long pos = 0, durMs = 0;
+            long posAtMs = FrameNowMs();              // the frame-clock instant `pos` was true at
             long statRendered = 0, statDropped = 0;   // E5: the session's frame counters (PlaybackStatistics), for the `[video] frames` line
             LiveWindow window = default;
             if (owned)
             {
                 state = p.State.Peek();
-                pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
+                // The engine's own clock sample, stamped with the instant it was read: the player's Position is the clock as of its
+                // last state pump (about a second apart, and on the protected path it once waited ~4 s for a segment event), and a
+                // stale value stamped with this tick's time is a frozen bar that jumps when the next one lands.
+                // A stopped clock (paused, seeking, starved) still stands where it was sampled, so its position is anchored now.
+                if (p.TryReadClock(out MediaClockSample clock))
+                {
+                    pos = Math.Max(0, (long)clock.Position.TotalMilliseconds);
+                    if (clock.Running)
+                        posAtMs = SongTimeline.SampleFrameMs(clock.Timestamp, System.Diagnostics.Stopwatch.GetTimestamp(), posAtMs, System.Diagnostics.Stopwatch.Frequency);
+                }
+                else pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
                 durMs = (long)p.Duration.Peek().TotalMilliseconds;
                 NoteStatePump(p, state, pos, session is ProtectedMediaSession);
                 PlaybackStatistics stats = p.Statistics.Peek();
@@ -2126,6 +2208,7 @@ public static partial class Playback
             long cutSongPos = 0, cutGap = 0;
             bool logStats = false;
             long statRenderedDelta = 0, statDroppedDelta = 0;
+            long songPos;                             // `pos` on the deck's timeline (SongTimeline): what the reports carry
             TickFold fold = TickFold.None;
             MediaSwitch.AttachVerdict attach = MediaSwitch.AttachVerdict.Wait;
             string key;
@@ -2133,6 +2216,7 @@ public static partial class Playback
             {
                 if (s_epoch != epoch || s_errorReported) return;      // a load began, or a fault landed, since the snapshot
                 key = s_key;
+                songPos = SongTimeline.ToSong(pos, s_songDurMs);
                 if (owned)
                 {
                     if (LiveWindowMoved(in window))
@@ -2142,8 +2226,10 @@ public static partial class Playback
                         relayLive = true;
                     }
 
-                    // (c) duration. Suppressed while live, and RE-relayed whenever it moves.
-                    if (!window.IsLive && durMs > 0 && Math.Abs(durMs - s_reportedDurMs) > DurationRelayEpsilonMs)
+                    // (c) duration: the deck's is the ROW's (posted by Load), never the video's. Only a video with no row duration
+                    // behind it (a local file, a module) is its own timeline: its duration is relayed, and re-relayed when MF revises
+                    // it after LOADEDMETADATA. Suppressed while live.
+                    if (s_songDurMs <= 0 && !window.IsLive && durMs > 0 && Math.Abs(durMs - s_reportedDurMs) > DurationRelayEpsilonMs)
                     {
                         s_reportedDurMs = durMs;
                         relayDur = true;
@@ -2234,10 +2320,12 @@ public static partial class Playback
 
             switch (fold)
             {
-                case TickFold.Started: PostSignal(epoch, AudioSignal.Started, pos); break;
-                case TickFold.Position: PostSignal(epoch, AudioSignal.Position, pos, gen); break;   // V-PA2: stamped with the generation read above
-                case TickFold.Paused: PostSignal(epoch, AudioSignal.Paused, pos); break;
-                case TickFold.Buffering: PostSignal(epoch, AudioSignal.Buffering, pos); break;
+                // Started and Position anchor the deck's playhead: they carry the instant their position was TRUE (the clock
+                // sample's), not this tick's. Paused and Buffering freeze it where it is now.
+                case TickFold.Started: PostSignal(epoch, AudioSignal.Started, songPos, posAtMs); break;
+                case TickFold.Position: PostSignal(epoch, AudioSignal.Position, songPos, posAtMs, gen); break;   // V-PA2: stamped with the generation read above
+                case TickFold.Paused: PostSignal(epoch, AudioSignal.Paused, songPos); break;
+                case TickFold.Buffering: PostSignal(epoch, AudioSignal.Buffering, songPos); break;
                 case TickFold.Ended:
                     StopTicker();
                     Post(Input.Ended(epoch, FrameNowMs()));
@@ -2302,8 +2390,13 @@ public static partial class Playback
             return edge > 0 && ms >= edge - GoLiveToleranceMs;
         }
 
-        static void PostSignal(uint epoch, AudioSignal signal, long posMs = 0, uint gen = 0)
-            => Post(Input.Audio(signal, epoch, FrameNowMs(), posMs, gen));
+        static void PostSignal(uint epoch, AudioSignal signal, long posMs = 0)
+            => Post(Input.Audio(signal, epoch, FrameNowMs(), posMs));
+
+        /// <summary>A report of <paramref name="posMs"/> as it stood at <paramref name="atMs"/> (frame clock): the reducer anchors
+        /// the playhead there (<c>State.PosQpc</c>), not at the arrival.</summary>
+        static void PostSignal(uint epoch, AudioSignal signal, long posMs, long atMs, uint gen = 0)
+            => Post(Input.Audio(signal, epoch, atMs, posMs, gen));
 
         /// <summary>The open's own Buffering. While the attach window holds the reports the song owns the deck under this very
         /// epoch, so a Buffering from the video would stall the bar, SMTC and the Connect wire while the song plays (and never
@@ -2430,6 +2523,7 @@ public static partial class Playback
             Volatile.Write(ref s_firstFrameAtMs, observedAtMs);
             FirstFrame.Value = FirstFrame.Peek() + 1;
             SizeI natural = p.NaturalSize.Peek();
+            Timeline.NoteFirstFrame(natural.Width + "x" + natural.Height + " lateMs=" + HostRules.ObservedLateMs(firstFrameQpc, System.Diagnostics.Stopwatch.GetTimestamp()));
             // F215: sinceSwitchMs is the NATIVE first-frame instant when the player has one (a fullscreen stage that unmounted the
             // pump used to make it 2.4 s late: sinceSwitchMs=4575 against a native sinceAttachMs=2121); observedLateMs is how long
             // after the frame this observation ran.

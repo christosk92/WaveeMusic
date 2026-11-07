@@ -157,8 +157,8 @@ public static partial class Shell
             return !r.IsNone && r.Kind == EntityKind.Track ? new Track(r.Slot) : default;
         }
 
-        /// <summary>Does the deck's track have a video, peeked?</summary>
-        public static bool HasVideoPeek() => TrackPeek() is { IsValid: true } t && t.HasVideo;
+        /// <summary>Does the deck's row have a video the surface offers, peeked (<c>Playback.DeckVideo</c>, local or the owner's)?</summary>
+        public static bool HasVideoPeek() => Video.DeckHasVideo(Playback.DeckVideo.Peek(), Playback.CurrentId.Peek());
 
         /// <summary>The deck playable's duration as its catalog row states it (0 when unknown), peeked: what the time labels show while the
         /// pipeline has not reported one yet (a load resets <c>Playback.DurationMs</c> to 0 until the stream opens).</summary>

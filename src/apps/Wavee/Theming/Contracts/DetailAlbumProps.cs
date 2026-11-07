@@ -84,9 +84,10 @@ public sealed record AlbumReleasePanelProps(bool OuterPadding, string? Released,
 public sealed record AlbumTrailingProps(string SkeletonKey, Album.PageRules.TrailingShape Shape, Func<bool> Pending, Func<Element> Content);
 
 /// <summary>One music video of the section: what its card shows and the verbs it runs. A music video is a TRACK (kind 99 keys it on its song): its
-/// identity for the now-playing relation is the song's uri, its menu and its drag are the track's, and a click or the badge WATCHES it.</summary>
+/// identity for the now-playing relation is the VIDEO's uri (lit only while the deck shows that video), its menu and its drag are the song's, and a
+/// click or the badge WATCHES it.</summary>
 /// <param name="Key">The card's key (`video:&lt;member slot&gt;`).</param>
-/// <param name="Uri">The song's uri ("" for a stale handle).</param>
+/// <param name="Uri">The video's uri — the song's kind-99 counterpart, else the song's own ("" for a stale handle).</param>
 /// <param name="Title">The video's title (the counterpart's once it landed, else the song's).</param>
 /// <param name="Thumb">The video's own still.</param>
 /// <param name="Meta">The hero arm's subtitle ("Music video · 3:12").</param>

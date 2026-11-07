@@ -36,6 +36,7 @@ using System.Globalization;
 using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
+using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;
@@ -191,6 +192,52 @@ public static partial class Playback
         /// episode "context" — a card's single-row play — continues too: Spotify's own clients keep going with the
         /// seed's track/episode station (<see cref="StationUri"/> shows the shape; the request itself sends the bare
         /// uri as <c>context_uri</c> and the server resolves the station server-side, G-080).</summary>
+        /// <summary>Does a controller's <c>play</c> ask for the row's MUSIC VIDEO? Its context metadata carries
+        /// <c>"is_single_track_video_content": "true"</c> (the desktop's "song videos" play, all.saz 1831). Reads the raw JSON
+        /// object in place; allocation-free. PURE.</summary>
+        public static bool SingleTrackVideo(ReadOnlySpan<byte> contextMetadataJson)
+        {
+            if (contextMetadataJson.IsEmpty) return false;
+            var r = new System.Text.Json.Utf8JsonReader(contextMetadataJson);
+            try
+            {
+                if (!r.Read() || r.TokenType != System.Text.Json.JsonTokenType.StartObject) return false;
+                while (r.Read() && r.TokenType == System.Text.Json.JsonTokenType.PropertyName)
+                {
+                    bool hit = r.ValueTextEquals("is_single_track_video_content"u8);
+                    if (!r.Read()) return false;
+                    if (hit) return r.TokenType == System.Text.Json.JsonTokenType.True
+                        || (r.TokenType == System.Text.Json.JsonTokenType.String && r.ValueTextEquals("true"u8));
+                    r.Skip();
+                }
+            }
+            catch (System.Text.Json.JsonException) { }
+            return false;
+        }
+
+        /// <summary>Does a context's metadata pick VIDEO FIRST? Its <c>session_control.selected_signals</c> (the list's chosen session chip, as
+        /// a controller's play or a context-resolve states it) names <see cref="PlaylistVideo.VideoFirstSignal"/> — Spotify's "Video" chip.
+        /// Reads the raw JSON object in place; allocation-free. PURE.</summary>
+        public static bool VideoFirstSignals(ReadOnlySpan<byte> contextMetadataJson)
+        {
+            if (contextMetadataJson.IsEmpty) return false;
+            var r = new System.Text.Json.Utf8JsonReader(contextMetadataJson);
+            try
+            {
+                if (!r.Read() || r.TokenType != System.Text.Json.JsonTokenType.StartObject) return false;
+                while (r.Read() && r.TokenType == System.Text.Json.JsonTokenType.PropertyName)
+                {
+                    bool hit = r.ValueTextEquals("session_control.selected_signals"u8);
+                    if (!r.Read()) return false;
+                    if (hit) return r.TokenType == System.Text.Json.JsonTokenType.String && !r.ValueIsEscaped
+                        && PlaylistVideo.NamesVideoFirst(r.ValueSpan);
+                    r.Skip();
+                }
+            }
+            catch (System.Text.Json.JsonException) { }
+            return false;
+        }
+
         public static bool AutoplayContinues(ReadOnlySpan<byte> contextUri)
             => contextUri.Length > 0
                && contextUri.IndexOf(":station:"u8) < 0 && contextUri.IndexOf(":radio:"u8) < 0
@@ -883,7 +930,9 @@ public static partial class Playback
         if ((uint)row.Slot >= (uint)t.Count) return PlayableKind.Audio;
         uint flags = t.Flags[row.Slot];
         bool local = (flags & (uint)TrackFlags.Local) != 0 || t.Id[row.Slot].Provider == EntityProvider.Local;
-        return MediaSwitch.KindOf(videoWanted && (flags & (uint)TrackFlags.VideoMask) != 0, local);
+        // A self-contained music video has its own manifest id and may carry no association flag (the deck's facts read the same).
+        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty;
+        return MediaSwitch.KindOf(videoWanted && hasVideo, local);
     }
 
     // ── 4b. which rows the deck may land on ────────────────────────────────────────────────────────────────────────
@@ -1199,6 +1248,7 @@ public static partial class Playback
     static void PutOnDeck(ref State s, in Input i, EntityRef row, EntityId id, QueueCursor cursor, PlayableKind kind,
         int fromMs, bool paused)
     {
+        if (!id.Equals(s.CurrentId)) s.Video = default;   // another row: its video facts are its own (a host switch keeps them)
         s.Current = row;
         s.CurrentId = id;
         s.Kind = kind;
@@ -1296,22 +1346,35 @@ public static partial class Playback
 
     /// <summary>The placement turned video on or off (owner K posts it on the <c>IsActive</c> edge). A row with a video
     /// switches hosts at the CARRIED position; a row without one only records the wish, so the next row with a video
-    /// opens on the video host. Idle, parked or foreign decks just remember it.</summary>
+    /// opens on the video host. Idle and parked decks just remember it. While a FOREIGN device owns playback our surface is ours alone:
+    /// opening or closing it ("Turn off video", the panel's ✕) never touches the owner. Only the user's EXPLICIT switch (bit 1, the bar's
+    /// video button: <see cref="SwitchVideo"/>) that the owner's mode does not already satisfy is forwarded as a Connect <c>signal</c> (the
+    /// mirror never writes the wish back: <see cref="MirrorVideo"/> carries the owner's mode as facts only). A post that only echoes the mode
+    /// the deck is already in (the shell answering the reducer's own <see cref="Effects.VideoIntent"/>) changes nothing.</summary>
     static void DoVideoPlacement(ref State s, in Input i, ref Effects fx)
     {
-        bool wanted = i.IntArg != 0;
+        bool wanted = (i.IntArg & 1) != 0, explicitSwitch = (i.IntArg & 2) != 0;
         if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; }   // a repeated "on" re-decides the row's kind (a lit badge's click)
         if (!s.HasCurrent) return;
-        PlayableKind kind = KindOfRow(s.Current, wanted);
+        if (!s.RoutesLocal)
+        {
+            if (s.Own.Kind != Owner.Foreign || !explicitSwitch || wanted == (s.Kind == PlayableKind.Video)) return;
+            if (wanted && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; return; }
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? VideoSignal.ToVideo : VideoSignal.ToAudio), false);
+            return;
+        }
+        // On video already and still wanted: nothing to re-decide (a row whose association flag has not landed would read audio).
+        PlayableKind kind = wanted && s.Kind == PlayableKind.Video ? PlayableKind.Video : KindOfRow(s.Current, wanted);
         if (kind == s.Kind) return;
-        if (!s.RoutesLocal || s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; return; }
+        if (s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; return; }
         ReloadHost(ref s, in i, ref fx, kind, LoadOrigin.MediaKindRefresh);
     }
 
-    /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). One re-resolve
-    /// is spent first; then the placement is demoted and the row reloads on the audio host at the carried position,
-    /// and the shell is told so it can say why (<see cref="Effects.VideoDemoted"/>). 0.3 used to fold the fault as a
-    /// dead track.</summary>
+    /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). A failing load spends
+    /// one re-resolve first; then the placement is demoted (<see cref="State.VideoWanted"/> cleared) and the shell is told to
+    /// turn the surface off and say why (<see cref="Effects.VideoIntent"/>). A row with NO source only falls back to audio for
+    /// itself: the wish stays, so the next row with a video still opens on the video host, and the shell only says why. Either
+    /// way the row reloads on the audio host at the carried position. 0.3 used to fold the fault as a dead track.</summary>
     static void DoVideoFault(ref State s, in Input i, ref Effects fx, bool retry, Fault fault)
     {
         if (retry && s.VideoRetries < VideoRetryBudget)
@@ -1320,19 +1383,35 @@ public static partial class Playback
             ReloadHost(ref s, in i, ref fx, PlayableKind.Video, LoadOrigin.VideoRecovery);
             return;
         }
-        s.VideoWanted = false;
-        fx.VideoDemoted = true;
-        fx.VideoDemotedWhy = fault == Fault.None ? Fault.Unavailable : fault;
+        if (retry) s.VideoWanted = false;
+        fx.VideoIntent = true;
+        fx.VideoIntentOn = !retry;
+        fx.VideoIntentWhy = fault == Fault.None ? Fault.Unavailable : fault;
         ReloadHost(ref s, in i, ref fx, KindOfRow(s.Current, videoWanted: false), LoadOrigin.VideoRecovery);
         s.VideoRetries = 0;
     }
 
-    /// <summary>The current row's video facts GAINED something the connect-state service has not been told (a badge
-    /// landed after the track-change announce): one extra PutState, and only while we own playback.</summary>
-    static void DoVideoOffer(ref State s, in Input i, ref Effects fx)
+    /// <summary>The catalogue's video facts for the row on the deck (the host observes them before every execute pass, so a
+    /// track change that already knows them announces them in its own PUT). Local decks only: a foreign owner's facts are its
+    /// cluster's (<see cref="MirrorRemote"/>). A change the PUT carries (has-video, the manifest id) is announced while the deck
+    /// is ours — the desktop's own two-step: the track-change PUT, then the offer once the association lands. The FIRST
+    /// ruling on a row the placement wants as video, playing on audio because nothing was known at its start, swaps it onto
+    /// the video host at the carried position (the song keeps playing while the video attaches under it); a later change of
+    /// the same row's facts never swaps hosts again.</summary>
+    static void DoVideoFacts(ref State s, in Input i, ref Effects fx)
     {
-        if (s.Own.Kind != Owner.Us || !i.Id.Equals(s.CurrentId)) return;
-        Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+        if (!i.Id.Equals(s.CurrentId) || !s.RoutesLocal) return;
+        var facts = new RowVideo((i.IntArg & 1) != 0, (i.IntArg & 2) != 0, new StringId((int)i.LongArg), VideoSignals.None, VideoSignals.None);
+        RowVideo was = s.Video;
+        if (facts == was) return;
+        s.Video = facts;
+        if (s.Own.Kind == Owner.Us && (facts.HasVideo != was.HasVideo || facts.ManifestId != was.ManifestId))
+            Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+        bool firstRuling = facts.Known && !was.Known;
+        if (firstRuling && facts.HasVideo && s.VideoWanted && s.Kind != PlayableKind.Video && !s.Parked
+            && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
+            && KindOfRow(s.Current, videoWanted: true) == PlayableKind.Video)
+            ReloadHost(ref s, in i, ref fx, PlayableKind.Video, LoadOrigin.MediaKindRefresh);
     }
 
     // ── 9. restore, remote volume, autoplay ────────────────────────────────────────────────────────────────────────
@@ -1346,6 +1425,7 @@ public static partial class Playback
         if (!Ownership.AllowsLoad(in s.Own, LoadOrigin.Restore, paused: true)) return;
         s.Current = i.Row;
         s.CurrentId = i.Id;
+        s.Video = default;
         s.Context = i.Context;
         s.Cursor = i.Cursor;
         s.Kind = KindOfRow(i.Row, videoWanted: false);

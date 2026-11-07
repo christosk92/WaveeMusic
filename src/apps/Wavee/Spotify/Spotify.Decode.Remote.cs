@@ -372,6 +372,8 @@ public static partial class Spotify
             else if (Is(key, "duration")) duration = Math.Max(0, Number(value));
             else if (Is(key, "decision_id")) row.DecisionId = into.AddText(value);
             else if (Is(key, "queued_by")) row.QueuedBy = into.AddText(value);
+            else if (Is(key, "associated_video_id")) row.AssociatedVideoId = into.AddText(value);
+            else if (Is(key, "track_player") || Is(key, "media.type")) row.IsVideo |= value.SequenceEqual("video"u8);
         }
 
         // ── context-resolve / autoplay ───────────────────────────────────────────────────────────────────────────────

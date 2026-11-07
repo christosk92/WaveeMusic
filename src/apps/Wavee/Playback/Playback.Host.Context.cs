@@ -363,7 +363,9 @@ public static partial class Playback
             Entities.Publish();
             EntityRef row = rows[start];
             long now = FrameNowMs();
-            Post(Input.PlayFrom(row, row.Id, context, Queue.CursorOf(deck), PlayableKind.Audio, Math.Max(0, fromMs), now,
+            // A video-first list (PlaylistVideo) starts in video mode; the reducer's wish then carries it to the rows after.
+            PlayableKind kind = PlaylistVideo.IsVideoFirst(context) && RowMayHaveVideo(row) ? PlayableKind.Video : PlayableKind.Audio;
+            Post(Input.PlayFrom(row, row.Id, context, Queue.CursorOf(deck), kind, Math.Max(0, fromMs), now,
                 ClaimCause.UserPlay, paused: false, explicitPosition: fromMs >= 0));
             s_pageUrl = "";                                // the caller's rows ARE the context: nothing to page (G-242)
             if (!sameContext) ForgetAutoplayPage();
@@ -574,7 +576,19 @@ public static partial class Playback
             Apply(Input.ShuffleOrdered(shuffle));
             if (load.Repeat >= 0) Apply(Input.Repeat((RepeatMode)load.Repeat));
             s_wireOffered = load.SessionId;               // a controller's play names the session the owner publishes (WireStarted)
-            Apply(Input.PlayFrom(row, row.Id, contextId, Queue.CursorOf(at), PlayableKind.Audio,
+            // A controller's "song videos" play asks for the row's music video: it opens on the video host (all.saz 1831). So does
+            // a play whose skip_to names the row's VIDEO rendition (SkipNamesVideo): a controller watching the context sends it.
+            // A video-first list plays its music videos (PlaylistVideo): the controller's or the resolve's selected "Video" chip, or — for a
+            // play started here — this playlist's own video-first state.
+            bool video = RemotePlan.SingleTrackVideo(buffer.Utf8(load.ContextMetadata))
+                || ((RemotePlan.VideoFirstSignals(buffer.Utf8(load.ContextMetadata)) || RemotePlan.VideoFirstSignals(buffer.Utf8(load.ResolvedMetadata))
+                     || (cause == ClaimCause.UserPlay && PlaylistVideo.IsVideoFirst(contextId)))
+                    && RowMayHaveVideo(row))
+                || (!transfer && start >= 0 && !load.SkipToUid.IsEmpty
+                    && buffer.Utf8(load.SkipToUid).SequenceEqual(buffer.Utf8(context[start].Uid))   // the uid chose the row
+                    && SkipNamesVideo(buffer.Utf8(load.SkipToUri), buffer.Utf8(context[start].Uri)));
+            PlayableKind kind = video ? PlayableKind.Video : PlayableKind.Audio;
+            Apply(Input.PlayFrom(row, row.Id, contextId, Queue.CursorOf(at), kind,
                 (int)Math.Min(from, int.MaxValue), now, cause, RemotePlan.StartsPaused(in load), explicitPosition: load.SeekToMs >= 0));
             s_pageContext = contextId;
             s_pageUrl = pageUrl;
@@ -588,6 +602,37 @@ public static partial class Playback
             ArrayPool<EntityRef>.Shared.Return(refs);
             ArrayPool<QueueEdge>.Shared.Return(rows);
         }
+    }
+
+    /// <summary>Does a controller's <c>skip_to</c> uri name the matched row's MUSIC VIDEO rather than the row itself? A controller that
+    /// watches a context (the web player in video mode, capture-20261107: <c>skip_to {uid row 0, uri 1EiJ…}</c> for "Today's Top
+    /// Videos", whose row 0 resolves here as the song 3Zu0… whose kind-99 video IS 1EiJ…) sends the row's uid with the VIDEO's uri:
+    /// the uid names the row, the uri the rendition it plays (the caller asks only when the uid chose the row). Reading only the
+    /// uid played the song as audio under a controller that showed the video. True when the row's video association is that uri,
+    /// or the uri is a self-contained video track; false when
+    /// the uri is the row's own, its canonical (a market relink) or the row's known association names another; a row whose video
+    /// is not known yet trusts the controller (a wrong guess faults on the video host and recovers to audio: DoVideoFault). UI thread.</summary>
+    static bool SkipNamesVideo(ReadOnlySpan<byte> skipUri, ReadOnlySpan<byte> rowUri)
+    {
+        if (skipUri.IsEmpty || skipUri.SequenceEqual(rowUri) || Entities.Current is not { } scope) return false;
+        EntityId skip = EntityId.Parse(skipUri), rowId = EntityId.Parse(rowUri);
+        if (skip.Kind != EntityKind.Track || rowId.Kind != EntityKind.Track) return false;
+        if (scope.Tracks.TryGetSlot(skip, out int skipSlot) && !new Track(skipSlot).VideoGidId.IsEmpty) return true;
+        if (!scope.Tracks.TryGetSlot(rowId, out int rowSlot)) return true;
+        var row = new Track(rowSlot);
+        if (row.Knows(TrackFields.Canonical) && row.Canonical is { IsValid: true } canonical && canonical.Id.Equals(skip)) return false;
+        if (!row.Knows(TrackFields.Video)) return true;
+        return row.VideoCounterpart is { IsValid: true } counterpart && counterpart.Id.Equals(skip);
+    }
+
+    /// <summary>May <paramref name="row"/> have a music video? False only once the catalogue has RULED it has none (its Video group known,
+    /// no association, not a self-contained video): a video-first play of such a row starts as audio instead of faulting the video host.
+    /// A row whose video is not known yet is tried — the host resolves it, and a miss recovers to audio (DoVideoFault).</summary>
+    static bool RowMayHaveVideo(EntityRef row)
+    {
+        if (row.Kind != EntityKind.Track || Entities.Current is null || (uint)row.Slot >= (uint)Entities.Current.Tracks.Count) return false;
+        var t = new Track(row.Slot);
+        return t.HasVideo || !t.VideoGidId.IsEmpty || !t.Knows(TrackFields.Video);
     }
 
     /// <summary>One wire row → a queue row: its identity (allocating the catalog row), its uid kept exactly
@@ -1222,7 +1267,7 @@ public static partial class Playback
                     if (r.Kind == EntityKind.Track) tracks[n++] = new Track(r.Slot);
                     else if (r.Kind == EntityKind.Episode) episodes[m++] = new Episode(r.Slot);
                 }
-                if (n > 0) Entities.Ensure(tracks.AsSpan(0, n), TrackFields.Identity, priority);
+                if (n > 0) Entities.Ensure(tracks.AsSpan(0, n), hot ? TrackFields.Identity | TrackFields.Video : TrackFields.Identity, priority);
                 if (m > 0) Entities.Ensure(episodes.AsSpan(0, m), EpisodeFields.Identity, priority);
             }
         }
@@ -1286,11 +1331,15 @@ public static partial class Playback
         PlayStarted?.Invoke(id, r.Context, unix);
         if (id.Provider != EntityProvider.Spotify || !id.IsPlayable) return;
         string uri = id.Text;
+        // A row that plays as VIDEO never opens the audio pump: PlayingOpened is then default(Opened), whose Label is null, and
+        // the registration's format name blew up at Ended (Telemetry.FormatName) - on every video track end and, through
+        // RetireForSignOut, on every quit while a video played (the window never closed).
         Audio.Opened opened = Audio.PlayingOpened;
+        string formatLabel = opened.Label ?? "";
         byte[] mediaGid = new byte[16];   // RawCoreStream.media_id: the track's own gid, the one thing the royalty row names it by
         s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, r.Context.IsEmpty ? "" : r.Context.Text,
             ProviderText(), ReasonText(r.StartReason), id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
-            opened.BitrateKbps, opened.Label,
+            opened.BitrateKbps, formatLabel,
             r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs,
             PlayerSession.TelemetryText(s_wireIds.SessionId, s_state.Kind == PlayableKind.Video));   // WireStarted already ran for this row
         s_registeredId = id;

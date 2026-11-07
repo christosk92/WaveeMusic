@@ -143,6 +143,13 @@ public static partial class Playback
 
         static readonly Action s_markResolving = static () => Phase.SetIfChanged(SwitchPhase.Resolving);
 
+        /// <summary>UI THREAD. A resolve that marked the phase Resolving ended with no video load behind it (superseded by an
+        /// audio load, or no source at all): no join is in the air any more.</summary>
+        public static void ClearResolving()
+        {
+            if (Phase.Peek() == SwitchPhase.Resolving) Phase.SetIfChanged(SwitchPhase.Idle);
+        }
+
         /// <summary>F257/F259: the source's tier as the `[video.mount]` line names it — <c>override</c> (the user's attached
         /// local file, a clear MF MP4), <c>playready</c> (the protected path) or <c>clear</c> (a url a module row answered).
         /// The ghost A/B reads it next to the natural / content / device sizes (docs/guide/video-ghost-ab.md).</summary>
@@ -164,11 +171,22 @@ public static partial class Playback
         /// small bounded map (a session watches a handful of videos); full means start over, never grow.</summary>
         public static string KnownManifestId(EntityId id) => ManifestIds.Lookup(id.Text) ?? "";
 
+        /// <summary>Bumps on every <see cref="RememberManifestId"/>: a reader that caches a lookup re-asks only when it moved.</summary>
+        public static int KnownManifestVersion => Volatile.Read(ref ManifestIds.Version);
+
+        /// <summary>Remember a playable's manifest id learnt elsewhere (a foreign owner's cluster names it), so a takeover's
+        /// resolve is a memo hit instead of a metadata POST.</summary>
+        public static void RememberManifestId(string uri, string manifestId)
+        {
+            if (SourceTiers.IsManifestId(manifestId)) ManifestIds.Remember(uri, manifestId);
+        }
+
         static class ManifestIds
         {
             const int Capacity = 64;
             static readonly Dictionary<string, string> s_ids = new(StringComparer.Ordinal);
             static readonly Lock s_gate = new();
+            public static int Version;
 
             public static string? Lookup(string uri) { lock (s_gate) return s_ids.TryGetValue(uri, out string? id) ? id : null; }
 
@@ -176,9 +194,11 @@ public static partial class Playback
             {
                 lock (s_gate)
                 {
+                    if (s_ids.TryGetValue(uri, out string? had) && string.Equals(had, id, StringComparison.Ordinal)) return;
                     if (s_ids.Count >= Capacity && !s_ids.ContainsKey(uri)) s_ids.Clear();
                     s_ids[uri] = id;
                 }
+                Interlocked.Increment(ref Version);
             }
         }
 
@@ -768,6 +788,13 @@ public static partial class Playback
                 return new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(RouteFor(request.KeyId), request, enqueued)));
             };
 
+#if DEBUG
+            /// <summary>DEBUG BUILDS ONLY (the probe's <c>licdelay</c> verb; no Release build has it): every licence answer is held
+            /// this many ms after its POST returns, so a video's first sample request beats its key on purpose - the cold-licence
+            /// race the native key gate closes (CencMediaSource.h, THE KEY GATE).</summary>
+            public static volatile int ProbeDelayMs;
+#endif
+
             static readonly Dictionary<string, string> s_routes = new(StringComparer.Ordinal);
             static readonly Lock s_gate = new();
 
@@ -823,6 +850,14 @@ public static partial class Playback
                             result.Status == 0 ? null : (System.Net.HttpStatusCode)result.Status);
                     throw new InvalidOperationException(message);
                 }
+#if DEBUG
+                if (ProbeDelayMs is > 0 and int held)
+                {
+                    Log.Info("video", "[video] license.probe-delay ms=" + held + " kid=" + request.KeyId);
+                    request.Cancel.WaitHandle.WaitOne(held);
+                    request.Cancel.ThrowIfCancellationRequested();
+                }
+#endif
                 return new LicenseResponse(result.Body, queuedMs, httpMs);
             }
 

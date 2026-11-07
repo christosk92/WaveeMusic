@@ -26,7 +26,8 @@ namespace Wavee.Theming.Contracts;
 public sealed record VideoJoinPosterProps
 {
     /// <summary>What the join decided (<c>Video.JoinNow</c>, folded once from the host's events): the poster alone, the poster with the ring and
-    /// "Loading…", or the poster with the fault line. <see cref="Video.JoinVisual.Video"/> draws the poster alone like <see cref="Video.JoinVisual.Poster"/>.</summary>
+    /// "Loading…", the poster with the fault line, or the poster with "Playing on &lt;device&gt;" and "Play here" (<see cref="Video.JoinVisual.Remote"/>).
+    /// <see cref="Video.JoinVisual.Video"/> draws the poster alone like <see cref="Video.JoinVisual.Poster"/>.</summary>
     public required Video.JoinVisual Visual { get; init; }
 
     /// <summary>The poster layer is on show (collapsed, not unmounted, once the live picture is the one thing on screen).</summary>
@@ -38,6 +39,13 @@ public sealed record VideoJoinPosterProps
 
     /// <summary>The fault's own line (a failed join). Bound reactively: the reducer types the fault and it can land after the notice mounted.</summary>
     public required Func<string> FaultTitle { get; init; }
+
+    /// <summary>"Playing on &lt;device&gt;" while another device plays the video (<see cref="Video.JoinVisual.Remote"/>). Bound reactively: the
+    /// owner can change while the notice is up.</summary>
+    public required Func<string> RemoteLine { get; init; }
+
+    /// <summary>"Play here": pull playback (and the video, at the owner's position) to this device. A cached static.</summary>
+    public required Action PlayHere { get; init; }
 }
 
 /// <summary>What the watch page hands the in-page stage frame.</summary>

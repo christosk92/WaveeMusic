@@ -1191,7 +1191,7 @@ public readonly partial struct Album
         string name = Entities.Strings.Resolve(m.Name);
         string price = m.Price.IsEmpty ? "" : Entities.Strings.Resolve(m.Price);
         string? url = m.ShopUrl.IsEmpty ? null : Entities.Strings.Resolve(m.ShopUrl);
-        Action? open = url is { Length: > 0 } ? () => Actions.Services.OpenExternal?.Invoke(url) : null;
+        Action? open = url is { Length: > 0 } ? () => Shell.OpenLink(url) : null;   // the link door: an http(s) shop page, never another scheme
         return new TrailRowData(TrailRowKind.Merch,
             Merch: new MerchRowData("merch:" + merchSlot.ToString(CultureInfo.InvariantCulture), name, price, Controls.ArtUrl(m.ImageId), open));
     }
@@ -1222,23 +1222,29 @@ public readonly partial struct Album
     // PlayVersion does exactly this).
 
     /// <summary>What a video's card shows and the verbs it runs. A music video is a TRACK (kind 99 keys it on its song): its identity for the now-playing
-    /// relation is the song's uri, its menu and its drag are the track's, and a click or the badge WATCHES it (<see cref="WatchVideo"/> — the surface first,
-    /// then the song). The duration rides the shelf card's inline caption.</summary>
+    /// relation is the VIDEO's own uri (<see cref="VideoUri"/>), its menu and its drag are the song's, and a click or the badge WATCHES it
+    /// (<see cref="WatchVideo"/> — the surface first, then the song). The duration rides the shelf card's inline caption.</summary>
     static AlbumVideoCard VideoCard(in PageRules.AlbumVideo v)
     {
         int slot = v.MemberSlot;
-        string uri = VideoUri(slot);
+        var member = new Track(slot);
+        string songUri = member.IsValid ? member.Uri.Text : "";
         string title = VideoTitle(in v);
         string? thumb = Controls.ArtUrl(v.Thumb);
-        return new AlbumVideoCard(VideoKey(in v), uri, title, thumb, VideoMeta(in v),
+        return new AlbumVideoCard(VideoKey(in v), VideoUri(in v), title, thumb, VideoMeta(in v),
             v.DurationMs > 0 ? Track.Format.TrackTime(v.DurationMs) : null,
-            WatchVideo(slot), () => VideoPayload(slot, uri, title, thumb), () => VideoMenu(slot));
+            WatchVideo(slot), () => VideoPayload(slot, songUri, title, thumb), () => VideoMenu(slot));
     }
 
-    /// <summary>The video's identity for the playback relation: its member song's uri ("" for a stale handle).</summary>
-    static string VideoUri(int memberSlot)
+    /// <summary>The video's identity for the playback relation: its kind-99 counterpart's uri, which relates to the deck only while the deck SHOWS that
+    /// video (<see cref="PlayRelation"/> <c>ShowsDeckVideo</c>). The song's uri relates whenever the song plays — as audio too — and that is how this card
+    /// wore a pause glyph over a song playing with no video anywhere. A member with no counterpart (a self-contained video, a user's mp4) is its own
+    /// identity; "" for a stale handle.</summary>
+    static string VideoUri(in PageRules.AlbumVideo v)
     {
-        var member = new Track(memberSlot);
+        var counterpart = new Track(v.CounterpartSlot);
+        if (counterpart.IsValid) return counterpart.Uri.Text;
+        var member = new Track(v.MemberSlot);
         return member.IsValid ? member.Uri.Text : "";
     }
 
@@ -1304,8 +1310,13 @@ public readonly partial struct Album
         bool canHost = Video.UpgradeGate.AvailabilityFor(hasVideo, Video.State.HostCapability.Peek()) != Video.PlacementSet.None;
         var playing = Playback.CurrentId.Peek();
         bool deckRow = !playing.IsEmpty && playing == member.Id;
-        switch (PageRules.WatchFor(canHost, deckRow))
+        switch (PageRules.WatchFor(canHost, deckRow, deckRow && Playback.DeckVideo.Peek().OnVideo))
         {
+            case PageRules.WatchAction.Toggle:
+                // The video is what plays: the card shows pause (PlayRelation), so a press pauses — and resumes.
+                Playback.TogglePlay("album.watch");
+                return;
+
             case PageRules.WatchAction.AudioOnly:
                 // Say it. A play badge over a video still that silently starts the song is the defect, not the fix.
                 Notify.Say(Loc.Get(Strings.Player.VideoUnavailable), InfoBarSeverity.Warning, dedupeKey: "album.video.nohost");

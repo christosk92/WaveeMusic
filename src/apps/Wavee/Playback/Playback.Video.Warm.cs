@@ -80,10 +80,11 @@ public static partial class Playback
     {
         /// <summary>What the keeper is asked to hold in hand: whether a video surface is wanted at all, whether an audio
         /// load is in flight RIGHT NOW (warming always yields to it), the playing row and the next queued one with the
-        /// manifest ids their catalogue rows carry, and whether the video host already owns the playing row (F225).</summary>
+        /// manifest ids their catalogue rows carry, whether the video host already owns the playing row (F225), and whether
+        /// the deck is PLAYING (the first playing video row boots the PlayReady component, <see cref="Boot"/>).</summary>
         public readonly record struct WarmRequest(
             bool VideoOn, bool AudioBusy, EntityId Current, string CurrentManifestId, EntityId Next, string NextManifestId,
-            bool HostOwns = false)
+            bool HostOwns = false, bool Playing = false)
         {
             public static readonly WarmRequest Off = new(false, false, default, "", default, "");
         }
@@ -116,6 +117,9 @@ public static partial class Playback
         /// the live one leaves the beat exactly as it is, which matters because this runs off a signal effect.</summary>
         public static void KeepWarm(in WarmRequest request)
         {
+            // The one warm-up path: a row that carries a video is playing (Current is only set for one), so the DLL and the
+            // CDM's one-time initialisation start now, ahead of any switch or takeover; idempotent once per process.
+            if (request.Playing && !request.Current.IsEmpty) Boot();
             bool arm;
             lock (s_warmGate)
             {
@@ -131,7 +135,25 @@ public static partial class Playback
                       || WarmPolicy.WarmsOnIntent(request.VideoOn, true, Volatile.Read(ref s_videoUsed) != 0, !request.Current.IsEmpty);
             }
             if (!arm) return;
-            if (request.VideoOn) Boot();
+            ArmWarmTimer();
+        }
+
+        /// <summary>A claim of the deck's row is beginning ("Play here", or the owner transferring it here): the LATEST point the
+        /// native runtime can start coming up ahead of the open. When the keeper's request names a video row the user wants
+        /// on a surface and no keep-alive is held yet (the keeper had not warmed it: pre-acquisition off, or the row's KID not
+        /// learnt yet), the token is taken NOW, so the ~1.2 s bring-up overlaps the claim's resolve instead of following it.
+        /// Off the UI thread (TakeKeepAlive may wait on a teardown, F161); the beat is armed so it, as always, decides when the
+        /// token goes back. UI thread.</summary>
+        public static void WarmForClaim()
+        {
+            int epoch;
+            lock (s_warmGate)
+            {
+                if (s_warmKeepAlive is not null || !s_warm.VideoOn || s_warm.Current.IsEmpty) return;
+                epoch = s_warmEpoch;
+            }
+            Log.Info("video", "[video] warm.claim runtime keep-alive taken at the claim");
+            ThreadPool.UnsafeQueueUserWorkItem(static e => HoldRuntime(e), epoch, preferLocal: false);
             ArmWarmTimer();
         }
 

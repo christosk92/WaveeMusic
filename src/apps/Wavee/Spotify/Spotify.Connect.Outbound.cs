@@ -186,7 +186,7 @@ public static partial class Spotify
         /// (0.2.9 <c>OutboundEnvelope.Play</c>): an opaque, URI-only context, a play_origin, `prepare_play_options` with
         /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.</summary>
         public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
-            int fromMs = -1, string? skipUid = null, int skipIndex = -1)
+            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false)
         {
             if (!Egress.Admits(contextUri.AsSpan()) || (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())))
             {
@@ -194,7 +194,7 @@ public static partial class Spotify
                 return false;
             }
             var buffer = new ArrayBufferWriter<byte>(768);
-            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex);
+            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video);
             return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
         }
 
@@ -212,9 +212,11 @@ public static partial class Spotify
         /// context from its head. `always_play_something` false and `license` premium as every desktop capture carries.
         /// Owners match <c>skip_to</c> by uid, then uri, then index — a uri alone lands on the FIRST copy of a track that sits in
         /// the context twice — so the row's <paramref name="skipUid"/> (<see cref="SkipUidOf"/>) and a known
-        /// <paramref name="skipIndex"/> (&gt;= 0) ride beside the uri; everything else stays thin.</summary>
+        /// <paramref name="skipIndex"/> (&gt;= 0) ride beside the uri; everything else stays thin. <paramref name="video"/> asks the
+        /// owner for the row's music video — the desktop's "song videos" play, <c>is_single_track_video_content</c> in the context
+        /// metadata (all.saz 1831).</summary>
         public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
-            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1)
+            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false)
         {
             using var w = new Utf8JsonWriter(into);
             w.WriteStartObject();
@@ -225,6 +227,7 @@ public static partial class Spotify
             w.WriteString("uri", contextUri);
             w.WriteString("url", "context://" + contextUri);
             w.WriteStartObject("metadata");
+            if (video) w.WriteString("is_single_track_video_content", "true");
             w.WriteEndObject();
             w.WriteEndObject();
             w.WriteStartObject("play_origin");
@@ -293,6 +296,34 @@ public static partial class Spotify
                 w.WriteEndObject();
                 w.WriteEndObject();
             }
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>"Switch the row you play to its video / back to its audio" on the device that owns playback — the desktop's
+        /// `signal` envelope (itsover.saz 772). Blocks; api threads only.</summary>
+        public static bool Signal(string targetDeviceId, Decode.VideoSignal signal, CancellationToken ct)
+        {
+            if (signal == Decode.VideoSignal.None) return false;
+            var buffer = new ArrayBufferWriter<byte>(384);
+            SignalBody(buffer, signal, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+        }
+
+        /// <summary>The `signal` envelope body, field for field as the official client sends it: endpoint, <c>signal_id</c>, the
+        /// three option bools, the logging params, then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void SignalBody(IBufferWriter<byte> into, Decode.VideoSignal signal, string deviceId, string commandId,
+            string intentId, long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "signal");
+            w.WriteString("signal_id", Decode.SignalId(signal));
+            QueueOptions(w);
             LoggingParams(w, deviceId, commandId, "", nowMs);
             w.WriteEndObject();
             w.WriteString("connection_type", "wlan");
