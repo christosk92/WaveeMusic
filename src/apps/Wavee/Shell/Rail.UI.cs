@@ -107,7 +107,7 @@ public static partial class Rail
         Action play = () => Shell.QueueVerbs.Default.Play(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
         Action click = () => Track.Invoke(t, play);
         var data = Track.RowData(t, new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art,
-                                                             ShowExplicit: false, ShowVideo: true,
+                                                             ShowExplicit: false,
                                                              ShowMenu: QueueRowRules.ShowsMenuButton));
         return new NextUpRow((itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart"), art, data);
     }

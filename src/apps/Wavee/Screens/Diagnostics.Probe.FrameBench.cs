@@ -415,6 +415,57 @@ public static partial class Diagnostics
                     var r = Measure(d, "context=" + ctx);
                     return r with { Note = r.Note + " trackChanges>=" + changes };
                 }
+                case FrameBenchScenarios.ContextSwitch:
+                {
+                    // The play click: the queue rail open on the queue, a playlist page on screen, and every 2 s a row click there plays a NEW
+                    // context (two contexts alternate, so every click replaces the whole queue: new item ids, the panel's rows remount, the bar's
+                    // face changes). What one click costs the UI thread is the window's slow turns.
+                    // The rows play as a row click on a page plays them (Playback.PlayRows: the context's rows, from one of them), so no context
+                    // resolve is needed (the fake wire refuses one). 48 rows per context: the owner's 2026-11-07 census had 48 queue rows.
+                    string? a = t.Playlists.Length > 0 ? t.Playlists[0] : null;
+                    string? b = t.Albums.Length > 0 ? t.Albums[0] : t.Playlists.Length > 1 ? t.Playlists[1] : null;
+                    if (a is null || b is null) return Skip("needs a playlist and an album (or two playlists)");
+                    EntityRef[] Rows(int first)
+                    {
+                        var rows = new List<EntityRef>(48);
+                        for (int i = 0; i < 48; i++)
+                            if (EntityId.TryParse(("spotify:track:tr" + (first + i).ToString(CultureInfo.InvariantCulture)).AsSpan(), out EntityId id) && Entities.Ref(id) is { IsNone: false } r)
+                                rows.Add(r);
+                        return rows.ToArray();
+                    }
+                    EntityRef[] rowsA = Rows(0), rowsB = Rows(60);
+                    if (rowsA.Length == 0 || rowsB.Length == 0) return Skip("no track rows to play (tr0.., tr60..)");
+                    EntityId ctxA = EntityId.Parse(a.AsSpan()), ctxB = EntityId.Parse(b.AsSpan());
+                    Base(playing: false);
+                    Shell.Ui.Mode.Value = Shell.RailMode.Queue;
+                    Shell.Ui.RailOpen.Value = true;
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(a), "Bench playlist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Settle(1.5);
+                    // A click waits for the last one to LAND (the context resolves on an api thread; a click before it lands supersedes it and
+                    // nothing would ever re-render), then holds 1.5 s of the landed state before the next.
+                    int clicks = 0;
+                    EntityId? pending = null;
+                    double landedAt = 0;
+                    var d = new Driver(now =>
+                    {
+                        if (pending is not null)
+                        {
+                            if (Playback.ContextUri.Peek() != pending.Value || !Playback.Snap().IsPlaying) return now + 0.05;
+                            pending = null;
+                            landedAt = now;
+                        }
+                        if (now - landedAt < 1.5) return landedAt + 1.5;
+                        bool first = clicks++ % 2 == 0;
+                        pending = first ? ctxA : ctxB;
+                        Playback.PlayRows(first ? rowsA : rowsB, 0, first ? ctxA : ctxB, 0);
+                        return now + 0.05;
+                    });
+                    var r = Measure(d, "contexts=" + a + "," + b + " rail=queue");
+                    Shell.Ui.RailOpen.Value = queueRail;
+                    return r with { Note = r.Note + " clicks=" + clicks };
+                }
                 case FrameBenchScenarios.Video:
                     if (Platform.Args.FakeVideo is null) return Skip("needs --fake --fake-video <path>");
                     Base(playing: true, "spotify:track:tr0");

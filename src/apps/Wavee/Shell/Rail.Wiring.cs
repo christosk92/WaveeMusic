@@ -119,6 +119,8 @@ internal static class RailWiring
         public void SetChoice(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option, int index)
             => Shell.DeckPrefs.SetChoice(in preset, in option, index, Shell.DeckPrefSource.Flyout);
 
+        public void ResetChoices(in Rail.PlayerCatalog.Preset preset) => Shell.DeckPrefs.ResetChoices(in preset, Shell.DeckPrefSource.Flyout);
+
         public Signal<int> ChoiceMirror(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option)
             => Shell.DeckPrefs.ChoiceMirror(in preset, in option);
 
@@ -142,7 +144,7 @@ internal static class RailWiring
         NowTrack = static () => Rail.NowTrack(),
         NowArtUrl = static () => Rail.NowArtUrl(),
         RailWidth = Shell.Ui.RailWidth,
-        Deck = static () => Deck.View(),
+        Deck = static (chrome, column) => Deck.View(chrome, column),
         Style = s_deckVerbs,
         Flyout = new DeckStyleFlyoutProps { Verbs = s_deckVerbs, NowArtUrl = static () => Rail.NowArtUrl() },
         SubscribeEntities = static () =>

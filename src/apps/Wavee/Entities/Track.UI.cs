@@ -619,7 +619,8 @@ public readonly partial struct Track
     /// the cover FAB's "start this" leg; <see cref="Invoke(Track, Action)"/> wraps it, so on the deck row the FAB toggles
     /// pause instead, and null plays the one track. <see cref="ShowArtwork"/> false is the hidden-artwork look (ch 01 W28):
     /// the cover's square holds a play glyph — pair it with <see cref="TrackRowRules.ArtEdge"/> for the shape's art edge.
-    /// <see cref="ShowExplicit"/> / <see cref="ShowVideo"/> put the "E" badge / film glyph ahead of the artists.
+    /// <see cref="ShowExplicit"/> / <see cref="ShowVideo"/> put the "E" badge / film glyph ahead of the artists (the film by default: a song's
+    /// video is marked in every list, as every theme's tables do).
     /// <see cref="Draggable"/> hands the row a single-track drag (a row that owns another drag — the queue's
     /// reorder — says false); <see cref="QueueItemId"/> non-null marks it a queue row (the drag is then a reorder no
     /// playlist may deposit, and the menu addresses the queue entry). <see cref="ShowMenu"/> false keeps the right-click
@@ -631,7 +632,7 @@ public readonly partial struct Track
     /// gates on a digest of the shown rows' versions, <c>Queue.QueueSurface.RowsDigest</c>), so a publication of other tracks
     /// re-renders nothing.</para></summary>
     public readonly record struct RowDataOptions(
-        Action? OnClick, Action? OnPlay = null, bool ShowArtwork = true, bool ShowExplicit = true, bool ShowVideo = false,
+        Action? OnClick, Action? OnPlay = null, bool ShowArtwork = true, bool ShowExplicit = true, bool ShowVideo = true,
         bool Draggable = true, bool ShowMenu = true, MenuOptions? MenuArgs = null, ulong? QueueItemId = null,
         Element? Trailing = null, bool Selected = false, bool Tracked = true)
     {

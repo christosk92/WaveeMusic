@@ -208,7 +208,7 @@ public static partial class Queue
                 if (r.Kind == EntityKind.Track) tracks[nt++] = r.Slot;
                 else if (r.Kind == EntityKind.Episode) episodes[ne++] = r.Slot;
             }
-            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)(TrackFields.Identity | TrackFields.Availability), FetchPriority.Visible);
+            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)(TrackFields.Identity | TrackFields.Availability | TrackFields.Video), FetchPriority.Visible);
             if (ne > 0) Entities.Ensure(Entities.Current.Episodes, episodes.AsSpan(0, ne), (uint)EpisodeFields.Row, FetchPriority.Visible);
         }
         finally { ArrayPool<int>.Shared.Return(tracks); ArrayPool<int>.Shared.Return(episodes); }
@@ -226,7 +226,7 @@ public static partial class Queue
                 if (rows[i].Ref.Kind == EntityKind.Track) tracks[nt++] = rows[i].Ref.Slot;
                 else if (rows[i].Ref.Kind == EntityKind.Episode) episodes[ne++] = rows[i].Ref.Slot;
             }
-            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)(TrackFields.Identity | TrackFields.Availability), FetchPriority.Visible);
+            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)(TrackFields.Identity | TrackFields.Availability | TrackFields.Video), FetchPriority.Visible);
             if (ne > 0) Entities.Ensure(Entities.Current.Episodes, episodes.AsSpan(0, ne), (uint)EpisodeFields.Row, FetchPriority.Visible);
         }
         finally { ArrayPool<int>.Shared.Return(tracks); ArrayPool<int>.Shared.Return(episodes); }
@@ -320,7 +320,10 @@ public static partial class Queue
             // publishes the track table, and that re-rendered this host and its whole panel (1.7-3.5 ms, 89 times in a 12 s nav-burst,
             // 2026-10-21) though no row it shows had changed. The memo re-runs on those publications and notifies only when a shown row did.
             _ = UseComputed(s_rowsDigest).Value;
-            _ = Playback.PhaseSignal.Value;
+            // The deck's queue position through a memo: it moves with the phase, the deck row and the queue's edges, and the host re-renders only
+            // when it did. A direct phase read re-rendered the whole panel on every phase write (loading, buffering, playing, paused: 4-5 per
+            // play click, 0.25-1.1 MB each, the owner's 2026-11-07 census) though nothing it draws reads the phase.
+            int cursor = UseComputed(s_cursor).Value;
             Current = Playback.Current.Value;
             ContextId = Playback.ContextUri.Value;
             Wire = Playback.ContextLabel.Value;
@@ -337,12 +340,19 @@ public static partial class Queue
             RepeatMode repeat = rail ? Playback.Repeat.Value : Playback.Repeat.Peek();
             string? contextName = UseComputed(s_contextName).Value;
             QueuePlayingFrom? playingFrom = rail ? Shell.QueueModel.PlayingFromOf(contextName, ContextTarget(ContextId, in Wire)) : null;
-            Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : Playback.Snap().Cursor.Index, viewer,
+            Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : cursor, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
             if (!rail) Model = Model with { History = ReadHistory() };
         }
 
         static readonly Func<ulong> s_rowsDigest = RowsDigest;
+        static readonly Func<int> s_cursor = static () =>
+        {
+            _ = Playback.PhaseSignal.Value;                   // every reducer publication that can move the cursor writes the phase,
+            _ = Playback.Current.Value;                       // the deck row
+            _ = Entities.Current.Edges.Queue.Changed.Value;   // or the queue's rows
+            return Playback.Snap().Cursor.Index;
+        };
         static readonly Func<bool> s_autoplay = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayEnabled(); };
         static readonly Func<bool> s_autoplayListed = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayListed(Shell.QueueModel.AutoplayEnabled(), Playback.Repeat.Value); };
         static readonly Func<string?> s_contextName = static () =>
@@ -465,7 +475,11 @@ public static partial class Queue
         public Element Lane(int item, Element row, string key)
             => Viewer ? row : Reorder.Item(item, row, key: key).As<BoxEl>() with { Direction = 1 };
 
-        public Element List(Element body, string key) => Reorder.List(body).As<BoxEl>() with { Grow = 0f, Key = key };
+        public Element List(Element body, string key, float leadExtent = 0f)
+        {
+            Reorder.LeadExtent = leadExtent;
+            return Reorder.List(body).As<BoxEl>() with { Grow = 0f, Key = key };
+        }
 
         public DragSource? OwnDrag(ulong itemId, int index, EntityRef row)
             => QueueRowRules.RowDrags(Viewer) ? Drag.Source(() => PayloadFor(itemId, row)) : null;
@@ -481,6 +495,8 @@ public static partial class Queue
         public string Clock(int durationMs) => Playback.TimeFormat.Clock(durationMs);
 
         public string RowKey(string prefix, ulong itemId, int index) => Queue.RowKey(prefix, itemId, index);
+
+        public ulong RowStamp(EntityRef row) => FoldRow(14695981039346656037UL, Entities.Current, row);
 
         float ExtentAt(int i) => (uint)i < (uint)_slotCount && _extentOf is { } extentOf ? extentOf(_slots[i]) : _rowExtent;
 

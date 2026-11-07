@@ -2661,7 +2661,18 @@ public readonly partial struct Track
                 t.IsValid ? t.Version : 0u, t.Album.IsValid ? t.Album.Version : 0u, artists,
                 orig >= 0 ? src.AddedAt(orig) : 0, by,
                 orig >= 0 ? src.ChartStatus(orig) : (byte)0,
-                snap.Marquee, snap.Config.ShowTrackArtist, snap.Config.ShowAlbumColumn, IsOpen(t, display));
+                snap.Marquee, snap.Config.ShowTrackArtist, snap.Config.ShowAlbumColumn, IsOpen(t, display),
+                VideoFirstContext(src.Context.Id) ? PlaylistVideo.VideoDurationMs(t) : 0);
+        }
+
+        /// <summary>Is the table's context a video-first playlist (<see cref="PlaylistVideo"/>)? Subscribing: the toggle's version and the
+        /// playlists table (a tune answer that selects the "Video" chip lands there).</summary>
+        static bool VideoFirstContext(EntityId context)
+        {
+            if (context.Kind != EntityKind.Playlist) return false;
+            var scope = Entities.Current;
+            _ = scope.Playlists.Changed.Value;
+            return scope.Playlists.TryGetSlot(context, out int slot) && PlaylistVideo.IsVideoFirst(new Playlist(slot));
         }
 
         // ══ 9. CHOREOGRAPHY ══════════════════════════════════════════════════════════════════════════════════════════

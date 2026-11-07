@@ -118,6 +118,21 @@ public static partial class Shell
         return face.Resolve(BarStateNow(), current, NowPlayingFace.TitleKnown, Playback.FrameNowMs());
     }
 
+    /// <summary>What the bar's render reads of the face, as one value (<see cref="BarFaceFacts"/>).</summary>
+    readonly record struct BarFace(FaceArm Arm, EntityRef Ref, bool TitleKnown, bool TitleNav, bool ArtNav, string? ArtUrl);
+
+    static readonly Func<BarFace> s_barFace = BarFaceFacts;
+
+    /// <summary>The face facts the bar's render reads (the arm and row, whether the deck row's title landed, the two routes, the art), read
+    /// through ONE memo in the render (<c>UseComputed</c>): resolving them reads the whole track and episode tables, so the memo re-runs on every
+    /// catalog write and the render only when one of these values moved.</summary>
+    static BarFace BarFaceFacts()
+    {
+        _ = Playback.ContextUri.Value;   // the art route falls back to the context (peeked inside), so its change re-runs this
+        var (arm, r) = BarFaceNow();
+        return new BarFace(arm, r, NowPlayingFace.TitleKnown(Playback.Current.Value), !BarTitleRoute().IsNone, !BarArtRoute().IsNone, BarArtUrl(r));
+    }
+
     static PlayerState BarStateNow()
         => PlayerBarRules.StateOf(!Playback.CurrentId.Value.IsEmpty, Playback.Error.Value, Playback.PhaseSignal.Value,
             Playback.Recovery.Value);

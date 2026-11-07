@@ -111,7 +111,7 @@ public readonly partial struct Track
     internal readonly record struct RowPresentation(
         Track Track, int Display, RowState State, uint TrackVersion, uint AlbumVersion, ulong ArtistStamp,
         int AddedAt, User AddedBy, byte Chart, bool Marquee, bool ShowTrackArtist,
-        bool ShowAlbumColumn, bool Open);
+        bool ShowAlbumColumn, bool Open, int VideoMs = 0);
 
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
     /// memo, the row hover signal, the slot's focus fact, the playback flag the equalizer animates on, the page accent and
@@ -216,6 +216,11 @@ public readonly partial struct Track
             RowCellRules.DurationKind.Dash => Format.Dash,
             _ => Format.DurationCell(t.ForDisplay.DurationMs),
         };
+
+    /// <summary>The bound row's duration lane: <see cref="DurationLabel(Track, long)"/>, but the row's MUSIC VIDEO length on a video-first
+    /// list (<see cref="RowPresentation.VideoMs"/>, <see cref="PlaylistVideo"/>) — what the list plays, as the official client shows it.</summary>
+    internal static string DurationLabel(in RowPresentation p, long now)
+        => p.VideoMs > 0 && !Withheld(in p, now) ? Format.DurationCell(p.VideoMs) : DurationLabel(p.Track, now);
 
     /// <summary>A withheld row's LONG reason, the tooltip over its duration lane (tuned Classic L4): "This song isn't
     /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".

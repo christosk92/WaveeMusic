@@ -317,6 +317,24 @@ public static partial class Rail
         public static void NextStyle(string source)
             => SetStyle((ClampStyle(Platform.Settings.Get(Platform.Keys.NpvPlayerStyle)) + 1) % PlayerCatalog.Presets.Length, source);
 
+        /// <summary>Reactive: is every option of <paramref name="p"/> on its default (choice 0)? The flyout's "Reset options" is disabled
+        /// while it is.</summary>
+        public static bool AtDefaults(in PlayerCatalog.Preset p)
+        {
+            for (int i = 0; i < p.Options.Length; i++) if (Choice(p, p.Options[i]) != 0) return false;
+            return true;
+        }
+
+        /// <summary>Put every option of <paramref name="p"/> back on its default, in one write (one epoch bump: the deck restyles once).</summary>
+        public static void ResetChoices(in PlayerCatalog.Preset p, string source)
+        {
+            if (p.Options.Length == 0) return;
+            var slugs = new string[p.Options.Length];                 // a click, never a frame
+            for (int i = 0; i < slugs.Length; i++) slugs[i] = p.Options[i].Slug;
+            Prefs.NpvPlayer.ResetChoices(p.Slug, slugs);
+            NpvDiagnostics.OptionsReset(p.Slug, source);
+        }
+
         public static void SetChoice(in PlayerCatalog.Preset p, in PlayerCatalog.OptionDef o, int i, string source)
         {
             int to = ClampChoice(o, i);
@@ -350,6 +368,11 @@ public static partial class Rail
             "player option " + style + "." + option + "=" + choice + " via " + source,
             fields: [WaveeLogField.Of("style", style), WaveeLogField.Of("option", option),
                      WaveeLogField.Of("choice", choice), WaveeLogField.Of("source", source)]);
+
+        public static void OptionsReset(string style, string source) => Log.Event(
+            WaveeLogLevel.Info, Category, "options.reset",
+            "player options " + style + " reset to defaults via " + source,
+            fields: [WaveeLogField.Of("style", style), WaveeLogField.Of("source", source)]);
 
         public static void FlyoutClosed() => Log.Debug(Category, "player style flyout dismissed");
 
