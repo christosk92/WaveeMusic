@@ -958,8 +958,8 @@ public static partial class Diagnostics
             var now = CanvasVideo.Current.Peek();
             w.WriteStartObject("canvas");
             w.WriteBoolean("shows", now.Shows);
-            w.WriteString("track", now.Uri);
-            w.WriteBoolean("file", now.File.Length > 0);
+            w.WriteString("track", now.Uri ?? "");
+            w.WriteBoolean("file", now.File is { Length: > 0 });
             w.WriteString("owner", CanvasVideo.Owner.Peek().ToString());
             w.WriteString("bound", CanvasVideo.Bound.Peek().ToString());
             w.WriteBoolean("inView", CanvasVideo.InView.Peek());
