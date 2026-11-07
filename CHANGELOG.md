@@ -15,6 +15,13 @@ versions separately under `v*` and is not tracked in this file.)
 - **Album credits in Zune.** An album page names who wrote, produced and played on the record, gathered from its
   songs' credits, and "all credits" opens the full list grouped by role. The song credits sheet, which showed only its
   title in Zune and WinUI, lists everyone again.
+- **Spotify Canvas.** When the playing song has a Canvas (the short looping visual artists add to their tracks), it
+  plays in Now playing in place of the cover, in full screen behind the lyrics and the queue, and in the Canvas player
+  style. It is silent and loops, and it pauses while you cannot see it. Wavee asks for it only for the song that is
+  playing and the next two in the queue, keeps the videos on disk, and shows them offline for up to 30 days. A song
+  without a Canvas looks the same as before.
+- **Show Canvas** setting under Settings > Playback > Video, on by default. Turned off, no Canvas is fetched or shown
+  anywhere.
 
 ### Changed
 
