@@ -393,18 +393,14 @@ internal static class WinUiArtistSections
 
     // ── about ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>About: the shared artist card (the image band, the name beside Follow, the monthly listeners, a four-line bio), then the external links and the cities.
-    /// Follow is the tier's control size: the 40 target at Compact.</summary>
+    /// <summary>About: WinUI's own card (W-Artist-Huge: the photograph band, the stats, the bio and "Read more", `WinUiArtistAbout`), then the external
+    /// links and the cities. Not the shared about card: its body links to the artist, which on the artist's own page went nowhere.</summary>
     static Element AboutBlock(ArtistPageProps p, WidthTier tier)
     {
-        ControlSize followSize = WinUiDetailRules.TargetOf(tier) > WinUiDetailRules.Target ? ControlSize.Large : ControlSize.Medium;
         Artist a = p.Artist;
         LinkEdge[] links = a.Links.ToArray();
         CityEdge[] cities = a.TopCities.ToArray();
-        var kids = new List<Element>(3)
-        {
-            Controls.ArtistAboutCard(a, AboutLayout.Aside, WinUiArtistRules.AboutBand, (uri, name) => WinUiDetailKit.Follow(uri, name, followSize)) with { Key = "about:" + a.Uri.Text },
-        };
+        var kids = new List<Element>(3) { WinUiArtistAbout.Card(a, p.OpenGallery) };
         if (links.Length > 0) kids.Add(LinkPills(links));
         if (cities.Length > 0) kids.Add(CityBars(cities, p.Accent));
         return SectionBlock(Loc.Get(Strings.Theme.Winui.Detail.About), new BoxEl

@@ -80,6 +80,10 @@ public static partial class Entities
 
         /// <summary>The artist whose header is the bright photograph (<c>assets/covers/header-bright.jpg</c>): the on-media scrim's worst case.</summary>
         public const int BrightHeader = 9;
+
+        /// <summary>The artist whose header is a TALL portrait (<c>assets/covers/portrait-tall.jpg</c>, 900 x 1600, the face at the top, the feet at the
+        /// foot): a wide band's centred crop of it shows the waist and the legs, so it reproduces a crop that loses the face (owner 2026-11-07, INNA).</summary>
+        public const int TallPortrait = 10;
         public static bool HasWorldRank(int i) => i % 7 != 0;
 
         /// <summary>The upcoming release's end instant: <c>now0 + 9 d 4 h</c> (ch 31 W16).</summary>
@@ -213,7 +217,7 @@ public static partial class Entities
             if (i < ArtistCount)
             {
                 // the avatar's own picture, as 0.2.9 did; ar9's is a bright photograph (white sky, pale ground), the worst case for text on it
-                row.Header = Text(s, i == ArtistSeed.BrightHeader ? BrightHeaderPhoto() : Cover(i + 3));
+                row.Header = Text(s, i == ArtistSeed.BrightHeader ? BrightHeaderPhoto() : i == ArtistSeed.TallPortrait ? TallPortraitPhoto() : Cover(i + 3));
                 row.HeaderAccent = 0;
             }
 
