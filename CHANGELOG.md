@@ -32,7 +32,7 @@ versions separately under `v*` and is not tracked in this file.)
   "fail fast" with no details; they now arrive with their real error and a memory snapshot.
 - **No crash loop on playback.** If starting a song crashes Wavee twice within a few launches, Wavee shows those songs
   as unavailable for that version instead of crashing on every start. An update, or a week without the crash, brings
-  them back.
+  them back. (#217)
 
 ### Fixed
 
