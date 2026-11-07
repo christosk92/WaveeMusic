@@ -853,6 +853,15 @@
     "subtitleSong": "Song"
   },
   "podcast": {
+    "details": {
+      "publisher": "Publisher",
+      "episodes": "Episodes",
+      "since": "Since",
+      "format": "Format",
+      "ratings": "Ratings",
+      "audio": "Audio",
+      "audioVideo": "Audio and video"
+    },
     "episodes": "Episodes",
     "show": "Podcast",
     "episodeCount": "{count, plural, one {# episode} other {# episodes}}",
@@ -3074,6 +3083,7 @@
       },
       "library": {
         "$comment": "WinUI's library and show controls (winui menus/podcasts): sentence-case sort, view and scope words for the DropDownButton menus and the SelectorBar pivots.",
+        "title": "Library",
         "sortBy": "Sort by",
         "sort": {
           "recents": "Recents",
@@ -3133,6 +3143,9 @@
         "latestRelease": "Latest release",
         "discography": "Discography",
         "readMore": "Read more",
+        "showLess": "Show less",
+        "showDetails": "Show details",
+        "youMightAlsoLike": "You might also like",
         "viewGrid": "Grid",
         "viewList": "List",
         "verifiedArtist": "Verified artist",

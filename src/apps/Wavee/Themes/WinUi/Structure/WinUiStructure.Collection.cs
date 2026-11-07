@@ -16,5 +16,7 @@ public sealed partial class WinUiStructure
         views.AddStyle(StyleKeys.LibraryControls, WinUiLibraryControls.Style);
         // The show reader's pictures (W6b's style, borrowed from Classic until now): the show page and the library's podcast pane read it.
         views.AddStyle(StyleKeys.ShowReader, WinUiShow.Style);
+        // The library's show pane (W-LibraryList's detail column): WinUI's head and commands over the show reader (winui show pages).
+        views.Add(ViewKeys.LibraryShowPane, WinUiLibraryShowPane.Template, "winui.library.show-pane");
     }
 }

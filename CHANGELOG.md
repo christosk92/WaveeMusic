@@ -33,6 +33,20 @@ versions separately under `v*` and is not tracked in this file.)
   rows and cards that are on screen, and the whole page is in place within about half a second. A page that is still
   loading enters with its placeholders, and its content fades in where they stood. With Windows animation effects
   turned off, pages just fade. Zune and Classic move exactly as before.
+- **WinUI podcast pages look like WinUI.** In the WinUI theme the show page's header reads as one line ("publisher ·
+  rating · episodes · weekly · since"), the played counts sit under it, and Follow shows its check. At Compact the
+  Resume button fills the row beside a square Following button. The show's About, topics and (on large windows) its
+  details stand beside the episodes, or under them on small windows. The episode page has WinUI buttons for Mark as
+  played and Save, a WinUI tab bar, and About and Chapters beside the Transcript. The podcasts library opens on a
+  "Library" heading with tabs for each kind, and the selected show's panel uses WinUI's buttons. The Continue and
+  "New since you were here" sections stay at the top of the episodes.
+- **More Popular songs beside a tall side column (WinUI).** On a WinUI artist page with two columns, Popular shows as
+  many songs as fit next to the latest release, discography and artist pick (up to ten), so the space under it is no
+  longer empty. Pages of the song list follow that size. Artists whose columns already line up keep five.
+- **The artist's About card in WinUI.** The card no longer looks clickable without doing anything: it shows the
+  monthly listeners and world rank, and "Read more" opens the full biography with the artist's photos in place.
+- **Artist photos keep the face in view.** The About card's photo is cropped around the faces it finds, and a tall
+  portrait without a detected face keeps its top, instead of showing the middle of the picture.
 - **Release cards open the album; the arrow shows its songs.** On an artist's Singles & EPs and other release grids,
   clicking a card opens the album like any other card. The arrow after "1 track" is now a proper button with hover and
   focus states: it opens the songs inline under the row, and closes them again. The panel opens and closes smoothly
