@@ -89,11 +89,14 @@ internal static partial class ClassicLibraryPage
             ],
         };
         var rows = new List<Element>(4);
-        if (layout.KindChips) rows.Add(styled?.Kinds is { } kinds ? kinds(new LibraryKindsArgs(p.Kinds(), layout.ChipH)) : KindChips(p, layout));
+        // A borrowing structure's page head (contract 1.87) names the page and switches the kinds over the columns: the toolbar keeps only the count.
+        bool headed = styled?.Head is not null;
+        if (layout.KindChips && !headed) rows.Add(styled?.Kinds is { } kinds ? kinds(new LibraryKindsArgs(p.Kinds(), layout.ChipH)) : KindChips(p, layout));
         // The head's rows glide when a crossing changes their gap (10 at Small, 8 at Standard) instead of snapping.
-        rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
+        if (!headed) rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
         if (filter is not null) rows.Add(filter.Value with { Layout = ClassicTierMotion.Shove });
+        if (headed) rows.Add(new TextEl(p.CountText) { Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",

@@ -28,13 +28,22 @@ public static partial class StyleKeys
 /// <param name="Scope">The artists' reader's scope: 0 in your library, 1 all releases (with its total).</param>
 /// <param name="ReaderSort">The artists' reader's own sort: 0 newest, 1 oldest, 2 alphabetical.</param>
 /// <param name="Kinds">The library's kinds where the page has no nav pane to switch them from (a Compact head); null: the page's own.</param>
+/// <param name="Head">The page's HEAD across its whole width, above the navigator and the pane (W-Library: "Library" over a SelectorBar of the kinds). A page
+/// that finds one draws it over its columns and leaves its own title row and kind chips out of the navigator's toolbar (the toolbar keeps the count); null: the
+/// page's own head. Appended (contract 1.87, winui show pages).</param>
 public sealed record LibraryControlsStyle(
     Func<LibrarySortArgs, Element> Sort,
     Func<LibraryModesArgs, Element> Modes,
     Func<LibraryViewArgs, Element> View,
     Func<LibraryScopeArgs, Element> Scope,
     Func<LibraryReaderSortArgs, Element> ReaderSort,
-    Func<LibraryKindsArgs, Element>? Kinds = null);
+    Func<LibraryKindsArgs, Element>? Kinds = null,
+    Func<LibraryHeadArgs, Element>? Head = null);
+
+/// <summary>The library page's head (<see cref="LibraryControlsStyle.Head"/>, contract 1.87).</summary>
+/// <param name="Kinds">The kinds in order, the page on screen <see cref="LibraryKindChip.Selected"/>.</param>
+/// <param name="Title">The page's own title ("Podcasts"), for a head that names it.</param>
+public sealed record LibraryHeadArgs(IReadOnlyList<LibraryKindChip> Kinds, string Title);
 
 /// <summary>The navigator's sort.</summary>
 /// <param name="Kind">The library kind (its words).</param>

@@ -3073,6 +3073,7 @@
       },
       "library": {
         "$comment": "WinUI's library and show controls (winui menus/podcasts): sentence-case sort, view and scope words for the DropDownButton menus and the SelectorBar pivots.",
+        "title": "Library",
         "sortBy": "Sort by",
         "sort": {
           "recents": "Recents",

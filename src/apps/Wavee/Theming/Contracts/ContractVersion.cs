@@ -223,7 +223,8 @@
 // `PlayerBarView.Lit` lights lyrics and video for a playable that is loading or reconnecting too, not only an active one.
 // 1.87 (winui show pages): the show page's ASIDE (`ShowReaderStyle.Aside`, `ShowAsideArgs`, `ShowDetail`; the show page hands it as its
 // `Detail.FrameSlots.Aside`, which only a frame that reads its show header's slots draws: the core's two-column aside stays an album's), and
-// `ShowFootArgs.Aside` (the same aside, for a structure that stands it under the episodes where its frame has no column for it).
+// `ShowFootArgs.Aside` (the same aside, for a structure that stands it under the episodes where its frame has no column for it);
+// `LibraryControlsStyle.Head` / `LibraryHeadArgs` (a borrowing structure's head across the library page: W-Library's "Library" over the kinds).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

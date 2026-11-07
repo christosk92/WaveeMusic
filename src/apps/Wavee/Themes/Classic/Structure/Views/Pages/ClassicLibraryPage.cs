@@ -86,8 +86,10 @@ internal static partial class ClassicLibraryPage
                 Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props, cache.Dragging), right],
             };
         }
-        // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
-        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = [inner] };
+        // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser. A borrowing structure's head (contract 1.87) stands
+        // over the columns at every arm; Classic registers none.
+        Element[] page = cache.Controls?.Head is { } head ? [head(new LibraryHeadArgs(props.Kinds(), props.Title)), inner] : [inner];
+        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = page };
     }
 
     // ══ THE PER-INSTANCE CACHE ═══════════════════════════════════════════════════════════════════════════════════════

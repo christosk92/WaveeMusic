@@ -178,6 +178,9 @@ internal static partial class WinUiShow
 
     static readonly TemplateParts s_followNoShrink = new() { [ToggleButton.PartRoot] = static e => e with { Shrink = 0f, MinWidth = 0f } };
 
+    /// <summary>The show's follow toggle ("✓ Following", the 40 square at Compact), for the library's show pane.</summary>
+    internal static Element FollowToggle(string uri, string name) => Embed.Comp(new ShowFollowProps(uri, name), static () => new ShowFollow());
+
     sealed record ShowFollowProps(string Uri, string Name);
 
     /// <summary>Follow beside the primary: "✓ Following" / "+ Follow" (the neutral toggle, W-Show), the square 40 check toggle at Compact (W-Show-Compact).

@@ -29,7 +29,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiLibraryControls
 {
     /// <summary>The style WinUI registers under <see cref="StyleKeys.LibraryControls"/>. Stateless.</summary>
-    public static readonly LibraryControlsStyle Style = new(Sort, Modes, View, Scope, ReaderSort, Kinds);
+    public static readonly LibraryControlsStyle Style = new(Sort, Modes, View, Scope, ReaderSort, Kinds, Head);
 
     // ══ THE SORT ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -83,6 +83,51 @@ internal static class WinUiLibraryControls
             Children = [WinUiChoice.Pivot([Loc.Get(Strings.Podcast.Reader.FollowedShows), Loc.Get(Strings.Podcast.Reader.YourEpisodes)], a.Mode, a.Height,
                                           keys: s_modeKeys)],
         };
+
+    // ══ THE PAGE HEAD (W-Library, W-LibraryList) ═════════════════════════════════════════════════════════════════════
+
+    /// <summary>The page's head across its width (W-Library): "Library" (Title Large 40/52, the Display face) over a SelectorBar of the kinds ("Playlists Albums
+    /// Artists Podcasts Audiobooks", the page on screen pilled) and the hairline under it, on the page's inset. At Compact the title steps down to Title
+    /// 28/36 (W-Library-Compact). The route is the truth: a pick navigates, the next page re-seeds the selection.</summary>
+    static Element Head(LibraryHeadArgs a) => Embed.Comp(new HeadProps(a), static () => new HeadView());
+
+    sealed record HeadProps(LibraryHeadArgs Args);
+
+    sealed class HeadView : Component
+    {
+        public override Element Render()
+        {
+            var a = UseProps<HeadProps>().Args;
+            var facts = Wavee.Theming.TierContext.DrawnIn(UseContext(Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
+            var tier = WinUiDetailTiers.Of(in facts).Tier;
+            bool compact = tier == WidthTier.Compact;
+            float inset = WinUiDetailRules.InsetOf(tier);
+            return new BoxEl
+            {
+                Key = "lib:head", Direction = 1, Shrink = 0f, MinWidth = 0f, Gap = WinUiChoiceRules.HeadGap,
+                Padding = new Edges4(inset, WinUiDetailRules.InsetTopOf(tier), inset, 0f),
+                Children =
+                [
+                    new TextEl(Loc.Get(Strings.Theme.Winui.Library.Title))
+                    {
+                        FontFamily = WinUiShowRules.DisplayFace, Weight = WinUiShowRules.VoiceWeight, Color = Tok.TextPrimary,
+                        Size = compact ? WinUiChoiceRules.HeadTitleCompact : WinUiChoiceRules.HeadTitle,
+                        LineHeight = compact ? WinUiChoiceRules.HeadTitleCompactLine : WinUiChoiceRules.HeadTitleLine,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    },
+                    new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f,
+                        Children =
+                        [
+                            Kinds(new LibraryKindsArgs(a.Kinds, compact ? WinUiDetailRules.CompactTarget : WinUiChoiceRules.HeadPivot)),
+                            new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
+                        ],
+                    },
+                ],
+            };
+        }
+    }
 
     // ══ THE KINDS (the Compact head) ════════════════════════════════════════════════════════════════════════════════
 
