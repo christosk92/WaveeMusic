@@ -83,16 +83,18 @@ public static partial class ReleaseNotes
 
     static RunningBuild Running() => ReleaseNotesModel.Running();
 
-    static void OpenUrl(string url)
+    /// <summary>The Store listing: an <c>ms-windows-store:</c> uri, so it is the host's to open, not the link door's (which
+    /// takes http(s) and Spotify links only).</summary>
+    static void OpenStoreListing()
     {
+        string url = Update.StorePageUrl(Links.StoreIdOrFallback(Platform.Version.StoreId));
         if (Actions.Services.OpenExternal is { } open) { open(url); return; }
         InputHooks.Current.Default.OpenUri?.Invoke(url);
     }
 
-    static void OpenStoreListing() => OpenUrl(Update.StorePageUrl(Links.StoreIdOrFallback(Platform.Version.StoreId)));
-
-    // The verbs the views carry: cached once (never a fresh lambda per render).
-    static readonly Action<string> OpenLink = static url => OpenUrl(url);
+    // The verbs the views carry: cached once (never a fresh lambda per render). A body link goes through the link door:
+    // a Spotify link (or a `wavee://open` verb) opens in-app, a web page in the browser.
+    static readonly Action<string> OpenLink = static url => Shell.OpenLink(url);
     static readonly Action OpenStoreListingVerb = static () => OpenStoreListing();
     static readonly Action<string> OpenReleasePage = static version => Shell.GoTo(Shell.Parse("whatsnew", version));
 

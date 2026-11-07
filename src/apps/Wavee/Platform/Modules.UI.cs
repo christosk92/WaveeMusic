@@ -94,13 +94,8 @@ public static partial class Modules
         else PlayUri(playableUri);
     }
 
-    /// <summary>Open a web url in the user's browser — only an http(s) url with a host ever reaches the shell.</summary>
-    internal static void OpenUrl(string? url)
-    {
-        if (!Actions.PlayLinkRules.IsWebUrl(url)) return;
-        if (Actions.Services.OpenExternal is { } open) { open(url!); return; }
-        InputHooks.Current.Default.OpenUri?.Invoke(url!);
-    }
+    /// <summary>A module page's "Open in browser": the shell's one external opener (http(s) with a host only).</summary>
+    internal static void OpenUrl(string? url) => Shell.OpenBrowser(url);
 
     internal static void Navigate(string routeKey, string? label) => Shell.GoTo(Shell.Parse(routeKey, label ?? ""));
 

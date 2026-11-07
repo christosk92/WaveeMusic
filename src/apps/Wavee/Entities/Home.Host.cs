@@ -161,9 +161,17 @@ public readonly partial struct Home
 
         /// <summary>Refetch what's new AND gander, then <c>Notify.Rebuild</c> with the update row. Single-flight (a call
         /// while one runs queues exactly one more); assigned to <c>Notify.RefreshFeeds</c>. Offline, <c>--fake</c> or an
-        /// accountless scope asks nothing (offline reads Offline on a feed that holds no rows).</summary>
+        /// accountless scope asks nothing (offline reads Offline on a feed that holds no rows); <c>--fake</c> lands its
+        /// seeded gander rows instead (Entities.Fake.Notify.cs).</summary>
         public static void Refresh()
         {
+            if (Platform.Args.Fake)
+            {
+                s_social = Entities.FakeSocialFeed(Platform.Clock.SeedEpoch);
+                Notify.SocialState.Value = Notify.FeedState.Populated;
+                RebuildFromHeld();
+                return;
+            }
             if (!CanAsk(out var scope))
             {
                 if (IsAccountScope(scope) && !Spotify.Current.IsOnline)

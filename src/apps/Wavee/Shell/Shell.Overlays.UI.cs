@@ -502,14 +502,6 @@ public static partial class Shell
         return items.ToArray();
     }
 
-    /// <summary>Open a web url in the user's browser — only an http(s) url with a host ever reaches the shell.</summary>
-    static void OpenWeb(string url)
-    {
-        if (!Actions.PlayLinkRules.IsWebUrl(url)) return;
-        if (Actions.Services.OpenExternal is { } open) { open(url); return; }
-        InputHooks.Current.Default.OpenUri?.Invoke(url);
-    }
-
     // ══ 7. THE LOGOUT CONFIRM (ch 19 W8 — off-ladder on purpose) ══════════════════════════════════════════════════
 
     /// <summary>A bare Modal card, NOT a ContentDialog: no title band, no separator, no command-row fill (`Dialog.LogoutConfirm`
@@ -612,7 +604,7 @@ public static partial class Shell
                 Status = line,
                 CanPlay = canPlay,
                 OffersBrowser = Actions.PlayLinkRules.IsWebUrl(escape),
-                OpenInBrowser = () => OpenWeb(escape),
+                OpenInBrowser = () => OpenBrowser(escape),
                 Cancel = close,
                 Submit = Submit,
             });

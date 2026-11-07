@@ -73,10 +73,15 @@ public static partial class Controls
     /// <inheritdoc cref="LibrarySeam"/>
     public static LibrarySeam? Library { get; set; }
 
-    /// <summary>An entity uri → the app's route key ("pl:…", "album:…", "artist:…", "liked", "module:…"). Owner I's
-    /// route table installs it; null leaves every rich-text anchor STYLED but inert, which is the honest degradation —
-    /// a link to a route nothing renders is worse than a link that does not click.</summary>
+    /// <summary>A link (a <c>spotify:</c> uri, an <c>open.spotify.com</c> link, a <c>wavee://open</c> verb) → the app's route
+    /// key ("pl:…", "album:…", "artist:…", "liked", "module:…"), handed to the anchor's own <c>onNavRoute</c>. The shell's
+    /// link door installs it (<c>Shell.RouteKeyOfLink</c>, App.cs).</summary>
     public static Func<string, string?>? RouteForUri { get; set; }
+
+    /// <summary>A link with no route the anchor's <c>onNavRoute</c> can take → its click (a track plays, an external page
+    /// opens in the browser), or null when the link door refuses it. The shell's link door installs it (App.cs). Null, or a
+    /// refused link, leaves the anchor STYLED but inert, which is the honest degradation.</summary>
+    public static Func<string, Action?>? LinkOpener { get; set; }
 
     /// <summary>The album → prerelease hop (extension kind 138). The collection write only accepts the
     /// <c>spotify:prerelease:</c> entity and a card usually only knows the album, so <see cref="PreSaveButton"/> costs

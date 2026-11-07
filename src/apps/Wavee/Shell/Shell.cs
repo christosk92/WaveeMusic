@@ -618,6 +618,11 @@ public static partial class Shell
         // it cuts at the first NUL (privacy-diagnostics audit #16, G10).
         int nul = uriOrUrl.IndexOf('\0');
         if (nul >= 0) uriOrUrl = uriOrUrl[..nul];
+
+        // A Spotify entity in either spelling (`spotify:album:…`, `https://open.spotify.com/intl-de/album/…?si=…`): the
+        // opt-in `spotify:` handler, a toast, a pasted link and an in-app link click share ONE path with `wavee://`.
+        if (TryEntityOfLink(uriOrUrl, out string entity)) return EntityVerb(entity, developerMode);
+
         if (!TryParseVerb(uriOrUrl, out string name, out string route, out string arg, out string ctx, out string link, out string query))
             return default;
 
@@ -669,10 +674,6 @@ public static partial class Shell
     {
         name = route = arg = ctx = link = query = "";
         if (raw.IsWhiteSpace()) return false;
-
-        // A bare `spotify:` entity uri, so the opt-in `spotify:` handler shares ONE activation path with `wavee://`.
-        if (TryParseSpotifyUri(raw, out name, out route, out arg, out ctx)) return true;
-
         if (!TryExtractUri(raw, out string text)) return false;
         if (!Uri.TryCreate(text, UriKind.Absolute, out Uri? uri)) return false;
         if (!string.Equals(uri.Scheme, "wavee", StringComparison.OrdinalIgnoreCase)) return false;
@@ -690,53 +691,68 @@ public static partial class Shell
         return true;
     }
 
-    /// <summary>A bare Spotify entity uri. Pages become an OPEN on the shell's own route names; a PLAYABLE track
-    /// becomes a PLAY — which is what clicking a shared link to one means, and gating it on Track alone is why a
-    /// shared track link fell through to "route is null ⇒ refuse" and did nothing at all. An episode is now an OPEN
-    /// too (decision D-2, podcast plan §12): a shared episode link lands on the episode page, whose primary is one
-    /// click from playing, rather than starting playback the instant the link is followed. A <c>spotify:user:&lt;id&gt;</c>
-    /// opens that person's profile page (#161). Everything else (concerts, search links,
-    /// <c>https://open.spotify.com/…</c> web links) is refused, not guessed at.</summary>
-    static bool TryParseSpotifyUri(ReadOnlySpan<char> raw, out string name, out string route, out string arg, out string ctx)
+    /// <summary>A Spotify entity, as the verb following its link means. Pages become an OPEN through <see cref="For"/> (the ONE
+    /// entity → route composer, so a link, a menu and a sidebar row mint the same key); a PLAYABLE track becomes a PLAY,
+    /// which is what clicking a shared link to one means (a track has no page). An episode is an OPEN (decision D-2,
+    /// podcast plan §12): a shared episode link lands on the episode page, one click from playing. A user opens that
+    /// person's profile (#161), a concert its concert page, any Liked spelling Liked Songs. A kind no page renders (a
+    /// search, a genre) is refused here; <see cref="ResolveLink"/> then hands an https one to the browser.</summary>
+    static DeepLinkVerb EntityVerb(string uriText, bool developerMode)
     {
-        name = route = arg = ctx = "";
+        if (EntityUri.KindOf(uriText) is EntityKind.Track) return new DeepLinkVerb(DeepLinkKind.Play, default, Context: uriText);
+        var r = For(EntityUri.Parse(uriText));
+        return !r.IsNone && IsKnown(r, developerMode) ? new DeepLinkVerb(DeepLinkKind.Open, r) : default;
+    }
+
+    /// <summary>THE Spotify link parser: <c>spotify:&lt;kind&gt;:&lt;id&gt;</c>, or an <c>open.spotify.com</c> /
+    /// <c>play.spotify.com</c> web link (an <c>intl-xx</c> locale segment, an <c>embed</c> segment, a query such as
+    /// <c>?si=…</c>, a fragment and a trailing path such as <c>/discography/all</c> are all ignored) → the canonical
+    /// <c>spotify:</c> uri. The SHAPE is this parser's business; WHICH entity the uri addresses is EntityUri's, so an
+    /// unknown kind still answers true (and is refused by <see cref="EntityVerb"/>). The scheme and the kind are
+    /// lower-cased; the id stays verbatim (base62 IS case-sensitive). A <c>spotify:</c> uri must be exactly
+    /// <c>spotify:&lt;kind&gt;:&lt;id&gt;</c>: the nested spellings are refused rather than guessed at.</summary>
+    public static bool TryEntityOfLink(ReadOnlySpan<char> raw, out string uriText)
+    {
+        uriText = "";
         ReadOnlySpan<char> s = raw.Trim();
         if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') s = s[1..^1].Trim();
-        if (!s.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase)) return false;
-
-        // spotify:<kind>:<id> — reject the nested/extra-segment forms rather than guessing.
-        ReadOnlySpan<char> rest = s["spotify:".Length..];
-        int colon = rest.IndexOf(':');
-        if (colon <= 0 || colon + 1 >= rest.Length) return false;
-        ReadOnlySpan<char> kind = rest[..colon];
-        ReadOnlySpan<char> id = rest[(colon + 1)..];
-        if (id.IndexOf(':') >= 0 || id.IndexOfAny(' ', '\t', '"') >= 0) return false;
-
-        // The SHAPE is this parser's business; WHICH entity it addresses is EntityUri's. Lower-case the scheme and the
-        // kind (the id stays verbatim — base62 IS case-sensitive).
-        string uriText = string.Concat("spotify:", kind.ToString().ToLowerInvariant(), ":", id.ToString());
-        var entityKind = EntityUri.KindOf(uriText);
-        if (entityKind is EntityKind.Track)
+        if (s.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase))
         {
-            name = "play";
-            ctx = uriText;
+            ReadOnlySpan<char> rest = s["spotify:".Length..];
+            int colon = rest.IndexOf(':');
+            if (colon <= 0 || colon + 1 >= rest.Length) return false;
+            ReadOnlySpan<char> kind = rest[..colon], id = rest[(colon + 1)..];
+            if (!IsLinkId(id)) return false;
+            uriText = string.Concat("spotify:", kind.ToString().ToLowerInvariant(), ":", id.ToString());
             return true;
         }
-        route = entityKind switch
-        {
-            EntityKind.Album => "album",
-            EntityKind.Playlist => "pl",
-            EntityKind.Artist => "artist",
-            EntityKind.Show => "show",
-            EntityKind.Episode => "episode",
-            EntityKind.User => "user",
-            _ => "",
-        };
-        if (route.Length == 0) return false;
-        name = "open";
-        arg = uriText;
+        if (s.Length > MaxLinkChars || !s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!Uri.TryCreate(s.ToString(), UriKind.Absolute, out Uri? web)
+            || (web.Scheme != Uri.UriSchemeHttps && web.Scheme != Uri.UriSchemeHttp)
+            || !(web.Host.Equals("open.spotify.com", StringComparison.OrdinalIgnoreCase)
+                 || web.Host.Equals("play.spotify.com", StringComparison.OrdinalIgnoreCase))) return false;
+
+        string[] seg = web.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int i = 0;
+        if (i < seg.Length && seg[i].StartsWith("intl-", StringComparison.OrdinalIgnoreCase)) i++;
+        if (i < seg.Length && seg[i].StartsWith("embed", StringComparison.OrdinalIgnoreCase)) i++;   // embed, embed-podcast
+        if (seg.Length - i < 2) return false;
+        string head = seg[i].ToLowerInvariant();
+        // /user/<u>/playlist/<id>: the legacy user-namespaced playlist — the playlist is the destination.
+        if (head == "user" && seg.Length - i >= 4 && seg[i + 2].Equals("playlist", StringComparison.OrdinalIgnoreCase))
+            (head, i) = ("playlist", i + 2);
+        string id2 = Uri.UnescapeDataString(seg[i + 1]);
+        if (head.Length == 0 || !IsLinkId(id2)) return false;
+        for (int k = 0; k < head.Length; k++) if (head[k] is not (>= 'a' and <= 'z' or '-')) return false;
+        uriText = string.Concat("spotify:", head, ":", id2);
         return true;
     }
+
+    /// <summary>A link is user content (a description, a feed row): a parse past this length is refused, not attempted.</summary>
+    const int MaxLinkChars = 2048;
+
+    static bool IsLinkId(ReadOnlySpan<char> id)
+        => id.Length is > 0 and <= 256 && id.IndexOfAny(':', '"', '/') < 0 && !id.ContainsAnyInRange('\u0000', ' ');
 
     static bool TryExtractUri(ReadOnlySpan<char> raw, out string uri)
     {

@@ -964,12 +964,8 @@ public static partial class Controls
             ushort w = (ushort)(bold > 0 ? 700 : 0);
             if (href is { } h && onNavRoute is not null && RouteForUri?.Invoke(h) is { } key)
                 spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () => onNavRoute(key)));
-            else if (href is { } url && Actions.PlayLinkRules.IsWebUrl(url))
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () =>
-                {
-                    if (Actions.Services.OpenExternal is { } open) open(url);
-                    else InputHooks.Current.Default.OpenUri?.Invoke(url);
-                }));
+            else if (href is { } url && LinkOpener?.Invoke(url) is { } open)
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: open));   // the link door: a track plays, a web page opens
             else if (href is not null)
                 spans.Add(new TextSpan(t, Weight: w, Color: linkColor));   // a reference we cannot route → styled, inert
             else

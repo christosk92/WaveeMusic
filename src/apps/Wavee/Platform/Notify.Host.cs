@@ -328,13 +328,17 @@ public static partial class Notify
     }
 
     /// <summary>The <c>wavee://</c> a social banner's click follows, composed through the ROUTE TABLE rather than by
-    /// escaping the raw action uri into <c>route=</c>.</summary>
+    /// escaping the raw action uri into <c>route=</c>. The target goes through the link door's resolver, the one the in-app
+    /// row's click takes, so an <c>https://open.spotify.com/…</c> target routes like a <c>spotify:</c> one.</summary>
     static string? LaunchForSocial(in Notification n)
     {
-        if (n.ActionType != SocialActionType.Navigate || n.ActionUri is not { Length: > 0 } uri) return null;
-        var route = Shell.For(EntityUri.Parse(uri));
-        if (route.Kind == Shell.RouteKind.NotFound) return null;
-        return "wavee://open?route=" + Uri.EscapeDataString(Shell.NameOf(route));
+        var target = Shell.ResolveLink(n.ActionUri);
+        return target.Action switch
+        {
+            Shell.LinkAction.Open => "wavee://open?route=" + Uri.EscapeDataString(Shell.NameOf(target.Route)),
+            Shell.LinkAction.Play => "wavee://play?ctx=" + Uri.EscapeDataString(target.Target),
+            _ => null,
+        };
     }
 
     static string TagFor(in Notification n) => TagIds.Clamp("live:", n.Id);
