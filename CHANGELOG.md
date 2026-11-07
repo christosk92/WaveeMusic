@@ -113,6 +113,10 @@ versions separately under `v*` and is not tracked in this file.)
   with Retry. The log names the page and what it was waiting for (`page.stuck`).
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
+- **No empty band under an artist's concerts, merch or gallery.** On the artist page, "Upcoming concerts" left about
+  170 px of empty space under its date cards, and the gallery about 70, because their rows were sized for album
+  covers. Each row is now as tall as its own cards, in every theme. Merch cards all share one height, so a two-line
+  name no longer runs past the row.
 
 ### Security
 

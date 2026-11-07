@@ -165,6 +165,13 @@ public static class WinUiArtistRules
     public const float StubDateW = 44f, StubDaySize = 20f, StubDayLine = 28f, StubTextGap = 2f, StubVenueSize = 14f, StubVenueLine = 20f, StubPinGap = 4f,
         StubPinSize = 12f, StubCitySize = 12f, StubCityLine = 16f;
 
+    /// <summary>The stub's height, the one its shelf reserves: the date lane (the eyebrow's 16 line over the day's 28) inside the card's 12 padding.</summary>
+    public const float StubH = 68f;
+
+    /// <summary>A merch card's text: the name's two lines and the price's one, each on the body 20 line (the card's height and its shelf's extent).</summary>
+    public const float MerchLine = 20f;
+    public const int MerchNameLines = 2;
+
     // ── the skeleton ──
 
     /// <summary>The loading page's reserved bones: the overview's rows and the preview's cards.</summary>

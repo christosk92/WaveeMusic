@@ -291,6 +291,10 @@ public static class ZuneArtistRules
     /// <summary>The merch card's gap and padding.</summary>
     public const float MerchGap = 8f, MerchPad = 8f;
 
+    /// <summary>A merch card's text: the name's two lines and the price's one, each on the 13 voice's 18 line (the card's height and its shelf's extent).</summary>
+    public const float MerchLine = 18f;
+    public const int MerchNameLines = 2;
+
     /// <summary>The concert stub: its height and its date column.</summary>
     public const float StubH = 64f, StubDateW = 48f;
 
