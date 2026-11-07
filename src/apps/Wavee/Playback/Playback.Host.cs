@@ -400,6 +400,7 @@ public static partial class Playback
     /// never re-enter itself from an effect.</para></summary>
     public static void Post(in Input i)
     {
+        if (i.Kind is InputKind.Next or InputKind.Prev) Crash.Trail.Note(Crash.AppTrail.TrackSkip, i.Kind == InputKind.Next ? 1 : -1);
         bool wake;
         lock (s_gate)
         {

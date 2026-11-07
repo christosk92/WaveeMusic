@@ -858,7 +858,7 @@ public static partial class Diagnostics
         string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false, bool StageWindowed = false, bool MemSoakPlay = false)
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
-        static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
+        static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "native-keypath", "failfast-keypath", "hang", "boot"];
 
         /// <summary>A GUI arm that wants the parent console (every one of them is a CLI-launched GUI run).</summary>
         public bool WantsConsole => PerfBench || StartupBench || LyricsAdvance || MenuBench || MemSoak || CrashProbe.Length > 0;

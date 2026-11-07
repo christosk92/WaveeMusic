@@ -745,6 +745,44 @@ function Invoke-SymbolsUpload {
     [pscustomobject]@{ Uploaded = $true; Key = $key; Reason = '' }
 }
 
+function Invoke-SymbolsBinariesUpload {
+    <#
+    .SYNOPSIS
+      Upload one architecture's Wavee.exe and its symbols zip (Wavee.pdb + Wavee.map.xml) to R2 beside the .symmap, so a
+      crash dump from that release opens in WinDbg/cdb with full names and the exe's unwind data.
+    .DESCRIPTION
+      Keys: symbols/<quad>/win-<arch>/Wavee.exe and symbols/<quad>/win-<arch>/<the zip's own name>. The zip, not the bare
+      PDB: it is about a third of the size (a NativeAOT Wavee.pdb is ~170-190 MB) and well under wrangler's per-object put
+      limit. The symbols/ prefix has no lifecycle rule (ops/crash/README.md step 3), so these outlive the 90-day reports.
+      Fetching them for a dump: docs/guide/crash-diagnostics.md, "Opening a dump in WinDbg".
+    .OUTPUTS
+      pscustomobject @{ Uploaded = [bool]; Keys = [string[]]; Reason = [string] }
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$ExePath,
+        [Parameter(Mandatory = $true)][string]$SymbolsZip,
+        [Parameter(Mandatory = $true)][string]$Quad,
+        [Parameter(Mandatory = $true)][string]$Arch,
+        [string]$Wrangler = '',
+        [string]$Bucket = 'wavee-crash',
+        [switch]$Skip,
+        [string]$SkipReason = 'nothing will be uploaded')
+
+    $prefix = "symbols/$Quad/win-$Arch"
+    $keys = @("$prefix/Wavee.exe", "$prefix/$(Split-Path -Leaf $SymbolsZip)")
+    if ($Skip) {
+        return [pscustomobject]@{ Uploaded = $false; Keys = $keys; Reason = $SkipReason }
+    }
+    if (-not $Wrangler) { throw 'Invoke-SymbolsBinariesUpload: -Wrangler <the crash Worker''s wrangler.cmd, see Get-WranglerPath> is required unless -Skip' }
+    if (-not (Test-Path -LiteralPath $ExePath)) { throw "Invoke-SymbolsBinariesUpload: executable not found: $ExePath" }
+    if (-not (Test-Path -LiteralPath $SymbolsZip)) { throw "Invoke-SymbolsBinariesUpload: symbols zip not found: $SymbolsZip" }
+
+    Invoke-Native $Wrangler @('r2', 'object', 'put', "$Bucket/$($keys[0])", '--file', $ExePath, '--remote') | Out-Null
+    Invoke-Native $Wrangler @('r2', 'object', 'put', "$Bucket/$($keys[1])", '--file', $SymbolsZip, '--remote') | Out-Null
+    [pscustomobject]@{ Uploaded = $true; Keys = $keys; Reason = '' }
+}
+
 function Publish-WaveeSymbolMap {
     <#
     .SYNOPSIS
@@ -756,8 +794,9 @@ function Publish-WaveeSymbolMap {
          -ExePath: that file is used as-is and never touched.
       3. dotnet run --project <ReleaseToolProject> -c Release -- symbol-map --pdb --exe --out <SymbolsDir>\Wavee.symmap
       4. Invoke-SymbolsUpload -Wrangler (skipped under -SkipUpload, which then needs no -Wrangler).
+      5. Invoke-SymbolsBinariesUpload: the same Wavee.exe and -SymbolsZip beside it (when -SymbolsZip exists), for WinDbg.
     .OUTPUTS
-      pscustomobject @{ Symmap; Key; Uploaded; Reason; Bytes }
+      pscustomobject @{ Symmap; Key; Uploaded; Reason; Bytes; BinaryKeys; BinariesUploaded }
     #>
     [CmdletBinding(DefaultParameterSetName = 'Msix')]
     param(
@@ -805,6 +844,12 @@ function Publish-WaveeSymbolMap {
         if (Test-Path -LiteralPath $symmap) { Remove-Item -LiteralPath $symmap -Force }
         Invoke-Native 'dotnet' @('run', '--project', $ReleaseToolProject, '-c', 'Release', '--',
             'symbol-map', '--pdb', $pdb, '--exe', $exe, '--out', $symmap) | Out-Null
+        # The exe and the PDB themselves, beside the .symmap (inside the try: an extracted exe is removed in the finally).
+        $binaries = $null
+        if ($SymbolsZip -and (Test-Path -LiteralPath $SymbolsZip)) {
+            $binaries = Invoke-SymbolsBinariesUpload -ExePath $exe -SymbolsZip $SymbolsZip -Quad $Quad -Arch $Arch `
+                -Wrangler $Wrangler -Bucket $Bucket -Skip:$SkipUpload -SkipReason $SkipReason
+        }
     }
     finally {
         if ($extracted) { Remove-Item -LiteralPath $extracted -Force -ErrorAction SilentlyContinue }
@@ -819,6 +864,8 @@ function Publish-WaveeSymbolMap {
         Uploaded = $upload.Uploaded
         Reason   = $upload.Reason
         Bytes    = (Get-Item -LiteralPath $symmap).Length
+        BinaryKeys = if ($binaries) { $binaries.Keys } else { @() }
+        BinariesUploaded = [bool]($binaries -and $binaries.Uploaded)
     }
 }
 
