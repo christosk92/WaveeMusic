@@ -593,6 +593,14 @@ public static partial class Detail
         readonly Action _republishAccent;
         readonly Func<bool> _railPending;
 
+        // ── THE STUCK-PAGE WATCH (Page.Stuck.cs) over the header gate (Identity.HeaderPending): a head that never lands is re-asked once, then the
+        //    page shows the error vacancy with Retry instead of shimmering for the life of the route ──
+        readonly PageStuckWatch _stuck = new();
+        TimerHandle _stuckTimer;
+        long _stuckKey;
+        bool _stuckShown;
+        readonly Action _stuckFire, _stuckRetry, _stuckReask;
+
         // trampolines into _latest
         readonly Action _tShuffle, _tCoverClick, _tGoLibrary, _tInvite, _tTune;
         readonly Func<ContextMenuModel?> _tMore;
@@ -636,6 +644,18 @@ public static partial class Detail
             _republishAccent = RepublishAccent;
             _pageEstimate = PageEstimate;
             _railPending = () => _spec.Value?.Identity.HeaderPending ?? true;
+            _stuckReask = () => { if (_latest is { } live) PageStuckWatch.ReaskHeader(live.Identity.Subject); };
+            _stuckFire = () =>
+            {
+                if (_latest is not { } live) return;
+                _stuck.Fire(_stuckKey, _stuckShown, _stuckShown ? PageStuckWatch.HeaderProbe(live.Identity.Subject) : default, live.RouteKey,
+                    _stuckReask, _stuckTimer);
+            };
+            _stuckRetry = () =>
+            {
+                _stuck.Reset();
+                _stuckReask();
+            };
 
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
             _tCoverClick = () => _latest?.Actions.CoverClick?.Invoke();
@@ -724,6 +744,20 @@ public static partial class Detail
             var spec = _latest!;                                // …and the newest delegates
             var id = spec.Identity;
             var cfg = spec.Config;
+
+            // The stuck-page watch (Page.Stuck.cs): armed while the head shimmers, re-armed on each of its own steps and wakes; once it gives up
+            // the page is the error vacancy with Retry (the Retry re-asks the head and watches again).
+            _stuckKey = PageStuckWatch.KeyOf(id.Subject.GetHashCode(), Entities.ScopeEpoch.Peek());
+            _stuckShown = id.HeaderPending && PageStuckWatch.HeaderGroup(id.Subject.Kind) != 0;
+            byte stuckStage = _stuck.StageOf(_stuckKey);
+            _stuckTimer = UseTimeout(_stuckFire, PageStuckWatch.WaitMs,
+                DepKey.From((int)_stuckKey, (int)(_stuckKey >> 32), stuckStage | (_stuckShown ? 0x100 : 0), (int)_stuck.Wake));
+            if (stuckStage == PageStuckWatch.GaveUp)
+                return Ctx.Provide(AsideDocked, false, new BoxEl
+                {
+                    Key = "detail-stuck", Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                    Children = [Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _stuckRetry)],
+                });
 
             // ── the structure's decision (the page layout, the rails' uniformity: a tracked read of the published policy) and the rail epoch
             //    (each write to a rail's remembered size subscribes it, then re-reads the store) ──

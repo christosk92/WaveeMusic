@@ -15,6 +15,13 @@ versions separately under `v*` and is not tracked in this file.)
 - **Album credits in Zune.** An album page names who wrote, produced and played on the record, gathered from its
   songs' credits, and "all credits" opens the full list grouped by role. The song credits sheet, which showed only its
   title in Zune and WinUI, lists everyone again.
+- **Storage & cache shows the AI models.** The models that time lyrics word by word on this PC (around a gigabyte
+  per language once compiled for the NPU) now count in the "On this PC" total, with their own colour in the bar
+  and a row that says how many languages are installed, opens their folder and removes them after asking. Removing
+  them stops a lyrics job in progress safely, and the Lyrics settings can download them again. When none are
+  downloaded the row shows 0 B and says where to get them.
+- **Storage & cache counts the rest of Wavee's data.** A new "Other app data" row covers the lyrics cache, crash
+  reports, What's new, podcast transcripts and modules, so the total matches what Wavee keeps on this PC.
 
 ### Changed
 
@@ -83,6 +90,13 @@ versions separately under `v*` and is not tracked in this file.)
   first letter whole, and its focus ring and edit underline sit where they belong.
 - **Pages settle without jumping.** A show's header grows smoothly as its details load instead of dropping the episode
   list in one step, and the Zune band keeps its place until the next page has landed.
+- **Artist pages no longer load forever.** An artist page could stay on its grey placeholders for good, most often
+  when you opened the artist of the song that was playing: its top tracks arrived last and the page never noticed.
+  It now shows as soon as everything has arrived, and an artist whose details stopped coming shows "Something went
+  wrong" with Retry instead of loading forever.
+- **No page waits forever.** If an artist, album, playlist, show or episode page is still loading after a few
+  seconds with nothing on its way, Wavee asks again once, and if that does not help it shows "Something went wrong"
+  with Retry. The log names the page and what it was waiting for (`page.stuck`).
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
 

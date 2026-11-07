@@ -510,7 +510,8 @@ HEADER away (title, description and owner unknown, Identity not known; the cover
 pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
 rating or cover; its rows stay), and `state kind=head-land` puts them back on the same page, so `state kind=head-land trace=40 prefix=...` traces the head landing
-in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). A `state` with `trace=N` (or `settle=false`) runs no frames before its
+in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). An **artist** uri (`ar3`) stages the late chart instead: everything is
+known but the charted rows' fields, asked and in flight (the page on its skeleton); `head-land` lands them as an answer does, and nothing else moves. A `state` with `trace=N` (or `settle=false`) runs no frames before its
 trace, so the trace starts on the frame the state lands. Its verdict judges that landing frame too: the watched nodes are sampled once
 before it (the reply's `baseline` row, frame -1) and f0 is compared with them, so a jump in the landing frame counts as moved at once.
 `baseline=false` turns that off; `baseline=true` turns it on for another verb's `trace=N`. Pass `trace=N` on a `state` command to trace its
