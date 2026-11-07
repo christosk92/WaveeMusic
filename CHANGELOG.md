@@ -127,8 +127,8 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Security
 
-- **Built on .NET 10.0.14.** Wavee carries its own .NET runtime, and this release ships the one that fixes an
-  out-of-bounds write in the Brotli decoder (CVE-2026-111497).
+- **Built on .NET 11.** Wavee carries its own .NET runtime, and this release moves it to .NET 11 (release candidate 3),
+  which also fixes an out-of-bounds write in the Brotli decoder (CVE-2026-111497).
 
 ## [0.3.7] - 2026-10-26
 

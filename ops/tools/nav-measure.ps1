@@ -1,6 +1,6 @@
 param(
     [string]$Repo = "C:\wavee\waveemusic",
-    [string]$Exe = "C:\wavee\waveemusic\src\apps\Wavee\bin\Release\net10.0\Wavee.exe",
+    [string]$Exe = "C:\wavee\waveemusic\src\apps\Wavee\bin\Release\net11.0\Wavee.exe",
     [int]$SettleSeconds = 7
 )
 $ErrorActionPreference = "Stop"

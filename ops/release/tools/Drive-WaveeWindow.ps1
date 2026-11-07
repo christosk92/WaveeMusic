@@ -39,7 +39,7 @@ public static class D {
 '@
 [void][D]::SetProcessDpiAwarenessContext([IntPtr](-4))
 if ($Wait -gt 0) { Start-Sleep -Milliseconds $Wait }
-$exe = 'C:\wavee\WaveeMusic\src\apps\Wavee\bin\Debug\net10.0\Wavee.exe'
+$exe = 'C:\wavee\WaveeMusic\src\apps\Wavee\bin\Debug\net11.0\Wavee.exe'
 if ($Link) { Start-Process -FilePath $exe -ArgumentList $Link -WorkingDirectory (Split-Path $exe) | Out-Null; "linked $Link"; Start-Sleep -Milliseconds 1500 }
 $p = Get-Process Wavee -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
 if (-not $p) { throw 'no Wavee window' }

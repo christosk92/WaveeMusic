@@ -134,7 +134,7 @@ function Get-ScrollLatencyArch {
 function Resolve-DefaultTarget {
     param([string]$RepoRoot)
     $arch = Get-ScrollLatencyArch
-    $release = Join-Path $RepoRoot "src\apps\Wavee\bin\Release\net10.0\win-$arch\publish\Wavee.exe"
+    $release = Join-Path $RepoRoot "src\apps\Wavee\bin\Release\net11.0\win-$arch\publish\Wavee.exe"
     $diag = Join-Path $RepoRoot "src\apps\Wavee\bin\publish-aot-diag\win-$arch\Wavee.exe"
     if (Test-Path $release) { return $release }
     if (Test-Path $diag) { return $diag }

@@ -100,7 +100,7 @@ $scriptName = [IO.Path]::GetFileNameWithoutExtension($scriptPath)
 
 # -- the exe ------------------------------------------------------------------------------------------------------------
 if (-not $Exe) {
-    $binRoot = Join-Path $repoRoot ('src\apps\Wavee\bin\' + $Configuration + '\net10.0')
+    $binRoot = Join-Path $repoRoot ('src\apps\Wavee\bin\' + $Configuration + '\net11.0')
     foreach ($leaf in @('Wavee.exe', 'win-arm64\Wavee.exe', 'win-x64\Wavee.exe')) {
         $candidate = Join-Path $binRoot $leaf
         if (Test-Path -LiteralPath $candidate) { $Exe = $candidate; break }

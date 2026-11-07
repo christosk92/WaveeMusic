@@ -12,7 +12,7 @@ The server code is in `src/apps/Wavee/Screens/Diagnostics.Inspect*.cs`, and the 
 ```powershell
 # from WaveeMusic\, after `dotnet build src/apps/Wavee/Wavee.csproj`
 python -I tools/inspect.py -c "mount w=400 h=860 theme=zune" -c "tiers"     # the client starts and stops the server
-src\apps\Wavee\bin\Debug\net10.0-windows10.0.26100.0\Wavee.exe --inspect      # or talk to it yourself on stdin/stdout
+src\apps\Wavee\bin\Debug\net11.0\Wavee.exe --inspect      # or talk to it yourself on stdin/stdout
 Wavee.exe --inspect --pipe wavee-inspect                                      # or over \\.\pipe\wavee-inspect
 ```
 
