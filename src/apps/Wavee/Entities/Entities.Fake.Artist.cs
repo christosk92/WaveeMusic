@@ -61,7 +61,13 @@ public static partial class Entities
             ? facet switch { DiscoFacet.Singles => 320, DiscoFacet.Compilations => 12, _ => 64 }
             : facet switch { DiscoFacet.Singles => 3, DiscoFacet.Compilations => 1, _ => 2 };
 
-        public static int ChartCount(int artist) => artist == Showcase ? 10 : 5;
+        /// <summary>Two overview shapes with a ten-row chart (the WinUI overview's Popular fills its column, owner 2026-11-07): <see cref="DiscographyOnly"/> holds
+        /// Discography alone beside Popular (no latest release, no pick: the columns stand balanced at five rows); <see cref="TallSide"/> stacks the latest
+        /// release, Discography and the pick (the side column runs well past five rows, so Popular takes more).</summary>
+        public const int DiscographyOnly = 4, TallSide = 6;
+
+        public static int ChartCount(int artist) => artist is Showcase or DiscographyOnly or TallSide ? 10 : 5;
+        public static bool HasLatest(int i) => i != DiscographyOnly;
         public static bool HasPick(int i) => i != 2 && (i % 3 != 1 || i == Showcase);
         public static bool HasUpcoming(int i) => i is Showcase or 7;
         public static bool HasVideos(int i) => i % 5 != 2 || i == Showcase;
@@ -220,7 +226,7 @@ public static partial class Entities
             int n = ArtistText.Lead(Utf8(bio), lead);
             row.BioLead = n > 0 ? s.AddText(lead[..n]) : default;
 
-            row.LatestUri = Id(s, LatestUri(i));
+            if (HasLatest(i)) row.LatestUri = Id(s, LatestUri(i));
             if (HasPick(i))
             {
                 string pickUri = LatestUri(i);

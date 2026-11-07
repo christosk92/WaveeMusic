@@ -47,13 +47,17 @@ public readonly partial struct Artist
     /// <summary>The Top-tracks chart for <paramref name="a"/>. <paramref name="accent"/> is the page's WATCHED chrome
     /// accent (a grading landing re-tints the header rule and the selection pills in place). The page waits for the
     /// chart in <see cref="ArtistReadiness.BodyReady"/>, so this inner region does not join a page-level skeleton
-    /// group (that coordination faded the hero from 0 after the photo was already decoded).</summary>
-    internal static Element Chart(Artist a, IReadSignal<ColorF> accent, object? group = null)
-        => Embed.Comp(new ChartProps(a, accent, group), static () => new ChartHost());
+    /// group (that coordination faded the hero from 0 after the photo was already decoded).
+    /// <para><paramref name="rows"/>: a structure's LIVE rows per column, over the tier's (<see cref="Wavee.Theming.ArtistTierPolicy.ChartRows"/>); 0 or
+    /// null keeps the tier's. A structure whose chart stands beside a taller column lets the chart take as many rows as fill it (WinUI's two-column
+    /// overview); the pager's pages follow it, and the mounted shelf re-fits in place (a live prop, never a key).</para></summary>
+    internal static Element Chart(Artist a, IReadSignal<ColorF> accent, object? group = null, IReadSignal<int>? rows = null)
+        => Embed.Comp(new ChartProps(a, accent, group, rows), static () => new ChartHost());
 
-    sealed record ChartProps(Artist A, IReadSignal<ColorF> Accent, object? Group)
+    sealed record ChartProps(Artist A, IReadSignal<ColorF> Accent, object? Group, IReadSignal<int>? Rows)
     {
-        public bool Equals(ChartProps? o) => o is not null && o.A == A && ReferenceEquals(o.Accent, Accent) && Equals(o.Group, Group);
+        public bool Equals(ChartProps? o) => o is not null && o.A == A && ReferenceEquals(o.Accent, Accent) && Equals(o.Group, Group)
+            && ReferenceEquals(o.Rows, Rows);
         public override int GetHashCode() => A.Slot;
     }
 
@@ -213,7 +217,8 @@ public readonly partial struct Artist
             _failed = !_ready && ChartFailedNow(scope);
             NoteGate(scope);
             _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
-            _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
+            int fit = p.Rows?.Value ?? 0;   // the structure's live fit to its column (0: the tier's)
+            _rows = fit > 0 ? fit : Math.Max(1, chartTiers.ChartRows(tierFacts));
             _balanced = _maxColumns >= 2 && chartTiers.ChartBalanced(tierFacts);
             RefreshItems();
             Selection.ItemCount = _items.Length;

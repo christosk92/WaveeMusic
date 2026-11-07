@@ -113,6 +113,10 @@ public static class WinUiArtistRules
 
     /// <summary>The page width from which the overview is two columns (and below which it stacks), the gap between columns, their weights, and the vertical gap
     /// between the overview's blocks and between sections.</summary>
+    /// <summary>The most rows Popular takes beside a taller side column (the two-column overview fits its rows to the side column's height; the tier's five
+    /// is the floor). Ten: the popular list Spotify sends (owner 2026-11-07).</summary>
+    public const int PopularFitMaxRows = 10;
+
     public const float TwoColumnFrom = 1100f, ColumnGap = 36f, HugeColumnGap = 48f, ColumnHold = 24f, PopularGrow = 1.2f, OtherGrow = 1f, BlockGap = 12f, SectionGap = 32f;
 
     /// <summary>The air under the pivot before the overview, and the dock's extra under the last section.</summary>
