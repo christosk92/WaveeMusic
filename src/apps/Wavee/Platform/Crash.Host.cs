@@ -199,6 +199,10 @@ public static partial class Crash
             }
             catch (Exception ex) { Log.Warn("crash", "crash.context.capture.failed", ex); }
 
+            // BEFORE the child: it opens this file at start-up so the runtime's fatal text outlives this process.
+            string fatalText = FatalText.Capture(logFolder);
+            Log.Event(WaveeLogLevel.Info, "crash", "crash.stderr", fatalText, null, -1, null);
+
             SpawnChild(logFolder, logBasePath);
 
             NativeHook.OnForeignFault = static (code, ptrs) => RequestDumpCore(Kind.Native, ptrs, code);

@@ -38,7 +38,8 @@
 │ UI thread: posted heartbeat every 2 s; first-frame witness; modal/exiting bits │
 │ managed crash ─► AppDomain.UnhandledException ─┐                                │
 │ native AV     ─► VEH, filter as fallback ──────┼─► Crash.Host.RequestDump(kind) │
-│ FailFast / stack overflow: no hook — the child reads the exit code             │
+│ FailFast / stack overflow: no hook — the child reads the exit code, and the    │
+│   runtime's stderr text from crash\fatal-<pid>.txt (Crash.FatalText)           │
 └───────────────────────────────┬────────────────────────────────────────────────┘
                                 │ stdin pipe (beats, requests) + parent handle
 ┌────────────────────── Wavee.exe --crash-handler (child) ──────────────────────┐
@@ -67,6 +68,26 @@ carries), `Hang` (the watchdog gives up
 on the heartbeat), `ExitCode` (fail-fast, a runtime fatal error, a stack overflow — nothing to hook, so
 the handler infers it from the parent's exit code), and `UncleanExit` (Task Manager or the OS killed the
 process — never prompts, just gets listed as "Closed"). `ExitCode 0` writes nothing.
+
+**What an `ExitCode` report can still say.** A fail-fast skips every hook, but the runtime writes its reason to
+stderr first. When nothing listens to Wavee's stderr (a Store or Start-menu launch: null or NUL), `Crash.Host.Install`
+points it at `crash\fatal-<pid>.txt` (`Crash.FatalText`; delete-on-close, held open by the child, so it never goes
+stale), and the child appends its tail to `report.txt` under `stderr (…)`, with any `Wavee!<BaseAddress>+0x…` frames
+of the last trace in `rvas`. A console, a pipe or a `2>` redirect is left alone. What the exit code and the text mean
+in a NativeAOT build:
+
+| Exit code | stderr | Cause |
+|---|---|---|
+| `0xC0000409` | `Process terminated.` / `Unhandled exception.` + frames | managed fail-fast: `Environment.FailFast`, an unhandled exception whose handler never ran, a non-null AV in managed code |
+| `0xC0000602` | `Fatal error. Invalid Program: attempted to call a UnmanagedCallersOnly method from managed code.` | a reverse P/Invoke entered on a thread already in managed code, e.g. a first-chance **VEH written in C#** (`AddVectoredExceptionHandler(1, …)`) seeing a null dereference in managed code, or the crash hook's own last-chance VEH seeing a fault in runtime/GC code |
+| `0xC0000602` | nothing | one of the runtime's silent `RhFailFast` sites: managed code entered on a thread whose runtime state was already torn down (thread exit), a stack-walk failure (corruption), a thread-attach failure |
+| `0xC00000FD` | `Process is terminating due to StackOverflowException.` | stack overflow |
+
+The report also carries `parentQuietMs`, `parentLastBeatMs` and `parentExiting`: how long the parent had been silent
+on the pipe when it died. Windows Error Reporting holds a fail-fasting process for seconds while it collects, so a
+quiet of several seconds without `parentExiting=1` reads as "froze or fail-fasted, then died", not "died mid-beat".
+A Debug (CoreCLR) build writes its own `Environment.FailFast` text to the stderr it saw at startup, so the
+`--crash-probe failfast` arm shows the timing lines but no CoreCLR text; NativeAOT writes through the live handle.
 
 The **out-of-process handler** is the same signed `Wavee.exe`, re-invoked as `--crash-handler <pid>
 <logFolder> <logBasePath>`. It talks to the parent over a `stdin` pipe (one byte per heartbeat, one line

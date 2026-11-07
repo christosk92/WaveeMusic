@@ -88,6 +88,8 @@ public static partial class Crash
         static nint s_parentHandle;
 
         static long s_lastBeatUnbiased;          // QueryUnbiasedInterruptTime at the last 'B'
+        static long s_lastLineUnbiased;          // ...at the last line of ANY kind: how long the parent was silent before it died
+        static FileStream? s_fatalText;          // the parent's stderr file (Crash.FatalText), held open so it outlives the parent
         static int s_suspendEpochAtLastBeat;      // the suspend epoch AS OF the last beat — a stale beat across sleep must not read as a hang
         static int s_suspendEpoch;
         static int s_firstFrameSeen;              // 0/1
@@ -113,6 +115,7 @@ public static partial class Crash
             s_logFolder = logFolder;
             s_logBasePath = logBasePath;
             s_lastBeatUnbiased = UnbiasedNow();
+            s_lastLineUnbiased = s_lastBeatUnbiased;
 
             try { Directory.CreateDirectory(Files.Root(logFolder)); } catch { }
             HandlerLog("handler.start");
@@ -124,8 +127,12 @@ public static partial class Crash
                 return 0;
             }
 
+            // The parent created its stderr file before spawning this process; holding it open keeps the delete-on-close
+            // file alive past the parent's exit, so OnParentExited can still read what the runtime wrote on its way out.
+            s_fatalText = FatalText.OpenForParent(logFolder, parentPid);
+
             // Ready: the parent handle is open. Written BEFORE the reader thread starts so nothing else can interleave on stdout.
-            HandlerLog("handler.ready");
+            HandlerLog("handler.ready" + (s_fatalText is null ? "" : " stderr=held"));
             WriteReply("R");
 
             var reader = new Thread(ReaderLoop) { IsBackground = true, Name = "crash-handler-stdin" };
@@ -194,6 +201,7 @@ public static partial class Crash
         static void HandleLine(string line)
         {
             if (line.Length == 0) return;
+            Interlocked.Exchange(ref s_lastLineUnbiased, UnbiasedNow());
             switch (line[0])
             {
                 case 'C':
@@ -568,11 +576,21 @@ public static partial class Crash
                     string dir = Bundles.Create(s_logFolder, kind, DateTimeOffset.Now);
                     string message = "process exited with code 0x" + code.ToString("x", CultureInfo.InvariantCulture);
                     var context = Volatile.Read(ref s_parentContext);
+                    // A fail-fast runs no hook in the parent; what it printed on stderr is the only account of WHY
+                    // (Crash.FatalText), and a managed fail-fast's text carries its frames.
+                    string fatal = FatalText.ReadForParent(s_fatalText, out bool truncated);
+                    long[] rvas = FatalText.Rvas(fatal);
+                    HandlerLog("fatal.text chars=" + fatal.Length.ToString(CultureInfo.InvariantCulture)
+                        + " rvas=" + rvas.Length.ToString(CultureInfo.InvariantCulture));
                     var summary = ContextProtocol.BuildSummary(context, s_parentPid, Environment.ProcessId, kind, unchecked((int)code),
                         message, !FirstFrameSeen, Environment.TickCount64, DateTimeOffset.UtcNow) with { InstallId = s_installId };
+                    if (rvas.Length > 0) summary = summary with { Rvas = rvas };
                     Bundles.WriteSummary(dir, summary);
                     var sb = new StringBuilder(1024);
                     Report.DescribeParent(message, sb, summary, context);
+                    AppendParentQuiet(sb);
+                    FatalText.AppendSection(sb, fatal, truncated);
+                    Report.AppendRvaSection(sb, rvas);
                     Bundles.WriteReport(dir, sb.ToString());
                     Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None, parentPid: s_parentPid, sessionId: context?.Metadata.SessionId);
                     Bundles.PruneNow(s_logFolder);
@@ -580,6 +598,20 @@ public static partial class Crash
                 catch (Exception ex) { HandlerLog("parent.exit.bundle.failed " + ex.Message); }
             }
             return 0;
+        }
+
+        /// <summary>How long the parent had been silent on the pipe when it died, and whether it had said it was exiting.
+        /// A parent that beat every 2 s up to its death died abruptly; one silent for seconds WITHOUT <c>X</c> was frozen
+        /// first (a hang, or Windows Error Reporting holding a fail-fasting process while it collects its report).</summary>
+        static void AppendParentQuiet(StringBuilder sb)
+        {
+            long now = UnbiasedNow();
+            long quietMs = (now - Interlocked.Read(ref s_lastLineUnbiased)) / 10_000L;
+            long beatMs = (now - Interlocked.Read(ref s_lastBeatUnbiased)) / 10_000L;
+            bool exiting = Interlocked.CompareExchange(ref s_exiting, 0, 0) != 0;
+            sb.Append("parentQuietMs=").Append(quietMs.ToString(CultureInfo.InvariantCulture))
+              .Append(" parentLastBeatMs=").Append(beatMs.ToString(CultureInfo.InvariantCulture))
+              .Append(" parentExiting=").Append(exiting ? '1' : '0').Append('\n');
         }
 
         // ── 7. handler.log — this process's ENTIRE log; never the app log, which it never opens ─────────────────────
