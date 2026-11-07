@@ -52,7 +52,7 @@ internal static class ClassicHomeDaylist
     /// <see cref="CardShape"/> at whatever width the card measures. <c>Art</c> / <c>Veil</c> are the two layers under the
     /// copy — both null for a daylist without art (the plain card); the skeleton has the placeholder
     /// art slot and no veil.</summary>
-    readonly record struct Parts(string Eyebrow, string Title, Element Tags, string Meta, Element Actions, Element Clock,
+    internal readonly record struct Parts(string Eyebrow, string Title, Element Tags, string Meta, Element Actions, Element Clock,
                                  Element? Art, Element? Veil);
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeDaylist"/>.</summary>
@@ -174,13 +174,17 @@ internal static class ClassicHomeDaylist
     /// filling it, so its fill shrinks or grows and the zones under it ride it. A declared height would be mirrored by the view's anchor and hold the
     /// zone at the new height while the card eased inside it.</summary>
     static BoxEl CardShape(Parts parts, ClassicDaylistLayout dl, float firstWidth)
-        => Ui.Card(Responsive.Of("home:daylist", w => Row(parts, w, dl), fallback: firstWidth, grow: 1f))
+    {
+        // The box re-runs the builder at each measured width, after this render: it lays out a frozen copy of the parts (PERF r3 MODEL M4b).
+        var frozen = ElementFreezer.Freeze(parts);
+        return Ui.Card(Responsive.Of("home:daylist", w => Row(frozen, w, dl), fallback: firstWidth, grow: 1f))
             with
             {
                 Padding = default, ClipToBounds = true,
                 MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
                 Animate = Design.Reduced ? null : ClassicTierMotion.SizeReflow,
             };
+    }
 
     /// <summary>The art layer: <see cref="Controls.CoverFill"/> across the whole card, corner 0 (the card's rounded clip
     /// rounds it), focused a little above centre. A null <paramref name="url"/> is the watched placeholder slot (the
