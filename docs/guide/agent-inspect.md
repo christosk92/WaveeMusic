@@ -324,7 +324,10 @@ Home, and makes Classic dark the active theme.
 - `status` reports whether something is mounted, the frames run so far, `mounts` (how many mounts this server has done:
   above 1 means state that a mount does not clear may carry over), `video{resolved, requested, preferred, transport,
   player}` (the video surface's placement and whether a player is bound; a fresh server reads `None`, `None`, `Docked`,
-  `GlobalBar`, `false`), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, threadAllocatedBytes, gen0, gen1, gen2, pauseMs}` (the
+  `GlobalBar`, `false`), `canvas{shows, track, file, owner, bound, inView, run, state, natural, error?}` (Spotify Canvas: whether the
+  playing track's canvas draws, which surface presents the one canvas player and whether it plays; `state`/`natural`/`error` are the
+  engine player's, the only proof a canvas decodes, since a render shows the video's hole, not its frame. Fake canvases: tr3, tr20,
+  tr27, tr41, tr55, tr62; tr4 and tr5 have none), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, threadAllocatedBytes, gen0, gen1, gen2, pauseMs}` (the
   managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start by every thread and by the UI thread alone (exact), the collections per
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
