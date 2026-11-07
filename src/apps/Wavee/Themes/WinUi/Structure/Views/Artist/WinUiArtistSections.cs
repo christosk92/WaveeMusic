@@ -59,7 +59,7 @@ internal static class WinUiArtistSections
     /// <summary>A section: its title in Subtitle (20/28) over its body, 12 apart; <paramref name="trailing"/> stands on the title's line (a link).</summary>
     public static Element SectionBlock(string title, Element body, Element? trailing = null) => new BoxEl
     {
-        Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f,
+        Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f, EntranceGroup = true,   // the header, then the body (WinUiPageMotion)
         Children =
         [
             new BoxEl

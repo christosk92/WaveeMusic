@@ -127,7 +127,7 @@ internal static class WinUiArtistOverview
         Key = "ov:grid", Direction = direction, Gap = gap, MinWidth = 0f, AlignItems = direction == 0 ? FlexAlign.Start : FlexAlign.Stretch,
         Padding = new Edges4(0f, WinUiArtistRules.PopularHitRoom, WinUiArtistRules.PopularHitRoom, 0f),
         Margin = new Edges4(0f, -WinUiArtistRules.PopularHitRoom, -WinUiArtistRules.PopularHitRoom, 0f),
-        Layout = WinUiArtistMotion.OverviewHeight, Children = columns,
+        Layout = WinUiArtistMotion.OverviewHeight, Children = columns, EntranceGroup = true,   // its columns' blocks stagger in (WinUiPageMotion)
     };
 
     /// <summary>A column: in a row it grows by its weight from a zero basis; stacked (<paramref name="grow"/> 0) it takes its content's height.</summary>
@@ -136,7 +136,7 @@ internal static class WinUiArtistOverview
         Key = key, Direction = 1, Gap = WinUiArtistRules.SectionGap, Grow = grow, Basis = grow > 0f ? 0f : float.NaN, MinWidth = 0f,
         // Popular's height never follows its width (the chart's rows are fixed), so it re-lays at the eased width once the side column has faded; the side
         // column fades through a restack (it is keyed by the arrangement).
-        Layout = key == PopularKey ? WinUiArtistMotion.Column : WinUiArtistMotion.Side, Children = kids,
+        Layout = key == PopularKey ? WinUiArtistMotion.Column : WinUiArtistMotion.Side, Children = kids, EntranceGroup = true,
         // Popular holds its old width while the side column fades out (laid out at it when the restack widens it, presented at it when the restack
         // narrows it): the clip keeps the chart's far edge (the count, the durations) inside the held width instead of over the outgoing column.
         ClipToBounds = key == PopularKey,

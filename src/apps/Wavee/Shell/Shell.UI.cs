@@ -848,7 +848,11 @@ public static partial class Shell
         SuppressLayoutTransitionsOnActivation: true,
         // The page's enter/exit slide and fade are composite parameters (the page root is a composited layer): a transition
         // re-records nothing below the page root instead of the whole page every frame of the fade (page-mount RCA #4).
-        CompositeTransitions: true);
+        CompositeTransitions: true,
+        // A structure with per-kind page motion staggers the incoming page's units in (PageMotionPolicy.Cascade).
+        CascadeFor: PageCascade,
+        // Reduced motion is the recipes' call (PageTransition): a structure's quick fade, or the cut the shell always made.
+        RecipeOwnsReducedMotion: true);
 
 
     /// <summary>The route whose page is ON SCREEN, as opposed to <see cref="Current"/>, the route just committed: the two
@@ -952,8 +956,27 @@ public static partial class Shell
             return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
+        var pageMotion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
+        // Reduced motion: the structure's quick fade (no slide, no scale, no stagger), else the cut the shell always made. A fade
+        // would wash out a composited video hole, so a video-safe swap cuts.
+        if (FgMotion.ReducedMotion) return videoSafe ? null : pageMotion.ReducedFade;
         if (videoSafe) return RecipeForVideoSafe(motion);
+        // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
+        if (pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own) return own;
         return RecipeFor(motion);
+    }
+
+    /// <summary>The incoming page's staggered entrance (<see cref="Theming.PageMotionPolicy.Cascade"/>), asked on the same edges as
+    /// <see cref="PageTransition"/>: none for a facet switch inside Home, a video-safe swap, under reduced motion, or under a structure
+    /// that declares none.</summary>
+    static EntranceCascade? PageCascade(object oldToken, object newToken)
+    {
+        if (newToken is not Route next || FgMotion.ReducedMotion) return null;
+        if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
+            return null;
+        Route from = oldToken is Route r ? r : Route.None;
+        if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
+        return Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is { } cascade ? cascade(SwapOf(from, next, Motion.Peek())) : null;
     }
 
     /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the

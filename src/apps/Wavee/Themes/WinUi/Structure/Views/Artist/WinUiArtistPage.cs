@@ -131,18 +131,19 @@ internal static class WinUiArtistPage
             sections.Add(new BoxEl
             {
                 Key = slot.Anchor is null ? s_secKeys[(int)slot.Section] : s_anchorKeys[(int)slot.Section], Direction = 1, MinWidth = 0f,
-                Layout = WinUiArtistMotion.SectionHeight,
+                Layout = WinUiArtistMotion.SectionHeight, EntranceGroup = true,
                 OnRealized = slot.Anchor,
                 Children = [slot.Anchor is null ? sectionBody : sectionBody with { Key = s_secKeys[(int)slot.Section] }],
             });
         }
         Element magazine = Inset("artist-magazine", inset, new BoxEl
         {
-            Key = "artist-magazine", Direction = 1, Gap = WinUiArtistRules.SectionGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+            Key = "artist-magazine", Direction = 1, Gap = WinUiArtistRules.SectionGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, EntranceGroup = true,
             Padding = new Edges4(0f, WinUiArtistRules.OverviewTop, 0f, R.Space.DockReserve + WinUiArtistRules.DockExtra),
             Children = [WinUiArtistOverview.Block(p, latch, tier, inset, in facts), .. sections],
         }.StickyClip(WinUiArtistRules.PivotClearance));   // the pinned pivot paints nothing: what scrolls under it cuts itself at its lower edge
-        return new BoxEl { Direction = 1, Children = [hero, WinUiArtistPivot.Bar(p, inset), magazine] };
+        // The page's entrance staggers the head, then the overview's parts, then each section's header and body (WinUiPageMotion).
+        return new BoxEl { Direction = 1, EntranceGroup = true, Children = [hero, WinUiArtistPivot.Bar(p, inset), magazine] };
     }
 
     /// <summary><paramref name="body"/> between the page's side insets: spacers that ease their width (WinUiDiscoveryMotion.AirH), never padding.</summary>
@@ -171,7 +172,7 @@ internal static class WinUiArtistPage
             : chart.Skeleton(ArtistChartSkeletonArgs.For(0, !WinUiOptions.ArtworkInRows(), WinUiOptions.ArtworkInRows(), WinUiArtistTiers.ChartColumnsOf(tier), WinUiArtistTiers.ChartRowsOf(tier)));
         return new BoxEl
         {
-            Direction = 1,
+            Direction = 1, EntranceGroup = true,   // a page that opens on its skeleton enters with the same stagger (WinUiPageMotion)
             Children =
             [
                 hero,
