@@ -15,7 +15,6 @@
     "@types/node": "^26.6.2",
     "better-sqlite3": "^11.3.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1",
     "wrangler": "^4.146.0"
   },
   "dependencies": {
