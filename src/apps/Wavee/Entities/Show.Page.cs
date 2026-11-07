@@ -99,6 +99,7 @@ public readonly partial struct Show
         readonly Func<Func<ColorF>, Element> _primary;
         readonly Func<Element[]> _satellitesOf;
         readonly Func<float, Element> _attribution, _rating, _ledger, _topics;
+        readonly Func<Element> _aside;
         readonly Func<Element> _badges;
         readonly Func<PageFacts> _facts;
         readonly Func<ContextMenuModel?> _more;
@@ -143,6 +144,7 @@ public readonly partial struct Show
             _rating = w => Embed.Comp(new SlotProps(_m, null, w), static () => new RatingSlot());
             _ledger = w => Embed.Comp(new SlotProps(_m, null, w), static () => new LedgerSlot());
             _topics = w => Embed.Comp(new SlotProps(_m, null, w), static () => new TopicsSlot());
+            _aside = () => Embed.Comp(new SlotProps(_m, null), static () => new AsideSlot()) with { Key = "show:aside" };
             _heartShown = Prop.Of(() => _m.Facts is { } f && f.Value.Primary != ShowReaderRules.Primary.Follow);
             _trailerShown = Prop.Of(() => _m.Facts is { } f && f.Value.HasTrailer);
         }
@@ -204,6 +206,8 @@ public readonly partial struct Show
             Rating = (mask & 4) != 0 ? _rating : null,
             Ledger = (mask & 8) != 0 ? _ledger : null,
             Topics = (mask & 16) != 0 ? _topics : null,
+            // The show's aside (contract 1.87): only a style that draws one gets the slot, and only a frame that reads its show header's slots draws it.
+            Aside = _style?.Aside is not null ? _aside : null,
         };
 
         PageFacts ComputeFacts()

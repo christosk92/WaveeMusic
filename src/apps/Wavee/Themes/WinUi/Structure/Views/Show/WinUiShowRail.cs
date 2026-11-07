@@ -11,6 +11,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using static Wavee.Themes.WinUi.WinUiShowRules;
@@ -46,9 +47,23 @@ internal static partial class WinUiShow
         };
     }
 
-    /// <summary>The played ledger: the three-part bar on the accent and "3 played · 1 in progress · 10 to go · 2 new" in Caption — or, when the hydrate
-    /// failed, "progress unavailable".</summary>
-    static Element Ledger(ShowLedgerArgs a)
+    /// <summary>The played ledger: "3 played · 1 in progress · 10 to go · 2 new" in Caption (W-Show), the three-part bar on the accent before it at Huge
+    /// (W-Show-Huge: a short bar on the line) — or, when the hydrate failed, "progress unavailable".</summary>
+    static Element Ledger(ShowLedgerArgs a) => Embed.Comp(new LedgerProps(a), static () => new LedgerView());
+
+    sealed record LedgerProps(ShowLedgerArgs Args);
+
+    sealed class LedgerView : Component
+    {
+        public override Element Render()
+        {
+            var a = UseProps<LedgerProps>().Args;
+            var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            return LedgerOf(a, WinUiDetailTiers.Of(in facts).Tier >= WidthTier.Huge);
+        }
+    }
+
+    static Element LedgerOf(ShowLedgerArgs a, bool bar)
     {
         if (a.Failed)
             return new BoxEl
@@ -62,14 +77,13 @@ internal static partial class WinUiShow
             ? [new TextSpan(Strings.Podcast.Ledger(a.Played, a.InProgress, a.ToGo) + " · "),
                new TextSpan(Strings.Podcast.LedgerNew(a.Fresh), Weight: 600, Color: Tok.AccentTextPrimary)]
             : [new TextSpan(Strings.Podcast.Ledger(a.Played, a.InProgress, a.ToGo))];
+        Element words = new SpanTextEl(line) { Size = Caption("").Size, LineHeight = Detail.RailLayout.LedgerLineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, Shrink = 1f };
         return new BoxEl
         {
-            Direction = 1, Gap = Detail.RailLayout.LedgerGap, Width = a.Width, MinWidth = 0f,
-            Children =
-            [
-                Controls.LedgerBar(played, progress, s_accent),
-                new SpanTextEl(line) { Size = Caption("").Size, LineHeight = Detail.RailLayout.LedgerLineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
-            ],
+            Direction = 0, Gap = LedgerGapX, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = bar
+                ? [new BoxEl { Direction = 1, Width = LedgerBarWidth, Shrink = 0f, Children = [Controls.LedgerBar(played, progress, s_accent)] }, words]
+                : [words],
         };
     }
 
@@ -79,14 +93,14 @@ internal static partial class WinUiShow
         var button = new BoxEl
         {
             Direction = 0, Gap = RatingGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
-            Padding = new Edges4(RatingPadX, RatingPadY, RatingPadX, RatingPadY), Margin = new Edges4(-RatingPadX, 0f, 0f, 0f), Corners = Radii.ControlAll,
+            Padding = new Edges4(RatingPadX, RatingPadY, RatingPadX, RatingPadY), Margin = new Edges4(-RatingPadX, 0f, -RatingPadX, 0f), Corners = Radii.ControlAll,
             Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = a.Toggle, OnRealized = a.Realized,
             Children =
             [
-                R.Type.DenseTitle(a.Average) with { Color = Tok.TextPrimary, MaxLines = 1 },
+                Body(a.Average) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap },
                 Icon(Icons.FavoriteStarFill, RatingStar, Tok.TextSecondary),
-                R.Type.DenseMeta(a.Count) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                Body(a.Count) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
             ],
         };
         return new BoxEl
@@ -127,23 +141,87 @@ internal static partial class WinUiShow
         };
     }
 
-    /// <summary>The publisher line (the Attribution slot): one line, secondary, at the rail's measure.</summary>
+    /// <summary>The publisher (the Attribution slot): Body in the accent text ink, opening the facts line (W-Show: "Half Moon Recordings · 4.7 ★ · ...").</summary>
     static Element Publisher(string publisher, float width) => new BoxEl
     {
-        Direction = 0, MinWidth = 0f, MaxWidth = float.IsFinite(width) ? width : AboutMeasure,
-        Children = [R.Type.DenseMeta(publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+        Direction = 0, MinWidth = 0f, Shrink = 1f, MaxWidth = float.IsFinite(width) ? width : AboutMeasure,
+        Children = [Body(publisher) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
     };
 
-    /// <summary>The satellites (W-Show): "✓ Following" (the neutral toggle; hidden while Follow is the primary) · the trailer · the bell, disabled with its
-    /// reason · share · "...". A FIXED array; what comes and goes binds its presence.</summary>
+    /// <summary>The satellites (W-Show): "✓ Following" (the neutral toggle with its check; hidden while Follow is the primary) · the trailer · the bell, disabled
+    /// with its reason · share · "...". A FIXED array; what comes and goes binds its presence. At Compact (W-Show-Compact) the row is the primary, a square
+    /// 40 check toggle and "...": the trailer, the bell and share leave the row for the "..." menu, which carries share and the trailer.</summary>
     static Element[] Satellites(ShowSatellitesArgs a) =>
     [
-        new BoxEl { Key = "sat:heart", Visible = a.HeartShown, Children = [WinUiDetailKit.Follow(a.Uri, a.Name) with { Key = "follow:" + a.Uri }] },
-        new BoxEl { Key = "sat:trailer", Visible = a.TrailerShown, Children = [Glyph(Icons.TvMonitor, Loc.Get(Strings.Podcast.Trailer), a.PlayTrailer)] },
-        Glyph(Icons.Bell, Loc.Get(Strings.Podcast.Notify.Unavailable), null) with { Key = "sat:bell" },
-        Glyph(Icons.Share, Loc.Get(Strings.Menu.Share), a.Share) with { Key = "sat:share" },
-        WinUiDetailKit.MoreButton(a.More, WinUiDetailRules.Target) with { Key = "rail:more" },
+        new BoxEl { Key = "sat:heart", Visible = a.HeartShown, Children = [Embed.Comp(new ShowFollowProps(a.Uri, a.Name), static () => new ShowFollow()) with { Key = "follow:" + a.Uri }] },
+        new BoxEl { Key = "sat:trailer", Visible = a.TrailerShown, Children = [WideOnly(Glyph(Icons.TvMonitor, Loc.Get(Strings.Podcast.Trailer), a.PlayTrailer))] },
+        WideOnly(Glyph(Icons.Bell, Loc.Get(Strings.Podcast.Notify.Unavailable), null)) with { Key = "sat:bell" },
+        WideOnly(Glyph(Icons.Share, Loc.Get(Strings.Menu.Share), a.Share)) with { Key = "sat:share" },
+        Embed.Comp(new MoreSatProps(a.More), static () => new MoreSat()) with { Key = "rail:more" },
     ];
+
+    /// <summary>A satellite only the wider rows carry: gone at Compact (its verb is in the "..." menu there).</summary>
+    static Element WideOnly(Element child) => Embed.Comp(new WideOnlyProps(child), static () => new WideOnlyView());
+
+    sealed record WideOnlyProps(Element Child);
+
+    sealed class WideOnlyView : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<WideOnlyProps>();
+            var facts = Wavee.Theming.TierContext.DrawnIn(UseContext(Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
+            bool compact = WinUiDetailTiers.Of(in facts).Tier == WidthTier.Compact;
+            return new BoxEl { Visible = !compact, Children = [p.Child] };
+        }
+    }
+
+    static readonly TemplateParts s_followNoShrink = new() { [ToggleButton.PartRoot] = static e => e with { Shrink = 0f, MinWidth = 0f } };
+
+    sealed record ShowFollowProps(string Uri, string Name);
+
+    /// <summary>Follow beside the primary: "✓ Following" / "+ Follow" (the neutral toggle, W-Show), the square 40 check toggle at Compact (W-Show-Compact).
+    /// The state is the library's, visible at rest.</summary>
+    sealed class ShowFollow : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<ShowFollowProps>();
+            var lib = Controls.Library;
+            var facts = Wavee.Theming.TierContext.DrawnIn(UseContext(Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
+            bool compact = WinUiDetailTiers.Of(in facts).Tier == WidthTier.Compact;
+            bool on = lib is not null && p.Uri.Length > 0 && lib.IsSaved(p.Uri);
+            string uri = p.Uri, name = p.Name;
+            Action<bool> toggle = _ => lib?.ToggleSaved(uri, name);
+            string label = Loc.Get(on ? Strings.Artist.Following : Strings.Artist.Follow);
+            if (compact)
+                return Controls.Named(Controls.IconAction(on ? Icons.Check : Icons.Add, () => lib?.ToggleSaved(uri, name), size: WinUiDetailRules.CompactTarget) with
+                {
+                    Key = "follow:square", Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+                    BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
+                }, label);
+            return ToggleButton.Controlled(Loc.Get(Strings.Artist.Follow), on, toggle, glyph: Icons.Add, checkedGlyph: Icons.Check,
+                checkedLabel: Loc.Get(Strings.Artist.Following), style: WinUiDetailKit.NeutralToggle(ControlSize.Medium), parts: s_followNoShrink) with { Key = "follow:word" };
+        }
+    }
+
+    sealed record MoreSatProps(Func<ContextMenuModel?> More)
+    {
+        public bool Equals(MoreSatProps? o) => o is not null;
+        public override int GetHashCode() => 0;
+    }
+
+    /// <summary>"..." at the row's end: 32, the Compact 40 (W-Show-Compact).</summary>
+    sealed class MoreSat : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<MoreSatProps>();
+            var facts = Wavee.Theming.TierContext.DrawnIn(UseContext(Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
+            float size = WinUiDetailTiers.Of(in facts).Target;
+            return WinUiDetailKit.MoreButton(p.More, size);
+        }
+    }
 
     /// <summary>A subtle 32 glyph button with its name as the tooltip; no action = disabled in place.</summary>
     static Element Glyph(string glyph, string name, Action? onClick)

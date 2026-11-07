@@ -35,6 +35,7 @@ internal static partial class WinUiShow
         HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
     {
         NarrowToolbarGlyph = NarrowControlEdge,
+        Aside = Aside,
     };
 
     static readonly Func<bool> s_never = static () => false;
@@ -444,6 +445,8 @@ internal static partial class WinUiShow
     {
         var children = new List<Element>();
         if (a.CanLoadMore) children.Add(LoadMore(a.Paging, a.LoadMore));
+        // Below Standard the show's About stands here, after the episodes (W-Show-Compact); at Standard and Huge the frame's column holds it.
+        if (a.Aside is { } aside) children.Add(FootAside(aside));
         children.Add(a.Similar);
         return new BoxEl
         {

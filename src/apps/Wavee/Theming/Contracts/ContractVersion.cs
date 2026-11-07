@@ -221,6 +221,9 @@
 // 1.86 (the stable player bar): `SeekRailProps.Pending` (a rail that cannot seek only because the row is loading: drawn enabled, inert). The
 // player bar's `RightSlot.Video` is the level's slot whatever the track (`PlayerBarView.HasVideo` says whether it can be pressed), and
 // `PlayerBarView.Lit` lights lyrics and video for a playable that is loading or reconnecting too, not only an active one.
+// 1.87 (winui show pages): the show page's ASIDE (`ShowReaderStyle.Aside`, `ShowAsideArgs`, `ShowDetail`; the show page hands it as its
+// `Detail.FrameSlots.Aside`, which only a frame that reads its show header's slots draws: the core's two-column aside stays an album's), and
+// `ShowFootArgs.Aside` (the same aside, for a structure that stands it under the episodes where its frame has no column for it).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -236,7 +239,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 86;
+    public const int Minor = 87;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

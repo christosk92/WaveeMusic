@@ -357,6 +357,29 @@ internal sealed class ShowFootArgs
 
     /// <summary>"More like this" (a core component over the reader's request).</summary>
     public required Element Similar { get; init; }
+
+    /// <summary>The show's aside (<see cref="ShowReaderStyle.Aside"/> over the page's facts), for a structure that stands it under the episodes where its
+    /// frame has no column for it; null where the style has no aside. Appended (contract 1.87, winui show pages).</summary>
+    public Element? Aside { get; init; }
+}
+
+/// <summary>One fact of the show's details table ("Publisher" / "Half Moon Recordings").</summary>
+internal readonly record struct ShowDetail(string Label, string Value);
+
+/// <summary>What the show's aside paints (W-Show: About, the topics; W-Show-Huge adds the show's details). Appended (contract 1.87, winui show pages).</summary>
+internal sealed class ShowAsideArgs
+{
+    /// <summary>The show's description (html or plain, resolved), null until it is read or when it has none.</summary>
+    public string? About { get; init; }
+
+    /// <summary>The topic words (the page's own topics slot, drawn by <see cref="ShowReaderStyle.Topics"/>), null without topics.</summary>
+    public Element? Topics { get; init; }
+
+    /// <summary>The details: publisher, episodes and cadence, since, format, ratings (each present only when known).</summary>
+    public required ShowDetail[] Details { get; init; }
+
+    /// <summary>Open a link in the description.</summary>
+    public required Action<string> Open { get; init; }
 }
 
 internal delegate Element ShowPrimaryTemplate(ShowPrimaryArgs args);
@@ -376,6 +399,7 @@ internal delegate Element ShowYearStripTemplate(int[] years, IReadSignal<int> cu
 internal delegate Element ShowYearReserveTemplate();
 internal delegate Element ShowFootTemplate(ShowFootArgs args);
 internal delegate Element ShowSeedTemplate(EpisodeRowStyle? episodeStyle, bool narrow);
+internal delegate Element ShowAsideTemplate(ShowAsideArgs args);
 
 /// <summary>The structure's style for the show page (<c>StyleKeys.ShowReader</c>).</summary>
 public sealed class ShowReaderStyle
@@ -466,4 +490,8 @@ public sealed class ShowReaderStyle
 
     /// <summary>The cold skeleton's source: the filter words, the "episodes" head and the seed rows.</summary>
     internal ShowSeedTemplate Seed { get; }
+
+    /// <summary>The show's aside: About, the topics, the details (<see cref="ShowAsideArgs"/>). Null: the style draws none, and the page hands its frame no
+    /// aside slot. Appended (contract 1.87, winui show pages).</summary>
+    internal ShowAsideTemplate? Aside { get; init; }
 }

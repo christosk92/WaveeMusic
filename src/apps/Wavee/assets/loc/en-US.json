@@ -853,6 +853,15 @@
     "subtitleSong": "Song"
   },
   "podcast": {
+    "details": {
+      "publisher": "Publisher",
+      "episodes": "Episodes",
+      "since": "Since",
+      "format": "Format",
+      "ratings": "Ratings",
+      "audio": "Audio",
+      "audioVideo": "Audio and video"
+    },
     "episodes": "Episodes",
     "show": "Podcast",
     "episodeCount": "{count, plural, one {# episode} other {# episodes}}",
@@ -3124,6 +3133,8 @@
         "discography": "Discography",
         "readMore": "Read more",
         "showLess": "Show less",
+        "showDetails": "Show details",
+        "youMightAlsoLike": "You might also like",
         "viewGrid": "Grid",
         "viewList": "List",
         "verifiedArtist": "Verified artist",
