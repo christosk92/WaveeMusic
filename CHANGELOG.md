@@ -18,6 +18,14 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **WinUI theme: pages move like Windows apps do.** Changing pages in the WinUI theme now uses the navigation
+  transitions of WinUI itself instead of fading the whole page as one block. A page opened from the navigation pane
+  rises into place, a card or row opens its album, artist or playlist with a short zoom, and Back plays the reverse.
+  The library's pages and the artist page's Overview, Albums, Singles & EPs, Appears on and About tabs slide in from the
+  side of the tab you picked. The parts of the new page arrive one after another, the header first, then the sections,
+  rows and cards that are on screen, and the whole page is in place within about half a second. A page that is still
+  loading enters with its placeholders, and its content fades in where they stood. With Windows animation effects
+  turned off, pages just fade. Zune and Classic move exactly as before.
 - **Release cards open the album; the arrow shows its songs.** On an artist's Singles & EPs and other release grids,
   clicking a card opens the album like any other card. The arrow after "1 track" is now a proper button with hover and
   focus states: it opens the songs inline under the row, and closes them again. The panel opens and closes smoothly

@@ -18,6 +18,14 @@
 // itself only fades in over ControlFaster (83 ms) as the units begin, so the parts nothing groups appear with the page. A drill keeps
 // WinUI's zoom on the root and gives the units a short rise (40) on top. Back fades its units in, as WinUI's back has no slide in.
 //
+// WHERE THIS DIFFERS FROM THE SOURCE, and why (each a constant below, the owner's call):
+//   · the incoming page starts 33 ms before the outgoing one's 150 ms end (HandOverMs): WinUI's out spline drops the old page on its last
+//     frame, so a hand-over exactly at 150 left one or two frames with neither page on them;
+//   · the drill's zoom in runs 500 ms, not 783 (DrillInScaleMs): the same spline, which is within a pixel of the end by 350 ms, while a zoom
+//     re-records the page every frame (a translate is a composite parameter, a scale is not);
+//   · the drill's outgoing zoom and fade run evenly (DrillAway): WinUI's fast spline moved the page edges half their way on the first frame;
+//   · the pivot slide has no exit leg and no fade: the page jumps to the section and what shows slides in, as WinUI's incoming slide does.
+//
 // Reduced motion ("Animation effects" off): a quick cross-fade (ControlFaster each way), no slide, no scale, no stagger.
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`).
