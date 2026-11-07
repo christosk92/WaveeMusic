@@ -46,6 +46,15 @@
 //                                       GetAllStoredContentValues): the entry count and each named uri's raw value, hex
 //   plread id=X [rows=N]                GET /playlist/v2/playlist/X and log its attributes' format keys and the first N items raw (hex)
 //   mark name=S                         a named mark (the report splits rounds on these)
+//   opts                                the video ... menu's REAL state: deck kind, episode speed, the rate the deck applies, the
+//                                       player's rate, the live quality pin and the playing rung, the aspect and on-top prefs
+//   speed value=X                       the ... > Playback speed row's own action (Playback.SetEpisodeSpeed)
+//   vrate value=X                       DIAGNOSTIC: the video host's rate straight (Playback.Video.SetRate), past the deck's
+//                                       episode-only rule: does the pipeline honour a rate at all (see possample's vslope)
+//   aspect mode=fit|crop|stretch|native|custom [ratio=R]   the ... > Aspect ratio row's own action
+//   quality h=N                         the ... > Quality row's own action (0 = Auto)
+//   ontop value=0|1                     the ... > Always on top toggle's own action
+//   turnoff                             the ... > Turn off video row's own action
 //   quit                                close the window after the script
 
 using System.Collections.Concurrent;
@@ -84,6 +93,7 @@ public static partial class Diagnostics
             long t0 = Stopwatch.GetTimestamp();
             long firstPos = -1, lastPos = -1, prev = -1, maxStep = long.MinValue, minStep = long.MaxValue;
             int durFirst = -1, durMin = int.MaxValue, durMax = int.MinValue, n = 0;
+            long firstV = -1, lastV = -1;
             double lastT = 0;
             while (true)
             {
@@ -97,7 +107,8 @@ public static partial class Diagnostics
                 VEvent("pos", ("t", F(t)), ("pos", painted.ToString(CultureInfo.InvariantCulture)),
                     ("sig", published.ToString(CultureInfo.InvariantCulture)), ("dur", dur.ToString(CultureInfo.InvariantCulture)),
                     ("vclock", vclock.ToString(CultureInfo.InvariantCulture)), ("kind", kind));
-                if (firstPos < 0) { firstPos = painted; durFirst = dur; }
+                if (firstPos < 0) { firstPos = painted; durFirst = dur; firstV = vclock; }
+                lastV = vclock;
                 if (prev >= 0) { long step = painted - prev; maxStep = Math.Max(maxStep, step); minStep = Math.Min(minStep, step); }
                 prev = lastPos = painted;
                 lastT = t;
@@ -107,7 +118,9 @@ public static partial class Diagnostics
                 Thread.Sleep(everyMs);
             }
             double slope = lastT > 0 ? (lastPos - firstPos) / lastT : 0;
+            double vslope = lastT > 0 && firstV >= 0 ? (lastV - firstV) / lastT : 0;
             return "samples=" + n + " maxStep=" + maxStep + " minStep=" + minStep + " slope=" + slope.ToString("0.000", CultureInfo.InvariantCulture)
+                + " vslope=" + vslope.ToString("0.000", CultureInfo.InvariantCulture)
                 + " dur=" + durFirst + (durMin != durMax ? " durRange=" + durMin + ".." + durMax : "");
         }
         static volatile bool s_vpAbort;
@@ -636,6 +649,51 @@ public static partial class Diagnostics
                     return OnUi(() => MoveWindowTo(Arg(a, "which", "main"), ArgInt(a, "monitor", 1), Arg(a, "max") is "1"));
                 case "screen":
                     return OnUi(() => ScreenShot(ArgInt(a, "monitor", 1), Arg(a, "path")));
+                case "opts":
+                    {
+                        string text = OnUi(OptionsReport);
+                        VEvent("opts", ("state", text));
+                        return text;
+                    }
+                case "speed":
+                    {
+                        float rate = float.Parse(Arg(a, "value", "1"), CultureInfo.InvariantCulture);
+                        OnUi(() => { Playback.SetEpisodeSpeed(rate); return true; });
+                        return "speed " + rate.ToString("0.##", CultureInfo.InvariantCulture) + " -> " + OnUi(OptionsReport);
+                    }
+                case "vrate":
+                    {
+                        float rate = float.Parse(Arg(a, "value", "1"), CultureInfo.InvariantCulture);
+                        OnUi(() => { Playback.Video.SetRate(rate); return true; });
+                        return "video rate " + rate.ToString("0.##", CultureInfo.InvariantCulture);
+                    }
+                case "aspect":
+                    {
+                        Wavee.Video.AspectPreference mode = Arg(a, "mode", "fit") switch
+                        {
+                            "crop" => Wavee.Video.AspectPreference.Crop, "stretch" => Wavee.Video.AspectPreference.Stretch,
+                            "native" => Wavee.Video.AspectPreference.Native, "custom" => Wavee.Video.AspectPreference.Custom,
+                            _ => Wavee.Video.AspectPreference.Fit,
+                        };
+                        double ratio = double.Parse(Arg(a, "ratio", "0"), CultureInfo.InvariantCulture);
+                        OnUi(() => { Wavee.Video.Prefs.SetAspect(Platform.Settings, mode, ratio); return true; });
+                        return "aspect " + mode + " -> " + OnUi(OptionsReport);
+                    }
+                case "quality":
+                    {
+                        int h = ArgInt(a, "h", 0);
+                        OnUi(() => { Playback.Video.PinQuality(h); return true; });
+                        return "quality " + h;
+                    }
+                case "ontop":
+                    {
+                        bool on = Arg(a, "value", "1") is "1" or "true";
+                        OnUi(() => { Wavee.Video.Prefs.SetAlwaysOnTop(Platform.Settings, on); return true; });
+                        return "ontop " + on;
+                    }
+                case "turnoff":
+                    OnUi(() => { Wavee.Video.State.TurnOff(); return true; });
+                    return "turned off -> placement=" + OnUi(static () => Wavee.Video.State.Resolved.ToString());
                 case "mark":
                     Playback.Video.Timeline.Reset(Arg(a, "name"));
                     return Arg(a, "name");
@@ -994,6 +1052,24 @@ public static partial class Diagnostics
             return list;
         }
 
+        /// <summary>UI thread: the `opts` line: what each row of the video menu would show, read from the live objects.</summary>
+        static string OptionsReport()
+        {
+            Playback.State st = Playback.Snap();
+            var player = Playback.Video.Player.Peek().Player;
+            var active = player?.Qualities.Active.Peek();
+            var heights = new System.Text.StringBuilder();
+            if (player is not null) foreach (var v in player.Qualities.Variants) heights.Append(v.Resolution.Height).Append(',');
+            return "id=" + st.CurrentId.Text + " kind=" + st.Kind + " episodeSpeed=" + Playback.EpisodeSpeed.Peek().ToString("0.##", CultureInfo.InvariantCulture)
+                + " contentRate=" + st.ContentRate.ToString("0.##", CultureInfo.InvariantCulture)
+                + " playerRate=" + (player is null ? "-" : player.Rate.Peek().ToString("0.##", CultureInfo.InvariantCulture))
+                + " vclock=" + Playback.Video.ClockPositionMs()
+                + " qualityPin=" + Playback.Video.LiveQualityPin() + " storedPin=" + Platform.Settings.Get(Platform.Keys.VideoQuality)
+                + " active=" + (active is null ? "-" : active.Resolution.Height + "p@" + active.Bitrate) + " rungs=" + heights
+                + " aspect=" + Wavee.Video.Prefs.Aspect(Platform.Settings) + "/" + Wavee.Video.Prefs.CustomRatio(Platform.Settings).ToString("0.###", CultureInfo.InvariantCulture)
+                + " onTop=" + Wavee.Video.Prefs.AlwaysOnTop(Platform.Settings) + " placement=" + Wavee.Video.State.Resolved;
+        }
+
         /// <summary>UI thread: the `monitorof` line: the monitors, then each of our windows and the monitor it is on.</summary>
         static unsafe string MonitorReport()
         {
@@ -1016,7 +1092,8 @@ public static partial class Diagnostics
                 sb.Append(i == 0 ? "main" : "window" + i).Append(" hwnd=").Append(h.ToString("X", CultureInfo.InvariantCulture))
                   .Append(" rect=").Append(R(r)).Append(" on=monitor").Append(mons.IndexOf(mon) + 1).Append('(').Append(dev).Append(')')
                   .Append(" monRect=").Append(R(m)).Append(" dpi=").Append(VpGetDpiForWindow(h)).Append(" zoomed=").Append(VpIsZoomed(h))
-                  .Append(" fs=").Append(fs ? 1 : 0).Append("; ");
+                  .Append(" fs=").Append(fs ? 1 : 0)
+                  .Append(" topmost=").Append(((long)VpGetWindowLongPtr(h, -20 /* GWL_EXSTYLE */) & 0x8 /* WS_EX_TOPMOST */) != 0 ? 1 : 0).Append("; ");
             }
             sb.Append("popOutFs=").Append(Wavee.Video.State.DetachedFullscreen.Peek() ? 1 : 0)
               .Append(" placement=").Append(Wavee.Video.State.Resolved);
@@ -1053,6 +1130,7 @@ public static partial class Diagnostics
             return "moved " + which + " to monitor" + monitor + "(" + dev + ") at " + x + "," + y + " " + w + "x" + ht + (maximize ? " maximized" : "");
         }
 
+        [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static partial nint VpGetWindowLongPtr(nint hwnd, int index);
         [LibraryImport("user32.dll", EntryPoint = "GetDC")] private static partial nint VpGetDC(nint hwnd);
         [LibraryImport("user32.dll", EntryPoint = "ReleaseDC")] private static partial int VpReleaseDC(nint hwnd, nint dc);
         [LibraryImport("gdi32.dll", EntryPoint = "CreateCompatibleDC")] private static partial nint VpCreateCompatibleDC(nint dc);

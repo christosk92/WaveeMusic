@@ -2103,6 +2103,7 @@
     "aspectMenu": "Aspect ratio",
     "qualityMenu": "Quality",
     "speedMenu": "Playback speed",
+    "speedPodcastsOnly": "Podcasts only",
     "aspectFit": "Fit",
     "aspectCrop": "Crop",
     "aspectStretch": "Stretch",

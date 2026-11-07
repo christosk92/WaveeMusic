@@ -665,7 +665,7 @@ public static partial class Playback
             // The deck shows the row's duration from the first frame: a cold video load put it on deck with none (PutOnDeck), and
             // nothing but this load knows the catalogue's. A reload keeps the audio's, which this already is.
             if (songDurMs > 0 && s_state.LoadEpoch == epoch && s_state.DurationMs != songDurMs) Post(Input.Duration(songDurMs, epoch));
-            float rate = RateFor(s_state.CurrentId, s_state.VideoWanted);
+            float rate = RateFor(s_state.CurrentId);
             s_owed = default;                    // a new load owes the old one's seek nothing
             CancellationTokenSource superseded;
             MediaPlayer? bound;
@@ -1079,6 +1079,46 @@ public static partial class Playback
             try { foreach (QualityVariant v in p.Qualities.Variants) heights.Add(v.Resolution.Height); }
             catch { return []; }
             return QualityLadder(heights.ToArray());   // menu-open only; not a hot path
+        }
+
+        /// <summary>The height the bound player is PINNED to right now: the ⋯ &gt; Quality radio. 0 on Auto, with nothing open,
+        /// or for a pin whose variant this manifest does not list. UI thread (menu-open only; not a hot path).</summary>
+        public static int LiveQualityPin()
+        {
+            MediaPlayer? p;
+            lock (s_gate) { p = s_player; }
+            if (p is null) return 0;
+            try
+            {
+                QualitySelection selected = p.Qualities.Selected.Peek();
+                if (selected.IsAuto || selected.VariantId is not { } id) return 0;
+                foreach (QualityVariant v in p.Qualities.Variants)
+                    if (string.Equals(v.Id, id, StringComparison.Ordinal)) return Math.Max(0, v.Resolution.Height);
+            }
+            catch { /* a player mid-dispose reads as Auto */ }
+            return 0;
+        }
+
+        /// <summary>The stored pin, resolved against THIS load's manifest, as the shared ABR controller's selection — which
+        /// is what the opening session takes as its own (<c>ProtectedMediaSession</c> reads <c>abr.Selection</c> at open).
+        /// The controller outlives every source, so without this a pin taken on the previous video carried THAT manifest's
+        /// representation id into the next one: an id the new manifest does not list never switched, yet the session held
+        /// it as a pin, so ABR stayed off and the video sat on its conservative opening rung for the whole song. And a rung
+        /// the new manifest DOES have was only a ceiling (Auto under the cap), so the "1080p" the user chose was not what
+        /// played. Now: the pinned height when this manifest offers it, Auto (under the same ceiling) when it does not.</summary>
+        static void SeedQualitySelection(VideoSource source)
+        {
+            int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
+            QualitySelection selection = QualitySelection.Auto;
+            if (pin > 0 && source.DrmDescriptor?.Catalog is { } catalog)
+                foreach (var track in catalog.Tracks)
+                {
+                    if (track.Kind != TrackKind.Video) continue;
+                    foreach (var rep in track.Representations)
+                        if (rep.Quality.Resolution.Height == pin) { selection = QualitySelection.Pin(rep.Id); break; }
+                    break;
+                }
+            lock (s_gate) if (s_abr is { } abr) abr.Selection = selection;
         }
 
         /// <summary>Re-apply the ABR ceiling from the stored pin and the live metered cap (G-148). Any thread — the host
@@ -1980,6 +2020,7 @@ public static partial class Playback
             }
             if (logFinalStats) LogLine(new VideoLog.FrameStats(Tail(finalKey), finalRendered, finalDropped, finalRenderedDelta, finalDroppedDelta, Final: true));
             ApplyQualityCaps();
+            SeedQualitySelection(req.Source);
             return new MediaOpenOptions
             {
                 StartPosition = TimeSpan.FromMilliseconds(req.StartAtMs),

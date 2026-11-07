@@ -7,9 +7,14 @@ public static partial class Playback
     public static readonly Signal<float> EpisodeSpeed = new(1f);
     static readonly SettingKey<float> s_episodeSpeedKey = new("playback.episodeSpeed", 1f);
     public static float ValidEpisodeSpeed(float rate) => float.IsFinite(rate) ? Math.Clamp(rate, .5f, 3f) : 1f;
-    public static bool SpeedApplies(EntityKind kind, bool videoWanted) => kind == EntityKind.Episode || videoWanted;
-    public static float RateFor(EntityId id, bool videoWanted) => SpeedApplies(id.Kind, videoWanted) ? EpisodeSpeed.Peek() : 1f;
-    public static float RateFor(EntityId id) => RateFor(id, false);
+    /// <summary>Playback speed is an EPISODE property, and a music video is a TRACK (its video is an association of the
+    /// song), so a song plays at 1x whether its video is on or not. This is the official client's rule, which Wavee's own
+    /// Connect state already states (`Spotify.Decode.PutState`: set-playback-speed is `not_supported_by_content_type` on
+    /// every non-episode): a track at 2x would publish a speed its restrictions deny, report a sped-up song's play, and
+    /// write the account's GLOBAL podcast speed (the only speed setting there is, synced to every device) from a song.
+    /// The video ⋯ menu shows the speed cascade disabled with its reason on a track (`OnMedia.SpeedRows`).</summary>
+    public static bool SpeedApplies(EntityKind kind) => kind == EntityKind.Episode;
+    public static float RateFor(EntityId id) => SpeedApplies(id.Kind) ? EpisodeSpeed.Peek() : 1f;
 
     public static void SetEpisodeSpeed(float rate)
     {

@@ -87,7 +87,7 @@ public static class OnMedia
         // the one real foot-gun: `OpenSub` accepts a non-null EMPTY list and opens a blank popup.
         items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.AspectMenu), AspectRows(), Icons.Movie));
         items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.QualityMenu), QualityRows()));
-        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.SpeedMenu), SpeedRows()));
+        items.Add(SpeedMenu());
         for (int i = cut; i < placement.Count; i++) items.Add(placement[i]);
         return items;
     }
@@ -126,10 +126,12 @@ public static class OnMedia
     /// <summary>Auto plus the rungs THIS manifest actually offers. A fixed 720/1080/1440/2160 ladder lied twice: a rung
     /// no variant matches does not pin (<c>Playback.Video.PinQuality</c> persists it but <c>SetPreferredHeight</c> finds nothing to select) yet still
     /// moves the ABR ceiling, so the row read as selected while the player was really on Auto — and the rungs the
-    /// manifest DID offer were missing from the menu.</summary>
+    /// manifest DID offer were missing from the menu. The radio is the PLAYER's live selection
+    /// (<c>Playback.Video.LiveQualityPin</c>), not the stored preference: the stored pin is what the next video is opened
+    /// with when its manifest has that rung, but a video without it (or a pin the engine menu changed) plays on Auto.</summary>
     static IReadOnlyList<MenuFlyoutItem> QualityRows()
     {
-        int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
+        int pin = Playback.Video.LiveQualityPin();
         int[] rungs = Playback.Video.QualityRungs();
         var rows = new List<MenuFlyoutItem>(rungs.Length + 1)
         {
@@ -143,6 +145,16 @@ public static class OnMedia
                 () => Playback.Video.PinQuality(h)));
         }
         return rows;
+    }
+
+    /// <summary>The speed cascade. Speed is an episode property (<see cref="Playback.SpeedApplies"/>): on a music video (a
+    /// track) the cascade is DISABLED with its reason in the accelerator column, the placement rows' idiom, rather than
+    /// offering rates that cannot apply — it used to check the stored podcast speed (2x) over a song playing at 1x.</summary>
+    static MenuFlyoutItem SpeedMenu()
+    {
+        bool applies = Playback.SpeedApplies(Playback.CurrentId.Peek().Kind);
+        var item = MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.SpeedMenu), SpeedRows(), enabled: applies);
+        return applies ? item : item with { AcceleratorText = Loc.Get(Strings.Player.SpeedPodcastsOnly) };
     }
 
     static IReadOnlyList<MenuFlyoutItem> SpeedRows()

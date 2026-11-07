@@ -230,6 +230,13 @@ public static partial class Video
     static readonly Action s_play = static () => Playback.Resume("video.transport");
     static readonly Action s_pause = static () => Playback.Pause("video.transport");
     static readonly Action<TimeSpan, SeekMode> s_seek = static (target, mode) => SeekFromTransport(target, mode);
+    /// <summary>The element's rate keys (<c>[</c> <c>]</c> Backspace) go through the deck's speed, which applies only to an episode
+    /// (<see cref="Playback.SpeedApplies"/>); on a music video they do nothing, as the disabled ⋯ &gt; Playback speed says.</summary>
+    static readonly Action<double> s_rate = static rate =>
+    {
+        if (Playback.SpeedApplies(Playback.CurrentId.Peek().Kind)) Playback.SetEpisodeSpeed((float)rate);
+    };
+    static readonly Func<IReadOnlyList<MenuFlyoutItem>> s_moreMenu = static () => OnMedia.MoreMenu();
     static readonly Action s_toggleDetachedFullscreen = static () => State.DetachedFullscreen.Value = !State.DetachedFullscreen.Peek();
 
     /// <summary>The main window's fullscreen affordance. Constant (props freeze at mount on a stay-mounted presenter),
@@ -493,6 +500,11 @@ public static partial class Video
                         PlayRequested = s_play,
                         PauseRequested = s_pause,
                         SeekRequested = s_seek,
+                        RateRequested = s_rate,
+                        // A right-click on the picture opens the ⋯ menu itself (one home per verb): the element's own menu
+                        // offered a second aspect/speed set whose speed rows set the player's rate behind the deck's back.
+                        MoreMenuItems = s_moreMenu,
+                        MoreMenuHostOnly = true,
                         AspectMode = s_aspect,
                         CustomAspectRatio = s_customRatio,
                         AspectModeChanged = s_aspectChanged,
