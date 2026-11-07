@@ -10,6 +10,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.8] - unreleased
 
+### Added
+
+- **Album credits in Zune.** An album page names who wrote, produced and played on the record, gathered from its
+  songs' credits, and "all credits" opens the full list grouped by role. The song credits sheet, which showed only its
+  title in Zune and WinUI, lists everyone again.
+
 ### Fixed
 
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
