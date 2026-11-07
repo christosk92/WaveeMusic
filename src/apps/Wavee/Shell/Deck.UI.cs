@@ -201,20 +201,41 @@ public static partial class Deck
     /// blank square, never a crash.</summary>
     static Element BuildFace(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host) => preset.Id switch
     {
-        Rail.PlayerCatalog.Record => RecordFace.Build(in preset, side, sig, host, RecordVariant.Record),
-        Rail.PlayerCatalog.Turntable => RecordFace.Build(in preset, side, sig, host, RecordVariant.Turntable),
-        Rail.PlayerCatalog.Zune => RecordFace.Build(in preset, side, sig, host, RecordVariant.Zune),
-        Rail.PlayerCatalog.Picture => RecordFace.Build(in preset, side, sig, host, RecordVariant.Picture),
-        Rail.PlayerCatalog.Cassette => CassetteFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Reel => ReelFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Cd => CdFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Ipod => IpodFace.Build(in preset, side, sig, host),
+        Rail.PlayerCatalog.Record => RecordFace.Build(in preset, side, sig, host, RecordVariant.Record, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Turntable => RecordFace.Build(in preset, side, sig, host, RecordVariant.Turntable, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Zune => RecordFace.Build(in preset, side, sig, host, RecordVariant.Zune, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Picture => RecordFace.Build(in preset, side, sig, host, RecordVariant.Picture, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Cassette => CassetteFace.Build(in preset, side, sig, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Reel => ReelFace.Build(in preset, side, sig, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Cd => CdFace.Build(in preset, side, sig, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Ipod => IpodFace.Build(in preset, side, sig, host, Backdrop(in preset, side)),
         Rail.PlayerCatalog.Winamp => WinampFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Vu => VuFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Wmp => WmpFace.Build(in preset, side, sig),
+        Rail.PlayerCatalog.Vu => VuFace.Build(in preset, side, sig, Backdrop(in preset, side)),
+        Rail.PlayerCatalog.Wmp => WmpFace.Build(in preset, side, sig, Backdrop(in preset, side)),
         Rail.PlayerCatalog.Canvas => CanvasFace.Build(in preset, side, sig),
         _ => new BoxEl { Width = side, Height = side },
     };
+
+    /// <summary>The scrim over a canvas backdrop, so the device reads over a bright loop as it reads over its own ground.</summary>
+    const float BackdropScrim = 0.28f;
+
+    /// <summary>THE CANVAS BACKDROP: the face's slot right above its own ground and under its device (every face that lists the
+    /// "background" option seats it there). It is ALWAYS this one node, so turning the option on or off never shifts the face's parts:
+    /// with the option off (or a style without it) the layer is off, claims nothing and draws nothing. With it on, the deck surface of the
+    /// ONE canvas player (<see cref="CanvasVideo.Layer"/>: no second pipeline) fades in over the ground once the playing track's canvas is
+    /// ready, its poster first; a track without a canvas, the Show Canvas setting off or a music video on the video host leave the ground
+    /// as it is. The player plays only while this element can be seen (a closed pane unmounts it, a parked or minimized one withdraws it,
+    /// an occluded window pauses it) and rests on its frame under reduced motion.</summary>
+    static Element Backdrop(in Rail.PlayerCatalog.Preset preset, float side)
+    {
+        bool on = Rail.PlayerCatalog.Has(in preset, Rail.PlayerCatalog.BackdropSlug)
+                  && Rail.PlayerPrefs.ChoiceSlug(in preset, Rail.PlayerCatalog.BackdropSlug) == Rail.PlayerCatalog.BackdropCanvas;
+        return new BoxEl
+        {
+            Width = side, Height = side, Shrink = 0f, ZStack = true, HitTestVisible = false,
+            Children = [CanvasVideo.Layer(CanvasVideo.Surface.Deck, default, Black(BackdropScrim), on)],
+        };
+    }
 
     // ══ 4. THE CLOCK ═════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -754,7 +775,7 @@ public static partial class Deck
         const uint VinylBlack = 0x15171C, SplatterBase = 0xF5F1EA, MarbleBase = 0x6B4FA8, SpindleInk = 0xE6E9EF;
         const uint AlbumFallback = 0x1C4F9A, ZuneGrey = 0x9AA1AD;
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host, RecordVariant variant)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host, RecordVariant variant, Element backdrop)
         {
             // `preset` is an `in` parameter and cannot be captured: every option becomes a plain local first. The
             // variant flags guard every read an option row does not carry (ch 23 §6.4(7)).
@@ -773,7 +794,9 @@ public static partial class Deck
             float py = zune ? 0.22f * s : small ? 0.25f * s : 0.16f * s;
             if (!zune && !showSleeve) px = 0.15f * s;   // nothing to slide out of: the record sits where the sleeve was
 
-            var kids = new List<CanvasChild>(12);
+            var kids = new List<CanvasChild>(13);
+            // Over the deck's ground (the canvas's fill), under the device; the turntable's plinth covers it (no background option there).
+            kids.Add(new CanvasChild(0f, 0f, backdrop));
             if (turntable) Plinth(kids, s);
 
             if (showSleeve)

@@ -149,25 +149,34 @@ public static partial class Rail
         static readonly OptionDef Size = Seg("size", "player.opt.size", ("12", "player.choice.lp12"), ("7", "player.choice.single7"));
         static readonly OptionDef Rpm = Seg("rpm", "player.opt.speed", ("33", "player.choice.rpm33"), ("45", "player.choice.rpm45"));
         static readonly OptionDef Sleeve = Seg("sleeve", "player.opt.sleeve", ("on", "player.choice.shown"), ("off", "player.choice.hidden"));
+        /// <summary>The style's ground, or the playing track's Spotify Canvas looping behind the device (the deck surface of the one canvas
+        /// player, <see cref="CanvasVideo"/>). Listed on every style whose ground can show it: not Turntable (its plinth fills the square),
+        /// Winamp (its window does) or Canvas (the frame already plays it). Default first: the style as designed.</summary>
+        static readonly OptionDef Backdrop = Seg(BackdropSlug, "player.opt.background", ("plain", "player.choice.plainGround"), (BackdropCanvas, "player.choice.canvasGround"));
+
+        /// <summary>The background option's slug and its canvas choice's (persisted: never rename).</summary>
+        public const string BackdropSlug = "background", BackdropCanvas = "canvas";
 
         public static readonly Preset[] Presets =
         [
-            new(Record, "record", "player.style.record", "player.style.record", PlayerGroup.Media, [Finish, Size, Rpm, Sleeve]),
+            new(Record, "record", "player.style.record", "player.style.record", PlayerGroup.Media, [Finish, Size, Rpm, Sleeve, Backdrop]),
             new(Cassette, "cassette", "player.style.cassette", "player.style.cassette", PlayerGroup.Media,
             [
                 Seg("shell", "player.opt.shell", ("black", "player.choice.black"), ("clear", "player.choice.clear"), ("cream", "player.choice.cream"), ("smoke", "player.choice.smoke")),
                 Seg("label", "player.opt.label", ("type1", "player.choice.typeI"), ("chrome", "player.choice.chrome"), ("hand", "player.choice.handwritten")),
                 Seg("side", "player.opt.side", ("a", "player.choice.sideA"), ("b", "player.choice.sideB")),
+                Backdrop,
             ]),
             new(Reel, "reel", "player.style.reel", "player.style.reelShort", PlayerGroup.Media,
-                [Seg("reel", "player.opt.reels", ("alu", "player.choice.aluminium"), ("black", "player.choice.black"), ("clear", "player.choice.clear"))]),
+                [Seg("reel", "player.opt.reels", ("alu", "player.choice.aluminium"), ("black", "player.choice.black"), ("clear", "player.choice.clear")), Backdrop]),
             new(Cd, "cd", "player.style.cd", "player.style.cdShort", PlayerGroup.Media,
-                [Seg("format", "player.opt.format", ("cd", "player.choice.cd"), ("md", "player.choice.minidisc"))]),
+                [Seg("format", "player.opt.format", ("cd", "player.choice.cd"), ("md", "player.choice.minidisc")), Backdrop]),
             new(Turntable, "turntable", "player.style.turntable", "player.style.turntable", PlayerGroup.Devices, [Finish, Size, Rpm, Sleeve]),
             new(Ipod, "ipod", "player.style.ipod", "player.style.ipodShort", PlayerGroup.Devices,
             [
                 Seg("body", "player.opt.body", ("silver", "player.choice.silver"), ("black", "player.choice.black"), ("u2", "player.choice.u2")),
                 Seg("lcd", "player.opt.lcd", ("white", "player.choice.white"), ("green", "player.choice.green")),
+                Backdrop,
             ]),
             new(Winamp, "winamp", "player.style.winamp", "player.style.winamp", PlayerGroup.Devices,
             [
@@ -177,6 +186,7 @@ public static partial class Rail
             [
                 Seg("face", "player.opt.face", ("ivory", "player.choice.ivory"), ("blue", "player.choice.blue"), ("black", "player.choice.black")),
                 Seg("ballistics", "player.opt.needles", ("vu", "player.choice.vu"), ("ppm", "player.choice.ppm")),
+                Backdrop,
             ]),
             new(Zune, "zune", "player.style.zune", "player.style.zune", PlayerGroup.Software,
             [
@@ -186,18 +196,20 @@ public static partial class Rail
                     new("green", "player.choice.green", 0xFF8CBF26), new("blue", "player.choice.blue", 0xFF1BA1E2),
                 ]),
                 Rpm,
+                Backdrop,
             ]),
             new(Wmp, "wmp", "player.style.wmp", "player.style.wmpShort", PlayerGroup.Software,
             [
                 Seg("preset", "player.opt.preset", ("bars", "player.choice.barsWaves"), ("alchemy", "player.choice.alchemy"), ("battery", "player.choice.battery")),
                 Seg("colour", "player.opt.colour", ("accent", "player.choice.accent"), ("cover", "player.choice.fromCover")),
+                Backdrop,
             ]),
             new(Canvas, "canvas", "player.style.canvas", "player.style.canvasShort", PlayerGroup.Software,
             [
                 Seg("drift", "player.opt.drift", ("slow", "player.choice.slow"), ("fast", "player.choice.fast")),
                 Seg("bleed", "player.opt.bleed", ("soft", "player.choice.soft"), ("strong", "player.choice.strong")),
             ]),
-            new(Picture, "picture", "player.style.picture", "player.style.pictureShort", PlayerGroup.Software, [Size, Rpm, Sleeve]),
+            new(Picture, "picture", "player.style.picture", "player.style.pictureShort", PlayerGroup.Software, [Size, Rpm, Sleeve, Backdrop]),
         ];
 
         public static bool IsPresetId(int id) => (uint)id < (uint)Presets.Length && Presets[id].Id == id;
@@ -212,6 +224,13 @@ public static partial class Rail
             int n = 0;
             for (int i = 0; i < Presets.Length; i++) if (Presets[i].Group == g) dest[n++] = Presets[i];
             return n;
+        }
+
+        /// <summary>Does <paramref name="p"/> list an option row named <paramref name="slug"/>?</summary>
+        public static bool Has(in Preset p, string slug)
+        {
+            for (int i = 0; i < p.Options.Length; i++) if (p.Options[i].Slug == slug) return true;
+            return false;
         }
 
         /// <summary>The option row named <paramref name="slug"/>, or the preset's first (the faces' helper: every read
