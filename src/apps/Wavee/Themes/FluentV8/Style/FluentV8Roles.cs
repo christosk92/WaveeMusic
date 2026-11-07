@@ -42,10 +42,10 @@ public static class FluentV8Roles
         ArtistTitle = Face(t.ArtistTitle), ArtistCompactTitle = Face(t.ArtistCompactTitle), NowPlayingTitle = Face(t.NowPlayingTitle),
         PickQuote = Face(t.PickQuote), FoldTitle = Face(t.FoldTitle), PivotLabel = Face(t.PivotLabel), NpvLyric = Face(t.NpvLyric),
         StatHero = Face(t.StatHero),
-        // The v8 Pivot: 14/20 (fonts.medium), links 44 tall (the Pivot's link height), 8 padding, the rest weight kept at the selection
+        // The v8 Pivot: 14/20 (fonts.medium), links 44 tall (the Pivot's link height), 12 padding (v8 pads 8; 12 keeps the 40-DIP Compact hit floor), the rest weight kept at the selection
         // (v8 reserves the semibold width with a hidden ::before; one weight here so the row never reflows).
-        FacetTitle = new FacetRole(14f, 20f, FluentV8Style.FaceChain, 0f, 400, 400, new Edges4(8f, 12f, 8f, 12f), 44f, 8f, 0f),
-        FacetCompact = new FacetRole(14f, 20f, FluentV8Style.FaceChain, 0f, 400, 400, new Edges4(8f, 12f, 8f, 12f), 44f, 0f, 0f),
+        FacetTitle = new FacetRole(14f, 20f, FluentV8Style.FaceChain, 0f, 400, 400, new Edges4(12f, 12f, 12f, 12f), 44f, 0f, 0f),
+        FacetCompact = new FacetRole(14f, 20f, FluentV8Style.FaceChain, 0f, 400, 400, new Edges4(12f, 12f, 12f, 12f), 44f, 0f, 0f),
         Panorama = Face(t.Panorama), PanoramaCompact = Face(t.PanoramaCompact), Hero = Face(t.Hero), Pivot = Face(t.Pivot),
         SubPivot = Face(t.SubPivot), Numeral = Face(t.Numeral), NumeralLarge = Face(t.NumeralLarge),
         NowPlayingDisplay = Face(t.NowPlayingDisplay), Wordmark = Face(t.Wordmark), LyricsLine = Face(t.LyricsLine),

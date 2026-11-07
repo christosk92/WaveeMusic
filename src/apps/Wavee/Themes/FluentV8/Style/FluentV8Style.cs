@@ -149,7 +149,7 @@ public sealed class FluentV8Style : IStyleLayer
             StrokeDividerDefault = FluentV8Palette.NeutralLight,
             StrokeSurfaceDefault = FluentV8Palette.NeutralLight,
             StrokeFlyoutDefault = A(FluentV8Palette.NeutralPrimary, 0f),
-            FillControlStrong = FluentV8Palette.NeutralTertiaryAlt,
+            FillControlStrong = FluentV8Palette.NeutralSecondaryAlt,   // not neutralTertiaryAlt: the pager dots and rails need 3 : 1 on white
             ScrollThumb = FluentV8Palette.NeutralTertiaryAlt,
             AcrylicTint = FluentV8Palette.White,
             AcrylicBase = FluentV8Palette.White,
@@ -183,7 +183,7 @@ public sealed class FluentV8Style : IStyleLayer
             StrokeDividerDefault = FluentV8Palette.DarkNeutralLight,
             StrokeSurfaceDefault = FluentV8Palette.DarkNeutralLight,
             StrokeFlyoutDefault = A(FluentV8Palette.DarkNeutralPrimary, 0f),
-            FillControlStrong = FluentV8Palette.DarkNeutralTertiaryAlt,
+            FillControlStrong = FluentV8Palette.DarkNeutralTertiary,
             ScrollThumb = FluentV8Palette.DarkNeutralTertiary,
             AcrylicTint = FluentV8Palette.DarkWhite,
             AcrylicBase = FluentV8Palette.DarkWhite,
