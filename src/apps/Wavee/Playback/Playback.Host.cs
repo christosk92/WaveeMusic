@@ -462,8 +462,9 @@ public static partial class Playback
                     StepOne(in i);
                 }
 
-                // A repeat-context wrap's next lap (#215), the context alone: before the follow, so the follow, the next-row arm
-                // and the announce read it.
+                // The queue rewrites the reducer asked for, before the follow: the shuffle toggle's re-lay (its cursor move is
+                // folded right here) and a repeat-context wrap's next lap (#215).
+                if (s_fx.Reorder) { s_fx.Reorder = false; ReorderQueue(s_fx.ReorderShuffle, now); }
                 if (s_fx.Lap)
                 {
                     s_fx.Lap = false;
@@ -726,7 +727,6 @@ public static partial class Playback
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
         if (s_fx.Fetch) EnsureRow(s_fx.FetchId);
         if (s_fx.QueueAdd) EnqueueRemote(s_fx.QueueAddId);
-        if (s_fx.Reorder) ReorderQueue(s_fx.ReorderShuffle);
         if (s_fx.Autoplay) RequestAutoplay(s_fx.AutoplayContext);
         if (s_fx.AutoplayPage) RequestAutoplayPage(s_fx.AutoplayPageContext);
         if (s_fx.Page) RequestPage(s_fx.PageContext);

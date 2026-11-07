@@ -1247,6 +1247,9 @@ public static partial class Playback
         /// <summary>The deck's context becomes <see cref="Input.Context"/> WITHOUT a load — a radio parked behind the
         /// current row (G-251). <see cref="Input.Cursor"/> is the deck row's cursor in the rewritten queue.</summary>
         SwitchContext,
+        /// <summary>The host re-laid the queue around the deck (a whole-context shuffle or unshuffle, #215): the deck row now sits
+        /// at <see cref="Input.Cursor"/>. Nothing loads; the next row is re-armed off the new order.</summary>
+        Recursor,
         /// <summary>The pump DROPPED the join it had scheduled for the prepared row (a seek moved the playhead out from
         /// under the planned join frame): the next row is no longer prepared. <c>Epoch</c> = the load epoch the join belonged
         /// to; the reducer re-arms the prepare (V-PA33).</summary>
@@ -1413,6 +1416,7 @@ public static partial class Playback
         /// around the row at <paramref name="cursor"/>.</summary>
         public static Input SwitchContext(EntityId context, QueueCursor cursor, long nowMs = 0)
             => new(InputKind.SwitchContext, context: context, cursor: cursor, nowMs: nowMs);
+        public static Input Recursor(QueueCursor cursor, long nowMs = 0) => new(InputKind.Recursor, cursor: cursor, nowMs: nowMs);
         public static Input Suspend(long nowMs = 0) => new(InputKind.Suspend, nowMs: nowMs);
         public static Input Wake(long nowMs = 0) => new(InputKind.Resume_, nowMs: nowMs);
 
@@ -1697,6 +1701,7 @@ public static partial class Playback
             case InputKind.Paged: DoPaged(ref s, in i, ref fx); break;
             case InputKind.QueueToOwner: DoQueueToOwner(ref s, in i, ref fx); break;
             case InputKind.SwitchContext: DoSwitchContext(ref s, in i, ref fx); break;
+            case InputKind.Recursor: DoRecursor(ref s, in i, ref fx); break;
             case InputKind.PrepareLost: DoPrepareLost(ref s, in i, ref fx); break;
             case InputKind.ScrubBegin: DoScrubBegin(ref s, in i, ref fx); break;
             case InputKind.ScrubMove: DoScrubMove(ref s, in i, ref fx); break;

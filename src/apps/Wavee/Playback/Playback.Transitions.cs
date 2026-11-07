@@ -418,6 +418,84 @@ public static partial class Playback
             }
         }
 
+        /// <summary>RE-LAY THE WHOLE CONTEXT around the deck (#215), as Spotify's players do. Shuffle ON puts every other row
+        /// of the context, the ones already played included, after the deck in a fresh random order with the current track
+        /// first (librespot <c>connect/src/state/options.rs:84-100</c> and <c>shuffle_vec.rs:59-90</c>; go-librespot
+        /// <c>tracks/tracks.go:431-472</c>; librespot-java <c>StateWrapper.java:1379-1400</c>). Shuffle OFF puts the context
+        /// back in its own order (<paramref name="savedRefs"/> / <paramref name="savedRows"/>, saved when it was shuffled) and
+        /// the deck back at its place in it: the rows before it are history again, the rows after it next up (librespot
+        /// <c>connect/src/state/handle.rs:12-35</c>; go-librespot <c>tracks/tracks.go:474-485</c>).
+        /// <para>Only CONTEXT rows move. A row already played that the context did not provide (a queued row, an autoplay
+        /// row) stays history; the user's waiting queue stays straight after the deck; the autoplay tail stays last, so a
+        /// suggestion is never shuffled into the context. A context row the saved order does not hold (a page fetched since
+        /// the shuffle) follows the saved ones, in list order. Writes every row once into the outputs (the same count) and
+        /// answers the deck's new index; −1, writing nothing, when the deck is not a row or an unshuffle has no saved order.
+        /// <paramref name="taken"/> is scratch, at least as long as the rows. PURE, allocation-free.</para></summary>
+        public static int Relay(ReadOnlySpan<int> refs, ReadOnlySpan<QueueEdge> rows, int deck, int contextStart, bool shuffle, ulong seed,
+            ReadOnlySpan<int> savedRefs, ReadOnlySpan<QueueEdge> savedRows, Span<bool> taken, Span<int> order,
+            Span<int> refsOut, Span<QueueEdge> rowsOut)
+        {
+            int count = rows.Length;
+            if ((uint)deck >= (uint)count || refs.Length < count || taken.Length < count || order.Length < count
+                || refsOut.Length < count || rowsOut.Length < count) return -1;
+            if (!shuffle && savedRefs.IsEmpty) return -1;
+            // Rows before the context on the deck (a parked radio's old context: Queue.ContextStart) stay where they are.
+            int frozen = Math.Clamp(contextStart, 0, deck + 1);
+            taken[..count].Clear();
+            for (int i = 0; i < frozen; i++) taken[i] = true;
+            taken[deck] = true;
+            // The context rows other than the deck, in the order they will be laid: `order[0..m)` are row indices, and the
+            // first `before` of them go behind the deck (an unshuffle only).
+            int m = 0, before = 0;
+            if (shuffle)
+            {
+                for (int i = frozen; i < count; i++)
+                    if (i != deck && rows[i].Provider == (byte)QueueProvider.Context) order[m++] = i;
+                Permute(order[..m], seed);
+            }
+            else
+            {
+                bool deckSeen = false;
+                for (int k = 0; k < savedRefs.Length && k < savedRows.Length; k++)
+                {
+                    if (!deckSeen && refs[deck] == savedRefs[k] && rows[deck].ItemId == savedRows[k].ItemId) { deckSeen = true; continue; }
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (taken[i] || rows[i].Provider != (byte)QueueProvider.Context
+                            || refs[i] != savedRefs[k] || rows[i].ItemId != savedRows[k].ItemId) continue;
+                        taken[i] = true;
+                        order[m++] = i;
+                        if (!deckSeen) before++;
+                        break;
+                    }
+                }
+                if (!deckSeen) before = 0;               // the deck is not a row of the saved order: everything follows it
+                for (int i = 0; i < count; i++)
+                    if (!taken[i] && rows[i].Provider == (byte)QueueProvider.Context) { taken[i] = true; order[m++] = i; }
+            }
+
+            int n = 0;
+            for (int i = 0; i < frozen; i++) Put(refs[i], rows[i], i == deck ? QueueBucket.NowPlaying : QueueBucket.History, refsOut, rowsOut, ref n);
+            for (int i = frozen; i < deck; i++)           // history the context did not provide stays history
+                if (rows[i].Provider != (byte)QueueProvider.Context) Put(refs[i], rows[i], QueueBucket.History, refsOut, rowsOut, ref n);
+            for (int k = 0; k < before; k++) Put(refs[order[k]], rows[order[k]], QueueBucket.History, refsOut, rowsOut, ref n);
+            int at = deck < frozen ? deck : n;
+            if (deck >= frozen) Put(refs[deck], rows[deck], QueueBucket.NowPlaying, refsOut, rowsOut, ref n);
+            for (int i = deck + 1; i < count; i++)        // the user's waiting queue, straight after the deck
+                if (rows[i].Provider == (byte)QueueProvider.Queue) Put(refs[i], rows[i], QueueBucket.UserQueue, refsOut, rowsOut, ref n);
+            for (int k = before; k < m; k++) Put(refs[order[k]], rows[order[k]], QueueBucket.NextUp, refsOut, rowsOut, ref n);
+            for (int i = deck + 1; i < count; i++)        // the autoplay tail, last
+                if (rows[i].Provider == (byte)QueueProvider.Autoplay) Put(refs[i], rows[i], QueueBucket.NextUp, refsOut, rowsOut, ref n);
+            return n == count ? at : -1;
+        }
+
+        static void Put(int target, QueueEdge row, QueueBucket bucket, Span<int> refs, Span<QueueEdge> rows, ref int n)
+        {
+            refs[n] = target;
+            rows[n] = row with { Bucket = (byte)bucket };
+            n++;
+        }
+
         /// <summary>Put the rows still ahead of the cursor back into the context's own order, in place: every saved
         /// row still present moves to the front in saved order, and a row the saved order never had (queued since the
         /// shuffle) keeps its place after them. Matches on the packed row AND its item id, because the same recording
@@ -1010,6 +1088,21 @@ public static partial class Playback
         s.Context = i.Context;
         if (waiting) Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
         else ArmNext(ref s, ref fx);
+        if (s.Own.Kind == Owner.Us) Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+        fx.Snapshot = true;
+    }
+
+    /// <summary>The host re-laid the queue around the deck (a whole-context shuffle or unshuffle, #215): the deck row moved to
+    /// <see cref="Input.Cursor"/>. The cursor follows it when that row IS the deck (a newer load already replaced it
+    /// otherwise), then the next row is re-armed off the new order and the controllers are told. Nothing loads.</summary>
+    static void DoRecursor(ref State s, in Input i, ref Effects fx)
+    {
+        if (!s.RoutesLocal || !s.HasCurrent || i.Cursor.IsNone || Entities.Current is null) return;
+        if (Queue.RefAt(in i.Cursor) != s.Current || i.Cursor == s.Cursor) return;
+        s.Cursor = i.Cursor;
+        Bump(ref s);
+        ArmNext(ref s, ref fx);
+        CheckRefill(ref s, ref fx);
         if (s.Own.Kind == Owner.Us) Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Snapshot = true;
     }
