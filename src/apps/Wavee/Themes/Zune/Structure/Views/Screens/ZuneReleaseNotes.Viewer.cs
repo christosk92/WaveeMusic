@@ -143,7 +143,10 @@ internal static partial class ZuneReleaseNotes
                         new BoxEl
                         {
                             Margin = new Edges4(Spacing.M, Spacing.M, 0f, 0f),
-                            Children = [ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with { Color = Tok.OnMediaPrimary, MaxLines = 1 }],
+                            // the word sits straight on the band: media ink only over the DARK capture; over the light twin (light mode) or the
+                            // bare band it takes the page's text ink (white media ink read 1.8 : 1 on a light poster's pale field)
+                            Children = [ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with
+                                { Color = item.Poster is { Length: > 0 } shown && shown == item.DarkPoster ? Tok.OnMediaPrimary : Tok.TextPrimary, MaxLines = 1 }],
                         },
                         ToolTip.Wrap(Circle(Icons.ChromeClose, K.CloseGlyph, enabled: true, props.Close, "zhv:close", ov.ChromeCircle) with
                             { Margin = new Edges4(0f, VL.ChromeInset, VL.ChromeInset, 0f) }, Loc.Get(Strings.WhatsNew.Viewer.Close)),
