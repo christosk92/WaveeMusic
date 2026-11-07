@@ -2178,9 +2178,11 @@ public static partial class Playback
         var mode = (RepeatMode)i.IntArg;
         if (!s.RoutesLocal)
         {
-            // The wire carries TWO flags, not one mode: repeat-track and repeat-context.
-            Forward(ref s, mode == RepeatMode.Track ? RemoteCmd.SetRepeatingTrack : RemoteCmd.SetRepeatingContext,
-                ref fx, 0, mode != RepeatMode.Off);
+            // The wire carries TWO flags, not one mode: repeat-track and repeat-context, and the owner keeps whichever one a
+            // verb does not name. One verb left it stuck (Track then Off sent only set_repeating_context false: the owner
+            // kept repeating the track). So the COMPLETE mode is forwarded, both flags (docs/plans/wavee-playback-arbitration-
+            // rules.md "Shuffle / Repeat"): RemoteArg = 1 + the mode, which the host spells as the two verbs (#215).
+            Forward(ref s, RemoteCmd.SetRepeatingContext, ref fx, 1 + (long)mode, mode != RepeatMode.Off);
             return;
         }
         if (s.Repeat == mode) return;

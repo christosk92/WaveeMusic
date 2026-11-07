@@ -1021,6 +1021,20 @@ public static partial class Playback
             Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, skipUid: skipUid));
             return;
         }
+        if (s_fx.RemoteCmd == RemoteCmd.SetRepeatingContext && s_fx.RemoteArg > 0)
+        {
+            // A complete repeat mode (DoRepeat): both flags, the one being turned off first, so the owner never passes through
+            // a mode nobody asked for (Track -> Context: track off, then context on; Off: track off, then context off).
+            var mode = (RepeatMode)(s_fx.RemoteArg - 1);
+            bool context = mode != RepeatMode.Off, track = mode == RepeatMode.Track;
+            Spotify.Api.Run(() =>
+            {
+                if (!track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, false, CancellationToken.None);
+                Spotify.Connect.Command(target, "set_repeating_context", "value", 0, context, CancellationToken.None);
+                if (track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, true, CancellationToken.None);
+            });
+            return;
+        }
         string endpoint = Endpoint(s_fx.RemoteCmd);
         if (endpoint.Length == 0) return;
         string valueName = s_fx.RemoteCmd switch
