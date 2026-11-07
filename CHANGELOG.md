@@ -15,6 +15,13 @@ versions separately under `v*` and is not tracked in this file.)
 - **Album credits in Zune.** An album page names who wrote, produced and played on the record, gathered from its
   songs' credits, and "all credits" opens the full list grouped by role. The song credits sheet, which showed only its
   title in Zune and WinUI, lists everyone again.
+- **Storage & cache shows the AI models.** The models that time lyrics word by word on this PC (around a gigabyte
+  per language once compiled for the NPU) now count in the "On this PC" total, with their own colour in the bar
+  and a row that says how many languages are installed, opens their folder and removes them after asking. Removing
+  them stops a lyrics job in progress safely, and the Lyrics settings can download them again. When none are
+  downloaded the row shows 0 B and says where to get them.
+- **Storage & cache counts the rest of Wavee's data.** A new "Other app data" row covers the lyrics cache, crash
+  reports, What's new, podcast transcripts and modules, so the total matches what Wavee keeps on this PC.
 
 ### Changed
 

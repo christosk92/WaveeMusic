@@ -157,13 +157,13 @@ internal static class WinUiSettingsRules
 
     // ── Storage (N9, W16, W17) ──
 
-    /// <summary>N9: seven hand-picked hues, THEME-INVARIANT (accent tints read as one blue on dark), indexed in `StorageRules.Parts` order:
-    /// library, runtime, logs, local store, audio bodies, license keys, images.</summary>
+    /// <summary>N9: nine hand-picked hues, THEME-INVARIANT (accent tints read as one blue on dark), indexed in `StorageRules.Parts` order:
+    /// library, runtime, logs, local store, audio bodies, license keys, images, AI models (pink), other app data (mustard).</summary>
     public static readonly ColorF[] StorageHues =
     [
         ColorF.FromRgba(0x4A, 0x90, 0xD9), ColorF.FromRgba(0x9B, 0x59, 0xB6), ColorF.FromRgba(0xF5, 0xA6, 0x23),
         ColorF.FromRgba(0x27, 0xAE, 0x60), ColorF.FromRgba(0x1A, 0xBC, 0x9C), ColorF.FromRgba(0x95, 0xA5, 0xA6),
-        ColorF.FromRgba(0xE7, 0x4C, 0x3C),
+        ColorF.FromRgba(0xE7, 0x4C, 0x3C), ColorF.FromRgba(0xE0, 0x56, 0xA0), ColorF.FromRgba(0xC9, 0xA2, 0x27),
     ];
 
     /// <summary>A category row's hue accent.</summary>
