@@ -185,6 +185,11 @@ public static partial class Crash
             s_logFolder = logFolder;
             s_logBasePath = logBasePath;
             try { Directory.CreateDirectory(Files.Root(logFolder)); } catch { }
+            // Region labels are keyed by the OS thread id (the native hook names the faulting thread by it).
+            FluentGpu.Foundation.CrashTrail.ThreadIdSource = static () => GetCurrentThreadId();
+            // BEFORE the child: it opens the trail file at start-up, so an exit-code report still has the trail.
+            string trail = Trail.Share(logFolder);
+            Log.Event(WaveeLogLevel.Info, "crash", "crash.trail", trail, null, -1, null);
 
             // Read PE/module/build identity once on the healthy parent, never in the reporter child.
             try
@@ -204,8 +209,9 @@ public static partial class Crash
             Log.Event(WaveeLogLevel.Info, "crash", "crash.stderr", fatalText, null, -1, null);
 
             SpawnChild(logFolder, logBasePath);
+            Trail.Note(AppTrail.CrashHandler, trail == "shared" ? 1 : 0);
 
-            NativeHook.OnForeignFault = static (code, ptrs) => RequestDumpCore(Kind.Native, ptrs, code);
+            NativeHook.OnForeignFault = static (code, ptrs, tid) => RequestDumpCore(Kind.Native, ptrs, code, tid);
             NativeHook.Install();
 
             try
@@ -327,13 +333,14 @@ public static partial class Crash
             var m = context.Metadata;
             string route = Diagnostics.NavigationFrameWatch.Route;
             string gpu = GpuProfile.AdapterName;
+            string driver = GpuProfile.DriverVersion;
             string tier = GpuProfile.Tier switch { GpuPowerTier.Weak => "Weak", GpuPowerTier.Strong => "Strong", _ => "Unknown" };
-            if (m.LastRoute == route && m.Gpu == gpu && m.GpuTier == tier
+            if (m.LastRoute == route && m.Gpu == gpu && m.GpuTier == tier && (m.GpuDriver ?? "") == driver
                 && m.SoftwareAdapter == GpuProfile.IsSoftwareAdapter && m.BeforeFirstFrame == !FirstFrameSeen) return;
             var next = context with
             {
                 Sequence = Interlocked.Increment(ref s_contextSequence),
-                Metadata = m with { LastRoute = route, Gpu = gpu, GpuTier = tier,
+                Metadata = m with { LastRoute = route, Gpu = gpu, GpuTier = tier, GpuDriver = driver,
                     SoftwareAdapter = GpuProfile.IsSoftwareAdapter, BeforeFirstFrame = !FirstFrameSeen },
             };
             Volatile.Write(ref s_parentContext, next);
@@ -342,6 +349,7 @@ public static partial class Crash
 
         public static void NoteShutdownPhase(ShutdownPhase phase)
         {
+            Trail.Note(AppTrail.ShutdownPhase, (int)phase);
             try
             {
                 Log.Info("app", "shutdown.phase phase=" + ((int)phase).ToString(CultureInfo.InvariantCulture) + " stage=" + phase);
@@ -422,10 +430,17 @@ public static partial class Crash
                 try { Log.Event(WaveeLogLevel.Critical, "crash", "crash.managed", ex.GetType().FullName + ": " + ex.Message); } catch { }
                 try { RoutineSummary.FlushAll(force: true); } catch { }   // the open window's partial summary belongs in the crash tail
                 Log.Flush();
+                uint tid = GetCurrentThreadId();
+                // The exception stream for the dump, captured HERE while this thread's stack still holds the throw: a
+                // synthetic record (code 0xE0434352, the CLR's) over this thread's own context, so `.ecxr; k` lands on it.
+                nint ptrs = SyntheticExceptionPointers();
                 string dir = Crash.Bundles.Create(LogFolder, Kind.Managed, DateTimeOffset.Now);
                 var summary = Report.BuildSummary(Kind.Managed, ex, 0);
+                var text = new StringBuilder(8 * 1024);
+                Report.Describe(ex, text);
+                summary = AppendContext(text, summary, tid, "crashing thread");
                 Crash.Bundles.WriteSummary(dir, summary);
-                Crash.Bundles.WriteReport(dir, Report.Describe(ex));
+                Crash.Bundles.WriteReport(dir, text.ToString());
                 WriteLogTail(dir, SafeGatherRules());
                 // NO settings write and NO signal write here: this runs on the CRASHING thread (a pool thread for a worker
                 // fault), and Settings.Set / Signal writes are UI-thread-only — measured 2026-09-25: the write took the
@@ -434,7 +449,7 @@ public static partial class Crash
 
                 Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.requested", "", null, -1, null, WaveeLogField.Of("kind", "managed"));
                 // The child finalizes summary.json (hasDump/dumpBytes) before it replies — no rewrite here (#165 W3a).
-                if (RequestDumpFromChild(Handler.DumpKind.Managed, GetCurrentThreadId(), 0, dir, out long bytes, out string? err))
+                if (RequestDumpFromChild(Handler.DumpKind.Managed, tid, ptrs, dir, out long bytes, out string? err))
                 {
                     Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.written", "", null, -1, null, WaveeLogField.Of("bytes", bytes));
                 }
@@ -458,9 +473,12 @@ public static partial class Crash
         /// spike — wires <see cref="RequestDumpCore"/> directly so it also has the fault code for the summary; this
         /// overload exists for the contract, §I, and for anything else that wants to request a native dump without
         /// one).</summary>
-        public static void RequestDump(Kind kind, nint ptrs) => RequestDumpCore(kind, ptrs, 0);
+        public static void RequestDump(Kind kind, nint ptrs) => RequestDumpCore(kind, ptrs, 0, GetCurrentThreadId());
 
-        static void RequestDumpCore(Kind kind, nint ptrs, uint code)
+        /// <summary>The native path. Runs on the native gate's reporter thread (<see cref="FaultGate"/>) while the faulting
+        /// thread <paramref name="tid"/> is parked in the gate (or, on an architecture without the gate, on the faulting
+        /// thread itself).</summary>
+        static void RequestDumpCore(Kind kind, nint ptrs, uint code, uint tid)
         {
             if (kind == Kind.Native && Interlocked.Exchange(ref s_nativeHandled, 1) != 0) return;
             try
@@ -475,10 +493,18 @@ public static partial class Crash
                     + " at 0x" + unchecked((ulong)NativeHook.FaultAddress).ToString("x", CultureInfo.InvariantCulture);
                 var summary = Report.BuildSummary(kind, null, 0, exceptionType: "Native", exceptionMessage: headline,
                     rvas: rvas, exceptionCode: code);
-                Crash.Bundles.WriteSummary(dir, summary);
-                var sb = new StringBuilder(2048);
+                var sb = new StringBuilder(8 * 1024);
                 Report.DescribeSynthetic(headline, sb);
+                sb.Append("hook=").Append(NativeHook.Gated ? "gate" : "managed").Append(" thread=").Append(tid.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 Report.AppendRvaSection(sb, rvas);
+                summary = AppendContext(sb, summary, tid, "faulting thread");
+                // A fault inside the private key path counts toward the next launch's breaker (Crash.KeyPathBreaker).
+                if (FluentGpu.Foundation.CrashTrail.TryRegionFor(tid, out var region) && AppRegion.IsKeyPath(region.Kind))
+                {
+                    KeyPathBreaker.RecordFault(LogFolder, Platform.Version.SemVer, "native");
+                    sb.Append("keypath.breaker fault recorded\n");
+                }
+                Crash.Bundles.WriteSummary(dir, summary);
                 Crash.Bundles.WriteReport(dir, sb.ToString());
                 WriteLogTail(dir, SafeGatherRules());
                 // NO settings write and NO signal write here: this runs on the CRASHING thread (a pool thread for a worker
@@ -491,7 +517,7 @@ public static partial class Crash
                 // The child resolves the faulting module (this thread stays parked meanwhile, so the EXCEPTION_POINTERS
                 // it reads is still live), writes the dump and finalizes summary.json + report.txt before it replies —
                 // no rewrite here (#165 W3a).
-                if (RequestDumpFromChild(Handler.DumpKind.Native, GetCurrentThreadId(), ptrs, dir, out long bytes, out string? err))
+                if (RequestDumpFromChild(Handler.DumpKind.Native, tid, ptrs, dir, out long bytes, out string? err))
                 {
                     Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.written", "", null, -1, null, WaveeLogField.Of("bytes", bytes));
                 }
@@ -677,6 +703,12 @@ public static partial class Crash
                     {
                         case "failfast": Environment.FailFast("--crash-probe"); break;
                         case "native": NativeHook.Fault(); break;
+                        case "failfast-keypath":   // a fail-fast while inside the key-path region: the child's exit-code record
+                            using (FluentGpu.Foundation.CrashTrail.Enter(AppRegion.KeyPath, "probe")) Environment.FailFast("--crash-probe");
+                            break;
+                        case "native-keypath":   // a native fault INSIDE the key-path region: exercises the breaker
+                            using (FluentGpu.Foundation.CrashTrail.Enter(AppRegion.KeyPath, "probe")) NativeHook.Fault();
+                            break;
                         case "hang": NativeHook.Hang(post); break;
                         case "boot": break;
                         default: throw new InvalidOperationException("--crash-probe throw-ui");
@@ -701,7 +733,8 @@ public static partial class Crash
         public static void BeginGuiRun(IAppSettings settings, bool versionChanged)
         {
             RunOutcome previous = RunMarker.Begin(settings, out bool reachedFirstFrame);
-            InstallId.Ensure(settings);   // UI thread, once per launch: the crash path only ever READS the id
+            InstallId.Ensure(settings);
+            KeyPathBreaker.Evaluate(LogFolder, Platform.Version.SemVer);   // before any key is derived this launch   // UI thread, once per launch: the crash path only ever READS the id
             string pending = Crash.Bundles.TakePending(LogFolder);
             // The boot-failure streak is witnessed by the BUNDLE, not the settings marker: a crash handler that wrote
             // a bundle before the first frame is the one fact that survives every settings backend (a demo profile keeps
@@ -745,7 +778,52 @@ public static partial class Crash
                 WaveeLogField.Of("bootFailures", nextFailures));
         }
 
-        // ── 8. Win32 ─────────────────────────────────────────────────────────────────────────────────────────────────
+        // ── 8. the context every in-process report carries ─────────────────────────────────────────────────────────
+
+        /// <summary>Appends the native regions, the machine and the event trail to a report being written in THIS process,
+        /// and returns <paramref name="summary"/> with the matching fields set. <paramref name="tid"/> is the thread the
+        /// crash happened on. Never throws: a failure here must not cost the bundle.</summary>
+        internal static Summary AppendContext(StringBuilder sb, Summary summary, uint tid, string threadLabel)
+        {
+            try
+            {
+                var snap = Trail.Live();
+                string region = Trail.AppendSections(sb, snap, Environment.TickCount64, tid, threadLabel);
+                summary = summary with { NativeRegion = region.Length > 0 ? region : null, TrailEvents = snap?.Entries.Length };
+                Machine.AppendSection(sb, summary);
+            }
+            catch (Exception ex) { try { sb.Append("\n(context unavailable: ").Append(ex.GetType().Name).Append(")\n"); } catch { } }
+            return summary;
+        }
+
+        /// <summary>A minidump exception stream for a MANAGED crash: an EXCEPTION_RECORD (code 0xE0434352, address = here)
+        /// over this thread's own captured CONTEXT, in native memory that lives until the process ends (it is read by the
+        /// handler child with ReadProcessMemory). 0 when it cannot be built.</summary>
+        static unsafe nint SyntheticExceptionPointers()
+        {
+            try
+            {
+                const int ContextBytes = 0x1000, RecordBytes = 160;
+                byte* block = (byte*)NativeMemory.AlignedAlloc(ContextBytes + RecordBytes + 16, 16);
+                NativeMemory.Clear(block, ContextBytes + RecordBytes + 16);
+                byte* rec = block + ContextBytes;
+                nint* pointers = (nint*)(rec + RecordBytes);
+                RtlCaptureContext(block);
+                int pcOffset = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 0x108 : 0xF8;
+                *(uint*)rec = 0xE0434352;              // ExceptionCode: the CLR's managed-exception code
+                *(uint*)(rec + 4) = 1;                 // EXCEPTION_NONCONTINUABLE
+                *(nint*)(rec + 16) = *(nint*)(block + pcOffset);
+                pointers[0] = (nint)rec;
+                pointers[1] = (nint)block;
+                return (nint)pointers;
+            }
+            catch (Exception) { return 0; }
+        }
+
+        [LibraryImport("kernel32.dll")]
+        private static unsafe partial void RtlCaptureContext(void* contextRecord);
+
+        // ── 9. Win32 ─────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The NATIVE OS thread id — <c>Environment.CurrentManagedThreadId</c> is .NET's own id, not the one
         /// <c>MiniDumpWriteDump</c>'s <c>MINIDUMP_EXCEPTION_INFORMATION.ThreadId</c> needs to point the dump at the

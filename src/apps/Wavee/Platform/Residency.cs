@@ -162,6 +162,8 @@ public static partial class Residency
     /// turns that into a <see cref="MemoryPressure"/> level, <see cref="Trim"/>s, and then lets the managed heap give
     /// back what nobody holds (<c>Residency.Heap.cs</c>). Always on (house rule: no environment-variable switches) — its
     /// only externally visible effect at rest is one log line.</summary>
+    static MemoryPressure s_lastTrailLevel;
+
     public static long Poll()
     {
         GCMemoryInfo info = GC.GetGCMemoryInfo();
@@ -175,6 +177,12 @@ public static partial class Residency
         long freed = Trim(level);
         // The heap step runs AFTER the arenas: what they just let go of is exactly what a collection can now reclaim.
         long heapFreed = HeapTick(level, out HeapAction heap);
+        // The crash trail: a trim that freed something, or a pressure change (a 30 s poll that did nothing is not an event).
+        if (freed + heapFreed > 0 || level != s_lastTrailLevel)
+        {
+            s_lastTrailLevel = level;
+            Crash.Trail.Note(Crash.AppTrail.MemoryTrim, (long)level, freed + heapFreed);
+        }
         Log.Info("memory", $"governor.trim level={level} private={privateBytes}B machineLoad={machineLoad:0.00} freed={freed}B "
             + $"heap={heap} heapFreed={heapFreed}B managed={info.HeapSizeBytes}B fragmented={info.FragmentedBytes}B");
         return freed + heapFreed;

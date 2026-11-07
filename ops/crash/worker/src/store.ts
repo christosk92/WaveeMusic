@@ -22,7 +22,7 @@ export interface InsertReportInput {
   summary: Summary;
   framesJson: string;
   fingerprint: string;
-  /** grouping.ts `FINGERPRINT_VERSION` the fingerprint was computed with. */
+  /** The `v<N>` the fingerprint key was built with (grouping.ts `fingerprintVersion`). */
   fpVersion: number;
   receivedAt: string;
   /** Derived from the actual `dump` part — never `summary.hasDump`/`summary.dumpBytes`. */

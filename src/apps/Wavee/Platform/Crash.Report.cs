@@ -199,6 +199,9 @@ public static partial class Crash
             bool packaged = false;
             try { packaged = PackageIdentity.IsPackaged; } catch { }
 
+            (bool Vm, string Hint) vm = (false, "");
+            try { vm = Machine.VirtualMachine(); } catch { }
+
             return new Summary(
                 reportId, installId, kind, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                 Or(v?.SemVer), Or(v?.Quad), Or(v?.Commit), Or(v?.Channel),
@@ -208,7 +211,9 @@ public static partial class Crash
                 packaged, locale,
                 Log.SessionId, Log.SinceStartMs, beforeFirstFrame ?? !Host.FirstFrameSeen, Diagnostics.NavigationFrameWatch.Route,
                 exType, exMessage, frames, moduleBase, moduleSize, debugId, exitCode, hasDump, dumpBytes, exceptionCode,
-                ParentPid: Environment.ProcessId, ReporterPid: Environment.ProcessId);
+                ParentPid: Environment.ProcessId, ReporterPid: Environment.ProcessId,
+                GpuDriver: GpuProfile.DriverVersion, VirtualMachine: vm.Vm, VmHint: vm.Hint.Length > 0 ? vm.Hint : null,
+                ThirdPartyModules: Machine.ThirdPartyOfThisProcess());
         }
 
         /// <summary>The exception a summary should be TITLED by: peels the wrappers that only say "this happened somewhere

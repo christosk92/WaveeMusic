@@ -104,8 +104,14 @@ A report contains, and only contains:
   **Settings › Storage › Factory reset**.
 - Optionally, a small memory snapshot (a Windows minidump) — only when you have explicitly ticked "Include
   a memory snapshot," or for a single report you send by hand and choose to include one. It holds thread
-  stacks and loaded modules, never the process heap, so it cannot contain your Spotify credential or other
-  live secrets.
+  stacks, loaded modules and the small blocks of memory those stacks point at, never the whole process heap.
+  Those blocks can hold fragments of whatever Wavee was working on at the moment of the crash, which is why
+  the snapshot is opt-in and never sent without that choice.
+- What the app was doing just before the crash: a list of recent app events (pages opened by their kind, not
+  their address; a track starting or being skipped, without saying which; the window being minimized or
+  restored; a graphics-card reset or switch; memory clean-ups), which native component a thread was inside, the
+  graphics driver's version, whether Wavee runs in a virtual machine, and the file names of add-on programs
+  loaded into Wavee that are neither part of Windows nor of Wavee (for example an on-screen overlay).
 
 **Never sent:** your Spotify account, password, or display name; any file on disk other than the
 redacted log excerpt above; and your IP address is never stored by the service (see below) even though,

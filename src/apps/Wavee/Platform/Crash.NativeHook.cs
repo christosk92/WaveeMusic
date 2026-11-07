@@ -8,6 +8,11 @@
 // Spec: crash-diagnostics-implementation.md §B.0, §G "Native AV" / "Hang" / "Boot loop";
 //       crash-production-readiness-implementation.md (#165) "W3a" + appendix A3 (the fault-stack capture)
 //
+// THE NATIVE GATE (crash round 2026-11-07). On x64 and ARM64 the registered VEH and filter are `Crash.FaultGate`'s machine
+// code, not the [UnmanagedCallersOnly] methods below: a C# entry on a thread already in cooperative mode is a NativeAOT
+// fail-fast (0xC0000602), which masked native faults. The gate wakes a reporter thread, which calls `OnGateFault` while
+// the faulting thread stays parked; the C# handlers below remain the fallback for any other architecture.
+//
 // CAPTURE FIRST, ALLOCATION-FREE (#165 W3a). A native bundle's only frames are the ones walked HERE, on the faulting
 // thread, while its stack still exists. `CaptureFaultStack` runs before `LogFired` and before the dump request — both
 // allocate (strings, the bundle writer, the pipe) on a heap that may be what just faulted. It records the exception
@@ -41,6 +46,8 @@ public static partial class Crash
         static unsafe nint* s_frames;           // NativeMemory, NativeFrames.MaxCapture slots; allocated by Install, never freed
         static int s_frameCount;
         static nint s_faultAddress;
+        static uint s_faultThreadId;            // the faulting thread's OS id (the gate's reporter runs on another thread)
+        static bool s_gated;                    // the native gate (Crash.FaultGate) is the registered handler
 
         /// <summary>Fault codes the spike watches for: access violation, illegal instruction, in-page error, array
         /// bounds exceeded, integer divide-by-zero — the classes a native crash actually raises.</summary>
@@ -50,7 +57,7 @@ public static partial class Crash
         /// <summary>A later package (the real crash host, WP-B) can request a dump from the filter once one lands —
         /// this spike only calls it, never implements it. Called from the FILTER only (the VEH runs too early / too
         /// often relative to the "is this actually unhandled" question the filter answers).</summary>
-        public static Action<uint, nint>? OnForeignFault;
+        public static Action<uint, nint, uint>? OnForeignFault;   // (code, EXCEPTION_POINTERS*, faulting OS thread id)
 
         /// <summary>Registers both candidates. Idempotent; safe to call once from <c>Shell.Host.InstallCrashNet</c>.
         /// Captures the main module's image range ONCE, here, so the hot fault path never touches
@@ -64,11 +71,38 @@ public static partial class Crash
             // (GetProcAddress under the loader lock) on a thread that just faulted. Its one frame is overwritten later.
             _ = RtlCaptureStackBackTrace(0, 1, s_frames, null);
 
+            // The native gate first (Crash.FaultGate): no managed code runs on the faulting thread, so a fault on a thread in
+            // cooperative mode is no longer turned into 0xC0000602 by our own [UnmanagedCallersOnly] entry, and an in-image
+            // fault (runtime, GC) keeps its real exit code. The managed handlers below stay only for an architecture the gate
+            // has no code for.
+            if (s_imageBase != 0 && FaultGate.TryInstall(s_imageBase, s_imageSize, OnGateFault))
+            {
+                s_gated = true;
+                return;
+            }
+
             delegate* unmanaged[Stdcall]<EXCEPTION_POINTERS*, int> filter = &Filter;
             SetUnhandledExceptionFilter((nint)filter);
 
             delegate* unmanaged[Stdcall]<EXCEPTION_POINTERS*, int> veh = &Veh;
             AddVectoredExceptionHandler(0 /* last — try every other handler's VEH first */, (nint)veh);
+        }
+
+        /// <summary>Whether the native gate is the registered handler (the report says which hook fired).</summary>
+        public static bool Gated => s_gated;
+
+        /// <summary>The gate's reporter thread, while the faulting thread is parked in the gate: the frames were walked from
+        /// the fault's own context, so they start AT the faulting instruction.</summary>
+        static unsafe void OnGateFault(FaultGate.Fault fault)
+        {
+            if (Interlocked.Exchange(ref s_reported, 1) != 0) return;
+            s_faultAddress = fault.Address;
+            s_faultThreadId = fault.ThreadId;
+            int n = Math.Min(fault.Frames.Length, NativeFrames.MaxCapture);
+            if (s_frames != null) for (int i = 0; i < n; i++) s_frames[i] = fault.Frames[i];
+            s_frameCount = s_frames != null ? n : 0;
+            LogFired("gate", fault.Code);
+            try { OnForeignFault?.Invoke(fault.Code, fault.Pointers, fault.ThreadId); } catch (Exception) { }
         }
 
         static void CaptureImageRange()
@@ -100,7 +134,7 @@ public static partial class Crash
                 if (first) CaptureFaultStack(info);   // FIRST: allocation-free, before LogFired / the dump request allocate
                 LogFired("filter", code);
                 if (first)
-                    try { OnForeignFault?.Invoke(code, (nint)info); } catch (Exception) { }
+                    try { OnForeignFault?.Invoke(code, (nint)info, GetCurrentThreadId()); } catch (Exception) { }
                 return ExceptionExecuteHandler;
             }
             return ExceptionContinueSearch;
@@ -122,7 +156,7 @@ public static partial class Crash
                 if (first) CaptureFaultStack(info);   // FIRST: allocation-free, before LogFired / the dump request allocate
                 LogFired("veh", code);
                 if (first)
-                    try { OnForeignFault?.Invoke(code, (nint)info); } catch (Exception) { }
+                    try { OnForeignFault?.Invoke(code, (nint)info, GetCurrentThreadId()); } catch (Exception) { }
             }
             return ExceptionContinueSearch;
         }
@@ -132,6 +166,7 @@ public static partial class Crash
         /// <see cref="IsForeignFault"/> validated <paramref name="info"/> and its exception record.</summary>
         static unsafe void CaptureFaultStack(EXCEPTION_POINTERS* info)
         {
+            s_faultThreadId = GetCurrentThreadId();
             s_faultAddress = ((EXCEPTION_RECORD*)info->ExceptionRecord)->ExceptionAddress;
             nint* frames = s_frames;
             s_frameCount = frames != null ? RtlCaptureStackBackTrace(0, (uint)NativeFrames.MaxCapture, frames, null) : 0;
@@ -140,6 +175,9 @@ public static partial class Crash
         /// <summary>The faulting instruction's address as the hook captured it (0 before any native fault) — the
         /// native headline's "at 0x…" (it used to print the EXCEPTION_POINTERS address instead).</summary>
         public static nint FaultAddress => s_faultAddress;
+
+        /// <summary>The faulting thread's OS id (0 before any native fault).</summary>
+        public static uint FaultThreadId => s_faultThreadId;
 
         /// <summary>The captured fault stack as Wavee.exe RVAs, innermost first (<see cref="NativeFrames.SelectAppRvas"/>):
         /// a native bundle's <c>summary.json</c> <c>rvas</c> and its report's "Frames (RVA)" section. Allocates — call it
@@ -220,6 +258,9 @@ public static partial class Crash
 
         [LibraryImport("ntdll.dll")]
         private static partial void RtlFillMemory(nint destination, nuint length, byte fill);
+
+        [LibraryImport("kernel32.dll")]
+        private static partial uint GetCurrentThreadId();
 
         /// <summary><c>USHORT RtlCaptureStackBackTrace(ULONG FramesToSkip, ULONG FramesToCapture, PVOID* BackTrace,
         /// PULONG BackTraceHash)</c> — blittable, so the generated stub is a direct call (no marshaller, no allocation).</summary>

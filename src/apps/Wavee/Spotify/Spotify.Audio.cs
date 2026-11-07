@@ -183,8 +183,16 @@ public static partial class Spotify
         /// <summary>THE PLAYPLAY SEAM. Set once at boot by the private assembly when the junction is present; null on
         /// a public-only build. Returns the 16-byte AES key, or null when it cannot derive one. It is called on an api
         /// thread, may block, and must never throw — a throw is caught here and reported as <see cref="Fault.NoKey"/>,
-        /// but a deriver that throws per track is a deriver that is wrong.</summary>
-        public static Func<KeyRequest, CancellationToken, byte[]?>? KeyDeriver { get; set; }
+        /// but a deriver that throws per track is a deriver that is wrong.
+        /// <para>Reads null while the key-path breaker is open (<see cref="Crash.KeyPathBreaker"/>: the key path faulted
+        /// natively in recent launches), so this launch behaves exactly like a build without one.</para></summary>
+        public static Func<KeyRequest, CancellationToken, byte[]?>? KeyDeriver
+        {
+            get => Crash.KeyPathBreaker.Open ? null : s_keyDeriver;
+            set => s_keyDeriver = value;
+        }
+
+        static Func<KeyRequest, CancellationToken, byte[]?>? s_keyDeriver;
 
         /// <summary>True when this build can answer for a file the AP refuses. The player bar reads it to say
         /// "unavailable on this build" once, rather than failing track by track.</summary>
@@ -200,7 +208,24 @@ public static partial class Spotify
         /// replaces the AES-CTR keystream for that file. Asked once per body open, after <see cref="Key"/> answered for
         /// the file; null, or a null answer, decrypts with the key. Set once at boot by the private assembly, beside
         /// <see cref="KeyDeriver"/>.</summary>
-        public static Func<string, BodyDecrypt?>? BodyDecryptorFor { get; set; }
+        public static Func<string, BodyDecrypt?>? BodyDecryptorFor
+        {
+            // Null while the key-path breaker is open; otherwise every decryptor it hands out runs inside the key-path
+            // crash region, so a native fault in it is named in the report and counts toward the breaker.
+            get => Crash.KeyPathBreaker.Open || s_bodyDecryptorFor is null ? null : s_regionedDecryptorFor;
+            set => s_bodyDecryptorFor = value;
+        }
+
+        static Func<string, BodyDecrypt?>? s_bodyDecryptorFor;
+        static readonly Func<string, BodyDecrypt?> s_regionedDecryptorFor = static fileId =>
+        {
+            BodyDecrypt? inner = s_bodyDecryptorFor?.Invoke(fileId);
+            if (inner is null) return null;
+            return (buffer, streamOffset) =>
+            {
+                using (FluentGpu.Foundation.CrashTrail.Enter(Crash.AppRegion.KeyPathDecrypt)) inner(buffer, streamOffset);
+            };
+        };
 
         /// <summary>Is the active connection metered? A SEAM the platform's network-cost probe installs (WP-6.S
         /// <c>NetworkPolicy</c>); null reads as unmetered. Read per open: a metered link gets the 10 s read-ahead tier.</summary>
@@ -889,9 +914,20 @@ public static partial class Spotify
             if (deriver is null) return Fault.NoDeriver;
 
             byte[]? derived;
-            try { derived = deriver(new KeyRequest(fileIdHex, fileId.ToArray(), trackGid.ToArray()), ct); }
-            catch (OperationCanceledException) { return Fault.Network; }
-            catch (Exception ex) { Log.Error("spotify", "audio key deriver faulted", ex); return Fault.NoKey; }
+            // The crash region and trail around the seam call: a native fault inside it is named "keypath" in the report
+            // and counts toward the key-path breaker (Crash.KeyPathBreaker).
+            long enteredAt = Environment.TickCount64;
+            int keyOutcome = 1;
+            Crash.Trail.Note(Crash.AppTrail.KeyPathEnter, 1);
+            try
+            {
+                using (FluentGpu.Foundation.CrashTrail.Enter(Crash.AppRegion.KeyPath))
+                    derived = deriver(new KeyRequest(fileIdHex, fileId.ToArray(), trackGid.ToArray()), ct);
+                keyOutcome = derived is { Length: AudioKey.KeyLength } ? 0 : 1;
+            }
+            catch (OperationCanceledException) { keyOutcome = 3; return Fault.Network; }
+            catch (Exception ex) { keyOutcome = 2; Log.Error("spotify", "audio key deriver faulted", ex); return Fault.NoKey; }
+            finally { Crash.Trail.Note(Crash.AppTrail.KeyPathLeave, keyOutcome, Environment.TickCount64 - enteredAt); }
 
             if (derived is not { Length: AudioKey.KeyLength }) return Fault.NoKey;
             derived.CopyTo(key16);

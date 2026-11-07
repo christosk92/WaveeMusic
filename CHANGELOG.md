@@ -24,6 +24,15 @@ versions separately under `v*` and is not tracked in this file.)
   frame. To do this Wavee keeps up to about 30 MB more graphics memory while it runs.
 - **Crash reports explain sudden closes.** When the .NET runtime closes Wavee itself, the crash report now keeps the
   runtime's own reason and how long Wavee had been unresponsive, under your existing diagnostics settings.
+- **Crash reports say what led up to the crash.** A report now lists the app's last events (the kind of page, a track
+  starting or skipping, the window being minimized or restored, a graphics reset or GPU switch, memory clean-ups), which
+  native component the crashing thread was in, the graphics driver version and any overlay loaded into Wavee. Nothing
+  personal is in the list, and sending a report stays your choice.
+- **A crash in native code is reported as itself.** Wavee's crash hook no longer turns some native crashes into a
+  "fail fast" with no details; they now arrive with their real error and a memory snapshot.
+- If playback that needs the private key path crashes Wavee twice in a row, Wavee skips it for that version and shows
+  those tracks as unavailable instead of crashing on every start; an update or a week without it brings it back.
+
 
 ### Fixed
 
