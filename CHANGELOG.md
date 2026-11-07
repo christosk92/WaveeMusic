@@ -16,8 +16,21 @@ versions separately under `v*` and is not tracked in this file.)
   songs' credits, and "all credits" opens the full list grouped by role. The song credits sheet, which showed only its
   title in Zune and WinUI, lists everyone again.
 
+### Changed
+
+- **Fewer hitches while scrolling and changing pages.** Wavee now reuses graphics memory instead of handing it back to
+  the graphics driver in the middle of a frame, so the slowest frames while moving between pages take about half as
+  long to reach the graphics card. A page that slides in is drawn from one picture instead of being redrawn on every
+  frame. To do this Wavee keeps up to about 30 MB more graphics memory while it runs.
+- **Crash reports explain sudden closes.** When the .NET runtime closes Wavee itself, the crash report now keeps the
+  runtime's own reason and how long Wavee had been unresponsive, under your existing diagnostics settings.
+
 ### Fixed
 
+- **No crash after a long time minimized.** Restoring Wavee after it sat minimized for hours on a big playlist, artist
+  or Liked Songs page could crash it on the first frame.
+- **No crash when a song starts as the play log saves.** The play log and the visit history now take their snapshot on
+  the UI thread, so a song starting at the moment the save fired can no longer crash Wavee.
 - **Zune titles are never cut at the left.** A large playlist or album title that hangs into the margin draws its
   first letter whole, and its focus ring and edit underline sit where they belong.
 - **Pages settle without jumping.** A show's header grows smoothly as its details load instead of dropping the episode

@@ -1315,7 +1315,9 @@ public static partial class Shell
                 if (s_path is null) return;
                 Interlocked.Exchange(ref s_savePending, 1);
                 Interlocked.Exchange(ref s_dirty, 1);
-                s_saveTimer ??= new Timer(static _ => OnSaveTimer(), null, Timeout.Infinite, Timeout.Infinite);
+                // The debounce fires on a pool thread; the save snapshots s_entries, which only the UI thread mutates, so
+                // it runs THERE (this file's timer poster), never beside an Add.
+                s_saveTimer ??= new Timer(static _ => s_marshal?.Invoke(OnSaveTimer), null, Timeout.Infinite, Timeout.Infinite);
                 try { s_saveTimer.Change(SaveDebounceMs, Timeout.Infinite); } catch (ObjectDisposedException) { }
             }
 
@@ -1326,9 +1328,9 @@ public static partial class Shell
                 SaveNow();
             }
 
-            /// <summary>Snapshot on the CALLER's thread, write on the pool. The persisted shape is UTC TICKS, not a
-            /// <c>DateTime</c>: the kind does not round-trip, and a local time written on one side of a DST boundary
-            /// and read on the other moves an entry into the wrong day group.</summary>
+            /// <summary>Snapshot on the UI thread (the debounce posts here), write on the pool. The persisted shape is
+            /// UTC TICKS, not a <c>DateTime</c>: the kind does not round-trip, and a local time written on one side of a
+            /// DST boundary and read on the other moves an entry into the wrong day group.</summary>
             static void SaveNow()
             {
                 if (s_path is not { } path) return;
@@ -1835,7 +1837,11 @@ public static partial class Shell
         {
             if (s_path is null) return;
             Interlocked.Exchange(ref s_savePending, 1);
-            s_saveTimer ??= new Timer(static _ => OnSaveTimer(), null, Timeout.Infinite, Timeout.Infinite);
+            // The debounce fires on a pool thread, but the save snapshots s_entries and s_recency, which Append stamps on the
+            // UI thread: copied beside a play that added a uri, the recency map outgrew its snapshot array mid-copy
+            // (ArgumentException in Dictionary.CopyTo, 0.3.5 crash report). The save runs on the UI thread (this file's
+            // timer poster), so no mutation can interleave with the snapshot.
+            s_saveTimer ??= new Timer(static _ => s_marshal?.Invoke(OnSaveTimer), null, Timeout.Infinite, Timeout.Infinite);
             try { s_saveTimer.Change(SaveDebounceMs, Timeout.Infinite); } catch (ObjectDisposedException) { }
         }
 
@@ -1845,7 +1851,8 @@ public static partial class Shell
             SaveNow();
         }
 
-        /// <summary>Snapshot BOTH on the CALLER's thread; the pool task then only touches the snapshots and the paths.
+        /// <summary>Snapshot BOTH on the UI thread (the debounce posts here; Flush runs after the loop ended, when nothing
+        /// mutates any more); the pool task then only touches the snapshots and the paths.
         /// Two write-then-rename moves, ONE pool task — a crash between them is healed by the load-time fold, so they
         /// need not be atomic together.</summary>
         static void SaveNow()
