@@ -67,21 +67,29 @@ internal static class ZuneStageBackdrop
         var mode = sc.Mode.Value;
         var kind = sc.Kind.Value;
         var eff = sc.Look.Value.Eff;
-        return Stage.Layer with
+        var scrim = ZuneStageKit.Shade(Stage.LayoutRules.ScrimFor(mode, eff, kind));
+        var backdrop = Stage.Layer with
         {
             // soft or flat, so it rasters as one small surface and composites as one quad
             ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false, Fill = Ink.Floor,
             RepaintBoundary = true, RasterScale = 0.25f,
-            Visible = Prop.Of(props.Shown),
             Children =
             [
                 Visualizer.BackdropField(sc.Slab, L.W, L.H, Prop.Bind(sc.Slab.BaseFieldOp), boundary: false) with { Key = "stage:field" },
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                    Fill = ZuneStageKit.Shade(Stage.LayoutRules.ScrimFor(mode, eff, kind)), BrushTransitionMs = Stage.Tone.CrossFadeMs,
+                    Fill = scrim, BrushTransitionMs = Stage.Tone.CrossFadeMs,
                 },
             ],
+        };
+        // Spotify Canvas over the backdrop (its own copy of the scrim on top), outside the quarter-scale boundary: the video is a hole the
+        // compositor fills, never a raster of the boundary. It draws nothing without a canvas, so the stage is then exactly the backdrop.
+        return Stage.Layer with
+        {
+            HitTestVisible = false, HitTestPassThrough = false,
+            Visible = Prop.Of(props.Shown),
+            Children = [backdrop, CanvasVideo.StageLayer(mode, scrim)],
         };
     }
 }

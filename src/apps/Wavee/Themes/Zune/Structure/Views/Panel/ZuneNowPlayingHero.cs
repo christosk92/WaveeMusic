@@ -121,11 +121,11 @@ internal sealed class ZuneHeroTile : Component
 
         Element face = presentation == Rail.PlayerPrefs.Player
             ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
-            : new ImageEl
+            : CanvasVideo.OverArt(new ImageEl
             {
                 Key = "cover", Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = P.HeroDecodePx,
                 Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
-            };
+            }, CanvasVideo.Surface.Hero, R.Shape.All(ShapeRole.Cover));
         var p = preset;
         Element slot = new BoxEl { Key = ZuneNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f, Children = [face] }
             .WithContextMenu(overlay, () => ZuneNowPlayingHero.ArtMenu(props, presentation, p, styleVisible));

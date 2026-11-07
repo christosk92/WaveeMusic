@@ -51,7 +51,8 @@ internal static class WinUiStageBackdrop
         if (WinUiStageTiers.StageOf(ctx.Tier()).Sheet)
             // the Compact sheet (W-Stage-Compact): the flat #2c2c2c sheet, no baked cover
             return Stage.Layer with { Key = "stage:sheet", HitTestVisible = false, HitTestPassThrough = false, Fill = WinUiStageGeometry.SheetFill, Visible = Prop.Of(props.Shown) };
-        return Stage.Layer with   // full height from Grow, not from whichever child happens to declare L.H
+        var scrim = WinUiStageLayerKit.Shade(Stage.LayoutRules.ScrimFor(mode, eff, kind));
+        var backdrop = Stage.Layer with   // full height from Grow, not from whichever child happens to declare L.H
         {
             // ONE quarter-scale repaint boundary for the whole backdrop: the floor, the cover under an 80-DIP baked blur, the
             // Field's radial blobs and the flat scrim are all soft or flat, so they raster together into one small surface
@@ -59,8 +60,6 @@ internal static class WinUiStageBackdrop
             // (the Field drifts under all of them), and the bars' acrylic re-blurred all three.
             ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false, Fill = Ink.Floor,
             RepaintBoundary = true, RasterScale = 0.25f,
-            // under an opaque header photo the quarter-scale blobs would raster for nothing: hide the whole backdrop (Artist layout, Visualizer mode, photo known)
-            Visible = Prop.Of(props.Shown),
             Children =
             [
                 Embed.Comp(new WinUiStageBackdropArt.Props(url), static () => new WinUiStageBackdropArt()),
@@ -68,9 +67,18 @@ internal static class WinUiStageBackdrop
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                    Fill = WinUiStageLayerKit.Shade(Stage.LayoutRules.ScrimFor(mode, eff, kind)), BrushTransitionMs = Stage.Tone.CrossFadeMs,   // a static fill cross-fades; a bound one would snap
+                    Fill = scrim, BrushTransitionMs = Stage.Tone.CrossFadeMs,   // a static fill cross-fades; a bound one would snap
                 },
             ],
+        };
+        // Spotify Canvas over the backdrop (its own copy of the scrim on top), outside the quarter-scale boundary: the video is a hole the
+        // compositor fills, never a raster of the boundary. It draws nothing without a canvas, so the stage is then exactly the backdrop.
+        return Stage.Layer with
+        {
+            HitTestVisible = false, HitTestPassThrough = false,
+            // under an opaque header photo the quarter-scale blobs would raster for nothing: hide the whole backdrop (Artist layout, Visualizer mode, photo known)
+            Visible = Prop.Of(props.Shown),
+            Children = [backdrop, CanvasVideo.StageLayer(mode, scrim)],
         };
     }
 }
