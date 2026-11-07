@@ -44,6 +44,17 @@ public static partial class CanvasVideo
             Children = [new BoxEl { Direction = 1, Shrink = 0f, Children = [art] }, Layer(surface, corners)],
         };
 
+    /// <summary>A box that fills a ZStack it is placed in, also as a COMPONENT ROOT (the anchor mirrors the root's participation:
+    /// Stretch fills the width, Grow + Basis 0 the height — <c>Stage.Layer</c>'s shape).</summary>
+    static readonly BoxEl FillBox = new()
+    {
+        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+        ZStack = true,
+    };
+
+    /// <summary>The poster's decode size: the tallest .thmb rendition (512).</summary>
+    const float PosterDecodePx = 512f;
+
     internal sealed record LayerProps(Surface Surface, CornerRadius4 Corners, ColorF Scrim, bool On);
 
     sealed class LayerView : Component
@@ -61,14 +72,15 @@ public static partial class CanvasVideo
 
             var now = Current.Value;
             if (!on || !now.Shows || !Enabled())
-                return new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false };
+                return FillBox with { HitTestVisible = false };
 
             var kids = new List<Element>(3);
             if (now.Poster.Length > 0)
                 kids.Add(new ImageEl
                 {
                     Key = "canvas-poster",
-                    Source = now.Poster, Fit = ImageFit.Cover, Corners = p.Corners,
+                    // The still's own height (the largest .thmb is 288x512): decoded once at its size, never at the box's.
+                    Source = now.Poster, Fit = ImageFit.Cover, Corners = p.Corners, DecodePx = PosterDecodePx,
                     AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                     RevealTransition = ImageTransition.Fade(Design.Motion.Fast),
                 });
@@ -77,15 +89,15 @@ public static partial class CanvasVideo
             if (p.Scrim.A > 0f)
                 kids.Add(new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Fill = p.Scrim, BrushTransitionMs = Stage.Tone.CrossFadeMs });
 
-            return new BoxEl
+            return FillBox with
             {
-                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, HitTestVisible = false,
+                HitTestVisible = false,
                 Children =
                 [
-                    new BoxEl
+                    FillBox with
                     {
                         Key = "canvas:" + now.Uri,
-                        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true,
+                        ClipToBounds = true,
                         Corners = p.Corners, HitTestVisible = false,
                         Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
                         Transition = MotionTok.StandardEnter,
@@ -112,9 +124,9 @@ public static partial class CanvasVideo
             }, DepKey.Empty);
             float radius = p.Radius;
             // A column that fills the layer; the element grows down it (its root is Grow 1, and a decorative one has no minimum).
-            return new BoxEl
+            return FillBox with
             {
-                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
+                ZStack = false, Direction = 1, HitTestVisible = false,
                 Children = [Embed.Comp(() => new MediaPlayerElement
             {
                 Player = Player,
