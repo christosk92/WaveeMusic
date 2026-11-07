@@ -138,6 +138,8 @@ public static partial class Diagnostics
             if (Interlocked.Exchange(ref s_guiInstalled, 1) != 0) return;
             s_options = ProbeOptions.Parse(args);
             s_frameBench = FrameBenchOptions.Parse(args);   // Diagnostics.Probe.FrameBench.cs
+            ParseVideoProbe(args);                          // Diagnostics.Probe.Video.cs
+            if (s_videoScript.Length > 0) { AttachParentConsole(); s_echo = true; }
             if (s_options.WantsConsole || s_frameBench.Enabled) { AttachParentConsole(); s_echo = true; }
             // Silence the lyrics surface's async stepper BEFORE anything mounts, so the advance probe alone drives the media
             // clock synchronously (0.2.9 WaveeApp.cs:34-40, minus the env read).
@@ -147,6 +149,7 @@ public static partial class Diagnostics
             {
                 Platform.AttachAmbientPower(host);
                 s_host = host;
+                TryVideoProbe(host, window, device);   // never takes the loop: starts its driver thread and falls through
                 return TryStartupBench(host, window, device) || TryPerfBench(host, window, device) || TryFrameBench(host, window, device)
                     || TryMenuBench(host, window, device) || TryMemSoak(host, window, device)
                     || TryLyricsAdvanceProbe(host, window, device) || TryLyricsDemo(host, window, device) || TryPlayDemo(host, window, device);

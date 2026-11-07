@@ -947,6 +947,9 @@ public static partial class Diagnostics
             w.WriteString("preferred", s.Preferred.ToString());
             w.WriteString("transport", Video.State.Transport.Peek().ToString());
             w.WriteBoolean("player", Playback.Video.Player.Peek().Player is not null);
+            var deck = Playback.Snap();
+            w.WriteString("deck", deck.Kind.ToString());            // the reducer's host for the row on deck (Audio / Video)
+            w.WriteBoolean("wanted", deck.VideoWanted);             // the sticky video wish (a video-first play, the bar's button)
             w.WriteEndObject();
         }
 

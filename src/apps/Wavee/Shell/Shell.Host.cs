@@ -409,6 +409,9 @@ public static partial class Shell
 
     static int s_marshallersInstalled;
     static Action<Action>? s_marshal;
+
+    /// <summary>The `--video-probe` driver's door to the UI thread (Diagnostics.Probe.Video.cs): the same poster every seam uses.</summary>
+    internal static void PostUiForProbe(Action a) => s_marshal!(a);
     static System.Threading.Timer? s_fetchWake;
     static int s_fetchWakeAt = int.MaxValue;
 
@@ -866,15 +869,7 @@ public static partial class Shell
         switch (verb.Kind)
         {
             case DeepLinkKind.Open:
-                // `route=settings&arg=<tab>`: the arg is a TAB SLUG, never a place of its own (D4) — it is handed to
-                // Settings, not committed as a route with an Arg (`Dest` would title the tab with it, `SameSlot` would
-                // swallow a re-open of the same page on another tab).
-                if (verb.Route.Kind == RouteKind.Settings && ArgOf(verb.Route) is { } slug && OnSettingsTabRequested is { } openTab)
-                {
-                    openTab(slug);
-                    break;
-                }
-                GoTo(verb.Route);
+                GoToLinked(verb.Route);   // Shell.Links.cs: the settings-tab slug rule lives there, shared with a link click
                 break;
             case DeepLinkKind.Play:
                 if (verb.Context.Length > 0) OnPlayContext?.Invoke(EntityUri.Parse(verb.Context));
