@@ -250,8 +250,8 @@ package is staged, and zips them next to the `.msix`:
 
 | File | Where it comes from | What it is for |
 |---|---|---|
-| `Wavee.pdb` | `publish\Wavee.pdb` (the ILC targets copy it there from `bin\Release\net10.0\<rid>\native\`) | the **only** thing that resolves an RVA; matches exactly one `Wavee.exe` |
-| `Wavee.map.xml` | `obj\Release\net10.0\<rid>\native\Wavee.map.xml` (ILC `--map`, never in the publish folder) | names, sizes and content hashes of every emitted node — **no addresses**; use it to see which methods changed between two builds |
+| `Wavee.pdb` | `publish\Wavee.pdb` (the ILC targets copy it there from `bin\Release\net11.0\<rid>\native\`) | the **only** thing that resolves an RVA; matches exactly one `Wavee.exe` |
+| `Wavee.map.xml` | `obj\Release\net11.0\<rid>\native\Wavee.map.xml` (ILC `--map`, never in the publish folder) | names, sizes and content hashes of every emitted node — **no addresses**; use it to see which methods changed between two builds |
 | `SYMBOLS.txt` | written by the pack script | the build stamp + the sha256/size of the exe the PDB belongs to |
 
 Local: `<staging>\symbols\<quad>\win-<arch>\` (a ready-made WinDbg `.sympath`) and

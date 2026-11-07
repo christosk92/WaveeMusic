@@ -26,6 +26,8 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 
+using Wavee.Theming;
+
 namespace Wavee;
 
 public static partial class Shell
@@ -1044,7 +1046,14 @@ public static partial class Shell
     /// <summary>Which direction the NEXT page swap travels. The nav verbs write this BEFORE the route signal in the
     /// same flush, so the reconciler can <c>Peek</c> it (an untracked read — a motion-only write must never re-run the
     /// keep-alive boundary) and get the direction that belongs to the route it is about to activate.</summary>
-    public enum NavTransitionKind : byte { Forward, Back, Neutral }
+    public enum NavTransitionKind : byte
+    {
+        Forward, Back, Neutral,
+        /// <summary>Forward from the nav pane (a pin, a library entry): a top-level destination whatever the route, so a structure
+        /// with per-kind motion refreshes rather than drills (<see cref="SwapOf"/>). The core's fade-through treats it as Forward.
+        /// (winui page motion)</summary>
+        Top,
+    }
 
     /// <summary>The IDENTITY of a keep-alive page slot: which tab, which route. The nav DIRECTION is deliberately NOT
     /// part of it — direction decides how a swap animates, not which page is cached. Folding it in made a motion-only
@@ -1091,6 +1100,36 @@ public static partial class Shell
     /// outgoing root is still drawing for the whole exit.</summary>
     public static bool NeedsVideoSafe(in Route from, in Route to)
         => from.Kind == RouteKind.Module || to.Kind == RouteKind.Module;
+
+    /// <summary>The kind of the swap from <paramref name="from"/> to <paramref name="to"/> that <paramref name="motion"/> moved
+    /// (<see cref="PageSwap"/>, what a structure's <see cref="PageMotionPolicy"/> answers per kind). A sibling in a pivot's order
+    /// slides by that order, Forward or Back; a nav pane step refreshes; Forward into an entity page drills in, Back out of one
+    /// drills back; any other Forward refreshes, any other Back refreshes back; a tab switch is neutral.</summary>
+    public static PageSwap SwapOf(in Route from, in Route to, NavTransitionKind motion)
+    {
+        if (motion == NavTransitionKind.Neutral) return PageSwap.Neutral;
+        int a = SiblingOrder(from.Kind), b = SiblingOrder(to.Kind);
+        if (a >= 0 && b >= 0 && a != b) return b > a ? PageSwap.SlideFromRight : PageSwap.SlideFromLeft;
+        if (motion == NavTransitionKind.Back) return IsDetail(from.Kind) ? PageSwap.DrillBack : PageSwap.RefreshBack;
+        if (motion == NavTransitionKind.Top) return PageSwap.Refresh;
+        return IsDetail(to.Kind) ? PageSwap.DrillIn : PageSwap.Refresh;
+    }
+
+    /// <summary>An entity page a card or a row opens (a route family keyed by its entity: album, artist, playlist, show, ...), not a
+    /// module's page.</summary>
+    static bool IsDetail(RouteKind kind) => kind != RouteKind.Module && Row(kind).IsPrefix;
+
+    /// <summary>The library's kinds in the order its pivot lists them (WinUI's Compact library head: Playlists, Albums, Artists,
+    /// Podcasts, Audiobooks); -1 for a route outside it.</summary>
+    static int SiblingOrder(RouteKind kind) => kind switch
+    {
+        RouteKind.LibraryPlaylists => 0,
+        RouteKind.LibraryAlbums => 1,
+        RouteKind.LibraryArtists => 2,
+        RouteKind.LibraryPodcasts => 3,
+        RouteKind.LibraryAudiobooks => 4,
+        _ => -1,
+    };
 
     static Design.NavTransitionKind MapMotion(NavTransitionKind motion) => motion switch
     {

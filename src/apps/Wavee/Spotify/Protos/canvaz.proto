@@ -1,0 +1,55 @@
+// The payload Spotify returns for extension kind 16 CANVAS_V1: a track's Canvas, the short silent looping video the
+// official clients show behind now playing. Decoded by hand (`Spotify.Decode.Canvas`, Spotify.Decode.Canvas.cs); this
+// file is the schema of record.
+//
+// Provenance: librespot's protocol/proto/canvaz.proto (extracted from Spotify 1.2.52.442), the message the wire's Any
+// type_url names: type.googleapis.com/spotify.canvaz.cache.EntityCanvazResponse.Canvaz. Field 13 (`thumbnail`) is NEW
+// since 1.2.52: read off the official client's 2026-11 captures (handoff/canvas-2026-11-07/CANVAS.md), two renditions
+// per canvas, `.thmb.288x512.jpg` and `.thmb.144x256.jpg`. Its field NAMES are best-effort.
+//
+// A track with no Canvas: expected as an entity with no extension_data (Pathfinder answers `canvas: null`); not yet
+// observed on this kind. The envelope header carried cache_ttl 3600 s and offline_ttl 30 days.
+
+syntax = "proto3";
+
+package spotify.canvaz.cache;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.Canvaz";
+
+message Artist {
+    string uri = 1;
+    string name = 2;
+    string avatar = 3;
+}
+
+message EntityCanvazResponse {
+    message Canvaz {
+        string id = 1;
+        string url = 2;
+        string file_id = 3;
+        CanvasType type = 4;
+        string entity_uri = 5;
+        Artist artist = 6;
+        bool explicit = 7;
+        string uploaded_by = 8;
+        string etag = 9;
+        string canvas_uri = 11;
+        string storylines_id = 12;
+        repeated Thumbnail thumbnail = 13;
+    }
+
+    message Thumbnail {
+        uint32 height = 1;
+        uint32 width = 2;
+        string url = 3;
+    }
+}
+
+enum CanvasType {   // librespot: `Type` (renamed: a C# `Type` shadows System.Type)
+    IMAGE = 0;
+    VIDEO = 1;
+    VIDEO_LOOPING = 2;
+    VIDEO_LOOPING_RANDOM = 3;
+    GIF = 4;
+}

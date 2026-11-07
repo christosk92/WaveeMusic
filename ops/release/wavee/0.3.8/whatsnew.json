@@ -37,7 +37,7 @@
     {
       "id": "steadier",
       "title": "Steadier",
-      "body": "Restoring Wavee after a long time minimized no longer crashes it, and neither does a song starting at the moment the play log saves. Wavee now ships .NET 10.0.14, which fixes a security issue in the Brotli decoder, and crash reports explain sudden closes.",
+      "body": "Restoring Wavee after a long time minimized no longer crashes it, and neither does a song starting at the moment the play log saves. Wavee now runs on .NET 11, which also fixes a security issue in the Brotli decoder, and crash reports explain sudden closes.",
       "kind": "fixed",
       "issues": []
     }

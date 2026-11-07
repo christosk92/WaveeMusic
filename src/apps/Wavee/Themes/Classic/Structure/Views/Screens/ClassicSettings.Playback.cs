@@ -117,6 +117,7 @@ internal static partial class ClassicSettings
         DocRow(D(Tab.Playback, "videoQuality"), VideoQualityCombo()),
         DocRow(D(Tab.Playback, "videoMetered"), MeteredVideoCombo()),
         VideoPrepareAheadRow(),
+        DocRow(D(Tab.Playback, "showCanvas"), RowToggle(D(Tab.Playback, "showCanvas"))),
         VideoOverridesRow(),
 
         Mark("Player bar"),

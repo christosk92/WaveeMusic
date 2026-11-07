@@ -13,7 +13,7 @@ appendix): **`docs/guide/playback-modules.md`**. This page is the file map.
 |---|---|---|
 | **SDK** (public contract) | `src/apps/Wavee.Sdk/**` | `ModuleManifest`, the playback DTOs (`MatchResult`, `ResolvedPlayable`, `MediaLocator`, `WireMeta`, `ResolvePreferences`), `ModuleUri`, `ModuleError*`, `WaveeModule`, `IModuleHost`, `IModuleStream`, `ModuleRunner`, `ModuleTestHost`, `Protocol/` (`JsonRpcFramer`, `JsonRpcConnection`, `ModuleMethods`, `ModuleProtocol`, `SdkJsonContext`), `Streams/` (`RangedHttpSource`, `RangeSet`, `ChunkDiskCache`), `Http/AuthenticatedHttp`. **Zero project references** — it is the NuGet a third party consumes. |
 | **Host** (app side) | `src/apps/Wavee/Backend/Modules/**` | `ModuleCatalog` (discovery + `ModuleRejection` diagnostics), `ModuleProcess` (+ `ModuleProcessState`, `ModuleTimeouts`, `ChildProcessChannel` behind the `IModuleChannel`/`ModuleSpawn` test seam), `ModuleHost` (the façade `Services` composes), `ModuleMediaProvider` (one `IPlayableMediaProvider` per module), `ModulePlayableCache` / `ModulePlayables` (sync `HasVideo`/`IsLive`/`Get` answers), `ModuleRouter` + `ModuleCapabilities` (paste-url matching), `ModuleByteStream` (module-served bytes), `ModuleHostServices` + `IModuleSecretStore` (the module→host calls), `ModuleStats`. |
-| **Modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | One `net10.0` `Exe` each, `PublishAot=true`, references **only** `Wavee.Sdk`, ships `wavee-module.json`. |
+| **Modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | One `net11.0` `Exe` each, `PublishAot=true`, references **only** `Wavee.Sdk`, ships `wavee-module.json`. |
 
 ## The manifest
 
@@ -67,7 +67,7 @@ plus whatever `module/diagnostics` returned and any `module/status` actions as b
 
 - Dev: `Wavee.csproj` `ProjectReference`s each module (`ReferenceOutputAssembly=false`, `Private=false`,
   `Exists()`-guarded — build ordering only, nothing links) and `CopyBundledModules` stages
-  `src\apps\modules\Wavee.Module.<Name>\bin\<cfg>\net10.0\**` → `$(TargetDir)modules\<id>\`.
+  `src\apps\modules\Wavee.Module.<Name>\bin\<cfg>\net11.0\**` → `$(TargetDir)modules\<id>\`.
 - Publish/MSIX: `ops/build/publish-wavee-modules.ps1` publishes each module NativeAOT into
   `<publish>\modules\<id>\`; both `publish-wavee-aot.ps1` and `pack-wavee-msix.ps1` call it, so the two layouts
   cannot drift.

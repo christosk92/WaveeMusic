@@ -22,9 +22,38 @@ versions separately under `v*` and is not tracked in this file.)
   downloaded the row shows 0 B and says where to get them.
 - **Storage & cache counts the rest of Wavee's data.** A new "Other app data" row covers the lyrics cache, crash
   reports, What's new, podcast transcripts and modules, so the total matches what Wavee keeps on this PC.
+- **Spotify Canvas.** When the playing song has a Canvas (the short looping visual artists add to their tracks), it
+  plays in Now playing in place of the cover, in full screen behind the lyrics and the queue, and in the Canvas player
+  style. It is silent and loops, and it pauses while you cannot see it. Wavee asks for it only for the song that is
+  playing and the next two in the queue, keeps the videos on disk, and shows them offline for up to 30 days. A song
+  without a Canvas looks the same as before.
+- **Show Canvas** setting under Settings > Playback > Video, on by default. Turned off, no Canvas is fetched or shown
+  anywhere.
 
 ### Changed
 
+- **WinUI theme: pages move like Windows apps do.** Changing pages in the WinUI theme now uses the navigation
+  transitions of WinUI itself instead of fading the whole page as one block. A page opened from the navigation pane
+  rises into place, a card or row opens its album, artist or playlist with a short zoom, and Back plays the reverse.
+  The library's pages and the artist page's Overview, Albums, Singles & EPs, Appears on and About tabs slide in from the
+  side of the tab you picked. The parts of the new page arrive one after another, the header first, then the sections,
+  rows and cards that are on screen, and the whole page is in place within about half a second. A page that is still
+  loading enters with its placeholders, and its content fades in where they stood. With Windows animation effects
+  turned off, pages just fade. Zune and Classic move exactly as before.
+- **WinUI podcast pages look like WinUI.** In the WinUI theme the show page's header reads as one line ("publisher ·
+  rating · episodes · weekly · since"), the played counts sit under it, and Follow shows its check. At Compact the
+  Resume button fills the row beside a square Following button. The show's About, topics and (on large windows) its
+  details stand beside the episodes, or under them on small windows. The episode page has WinUI buttons for Mark as
+  played and Save, a WinUI tab bar, and About and Chapters beside the Transcript. The podcasts library opens on a
+  "Library" heading with tabs for each kind, and the selected show's panel uses WinUI's buttons. The Continue and
+  "New since you were here" sections stay at the top of the episodes.
+- **More Popular songs beside a tall side column (WinUI).** On a WinUI artist page with two columns, Popular shows as
+  many songs as fit next to the latest release, discography and artist pick (up to ten), so the space under it is no
+  longer empty. Pages of the song list follow that size. Artists whose columns already line up keep five.
+- **The artist's About card in WinUI.** The card no longer looks clickable without doing anything: it shows the
+  monthly listeners and world rank, and "Read more" opens the full biography with the artist's photos in place.
+- **Artist photos keep the face in view.** The About card's photo is cropped around the faces it finds, and a tall
+  portrait without a detected face keeps its top, instead of showing the middle of the picture.
 - **Release cards open the album; the arrow shows its songs.** On an artist's Singles & EPs and other release grids,
   clicking a card opens the album like any other card. The arrow after "1 track" is now a proper button with hover and
   focus states: it opens the songs inline under the row, and closes them again. The panel opens and closes smoothly
@@ -47,6 +76,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The daylist's picture fills its whole card on a narrow Home.** In the Classic theme at the narrowest size, the
+  daylist card's picture stopped at a hard line two thirds of the way down, with the title, tags, buttons and countdown
+  on a flat plate under it. The picture is now the whole card's background and fades smoothly behind the text.
 - **Repeat All repeats the playlist, and only the playlist.** With Repeat All on, Wavee no longer plays
   suggested songs from outside the playlist or album, with or without shuffle: after the last song it starts again
   from the first, and songs you queued or that Autoplay picked do not come round again. (#215)
@@ -82,13 +114,24 @@ versions separately under `v*` and is not tracked in this file.)
   first letter whole, and its focus ring and edit underline sit where they belong.
 - **Pages settle without jumping.** A show's header grows smoothly as its details load instead of dropping the episode
   list in one step, and the Zune band keeps its place until the next page has landed.
+- **Artist pages no longer load forever.** An artist page could stay on its grey placeholders for good, most often
+  when you opened the artist of the song that was playing: its top tracks arrived last and the page never noticed.
+  It now shows as soon as everything has arrived, and an artist whose details stopped coming shows "Something went
+  wrong" with Retry instead of loading forever.
+- **No page waits forever.** If an artist, album, playlist, show or episode page is still loading after a few
+  seconds with nothing on its way, Wavee asks again once, and if that does not help it shows "Something went wrong"
+  with Retry. The log names the page and what it was waiting for (`page.stuck`).
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
+- **No empty band under an artist's concerts, merch or gallery.** On the artist page, "Upcoming concerts" left about
+  170 px of empty space under its date cards, and the gallery about 70, because their rows were sized for album
+  covers. Each row is now as tall as its own cards, in every theme. Merch cards all share one height, so a two-line
+  name no longer runs past the row.
 
 ### Security
 
-- **Built on .NET 10.0.14.** Wavee carries its own .NET runtime, and this release ships the one that fixes an
-  out-of-bounds write in the Brotli decoder (CVE-2026-111497).
+- **Built on .NET 11.** Wavee carries its own .NET runtime, and this release moves it to .NET 11 (release candidate 3),
+  which also fixes an out-of-bounds write in the Brotli decoder (CVE-2026-111497).
 
 ## [0.3.7] - 2026-10-26
 

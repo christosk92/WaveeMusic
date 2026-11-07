@@ -251,13 +251,13 @@ internal sealed class ClassicHeroTile : Component
 
         Element hero = presentation == Rail.PlayerPrefs.Player
             ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
-            : new ImageEl
+            : CanvasVideo.OverArt(new ImageEl
             {
                 Key = "cover",
                 Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = ClassicHeroLayout.CoverDecodePx,
                 Corners = Radii.CardAll, AlignSelf = FlexAlign.Stretch,
                 Placeholder = Prop.Of(_placeholder),
-            };
+            }, CanvasVideo.Surface.Hero, Radii.CardAll);
 
         var heroBox = new BoxEl { Direction = 1, Shrink = 0f, Children = [hero] }
             .WithContextMenu(overlay, () => ClassicNowPlayingHero.ArtMenu(props, presentation, preset, styleVisible));
@@ -283,13 +283,13 @@ internal sealed class ClassicHeroTile : Component
                 Transform = Prop.Of(() => Affine2D.Scale(sheetSide() / MathF.Max(1f, deckSide), sheetSide() / MathF.Max(1f, deckSide))),
                 Children = [props.Deck()],
             }
-            : new ImageEl
+            : CanvasVideo.OverArt(new ImageEl
             {
                 Key = "cover",
                 Source = Prop.Of(_source!), Fit = ImageFit.Cover, DecodePx = ClassicHeroLayout.CoverDecodePx,
                 Corners = Radii.CardAll, AspectRatio = 1f, AlignSelf = FlexAlign.Stretch,
                 Placeholder = Prop.Of(_placeholder!),
-            };
+            }, CanvasVideo.Surface.Hero, Radii.CardAll);
         var p = preset;
         var heroBox = new BoxEl
         {

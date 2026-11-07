@@ -85,6 +85,10 @@ public static class ClassicArtistRules
     /// <summary>The biography text's size.</summary>
     public const float BioFontSize = 14f;
 
+    /// <summary>A merch card's text: the name's two lines and the price's one, each on the dense title's 18 line (the card's height and its shelf's extent).</summary>
+    public const float MerchLine = 18f;
+    public const int MerchNameLines = 2;
+
     /// <summary>The share of the band's width the biography text takes at the wide mode.</summary>
     public const float BioWideShare = 0.62f;
 

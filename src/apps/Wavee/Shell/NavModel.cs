@@ -279,10 +279,12 @@ public sealed partial class NavModel : INavVerbs
 
     // ── verbs ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The nav pane's step to a destination: a top-level navigation whatever the route (a pin opens its playlist as a
+    /// destination, not as a drill from a card), so a structure with per-kind page motion refreshes (<see cref="Shell.SwapOf"/>).</summary>
     public void Navigate(string routeKey, string? arg)
     {
         if (routeKey.Length == 0) return;
-        Shell.GoTo(Shell.Parse(routeKey, arg));
+        Shell.GoTo(Shell.Parse(routeKey, arg), motion: Shell.NavTransitionKind.Top);
     }
 
     public void Play(string uri)

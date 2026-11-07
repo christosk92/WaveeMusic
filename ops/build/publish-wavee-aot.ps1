@@ -158,7 +158,7 @@ $outDir = if ($OutDir) {
   # Its own tree: a diag exe must never silently replace the shipping publish an operator then measures as "Release".
   Join-Path $root "src\apps\Wavee\bin\publish-aot-diag\$rid"
 } else {
-  Join-Path $root "src\apps\Wavee\bin\$Configuration\net10.0\$rid\publish"
+  Join-Path $root "src\apps\Wavee\bin\$Configuration\net11.0\$rid\publish"
 }
 $exe    = Join-Path $outDir 'Wavee.exe'
 

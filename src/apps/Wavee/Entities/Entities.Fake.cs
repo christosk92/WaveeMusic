@@ -106,6 +106,9 @@ public static partial class Entities
     /// <summary>The bundled bright header photograph (a white sky over a pale ground), as an absolute path like <see cref="Cover"/>.</summary>
     static string BrightHeaderPhoto() => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "header-bright.jpg");
 
+    /// <summary>The bundled tall portrait (900 x 1600, a drawn figure: the face at the top, the feet at the foot), as an absolute path like <see cref="Cover"/>.</summary>
+    static string TallPortraitPhoto() => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "portrait-tall.jpg");
+
     // ── the seed ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The demo catalog, as columns. Called once, from the app's boot sequence, only when
@@ -147,6 +150,7 @@ public static partial class Entities
         SeedLibrarySurfaces(now0);    // owner O: Entities.Fake.Library.cs (playlist, local, user, liked facts)
         SeedHomeSurfaces(now0);       // owner P: Entities.Fake.Home.cs (home, search, browse, recents)
         SeedProfileSurfaces(now0);    // profile pages: Entities.Fake.Profile.cs (the four users' social facts + shelves)
+        SeedCanvasSurfaces(now0);     // Spotify Canvas: Entities.Fake.Canvas.cs (which tracks loop a canvas, which have none)
 
         // ONE publication (ch 31 §7.5 step 5 / §1.2): every table this seed touched bumps its Changed signal exactly
         // once, here — never per row and never per relation.
@@ -189,6 +193,7 @@ public static partial class Entities
     static partial void SeedLibrarySurfaces(long now0);
     static partial void SeedHomeSurfaces(long now0);
     static partial void SeedProfileSurfaces(long now0);
+    static partial void SeedCanvasSurfaces(long now0);
 
     static string UserUri(int i) => i switch
     {

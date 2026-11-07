@@ -2224,6 +2224,8 @@ public static partial class Entities
         // them — after the rows, for the same reason every edge rides after the rows (Edges.cs §6, §7).
         CommitRootlist(staging);
         CommitTraits(staging);
+        // A track's Canvas (kind 16): one row of owned text per track, landed by its owner (Entities/Canvas.cs).
+        CommitCanvas(staging);
         // Recents is its own relation with its own payload (ch 16 §7.2) and rides after the edges for the same reason
         // the edges ride after the rows.
         CommitRecents(staging);
@@ -2245,6 +2247,7 @@ public static partial class Entities
     static partial void CommitEdges(Staging s);
     static partial void CommitRootlist(Staging s);
     static partial void CommitTraits(Staging s);
+    static partial void CommitCanvas(Staging s);
     static partial void CommitRecents(Staging s);
     static partial void CommitGradings(Staging s);
 

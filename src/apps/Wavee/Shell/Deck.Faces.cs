@@ -1348,7 +1348,9 @@ public static partial class Deck
 
     /// <summary>The cover blown out and blurred behind itself, with a slow Ken Burns drift over a framed copy. The drift is
     /// not a tick: it is four looping keyframe tracks the animation slab runs, CANCELLED in place (frozen where it stands)
-    /// whenever the deck may not loop (<see cref="Slab.LoopsRun"/>).</summary>
+    /// whenever the deck may not loop (<see cref="Slab.LoopsRun"/>).
+    /// <para>The board draws this preset as "Canvas (video loop)" (C-PlayerFaces): when the playing track has a Spotify Canvas, the
+    /// frame plays it (<see cref="CanvasVideo"/>, the Deck surface) and the drift under it stands still; without one it is the drift.</para></summary>
     static class CanvasFace
     {
         public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
@@ -1397,7 +1399,8 @@ public static partial class Deck
             {
                 (Sig, Side, Fast, BleedOpacity) = UseProps<CanvasArtworkProps>();
                 _latch.Update(Sig, image: true);
-                bool run = Sig.LoopsRun.Value;                 // playing ∧ active ∧ rail open ∧ ¬reduced — a value, not a branch
+                // playing ∧ active ∧ rail open ∧ ¬reduced — a value, not a branch; a Canvas playing in the frame stills the drift under it
+                bool run = Sig.LoopsRun.Value && !(CanvasVideo.Current.Value.Shows && CanvasVideo.Enabled());
                 int gen = _latch.Gen;
                 float s = Side, frame = 0.78f * s, inner = 1.18f * frame, bleed = 1.5f * s;
                 string url = CoverUrlOf(_latch.Shown) ?? "";
@@ -1442,6 +1445,12 @@ public static partial class Deck
                         {
                             Width = inner, Height = inner, Shrink = 0f, OnRealized = h => _drift = h,
                             Children = [new ImageEl { Source = url, Width = inner, Height = inner, Fit = ImageFit.Cover, DecodePx = 512f, Placeholder = wash }],
+                        }),
+                        // The track's Spotify Canvas over the drift, cropped to the frame (nothing without one).
+                        new CanvasChild(0f, 0f, new BoxEl
+                        {
+                            Width = frame, Height = frame, Shrink = 0f, ZStack = true, HitTestVisible = false,
+                            Children = [CanvasVideo.Layer(CanvasVideo.Surface.Deck, CornerRadius4.All(6f))],
                         }),
                     ]) with { Corners = CornerRadius4.All(6f), Shadow = new ShadowSpec(60f, 24f, 0f, Black(0.45f)) }),
                 ]) with { Animate = CoverFade, HitTestVisible = false, Key = "cv:" + FormatCache.Int(gen) };

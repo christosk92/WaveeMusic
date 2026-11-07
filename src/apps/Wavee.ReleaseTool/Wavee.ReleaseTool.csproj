@@ -15,7 +15,7 @@
     <PublishAot>true</PublishAot>
     <IsAotCompatible>true</IsAotCompatible>
     <IsPackable>false</IsPackable>
-    <!-- A dev box may only have a newer 10.x runtime installed; this is a build-time tool, not a shipped binary. -->
+    <!-- A dev box may only have a newer .NET runtime installed; this is a build-time tool, not a shipped binary. -->
     <RollForward>Major</RollForward>
   </PropertyGroup>
 

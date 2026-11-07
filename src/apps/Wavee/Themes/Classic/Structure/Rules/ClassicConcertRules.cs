@@ -35,6 +35,10 @@ internal static class ClassicConcertRules
     public const float StubDateW = 48f, StubDaySize = 28f, StubDayLine = 36f, StubTextGap = 2f;
     public const float StubVenueSize = 14f, StubVenueLine = 20f, StubPinGap = 4f, StubPinSize = 12f, StubCitySize = 12f, StubCityLine = 16f;
 
+    /// <summary>The stub's height, the one the artist page's shelf reserves: the date lane (the eyebrow's 16 line over the day numeral, which draws 37 on
+    /// its 36 line) inside the card's 12 padding, rounded up to 80.</summary>
+    public const float StubH = 80f;
+
     // ── the browse-all lead cell ──
     public const float BrowseAllGlyphAlpha = 0.30f;
     public const float BrowseAllSmallGlyph = 30f, BrowseAllPinGlyph = 44f, BrowseAllTinyGlyph = 22f;

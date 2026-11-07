@@ -100,6 +100,7 @@ internal static class WinUiHomePage
         Element column = new BoxEl
         {
             Key = "home:column", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, AlignItems = FlexAlign.Stretch,
+            EntranceGroup = true,   // a page entrance staggers the greeting, then the chapters (WinUiPageMotion)
             ScrollScope = WinUiHomeRules.PageScope,
             Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Spacing.XXXL),
             Children =
@@ -155,11 +156,12 @@ internal static class WinUiHomePage
             Key = m.Facet.Length > 0 ? "facet:" + m.Facet : "facet", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
             Transition = MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
+            EntranceGroup = true,   // frames for a page entrance: the facet fade and the dim bind keep their channels, the chapters enter
             Children =
             [
                 new BoxEl   // the dim host
                 {
-                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, EntranceGroup = true,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),      // compositor-only
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),
                     Children = [WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],

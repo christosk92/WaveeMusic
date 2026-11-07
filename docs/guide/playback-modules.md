@@ -55,7 +55,7 @@ Three pieces, three owners:
 |---|---|---|
 | **The SDK** | `src/apps/Wavee.Sdk/**` | The public contract: manifest + DTOs, the JSON-RPC framing/connection, `WaveeModule`, `ModuleRunner`, `ModuleTestHost`, `ModuleUri`, and the reusable byte-stream building blocks in `Wavee.Sdk.Streams`. **Zero project references**. It is the NuGet a third-party module consumes. |
 | **The host** | `src/apps/Wavee/Platform/Modules.Host.cs`, `Modules.cs`, `Modules.UI.cs` | Discovery and manifest validation (`ModuleCatalog` → `InstalledModule` / `ModuleRejection`), the child process and its lifecycle (`ModuleProcess`, `ModuleProcessState`, `ModuleTimeouts`, `ChildProcessChannel` behind the `IModuleChannel`/`ModuleSpawn` test seam), the façade the app composes (`ModuleHost`), one `IPlayableMediaProvider` per module (`ModuleMediaProvider`), the sync answer cache (`ModulePlayableCache` / `ModulePlayables`), paste-URL routing (`ModuleRouter`, `ModuleCapabilities`), module-served bytes (`ModuleByteStream`), the module→host service handlers (`ModuleHostServices`, `IModuleSecretStore`) and per-module counters (`ModuleStats`). |
-| **The modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | Three bundled first-party modules. Each is a `net10.0` `Exe` with `PublishAot=true`, references **only** `Wavee.Sdk`, and ships a `wavee-module.json` beside its entry point. |
+| **The modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | Three bundled first-party modules. Each is a `net11.0` `Exe` with `PublishAot=true`, references **only** `Wavee.Sdk`, and ships a `wavee-module.json` beside its entry point. |
 
 Two rules the composition enforces (see `docs/plans/wavee/architecture.md §4.3`):
 
@@ -276,7 +276,7 @@ modules use a `ProjectReference`; out-of-repo authors use the NuGet.
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -462,7 +462,7 @@ there is no host.
 ### Attach-to-debug
 
 The diagnostics page lists each module's PID; attach with the IDE. For a dev build the entry is a `.dll`, so the
-process you attach to is `dotnet Wavee.Module.X.dll` running out of `…\bin\Debug\net10.0\modules\<id>\`.
+process you attach to is `dotnet Wavee.Module.X.dll` running out of `…\bin\Debug\net11.0\modules\<id>\`.
 
 ---
 
@@ -476,12 +476,12 @@ guarded by `Condition="Exists(…)"` so a checkout without the modules still bui
 (`AfterTargets="Build"`) then stages each module's framework-dependent output:
 
 ```
-src\apps\modules\Wavee.Module.YouTube\bin\<Configuration>\net10.0\**   →   $(TargetDir)modules\wavee.youtube\
-src\apps\modules\Wavee.Module.Twitch \bin\<Configuration>\net10.0\**   →   $(TargetDir)modules\wavee.twitch\
-src\apps\modules\Wavee.Module.Radio  \bin\<Configuration>\net10.0\**   →   $(TargetDir)modules\wavee.radio\
+src\apps\modules\Wavee.Module.YouTube\bin\<Configuration>\net11.0\**   →   $(TargetDir)modules\wavee.youtube\
+src\apps\modules\Wavee.Module.Twitch \bin\<Configuration>\net11.0\**   →   $(TargetDir)modules\wavee.twitch\
+src\apps\modules\Wavee.Module.Radio  \bin\<Configuration>\net11.0\**   →   $(TargetDir)modules\wavee.radio\
 ```
 
-so a debug run finds `src\apps\Wavee\bin\Debug\net10.0\modules\wavee.youtube\wavee-module.json`.
+so a debug run finds `src\apps\Wavee\bin\Debug\net11.0\modules\wavee.youtube\wavee-module.json`.
 
 **The manifest, twice.** A `dotnet build` produces a framework-dependent `Wavee.Module.YouTube.dll`; a
 `dotnet publish -r <rid>` produces a NativeAOT `Wavee.Module.YouTube.exe`. Each module therefore checks in two
@@ -531,7 +531,7 @@ A module is distributed as a **zip of its directory** (manifest + exe + data fil
 
 ```powershell
 powershell -File ops\build\pack-module.ps1 `
-  -ModuleDir src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\modules\wavee.youtube `
+  -ModuleDir src\apps\Wavee\bin\Release\net11.0\win-arm64\publish\modules\wavee.youtube `
   -OutputDir artifacts\modules -Arch arm64
 ```
 

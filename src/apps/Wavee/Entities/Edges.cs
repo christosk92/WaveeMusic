@@ -909,6 +909,7 @@ public sealed partial class Edges
     {
         for (int p = 0; p < Rootlist.ParentCount; p++) ReleaseRootlistText(p);
         for (int p = 0; p < TrackCredits.ParentCount; p++) ReleaseCreditText(p);
+        ReleaseAllCanvasText();
         ReleaseSearchText();
         ReleaseArtistPayloadText();
         for (int p = 0; p < PlaylistTuning.ParentCount; p++) ReleaseTuningText(p);

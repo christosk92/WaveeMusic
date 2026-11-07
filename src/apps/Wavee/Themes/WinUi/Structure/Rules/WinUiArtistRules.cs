@@ -113,6 +113,10 @@ public static class WinUiArtistRules
 
     /// <summary>The page width from which the overview is two columns (and below which it stacks), the gap between columns, their weights, and the vertical gap
     /// between the overview's blocks and between sections.</summary>
+    /// <summary>The most rows Popular takes beside a taller side column (the two-column overview fits its rows to the side column's height; the tier's five
+    /// is the floor). Ten: the popular list Spotify sends (owner 2026-11-07).</summary>
+    public const int PopularFitMaxRows = 10;
+
     public const float TwoColumnFrom = 1100f, ColumnGap = 36f, HugeColumnGap = 48f, ColumnHold = 24f, PopularGrow = 1.2f, OtherGrow = 1f, BlockGap = 12f, SectionGap = 32f;
 
     /// <summary>The air under the pivot before the overview, and the dock's extra under the last section.</summary>
@@ -141,12 +145,32 @@ public static class WinUiArtistRules
 
     // ── about and the concert stub ──
 
-    /// <summary>The About card's image band, and the widest the About block grows (it never spans a Huge page).</summary>
-    public const float AboutBand = 130f, AboutMax = 760f;
+    /// <summary>The About card's photograph band (168, W-Artist-Huge), and the widest the About block grows (it never spans a Huge page).</summary>
+    public const float AboutBand = 168f, AboutMax = 760f;
+
+    /// <summary>The About card's body (W-Artist-Huge): padded 16 / 20 / 20, its parts 12 apart, the stats 32 apart; the bio Body 14 clamped to four lines
+    /// until "Read more"; the open biography's photographs 72 square, 8 apart, four at most.</summary>
+    public const float AboutPadTop = 16f, AboutPadX = 20f, AboutPadBottom = 20f, AboutBodyGap = 12f, AboutStatGap = 32f, AboutBioSize = 14f,
+        AboutThumb = 72f, AboutThumbGap = 8f;
+    public const int AboutBioLines = 4, AboutGalleryThumbs = 4, AboutDecode = 1280, AboutThumbDecode = 160;
+
+    /// <summary>Where the band frames the photograph's subject (the faces, or the safe zone): the band's middle.</summary>
+    public const float AboutFrameX = 0.5f, AboutFrameY = 0.5f;
+
+    /// <summary>The biography opening and folding in place: the block's height eases (the engine's flow reveal), the sections under it riding it.</summary>
+    public static readonly LayoutTransition AboutReveal = new(TransitionChannels.Size, TransitionDynamics.Tween(WinUiDiscoveryMotion.ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.FlowReveal);
 
     /// <summary>A concert stub (a shelf card): the date lane 44 wide, the day 20/28, the venue 14/20, the pin 12, the city 12/16.</summary>
     public const float StubDateW = 44f, StubDaySize = 20f, StubDayLine = 28f, StubTextGap = 2f, StubVenueSize = 14f, StubVenueLine = 20f, StubPinGap = 4f,
         StubPinSize = 12f, StubCitySize = 12f, StubCityLine = 16f;
+
+    /// <summary>The stub's height, the one its shelf reserves: the date lane (the eyebrow's 16 line over the day's 28) inside the card's 12 padding.</summary>
+    public const float StubH = 68f;
+
+    /// <summary>A merch card's text: the name's two lines and the price's one, each on the body 20 line (the card's height and its shelf's extent).</summary>
+    public const float MerchLine = 20f;
+    public const int MerchNameLines = 2;
 
     // ── the skeleton ──
 

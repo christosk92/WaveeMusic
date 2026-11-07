@@ -250,6 +250,7 @@ public static partial class Diagnostics
             Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
             Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
             Arg("materials", ArgType.Enum, "off: no acrylic runs, every frosted surface draws its fallback plate (what Energy saver and Transparency effects off show)", "on", "on|off"),
+            Arg("motion", ArgType.Enum, "reduced: Windows' Animation effects off for this mount (page swaps fade, nothing slides, zooms or staggers)", "full", "full|reduced"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
@@ -476,7 +477,7 @@ public static partial class Diagnostics
                 // `loops` has no one default here: a loading or cold state's skeleton is the picture (Diagnostics.Inspect.cs, Verb.State).
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds)),
                     Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's or Liked Songs' relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|liked|show|episode"),
-                    Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown (it opens); kind=head-land puts it back in place"),
+                    Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown, or the artist whose charted rows are staged in flight (it opens); kind=head-land puts it back in place"),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")

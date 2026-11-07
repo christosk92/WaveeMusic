@@ -114,6 +114,9 @@ public enum FetchEdge : byte
     ProfileFollowers,
     /// <summary>Who the profile follows (<c>Edges.ProfileFollowing</c>): one whole, unpaged list, artists then users.</summary>
     ProfileFollowing,
+    /// <summary>The track's Canvas (<c>Edges.TrackCanvas</c>, extension kind 16), parent = track: asked by the canvas host for the
+    /// playing track and the next ones, all in one POST (Entities/Canvas.cs).</summary>
+    TrackCanvas,
 }
 
 /// <summary>The transport family a route runs on.</summary>
@@ -216,6 +219,8 @@ public static class FetchRoutes
     public const int ConsumptionExperience = 182;
     public const int PlayCount = 185, CreditsV2 = 186, AudioAttributes = 222, ThreeBandWaveforms = 237;
     public const int UserProfile = 15, RecommendedPlaylists = 151;
+    /// <summary><c>CANVAS_V1</c>: the track's looping Canvas video (Entities/Canvas.cs).</summary>
+    public const int CanvasV1 = 16;
 
     // ── the entity tables' routes, most capable first ──
 
@@ -447,6 +452,7 @@ public static class FetchRoutes
         FetchEdge.TrackVersions => FetchRoute.Metadata(AudioAssociations, 0),
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),
         FetchEdge.TrackBeats => FetchRoute.Spclient(SpclientRoute.AudioAnalysis, 0),
+        FetchEdge.TrackCanvas => FetchRoute.Metadata(CanvasV1, 0),
         FetchEdge.HomeSections => FetchRoute.Pathfinder(PathfinderOp.Home, 0),
         FetchEdge.HomePreviews => FetchRoute.Pathfinder(PathfinderOp.FeedBaselineLookup, 0),
         FetchEdge.SearchResults => FetchRoute.Pathfinder(PathfinderOp.Search, 0),

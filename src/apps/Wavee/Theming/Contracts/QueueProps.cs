@@ -163,7 +163,7 @@ public interface IQueueLane
 
     /// <summary>The lane around <paramref name="body"/> (a foreign drop on it inserts into the queue). <paramref name="leadExtent"/>: the content
     /// ahead of the first slot inside <paramref name="body"/>'s scroll content (a virtualized body that lists a header or a card before the slots),
-    /// which a foreign drop's slot and the insertion line step over. Appended (contract 1.87).</summary>
+    /// which a foreign drop's slot and the insertion line step over. Appended (contract 1.90).</summary>
     Element List(Element body, string key, float leadExtent = 0f);
 
     /// <summary>The row's own drag, only when no lane drags for it (a viewed queue); null otherwise.</summary>
@@ -183,7 +183,7 @@ public interface IQueueLane
 
     /// <summary>A digest of what <paramref name="row"/> shows (its title, artists, art, duration, flags, album and credited artists; an episode and
     /// its show by version), read untracked: a row built from data (<c>Controls.FromData</c>) carries it, so an unchanged row is an equal push and
-    /// skips its render when the panel re-renders, and a row whose facts landed is not. Appended (contract 1.87).</summary>
+    /// skips its render when the panel re-renders, and a row whose facts landed is not. Appended (contract 1.90).</summary>
     ulong RowStamp(EntityRef row);
 }
 

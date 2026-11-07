@@ -64,6 +64,10 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// nothing draws one tab per area, as the page shipped.</summary>
     public SettingsGrouping Settings { get; init; } = SettingsGrouping.Default;
 
+    /// <summary>How the structure moves one page to the next, per kind of swap (<see cref="PageMotionPolicy"/>: the page root's recipe and
+    /// the incoming page's staggered entrance). A structure that declares nothing keeps the core's one fade-through. (winui page motion)</summary>
+    public PageMotionPolicy PageMotion { get; init; } = PageMotionPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -82,6 +86,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (ArtistTiers is null) problems.Add("ArtistTiers is missing");
         if (LibraryTiers is null) problems.Add("LibraryTiers is missing");
         if (Settings is null) problems.Add("Settings is missing"); else problems.AddRange(Settings.Validate());
+        if (PageMotion is null) problems.Add("PageMotion is missing");
         return problems;
     }
 }
