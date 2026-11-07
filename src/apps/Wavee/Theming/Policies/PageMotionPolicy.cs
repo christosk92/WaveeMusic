@@ -44,4 +44,8 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// <summary>The swap under reduced motion (Windows "Animation effects" off), for every kind: a quick fade with no slide, no scale
     /// and no stagger. Null = a cut, as the shell shipped.</summary>
     public LayoutTransition? ReducedFade { get; init; }
+
+    /// <summary>A pivot INSIDE a page stepping to a sibling section (the artist page's tabs): the cascade that brings what then shows in,
+    /// given whether the step goes forward in the tab order (the new part comes from the right). Null = the page's own scroll glide.</summary>
+    public Func<bool, EntranceCascade?>? Pivot { get; init; }
 }

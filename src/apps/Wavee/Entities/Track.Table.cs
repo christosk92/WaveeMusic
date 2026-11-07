@@ -1703,7 +1703,8 @@ public readonly partial struct Track
             float bleed = vertical ? LeadBleedNow() : 0f;
             return ScrollView(new BoxEl
             {
-                Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children,
+                // EntranceGroup: a structure's staggered page entrance (PageMotionPolicy) takes the hero, the rows and the trailing in turn.
+                Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children, EntranceGroup = true,
                 Padding = bleed > 0f ? new Edges4(bleed, 0f, 0f, 0f) : default,
             }) with
             {
@@ -1732,7 +1733,7 @@ public readonly partial struct Track
             var root = new BoxEl
             {
                 // The columns form (audit B9) pins the head whole and its side columns hang below it, beside the rows: no clip there.
-                Key = "vertical:hero-root", Direction = 1, ClipToBounds = !columns,
+                Key = "vertical:hero-root", Direction = 1, ClipToBounds = !columns, EntranceGroup = true,   // the pinned root stays; its header enters
                 Children = [new BoxEl { Key = "vhero:header", Direction = 1, Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))] }],
             }
             .Sticky(0f, TrailScope);

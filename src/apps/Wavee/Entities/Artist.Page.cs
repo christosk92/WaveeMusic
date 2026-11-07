@@ -563,19 +563,43 @@ public readonly partial struct Artist
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             int at = Array.IndexOf(_pivot, (ArtistSection)section, 0, _pivotCount);
+            int from = _active.Peek();
             if (at >= 0)
             {
                 _spyHold = at;
                 _spyHoldUntil = Environment.TickCount64 + SpyHoldMs;
                 _active.SetIfChanged(at);
             }
+            // A structure whose pivot slides its sections (WinUI): park the section at once and slide what then shows in from the side the
+            // tab order points to. Otherwise the glide.
+            if (PivotCascade(at >= 0 ? at : from, from) is { } slide && Context.EntranceCascade is { } cascade)
+            {
+                scene.BringIntoView(_viewport, node, align: 0f, ScrollMove.Immediate, margin: _bandClear);
+                cascade(_viewport, slide);
+                return;
+            }
             scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(),
                 margin: _bandClear);
         }
 
+        /// <summary>The structure's pivot slide for a step from tab <paramref name="from"/> to <paramref name="to"/> (the overview is
+        /// <see cref="Detail.BandLayout.NoSection"/>, before every tab), or null: none declared (or none under reduced motion), or no step.</summary>
+        static EntranceCascade? PivotCascade(int to, int from)
+            => to == from ? null
+             : Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Pivot?.Invoke(to > from);
+
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
         /// hero. A raw offset, not <see cref="GoToSection"/> — the top of the page has no section anchor to bring in.</summary>
-        void ScrollToTop() => _scroll.ScrollTo(0.0, GlideOrJump());
+        void ScrollToTop()
+        {
+            if (PivotCascade(Detail.BandLayout.NoSection, _active.Peek()) is { } slide && Context.EntranceCascade is { } cascade && !_viewport.IsNull)
+            {
+                _scroll.ScrollTo(0.0, ScrollMove.Immediate);
+                cascade(_viewport, slide);
+                return;
+            }
+            _scroll.ScrollTo(0.0, GlideOrJump());
+        }
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through,
         /// stopping at the first unrealized section; the pivot re-renders only when the answer changes.</summary>

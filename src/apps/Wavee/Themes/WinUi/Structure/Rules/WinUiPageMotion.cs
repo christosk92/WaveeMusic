@@ -37,6 +37,9 @@ public static class WinUiPageMotion
     public static EasingSpec Out => EasingSpec.CubicBezier(0.7f, 0f, 1f, 0.5f);
     /// <summary>The drill's opacity spline ((0.17, 0.17), (0, 1)).</summary>
     public static EasingSpec DrillFade => EasingSpec.CubicBezier(0.17f, 0.17f, 0f, 1f);
+    /// <summary>The drill's outgoing leg. WinUI runs the 1.04 zoom on its fast spline over 100 ms; in six frames that moves the page's edges
+    /// half their way on the first one, which reads as a jump, so the zoom and the fade run evenly here (same length, same end).</summary>
+    public static EasingSpec DrillAway => Easing.Linear;
     /// <summary>The drill back's incoming scale spline ((0.12, 0), (0, 1)).</summary>
     public static EasingSpec DrillBackIn => EasingSpec.CubicBezier(0.12f, 0f, 0f, 1f);
 
@@ -44,7 +47,12 @@ public static class WinUiPageMotion
     public const float OutMs = 150f, InMs = 300f;
     public const float RiseDy = 140f;                                   // EntranceNavigationTransitionInfo translationOffset
     public const float SlideOutDx = 150f, SlideInDx = 200f;             // SlideNavigationTransitionInfo exit / entrance offsets
-    public const float DrillAwayMs = 100f, DrillInScaleMs = 783f, DrillBackMs = 333f;
+    public const float DrillAwayMs = 100f, DrillBackMs = 333f;
+    /// <summary>The drill's zoom in. WinUI runs it 783 ms (ThemeTransitions.h:328) on a spline that is within 1 % of the end by 350 ms; a zoom
+    /// cannot be a composite parameter of the page layer (a translate is), so every frame of it re-records the page, and the last 400 ms of
+    /// WinUI's length move the page edges by under a pixel. The same spline over 500 ms: the zoom reads the same, the page pays 30 frames
+    /// instead of 47. (The owner's call: 783 restores WinUI's length.)</summary>
+    public const float DrillInScaleMs = 500f;
     public const float DrillInScale = 0.94f, DrillAwayScale = 1.04f, DrillBackInScale = 1.06f, DrillBackAwayScale = 0.96f;
 
     // ── the stagger (the owner's taste: see the header) ───────────────────────────────────────────────────────────
@@ -54,6 +62,12 @@ public static class WinUiPageMotion
     public const float StaggerDecay = 0.85f;
     /// <summary>The last unit starts at most this long after the first, ms.</summary>
     public const float StaggerCapMs = 180f;
+    /// <summary>The incoming page starts this long before the outgoing one's 150 ms is over: the outgoing spline holds the old page up to its
+    /// last frames and drops it on the 150th ms, so starting exactly there leaves one or two frames with neither page on them. Two frames of
+    /// overlap hand over without a blank frame (the new page draws over the old one's last half).</summary>
+    public const float HandOverMs = 33f;
+    /// <summary>When the incoming page and its units begin.</summary>
+    public const float InDelayMs = OutMs - HandOverMs;
     /// <summary>The page root's own fade as its units begin (ControlFaster).</summary>
     public const float RootFadeMs = 83f;
     /// <summary>A drilled page's units rise this far on top of the zoom.</summary>
@@ -67,7 +81,7 @@ public static class WinUiPageMotion
 
     /// <summary>A page that waits out the 150 ms exit, then fades in under its units. <paramref name="exit"/> is the outgoing leg.</summary>
     static LayoutTransition AfterExit(EnterExit exit) => new(Pose, Tween(RootFadeMs, In),
-        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: exit, ExitDynamics: Tween(OutMs, Out), DelayMs: OutMs, ExitDelayMs: 0f);
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: exit, ExitDynamics: Tween(OutMs, Out), DelayMs: InDelayMs, ExitDelayMs: 0f);
 
     static readonly LayoutTransition s_refresh = AfterExit(new EnterExit(Opacity: 0f, Active: true));
     static readonly LayoutTransition s_refreshBack = AfterExit(new EnterExit(Dy: RiseDy, Opacity: 0f, Active: true));
@@ -79,12 +93,12 @@ public static class WinUiPageMotion
     static readonly LayoutTransition s_drillIn = new(Pose, Tween(DrillInScaleMs, In),
         Enter: new EnterExit(Sx: DrillInScale, Sy: DrillInScale, Opacity: 0f, Active: true),
         Exit: new EnterExit(Sx: DrillAwayScale, Sy: DrillAwayScale, Opacity: 0f, Active: true),
-        ExitDynamics: Tween(DrillAwayMs, DrillFade), DelayMs: 0f, ExitDelayMs: 0f);
+        ExitDynamics: Tween(DrillAwayMs, DrillAway), DelayMs: 0f, ExitDelayMs: 0f);
 
     static readonly LayoutTransition s_drillBack = new(Pose, Tween(DrillBackMs, DrillBackIn),
         Enter: new EnterExit(Sx: DrillBackInScale, Sy: DrillBackInScale, Opacity: 0f, Active: true),
         Exit: new EnterExit(Sx: DrillBackAwayScale, Sy: DrillBackAwayScale, Opacity: 0f, Active: true),
-        ExitDynamics: Tween(DrillAwayMs, DrillFade), DelayMs: 0f, ExitDelayMs: 0f);
+        ExitDynamics: Tween(DrillAwayMs, DrillAway), DelayMs: 0f, ExitDelayMs: 0f);
 
     /// <summary>Reduced motion: the old page fades out, then the new one in, ControlFaster each.</summary>
     static readonly LayoutTransition s_reduced = new(TransitionChannels.Opacity, Tween(RootFadeMs, In),
@@ -94,10 +108,10 @@ public static class WinUiPageMotion
     static EntranceCascade Units(EnterExit terminal, float delayMs) => new(terminal with { Active = true }, Tween(InMs, In), delayMs,
         StaggerStepMs, StaggerDecay, StaggerCapMs);
 
-    static readonly EntranceCascade s_riseUnits = Units(new EnterExit(Dy: RiseDy, Opacity: 0f), OutMs);
-    static readonly EntranceCascade s_fadeUnits = Units(new EnterExit(Opacity: 0f), OutMs);
-    static readonly EntranceCascade s_fromRightUnits = Units(new EnterExit(Dx: SlideInDx, Opacity: 0f), OutMs);
-    static readonly EntranceCascade s_fromLeftUnits = Units(new EnterExit(Dx: -SlideInDx, Opacity: 0f), OutMs);
+    static readonly EntranceCascade s_riseUnits = Units(new EnterExit(Dy: RiseDy, Opacity: 0f), InDelayMs);
+    static readonly EntranceCascade s_fadeUnits = Units(new EnterExit(Opacity: 0f), InDelayMs);
+    static readonly EntranceCascade s_fromRightUnits = Units(new EnterExit(Dx: SlideInDx, Opacity: 0f), InDelayMs);
+    static readonly EntranceCascade s_fromLeftUnits = Units(new EnterExit(Dx: -SlideInDx, Opacity: 0f), InDelayMs);
     static readonly EntranceCascade s_drillUnits = Units(new EnterExit(Dy: DrillUnitDy, Opacity: 0f), DrillUnitDelayMs);
     static readonly EntranceCascade s_drillBackUnits = Units(new EnterExit(Opacity: 0f), DrillUnitDelayMs);
 
@@ -130,9 +144,11 @@ public static class WinUiPageMotion
     /// leg (the page stays; the jump to the section is the hand-over).</summary>
     public static EntranceCascade PivotCascade(bool fromRight) => fromRight ? s_pivotRight : s_pivotLeft;
 
-    static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx, Opacity: 0f), 0f);
-    static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx, Opacity: 0f), 0f);
+    // No fade: the jump to the section is the hand-over, so a unit that faded in from 0 left the frame after it blank. WinUI's slide does not
+    // fade its incoming page either (its opacity steps to 1 as the slide starts, ThemeTransitions.cpp:1571-1574).
+    static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx), 0f);
+    static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx), 0f);
 
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
-    public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor) { ReducedFade = s_reduced };
+    public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor) { ReducedFade = s_reduced, Pivot = static fromRight => FluentGpu.Dsl.Motion.ReducedMotion ? null : PivotCascade(fromRight) };
 }

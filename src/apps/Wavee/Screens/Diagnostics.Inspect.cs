@@ -811,6 +811,9 @@ public static partial class Diagnostics
             };
             string images = a.Str("images", "fake").ToLowerInvariant();
             if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
+            string motion = a.Str("motion", "full").ToLowerInvariant();
+            if (motion is not ("full" or "reduced")) { error = "motion is full or reduced"; return false; }
+            FluentGpu.Dsl.Motion.ReducedMotion = motion == "reduced";   // the OS setting a headless server never reads; every mount sets it
             string materials = a.Str("materials", "on").ToLowerInvariant();
             if (materials is not ("on" or "off")) { error = "materials is on or off"; return false; }
             // The one switch the engine reads for "no acrylic" besides the OS's two (Materials.AcrylicEnabled); every mount sets it.
