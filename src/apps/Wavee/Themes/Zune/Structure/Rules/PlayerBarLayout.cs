@@ -275,9 +275,14 @@ public static class ZunePanelBodies
     /// <summary>The flyout: 300 wide, 16 in, 12 between blocks; the heading (20/28 light), a group's label (12/16), the preset and choice words
     /// (14/20, 12 apart, 4 between lines); the swatches (a 30 ring of 2 around a 22 dot).</summary>
     public const float DeckW = 300f, DeckPad = 16f, DeckGap = 12f, DeckTitleSize = 20f, DeckTitleLine = 28f, DeckLabelSize = 12f, DeckLabelLine = 16f,
-        DeckWordSize = 14f, DeckWordLine = 20f, DeckWordGap = 12f, DeckWordRowGap = 4f, DeckSwatchRing = 30f, DeckSwatchDot = 22f, DeckSwatchStroke = 2f;
+        DeckWordSize = 14f, DeckWordLine = 20f, DeckWordGap = 12f, DeckWordRowGap = 4f, DeckSwatchRing = 30f, DeckSwatchDot = 22f, DeckSwatchStroke = 2f,
+        DeckSwatchHairline = 1f, DeckResetH = 32f, DeckTouchH = 40f;
 
     public const ushort DeckTitleWeight = 300;
+
+    /// <summary>The options block between styles with more or fewer options: its height eases, never a snap.</summary>
+    public static readonly LayoutTransition DeckOptionsMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
 }
 
 /// <summary>The queue body's constants and its lane's slot extents (Z-Part-Panel queue, Queue).</summary>

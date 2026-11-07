@@ -14,8 +14,10 @@
 //
 // THE STYLE FLYOUT (no board): Zune's words in place of Classic's thumbnail cards: "player style", then each group's label over its presets as
 // words (the current one in the accent), then the current preset's options, each a label over its choices as words or, for a colour, square
-// swatches with the accent ring. It stays open across picks and re-renders off the preferences' epoch.
+// swatches with the accent ring, then "reset options" at the end of the options' label (disabled while every option is at its default). It
+// stays open across picks and re-renders off the preferences' epoch.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -36,6 +38,10 @@ internal static class ZuneNowPlayingHero
 {
     /// <summary>The node keys the mounted tests find: the deck slot and the meta block.</summary>
     public const string SlotKey = ZunePlayerLayout.HeroSlotKey, MetaKey = ZunePlayerLayout.HeroMetaKey;
+
+    /// <summary>The style flyout's keys: a style ("npv-style:record"), an option's choice ("npv-choice:size:7"), the options block, the reset.</summary>
+    public const string FlyoutStylePrefix = "npv-style:", FlyoutChoicePrefix = "npv-choice:", FlyoutOptionsKey = "npv-style-options",
+        FlyoutResetKey = "npv-style-reset";
 
     /// <summary>The registered template of <see cref="ViewKeys.NowPlayingHero"/>.</summary>
     public static Element Template(NowPlayingHeroProps props, in ViewContext ctx) => Embed.Comp(props, static () => new ZuneHeroTile());
@@ -99,10 +105,17 @@ internal sealed class ZuneHeroTile : Component
 {
     Func<string>? _source;
     Func<ColorF>? _placeholder;
+    FloatSignal? _column;
+    Action<RectF>? _onSlotBounds;
 
     public override Element Render()
     {
         var props = UseProps<NowPlayingHeroProps>();
+        // The deck slot's laid-out width: the deck's column (the docked pane's, or a Compact sheet's, which is the window's, not the rail's).
+        _column = UseFloatSignal(float.NaN);
+        // The slot is a square of the column from its first layout (the cover's own shape), so the meta under it never moves while the deck
+        // takes the measured side.
+        _onSlotBounds ??= r => { if (_column is { } c && !(MathF.Abs(c.Peek() - r.W) <= 0.25f)) c.Value = r.W; };
         var overlay = UseContext(Overlay.Service);
         var track = props.NowTrack();
         var nowArtist = Rail.NowPlayingArtist(track);
@@ -112,7 +125,6 @@ internal sealed class ZuneHeroTile : Component
         int presentation = Rail.PlayerPrefs.ResolvedPresentation();
         bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();
         var preset = Rail.PlayerPrefs.CurrentPreset();
-        float side = Rail.Hero.Side(props.RailWidth.Value);
         if (!track.IsValid) return new BoxEl();
         props.SubscribeEntities();
 
@@ -120,14 +132,14 @@ internal sealed class ZuneHeroTile : Component
         _placeholder ??= () => ZuneHeroWash.Of(props.NowArtUrl());
 
         Element face = presentation == Rail.PlayerPrefs.Player
-            ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
+            ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck(P.HeroPadding.Left + P.HeroPadding.Right, _column)] }
             : new ImageEl
             {
                 Key = "cover", Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = P.HeroDecodePx,
                 Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
             };
         var p = preset;
-        Element slot = new BoxEl { Key = ZuneNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f, Children = [face] }
+        Element slot = new BoxEl { Key = ZuneNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f, AspectRatio = 1f, OnBoundsChanged = _onSlotBounds, Children = [face] }
             .WithContextMenu(overlay, () => ZuneNowPlayingHero.ArtMenu(props, presentation, p, styleVisible));
         // The ONE style flyout, anchored on the slot (developer-only, as its doors are).
         if (styleVisible)
@@ -187,12 +199,20 @@ internal sealed class ZuneStyleFlyout : Component
 {
     static readonly Rail.PlayerCatalog.Preset[] s_group = new Rail.PlayerCatalog.Preset[Rail.PlayerCatalog.PerGroup];
 
+    /// <summary>A word's or swatch's hit row this render: 32 tall, 40 at Compact (the touch floor).</summary>
+    float _hit;
+
     public override Element Render()
     {
         var props = UseProps<DeckStyleFlyoutProps>();
         var verbs = props.Verbs;
         var preset = Rail.PlayerPrefs.CurrentPreset();                      // epoch-subscribed
-        var kids = new List<Element>(8)
+        bool atDefaults = Rail.PlayerPrefs.AtDefaults(in preset);            // epoch-subscribed: a pick lights the reset, a reset dims it
+        var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+        _hit = tiers.Policy is not null && tiers.Window == WidthTier.Compact ? P.DeckTouchH : P.DeckResetH;
+        var options = new Element[preset.Options.Length];
+        for (int i = 0; i < options.Length; i++) options[i] = Option(props, preset, preset.Options[i]);
+        var kids = new List<Element>(5)
         {
             new TextEl(Loc.Get(Strings.Player.PlayerStyle))
             {
@@ -201,20 +221,50 @@ internal sealed class ZuneStyleFlyout : Component
             Group(verbs, Strings.Player.StyleGroupMedia, Rail.PlayerGroup.Media, preset.Id),
             Group(verbs, Strings.Player.StyleGroupDevices, Rail.PlayerGroup.Devices, preset.Id),
             Group(verbs, Strings.Player.StyleGroupSoftware, Rail.PlayerGroup.Software, preset.Id),
+            // The options block, its own keyed box: its height eases between styles and the rows cross-fade per style (never a snap).
+            new BoxEl
+            {
+                Key = ZuneNowPlayingHero.FlyoutOptionsKey, Direction = 1, Gap = P.DeckGap, ClipToBounds = true,
+                Animate = Design.Reduced ? null : P.DeckOptionsMotion,
+                Children = [OptionsHead(verbs, preset, atDefaults), ..options],
+            },
         };
-        if (preset.Options.Length > 0) kids.Add(Label(Loc.Get(Strings.Player.StyleOptions)));
-        for (int i = 0; i < preset.Options.Length; i++) kids.Add(Option(props, preset, preset.Options[i]));
         return new BoxEl { Width = P.DeckW, Direction = 1, Gap = P.DeckGap, Padding = Edges4.All(P.DeckPad), Children = kids.ToArray() };
     }
 
-    static Element Label(string text) => new TextEl(text)
+    static TextEl Label(string text) => new(text)
     {
         Size = P.DeckLabelSize, LineHeight = P.DeckLabelLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
 
-    static BoxEl Choice(string text, bool on, Action pick) => new()
+    /// <summary>"options", and at its end "reset options": always there, disabled (the disabled ink, inert) while every option of the style is at
+    /// its default.</summary>
+    Element OptionsHead(IDeckStyleVerbs verbs, Rail.PlayerCatalog.Preset preset, bool atDefaults) => new BoxEl
     {
-        Shrink = 0f, Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = pick,
+        Direction = 0, AlignItems = FlexAlign.Center, Height = _hit, Gap = P.DeckWordGap,
+        Children =
+        [
+            Label(Loc.Get(Strings.Player.StyleOptions)) with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
+            new BoxEl
+            {
+                Key = ZuneNowPlayingHero.FlyoutResetKey, Height = _hit, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Role = AutomationRole.Button, Focusable = !atDefaults, IsEnabled = !atDefaults, Cursor = atDefaults ? null : CursorId.Hand,
+                OnClick = atDefaults ? null : () => verbs.ResetChoices(in preset),
+                Children =
+                [
+                    new TextEl(Loc.Get(Strings.Player.ResetOptions))
+                    {
+                        Size = P.DeckWordSize, LineHeight = P.DeckWordLine, Color = atDefaults ? Tok.TextDisabled : Tok.AccentTextPrimary,
+                        HoverColor = atDefaults ? Tok.TextDisabled : Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            },
+        ],
+    };
+
+    BoxEl Choice(string key, string text, bool on, Action pick) => new()
+    {
+        Key = key, Height = _hit, MinWidth = _hit, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = pick,
         Children =
         [
             new TextEl(text)
@@ -230,23 +280,24 @@ internal sealed class ZuneStyleFlyout : Component
         Direction = 0, Wrap = true, Gap = P.DeckWordGap, AlignItems = FlexAlign.Center, Children = words,
     };
 
-    static Element Group(IDeckStyleVerbs verbs, string labelKey, Rail.PlayerGroup group, int selectedId)
+    Element Group(IDeckStyleVerbs verbs, string labelKey, Rail.PlayerGroup group, int selectedId)
     {
         int n = Rail.PlayerCatalog.Group(group, s_group);
         var words = new Element[n];
         for (int i = 0; i < n; i++)
         {
             int id = s_group[i].Id;
-            words[i] = Choice(Loc.Get(s_group[i].ShortLabelKey), id == selectedId, () => verbs.SetStyle(id));
+            words[i] = Choice(ZuneNowPlayingHero.FlyoutStylePrefix + s_group[i].Slug, Loc.Get(s_group[i].ShortLabelKey), id == selectedId, () => verbs.SetStyle(id));
         }
         return new BoxEl { Direction = 1, Gap = P.DeckWordRowGap, Children = [Label(Loc.Get(labelKey)), Words(words)] };
     }
 
-    static Element Option(DeckStyleFlyoutProps props, Rail.PlayerCatalog.Preset preset, Rail.PlayerCatalog.OptionDef option)
+    Element Option(DeckStyleFlyoutProps props, Rail.PlayerCatalog.Preset preset, Rail.PlayerCatalog.OptionDef option)
     {
         int current = Rail.PlayerPrefs.Choice(preset, option);
         var verbs = props.Verbs;
         var choices = new Element[option.Choices.Length];
+        string keyStem = ZuneNowPlayingHero.FlyoutChoicePrefix + option.Slug + ":";
         for (int i = 0; i < choices.Length; i++)
         {
             int index = i;
@@ -255,20 +306,34 @@ internal sealed class ZuneStyleFlyout : Component
             Action pick = () => verbs.SetChoice(in preset, in option, index);
             if (option.Kind != Rail.OptionKind.Swatch)
             {
-                choices[i] = Choice(Loc.Get(choice.LabelKey), on, pick);
+                choices[i] = Choice(keyStem + choice.Slug, Loc.Get(choice.LabelKey), on, pick);
                 continue;
             }
             Prop<ColorF> fill = choice.Swatch == Rail.PlayerCatalog.FromCover
                 ? Prop.Of(() => ZuneHeroWash.Of(props.NowArtUrl()))
                 : ColorScience.ToColor(choice.Swatch);
+            // A hairline on the dot: the black finish is the flyout's own ground in the dark theme and vanished without one.
             choices[i] = ToolTip.Wrap(new BoxEl
             {
-                Width = P.DeckSwatchRing, Height = P.DeckSwatchRing, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Key = keyStem + choice.Slug,
+                Width = MathF.Max(_hit, P.DeckSwatchRing), Height = _hit, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 BorderWidth = on ? P.DeckSwatchStroke : 0f, BorderColor = on ? Tok.AccentDefault : ColorF.Transparent,
                 Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = pick,
-                Children = [new BoxEl { Width = P.DeckSwatchDot, Height = P.DeckSwatchDot, Shrink = 0f, Fill = fill, HitTestVisible = false }],
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Width = P.DeckSwatchDot, Height = P.DeckSwatchDot, Shrink = 0f, Fill = fill, BorderWidth = P.DeckSwatchHairline,
+                        BorderColor = Tok.StrokeCardDefault, HitTestVisible = false,
+                    },
+                ],
             }, Loc.Get(choice.LabelKey));
         }
-        return new BoxEl { Direction = 1, Gap = P.DeckWordRowGap, Children = [Label(Loc.Get(option.LabelKey)), Words(choices)] };
+        return new BoxEl
+        {
+            Key = preset.Slug + "." + option.Slug, Direction = 1, Gap = P.DeckWordRowGap,
+            Enter = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
+            Children = [Label(Loc.Get(option.LabelKey)), Words(choices)],
+        };
     }
 }

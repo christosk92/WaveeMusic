@@ -34,9 +34,35 @@ internal static class ClassicDeckFlyout
     /// at rail 200 it overhangs the page by 140 and does not reflow (W7b).</summary>
     internal static float ThumbSize => (ClassicDeckFlyoutLayout.Width - 2f * Spacing.M - 3f * ClassicDeckFlyoutLayout.CardGap) / 4f;
 
-    internal static Element FlyoutLabel(string key) => new TextEl(Loc.Get(key))
+    internal static TextEl FlyoutLabel(string key) => new(Loc.Get(key))
     {
         Size = ClassicDeckFlyoutLayout.LabelSize, LineHeight = ClassicDeckFlyoutLayout.LabelLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+    };
+
+    /// <summary>"Options", and at its end "Reset options" (the style's options back on their defaults, one write): always there, disabled while
+    /// every option is at its default.</summary>
+    internal static Element OptionsHead(IDeckStyleVerbs verbs, Rail.PlayerCatalog.Preset preset, bool atDefaults) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+        Children =
+        [
+            FlyoutLabel(Strings.Player.StyleOptions) with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
+            new BoxEl
+            {
+                Key = "npv-style-reset", Shrink = 0f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.ControlAll,
+                HoverFill = atDefaults ? ColorF.Transparent : Tok.FillSubtleSecondary, PressedFill = atDefaults ? ColorF.Transparent : Tok.FillSubtleTertiary,
+                Role = AutomationRole.Button, Focusable = !atDefaults, IsEnabled = !atDefaults, Cursor = atDefaults ? null : CursorId.Hand,
+                OnClick = atDefaults ? null : () => verbs.ResetChoices(in preset),
+                Children =
+                [
+                    new TextEl(Loc.Get(Strings.Player.ResetOptions))
+                    {
+                        Size = ClassicDeckFlyoutLayout.LabelSize, LineHeight = ClassicDeckFlyoutLayout.LabelLine,
+                        Color = atDefaults ? Tok.TextDisabled : Tok.AccentTextPrimary, MaxLines = 1,
+                    },
+                ],
+            },
+        ],
     };
 
     static readonly Rail.PlayerCatalog.Preset[] s_groupBuf = new Rail.PlayerCatalog.Preset[Rail.PlayerCatalog.PerGroup];
@@ -153,7 +179,7 @@ internal sealed class ClassicStyleFlyoutCore : Component
             ClassicDeckFlyout.GroupRow(verbs, Strings.Player.StyleGroupMedia, Rail.PlayerGroup.Media, preset.Id),
             ClassicDeckFlyout.GroupRow(verbs, Strings.Player.StyleGroupDevices, Rail.PlayerGroup.Devices, preset.Id),
             ClassicDeckFlyout.GroupRow(verbs, Strings.Player.StyleGroupSoftware, Rail.PlayerGroup.Software, preset.Id),
-            ClassicDeckFlyout.FlyoutLabel(Strings.Player.StyleOptions),
+            ClassicDeckFlyout.OptionsHead(verbs, preset, Rail.PlayerPrefs.AtDefaults(in preset)),
         };
         for (int i = 0; i < preset.Options.Length; i++) kids.Add(ClassicDeckFlyout.OptionRow(props, in preset, in preset.Options[i]));
         return new BoxEl

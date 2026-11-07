@@ -434,7 +434,7 @@ internal static class ZuneTrackTable
                 {
                     var p = r.P;
                     bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0;
-                    string duration = Track.DurationLabel(p.Track, Track.NowUnix);
+                    string duration = Track.DurationLabel(in p, Track.NowUnix);
                     return lead ? ZuneListRules.InlineDurationLead + duration : duration;
                 }))
                 {
@@ -549,7 +549,7 @@ internal static class ZuneTrackTable
             var p = r.P;
             return !Track.Withheld(in p, Track.NowUnix) && Track.OfflineGone(in p)
                 ? Loc.Get(Strings.Track.NotOnThisPc)
-                : Track.DurationLabel(p.Track, Track.NowUnix);
+                : Track.DurationLabel(in p, Track.NowUnix);
         });
         var clock = Factual(label, RowInk(r, static () => Tok.TextSecondary), visible: Prop.Of(() => !withheld()));
         var reason = new TextEl(label)

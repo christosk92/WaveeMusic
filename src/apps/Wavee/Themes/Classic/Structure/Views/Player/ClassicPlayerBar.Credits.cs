@@ -26,7 +26,7 @@ internal static partial class ClassicPlayerBar
             _ = UseComputed(_props.CreditsStamp).Value;
             // The FACE's row: a held face keeps its credits, so the line never empties and the text block never
             // re-centres from two lines to one and back on a skip.
-            var credits = _props.Credits();
+            var credits = FluentGpu.Signals.Reactive.Untrack(_props.Credits);   // the stamp above is the subscription (a direct read: every catalog write)
 
             if (credits.Show is { } show)
                 return new BoxEl

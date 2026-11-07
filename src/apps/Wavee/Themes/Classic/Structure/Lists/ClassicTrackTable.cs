@@ -668,7 +668,7 @@ internal static class ClassicTrackTable
     /// <summary>The lane's words: the clock, a withheld row's short reason ("Unavailable", the release date), or "Not on PC" for a row
     /// only the offline session cannot reach (<see cref="Track.OfflineGone(in RowPresentation)"/>; an indicator, no play gate reads it).</summary>
     static string LaneLabel(in RowPresentation p, long now)
-        => !Track.Withheld(in p, now) && Track.OfflineGone(in p) ? Loc.Get(Strings.Track.NotOnThisPc) : Track.DurationLabel(p.Track, now);
+        => !Track.Withheld(in p, now) && Track.OfflineGone(in p) ? Loc.Get(Strings.Track.NotOnThisPc) : Track.DurationLabel(in p, now);
 
     /// <summary>The clock, or for a withheld or offline-gone row its short reason at the reason rung with the long reason as its
     /// tooltip (tuned Classic L4). The reason arm is a real mount (<c>Flow.Show</c>) on the rare flip, so a playable row carries

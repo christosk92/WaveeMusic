@@ -7,7 +7,11 @@
 //
 //   ROW 1  the destinations as lowercase pivot words (home · browse · library · recents; the Pivot role, the lit one at the selected weight
 //          in the primary ink, the rest tertiary), then, at Standard and Huge with the `bandPins` option on, "pinned" and up to six pins
-//          (art; a click opens, the play disc that shows on hover plays, a 4-dip dot under the art is lit while the pin plays).
+//          (art; a click opens, the play disc that shows on hover plays, a 4-dip dot under the art is lit while the pin plays; a right-click
+//          opens the pin's menu: the entity's own with Unpin and Move left / right). DRAG TO PIN: the pins are the band's drop target (an
+//          album, a playlist, an artist, a show or a route dropped there is pinned where the band shows it); while a pinnable drag is live a
+//          drop slot (a pin-sized outline) stands after the last pin, the accent while the drag is over the pins. A pin that comes or goes
+//          fades and opens or closes its width, the pins beside it sliding.
 //          OVERFLOW (`pivotOverflow`): EdgeFadeScroll scrolls the run under an edge fade (Compact and Small fade; Compact rotates the lit
 //          word to the front: the panel's pivot carousel, `ZunePivotCarousel`, slides the words round the cycle as the panel's head does, and
 //          Left / Right there step to the previous / next destination, the focus following the lead); MoreMenu, at Compact and Small, keeps the
@@ -77,6 +81,9 @@ internal sealed class ZuneBand : Component
     IReadSignal<PageScroll>? _scroll;
     NodeHandle _moreAnchor;
     OverlayHandle? _moreMenu;
+    /// <summary>A pinnable drag is live (drag to pin, contract 1.88): written on the drag's begin and end edges by <see cref="ZuneBandPinWatcher"/>; while it
+    /// holds the pins show their drop slot (and the island shows at all, with no pins yet).</summary>
+    readonly Signal<bool> _pinArmed = new(false);
 
     public override Element Render()
     {
@@ -113,6 +120,9 @@ internal sealed class ZuneBand : Component
         int lit = band.Section?.Invoke() ?? current;
         bool pinsShown = ZuneBandRules.ShowPins(rec, ZuneOptions.BandPins());
         var pins = pinsShown ? band.Pins() : s_noPins;
+        // Drag to pin: while a pinnable drag is live the island shows where a drop lands (read on the drag's edges only).
+        var pinDrop = band.PinDrop;
+        bool pinArmed = pinsShown && pinDrop is not null && _pinArmed.Value;
         var overflow = ZuneOptions.Overflow();
         // A Short window (below the Regular height rung) rests with row 2 folded away, static (Z-Shell-Short, ZT1). No direction is read: row 2
         // never folds or returns on a scroll's direction (the owner's video: a fold that moved the page fed the direction detector back).
@@ -224,7 +234,7 @@ internal sealed class ZuneBand : Component
         }, DepKey.From(orderKey, carousel ? 1 : 0, (int)tiers.Window, 0));
 
         var row1Kids = new List<Element>(2) { pivotRun };
-        if (pins.Count > 0) row1Kids.Add(PinsCached(pins, rec));
+        if (pins.Count > 0 || pinArmed) row1Kids.Add(PinsCached(pins, rec, pinDrop, pinArmed, overlay));
 
         var row1 = new BoxEl
         {
@@ -234,8 +244,11 @@ internal sealed class ZuneBand : Component
         };
 
         // ── row 2 (mounted while shown: it leaves whole, fading, before the root's height folds; see Row2) ─────────────────────
-        var kids = new List<Element>(2) { row1 };
+        var kids = new List<Element>(3) { row1 };
         _views.Begin();
+        // The drag watcher: zero-size machinery in the rows' column (no gap), mounted at every tier so a crossing never mounts or unmounts it.
+        if (pinDrop is not null)
+            kids.Add(Embed.Comp(new ZuneBandPinWatcher.Props(pinDrop, _pinArmed), static () => new ZuneBandPinWatcher()) with { Key = ZuneBandPinWatcher.Key });
         // Row 2 sits in a holder that carries the scroll-tied motion (bound channels; at rest away from Compact): the row slides up by the fold under the
         // holder's clip at row 1's foot and fades by the same share, so it scrolls away with the page; the row's own entrance and exit keep their channels.
         // The holder's clip reaches Row2SlopRoom into the gutter (its inner box pads it back), so row 2's scroller, which reaches as far, keeps its
@@ -377,46 +390,79 @@ internal sealed class ZuneBand : Component
     // instance short-circuits the reconciler (a reference-equal element is not diffed) and keeps the pins' tooltips from
     // re-rendering. Keyed on what the build reads statically: the pin list instance (NavModel.BandPins hands back the
     // same one until the pin store, account or cap moves), the tier's layout, the theme and style epochs, the culture
-    // (the "pinned" word, the tooltips) and reduced motion.
+    // (the "pinned" word, the tooltips) and reduced motion; and since drag to pin (contract 1.88) the drop target, whether a pinnable drag is
+    // live (the drop slot) and the overlay the pins' menus open on.
     Element? _pinsEl;
     IReadOnlyList<BandPin>? _pinsFor;
     ZuneBandLayout? _pinsRec;
+    BandPinDrop? _pinsDrop;
+    IOverlayService? _pinsOverlay;
     int _pinsTok = -1, _pinsStyle = -1, _pinsCulture = -1;
-    bool _pinsReduced;
+    bool _pinsReduced, _pinsArmed;
 
-    Element PinsCached(IReadOnlyList<BandPin> pins, ZuneBandLayout rec)
+    Element PinsCached(IReadOnlyList<BandPin> pins, ZuneBandLayout rec, BandPinDrop? drop, bool armed, IOverlayService overlay)
     {
         int tok = Tok.Epoch, style = Tok.StyleEpoch, culture = FluentGpu.Localization.Localization.CultureEpoch.Peek();
         bool reduced = Design.Reduced;
         if (_pinsEl is not null && ReferenceEquals(pins, _pinsFor) && Equals(rec, _pinsRec) && tok == _pinsTok && style == _pinsStyle
-            && culture == _pinsCulture && reduced == _pinsReduced)
+            && culture == _pinsCulture && reduced == _pinsReduced && ReferenceEquals(drop, _pinsDrop) && armed == _pinsArmed
+            && ReferenceEquals(overlay, _pinsOverlay))
             return _pinsEl.Value;
         _pinsFor = pins; _pinsRec = rec; _pinsTok = tok; _pinsStyle = style; _pinsCulture = culture; _pinsReduced = reduced;
-        return (_pinsEl = Pins(pins, rec, _restInk!)).Value;
+        _pinsDrop = drop; _pinsArmed = armed; _pinsOverlay = overlay;
+        return (_pinsEl = Pins(pins, rec, _restInk!, drop, armed, overlay)).Value;
     }
 
-    /// <summary>"pinned", then the pins (at most the core's cap, six).</summary>
-    static Element Pins(IReadOnlyList<BandPin> pins, ZuneBandLayout rec, Func<ColorF> ink)
+    /// <summary>"pinned", then the pins (at most the core's cap, six), then, while a pinnable drag is live, the drop slot. The island is the band's
+    /// drop target (drag to pin): an album, a playlist, an artist, a show or a route dropped on it is pinned where the band shows it.</summary>
+    static Element Pins(IReadOnlyList<BandPin> pins, ZuneBandLayout rec, Func<ColorF> ink, BandPinDrop? drop, bool armed, IOverlayService overlay)
     {
-        var kids = new Element[pins.Count + 1];
+        var kids = new Element[pins.Count + 1 + (armed && drop is not null ? 1 : 0)];
         kids[0] = new BoxEl
         {
             Height = rec.PinArt, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Margin = ZuneBandRules.PinnedWordMargin,
             Children = [R.Type.MicroMeta(Loc.Get(Strings.Theme.Zune.Band.Pinned)) with { Color = Prop.Of(ink), Case = R.Case.For(LabelKind.Label), MaxLines = 1 }],
         };
-        for (int i = 0; i < pins.Count; i++) kids[i + 1] = Pin(pins[i], rec);
+        for (int i = 0; i < pins.Count; i++) kids[i + 1] = Pin(pins[i], rec, overlay);
+        if (armed && drop is not null) kids[^1] = DropSlot(rec, drop.Over);
         return new BoxEl
         {
             Key = ZuneBandRules.PinsKey, Direction = 0, AlignItems = FlexAlign.Start, Gap = ZuneBandRules.PinGap, Shrink = 0f,
             // The pins come and go with the tier (Standard and Huge show them): they fade and open their width (a reflow), so the pivot run beside
             // them glides to its new width instead of snapping.
             Animate = Design.Reduced ? null : ZuneBandRules.PinsMotion, ClipToBounds = true,
+            DropTarget = drop?.Target,
             Children = kids,
         };
     }
 
-    /// <summary>One pin: its art (a click opens it; the play disc over its corner, shown on hover, plays it), the playing dot under it.</summary>
-    static Element Pin(BandPin pin, ZuneBandLayout rec)
+    /// <summary>The drop slot (drag to pin): where a drop lands, after the last pin, a pin-sized outline with the pin glyph. At rest in the secondary
+    /// ink; while the drag is over the pins the outline and the glyph take the accent and the slot the hover layer (bound: no re-render per move).</summary>
+    static Element DropSlot(ZuneBandLayout rec, IReadSignal<bool> over)
+    {
+        float art = rec.PinArt;
+        return new BoxEl
+        {
+            Key = ZuneBandRules.PinDropKey, Width = art, Height = art, Shrink = 0f, Corners = R.Shape.All(ShapeRole.PinArt),
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            BorderWidth = ZuneBandRules.PinDropStroke,
+            BorderColor = Prop.Of(() => over.Value ? Tok.AccentDefault : Tok.TextSecondary),
+            Fill = Prop.Of(() => over.Value ? R.Layer.ChromeHover : ColorF.Transparent),
+            Animate = Design.Reduced ? null : ZuneBandRules.PinMotion,
+            Children =
+            [
+                new TextEl(Icons.Pin)
+                {
+                    Size = ZuneBandRules.PinDropGlyph, FontFamily = Tok.Definition.Fonts.Icon,
+                    Color = Prop.Of(() => over.Value ? Tok.AccentDefault : Tok.TextSecondary),
+                },
+            ],
+        };
+    }
+
+    /// <summary>One pin: its art (a click opens it; the play disc over its corner, shown on hover, plays it; a right-click opens its menu: the entity's
+    /// own with Unpin and the band's moves), the playing dot under it.</summary>
+    static Element Pin(BandPin pin, ZuneBandLayout rec, IOverlayService overlay)
     {
         float art = rec.PinArt;
         var corners = pin.Circular ? CornerRadius4.All(art / 2f) : R.Shape.All(ShapeRole.PinArt);
@@ -454,18 +500,22 @@ internal sealed class ZuneBand : Component
             });
         }
 
-        var tile = ToolTip.Wrap(new BoxEl
+        var tileBox = new BoxEl
         {
             Width = art, Height = art, ZStack = true, Shrink = 0f, ClipToBounds = true, Corners = corners,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = pin.Go,
             Children = tileKids.ToArray(),
-        }, pin.Label);
+        };
+        if (pin.Menu is { } menu && !Controls.IsNullOverlay(overlay)) tileBox = tileBox.WithContextMenu(overlay, menu);
+        var tile = ToolTip.Wrap(tileBox, pin.Label);
 
         var playing = pin.Playing;
         return new BoxEl
         {
             Key = ZuneBandRules.PinKeyPrefix + pin.Id, Direction = 1, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.PinDotGap, Shrink = 0f,
+            // A pin that comes (a pin, a drop) or goes (an unpin) fades and opens or closes its width; the pins beside it slide (drag to pin).
+            Animate = Design.Reduced ? null : ZuneBandRules.PinMotion,
             Children =
             [
                 tile,
@@ -746,4 +796,26 @@ internal sealed class BandTabRow
     /// <summary>The node of the tab at <paramref name="index"/>, or null while it is not realized.</summary>
     public NodeHandle HandleAt(int index)
         => index >= 0 && index < _ids.Count && _nodes.TryGetValue(_ids[index], out var node) ? node : NodeHandle.Null;
+}
+
+/// <summary>Drag to pin (contract 1.88): the band's one drag-state subscription, zero-size. It re-renders on every drag move (the hook's nature), so it
+/// draws nothing and writes the band's armed signal only on the drag's begin and end edges (a layout effect keyed on the active edge): the band
+/// re-renders twice per gesture, never per move.</summary>
+internal sealed class ZuneBandPinWatcher : Component
+{
+    /// <summary>The watcher's node key.</summary>
+    public const string Key = "zune-band-pin-watch";
+
+    /// <summary>The core's drop (its armed read) and the band's signal it writes.</summary>
+    internal sealed record Props(BandPinDrop Drop, Signal<bool> Armed);
+
+    static readonly BoxEl s_none = new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        bool active = UseDragState().Active;
+        UseLayoutEffect(() => p.Armed.SetIfChanged(active && p.Drop.Armed()), active ? 1 : 0);
+        return s_none;
+    }
 }

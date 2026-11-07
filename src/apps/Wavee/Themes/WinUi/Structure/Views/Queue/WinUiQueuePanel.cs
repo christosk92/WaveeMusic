@@ -51,6 +51,15 @@ internal static class WinUiQueue
 internal sealed class WinUiQueuePanelView : Component
 {
     readonly ScrollHandle _scroll = new();
+    // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead (Playing from, the
+    // now-playing card), the lane's slots, then the tail (the vacancy or the Autoplay row). Every item's extent is stated EXACTLY
+    // (the tail's is measured), so the list's geometry matches the lane's drag maths and nothing jumps as rows realize.
+    readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
+    float[] _extents = new float[64];
+    int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemAutoplay = -4;
+    /// <summary>The tail's estimate until its first measure (the Autoplay row: the divider, the title and a one-line hint).</summary>
+    const float TailEstimate = 72f;
     Func<QueueSlot, float>? _extentOf;
     Action? _clear;
     Action<bool>? _setAutoplay;
@@ -78,75 +87,109 @@ internal sealed class WinUiQueuePanelView : Component
         UseLayoutEffect(() => { if (autoplay.Peek() != autoplayOn) autoplay.Value = autoplayOn; }, DepKey.From(autoplayOn ? 1 : 0));
         lane.SetMetrics(Q.RowExtent, _extentOf ??= ExtentOf);
 
-        var content = new List<Element>(5);
-        if (queue.PlayingFrom is { } src) content.Add(PlayingFrom(src.Name, props.OpenPlayingFrom));
-        if (!queue.NowPlaying.IsNone) content.Add(NowCard(props));
-        if (lane.SlotCount > 0) content.Add(lane.List(Upcoming(props), "lane:upcoming"));
-        if (queue.NothingPlaying)
-            content.Add(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: ""));
-        else if (!queue.Viewer)
-            content.Add(AutoplayRow(autoplay, _setAutoplay));
-
-        Element body = new BoxEl
+        // The items, in list order: the lead, the lane's slots (under the live projection while a row is lifted, so each position states the
+        // extent of the slot shown there), the tail.
+        int count = lane.SlotCount + 3;
+        if (_extents.Length < count) { _extents = new float[count * 2]; _kinds = new int[count * 2]; }
+        int n = 0;
+        float lead = Q.BodyPadding.Top;
+        if (queue.PlayingFrom is not null) { _kinds[n] = ItemPlayingFrom; _extents[n++] = Q.PlayingFromH; lead += Q.PlayingFromH; }
+        if (!queue.NowPlaying.IsNone)
         {
-            Direction = 1, MinHeight = 0f, Padding = Q.BodyPadding,
-            Children = content.ToArray(),
-        };
-        // Nothing upcoming: the same lane wraps the body, so a foreign drop still has a target (slot 0 = play next).
-        if (lane.SlotCount == 0) body = lane.List(body, "lane:empty");
+            float card = Q.NowH + Q.NowMargin.Top + Q.NowMargin.Bottom;
+            _kinds[n] = ItemNow; _extents[n++] = card; lead += card;
+        }
+        for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
+        if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -TailEstimate; }
+        else if (!queue.Viewer) { _kinds[n] = ItemAutoplay; _extents[n++] = -TailEstimate; }
+        _layout.SetExtents(_extents.AsSpan(0, n), Q.BodyPadding.Top, Q.BodyPadding.Bottom);
 
+        var body = Virtual.Custom(n, _layout, i => Item(props, autoplay, i)) with
+        {
+            Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll,
+        };
+        // The lane wraps the whole list (a foreign drop anywhere inserts at the slot under it; above the slots, at slot 0).
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
-            Children = [new ScrollEl { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll, Content = body }],
+            Children = [lane.List(body, "lane:upcoming", lead).As<BoxEl>() with { Grow = 1f, MinHeight = 0f }],
         };
     }
 
-    Element Upcoming(QueuePanelProps props)
+    /// <summary>The list's item <paramref name="i"/> (<see cref="_kinds"/>), inset by the body's side padding.</summary>
+    Element Item(QueuePanelProps props, Signal<bool> autoplay, int i)
     {
         var lane = props.Lane;
-        var kids = new Element[lane.SlotCount];
-        for (int i = 0; i < kids.Length; i++)
+        int kind = (uint)i < (uint)_kinds.Length ? _kinds[i] : ItemVacancy;
+        switch (kind)
         {
-            int item = lane.ItemAt(i);
-            var slot = lane.SlotAt(item);
-            if (slot.Kind == QueueSlotKind.Header) { kids[i] = Header(props, slot.Section); continue; }
-            if (slot.Kind == QueueSlotKind.More) { kids[i] = ShowMore(props, slot.Section); continue; }
-            kids[i] = props.Queue.TryRow(slot.Section, slot.Pos, out var row)
-                ? lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index))
-                : new BoxEl();
+            case ItemPlayingFrom: return Inset(PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom));
+            case ItemNow: return Inset(NowCard(props));
+            case ItemAutoplay: return Inset(AutoplayRow(autoplay, _setAutoplay!));
+            case ItemVacancy:
+                return new BoxEl
+                {
+                    Key = "qp:empty", Direction = 1, Margin = new Edges4(Q.BodyPadding.Left, 0f, Q.BodyPadding.Right, 0f),
+                    Children = [Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: "")],
+                };
         }
-        return new BoxEl { Key = "upcoming", Direction = 1, Children = kids };
+        int item = lane.ItemAt(kind);
+        var slot = lane.SlotAt(item);
+        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section));
+        if (slot.Kind == QueueSlotKind.More) return Inset(ShowMore(props, slot.Section));
+        return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
+            ? Inset(lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index)))
+            : Inset(new BoxEl { Key = "qp:gap:" + kind });
+    }
+
+    /// <summary>An item's root inset by the body's side padding (its own margins kept: they lie inside its stated extent).</summary>
+    static Element Inset(Element e)
+    {
+        var b = e.As<BoxEl>();
+        return b with { Margin = new Edges4(b.Margin.Left + Q.BodyPadding.Left, b.Margin.Top, b.Margin.Right + Q.BodyPadding.Right, b.Margin.Bottom) };
     }
 
     /// <summary>A queue row: the shared media surface (the plate, the hand, the play button, the right-click menu are the surface's) at the 40
-    /// cover with the ✕ as its trailing cell (or its width, so every row's text ends at one line).</summary>
+    /// cover with the ✕ as its trailing cell (or its width, so every row's text ends at one line). The surface is built from the row's DATA
+    /// (<see cref="RowFace"/>, with the lane's digest of what it shows) by a static builder, so an unchanged row is an equal push and skips its
+    /// render when the panel re-renders (a new deck row, a section shift); only the rows that changed rebuild.</summary>
     Element Row(QueuePanelProps props, in QueueRowProps row)
     {
-        var verbs = props.Verbs;
-        EntityRef r = row.Ref;
-        ulong itemId = row.ItemId;
-        int index = row.Index;
-        bool viewer = props.Queue.Viewer;
-        var text = props.Lane.TextOf(r);
-        Action skip = () => verbs.Play(itemId, index, r);
-        // The ✕ is built from its data (the verbs, the entry and the window tier) by a static builder, so an unchanged row is an equal push
-        // and its surface does not re-render when the panel does (Controls.FromData).
-        Element trailing = row.Removable
-            ? Controls.FromData((verbs, itemId, index, r, _window), static d => ToolTip.Wrap(
-                WinUiPlayerBar.Button(Icons.ChromeClose, () => d.verbs.Remove(d.itemId, d.index, d.r), true, false, Q.CloseOf(d._window), Q.CloseOf(d._window), Q.CloseGlyph)
-                    with { BlocksDragArm = true }, Loc.Get(Strings.Menu.RemoveFromQueue)))
-            : new BoxEl { Width = Q.CloseOf(_window), Shrink = 0f };
-        var data = SurfaceData(r, text, click: skip, play: skip, draggable: row.Draggable, queueItem: itemId,
-            menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
-        var shape = Shape.Row(Q.RowArt) with { MinHeight = Q.RowExtent };
+        var face = new RowFace(props.Verbs, props.Lane, row.Ref, row.ItemId, row.Index, row.Removable, row.Draggable, props.Queue.Viewer, _window,
+                               props.Lane.RowStamp(row.Ref));
         return new BoxEl
         {
-            Key = props.Lane.RowKey("", itemId, index),
+            Key = props.Lane.RowKey("", row.ItemId, row.Index),
             Direction = 1, Opacity = Q.Dim(row.Section),
             Enter = WinUiQueue.RowEnter, Exit = WinUiQueue.RowExit, Layout = LayoutTransition.Slide,
-            Children = [Controls.Surface(data, shape)],
+            Children = [Controls.FromData(face, s_rowSurface)],
         };
+    }
+
+    /// <summary>What a row's surface is built from (<see cref="Row"/>).</summary>
+    readonly record struct RowFace(IQueueVerbs Verbs, IQueueLane Lane, EntityRef R, ulong ItemId, int Index, bool Removable, bool Draggable,
+                                   bool Viewer, WidthTier Window, ulong Stamp);
+
+    static readonly Func<RowFace, Element> s_rowSurface = RowSurface;
+
+    static Element RowSurface(RowFace d)
+    {
+        var verbs = d.Verbs;
+        EntityRef r = d.R;
+        ulong itemId = d.ItemId;
+        int index = d.Index;
+        bool viewer = d.Viewer;
+        var text = d.Lane.TextOf(r);
+        Action skip = () => verbs.Play(itemId, index, r);
+        Element trailing = d.Removable
+            ? ToolTip.Wrap(
+                WinUiPlayerBar.Button(Icons.ChromeClose, () => verbs.Remove(itemId, index, r), true, false, Q.CloseOf(d.Window), Q.CloseOf(d.Window), Q.CloseGlyph)
+                    with { BlocksDragArm = true }, Loc.Get(Strings.Menu.RemoveFromQueue))
+            : new BoxEl { Width = Q.CloseOf(d.Window), Shrink = 0f };
+        var data = SurfaceData(r, text, click: skip, play: skip, draggable: d.Draggable, queueItem: itemId,
+            menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
+        var shape = Shape.Row(Q.RowArt) with { MinHeight = Q.RowExtent };
+        return Controls.Surface(data, shape);
     }
 
     /// <summary>The surface's data through the entity's own adapter: the seed face while the title is unknown, the episode adapter, else the
@@ -169,7 +212,7 @@ internal sealed class WinUiQueuePanelView : Component
             }
             default:
             {
-                var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: true, ShowExplicit: false, ShowVideo: true,
+                var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: true, ShowExplicit: false,
                     Draggable: draggable, ShowMenu: QueueRowRules.ShowsMenuButton, QueueItemId: queueItem, Trailing: trailing,
                     Tracked: false);   // the host re-pushes when a shown row changes (its rows digest)
                 var data = Track.RowData(new Track(r.Slot).ForDisplay, in options) with { Uri = text.Uri };

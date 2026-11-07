@@ -157,16 +157,26 @@ internal static class WinUiArtistOverview
     /// the new width under the held clip: the durations and the pager sat past the clip's edge for the whole delay.</para></summary>
     /// <para>Beside the other columns (<paramref name="row"/>) it may shrink on the main axis (its width); stacked it never does: the main axis is then
     /// its height, which the overview's eased height would otherwise squeeze while it grows.</para>
+    /// <para>The explicit width and the restack's resize (<see cref="WinUiArtistMotion.Column"/>) hold only while a restack runs
+    /// (<paramref name="hold"/>). Otherwise, beside the side column, it is its weight's flex share (the same width <see cref="PopularWidth"/> works
+    /// out) under <see cref="WinUiArtistMotion.ColumnSteady"/>: a slide that re-lays the page every frame (the nav pane collapsing, a docked pane's
+    /// slide in one arrangement) splits the live width in one solve, where the width the last commit measured trailed the page by a frame and the
+    /// side column took the difference for that frame.</para>
     static Element Popular(float width, Element? chart, PopularHold hold, bool row)
-        => Column(PopularKey, 0f, chart is null ? [] : [chart.Value]) with
+    {
+        bool share = row && !hold.Restacking;
+        return Column(PopularKey, 0f, chart is null ? [] : [chart.Value]) with
         {
-            Width = float.IsNaN(hold.Width) ? width : hold.Width, Shrink = row ? 1f : 0f,
-            Layout = hold.Released ? WinUiArtistMotion.ColumnReleased : WinUiArtistMotion.Column,
+            Width = share ? float.NaN : float.IsNaN(hold.Width) ? width : hold.Width, Shrink = row ? 1f : 0f,
+            Grow = share ? WinUiArtistRules.PopularGrow : 0f, Basis = share ? 0f : float.NaN,
+            Layout = !hold.Restacking ? WinUiArtistMotion.ColumnSteady : hold.Released ? WinUiArtistMotion.ColumnReleased : WinUiArtistMotion.Column,
         };
+    }
 
-    /// <summary>Popular's hold through a widening restack: the width it is laid out at until the side column has faded out (NaN: none), and whether
-    /// the last restack's hold has been released (its resize then runs without the delay the hold spent).</summary>
-    readonly record struct PopularHold(float Width, bool Released);
+    /// <summary>Popular's hold through a widening restack: the width it is laid out at until the side column has faded out (NaN: none), whether
+    /// the last restack's hold has been released (its resize then runs without the delay the hold spent), and whether a restack's resize is still
+    /// running (<see cref="WinUiArtistMotion.RestackSpanMs"/> from its commit).</summary>
+    readonly record struct PopularHold(float Width, bool Released, bool Restacking);
 
     const string PopularKey = "ov:col:popular";
 
@@ -201,11 +211,12 @@ internal static class WinUiArtistOverview
         readonly PreviewState _state = new();
         readonly Action<RectF> _onBounds;
         readonly Signal<int> _held = new(0);   // a version: bumped when Popular's hold below is let go
-        readonly Action _releaseHold;
+        readonly Action _releaseHold, _endRestack;
         float _inset, _measured, _slotNow;
         float _hold = float.NaN;   // Popular's old width, held through a widening restack's fade-out (NaN: none)
         bool _holdReleased, _following;   // _following: a restack's rung is ahead of the page's width (the overview follows the live width)
-        int _rung = -1, _holds;
+        bool _restacking;   // a restack's resize is running: Popular carries the restack's transition (WinUiArtistMotion.RestackSpanMs)
+        int _rung = -1, _holds, _restackRenders;   // _restackRenders: a version, bumped by every render while a restack runs
 
         public GridHost()
         {
@@ -214,6 +225,12 @@ internal static class WinUiArtistOverview
                 if (float.IsNaN(_hold)) return;
                 _hold = float.NaN;
                 _holdReleased = true;
+                _held.Value++;
+            };
+            _endRestack = () =>
+            {
+                if (!_restacking) return;
+                _restacking = false;
                 _held.Value++;
             };
             _onBounds = r =>
@@ -253,8 +270,13 @@ internal static class WinUiArtistOverview
                 _holdReleased = false;
                 _hold = from + 0.5f < to ? from : float.NaN;
                 if (!float.IsNaN(_hold)) _holds++;
+                _restacking = true;
             }
+            // The restack's transitions must outlive every resize it starts: the release of a widening restack's hold (FadeOutMs after the commit)
+            // starts one, and a docking pane's slide re-aims Popular's every frame. So the restack ends a whole span after its LAST render.
+            if (_restacking) _restackRenders++;
             UseTimeout(_releaseHold, WinUiArtistMotion.FadeOutMs, DepKey.From(_holds));
+            UseTimeout(_endRestack, WinUiArtistMotion.RestackSpanMs, DepKey.From(_restackRenders));
             // The measured box follows the page, and the overview inside it with it.
             return new BoxEl
             {
@@ -262,7 +284,7 @@ internal static class WinUiArtistOverview
                 Children = [new BoxEl
                 {
                     Direction = 1, MinWidth = 0f,
-                    Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased))],
+                    Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased, _restacking))],
                 }],
             };
         }

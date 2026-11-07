@@ -474,7 +474,7 @@ internal abstract class WinUiCreditsLine : Component
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
         float slot = fit ? UseMeasuredWidth(PL.CreditSlotQuantum).Value : 0f;   // `fit` is the class's: the hook runs in every render or none
-        var credits = props.Credits();
+        var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
         // An episode's line is its show, one link; a track's, its credited names.
         var named = new List<PlayerCreditLink>(Math.Max(1, credits.Artists.Length));
         if (credits.Show is { } show) named.Add(show);

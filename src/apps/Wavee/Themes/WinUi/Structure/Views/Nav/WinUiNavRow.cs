@@ -52,7 +52,6 @@ internal sealed class WinUiNavRow : Component
     Func<float>? _folderPlusReveal, _treeEndWidth, _lineWidth, _lineOpacity;
     Func<ColorF>? _plateFill, _plateBorder;
     Func<Affine2D>? _lineTransform;
-    SidebarPillState _pillState;
     Action<KeyEventArgs>? _slotKey;
 
     /// <summary>Is this slot's folder "+" the armed drop destination? One flag per SLOT (a slot draws at most one folder
@@ -164,9 +163,7 @@ internal sealed class WinUiNavRow : Component
         Element header = head;
         if (_o.FilterOpenFor(id)) header = new BoxEl { Direction = 1, Children = [header, FilterBox()] };
 
-        // The header's own pill: centred on the 40-px title band (a header has no margin, so no RowMarginY).
-        _pillState = new SidebarPillState(_o.PillRouteOf(index, sel), _o.RowSelectsRoute(index, sel), 0f,
-            (WinUiNavGeometry.HeaderHeight - WinUiNavGeometry.PillH) * 0.5f);
+        // The header's own pill (its place: PillPlacement).
         Func<SidebarPillState> probe = _pillProbe ??= PillState;
         return ZStack(header, Embed.Comp(() => new WinUiSelectionPill(owner, probe)));
     }
@@ -305,7 +302,7 @@ internal sealed class WinUiNavRow : Component
         // The pill stays at the row's own left edge at every depth, never the drop caret's gutter. An offline pin always
         // carries its reason as the tooltip (with the name when the name is cut).
         string tip = offline ? OfflineTip(label, spec.LabelTooltip || compact) : label;
-        return Indicator(Tipped(built, spec.LabelTooltip || offline, tip), selected, IndentOf(in row), height, AnchorRoute(selected, route, sel));
+        return Indicator(Tipped(built, spec.LabelTooltip || offline, tip));
     }
 
     /// <summary>The offline pin's mark (S9): the cloud-off glyph, 12 in a 24 box, tertiary, in the Unpin button's place.</summary>
@@ -405,8 +402,7 @@ internal sealed class WinUiNavRow : Component
         // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
         // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
         // happens on folder rows.
-        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, label), _o.RowSelectsRoute(index, sel),
-            IndentOf(in row), height, _o.PillRouteOf(index, sel));
+        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, label));
     }
 
     /// <summary>The dimmed retention row for a folder pin the rootlist lost: no click, no disclosure, no drag/drop, and a
@@ -486,8 +482,7 @@ internal sealed class WinUiNavRow : Component
             DropTarget = PinSpec(section, section.Id, index),
         };
         spec.LabelTooltip = LabelOverflows(title, 0, 0f, WinUiNavGeometry.LabelX(OneLine, glyph: true));
-        // The pill registers under the LIVE route when this row is an adopted anchor (an album page lights Albums: NavRowKit.AdoptiveRoute).
-        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, AnchorRoute(selected, key, sel));
+        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title));
     }
 
     /// <summary>The empty Pinned band while a pinnable drag is live (design V.3): 36 tall in the 4,2 margin, a dashed
@@ -603,22 +598,11 @@ internal sealed class WinUiNavRow : Component
         return null;
     }
 
-    /// <summary>The route a row's pill registers under: its own, or the LIVE route when the row is lit for a route it does not carry (an adopted anchor,
-    /// NavRowKit.AdoptiveRoute: an album page lights Albums), so the pill's bound read lights it.</summary>
-    static string? AnchorRoute(bool selected, string? own, string live)
-        => selected && live.Length > 0 && !string.Equals(own, live, StringComparison.Ordinal) ? live : own;
-
     /// <summary>Attach the item-owned selection pill and both drop cues. Shape-stable for recycling: a slot never
     /// inherits an animated transform from the route it represented one window earlier. The ZStack order is load-bearing
     /// — plate UNDER the row (text never tinted), pill over it, insertion line on top.</summary>
-    Element Indicator(Element row, bool selected, int depth, float height, string? route)
+    Element Indicator(Element row)
     {
-        if (!float.IsFinite(height) || height <= 0f) height = _m.RowHeight;
-        _pillState = new SidebarPillState(
-            Route: route,
-            Selected: selected,
-            Indent: WinUiNavGeometry.PillX(depth),
-            Top: _m.MarginY + (height - WinUiNavGeometry.PillH) * 0.5f);
         var owner = _o;
         Func<SidebarPillState> probe = _pillProbe ??= PillState;
         return ZStack(DropPlate(), row, Embed.Comp(() => new WinUiSelectionPill(owner, probe)), InsertionLine());
@@ -734,20 +718,33 @@ internal sealed class WinUiNavRow : Component
 
     float TreeEndWidth() => _o.ContentWidth;
 
-    /// <summary>THE PILL'S ONE LIVE READ. The pill's opacity is BOUND to this (never a mount-time literal), re-derived by
-    /// the row epoch on every edge that can change it. The route is PEEKED (subscribing would put every realized pill
-    /// back on the route fanout). The verdict is the pane's row resolver AND-ed with the route this pill was drawn for;
-    /// playback is deliberately absent — the playing row draws |||, never the pill.</summary>
+    /// <summary>THE PILL'S ONE LIVE READ. The pill's render (the route it registers its node under for the selection
+    /// flight, its place) and its BOUND opacity both read this, re-derived by the row epoch on every edge that can change
+    /// it. Every field comes from the slot's LIVE index and the published plan, never from this row's render: the pill is
+    /// its own component and re-renders on the same index/epoch edge as the row, often BEFORE it, so a snapshot the row
+    /// wrote in its render was the PREVIOUS row's when the pill read it. After a rail ⇄ pane switch or a scroll recycle the
+    /// pill then registered under the route its slot used to show, and the next navigation to that route lit this slot
+    /// too (two pills). An anchor lit for a route it does not carry (an ancestor folder, an adopted owner: an album page
+    /// lights Albums) registers under the live route (<see cref="INavRowHost.PillRouteOf"/>). The route is PEEKED
+    /// (subscribing would put every realized pill back on the route fanout). Playback is deliberately absent — the playing
+    /// row draws |||, never the pill.</summary>
     SidebarPillState PillState()
     {
         int index = _scope.Index.Value;
         _ = _o.SubscribeRowEpoch(index);
+        var rows = _o.Plan.Rows;
+        if ((uint)index >= (uint)rows.Count) return default;
+        var row = rows[index];
         string live = _o.SelectedRoutePeek;
-        bool rowSelects = _o.RowSelectsRoute(index, live);
-        // An adopted anchor (an album page lights Albums) is lit for a route it does not carry: its pill reads the LIVE route, derived here rather than
-        // from the render's snapshot, which the bound read can outrun on the epoch that lights it.
-        return (_pillState with { Route = AnchorRoute(rowSelects, _pillState.Route, live) }).For(live, rowSelects);
+        var (indent, top) = PillPlacement(in row);
+        return new SidebarPillState(_o.PillRouteOf(index, live), false, indent, top).For(live, _o.RowSelectsRoute(index, live));
     }
+
+    /// <summary>Where a row kind draws its pill: a header centres it on its 40-px title band (a header has no margin, so
+    /// no RowMarginY); every other row at its own left edge at every depth, centred on the uniform row height in its margin.</summary>
+    (float Indent, float Top) PillPlacement(in SidebarRow row) => row.Kind == SidebarRowKind.SectionHeader
+        ? (0f, (WinUiNavGeometry.HeaderHeight - WinUiNavGeometry.PillH) * 0.5f)
+        : (WinUiNavGeometry.PillX(row.Kind is SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader ? IndentOf(in row) : 0), _m.PillTop);
 
     /// <summary>A PINNED row is also a drop target, so dragging an entity onto the band pins it AT that position. Scoped to
     /// the band (never the pane) — a pane-wide accept would pin the moment a row was nudged.</summary>

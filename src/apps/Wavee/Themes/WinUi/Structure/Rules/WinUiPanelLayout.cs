@@ -111,7 +111,8 @@ public static class WinUiPanelLayout
 public static class WinUiPanelBodies
 {
     /// <summary>The lyrics header's row, the hero's slot and its meta (the mounted tests find them).</summary>
-    public const string LyricsMetaKey = "winui-lyrics-header", HeroSlotKey = "winui-hero-slot", HeroMetaKey = "winui-hero-meta";
+    public const string LyricsMetaKey = "winui-lyrics-header", HeroSlotKey = "winui-hero-slot", HeroMetaKey = "winui-hero-meta",
+        HeroGearKey = "winui-hero-gear";
 
     /// <summary>The bodies' inset: 16 either side (the tabs' first letter, W-Queue).</summary>
     public static readonly Edges4 Inset = new(16f, 0f, 16f, 0f);
@@ -180,9 +181,9 @@ public static class WinUiPanelBodies
 
     // ── the now-playing hero (W-PaneNowPlaying) ───────────────────────────────────────────────────────────────────
 
-    /// <summary>The hero's inset (16, 4 above), 12 between its blocks; the title (Subtitle 20/28 semibold), the artists (Body 14/20, accent
+    /// <summary>The hero's inset (16; 12 above, its blocks' own gap, under the tab row: no head row since 2026-11-07), 12 between its blocks; the title (Subtitle 20/28 semibold), the artists (Body 14/20, accent
     /// links), "from" and the album (Caption 12/16), 4 after "from"; the heart (40, 16).</summary>
-    public static readonly Edges4 HeroPadding = new(16f, 4f, 16f, 16f);
+    public static readonly Edges4 HeroPadding = new(16f, 12f, 16f, 16f);
 
     public const float HeroGap = 12f, HeroMetaGap = 2f, HeroTitleSize = 20f, HeroTitleLine = 28f, HeroArtistSize = 14f, HeroArtistLine = 20f,
         HeroAlbumSize = 12f, HeroAlbumLine = 16f, HeroFromGap = 4f, HeroHeart = 40f, HeroHeartGlyph = 16f;
@@ -194,12 +195,27 @@ public static class WinUiPanelBodies
 
     // ── the deck style flyout (no WinUI board) ────────────────────────────────────────────────────────────────────
 
-    /// <summary>The flyout: 300 wide, 16 in, 12 between blocks; the heading (Body Strong 14/20), a group's label (Caption 12/16), the preset
-    /// and choice words (Body 14/20, 12 apart, 4 between lines); the swatches (a 30 ring of 2 around a 22 dot).</summary>
-    public const float DeckW = 300f, DeckPad = 16f, DeckGap = 12f, DeckTitleSize = 14f, DeckTitleLine = 20f, DeckLabelSize = 12f, DeckLabelLine = 16f,
-        DeckWordSize = 14f, DeckWordLine = 20f, DeckWordGap = 12f, DeckWordRowGap = 4f, DeckSwatchRing = 30f, DeckSwatchDot = 22f, DeckSwatchStroke = 2f;
+    /// <summary>The flyout: 320 wide, 16 in, 12 between rows; the heading (Body Strong 14/20); each row a group's or an option's label (Caption
+    /// 12/16) in a 64 column beside its preset or choice words (Body 14/20, 12 apart, 4 between wrapped lines) or its swatches (a 30 ring of 2
+    /// around a 22 dot with a hairline).</summary>
+    public const float DeckLabelW = 64f;
+
+    public const float DeckW = 320f, DeckPad = 16f, DeckGap = 12f, DeckTitleSize = 14f, DeckTitleLine = 20f, DeckLabelSize = 12f, DeckLabelLine = 16f,
+        DeckWordSize = 14f, DeckWordLine = 20f, DeckWordGap = 12f, DeckWordRowGap = 4f, DeckSwatchRing = 30f, DeckSwatchDot = 22f, DeckSwatchStroke = 2f,
+        DeckSwatchHairline = 1f;
 
     public const ushort DeckTitleWeight = 600;
+
+    /// <summary>A preset or choice word's (and a swatch's) hit row: 32 tall (40 at Compact, <see cref="TouchButton"/>); "Reset options" at the
+    /// end of the "Options" label is a subtle command of the same height (r4, 8 in), Caption 12/16 in the accent ink.</summary>
+    public const float DeckChoiceH = 32f, DeckResetCorner = 4f;
+
+    public static readonly Edges4 DeckResetPadding = new(8f, 0f, 8f, 0f);
+
+    /// <summary>The options block between styles with more or fewer options: its height eases in and out (and the flyout's edge with it) over
+    /// 250 ms, never a snap: a front-loaded curve carried most of a four-row change in its first frame.</summary>
+    public static readonly LayoutTransition DeckOptionsMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
 }
 
 /// <summary>The constants of the queue body (W-Queue).</summary>

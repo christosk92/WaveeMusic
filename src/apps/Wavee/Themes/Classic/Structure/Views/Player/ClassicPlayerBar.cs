@@ -152,14 +152,14 @@ internal static partial class ClassicPlayerBar
             if (props.DeviceIsRemote())
                 metaKids.Add(new BoxEl
                 {
-                    Key = "remote-device-line", ClipToBounds = true, MinWidth = 0f,
+                    Key = "remote-device-line", Direction = 1, ClipToBounds = true, MinWidth = 0f,
                     Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
                     Children = [Embed.Comp(() => new MiniRemote(props))],
                 });
             else if (v.ShowArtistLine)
                 metaKids.Add(new BoxEl
                 {
-                    Key = artistsKey, ClipToBounds = true, MinWidth = 0f,
+                    Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f,
                     Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
                     Children = [Embed.Comp(() => new MiniCredits(props))],
                 });
@@ -169,7 +169,7 @@ internal static partial class ClassicPlayerBar
             if (v.RemoteLine)
                 metaKids.Add(new BoxEl
                 {
-                    Key = "remote-device-line", Animate = ClassicPlayerBarLayout.ItemMotion,
+                    Key = "remote-device-line", Direction = 1, MinWidth = 0f, Animate = ClassicPlayerBarLayout.ItemMotion,
                     Children = [Embed.Comp(() => new RemoteDeviceLine(props))],
                 });
             metaKids.Add(titleSlot);
@@ -596,7 +596,7 @@ internal static partial class ClassicPlayerBar
         public override Element Render()
         {
             _ = UseComputed(props.CreditsStamp).Value;
-            var credits = props.Credits();
+            var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
             string text = credits.Show is { } show ? show.Text : JoinNames(credits.Artists);
             return new TextEl(text)
             {
@@ -876,7 +876,7 @@ internal static partial class ClassicPlayerBar
                         [
                             new TextEl(Strings.Player.PlayingOn(name))
                             {
-                                Size = ClassicPlayerBarLayout.RemoteLineSize, LineHeight = ClassicPlayerBarLayout.RemoteLineTextHeight,
+                                Size = ClassicPlayerBarLayout.RemoteLineSize, LineHeight = ClassicPlayerBarLayout.RemoteLineHeight,
                                 Weight = ClassicPlayerBarLayout.RemoteLineWeight, Color = rest, HoverColor = accent,
                                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
                             },

@@ -126,14 +126,11 @@ internal static class ClassicPlayerBarLayout
 
     // ── the remote-device line ("Playing on ...", above the title) ───────────────────────────────────────────────────
 
-    /// <summary>The line's height.</summary>
-    public const float RemoteLineHeight = 13f;
+    /// <summary>The line's height: the text's own line, so the descenders of "Playing on" are never cut.</summary>
+    public const float RemoteLineHeight = 16f;
 
     /// <summary>The line's icon and text size.</summary>
     public const float RemoteLineSize = 12f;
-
-    /// <summary>The line's text height.</summary>
-    public const float RemoteLineTextHeight = 16f;
 
     /// <summary>The line's weight.</summary>
     public const int RemoteLineWeight = 600;

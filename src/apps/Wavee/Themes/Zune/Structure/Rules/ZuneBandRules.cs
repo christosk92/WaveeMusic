@@ -106,11 +106,11 @@ public static class ZuneBandRules
     public const float Row2RestsFrom = 660f;
 
     /// <summary>The band's root, its two rows, the pivot run, a pivot (`zune-band-pivot:<id>`), the "more" word, the pins cluster, a pin
-    /// (`zune-band-pin:<id>`), a pin's play affordance, a row-2 view (`zune-band-view:<id>`), a row-2 action (`zune-band-action:<id>`),
-    /// the row-2 title.</summary>
+    /// (`zune-band-pin:<id>`), a pin's play affordance, the drop slot a pinnable drag shows after the pins, a row-2 view (`zune-band-view:<id>`),
+    /// a row-2 action (`zune-band-action:<id>`), the row-2 title.</summary>
     public const string BandKey = "zune-band", Row1Key = "zune-band-row1", Row2Key = "zune-band-row2", Row2HolderKey = "zune-band-row2-holder", PivotRunKey = "zune-band-pivots",
         PivotKeyPrefix = "zune-band-pivot:", MoreKey = "zune-band-more", PinsKey = "zune-band-pins", PinKeyPrefix = "zune-band-pin:",
-        PinPlayKeyPrefix = "zune-band-pin-play:", ViewKeyPrefix = "zune-band-view:", ActionKeyPrefix = "zune-band-action:",
+        PinPlayKeyPrefix = "zune-band-pin-play:", PinDropKey = "zune-band-pin-drop", ViewKeyPrefix = "zune-band-view:", ActionKeyPrefix = "zune-band-action:",
         Row2TitleKey = "zune-band-title";
 
     /// <summary>The material's parts: the flat ground, the artwork wash, the bleed, the mix.</summary>
@@ -241,6 +241,16 @@ public static class ZuneBandRules
 
     /// <summary>A pin's play affordance: a 20 disc over the art's lower right corner, its glyph 9, shown on hover and focus.</summary>
     public const float PinPlay = 20f, PinPlayGlyph = 9f;
+
+    /// <summary>The drop slot a pinnable drag shows after the pins (drag to pin): a pin-sized outline, its pin glyph, its stroke.</summary>
+    public const float PinDropGlyph = 14f, PinDropStroke = 1f;
+
+    /// <summary>One pin coming or going (a pin, an unpin, a move, the drop slot): it fades and opens (or closes) its width as a reflow, so the pins
+    /// beside it and the pivot run glide to their new places instead of jumping.</summary>
+    public static readonly LayoutTransition PinMotion = new(TransitionChannels.Position | TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
     /// <summary>The pins' art decode size (the 4K art at 2x).</summary>
     public const int PinDecodePx = 80;

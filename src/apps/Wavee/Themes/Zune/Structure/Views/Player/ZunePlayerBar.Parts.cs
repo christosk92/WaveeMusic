@@ -448,7 +448,7 @@ internal sealed class ZuneCredits : Component
         var p = UseProps<ZunePlayerBar.CreditsProps>();
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
-        var credits = props.Credits();
+        var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
         if (credits.Show is { } show)
             return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [Name(show, p)] };
         var artists = credits.Artists;

@@ -37,7 +37,7 @@ internal static class ZuneStageVideoPoster
     {
         Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = Tok.MediaLetterbox,
         Visible = props.Shown,
-        Children = props.Visual is Video.JoinVisual.Working or Video.JoinVisual.Failed
+        Children = props.Visual is Video.JoinVisual.Working or Video.JoinVisual.Failed or Video.JoinVisual.Remote
             ? [LivePoster.Make(props.ArtUrl), Notice(props)]
             : [LivePoster.Make(props.ArtUrl)],
     };
@@ -70,14 +70,14 @@ internal static class ZuneStageVideoPoster
     /// <summary>What sits over the poster once the host has something to say.</summary>
     static Element Notice(VideoJoinPosterProps props)
     {
-        bool failed = props.Visual == Video.JoinVisual.Failed;
+        bool failed = props.Visual == Video.JoinVisual.Failed, remote = props.Visual == Video.JoinVisual.Remote;
         var stack = new BoxEl
         {
-            Key = failed ? "join:failed" : "join:working",
-            Direction = 1, AlignItems = FlexAlign.Center, Gap = VR.NoticeGap, HitTestVisible = false,
+            Key = remote ? "join:remote" : failed ? "join:failed" : "join:working",
+            Direction = 1, AlignItems = FlexAlign.Center, Gap = VR.NoticeGap, HitTestVisible = remote,
             // Reduced motion is the DEFAULT terminal: a hard cut, read as a VALUE, never a branch at the call site.
             Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
-            Children = failed ? FailedLine(props) : WorkingLine(),
+            Children = remote ? RemoteLine(props) : failed ? FailedLine(props) : WorkingLine(),
         };
         return new BoxEl
         {
@@ -96,6 +96,19 @@ internal static class ZuneStageVideoPoster
             Size = VR.NoticeText, Weight = VR.NoticeWeight, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         },
+    ];
+
+    /// <summary>"Elsewhere": another device plays the video. The devices glyph, "Playing on &lt;device&gt;" (bound: the owner can change under the
+    /// notice) and "Play here", which takes playback — and the video, at the owner's position — over. No ring: nothing is loading here.</summary>
+    static Element[] RemoteLine(VideoJoinPosterProps props) =>
+    [
+        new TextEl(Icons.Devices) { Size = VR.NoticeGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.OnMediaPrimary },
+        new TextEl(Prop.Of(props.RemoteLine))
+        {
+            Size = VR.NoticeText, Weight = VR.NoticeWeight, Color = Tok.OnMediaPrimary,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        },
+        Button.Accent(Loc.Get(Strings.Player.PlayHere), props.PlayHere) with { Key = "video:play-here" },
     ];
 
     /// <summary>"Not coming": a static warning glyph and the fault's OWN line, with no ring (a ring means wait). The line is bound reactively: the

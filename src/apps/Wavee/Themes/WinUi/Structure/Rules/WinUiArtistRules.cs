@@ -248,6 +248,10 @@ public static class WinUiArtistMotion
     /// it glides, so the frames between the width change and the restack show the column where it stood, not a step toward a slot it never takes.</summary>
     public const float HoldMs = 64f;
 
+    /// <summary>How long a restack's resize runs: Popular's hold or delay (<see cref="FadeOutMs"/>), then its resize (<see cref="RestackMs"/>). Popular
+    /// carries <see cref="Column"/> until this long after the restack's last render, <see cref="ColumnSteady"/> otherwise.</summary>
+    public const float RestackSpanMs = FadeOutMs + RestackMs;
+
     /// <summary>The overview's height: it eases through REAL layout (a reflow, which also clips the overview to it), so every section under it is laid
     /// out at the eased height's foot each tick. A flow reveal (layout once, the presented extent eased at paint time) landed at once whenever the
     /// change lay wholly below the view (the restack grows the overview past the window's foot), so the body's layout stepped ~455 DIP in one frame.</summary>
@@ -262,6 +266,13 @@ public static class WinUiArtistMotion
     /// <summary>Popular's resize once a restack that WIDENS it has held it at its old width for <see cref="FadeOutMs"/> (the view lays it out at that
     /// width, then releases it): <see cref="Column"/> without the delay, which the hold has already spent.</summary>
     public static readonly LayoutTransition ColumnReleased = Column with { DelayMs = 0f };
+
+    /// <summary>The Popular column outside a restack (the nav pane's or a docked pane's slide inside one arrangement, a window resize): it follows the
+    /// page's live width at once. <see cref="Column"/>'s resize waits out the side column's fade-out (<see cref="FadeOutMs"/>), which only a restack has:
+    /// on a slide inside one arrangement it held Popular at its old width for that delay and resized it after the slide had stopped, a second motion
+    /// behind the page's. It keeps a position channel (Popular is its grid's first child: nothing moves it) only so the column stays bounds-animated,
+    /// and the restack's commit FLIPs it under <see cref="Column"/> from the rect the frame before captured.</summary>
+    public static readonly LayoutTransition ColumnSteady = new(TransitionChannels.Position, TransitionDynamics.Tween(RestackMs, Easing.SmoothOut));
 
     /// <summary>The restack's cross-fade, a DECLARED swap family: the overview's arrangements (one column, two, three at Huge) are different trees of
     /// the same blocks (the latest release over Discography beside Popular; Discography its own column with the release, upcoming and the pick in a
