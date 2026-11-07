@@ -85,8 +85,10 @@ public static class OnMedia
         // here is non-empty by construction (four aspect rows plus a separator and four numeric-ratio rows, Auto plus
         // any rungs, the seven fixed rates), which is
         // the one real foot-gun: `OpenSub` accepts a non-null EMPTY list and opens a blank popup.
-        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.AspectMenu), AspectRows(), Icons.Movie));
-        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.QualityMenu), QualityRows()));
+        // Each cascade row names its CURRENT value before the chevron (Z-Video: "fit", "auto", "1×"), read from the same
+        // live state the cascade's radio reads, so the row and its checked choice can never disagree.
+        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.AspectMenu), AspectRows(), Icons.Movie) with { AcceleratorText = AspectNow() });
+        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.QualityMenu), QualityRows()) with { AcceleratorText = QualityNow() });
         items.Add(SpeedMenu());
         for (int i = cut; i < placement.Count; i++) items.Add(placement[i]);
         return items;
@@ -118,6 +120,34 @@ public static class OnMedia
             RatioRow(Strings.Player.AspectRatio239, Video.AspectRatioRows.Standard[3], mode, ratio),
         ];
     }
+
+    /// <summary>The aspect row's current value: the mode's own label, or the numeric ratio's row label under Custom.</summary>
+    static string AspectNow()
+    {
+        var mode = Video.Prefs.Aspect(Platform.Settings);
+        double ratio = Video.Prefs.CustomRatio(Platform.Settings);
+        switch (mode)
+        {
+            case Video.AspectPreference.Crop: return Loc.Get(Strings.Player.AspectCrop);
+            case Video.AspectPreference.Stretch: return Loc.Get(Strings.Player.AspectStretch);
+            case Video.AspectPreference.Native: return Loc.Get(Strings.Player.AspectNative);
+            case Video.AspectPreference.Custom:
+                ReadOnlySpan<string> keys = [Strings.Player.AspectRatio169, Strings.Player.AspectRatio43, Strings.Player.AspectRatio219, Strings.Player.AspectRatio239];
+                for (int i = 0; i < keys.Length; i++)
+                    if (Video.AspectRatioRows.IsChecked(mode, ratio, Video.AspectRatioRows.Standard[i])) return Loc.Get(keys[i]);
+                return ratio.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture) + ":1";   // loc-allow: a ratio's own notation
+            default: return Loc.Get(Strings.Player.AspectFit);
+        }
+    }
+
+    /// <summary>The quality row's current value: the live pin's rung, else Auto (the cascade's own radio rule).</summary>
+    static string QualityNow()
+    {
+        int pin = Playback.Video.LiveQualityPin();
+        return pin > 0 ? pin.ToString(System.Globalization.CultureInfo.InvariantCulture) + "p" : Loc.Get(Strings.Player.QualityAuto);
+    }
+
+    static string RateLabel(float rate) => rate.ToString("0.##") + "×";
 
     static MenuFlyoutItem RatioRow(string key, double r, Video.AspectPreference mode, double current)
         => MenuFlyoutItem.RadioItem(Loc.Get(key), Video.AspectRatioRows.IsChecked(mode, current, r),
@@ -154,7 +184,7 @@ public static class OnMedia
     {
         bool applies = Playback.SpeedApplies(Playback.CurrentId.Peek().Kind);
         var item = MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.SpeedMenu), SpeedRows(), enabled: applies);
-        return applies ? item : item with { AcceleratorText = Loc.Get(Strings.Player.SpeedPodcastsOnly) };
+        return item with { AcceleratorText = applies ? RateLabel(Playback.EpisodeSpeed.Peek()) : Loc.Get(Strings.Player.SpeedPodcastsOnly) };
     }
 
     static IReadOnlyList<MenuFlyoutItem> SpeedRows()
@@ -164,7 +194,7 @@ public static class OnMedia
         for (int i = 0; i < s_rates.Length; i++)
         {
             float rate = s_rates[i];
-            string label = rate.ToString("0.##") + "×";
+            string label = RateLabel(rate);
             rows.Add(MenuFlyoutItem.RadioItem(label, MathF.Abs(now - rate) < 0.01f, () => Playback.SetEpisodeSpeed(rate)));
         }
         return rows;

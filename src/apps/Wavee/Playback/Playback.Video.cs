@@ -999,6 +999,13 @@ public static partial class Playback
             s_bufferedPairCount = Math.Min(player.GetBuffered(s_bufferedPairs), s_bufferedPairs.Length / 2);
         }
 
+        /// <summary>The level the video host opens and plays at: its volume and its EFFECTIVE mute (the user's, a scrub's or
+        /// an attach's). Diagnostics: the probe's silent-run gate reads it.</summary>
+        public static (double Volume, bool Muted) Level()
+        {
+            lock (s_gate) return (s_volume, s_muted || s_previewMuted || s_attachMuted);
+        }
+
         public static void SetVolume(float volume)
         {
             MediaPlayer? p;

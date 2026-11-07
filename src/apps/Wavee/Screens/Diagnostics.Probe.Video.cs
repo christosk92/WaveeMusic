@@ -428,8 +428,10 @@ public static partial class Diagnostics
                             if (Math.Abs(vol - level) < 0.01f && muted == (level <= 0f)) break;
                             Thread.Sleep(50);
                         }
-                        string got = "volume=" + vol.ToString("0.000", CultureInfo.InvariantCulture) + " muted=" + muted;
-                        if (level <= 0f && (vol > Playback.MuteFloor || !muted))
+                        (double videoVol, bool videoMuted) = OnUi(static () => Playback.Video.Level());
+                        string got = "volume=" + vol.ToString("0.000", CultureInfo.InvariantCulture) + " muted=" + muted
+                            + " videoVolume=" + videoVol.ToString("0.000", CultureInfo.InvariantCulture) + " videoMuted=" + videoMuted;
+                        if (level <= 0f && (vol > Playback.MuteFloor || !muted || (videoVol > Playback.MuteFloor && !videoMuted)))
                         {
                             // A silent run that is not silent ends here, before anything plays.
                             VEvent("abort", ("why", "not silent"), ("state", got));
