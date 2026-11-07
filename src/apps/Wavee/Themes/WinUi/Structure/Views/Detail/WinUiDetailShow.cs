@@ -95,25 +95,37 @@ internal static partial class WinUiDetailFrame
         if (slots.Ledger is { } ledger) rows.Add(Block("hero-ledger", ledger(line), late: true));
         Element actions = Actions(id, spec.Config, p.Actions, slots, p.Play, tier, form, words: !compact, center: form.Stacked && !compact);
         // At Compact the action row runs under the cover and the words, the primary filling it (W-Show-Compact, W-Episode-Compact); elsewhere it closes the words.
-        if (!compact) rows.Add(Block("hero-actions", actions));
+        // The two places are different parents, so a Compact crossing swaps them under the declared form swap (a fade out where it stood, in at the other).
+        var swapIn = WinUiDetailRules.SwapEnter(WinUiDetailRules.Rendered(ctx.Hooks));
+        if (!compact) rows.Add(Block("hero-actions", actions) with { Enter = swapIn, Exit = WinUiDetailRules.FormSwap });
 
         Element cover = Cover(id, slots, p.Actions, form);
         Element header = Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap }, center: form.Stacked,
             hang: hasEyebrow ? form.EyebrowLine + form.InfoGap : 0f);
-        if (compact)
-            header = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f,
-                Children =
-                [
-                    header,
-                    new BoxEl
-                    {
-                        Key = "hero-actions", Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, form.ListGap),
-                        Margin = new Edges4(0f, WinUiShowRules.CompactActionsTop - form.ListGap, 0f, 0f), Children = [FillRow(actions)],
-                    },
-                ],
-            };
+        // ONE shape at every tier (the words keep their parents across a crossing): the hero, then the Compact action row's slot (empty above Compact).
+        header = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                header,
+                new BoxEl
+                {
+                    Key = "hero-actions:slot", Direction = 1, MinWidth = 0f,
+                    Children = compact
+                        ?
+                        [
+                            new BoxEl
+                            {
+                                Key = "hero-actions:row", Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, form.ListGap),
+                                Margin = new Edges4(0f, WinUiShowRules.CompactActionsTop - form.ListGap, 0f, 0f), Enter = swapIn, Exit = WinUiDetailRules.FormSwap,
+                                Children = [FillRow(actions)],
+                            },
+                        ]
+                        : [],
+                },
+            ],
+        };
         // A header whose show or episode has not been read yet is its own DERIVED shimmer: the same rows, the title and the meta as bars in their line
         // boxes, the verbs as quiet shapes, never an empty title over a lone "·" with a live Play (audit B7, A2's finding). One region at every state,
         // so the read landing swaps the shimmer for the rows in place.

@@ -100,6 +100,9 @@ internal static class WinUiShowRules
     /// the action row under them, the primary filling it.</summary>
     public const float CompactCover = 128f, CompactCoverGap = 16f, CompactTitle = 28f, CompactTitleLine = 36f, CompactActionsTop = 16f;
 
+    /// <summary>The library show pane's air above its head (one at every tier: the pane's head never steps on a crossing).</summary>
+    public const float PaneTop = 20f;
+
     /// <summary>The library show pane's loading bars: the eyebrow, a line, the title, the meta and the primary's widths.</summary>
     public const float PaneSeedEyebrow = 64f, PaneSeedLine = 16f, PaneSeedTitle = 220f, PaneSeedMeta = 160f, PaneSeedPrimary = 160f;
 

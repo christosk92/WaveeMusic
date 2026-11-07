@@ -60,7 +60,7 @@ internal static class WinUiLibraryShowPane
         Element head = new BoxEl
         {
             Direction = 0, Gap = WinUiShowRules.CompactCoverGap, AlignItems = FlexAlign.End, MinWidth = 0f,
-            Padding = new Edges4(ShowReaderRules.Pad, tier.InsetTop, ShowReaderRules.Pad, 0f),
+            Padding = new Edges4(ShowReaderRules.Pad, WinUiShowRules.PaneTop, ShowReaderRules.Pad, 0f),
             Children = [cover, new BoxEl { Direction = 1, Gap = Spacing.XXS, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = words.ToArray() }],
         };
         Element commands = new BoxEl
@@ -92,7 +92,7 @@ internal static class WinUiLibraryShowPane
     static BoxEl Skeleton(WinUiDetailTier tier) => new()
     {
         Direction = 1, Grow = 1f, Gap = WinUiShowRules.CompactActionsTop,
-        Padding = new Edges4(ShowReaderRules.Pad, tier.InsetTop, ShowReaderRules.Pad, 0f),
+        Padding = new Edges4(ShowReaderRules.Pad, WinUiShowRules.PaneTop, ShowReaderRules.Pad, 0f),
         Children =
         [
             new BoxEl

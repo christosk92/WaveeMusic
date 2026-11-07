@@ -10,8 +10,8 @@ namespace Wavee.Themes.WinUi;
 /// <summary>The numbers of WinUI's choice controls.</summary>
 public static class WinUiChoiceRules
 {
-    /// <summary>The library page's head (W-Library): "Library" in Title Large 40/52 (Title 28/36 at Compact), 16 over the kinds' SelectorBar (40 tall).</summary>
-    public const float HeadTitle = 40f, HeadTitleLine = 52f, HeadTitleCompact = 28f, HeadTitleCompactLine = 36f, HeadGap = 16f, HeadPivot = 40f;
+    /// <summary>The library page's head (W-Library): "Library" in Title Large 40/52 at every tier, 16 over the kinds' SelectorBar (40 tall).</summary>
+    public const float HeadTitle = 40f, HeadTitleLine = 52f, HeadGap = 16f, HeadPivot = 40f;
 
     /// <summary>The stock control height (W-Library's toolbar row: the filter, the sort and the view pair all 32).</summary>
     public const float ControlH = 32f;

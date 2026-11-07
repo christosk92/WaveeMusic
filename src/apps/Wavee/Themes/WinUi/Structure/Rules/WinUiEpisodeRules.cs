@@ -13,8 +13,9 @@ internal static class WinUiEpisodeRules
     /// <summary>The pivot's row (a SelectorBar 40 tall, a hairline under it) and the air between it and the first section.</summary>
     public const float PivotHeight = 40f, PivotGap = 16f;
 
-    /// <summary>The columns' gap (Standard, Small), and Huge's; the left column's weight against the right's (W-Episode: 594 | 457).</summary>
-    public const float ColumnGap = 36f, HugeColumnGap = 48f, LeftGrow = 1.3f, RightGrow = 1f;
+    /// <summary>The columns' gap (one at every tier: a step would move the right column at once on the Huge crossing); the left column's weight against the
+    /// right's (W-Episode: 594 | 457).</summary>
+    public const float ColumnGap = 36f, LeftGrow = 1.3f, RightGrow = 1f;
 
     /// <summary>The gap between the sections of one column, between a heading and its body.</summary>
     public const float SectionGap = 28f, HeadGap = 12f;

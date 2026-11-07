@@ -150,14 +150,16 @@ internal static class WinUiEpisode
         });
         Element comments = Section(p, 3, null, p.Comments);
 
-        // ONE tree at every tier: a row of two columns whose direction and gap come from the tier (a column at Compact), then what stands under it. The
-        // sections keep their parents across a crossing (Standard / Small move only the transcript between the right column and the stack under it).
+        // Three arrangements (one column, About beside Chapters, About and Chapters beside the Transcript) are three trees of the same sections: a crossing
+        // swaps them under the declared form swap (the old fades out where it stands, the new in at its place) inside the one scroller, which keeps its offset.
+        var swapIn = WinUiDetailRules.SwapEnter(WinUiDetailRules.Rendered(ctx.Hooks));
+        string arrangement = tier == WidthTier.Compact ? "ep:arr:one" : twoUp ? "ep:arr:wide" : "ep:arr:two";
         Element body;
         if (tier == WidthTier.Compact)
             body = Stack([about, chapters, transcript, comments]);
         else
         {
-            float gap = tier >= WidthTier.Huge ? E.HugeColumnGap : E.ColumnGap;
+            float gap = E.ColumnGap;
             Element left = Column("ep:col:left", E.LeftGrow, twoUp ? [about, chapters] : [about]);
             Element right = Column("ep:col:right", E.RightGrow, twoUp ? [transcript] : [chapters]);
             var rows = new List<Element>(3)
@@ -171,7 +173,8 @@ internal static class WinUiEpisode
 
         Element sections = new BoxEl
         {
-            Key = "ep:sections", Direction = 1, MinWidth = 0f, Padding = new Edges4(pad, E.PivotGap, pad, R.Space.DockReserve + E.ReaderBottom), Children = [body],
+            Key = "ep:sections", Direction = 1, MinWidth = 0f, Padding = new Edges4(pad, E.PivotGap, pad, R.Space.DockReserve + E.ReaderBottom),
+            Children = [body with { Key = arrangement, Enter = swapIn, Exit = WinUiDetailRules.FormSwap }],
         };
         return new BoxEl
         {
@@ -196,7 +199,7 @@ internal static class WinUiEpisode
         };
     }
 
-    static Element Stack(Element[] kids) => new BoxEl { Direction = 1, Gap = E.SectionGap, MinWidth = 0f, Children = kids };
+    static BoxEl Stack(Element[] kids) => new BoxEl { Direction = 1, Gap = E.SectionGap, MinWidth = 0f, Children = kids };
 
     static Element Column(string key, float grow, Element[] kids) => new BoxEl
     {

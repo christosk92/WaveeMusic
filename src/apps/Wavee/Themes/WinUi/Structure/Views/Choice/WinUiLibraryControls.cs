@@ -102,26 +102,42 @@ internal static class WinUiLibraryControls
             var tier = WinUiDetailTiers.Of(in facts).Tier;
             bool compact = tier == WidthTier.Compact;
             float inset = WinUiDetailRules.InsetOf(tier);
+            // The insets step with the tier (16 / 24 / 36 / 48 across, 16 / 20 / 24 / 32 above): eased air, never padding, so a crossing glides the head and the
+            // columns under it. The title keeps one size at every tier (a size step would move everything under it at once).
             return new BoxEl
             {
-                Key = "lib:head", Direction = 1, Shrink = 0f, MinWidth = 0f, Gap = WinUiChoiceRules.HeadGap,
-                Padding = new Edges4(inset, WinUiDetailRules.InsetTopOf(tier), inset, 0f),
+                Key = "lib:head", Direction = 1, Shrink = 0f, MinWidth = 0f,
                 Children =
                 [
-                    new TextEl(Loc.Get(Strings.Theme.Winui.Library.Title))
-                    {
-                        FontFamily = WinUiShowRules.DisplayFace, Weight = WinUiShowRules.VoiceWeight, Color = Tok.TextPrimary,
-                        Size = compact ? WinUiChoiceRules.HeadTitleCompact : WinUiChoiceRules.HeadTitle,
-                        LineHeight = compact ? WinUiChoiceRules.HeadTitleCompactLine : WinUiChoiceRules.HeadTitleLine,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
+                    WinUiDiscoveryMotion.AirV("lib:head:top", WinUiDetailRules.InsetTopOf(tier)),
                     new BoxEl
                     {
-                        Direction = 1, MinWidth = 0f,
+                        Direction = 0, MinWidth = 0f,
                         Children =
                         [
-                            Kinds(new LibraryKindsArgs(a.Kinds, compact ? WinUiDetailRules.CompactTarget : WinUiChoiceRules.HeadPivot)),
-                            new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
+                            WinUiDiscoveryMotion.AirH("lib:head:lead", inset),
+                            new BoxEl
+                            {
+                                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = WinUiChoiceRules.HeadGap,
+                                Children =
+                                [
+                                    new TextEl(Loc.Get(Strings.Theme.Winui.Library.Title))
+                                    {
+                                        FontFamily = WinUiShowRules.DisplayFace, Weight = WinUiShowRules.VoiceWeight, Color = Tok.TextPrimary,
+                                        Size = WinUiChoiceRules.HeadTitle, LineHeight = WinUiChoiceRules.HeadTitleLine, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                    },
+                                    new BoxEl
+                                    {
+                                        Direction = 1, MinWidth = 0f,
+                                        Children =
+                                        [
+                                            Kinds(new LibraryKindsArgs(a.Kinds, compact ? WinUiDetailRules.CompactTarget : WinUiChoiceRules.HeadPivot)),
+                                            new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
+                                        ],
+                                    },
+                                ],
+                            },
+                            WinUiDiscoveryMotion.AirH("lib:head:trail", inset),
                         ],
                     },
                 ],
