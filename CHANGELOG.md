@@ -27,6 +27,21 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Repeat All repeats the playlist, and only the playlist.** With Repeat All on, Wavee no longer plays
+  suggested songs from outside the playlist or album, with or without shuffle: after the last song it starts again
+  from the first, and songs you queued or that Autoplay picked do not come round again. (#215)
+- **Next moves on under Repeat One.** Repeat One still replays a song when it ends, but pressing Next now plays the
+  next song and switches to Repeat All, as Spotify does. (#215)
+- **Autoplay only continues when your music ends.** With the Autoplay setting off (Settings > Playback), playback
+  stops at the end of the playlist, even if suggestions were already in the queue; with it on, suggestions only play
+  after the last song and never while Repeat is on. The queue only shows the suggestions when they will play. (#215)
+- **Shuffle covers the whole playlist.** Turning shuffle on mixes in the songs before the current one too, and never
+  mixes suggestions in among the playlist's own songs. Turning it off puts the playlist back in order and carries on
+  from the song that is playing. (#215)
+- **Previous on the first song** restarts it, and with Repeat All on goes to the last song; it used to do nothing.
+  Repeat All on a long playlist started part-way now also comes back to its first song. (#215)
+- **Repeat on another device.** Changing repeat while another device plays now sets that device to exactly the mode
+  you chose; going from Repeat One to off or to Repeat All used to leave it repeating the song.
 - **No crash after a long time minimized.** Restoring Wavee after it sat minimized for hours on a big playlist, artist
   or Liked Songs page could crash it on the first frame.
 - **No crash when a song starts as the play log saves.** The play log and the visit history now take their snapshot on
