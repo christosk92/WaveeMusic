@@ -950,6 +950,27 @@ public static partial class Diagnostics
             w.WriteEndObject();
         }
 
+        /// <summary>`canvas{shows, track, file, owner, bound, inView, run, state, natural}`: the Spotify Canvas host (Shell/Canvas.cs) — what the
+        /// surfaces draw for the playing track, which surface presents the one player, and where that player is. `state` and `natural`
+        /// are the engine player's own (a headless render cannot show the composited frame: these say whether it decodes).</summary>
+        static void WriteCanvasFacts(Utf8JsonWriter w)
+        {
+            var now = CanvasVideo.Current.Peek();
+            w.WriteStartObject("canvas");
+            w.WriteBoolean("shows", now.Shows);
+            w.WriteString("track", now.Uri);
+            w.WriteBoolean("file", now.File.Length > 0);
+            w.WriteString("owner", CanvasVideo.Owner.Peek().ToString());
+            w.WriteString("bound", CanvasVideo.Bound.Peek().ToString());
+            w.WriteBoolean("inView", CanvasVideo.InView.Peek());
+            w.WriteBoolean("run", CanvasVideo.Running);
+            w.WriteString("state", CanvasVideo.PlayerState());
+            var natural = CanvasVideo.PlayerNatural();
+            w.WriteString("natural", natural.Width + "x" + natural.Height);
+            if (CanvasVideo.PlayerError() is { Length: > 0 } error) w.WriteString("error", error);
+            w.WriteEndObject();
+        }
+
         void WriteMountFacts(Utf8JsonWriter w)
         {
             if (_shell is not { } shell) return;
@@ -1561,6 +1582,7 @@ public static partial class Diagnostics
             w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
             WriteHealth(w);   // overlays, memory and GC (Diagnostics.Inspect.Picture.cs)
             WriteVideoFacts(w);
+            WriteCanvasFacts(w);
             if (_shell is { } shell)
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)

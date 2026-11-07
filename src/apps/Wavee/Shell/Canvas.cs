@@ -72,9 +72,27 @@ public static partial class CanvasVideo
     static MediaPlayer? s_player;
     static readonly int[] s_claims = new int[4];
 
+    /// <summary>The observer asked the player to play (true) or holds it paused / stopped (false). Diagnostics.</summary>
+    public static bool Running { get; private set; }
+
+    /// <summary>The one player's engine state, or "none" before it was built. Diagnostics (the inspector's <c>status</c>).</summary>
+    public static string PlayerState() => s_player is { } p ? p.State.Peek().ToString() : "none";
+
+    /// <summary>The one player's last error, or "". Diagnostics.</summary>
+    public static string PlayerError() => s_player?.Error.Peek() is { } e ? e.ToString() : "";
+
+    /// <summary>The playing canvas's natural size, 0x0 before its metadata. Diagnostics.</summary>
+    public static SizeI PlayerNatural() => s_player is { } p ? p.NaturalSize.Peek() : default;
+
+    // The canvas's OWN Media Foundation backend, process-lifetime (Playback.Video's ClearBackend reasoning, F190): a player rebuilt
+    // over a fresh backend would pay MFStartup, a D3D11 video device and an engine cold each time, and a second player over the music
+    // video's backend would get a throwaway engine. Explicit, so the canvas never depends on the host's default registrar (the
+    // headless inspector has none).
+    static FluentGpu.Media.Windows.MfMediaPlayer? s_backend;
+
     static MediaPlayer Build()
     {
-        var p = MediaPlayer.Create();
+        var p = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, s_backend ??= new FluentGpu.Media.Windows.MfMediaPlayer()).Build();
         p.SetMuted(true);
         return p;
     }
@@ -254,6 +272,7 @@ public static partial class CanvasVideo
                 }
                 _open = "";
                 _playing = false;
+                Running = false;
                 return;
             }
             var player = Player;
@@ -268,6 +287,7 @@ public static partial class CanvasVideo
             if (run == _playing && opened == _openedSeen) return;
             _openedSeen = opened;
             _playing = run;
+            Running = run;
             _ = run ? player.PlayAsync() : player.PauseAsync();
         }
 
