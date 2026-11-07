@@ -12,6 +12,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Zune titles are never cut at the left.** A large playlist or album title that hangs into the margin draws its
+  first letter whole, and its focus ring and edit underline sit where they belong.
+- **Pages settle without jumping.** A show's header grows smoothly as its details load instead of dropping the episode
+  list in one step, and the Zune band keeps its place until the next page has landed.
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
 
