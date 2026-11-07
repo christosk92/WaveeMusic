@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.9",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Music videos with Spotify Connect, playlists that play their videos, and smoother video playback.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "connect-video",
+      "title": "Music videos with Spotify Connect",
+      "body": "Spotify on your phone or computer now shows its video switch while Wavee plays a song with a music video, and switching there switches Wavee. When another device is playing, Wavee's video button switches that device, and the video panel says where it is playing, with Play here to move it to this PC.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/connect-video.jpg",
+        "srcLight": "media/connect-video-light.jpg",
+        "alt": "The video panel while a song plays on another device, saying Playing on Kitchen with a Play here button",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "video-playlists",
+      "title": "Playlists that play their videos",
+      "body": "Spotify's \"Video\" choice on a playlist now plays the music videos. Other playlists, like Today's Top Videos, get a Video option in their \"…\" menu, and Wavee remembers it for each playlist. Songs with a music video show the video mark in every list, in every theme.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/video-playlists.jpg",
+        "srcLight": "media/video-playlists-light.jpg",
+        "alt": "A playlist's menu with the Video option turned on, above a song marked as having a music video",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "smoother",
+      "title": "Smoother video, queue and menus",
+      "body": "The first video opens up to a second sooner, exact seeks are about 30 % faster, and the time no longer freezes and jumps. The queue draws only the songs you can see, so starting a playlist no longer hitches. Clicking inside a menu no longer closes it, and submenus wait for you. On Snapdragon X PCs, a graphics driver crash that restarted Windows is fixed.",
+      "kind": "improved",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/smoother.jpg",
+        "srcLight": "media/smoother-light.jpg",
+        "alt": "An album's menu with its Add to playlist submenu open, beside the queue",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
