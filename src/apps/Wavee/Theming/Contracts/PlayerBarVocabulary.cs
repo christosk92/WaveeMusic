@@ -8,13 +8,12 @@
 
 namespace Wavee.Theming.Contracts;
 
-/// <summary>The right cluster's SLOTS, in bit order — which IS the row order. A slot's PRESENCE is a function of the level
-/// (<c>Shell.PlayerBarRules.RightSlots</c>) with ONE exception — the video split, which exists iff the current track has a video
-/// (user decision 2026-09-16: a 52-DIP hole beside lyrics was worse than the row easing once when a video track lands). Playback
-/// STATE only lights a slot's FACE (<c>Shell.PlayerBarRules.SlotFaceVisible</c>). That split is still the fix for the bar
-/// reflowing on track start: the heart, lyrics and overflow used to ARRIVE with <c>active</c>, each arrival stealing width from the
-/// centre while every cluster animated its bounds. A track starting WITHOUT a video therefore still moves nothing; the centre's
-/// seek bar has exactly two widths per level.</summary>
+/// <summary>The right cluster's SLOTS, in bit order — which IS the row order. A slot's PRESENCE is a function of the level alone
+/// (<c>Shell.PlayerBarRules.RightSlots</c>), the video split's included: a track without a video shows the split disabled in its
+/// slot (2026-11-07; from 2026-09-16 the split existed only with a video, and every skip between a video and a plain track reflowed
+/// the row). Playback STATE only lights a slot's FACE (<c>Shell.PlayerBarRules.SlotFaceVisible</c>). That split is the fix for the bar
+/// reflowing on a skip: the heart, lyrics and overflow used to ARRIVE with <c>active</c>, each arrival stealing width from the
+/// centre while every cluster animated its bounds. The centre's seek bar has one width per level.</summary>
 [Flags]
 public enum RightSlot : ushort
 {

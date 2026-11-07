@@ -159,5 +159,19 @@ public static partial class Shell
 
         /// <summary>Does the deck's track have a video, peeked?</summary>
         public static bool HasVideoPeek() => TrackPeek() is { IsValid: true } t && t.HasVideo;
+
+        /// <summary>The deck playable's duration as its catalog row states it (0 when unknown), peeked: what the time labels show while the
+        /// pipeline has not reported one yet (a load resets <c>Playback.DurationMs</c> to 0 until the stream opens).</summary>
+        public static long StatedDurationMsPeek()
+        {
+            var r = Playback.Current.Peek();
+            if (r.IsNone) return 0L;
+            return r.Kind switch
+            {
+                EntityKind.Track when new Track(r.Slot) is { IsValid: true } t => Math.Max(0, t.DurationMs),
+                EntityKind.Episode when new Episode(r.Slot) is { IsValid: true } e => Math.Max(0, e.DurationMs),
+                _ => 0L,
+            };
+        }
     }
 }

@@ -40,6 +40,8 @@ internal static class ClassicTransport
 
         var host = props.Host;
         bool enabled = props.Enabled;
+        // How it LOOKS at rest: enabled, or refused only while the row loads (a skip): the fills hold, only the input waits.
+        bool drawn = enabled || props.Pending;
         // The mini bar's hairline (TC2, board C-PlayerBar mini): the played fraction as a 2-DIP line, the strong rail behind it, nothing to grab.
         if (props.Hairline)
             return new BoxEl
@@ -50,7 +52,7 @@ internal static class ClassicTransport
                 [
                     new BoxEl
                     {
-                        Grow = 1f, Fill = enabled ? Tok.AccentDefault : Tok.FillControlStrong, HitTestVisible = false,
+                        Grow = 1f, Fill = drawn ? Tok.AccentDefault : Tok.FillControlStrong, HitTestVisible = false,
                         TransformOriginX = 0f, Transform = host.FillTransform,
                     },
                 ],
@@ -60,7 +62,7 @@ internal static class ClassicTransport
         var fill = new BoxEl
         {
             Grow = 1f, Height = s.TrackHeight, AlignSelf = FlexAlign.Center,
-            Fill = enabled ? s.ValueFill : s.ValueFillDisabled,
+            Fill = drawn ? s.ValueFill : s.ValueFillDisabled,
             HoverFill = enabled ? s.ValueFillPointerOver : s.ValueFillDisabled,
             PressedFill = enabled ? s.ValueFillPressed : s.ValueFillDisabled,
             // Square: a scaled rounded rect shows cap slivers at the value edge.
@@ -80,7 +82,7 @@ internal static class ClassicTransport
             }
             : new Element[] { fill };
 
-        float rest = enabled ? s.InnerRestScale : s.InnerDisabledScale;
+        float rest = drawn ? s.InnerRestScale : s.InnerDisabledScale;
         const float ring = ClassicTransportLayout.SeekRingDiameter;
         var stack = new BoxEl
         {
@@ -93,7 +95,7 @@ internal static class ClassicTransport
                 new BoxEl
                 {
                     Height = s.TrackHeight, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Center,
-                    Fill = enabled ? s.RailFill : s.RailFillDisabled,
+                    Fill = drawn ? s.RailFill : s.RailFillDisabled,
                     Corners = CornerRadius4.All(s.TrackCornerRadius), ClipToBounds = true, ZStack = true,
                     HitTestVisible = false, Children = railKids,
                 },
@@ -113,7 +115,7 @@ internal static class ClassicTransport
                         {
                             Width = s.InnerThumbDiameter, Height = s.InnerThumbDiameter,
                             Corners = CornerRadius4.All(s.InnerThumbDiameter * 0.5f),
-                            Fill = enabled ? s.ThumbFill : s.ThumbFillDisabled,
+                            Fill = drawn ? s.ThumbFill : s.ThumbFillDisabled,
                             HoverFill = enabled ? s.ThumbFillPointerOver : s.ThumbFillDisabled,
                             PressedFill = enabled ? s.ThumbFillPressed : s.ThumbFillDisabled,
                             ScaleX = rest, ScaleY = rest,

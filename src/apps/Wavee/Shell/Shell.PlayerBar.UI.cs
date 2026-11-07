@@ -461,6 +461,7 @@ public static partial class Shell
         {
             var gate = _scrub.Gate();
             bool enabled = gate.Enabled;
+            bool pending = gate.Pending;
             bool advances = gate.Advances;
             // The three-way SHAPE through a memo: a live window republishing several times a second re-renders nothing.
             var mode = UseComputed(_modeNow).Value;
@@ -484,7 +485,7 @@ public static partial class Shell
             if (mode == SeekRailMode.Line)
                 return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Line = true });
             if (_hairline)
-                return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Hairline = true });
+                return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Pending = pending, Hairline = true });
 
             var chapterId = Playback.CurrentId.Value;
             uint chapterEpoch = Entities.ScopeEpoch.Value;
@@ -496,7 +497,7 @@ public static partial class Shell
                 : null;
             return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
             {
-                Host = this, Enabled = enabled, Dvr = mode == SeekRailMode.Dvr, ChapterRail = chapterRail, Chapters = chapters,
+                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, ChapterRail = chapterRail, Chapters = chapters,
             });
         }
 
@@ -644,11 +645,20 @@ public static partial class Shell
         /// <summary>The widest this label can read for the playing track: the duration's clock with every digit a "0" (and the remaining slot's minus).</summary>
         string Widest()
         {
-            long duration = Playback.DurationMs.Value;
+            long duration = DurationNow();
             if (Playback.Live.Value.IsLive || duration <= 0L) return _remaining ? "-0:00" : "0:00";
             var clock = Playback.TimeFormat.Clock(duration).ToCharArray();
             for (int i = 0; i < clock.Length; i++) if (char.IsDigit(clock[i])) clock[i] = '0';
             return (_remaining ? "-" : "") + new string(clock);
+        }
+
+        /// <summary>The duration the labels count against: the pipeline's, or, while a load has not reported one yet (a skip resets it to 0
+        /// until the stream opens), the deck row's stated duration, so a skip reads "0:00 · 2:49" at once instead of flashing "0:00 · 0:00".
+        /// The subscription is the pipeline's: its report re-runs the bind.</summary>
+        static long DurationNow()
+        {
+            long duration = Playback.DurationMs.Value;
+            return duration > 0L ? duration : NowPlayingFace.StatedDurationMsPeek();
         }
 
         string Label()
@@ -657,7 +667,7 @@ public static partial class Shell
             // hidden label wakes nothing at 1 Hz; the reveal (read first, so it stays subscribed) re-runs the bind.
             if (_reveal is { } reveal && !reveal.Value) return _shown;
             long position = Playback.PositionMs.Value;
-            long duration = Playback.DurationMs.Value;
+            long duration = DurationNow();
             bool isLive = Playback.Live.Value.IsLive;
             long tunedIn = Playback.TunedInAtMs.Value;
             // U-7: while the pointer drags (the reducer's scrub model) or the keyboard ladder is live, the label follows the TARGET — the
