@@ -12,6 +12,8 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **No crash when a play lands as the play log saves.** The play log and the visit history now take their snapshot on
+  the UI thread, so a track starting at the moment the debounced save fired can no longer crash Wavee.
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
 
