@@ -1550,7 +1550,7 @@
       "rememberVolume": "Remember volume",
       "rememberVolumeSub": "Restore the last volume level when Wavee starts",
       "autoplay": "Autoplay",
-      "autoplaySub": "Continue with similar songs when the current context ends",
+      "autoplaySub": "When your music ends, keep listening to similar songs. Repeat turns it off",
       "playerBar": "Player bar",
       "showRemaining": "Show remaining time",
       "showRemainingSub": "Count down time left instead of showing the track duration",

@@ -235,7 +235,7 @@ public static partial class Playback
             // unshuffle); set_queue is already the order the controller wants played.
             if (ReshufflesAfter(body.Kind, s_state.Shuffle))
                 Reorder(packed.AsSpan(0, written), laid.AsSpan(0, written), deck, shuffle: true);
-            Queue.Replace(packed.AsSpan(0, written), laid.AsSpan(0, written));
+            Queue.Replace(packed.AsSpan(0, written), laid.AsSpan(0, written), Math.Min(Queue.ContextStart, deck + 1));
             s_uids.Retain(Queue.Rows);
             WatchQueue(now);                              // re-arm the next row (and announce the queue) inside this drain
             Log.Info("playback", (body.Kind == RemoteCmd.SetQueue ? "set_queue" : "update_context")

@@ -425,6 +425,8 @@ public static partial class Diagnostics
             Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
+                case Inspect.Verb.Transport:
+                    return Transport(id, name, a);
                 case Inspect.Verb.Skeleton:
                     return Skeleton(id, name, a, shell);
                 case Inspect.Verb.GoTo:
@@ -554,7 +556,7 @@ public static partial class Diagnostics
                         // context (the stage's "playing from …" line) has one
                         EntityId contextId = default;
                         if (a.Has("context") && !EntityId.TryParse(a.Str("context").AsSpan(), out contextId)) return Inspect.Reply.Fail(id, name, "context wants a spotify: uri, not '" + a.Str("context") + "'");
-                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0), context: contextId)) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
+                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0), context: contextId, at: a.Int("at", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         // The load opens on the audio chain on the wall clock, which a frame-counted settle can outrun (the reply then read the bar and the
                         // rows before the track played: no playing row, no lyrics button). Wait for it to land first; `phase` says where it stands.

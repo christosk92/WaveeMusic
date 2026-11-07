@@ -703,8 +703,9 @@ public static partial class Diagnostics
         /// single-track recipe: BuildContextQueue, Queue.Replace, Playback.PlayNow). False when the uri does not parse.</summary>
         /// <summary><paramref name="next"/> more seeded tracks (the fake catalogue's `tr<k+1>`, `tr<k+2>`, ... after a `spotify:track:tr<k>`) follow it in the
         /// same context, so "up next" has rows; 0 plays the track alone. <paramref name="video"/> plays it as a video.</summary>
-        /// <para><paramref name="context"/>: the rows play in that context (a playlist, an album), as a row click on its page does; empty: the track is its own.</para>
-        public static bool Play(string uri, int fromMs = 0, int next = 0, bool video = false, int agoMin = 0, EntityId context = default)
+        /// <para><paramref name="context"/>: the rows play in that context (a playlist, an album), as a row click on its page does, from row
+        /// <paramref name="at"/>; empty: the track is its own.</para>
+        public static bool Play(string uri, int fromMs = 0, int next = 0, bool video = false, int agoMin = 0, EntityId context = default, int at = 0)
         {
             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
             EntityRef row = Entities.Ref(id);
@@ -715,7 +716,7 @@ public static partial class Diagnostics
                 for (int i = 1; i <= next; i++)
                     if (EntityId.TryParse((prefix + (k + i).ToString(System.Globalization.CultureInfo.InvariantCulture)).AsSpan(), out EntityId more)) members.Add(Entities.Ref(more));
             if (!context.IsEmpty && !video)
-                Playback.PlayRows(members.ToArray(), 0, context, fromMs);
+                Playback.PlayRows(members.ToArray(), Math.Clamp(at, 0, members.Count - 1), context, fromMs);
             else
             {
                 Span<EntityRef> refs = new EntityRef[members.Count];

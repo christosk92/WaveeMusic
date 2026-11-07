@@ -433,16 +433,37 @@ cycled).
 drag key=winui-bar-volume-slider dx=-60 steps=6      # the WinUI volume thumb to 0 (the glyph turns muted)
 ```
 
-### `play {uri?, fromMs?, next?, ago?, remote?}`
+### `play {uri?, fromMs?, next?, ago?, remote?, context?, at?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
 `Queue.Replace`, then `Playback.PlayNow`. `next=N` (a `spotify:track:tr<k>` uri) adds the N tracks `tr<k+1>`... to the same context, so the
 stage's "up next" page has rows. The lyrics media clock runs in the harness frame clock's epoch (`Shell.Headless.Boot`), so a playing
 track follows its lyrics: render the stage while playing, no pause needed. `ago=N` backdates the play in the play log by N minutes (the Up next page's "played before this" reads it).
+`context=<uri>` plays the rows in that context as a row click on its page does, from row `at=` (0 = the uri's own row).
 
 `remote=<name>` turns the output remote on the live mount, as a Connect transfer does while playing (`remote=off` makes it local again); without a
 `uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
+
+### `transport {do, value?, uri?, ms?}`
+
+Drives the playback sequencer the way the transport buttons, the natural end and the queue verbs do, then replies with what the deck
+is on and what will play: `deck` (the track id), `cursor`, `phase`, `repeat` (off, all, one), `shuffle`, `autoplay` (the setting),
+`positionMs`, `rows` (the queue as the reducer walks it, one token per row: `<bucket><provider>:<id>`, bucket `H` history, `>` the
+deck, `U` user queue, `N` next up; provider `c` context, `q` queued, `a` autoplay; a trailing `!` marks a row the deck may not land on)
+and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section `q`, `n` or `a`). `do=` is `status`, `next`, `prev`,
+`end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
+`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue) or `dead uri=` (the catalog rules that track
+unavailable, so the walk steps past it). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
+`do=next`) replies is the sequence of tracks played:
+
+```text
+play uri=spotify:track:tr1 next=5 context=spotify:playlist:pl1 at=3   # tr1..tr6 as a playlist, from tr4
+transport do=clear
+transport do=repeat value=all
+transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
+```
 
 ### `state {kind, page?}` and `dialog {kind}`
 

@@ -70,6 +70,9 @@ public static partial class Shell
         /// <c>Platform.SettingsChanged</c> itself.</summary>
         public static bool AutoplayEnabled() => Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
 
+        /// <summary>Does the panel list the autoplay rows? Only while they will play: the setting on and repeat off (#215).</summary>
+        public static bool AutoplayListed(bool autoplayEnabled, RepeatMode repeat) => autoplayEnabled && repeat == RepeatMode.Off;
+
         /// <summary>A remote device owns playback: the list is its MIRROR, and local edits would be overwritten.</summary>
         public static bool IsViewer() => Playback.OwnerSignal.Peek() == Playback.Owner.Foreign;
 
@@ -99,8 +102,12 @@ public static partial class Shell
             int divider = Queue.Divider(edges, viewer ? -1 : cursorIndex);
             var index = new int[edges.Length];
             Queue.Split(edges, divider, index, out int user, out int next, out int auto);
+            // The panel lists what will really play (#215): the autoplay rows only while the end of the context continues into
+            // them (the setting on AND repeat off, `Playback.AutoplayAllowed`). Under repeat the context wraps instead, and the
+            // tail is neither listed nor counted; the switch itself still shows the setting.
+            if (!AutoplayListed(autoplayEnabled, repeat)) auto = 0;
 
-            int listed = user + next + (autoplayEnabled ? auto : 0);
+            int listed = user + next + auto;
             var rows = new QueueRowProps[listed];
             for (int k = 0; k < listed; k++)
             {
@@ -155,6 +162,7 @@ public static partial class Shell
             bool viewer = Playback.OwnerSignal.Value == Playback.Owner.Foreign;
             _ = Entities.Current.Edges.Queue.Changed.Value;
             _ = Platform.SettingsChanged.Value;
+            _ = Playback.Repeat.Value;
             return Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : Playback.Snap().Cursor.Index, viewer,
                 AutoplayEnabled(), Playback.Shuffle.Value, Playback.Repeat.Value, current, PlayingFromOf(context, in wire));
         }

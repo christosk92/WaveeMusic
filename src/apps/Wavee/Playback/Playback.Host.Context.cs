@@ -298,7 +298,7 @@ public static partial class Playback
             s_orderRows = null;
             FillQueueIds(playlist, packed.AsSpan(0, n), rows.AsSpan(0, n));
             if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
-            Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+            Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n), contextStart: deck + 1);   // the old context stays history, outside the radio's wrap
             s_uids.Retain(Queue.Rows);
             Entities.Publish();                            // the rail answers the click in its own frame (PlayRows' rule)
             long now = FrameNowMs();
@@ -358,7 +358,7 @@ public static partial class Playback
             s_orderRefs = null;
             s_orderRows = null;
             FillQueueIds(context, packed.AsSpan(0, n), laid.AsSpan(0, n));
-            if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, shuffle: true);
+            if (s_state.Shuffle) deck = RelayContext(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, contextStart: 0, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), laid.AsSpan(0, n));
             Entities.Publish();
             EntityRef row = rows[start];
@@ -529,7 +529,7 @@ public static partial class Playback
         {
             int n = 0;
             if (start > 0)
-                for (int k = Math.Max(0, start - RemotePlan.HistoryCap); k < start; k++)
+                for (int k = RemotePlan.HistoryFrom(start, context.Length); k < start; k++)
                     AddRow(buffer, in context[k], QueueBucket.History, refs, rows, ref n);
             int at = n;
             if (start >= 0) AddRow(buffer, in context[start], QueueBucket.NowPlaying, refs, rows, ref n);
@@ -563,13 +563,13 @@ public static partial class Playback
                 s_orderRefs = null;
                 s_orderRows = null;
                 FillQueueIds(contextId, packed.AsSpan(0, n), rows.AsSpan(0, n));
-                if (shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), at, shuffle: true);
+                if (shuffle) at = RelayContext(packed.AsSpan(0, n), rows.AsSpan(0, n), at, contextStart: 0, shuffle: true);
                 Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
                 s_uids.Retain(Queue.Rows);
             }
             finally { ArrayPool<int>.Shared.Return(packed); }
 
-            EntityRef row = refs[at];
+            EntityRef row = Queue.RefAt(at);
             long from = RemotePlan.StartPositionMs(in load, UnixNowMs());
             Apply(Input.ShuffleOrdered(shuffle));
             if (load.Repeat >= 0) Apply(Input.Repeat((RepeatMode)load.Repeat));
@@ -671,21 +671,29 @@ public static partial class Playback
         RequestDrain();
     }
 
-    /// <summary>Shuffle, or un-shuffle, the rows ahead of the cursor in the live queue.</summary>
-    static void ReorderQueue(bool shuffle)
+    /// <summary>The shuffle toggle (#215): re-lay the WHOLE context around the deck (<see cref="ShuffleOrder.Relay"/>: shuffle
+    /// on, every other context row after it in a fresh order; off, the context's own order with the deck back at its place),
+    /// then move the reducer's cursor to the deck row's new index (<see cref="Input.Recursor"/>). Runs inside the drain,
+    /// after the ring and before the queue follow, so the follow, the next-row arm and the announce all read the new order.</summary>
+    static void ReorderQueue(bool shuffle, long now)
     {
         if (Entities.Current is null) return;
         int count = Queue.Count;
         if (count == 0) { s_orderRefs = null; s_orderRows = null; return; }
+        int deck = s_state.Cursor.Index;
+        if (!FollowsQueue(in s_state, Queue.RefAt(deck))) return;      // no local deck row to lay the context around
         int[] packed = ArrayPool<int>.Shared.Rent(count);
         QueueEdge[] rows = ArrayPool<QueueEdge>.Shared.Rent(count);
         try
         {
             Queue.PackedRefs.CopyTo(packed);
             Queue.Rows.CopyTo(rows);
-            if (!Reorder(packed.AsSpan(0, count), rows.AsSpan(0, count), s_state.Cursor.Index, shuffle)) return;
-            Queue.Replace(packed.AsSpan(0, count), rows.AsSpan(0, count));
-            RequestDrain();
+            int contextStart = Queue.ContextStart;
+            int at = RelayContext(packed.AsSpan(0, count), rows.AsSpan(0, count), deck, contextStart, shuffle);
+            if (at < 0) return;
+            Queue.Replace(packed.AsSpan(0, count), rows.AsSpan(0, count), contextStart);
+            StepOne(Input.Recursor(Queue.CursorOf(at), now));
+            WatchQueue(now);
         }
         finally
         {
@@ -694,14 +702,63 @@ public static partial class Playback
         }
     }
 
-    /// <summary>Reorder the NextUp run after <paramref name="cursorIndex"/> in place: shuffle it (remembering the
-    /// context's order) or restore that order (<see cref="ShuffleOrder.Unshuffle"/>). The user queue is never moved.
-    /// False when nothing changed.</summary>
+    /// <summary>Re-lay <paramref name="packed"/> / <paramref name="rows"/> IN PLACE around <paramref name="deck"/>
+    /// (<see cref="ShuffleOrder.Relay"/>). A shuffle first saves the context's own order (its rows from
+    /// <paramref name="contextStart"/>, in list order) for the unshuffle; an unshuffle spends it. Answers the deck's new
+    /// index, or <paramref name="deck"/> unchanged when nothing was re-laid.</summary>
+    static int RelayContext(Span<int> packed, Span<QueueEdge> rows, int deck, int contextStart, bool shuffle)
+    {
+        int count = rows.Length;
+        if (shuffle)
+        {
+            int m = 0;
+            for (int i = Math.Max(0, contextStart); i < count; i++) if (rows[i].Provider == (byte)QueueProvider.Context) m++;
+            s_orderRefs = new int[m];
+            s_orderRows = new QueueEdge[m];
+            m = 0;
+            for (int i = Math.Max(0, contextStart); i < count; i++)
+            {
+                if (rows[i].Provider != (byte)QueueProvider.Context) continue;
+                s_orderRefs[m] = packed[i];
+                s_orderRows[m] = rows[i];
+                m++;
+            }
+        }
+        else if (s_orderRefs is null || s_orderRows is null) return deck;
+        int[] outRefs = ArrayPool<int>.Shared.Rent(count);
+        QueueEdge[] outRows = ArrayPool<QueueEdge>.Shared.Rent(count);
+        int[] order = ArrayPool<int>.Shared.Rent(count);
+        bool[] taken = ArrayPool<bool>.Shared.Rent(count);
+        try
+        {
+            int at = ShuffleOrder.Relay(packed, rows, deck, contextStart, shuffle, (ulong)System.Diagnostics.Stopwatch.GetTimestamp(),
+                s_orderRefs, s_orderRows, taken, order, outRefs, outRows);
+            if (!shuffle) { s_orderRefs = null; s_orderRows = null; }
+            if (at < 0) return deck;
+            outRefs.AsSpan(0, count).CopyTo(packed);
+            outRows.AsSpan(0, count).CopyTo(rows);
+            return at;
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(outRefs);
+            ArrayPool<QueueEdge>.Shared.Return(outRows);
+            ArrayPool<int>.Shared.Return(order);
+            ArrayPool<bool>.Shared.Return(taken);
+        }
+    }
+
+    /// <summary>Reorder the NextUp run after <paramref name="cursorIndex"/> in place, for a write that keeps the deck where it
+    /// is (a radio parked behind it, a controller's <c>update_context</c>): shuffle it (remembering the context's order) or
+    /// restore that order (<see cref="ShuffleOrder.Unshuffle"/>). The user queue is never moved, and neither is the autoplay
+    /// tail: a suggestion is never shuffled into the context (#215). False when nothing changed.</summary>
     static bool Reorder(Span<int> packed, Span<QueueEdge> rows, int cursorIndex, bool shuffle)
     {
         int start = Math.Max(0, cursorIndex + 1);
         while (start < rows.Length && rows[start].Bucket != (byte)QueueBucket.NextUp) start++;
-        int length = rows.Length - start;                 // NextUp is the last bucket (Queue.Rank)
+        int end = start;                                  // NextUp is the last bucket (Queue.Rank); the autoplay tail ends it
+        while (end < rows.Length && rows[end].Provider != (byte)QueueProvider.Autoplay) end++;
+        int length = end - start;
         Span<int> runRefs = packed.Slice(start, length);
         Span<QueueEdge> runRows = rows.Slice(start, length);
         if (!shuffle)
@@ -997,7 +1054,7 @@ public static partial class Playback
             {
                 int n = 0;
                 if (at > 0)
-                    for (int k = Math.Max(0, at - RemotePlan.HistoryCap); k < at; k++)
+                    for (int k = RemotePlan.HistoryFrom(at, ctxTracks.Length); k < at; k++)
                         AddRow(buffer, in ctxTracks[k], QueueBucket.History, refs, rows, ref n);
                 deck = n;
                 AddRow(buffer, in ctxTracks[at], QueueBucket.NowPlaying, refs, rows, ref n);

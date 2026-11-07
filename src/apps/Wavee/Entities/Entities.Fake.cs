@@ -209,6 +209,41 @@ public static partial class Entities
         foreach (char c in id.Text) h = (h ^ c) * 16777619u;
         return h % 3u == 0u;
     }
+    /// <summary>The inspector's <c>transport do=dead</c>: the catalog rules <paramref name="track"/> terminally unavailable (withdrawn,
+    /// region-locked), as an extended-metadata envelope with no entity does (<c>Spotify.Decode.UnavailableTrack</c>): the
+    /// Availability fields only, so the row keeps its title and greys. <c>Track.Unplayable</c> then answers true.</summary>
+    internal static void RuleUnplayable(EntityId track)
+    {
+        if (track.Kind != EntityKind.Track || Current is null) return;
+        var s = Staging.Rent();
+        try
+        {
+            ref var row = ref s.Tracks.RowFor(new StagedId(s.AddText(Utf8(track.Text))), Authority.Full, (uint)TrackFields.Availability);
+            row.Flags |= (uint)TrackFlags.Unavailable;
+            row.AvailableAt = 0;
+            s.Tracks.Settle();
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+    }
+
+    /// <summary>The demo's autoplay answer (<c>Playback.UseFakeAutoplay</c>): <paramref name="count"/> pool tracks the queue does not hold
+    /// yet, walking the pool from a stable offset of the context's uri, as a radio of similar songs would.</summary>
+    internal static EntityId[] FakeAutoplay(EntityId context, int count)
+    {
+        uint h = 2166136261u;
+        foreach (char c in context.Text) h = (h ^ c) * 16777619u;
+        var held = new HashSet<EntityId>();
+        for (int i = 0; i < Queue.Count; i++) held.Add(Queue.RefAt(i).Id);
+        var picked = new List<EntityId>(count);
+        for (int k = 0; k < TrackCount && picked.Count < count; k++)
+        {
+            EntityId id = EntityId.Parse(TrackUri((int)(h % TrackCount) + 100 + k).AsSpan());
+            if (id.IsPlayable && held.Add(id)) picked.Add(id);
+        }
+        return picked.ToArray();
+    }
+
     /// <summary>The demo's outputs (<c>Playback.Audio.UseFake</c>): the machine's speakers, the default, and a headset, as a stock Windows laptop lists them.</summary>
     internal static Playback.Audio.LocalAudioDevice[] FakeOutputs() =>
     [
