@@ -74,6 +74,12 @@ public sealed record BandProps
     /// <see cref="Current"/> alone.</summary>
     public Func<int>? Section { get; init; }
 
+    /// <summary>Whether the page whose <see cref="Chrome"/> the band shows is a detail page (no destination of its own), contract 1.83 (audit FU2d).
+    /// It follows the page swap's LANDING, as <see cref="Chrome"/> does, while <see cref="Current"/> lights a clicked destination at once: a band that
+    /// leads row 2 with the page's title reads this, so the leaving detail page's row keeps its title until the swap lands and its words never jump
+    /// to the lead under a destination's lit word. Read tracked. Null: <see cref="Current"/> &lt; 0.</summary>
+    public Func<bool>? ChromeIsDetail { get; init; }
+
     /// <summary>The pins, in the user's order, at most the active structure's <c>MaxBandPins</c>. Read tracked: it follows a pin, an
     /// unpin, a move and a capability change.</summary>
     public required Func<IReadOnlyList<BandPin>> Pins { get; init; }

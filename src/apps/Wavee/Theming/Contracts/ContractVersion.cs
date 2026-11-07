@@ -211,7 +211,8 @@
 // 1.82 (audit FU2b): `AlbumAsideProps.Credits` (`AlbumCredits`, `AlbumCreditRun`: the album's credits paragraph; null until a source exists) and
 // `PageChromeRow.ActionsPending` (the page's head has not answered: a band draws its actions as a shimmer until it has).
 // 1.83 (audit FU2d): `DetailTierPolicy.LeadBleed` (the most the structure's display title hangs left of the page column: the hero arm's clipping
-// containers leave that much room, so the hang is drawn and not cut).
+// containers leave that much room, so the hang is drawn and not cut); `BandProps.ChromeIsDetail` (whether the page whose chrome a band shows is a
+// detail page: it follows the swap's landing, as the chrome does, where `Current` follows the click).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
