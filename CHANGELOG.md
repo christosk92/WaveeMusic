@@ -18,6 +18,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Release cards open the album; the arrow shows its songs.** On an artist's Singles & EPs and other release grids,
+  clicking a card opens the album like any other card. The arrow after "1 track" is now a proper button with hover and
+  focus states: it opens the songs inline under the row, and closes them again. The panel opens and closes smoothly
+  instead of drawing rows over each other for a moment.
 - **Fewer hitches while scrolling and changing pages.** Wavee now reuses graphics memory instead of handing it back to
   the graphics driver in the middle of a frame, so the slowest frames while moving between pages take about half as
   long to reach the graphics card. A page that slides in is drawn from one picture instead of being redrawn on every
