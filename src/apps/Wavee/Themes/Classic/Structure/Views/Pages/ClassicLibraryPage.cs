@@ -49,6 +49,9 @@ internal static partial class ClassicLibraryPage
     {
         var cache = ctx.Hooks.UseRef(new PageCache()).Value;
         cache.Props = props;
+        // A structure that borrows this page may draw its own choice controls here (contract 1.85; WinUI's sort, pivots and view pair). Classic registers none.
+        var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
+        cache.Controls = registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var controls) ? controls : null;
         // The layout tier's record: the structure's ladder (the host's tier signal, `props.Collapsed`) decides the one-column drill-in, the content tier the split's numbers.
         cache.Layout = ClassicLibraryTiers.Of(ctx.Tier(), props.Collapsed);
         cache.Prepare();
@@ -83,8 +86,10 @@ internal static partial class ClassicLibraryPage
                 Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props, cache.Dragging), right],
             };
         }
-        // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
-        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = [inner] };
+        // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser. A borrowing structure's head (contract 1.88) stands
+        // over the columns at every arm; Classic registers none.
+        Element[] page = cache.Controls?.Head is { } head ? [head(new LibraryHeadArgs(props.Kinds(), props.Title)), inner] : [inner];
+        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = page };
     }
 
     // ══ THE PER-INSTANCE CACHE ═══════════════════════════════════════════════════════════════════════════════════════
@@ -95,6 +100,8 @@ internal static partial class ClassicLibraryPage
     {
         public LibraryPageProps Props = null!;
         public ClassicLibraryLayout Layout = null!;
+        /// <summary>The borrowing structure's choice controls (contract 1.85), null in Classic.</summary>
+        public LibraryControlsStyle? Controls;
         public Element? Picker, PickerCompact, PickerSort, LeftGrip, MidGrip, Sticky, Strip;
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;

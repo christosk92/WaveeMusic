@@ -788,6 +788,8 @@ public readonly partial struct Album
             var members = a.TrackSlots;
             // Similar albums are SEEDED by a track (Album.SimilarSeedUri): ask once the tracklist is in hand.
             if (members.Length > 0) Ask(FetchEdge.AlbumSimilar, e.AlbumSimilar, slot, FetchPriority.Prefetch);
+            // The album's credits (contract 1.84): every member's CreditsV2 in one batched metadata POST, only under a structure that states them.
+            if (members.Length > 0 && ShellCaps.Tracked.AlbumCredits) AskCredits(members);
 
             bool shortRelease = PageRules.IsShortRelease(a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
             var billed = a.ArtistSlots;
@@ -867,6 +869,15 @@ public readonly partial struct Album
         {
             if (!slots.IsEmpty) Entities.Ensure(table, slots, groups, priority);
         }
+
+        /// <summary>The members whose credits nobody answered, asked together (the planner sends the batch as one POST); an answered or seeded
+        /// member is never re-asked.</summary>
+        static void AskCredits(ReadOnlySpan<int> members)
+        {
+            Span<int> unasked = members.Length <= 128 ? stackalloc int[128] : new int[members.Length];
+            int n = PageRules.UnaskedCredits(members, unasked);
+            if (n > 0) Entities.EnsureEdge(FetchEdge.TrackCredits, unasked[..n], 0, FetchPriority.Prefetch);
+        }
     }
 
     /// <summary>The resolved band: the seven sections in their fixed order, each present or absent on its own gate. The host decides which are present and
@@ -897,7 +908,7 @@ public readonly partial struct Album
                                              ulong Videos,
                                              uint ArtistsEdge, int Lead, uint LeadVersion, int Fans, ulong FanRows,
                                              int MoreBy, uint MoreByEdge, int Featured, uint FeaturedEdge,
-                                             int Merch, uint MerchEdge, int Similar, uint SimilarEdge);
+                                             int Merch, uint MerchEdge, int Similar, uint SimilarEdge, ulong Credits);
 
         /// <summary>The fold over what the video section paints that the MEMBER fold does not already carry: each
         /// selected video's still id and its counterpart row's version. A counterpart's identity lands later (see
@@ -971,6 +982,16 @@ public readonly partial struct Album
             int fanCount = Math.Min(fans.Length, PageRules.FansCap);
             Span<PageRules.AlbumVideo> videos = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
             int videoCount = PageRules.SelectVideos(members, videos);
+            // The credits (contract 1.84): each member's credits version and readiness, folded only under a structure that states them.
+            ulong credits = 0;
+            if (ShellCaps.Tracked.AlbumCredits)
+            {
+                var trackCredits = e.TrackCredits;
+                _ = trackCredits.Changed.Value;
+                credits = RowFold.Add(RowFold.Seed, (int)e.AlbumTracks.Readiness(slot));
+                for (int i = 0; i < memberSlots.Length; i++)
+                    credits = RowFold.Add(RowFold.Add(credits, trackCredits.Version(memberSlots[i])), (int)trackCredits.Readiness(memberSlots[i]));
+            }
             return new SectionsStamp(epoch, slot, a.Version, e.AlbumTracks.Version(slot), e.AlbumTracks.State(slot),
                                      RowFold.Rows(scope.Tracks, memberSlots),
                                      VideoFold(scope.Tracks, videos[..videoCount]),
@@ -979,7 +1000,7 @@ public readonly partial struct Album
                                      e.AlbumMoreBy.Count(slot), e.AlbumMoreBy.Version(slot),
                                      e.AlbumRecommendations.Count(slot), e.AlbumRecommendations.Version(slot),
                                      e.AlbumMerch.Count(slot), e.AlbumMerch.Version(slot),
-                                     e.AlbumSimilar.Count(slot), e.AlbumSimilar.Version(slot));
+                                     e.AlbumSimilar.Count(slot), e.AlbumSimilar.Version(slot), credits);
         }
 
         public override Element Render()
@@ -1022,6 +1043,8 @@ public readonly partial struct Album
             int slot = a.Slot;
             int featured = e.AlbumRecommendations.Count(slot), merch = e.AlbumMerch.Count(slot);
             int similar = e.AlbumSimilar.Count(slot), moreBy = e.AlbumMoreBy.Count(slot);
+            // The credits paragraph (contract 1.84), under a structure that states them (the stamp folds them, so a landing re-renders this host).
+            var credits = ShellCaps.Now.AlbumCredits ? PageRules.Credits(a, () => OpenCredits(a)) : default;
             if (asideArm)
             {
                 var asideFans = new TrailCardData[fansStay ? 0 : fanCount];
@@ -1036,10 +1059,11 @@ public readonly partial struct Album
                     var billedArtist = new Artist(billed[i]);
                     if (billedArtist.IsValid && billedArtist.Knows(ArtistFields.Name)) billedArtists.Add(billedArtist);
                 }
-                return MountAside(a, about ? lead : null, asideFans, moreByStack, billedArtists);
+                return MountAside(a, about ? lead : null, asideFans, moreByStack, billedArtists, credits);
             }
-            if (leaveOut) { about = false; if (!fansStay) fanCount = 0; moreBy = 0; }
-            if (!PageRules.HasTrailingSections(videos.Length > 0, about, fanCount, featured, merch, similar, moreBy, billed.Length))
+            if (leaveOut) { about = false; if (!fansStay) fanCount = 0; moreBy = 0; credits = default; }
+            if (!PageRules.HasTrailingSections(videos.Length > 0, about, fanCount, featured, merch, similar, moreBy, billed.Length)
+                && credits is { Pending: false, Credits: null })
                 return Mount(false, [], false, null, null, [], []);   // nothing to show: the region eases to zero
 
             var cards = new AlbumVideoCard[videos.Length];
@@ -1059,25 +1083,27 @@ public readonly partial struct Album
             if (similar > 0)
                 lists.Add(Stack(Loc.Get(Strings.Detail.SimilarAlbums), similar, TrailKind.Similar, slot,
                                 Signature("similar:", similar, e.AlbumSimilar.Targets(slot))));
-            return Mount(true, cards, videos.Length > 0 && PageRules.HasCustomVideo(members, s_hasOverride), overlay, about ? lead : null, fanCards, lists);
+            return Mount(true, cards, videos.Length > 0 && PageRules.HasCustomVideo(members, s_hasOverride), overlay, about ? lead : null, fanCards, lists,
+                         credits);
         }
 
         static Element Mount(bool any, IReadOnlyList<AlbumVideoCard> videos, bool customVideo, IOverlayService? overlay, Artist? about,
-                             IReadOnlyList<TrailCardData> fans, IReadOnlyList<Element> lists)
+                             IReadOnlyList<TrailCardData> fans, IReadOnlyList<Element> lists, PageRules.CreditsVerdict credits = default)
             => ViewSlots.View(ViewKeys.AlbumSections, new AlbumSectionsProps
             {
                 Any = any, Videos = videos, CustomVideo = customVideo, Overlay = overlay, About = about, Fans = fans, Lists = lists,
+                Credits = credits.Credits, CreditsPending = credits.Pending,
             });
 
-        /// <summary>The aside arm's view: the release facts (always: the rail no longer carries them), then whichever of the artist, the fans and "More by"
-        /// are present.</summary>
-        static Element MountAside(Album a, Artist? about, IReadOnlyList<TrailCardData> fans, Element? moreBy, IReadOnlyList<Artist> artists)
+        /// <summary>The aside arm's view: the release facts (always: the rail no longer carries them), then whichever of the artist, the fans, "More by"
+        /// and the credits are present.</summary>
+        static Element MountAside(Album a, Artist? about, IReadOnlyList<TrailCardData> fans, Element? moreBy, IReadOnlyList<Artist> artists,
+                                  PageRules.CreditsVerdict credits = default)
             => ViewSlots.View(ViewKeys.AlbumAside, new AlbumAsideProps
             {
                 Release = a.IsValid ? ReleasePanel(a, false) : null, About = about, Fans = fans, MoreBy = moreBy,
                 Artists = artists, AlbumTitle = a.IsValid && a.Knows(AlbumFields.Title) ? a.Title : "",
-                // The credits paragraph (contract 1.82): null today (PageRules.CreditsOf: no album-level credits source yet), so no section draws.
-                Credits = a.IsValid ? PageRules.CreditsOf(a) : null,
+                Credits = credits.Credits, CreditsPending = credits.Pending,
             });
 
         static string Signature(string prefix, int count, ReadOnlySpan<int> targets)

@@ -12,7 +12,7 @@ The server code is in `src/apps/Wavee/Screens/Diagnostics.Inspect*.cs`, and the 
 ```powershell
 # from WaveeMusic\, after `dotnet build src/apps/Wavee/Wavee.csproj`
 python -I tools/inspect.py -c "mount w=400 h=860 theme=zune" -c "tiers"     # the client starts and stops the server
-src\apps\Wavee\bin\Debug\net10.0-windows10.0.26100.0\Wavee.exe --inspect      # or talk to it yourself on stdin/stdout
+src\apps\Wavee\bin\Debug\net11.0\Wavee.exe --inspect      # or talk to it yourself on stdin/stdout
 Wavee.exe --inspect --pipe wavee-inspect                                      # or over \\.\pipe\wavee-inspect
 ```
 
@@ -211,6 +211,7 @@ without `theme` or `kind` keeps the active ones.
 | `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey) or `greynow` (only the playing one grey). |
 | `gpu` | `hardware` (default: the machine's hardware adapter, WARP when it has none; `devices` reads `offscreen (D3D12)`, or `offscreen (D3D12 (WARP))` on the fallback) or `warp` (WARP forced): the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels; motion checks that render nothing). Same lint and crossing counts on either surface, pixels within anti-aliasing, hardware 1.5-5x faster (10-24: Zune album 1440 3.4 s against 8.0 s). |
 | `images` | `fake` (default): the engine's deterministic decoder paints every image as a per-image gradient. `real`: the app's own pipeline (WIC behind the disk-first fetcher) decodes the bundled photographs as they are, so text over a photograph renders, and lints, over the real picture. The fake artist `ar9` (The Longtime) carries a bright header photograph (`assets/covers/header-bright.jpg`, a white sky over a pale ground): the worst case for text on a photograph. |
+| `motion` | `full` (default) or `reduced`: Windows' Animation effects off for this mount (`Motion.ReducedMotion`), which a headless server never reads from the OS. A structure with page motion then fades its page swaps (WinUI: ControlFaster each way) with no slide, zoom or stagger; Classic and Zune cut. |
 | `keepRoute=true` | Keeps the current navigation and tabs. Without it, the mount starts from a fresh Home on the first tab. |
 | `setup=true` or `signin` | (`1`, `on` and `yes` are `true`.) Mounts a first run: the setup wizard's plate opens over the shell (give `frames` ~120 before `render`). `signin` asks for the sign-in page; today the plate still opens on its first page, so click `next` to reach it. |
 | `feedback=bug` or `feature` | Opens the report form over the page. |
@@ -259,6 +260,50 @@ Resizes the window and settles. Use it to check a tier crossing on a live mount.
 | `max` | The settle's frame cap (600). With `trace`, the most nodes watched. |
 | `trace=N` | Traces N frames from the resize instead of settling; the `trace` args (`keys`, `prefix`, `scroll`, `every`, ...) apply. |
 
+### `window {state?, advance?, floor?, frames?}`
+
+Parks the mounted window the way the OS does, restores it, and moves the engine's cold-maintenance clock ahead. Use it for
+what happens to a window that sits minimized or in the tray: the restore-after-minimize crash (Wavee 0.3.7) was reproduced
+with it.
+
+| Arg | Values |
+|---|---|
+| `state` | `minimized` (the caption button: the placement reads Minimized), `hidden` (close to tray: the window reads invisible) or `restored` (back to Normal and shown). Positional: `window minimized`. |
+| `advance` | Moves the cold-maintenance clock this many ms ahead (`AppHost.AdvanceColdMaintenanceClock`) before the frames run, so a 30 s deadline falls due on the next frame: `advance=31000`. |
+| `floor` | Sets the scene slab's trim floor (`SceneStore.CapacityFloor`). The app runs with 8192 (`InitialSceneCapacity`); an inspector mount has none (0, the engine's own 256), so pass `floor=8192` to trim as the app does. |
+| `frames` | Frames to run after the change when not restoring (2). A restore runs one frame, then settles (`settle`, `max`, `loops` and `trace=N` apply). |
+
+**The parked path is production's.** While the window is minimized or hidden, every frame (from `window` itself and from any
+other verb that steps frames: `play`, `goto`, `frames`, `settle`) is a parked `AppHost.RunFrame`: it skips `Paint` (no layout,
+record or present) but still pumps, drains the UI posts, flushes the reactive work they schedule (components re-render, nodes
+are created and freed) and runs the cold maintenance. A settling verb on a parked window runs to its cap and replies
+`settled:false` (pass `max=60`). `state=restored` makes the next frame paint, as the restore message does.
+
+**The clock.** The cold services read the OS uptime clock, not the inspector's 16 ms frame clock: the scene slab trim falls
+due 30 s after the slab last grew or shrank, once the host has been free of input for 2 s. Without `advance` it fires only
+when that much wall clock passes during the session.
+
+The reply (every `window`, also with no args, which only runs the frames) carries `state` (`normal`, `minimized`, `hidden`),
+`parked` (`AppHost.IsParked`), `coldRuns` (frames that ran a cold service during this command) and `scene`:
+
+| Field | Meaning |
+|---|---|
+| `capacity`, `capacityBefore`, `trimmed` | The slab's column length now and before the command; `trimmed` when the trim shrank it. |
+| `highWater`, `highWaterBefore` | One past the highest slot handed out since the last trim. |
+| `live`, `highestLive`, `highestLiveKey` | Live nodes; the highest live slot (what keeps the trim from cutting lower) and its nearest key. |
+| `floor` | The trim floor. |
+| `dirty{pending, maxSlot, pastCapacity}` | The slots the next layout's subtree-dirty clear resets (they pile up while parked: no layout runs), the highest of them, and how many sit past `capacity`: above 0, the restore frame writes past the columns. |
+
+A frame that throws replies `ok:false` with the exception, `stack` (its frames) and the facts above.
+
+```text
+→ window state=minimized
+← {"id":5,"ok":true,"cmd":"window","framesRun":2,"state":"minimized","parked":true,"coldRuns":0,"scene":{"capacity":32768,...,"dirty":{"pending":38,"maxSlot":19326,"pastCapacity":0}}}
+→ window advance=31000
+← {"id":6,"ok":true,"cmd":"window","framesRun":2,"state":"minimized","parked":true,"coldRuns":1,"scene":{"capacity":8192,"capacityBefore":32768,"trimmed":true,...,"dirty":{"pending":2436,"maxSlot":19571,"pastCapacity":248}}}
+→ window restored
+```
+
 ### `frames {n}` and `settle {max?, loops?}`
 
 `frames` runs exactly `n` frames and replies with `{"frames":n,"animating":bool,"scrolling":bool,"wake":[...],"ambient":[...]}`:
@@ -279,7 +324,10 @@ Home, and makes Classic dark the active theme.
 - `status` reports whether something is mounted, the frames run so far, `mounts` (how many mounts this server has done:
   above 1 means state that a mount does not clear may carry over), `video{resolved, requested, preferred, transport,
   player}` (the video surface's placement and whether a player is bound; a fresh server reads `None`, `None`, `Docked`,
-  `GlobalBar`, `false`), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, threadAllocatedBytes, gen0, gen1, gen2, pauseMs}` (the
+  `GlobalBar`, `false`), `canvas{shows, track, file, owner, bound, inView, run, state, natural, error?}` (Spotify Canvas: whether the
+  playing track's canvas draws, which surface presents the one canvas player and whether it plays; `state`/`natural`/`error` are the
+  engine player's, the only proof a canvas decodes, since a render shows the video's hole, not its frame. Fake canvases: tr3, tr20,
+  tr27, tr41, tr55, tr62; tr4 and tr5 have none), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, threadAllocatedBytes, gen0, gen1, gen2, pauseMs}` (the
   managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start by every thread and by the UI thread alone (exact), the collections per
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
@@ -389,16 +437,37 @@ cycled).
 drag key=winui-bar-volume-slider dx=-60 steps=6      # the WinUI volume thumb to 0 (the glyph turns muted)
 ```
 
-### `play {uri?, fromMs?, next?, ago?, remote?}`
+### `play {uri?, fromMs?, next?, ago?, remote?, context?, at?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
 `Queue.Replace`, then `Playback.PlayNow`. `next=N` (a `spotify:track:tr<k>` uri) adds the N tracks `tr<k+1>`... to the same context, so the
 stage's "up next" page has rows. The lyrics media clock runs in the harness frame clock's epoch (`Shell.Headless.Boot`), so a playing
 track follows its lyrics: render the stage while playing, no pause needed. `ago=N` backdates the play in the play log by N minutes (the Up next page's "played before this" reads it).
+`context=<uri>` plays the rows in that context as a row click on its page does, from row `at=` (0 = the uri's own row).
 
 `remote=<name>` turns the output remote on the live mount, as a Connect transfer does while playing (`remote=off` makes it local again); without a
 `uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
+
+### `transport {do, value?, uri?, ms?}`
+
+Drives the playback sequencer the way the transport buttons, the natural end and the queue verbs do, then replies with what the deck
+is on and what will play: `deck` (the track id), `cursor`, `phase`, `repeat` (off, all, one), `shuffle`, `autoplay` (the setting),
+`positionMs`, `rows` (the queue as the reducer walks it, one token per row: `<bucket><provider>:<id>`, bucket `H` history, `>` the
+deck, `U` user queue, `N` next up; provider `c` context, `q` queued, `a` autoplay; a trailing `!` marks a row the deck may not land on)
+and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section `q`, `n` or `a`). `do=` is `status`, `next`, `prev`,
+`end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
+`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue) or `dead uri=` (the catalog rules that track
+unavailable, so the walk steps past it). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
+`do=next`) replies is the sequence of tracks played:
+
+```text
+play uri=spotify:track:tr1 next=5 context=spotify:playlist:pl1 at=3   # tr1..tr6 as a playlist, from tr4
+transport do=clear
+transport do=repeat value=all
+transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
+```
 
 ### `state {kind, page?}` and `dialog {kind}`
 
@@ -444,7 +513,8 @@ HEADER away (title, description and owner unknown, Identity not known; the cover
 pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
 rating or cover; its rows stay), and `state kind=head-land` puts them back on the same page, so `state kind=head-land trace=40 prefix=...` traces the head landing
-in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). A `state` with `trace=N` (or `settle=false`) runs no frames before its
+in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). An **artist** uri (`ar3`) stages the late chart instead: everything is
+known but the charted rows' fields, asked and in flight (the page on its skeleton); `head-land` lands them as an answer does, and nothing else moves. A `state` with `trace=N` (or `settle=false`) runs no frames before its
 trace, so the trace starts on the frame the state lands. Its verdict judges that landing frame too: the watched nodes are sampled once
 before it (the reply's `baseline` row, frame -1) and f0 is compared with them, so a jump in the landing frame counts as moved at once.
 `baseline=false` turns that off; `baseline=true` turns it on for another verb's `trace=N`. Pass `trace=N` on a `state` command to trace its
@@ -914,7 +984,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | Arg | Meaning |
 |---|---|
 | `frames` | Frames to run (1 to 5000; positional: `trace 90`). A trace that watched no node (no `keys`/`prefix`, or none matched) says so in `warning`: its snaps and jumps read 0 because nothing was watched. |
-| `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`. |
+| `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`, and each node keeps its label from frame to frame (a node mounting or leaving earlier in reading order renumbers nothing; a new node takes a label no node held the frame before, or a lone key's replaced node's). |
 | `scroll` | `main` (the shown vertical scroller with the most room, re-picked each frame) or a node key (the first scroller under it). |
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |

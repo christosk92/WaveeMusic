@@ -151,6 +151,8 @@ public static partial class Video
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
                 Embed.Comp(static () => new HostObserver()),
                 Embed.Comp(static () => new JoinWatch()),
+                // Spotify Canvas: the demand, the record and the one looping player (Shell/Canvas.cs) — mounted once, here.
+                Embed.Comp(static () => new CanvasVideo.Observer()),
             ]);
     }
 

@@ -400,6 +400,7 @@ public static partial class Playback
     /// never re-enter itself from an effect.</para></summary>
     public static void Post(in Input i)
     {
+        if (i.Kind is InputKind.Next or InputKind.Prev) Crash.Trail.Note(Crash.AppTrail.TrackSkip, i.Kind == InputKind.Next ? 1 : -1);
         bool wake;
         lock (s_gate)
         {
@@ -462,6 +463,14 @@ public static partial class Playback
                     StepOne(in i);
                 }
 
+                // The queue rewrites the reducer asked for, before the follow: the shuffle toggle's re-lay (its cursor move is
+                // folded right here) and a repeat-context wrap's next lap (#215).
+                if (s_fx.Reorder) { s_fx.Reorder = false; ReorderQueue(s_fx.ReorderShuffle, now); }
+                if (s_fx.Lap)
+                {
+                    s_fx.Lap = false;
+                    if (FollowsQueue(in s_state, Queue.RefAt(s_state.Cursor.Index)) && Queue.Lap(in s_state.Cursor)) WatchQueue(now);
+                }
                 FollowQueue(now);
                 Execute();
                 s_forward.Clear();                         // every staged forward was folded in this drain (G-248)
@@ -719,7 +728,6 @@ public static partial class Playback
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
         if (s_fx.Fetch) EnsureRow(s_fx.FetchId);
         if (s_fx.QueueAdd) EnqueueRemote(s_fx.QueueAddId);
-        if (s_fx.Reorder) ReorderQueue(s_fx.ReorderShuffle);
         if (s_fx.Autoplay) RequestAutoplay(s_fx.AutoplayContext);
         if (s_fx.AutoplayPage) RequestAutoplayPage(s_fx.AutoplayPageContext);
         if (s_fx.Page) RequestPage(s_fx.PageContext);
@@ -1014,6 +1022,20 @@ public static partial class Playback
             Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, skipUid: skipUid));
             return;
         }
+        if (s_fx.RemoteCmd == RemoteCmd.SetRepeatingContext && s_fx.RemoteArg > 0)
+        {
+            // A complete repeat mode (DoRepeat): both flags, the one being turned off first, so the owner never passes through
+            // a mode nobody asked for (Track -> Context: track off, then context on; Off: track off, then context off).
+            var mode = (RepeatMode)(s_fx.RemoteArg - 1);
+            bool context = mode != RepeatMode.Off, track = mode == RepeatMode.Track;
+            Spotify.Api.Run(() =>
+            {
+                if (!track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, false, CancellationToken.None);
+                Spotify.Connect.Command(target, "set_repeating_context", "value", 0, context, CancellationToken.None);
+                if (track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, true, CancellationToken.None);
+            });
+            return;
+        }
         string endpoint = Endpoint(s_fx.RemoteCmd);
         if (endpoint.Length == 0) return;
         string valueName = s_fx.RemoteCmd switch
@@ -1231,6 +1253,9 @@ public static partial class Playback
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
     public static void Previous() => Post(Input.Prev(FrameNowMs()));
+    /// <summary>Diagnostics (the inspector's <c>transport do=end</c>): the row on the deck ran out with nothing prepared, as the
+    /// pump's Ended reports it, so a case can walk the natural-end path without waiting out a track.</summary>
+    public static void EndNow() => Post(Input.Ended(s_state.LoadEpoch, FrameNowMs()));
     // The local play/pause verbs take a `cause`: the UI entry that pressed it ("space", "playerbar.button", "tray", …).
     // ALWAYS-ON attribution, one line per user action (the SMTC twin is "smtc transport button: …", inbound Connect is
     // "[connect] cmd endpoint=…"). Without it a resume that claims the parked restored row (`connect.owner Nobody → Us

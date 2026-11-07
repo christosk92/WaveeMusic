@@ -194,15 +194,18 @@ internal static partial class ZunePlayerBar
                         new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                     videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
                 }
-                bool on = v.VideoLive && lit;
+                // The level's slot whatever the track: lit while a playable is on the deck (loading included), pressable only while the track
+                // has a video (the disabled word in place otherwise: never a gap, never a reflow).
+                bool can = lit && v.HasVideo;
+                bool on = v.VideoLive && can;
                 return Slot("video", lit, new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, OnRealized = h => videoAnchor.Value = h, OnContextRequested = _ => OpenMenu(),
+                    Direction = 0, AlignItems = FlexAlign.Center, OnRealized = h => videoAnchor.Value = h, OnContextRequested = can ? _ => OpenMenu() : null,
                     Children =
                     [
-                        ToolTip.Wrap(Word(Loc.Get(Strings.Player.Video), () => verbs.ToggleVideo(), lit, on, box, look.WordSize),
+                        ToolTip.Wrap(Word(Loc.Get(Strings.Player.Video), () => verbs.ToggleVideo(), can, on, box, look.WordSize),
                             Loc.Get(v.VideoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
-                        ToolTip.Wrap(Glyph(Icons.ChevronDownSmall, OpenMenu, lit, on ? Tok.AccentTextPrimary : Tok.TextSecondary, box, L.ChevronGlyph),
+                        ToolTip.Wrap(Glyph(Icons.ChevronDownSmall, OpenMenu, can, on ? Tok.AccentTextPrimary : Tok.TextSecondary, box, L.ChevronGlyph),
                             Loc.Get(Strings.Player.VideoOptions)),
                     ],
                 });

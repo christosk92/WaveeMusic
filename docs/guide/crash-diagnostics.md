@@ -20,10 +20,12 @@
 8. [The service and the dashboard](#8-the-service-and-the-dashboard)
 9. [Erasure — the right to be forgotten](#9-erasure--the-right-to-be-forgotten)
 10. [Native fault fields](#10-native-fault-fields)
-11. [Grouping (fingerprint v2)](#11-grouping-fingerprint-v2)
+11. [Grouping (fingerprint v3)](#11-grouping-fingerprint-v3)
 12. [Alerts and regressions](#12-alerts-and-regressions)
 13. [Retention](#13-retention)
 14. [Deleting one report](#14-deleting-one-report)
+15. [Event trail, native regions, machine context](#15-event-trail-native-regions-machine-context)
+16. [The key-path breaker](#16-the-key-path-breaker)
 
 ---
 
@@ -37,8 +39,9 @@
 │   AddVectoredExceptionHandler (fault stack first) + unhandled filter fallback  │
 │ UI thread: posted heartbeat every 2 s; first-frame witness; modal/exiting bits │
 │ managed crash ─► AppDomain.UnhandledException ─┐                                │
-│ native AV     ─► VEH, filter as fallback ──────┼─► Crash.Host.RequestDump(kind) │
-│ FailFast / stack overflow: no hook — the child reads the exit code             │
+│ native AV     ─► native gate (VEH + filter) ───┼─► Crash.Host.RequestDump(kind) │
+│ FailFast / stack overflow: no hook — the child reads the exit code, and the    │
+│   runtime's stderr text from crash\fatal-<pid>.txt (Crash.FatalText)           │
 └───────────────────────────────┬────────────────────────────────────────────────┘
                                 │ stdin pipe (beats, requests) + parent handle
 ┌────────────────────── Wavee.exe --crash-handler (child) ──────────────────────┐
@@ -68,6 +71,26 @@ on the heartbeat), `ExitCode` (fail-fast, a runtime fatal error, a stack overflo
 the handler infers it from the parent's exit code), and `UncleanExit` (Task Manager or the OS killed the
 process — never prompts, just gets listed as "Closed"). `ExitCode 0` writes nothing.
 
+**What an `ExitCode` report can still say.** A fail-fast skips every hook, but the runtime writes its reason to
+stderr first. When nothing listens to Wavee's stderr (a Store or Start-menu launch: null or NUL), `Crash.Host.Install`
+points it at `crash\fatal-<pid>.txt` (`Crash.FatalText`; delete-on-close, held open by the child, so it never goes
+stale), and the child appends its tail to `report.txt` under `stderr (…)`, with any `Wavee!<BaseAddress>+0x…` frames
+of the last trace in `rvas`. A console, a pipe or a `2>` redirect is left alone. What the exit code and the text mean
+in a NativeAOT build:
+
+| Exit code | stderr | Cause |
+|---|---|---|
+| `0xC0000409` | `Process terminated.` / `Unhandled exception.` + frames | managed fail-fast: `Environment.FailFast`, an unhandled exception whose handler never ran, a non-null AV in managed code |
+| `0xC0000602` | `Fatal error. Invalid Program: attempted to call a UnmanagedCallersOnly method from managed code.` | a reverse P/Invoke entered on a thread already in managed code, e.g. a first-chance **VEH written in C#** (`AddVectoredExceptionHandler(1, …)`) seeing a null dereference in managed code. Up to 0.3.7 also Wavee's own last-chance C# VEH seeing a fault in runtime/GC code or on a cooperative-mode thread; since the native gate (§10) that fault keeps its own code (`0xC0000005`) |
+| `0xC0000602` | nothing | one of the runtime's silent `RhFailFast` sites: managed code entered on a thread whose runtime state was already torn down (thread exit), a stack-walk failure (corruption), a thread-attach failure |
+| `0xC00000FD` | `Process is terminating due to StackOverflowException.` | stack overflow |
+
+The report also carries `parentQuietMs`, `parentLastBeatMs` and `parentExiting`: how long the parent had been silent
+on the pipe when it died. Windows Error Reporting holds a fail-fasting process for seconds while it collects, so a
+quiet of several seconds without `parentExiting=1` reads as "froze or fail-fasted, then died", not "died mid-beat".
+A Debug (CoreCLR) build writes its own `Environment.FailFast` text to the stderr it saw at startup, so the
+`--crash-probe failfast` arm shows the timing lines but no CoreCLR text; NativeAOT writes through the live handle.
+
 The **out-of-process handler** is the same signed `Wavee.exe`, re-invoked as `--crash-handler <pid>
 <logFolder> <logBasePath>`. It talks to the parent over a `stdin` pipe (one byte per heartbeat, one line
 per dump request) plus a process handle — no named kernel objects, no admin rights, no WER `LocalDumps`
@@ -88,7 +111,9 @@ registry key (which needs both and is why the old WER probe was dead on user mac
 
 Folder name: `yyyyMMdd-HHmmss-fff-<kind>` (`Crash.Files.BundleName`). Write order is deliberate —
 `summary.json` first (so even a disk-full write leaves *something* readable), then `report.txt`, then
-`log-tail.txt` (last 300 lines of the day's log, scrubbed at write time), then the dump last. The day's log is
+`log-tail.txt` (last 300 lines of the day's log, scrubbed at write time), then the dump last. Beside the bundles the
+crash folder holds `trail-<pid>.bin` (the live event trail, §15; delete-on-close, so it exists only while Wavee or its
+handler runs), `fatal-<pid>.txt` (the same, for the runtime's stderr) and `keypath-breaker.txt` (§16). The day's log is
 resolved at crash time, not at launch (an in-process bundle uses `Log.FilePath` as it stands; the child derives the
 dated name from the base path with `LogFileNames.Dated`), so a crash after midnight tails today's file; and the
 managed path flushes the log queue first and merges any line still queued (`TailAssembler.Merge`), so the tail ends
@@ -96,11 +121,16 @@ with the crash's own lines. Pruned to the newest 10 bundles and ≤ 200 MB total
 
 `summary.json` is the machine-readable half (`Crash.Summary` — every field the Worker's ingest contract
 in §7 below validates against, camelCase on the wire). `report.txt` is the human-readable half: today's
-`Describe` text (exception, RVA frames, module base/size, versions, GPU) — this is what the settings UI
-shows in the crash prompt's preview and what you'd paste into a GitHub issue by hand. `minidump.dmp`
-defaults to `MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules` (stacks + modules, no
-heap — the heap holds the DPAPI-unprotected credential and live tokens); a user can opt a single manual
-Send into `MiniDumpWithIndirectlyReferencedMemory` via an explicit checkbox.
+`Describe` text (exception, RVA frames, module base/size, versions, GPU), then the native regions, the event trail
+and the machine (§15) — this is what the settings UI shows in the crash prompt's preview and what you'd paste into
+a GitHub issue by hand. `minidump.dmp` is `MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules |
+MiniDumpWithIndirectlyReferencedMemory` (`0x1060`, recorded as `dumpFlags`): stacks, modules, and the small blocks
+the threads' stacks point at — still no full heap (the heap holds the DPAPI-unprotected credential and live tokens).
+Every dump has an exception stream: a native one the fault's own `EXCEPTION_POINTERS`, a managed one a synthetic
+record (`0xE0434352`) over the crashing thread's captured context, so `.ecxr; k` lands on the crash. The dump is
+written locally for every managed, native and hang bundle; whether it LEAVES the machine is §3's dump gate, unchanged.
+Measured on a forced crash (2026-11-07): Debug (CoreCLR) native 4.61 → 4.95 MB, managed 4.68 → 4.93 MB; a NativeAOT
+probe's native fault 86 → 129 KB (arm64) and 262 → 315 KB (x64).
 
 ## 3. Consent matrix
 
@@ -145,6 +175,24 @@ A `.dmp` (when present) opens directly in WinDbg/cdb with the same symbols path 
 referenced from the dashboard's report detail view is this same §5b recipe, just pointed at the dump
 instead of a bare RVA list.
 
+**Opening a dump in WinDbg.** Each release's `Wavee.exe` and symbols zip also sit in R2 beside its `.symmap`
+(`ops/crash/README.md` step 7), so a dump from any shipped build opens with full names even when the GitHub release
+asset is gone. With the crash Worker's wrangler (`ops/crash/worker`, `npx wrangler login` once), for the report's
+`quad` and `arch`:
+
+```powershell
+$q = '0.3.8.19'; $a = 'x64'; $d = "C:\symbols\wavee\$q-$a"; mkdir $d -Force | Out-Null
+npx wrangler r2 object get "wavee-crash/symbols/$q/win-$a/Wavee.exe" --file "$d\Wavee.exe" --remote
+npx wrangler r2 object get "wavee-crash/symbols/$q/win-$a/Wavee-$q-win-$a-symbols.zip" --file "$d\symbols.zip" --remote
+Expand-Archive "$d\symbols.zip" $d -Force
+cdb -z minidump.dmp -y "$d;srv*C:\symbols\ms*https://msdl.microsoft.com/download/symbols" -i $d -c ".ecxr; kn; q"
+```
+
+`-i` gives the debugger the exe (a minidump holds no code, and x64 unwinding needs the image's unwind data); `-y`
+gives it the PDB plus Microsoft's public symbols for the system DLLs. In WinDbg: File › Settings › Debugging
+settings › Symbol path / Image path, the same two values. `summary.json`'s `debugId` must match `Wavee.pdb`'s
+(`!lmi Wavee` prints it).
+
 ## 5. Running the probes
 
 `--crash-probe <mode>` (`throw`, `throw-ui`, `failfast`, `native`, `hang`, `boot`) forces one crash class
@@ -154,7 +202,8 @@ shapes: `docs/plans/wavee/crash-diagnostics-implementation.md` §G "Verification
 thread (a `Managed` bundle). `throw-ui` throws inside a posted UI action instead — the engine's UI post
 drain catches it and the frame goes on, so it writes **no** bundle; it exists to prove the `[post]` Warn
 line reaches `wavee-*.log` (`Platform.Host.RouteFor`), the only trace a swallowed UI-thread fault leaves.
-`native` faults inside ntdll (a `Native` bundle with `faultModule` `ntdll.dll`, §10).
+`native` faults inside ntdll (a `Native` bundle with `faultModule` `ntdll.dll`, §10). `native-keypath` does the
+same inside the key-path region (§16): run it twice with one `--profile`, and the third launch opens the breaker.
 
 **Send a test crash report** (Settings › Privacy & diagnostics › Developer, greyed until developer mode is on) runs the whole pipeline
 without crashing: `Crash.Host.WriteTestReport` throws a `Crash.SimulatedCrashException` through three no-inline Wavee
@@ -367,6 +416,19 @@ the handler's own leading Wavee frames — then keep only frames inside Wavee.ex
 has unwind data, so the OS unwinder walks through `KiUserExceptionDispatcher` on x64 and ARM64. Those RVAs
 symbolicate server side exactly like a managed crash's.
 
+**The native gate (since 0.3.8).** The paragraph above describes the managed fallback. The registered VEH and
+unhandled filter are now `Crash.FaultGate`: a few dozen bytes of x64 / ARM64 machine code built at install, so no
+managed code runs on the faulting thread. Why: a NativeAOT `[UnmanagedCallersOnly]` entry on a thread already in
+cooperative mode is a fatal error, so the old C# hook turned a fault in runtime/GC code, in a `SuppressGCTransition`
+call or in any native code reached without a GC transition into `0xC0000602` with no frames and no dump. The gate
+answers "continue search" at once for a code it does not watch or an address inside Wavee.exe (the exit code stays
+the real one); for a foreign fault it takes the once-per-process latch, stores code, address, `EXCEPTION_POINTERS` and
+the OS thread id in a data page, wakes a managed reporter thread (parked in `WaitForSingleObject`, so preemptive) and
+waits up to 30 s for it. The reporter walks the faulting thread's stack from the fault's own CONTEXT
+(`RtlLookupFunctionEntry` / `RtlVirtualUnwind`) and runs the native path above. The report says `hook=gate`. Proven with
+a scratch NativeAOT probe on both architectures: a foreign fault on a cooperative-mode thread was `0xC0000602` with
+the old hook shape and is `0xC0000005` with a dump through the gate.
+
 **Fault module, out of process.** The crashing process never resolves the module (no loader lock inside a
 hook). The child, while the parent is still parked on the dump reply, reads `EXCEPTION_POINTERS` →
 `EXCEPTION_RECORD` with `ReadProcessMemory`, lists the parent's modules (`K32EnumProcessModulesEx` /
@@ -386,13 +448,18 @@ and the retry (`retry=noexception` in `handler.log`) wrote a dump without the ex
 ".ecxr;k;q"` lands on the faulting context. The retry stays as a net; seeing `retry=noexception` again is
 a bug.
 
-## 11. Grouping (fingerprint v2)
+## 11. Grouping (fingerprint v3)
 
 The Worker groups reports into issues by fingerprint = SHA-1 of a key built in
-`ops/crash/worker/src/grouping.ts` (`FINGERPRINT_VERSION = 2`; `reports.fp_version` and
-`issues.fp_version` record it). v1 keyed on the top frame — usually a .NET ThrowHelper — and collapsed
-every `Native`, every `Hang` and every `ExitCode` report into one issue each. Issues created under v1 keep
-`fp_version = 1` and simply stop receiving reports; nothing is re-fingerprinted.
+`ops/crash/worker/src/grouping.ts` (`FINGERPRINT_VERSION = 3`; `reports.fp_version` and
+`issues.fp_version` record the version of the key actually used, read from its `v<N>|` prefix). v1 keyed on the top
+frame — usually a .NET ThrowHelper — and collapsed every `Native`, every `Hang` and every `ExitCode` report into one
+issue each. v2 keyed `Managed` and frame-bearing `Native` reports on the top THREE app frames, and the third is
+usually the caller: one engine crash reached from a WndProc paint and from `Shell.Run` became two issues. v3 keys
+them on the innermost TWO app frames (`KEY_APP_FRAMES`), and titles an issue after the innermost app frame (engine or
+app) instead of preferring a `Wavee_*` one. The kinds whose key did not change (Hang, UncleanExit, ExitCode, a
+frameless Native) keep their v2 key and so their open issues. Issues created under an older key keep their
+`fp_version` and simply stop receiving reports; nothing is re-fingerprinted, and no migration was needed.
 
 **Normalization** (`normalizeSymbol`): compiler-generated ordinals shift whenever code moves inside a
 method, so they must not split an issue. It strips `unbox_` and collapses `DisplayClass<n>_<n>` →
@@ -403,14 +470,14 @@ method, so they must not split an issue. It strips `unbox_` and collapses `Displ
 (System.Private.*), `System_*`, `Microsoft_*`, `Internal_*`, the linked NuGet libraries (`SQLitePCL_`,
 `Google_Protobuf_`, `NLayer_`, `ZstdSharp_`), `__*` helpers, the runtime's `Rh*`/`Rhp*`/`Pal*`, C++ `::`
 and GC `WKS_`/`SVR_` names, and `memset`/`memcpy`/`RaiseException`/`KiUserExceptionDispatcher` and
-friends. `Wavee_*` and `FluentGpu_*` are app frames (the engine is ours). `topFrameKey` takes the top 3
-app frames, normalized; an all-framework stack falls back to the top 3 raw names, and a stack with nothing
-resolved (no symmap for that build) to the top 3 RVAs.
+friends. `Wavee_*` and `FluentGpu_*` are app frames (the engine is ours). `topFrameKey` takes the innermost 2
+app frames, normalized; an all-framework stack falls back to the innermost 2 raw names, and a stack with nothing
+resolved (no symmap for that build) to the innermost 2 RVAs.
 
 | Kind | Key | Title (`deriveTitle`, written once when the issue is created) |
 |---|---|---|
-| `Managed` | `v2\|Managed\|<exceptionType>\|<topFrames>` | `<ExceptionType> · <first Wavee frame>` |
-| `Native` | `v2\|Native\|<code hex8>\|<faultModule>\|<topFrames>`; with no frames, `…\|<faultModule>+<offset hex>` | `<STATUS_NAME> in <module> · <first Wavee frame>`, or `… in <module>+0x<offset>` |
+| `Managed` | `v3\|Managed\|<exceptionType>\|<topFrames>` | `<ExceptionType> · <innermost app frame>` |
+| `Native` | `v3\|Native\|<code hex8>\|<faultModule>\|<topFrames>`; with no frames, `v2\|Native\|…\|<faultModule>+<offset hex>` | `<STATUS_NAME> in <module> · <innermost app frame>`, or `… in <module>+0x<offset>` |
 | `ExitCode` | `v2\|ExitCode\|<exit code hex8>` — one issue per code | `Exit code <STATUS_NAME>` |
 | `Hang` | `v2\|Hang` — one bucket, frames ignored | `Hang (UI stopped responding)` |
 | `UncleanExit` | `v2\|UncleanExit` | `Unclean exit` |
@@ -477,3 +544,65 @@ In the app, a report row's **… › Delete** (Settings › Privacy & diagnostic
 `Crash.Host.Delete` calls `Uploader.ForgetBundle(dir)` (dropping the outbox entry) and removes the bundle
 folder. A copy already on the service stays until retention (§13) or "Delete my data…" (§9). The row's
 **… › Copy** puts the scrubbed preview — exactly what Send would upload — on the clipboard.
+
+## 15. Event trail, native regions, machine context
+
+Added in the 2026-11-07 crash round, because half that round's issues were solvable only when a log tail happened to
+hold the right line. Every report kind (managed, native, hang, exit code; the test report too) carries three
+`report.txt` sections and their summary fields.
+
+**Native regions** (`nativeRegion` = the crashing thread's, e.g. `pipeline.compile:glyphs`). A per-thread label set
+around risky native calls with `FluentGpu.Foundation.CrashTrail.Enter(…)`, read by the hook for the faulting OS
+thread id. Engine: `d3d12.close` (the frame's `ID3D12GraphicsCommandList::Close`, where overlay hooks sit),
+`d3d12.recovery` (`RecoverDevice`), `pipeline.compile` with the pipeline's name (`EnsurePipelines`' stages), `wic.decode`
+(the engine's and the app's WIC decoders). App: `keypath` (the seam's `KeyDeriver` call in `Spotify.Audio.Key`) and
+`keypath.decrypt` (the private key path's native body decryptor). A report lists every thread that was inside a region,
+the faulting one marked; `region=none` means the faulting thread was in none.
+
+**Event trail** (`trailEvents` = how many). An always-on ring of 256 entries (the report prints the last 200), each a
+code, two numbers and up to 16 code-owned ASCII characters, recorded allocation-free (one interlocked increment and a
+few stores). Engine: `window.parked`/`window.restored` (with the park reason: minimized/hidden or covered),
+`hidden.shallow`/`hidden.deep`/`hidden.restore`, `device.lost` (reason HRESULT, recovery path), `device.recovered`,
+`gpu.switch` (from/to adapter as PCI vendor:device), `gpu.device`, `cold.trim` (pixel pool, scene slab with its size,
+render snapshots). App: `nav` (the route's NAME only, never its argument), `track.start` (playable kind, start ms;
+no ids, no titles), `track.skip`, `memory.trim` (only when it freed something or the pressure level changed),
+`keypath.enter`/`keypath.leave` (outcome, ms), `shutdown` phases, `keypath.breaker`, `crash.handler`. Times are
+seconds before the report.
+
+The trail and the regions live in one plain block of memory (`CrashTrail.TotalBytes`, 14 KB) that the parent moves
+onto `crash	rail-<pid>.bin`, a delete-on-close file it maps (`Crash.Trail.Share`); the handler child opens the file
+at start-up (`handler.ready … trail=held`) and reads it after the parent died, so an exit-code report (a fail-fast,
+which runs no hook) still has the trail and the regions threads were in at the moment of death.
+
+**Machine** (`gpuDriver`, `virtualMachine`, `vmHint`, `thirdPartyModules`). The GPU's user-mode driver version
+(`IDXGIAdapter::CheckInterfaceSupport`, published by the engine as `GpuProfile.DriverVersion`; the engine's
+`[d3d12.adapter]` line carries it as `driver version=`); a VM flag from the SMBIOS table, matched against a fixed list
+of hypervisor names (only the list's own token is reported); and the FILE NAMES (never paths) of loaded modules that
+are neither under the Windows folder, a Microsoft framework package, the .NET runtime nor Wavee's own folder: overlays
+and injectors such as RivaTuner's `RTSSHooks64.dll` or a game overlay. The child refreshes the parent's list every 15 s,
+so an exit-code report names what was loaded when it died. At most 40 names, `[A-Za-z0-9._-]` only.
+
+**Scrubbing.** All of it goes through the upload scrubber like the rest of the bundle: the module names, the region and
+the VM hint through the generic redactor (a driver version keeps its four numbers, which the IPv4 rule would otherwise
+eat). The log tail's engine diagnostic lines (`[d3d12]`, `[d3d12.*]`, `[device-lost]`, `[hidden]`) keep their values
+when they are an HRESULT / hex code, a number or a number tuple (`1920x1080@1.5`, `32.0.16.1742`), or — for a named set
+of keys (`currentReason`, `recorded`, `reason`, `path`, `backend`, `mode`, `from`, …) — an enum-like name
+(`Crash.Scrubber.IsDiagnosticValueShape`). Free text never passes, and `desc`, `luid`, `hwnd`, `monitor` and `sid` are
+always dropped.
+
+## 16. The key-path breaker
+
+A native fault inside the private key path cannot be caught; the process dies, and the next launch derives a key and
+dies again. `Crash.KeyPathBreaker` breaks that loop, app side only:
+
+- **Recording.** The native hook records a fault whose thread was in the `keypath` / `keypath.decrypt` region; the
+  handler child records an exit-code death while any thread was in it (a fault there that fail-fasts ran no hook).
+  State: `crash\keypath-breaker.txt` (version, launch counter, fault times and launches, opened-at).
+- **Opening.** At each GUI launch (`Crash.Host.BeginGuiRun`), two key-path faults within the last three launches of
+  the same version open it: `Spotify.Audio.KeyDeriver` and `BodyDecryptorFor` read null, so the launch behaves exactly
+  like a build without the private key path. Tracks that need it show the existing "unavailable on this build" outcome
+  (`Fault.NoDeriver`); keys the regular key service serves still play. Logged (`keypath.breaker open`) and in the trail.
+- **Closing.** An app update (a new version starts with a clean state) or seven days open.
+
+Verify with `--crash-probe native-keypath` twice on one `--profile`, then any launch: its log has the `keypath.breaker
+open` warning, and a report from it has `keypath.breaker open faults=2` in the trail.

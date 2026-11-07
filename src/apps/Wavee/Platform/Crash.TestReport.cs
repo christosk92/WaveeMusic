@@ -69,8 +69,11 @@ public static partial class Crash
             {
                 SimulatedCrashException caught = SimulatedCrashException.ThrowAndCatch();
                 string dir = Crash.Bundles.Create(LogFolder, Kind.Managed, DateTimeOffset.Now);
-                Crash.Bundles.WriteSummary(dir, Report.BuildSummary(Kind.Managed, caught, 0));
-                Crash.Bundles.WriteReport(dir, Report.Describe(caught));
+                var text = new System.Text.StringBuilder(8 * 1024);
+                Report.Describe(caught, text);
+                var summary = AppendContext(text, Report.BuildSummary(Kind.Managed, caught, 0), GetCurrentThreadId(), "reporting thread");
+                Crash.Bundles.WriteSummary(dir, summary);
+                Crash.Bundles.WriteReport(dir, text.ToString());
                 WriteLogTail(dir, rules);
 
                 if (!RequestDumpFromChild(Handler.DumpKind.Test, GetCurrentThreadId(), 0, dir, out long bytes, out string? err))

@@ -58,6 +58,9 @@ public static partial class Spotify
             /// <summary>The account profile a playlist owner, an added-by cell and the chip read (G-044,
             /// Spotify.Decode.Traits.cs).</summary>
             UserProfile = 15,
+            /// <summary><c>CANVAS_V1</c>: the track's looping Canvas video (Spotify.Decode.Canvas.cs, <c>Edges.TrackCanvas</c>).
+            /// The one kind that reads the entity HEADER too: its cache and offline TTLs ride the row.</summary>
+            Canvas = 16,
             /// <summary>A video rendition's AUDIO counterpart (G-044, <c>Edges.TrackVersions</c>).</summary>
             AudioAssociations = 98,
             VideoAssociations = 99,
@@ -1061,6 +1064,7 @@ public static partial class Spotify
         {
             // FIRST, so any positive this answer carries (staged below, later in the batch) wins at commit.
             if (asked is not null) TraitNegatives(response, s, asked);
+            if (asked is not null) CanvasNegatives(response, s, asked);
             var r = new ProtoReader(response);
             while (r.Next())
             {
@@ -1079,9 +1083,10 @@ public static partial class Spotify
                                 // A header with no status_code is a success, not a zero (`Varint`'s fallback).
                                 int status = 200;
                                 bool answered = false;
+                                ReadOnlySpan<byte> header = default;
                                 while (entity.Next())
                                 {
-                                    if (entity.Field == 1) status = (int)entity.Message().Varint(1, 200);
+                                    if (entity.Field == 1) { header = entity.Bytes(); status = (int)new ProtoReader(header).Varint(1, 200); }
                                     else if (entity.Field == 2) uri = entity.Bytes();
                                     // google.protobuf.Any { type_url = 1, value = 2 }
                                     else if (entity.Field == 3) { payload = entity.Message().Bytes(2); answered = true; }
@@ -1090,7 +1095,14 @@ public static partial class Spotify
                                 // An empty body IS an answer for some kinds (a descriptor message with no descriptors
                                 // serializes to zero bytes — `DescriptorProjector`'s finding 27), so the gate is the
                                 // status and the PRESENCE of the extension_data field, never the payload's length.
-                                if (answered && status is >= 200 and < 300) Extension((Ext)kind, uri, payload, s, asked);
+                                // Kind 16 reads its header's lifetimes (cache_ttl = 4, offline_ttl = 5): they ride the canvas row.
+                                if (answered && status is >= 200 and < 300 && (Ext)kind == Ext.Canvas)
+                                {
+                                    var h = new ProtoReader(header);
+                                    Canvas(payload, uri, (int)Math.Clamp(h.Varint(4, 0), 0, int.MaxValue),
+                                           (int)Math.Clamp(new ProtoReader(header).Varint(5, 0), 0, int.MaxValue), s);
+                                }
+                                else if (answered && status is >= 200 and < 300) Extension((Ext)kind, uri, payload, s, asked);
                                 // A TERMINAL per-entity failure for the row shape is an answer too. The batch itself came
                                 // back 200, so `Fetch.Answer` seals the group as asked; with no staged row behind it the
                                 // track stayed an UNRULED blank in every list that carries it — a Liked Songs row with no

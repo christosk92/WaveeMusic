@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repository is
 
 **Wavee** — a Spotify desktop client for Windows, built on the **FluentGpu** engine (a from-scratch NativeAOT,
-GPU-rendered UI engine for .NET 10). This repo holds the app only: `src/apps/{Wavee, Wavee.Core, Wavee.Sdk,
+GPU-rendered UI engine for .NET 11). This repo holds the app only: `src/apps/{Wavee, Wavee.Core, Wavee.Sdk,
 Wavee.ReleaseTool, modules/*, vendor/*}`, the release tooling (`ops/`), the app docs
 (`docs/guide`, `docs/plans`) and the app skills (`.claude/skills`). It was split out of the engine repo on
 2026-08-30 (`docs/plans/wavee/wavee-repo-split-plan.md`); history before that commit is the retired WinUI-era app.

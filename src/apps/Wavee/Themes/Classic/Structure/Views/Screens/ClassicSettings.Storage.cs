@@ -1,6 +1,6 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Storage.cs — the Storage tab (themes plan 6.1, T11b) ──────────────────────────────────
 //
-// From `Screens\Settings.UI.Storage.cs`. The census block (spinner / usage card / failed bar), the seven fixed hues on the bar, the legend and the row accents, the
+// From `Screens\Settings.UI.Storage.cs`. The census block (spinner / usage card / failed bar), the nine fixed hues on the bar, the legend and the row accents, the
 // playback-cache rows (the three-mode budget editor, the cache location), the metadata cache, reset. The census itself (the phase, the snapshot, the cache status,
 // the key count, the metadata stats; the first visit to the tab starts it; a clear re-runs it) is the core's (`Settings.Host.cs`) and arrives as
 // `SettingsPageProps.Storage`; the clears, the budget writes, the folder doors and the factory reset are the rows' writers.
@@ -25,14 +25,14 @@ internal static partial class ClassicSettings
 {
     // ══ 1. STABLE CONTROL STATE (0.2.9 `SettingsPage.Storage.cs` instance fields) ═════════════════════════════════════
 
-    // N9 — seven hand-picked hues, THEME-INVARIANT (accent tints read as one blue on dark): `ClassicSettingsRules.StorageHues`, indexed in
-    // `StorageRules.Parts` order: library, runtime, logs, local store, audio bodies, license keys, images.
+    // N9 — nine hand-picked hues, THEME-INVARIANT (accent tints read as one blue on dark): `ClassicSettingsRules.StorageHues`, indexed in
+    // `StorageRules.Parts` order: library, runtime, logs, local store, audio bodies, license keys, images, AI models, other app data.
 
     static readonly string[] s_storagePartKeys =
     [
         Strings.Settings.Storage.Library, Strings.Settings.Storage.Runtime, Strings.Settings.Storage.Logs,
         Strings.Settings.Storage.LocalStore, Strings.Settings.Storage.AudioBodies, Strings.Settings.Storage.LicenseKeys,
-        Strings.Settings.Storage.ImageCache,
+        Strings.Settings.Storage.ImageCache, Strings.Settings.Storage.AiModels, Strings.Settings.Storage.OtherData,
     ];
 
     // Stable control signals (the controls freeze the instance at mount); re-seeded from the document on every page mount.
@@ -96,6 +96,10 @@ internal static partial class ClassicSettings
             : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles);
         string keysSub = storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
             : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys);
+        string aiSub = s is null ? Loc.Get(Strings.Settings.Storage.AiModelsSub)
+            : s.AiModels <= 0 ? Loc.Get(Strings.Settings.Storage.AiModelsNone)
+            : s.AiLanguages == 1 ? Loc.Get(Strings.Settings.Storage.AiModelsCountOne)
+            : s.AiLanguages > 1 ? Strings.Settings.Storage.AiModelsCount(s.AiLanguages) : Loc.Get(Strings.Settings.Storage.AiModelsSub);
         var facts = SettingsFacts.Live;
 
         return
@@ -108,6 +112,8 @@ internal static partial class ClassicSettings
             StorageRow(2, "logs", logsSub, s?.Logs, StorageClearButton(D(Tab.Storage, "logsClear"), facts)),
             StorageRow(3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
             StorageRow(6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
+            StorageRow(7, "aiModels", aiSub, s?.AiModels, StorageClearButton(D(Tab.Storage, "aiModelsRemove"), facts)),
+            StorageRow(8, "otherData", Loc.Get(Strings.Settings.Storage.OtherDataSub), s?.Other),
 
             Mark("Playback cache"),
             SectionHeader(Loc.Get(Strings.Settings.Storage.PlaybackCache), SectionGlyph(Tab.Storage, "Playback cache")),

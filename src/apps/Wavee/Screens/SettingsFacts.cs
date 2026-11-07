@@ -58,6 +58,10 @@ public interface ISettingsFacts
     /// <summary>The audio-body disk cache exists (it does not under --fake).</summary>
     bool AudioCacheAvailable { get; }
 
+    /// <summary>The last storage census found bytes in the on-device AI lyrics folder (what the AI models row shows), and no
+    /// download is running (its own card pauses or cancels it).</summary>
+    bool AiModelsPresent { get; }
+
     /// <summary>The metadata-cache clear is wired.</summary>
     bool MetadataClearAvailable { get; }
 
@@ -88,6 +92,10 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool SidebarEditing => Sidebar.Editing.Value;
     public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value), Sidebar.LibraryView.Value);
     public bool AudioCacheAvailable => Spotify.Audio.DiskCache.Shared is not null;
+
+    // Peek, not Value: the status changes up to ten times a second during a download, and the Storage tab re-renders when its
+    // census lands (a remove recounts), so a subscription would only re-render the page per progress tick.
+    public bool AiModelsPresent => Settings.CensusAiModelsBytes > 0 && AiLyrics.Current.Peek().Phase != AiLyrics.SetupPhase.Downloading;
     public bool MetadataClearAvailable => Settings.ClearMetadataCache is not null;
     public bool CrashServiceConfigured => Crash.Uploader.Configured;
 

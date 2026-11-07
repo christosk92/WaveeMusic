@@ -1,7 +1,7 @@
 // ── Screens/SettingsDoc.Rows.Storage.cs — the Storage tab as document rows + their verbs ──────────────────────────
 //
-// Role: CORE (PR C13; extraction X36). On this PC (seven categories, each with its Open-folder door and, for three, a confirmed
-// clear) · Playback cache (the two switches, the three-mode budget, the cache location) · Metadata cache · Factory reset.
+// Role: CORE (PR C13; extraction X36). On this PC (nine categories, each with its Open-folder door and, for four, a confirmed
+// clear or remove) · Playback cache (the two switches, the three-mode budget, the cache location) · Metadata cache · Factory reset.
 //
 // WHERE THE WORK IS. The census, the clears (off the UI thread, toast, recount), the two-dialog cache relocation and the
 // factory reset live in `Settings.Host.cs` (every side effect, off the UI thread where it touches the disk); these rows'
@@ -29,7 +29,16 @@ public static partial class SettingsDoc
                 confirm: new SettingsConfirm(Strings.Settings.Storage.DeleteOldLogs, Strings.Settings.Storage.DeleteOldLogsBody,
                     Strings.Settings.Storage.DeleteOldLogs), catalog: false),
             FolderRow("On this PC", "localStore", Strings.Settings.Storage.LocalStore, Strings.Settings.Storage.LocalStoreSub),
-            FolderRow("On this PC", "imageCache", Strings.Settings.Storage.ImageCache, Strings.Settings.Storage.ImageCacheSub)),
+            FolderRow("On this PC", "imageCache", Strings.Settings.Storage.ImageCache, Strings.Settings.Storage.ImageCacheSub),
+            // The on-device AI lyrics models: the door is the card's own (AiLyrics.OpenFolder), the remove the card's own verb.
+            FolderRow("On this PC", "aiModels", Strings.Settings.Storage.AiModels, Strings.Settings.Storage.AiModelsSub),
+            Make(T.Storage, "On this PC", "aiModelsRemove", K.Action, Strings.Settings.Storage.RemoveAiModels,
+                SettingsWriter.OfAction("storage.removeAiModels", SettingsVerbs.RemoveAiModels),
+                enabled: f => f.AiModelsPresent ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
+                // The dialog's button is the card's own "Remove": "Remove AI models" ellipsizes in the dialog's button lane.
+                confirm: new SettingsConfirm(Strings.Settings.Storage.RemoveAiModels, Strings.Settings.Storage.RemoveAiModelsBody,
+                    Strings.Settings.Lyrics.Ai.RemoveConfirm.Action), catalog: false),
+            FolderRow("On this PC", "otherData", Strings.Settings.Storage.OtherData, Strings.Settings.Storage.OtherDataSub)),
 
         Sect(T.Storage, "Playback cache", Strings.Settings.Storage.PlaybackCache, null,
             Make(T.Storage, "Playback cache", "cacheAudio", K.Toggle, Strings.Settings.Storage.CacheAudio,
@@ -106,6 +115,7 @@ public static partial class SettingsVerbs
     /// <summary>Reveal a category's folder in Explorer (best-effort; a missing path or Explorer never throws into the UI).</summary>
     public static bool OpenStorageFolder(string rowId)
     {
+        if (rowId == "aiModels") { AiLyrics.OpenFolder(); return false; }   // the card's door: it creates the folder first
         string folder = rowId switch
         {
             "runtime" => Settings.RuntimeDirectory(),
@@ -113,7 +123,7 @@ public static partial class SettingsVerbs
             "imageCache" => Settings.ImageCacheDirectory(),
             "audioBodies" or "cacheLocation" => Settings.AudioCacheFolder(),
             "licenseKeys" => System.IO.Path.GetDirectoryName(Spotify.Audio.KeyStore.DefaultPath()) ?? Settings.AudioCacheFolder(),
-            _ => Platform.LocalFolder,   // library · localStore
+            _ => Platform.LocalFolder,   // library · localStore · otherData
         };
         Settings.OpenFolder(folder);
         return false;
@@ -198,6 +208,12 @@ public static partial class SettingsVerbs
     public static bool ClearMetadata()
     {
         Settings.ClearMetadata();
+        return false;
+    }
+
+    public static bool RemoveAiModels()
+    {
+        Settings.RemoveAiModels();
         return false;
     }
 

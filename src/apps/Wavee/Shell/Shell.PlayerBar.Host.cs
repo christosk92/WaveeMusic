@@ -238,12 +238,12 @@ public static partial class Shell
             int overflowCount = PlayerBarRules.Overflow(L, ownsTransport, active, hasVideo, overflow);
             OverflowCommand[] overflowCommands = overflow[..overflowCount].ToArray();
 
-            var slots = PlayerBarRules.RightSlots(in L, hasVideo);
+            var slots = PlayerBarRules.RightSlots(in L);
             var lit = RightSlot.None;
             for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
             {
                 var slot = (RightSlot)bit;
-                if ((slots & slot) != 0 && PlayerBarRules.SlotFaceVisible(slot, facts.State, hasVideo)) lit |= slot;
+                if ((slots & slot) != 0 && PlayerBarRules.SlotFaceVisible(slot, facts.State)) lit |= slot;
             }
             var widths = L;   // a copy the width function closes over (an `in` parameter cannot be captured)
 
@@ -300,7 +300,7 @@ public static partial class Shell
                 RemoteLine = remoteSlot >= 0,
                 Slots = slots,
                 Lit = lit,
-                RightWidth = PlayerBarRules.RightWidth(in L, hasVideo),
+                RightWidth = PlayerBarRules.RightWidth(in L),
                 SlotWidth = slot => PlayerBarRules.SlotWidth(slot, in widths),
                 Overflow = overflowCommands,
                 HasVideo = hasVideo,

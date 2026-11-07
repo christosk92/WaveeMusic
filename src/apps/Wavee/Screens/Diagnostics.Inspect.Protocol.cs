@@ -98,7 +98,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -250,6 +250,7 @@ public static partial class Diagnostics
             Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
             Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
             Arg("materials", ArgType.Enum, "off: no acrylic runs, every frosted surface draws its fallback plate (what Energy saver and Transparency effects off show)", "on", "on|off"),
+            Arg("motion", ArgType.Enum, "reduced: Windows' Animation effects off for this mount (page swaps fade, nothing slides, zooms or staggers)", "full", "full|reduced"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
@@ -322,7 +323,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "head", "head-land", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -391,6 +392,7 @@ public static partial class Diagnostics
                              IntArg("next", "queue this many tracks after a spotify:track:tr<k>", "0", 0, 64),
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
+                             IntArg("at", "with context=: start at this row of the rows (0 = the uri's own), as a click on a row further down the page does", "0", 0, 64),
                              Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
             },
             new(Verb.Option, "option", "List the active theme's user options, or set one (id, value) the way Settings does", "option style.density Compact")
@@ -475,7 +477,7 @@ public static partial class Diagnostics
                 // `loops` has no one default here: a loading or cold state's skeleton is the picture (Diagnostics.Inspect.cs, Verb.State).
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds)),
                     Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's or Liked Songs' relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|liked|show|episode"),
-                    Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown (it opens); kind=head-land puts it back in place"),
+                    Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown, or the artist whose charted rows are staged in flight (it opens); kind=head-land puts it back in place"),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
@@ -543,6 +545,22 @@ public static partial class Diagnostics
                              Arg("id", ArgType.String, "the row (any case)"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
             },
+            new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
+            {
+                Positional = ["state"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("state", ArgType.Enum, "minimized (the caption button), hidden (close to tray) or restored (the restore edge paints the next frame; then settle)", null, "minimized|hidden|restored"),
+                             Arg("advance", ArgType.Float, "move the cold-maintenance clock this many ms ahead first (31000 makes a 30 s deadline due)", "0") with { Min = 0 },
+                             Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; the app runs with 8192, an inspector mount with 0)") with { Min = 0 },
+                             IntArg("frames", "frames to run after the change when not restoring (parked frames while parked)", "2", 0, 100_000)], s_settleArgs),
+            },
+            new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
+            {
+                Positional = ["do", "value"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead"),
+                             Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
+                             Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
+                             Arg("ms", ArgType.Int, "the seek target", "0")], s_settleArgs),
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -566,9 +584,9 @@ public static partial class Diagnostics
             "help" => Verb.Help, "status" or "ping" => Verb.Status, "mount" => Verb.Mount, "unmount" => Verb.Unmount,
             "goto" or "go" or "navigate" => Verb.GoTo, "resize" => Verb.Resize, "frames" => Verb.Frames, "settle" => Verb.Settle,
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
-            "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
+            "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

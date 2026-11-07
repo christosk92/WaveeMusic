@@ -28,7 +28,7 @@ also spaces the wrapped lines (`FlexLayout.MeasureWrap`). No width math, no brea
 
 ## Check which exe is running before diagnosing
 
-A `dotnet run`, a VS publish-profile build (`bin\Release\net10.0\win-arm64\publish-profiles-*\Wavee.exe`) and a
+A `dotnet run`, a VS publish-profile build (`bin\Release\net11.0\win-arm64\publish-profiles-*\Wavee.exe`) and a
 script publish are different binaries with different stamps. Before you explain any behaviour, get the running path:
 `Get-Process Wavee | Select-Object Id, Path, StartTime`. "Send a test crash report: no crash service set up" was
 simply an unstamped publish-profile build running instead of the stamped verify build. Stop probe launches by PID

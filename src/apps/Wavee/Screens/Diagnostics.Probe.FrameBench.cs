@@ -381,10 +381,16 @@ public static partial class Diagnostics
                 case FrameBenchScenarios.StageVisualizer:
                 {
                     if (play is null) return Skip("no track to play");
-                    Base(playing: true, name == FrameBenchScenarios.StageLyrics ? word ?? line ?? play : play);
+                    string[] av = Platform.Args.Argv;
+                    // `--bench-play <uri>` plays that track instead of the picked one, and `--bench-canvas off` turns Show Canvas off: the
+                    // A/B of a Spotify Canvas looping behind the stage (a fake canvas track, e.g. tr3, with the setting on vs off; --fake
+                    // keeps the setting in memory).
+                    int pAt = Array.IndexOf(av, "--bench-play"), cAt = Array.IndexOf(av, "--bench-canvas");
+                    string? forced = pAt >= 0 && pAt + 1 < av.Length ? av[pAt + 1] : null;
+                    if (cAt >= 0 && cAt + 1 < av.Length) CanvasVideo.SetEnabled(av[cAt + 1] != "off");
+                    Base(playing: true, forced ?? (name == FrameBenchScenarios.StageLyrics ? word ?? line ?? play : play));
                     Prefs.Stage.SetMode((int)(name == FrameBenchScenarios.StageLyrics ? Stage.Mode.Lyrics : Stage.Mode.Visualizer));
                     // `--bench-blur N` (0-100) and `--bench-layout card|large` (A/B of the stage's depth blur; --fake keeps both in memory).
-                    string[] av = Platform.Args.Argv;
                     int bAt = Array.IndexOf(av, "--bench-blur"), lAt = Array.IndexOf(av, "--bench-layout");
                     if (bAt >= 0 && bAt + 1 < av.Length && int.TryParse(av[bAt + 1], out int benchBlur)) Prefs.Lyrics.SetBlurStrength(benchBlur);
                     if (lAt >= 0 && lAt + 1 < av.Length) Prefs.Stage.SetLayout(av[lAt + 1] == "large" ? (int)Stage.VizLayout.LargeArt : (int)Stage.VizLayout.Card);

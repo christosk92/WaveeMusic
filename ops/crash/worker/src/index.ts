@@ -1,6 +1,6 @@
 import { hasValidAccess } from "./access.js";
 import { discordSink, type AlertSink } from "./alerts.js";
-import { computeFingerprint, deriveTitle, FINGERPRINT_VERSION, type GroupingInput } from "./grouping.js";
+import { computeFingerprint, deriveTitle, fingerprintVersion, type GroupingInput } from "./grouping.js";
 import { purgeExpiredReports, reportObjectKeys, type PurgeResult } from "./retention.js";
 import { symbolicate } from "./symbolicate.js";
 import { D1Store, parseFramesJson, type Store } from "./store.js";
@@ -179,7 +179,7 @@ export async function handleReport(request: Request, env: Env, store: Store, dep
     await store.touchSymbolsMeta(summary.quad, summary.arch, sym.debugId, sym.entryCount, receivedAt);
   }
 
-  // Grouping v2 (src/grouping.ts, plan appendix A1).
+  // Grouping v3 (src/grouping.ts): Managed / Native on the innermost app frames; the other kinds keep their v2 key.
   const g: GroupingInput = {
     kind: summary.kind,
     exceptionType: summary.exceptionType,
@@ -190,6 +190,7 @@ export async function handleReport(request: Request, env: Env, store: Store, dep
     frames: sym.frames,
   };
   const fingerprint = await computeFingerprint(g);
+  const fpVersion = fingerprintVersion(g);
   const title = deriveTitle(g);
   const framesJson = JSON.stringify(sym.frames);
 
@@ -198,7 +199,7 @@ export async function handleReport(request: Request, env: Env, store: Store, dep
     summary,
     framesJson,
     fingerprint,
-    fpVersion: FINGERPRINT_VERSION,
+    fpVersion,
     receivedAt,
     hasDump,
     dumpBytes,
@@ -211,7 +212,7 @@ export async function handleReport(request: Request, env: Env, store: Store, dep
     receivedAt,
     newInstall,
     framesJson,
-    fpVersion: FINGERPRINT_VERSION,
+    fpVersion,
   });
 
   // Alerts only for builds whose symmap we hold: the ingest key ships in every install, so a made-up quad must not

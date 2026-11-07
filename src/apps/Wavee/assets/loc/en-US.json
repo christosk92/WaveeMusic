@@ -93,6 +93,14 @@
     "moreBy": "More by {name}",
     "moreByHeading": "More by",
     "allCredits": "All credits",
+    "creditsLine": {
+      "writtenAndProducedBy": "written and produced by",
+      "writtenBy": "written by",
+      "producedBy": "produced by",
+      "with": "with",
+      "and": "and",
+      "allSongs": "all songs"
+    },
     "similarAlbums": "Similar albums",
     "preReleaseEyebrow": "Coming soon",
     "preReleaseOut": "Out now",
@@ -226,7 +234,9 @@
     },
     "discography": {
       "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",
-      "showAllTracks": "Show all {n} tracks"
+      "showAllTracks": "Show all {n} tracks",
+      "showTracks": "Show tracks",
+      "hideTracks": "Hide tracks"
     },
     "access": {
       "$comment": "Who can reach this playlist, said as the meaning of the CURRENT setting rather than as a label for the switch — the access flyout's public toggle swaps between these two.",
@@ -843,6 +853,15 @@
     "subtitleSong": "Song"
   },
   "podcast": {
+    "details": {
+      "publisher": "Publisher",
+      "episodes": "Episodes",
+      "since": "Since",
+      "format": "Format",
+      "ratings": "Ratings",
+      "audio": "Audio",
+      "audioVideo": "Audio and video"
+    },
     "episodes": "Episodes",
     "show": "Podcast",
     "episodeCount": "{count, plural, one {# episode} other {# episodes}}",
@@ -1531,6 +1550,8 @@
       "videoQualityUnlimited": "Unlimited",
       "videoPrepareAhead": "Prepare videos ahead of time",
       "videoPrepareAheadSub": "Fetch video licences before you switch, so opening a music video is near-instant. Uses a little extra data for videos you may not watch.",
+      "showCanvas": "Show Canvas",
+      "showCanvasSub": "Play the short looping visuals artists add to their tracks in Now playing and full screen. Silent, and only for the song that is playing.",
       "qualityNormal": "Normal",
       "qualityNormalSub": "96 kbps - about 0.04 GB/hour",
       "qualityHigh": "High",
@@ -1542,7 +1563,7 @@
       "rememberVolume": "Remember volume",
       "rememberVolumeSub": "Restore the last volume level when Wavee starts",
       "autoplay": "Autoplay",
-      "autoplaySub": "Continue with similar songs when the current context ends",
+      "autoplaySub": "When your music ends, keep listening to similar songs. Repeat turns it off",
       "playerBar": "Player bar",
       "showRemaining": "Show remaining time",
       "showRemainingSub": "Count down time left instead of showing the track duration",
@@ -1612,6 +1633,16 @@
       "localStoreSub": "store.json, navigation history",
       "imageCache": "Image cache",
       "imageCacheSub": "cache\\images - album art and other remote images",
+      "aiModels": "AI models",
+      "aiModelsSub": "ai\\lyrics - lyrics timing models that run on this PC",
+      "aiModelsCount": "ai\\lyrics - lyrics timing models · {count} languages",
+      "aiModelsCountOne": "ai\\lyrics - lyrics timing models · 1 language",
+      "aiModelsNone": "ai\\lyrics - none downloaded. AI word timing in the Lyrics settings downloads them.",
+      "removeAiModels": "Remove AI models",
+      "removeAiModelsBody": "Remove the AI models, their NPU caches and the word timing made with them? Word-by-word lyrics made on this PC stop until you download the models again in the Lyrics settings.",
+      "aiModelsRemoved": "Removed the AI models",
+      "otherData": "Other app data",
+      "otherDataSub": "lyrics cache, crash reports, What's new, podcast transcripts, modules",
       "openFolder": "Open folder",
       "deleteOldLogs": "Delete old logs",
       "playbackCache": "Playback cache",
@@ -3052,6 +3083,45 @@
         "more": "Podcasts & audiobooks",
         "resultsFor": "Results for “{q}”"
       },
+      "library": {
+        "$comment": "WinUI's library and show controls (winui menus/podcasts): sentence-case sort, view and scope words for the DropDownButton menus and the SelectorBar pivots.",
+        "title": "Library",
+        "sortBy": "Sort by",
+        "sort": {
+          "recents": "Recents",
+          "alphabetical": "Alphabetical",
+          "creator": "Artist",
+          "recentlyAdded": "Recently added",
+          "releaseDate": "Release date",
+          "albums": "Albums"
+        },
+        "order": {
+          "header": "Order",
+          "ascending": "Ascending",
+          "descending": "Descending"
+        },
+        "view": "View",
+        "viewOptions": "View options",
+        "size": "Size",
+        "sizes": {
+          "small": "Small",
+          "medium": "Medium",
+          "large": "Large"
+        },
+        "readerSort": {
+          "newest": "Newest",
+          "oldest": "Oldest",
+          "alphabetical": "Alphabetical"
+        },
+        "scope": {
+          "inLibrary": "In your library",
+          "allReleases": "All releases",
+          "allShort": "All"
+        },
+        "filterShows": "Filter shows",
+        "showSort": "Sort episodes",
+        "showFilter": "Filter episodes"
+      },
       "lists": {
         "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
       },
@@ -3075,6 +3145,9 @@
         "latestRelease": "Latest release",
         "discography": "Discography",
         "readMore": "Read more",
+        "showLess": "Show less",
+        "showDetails": "Show details",
+        "youMightAlsoLike": "You might also like",
         "viewGrid": "Grid",
         "viewList": "List",
         "verifiedArtist": "Verified artist",

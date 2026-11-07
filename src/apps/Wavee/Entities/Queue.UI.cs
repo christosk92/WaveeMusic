@@ -332,6 +332,7 @@ public static partial class Queue
             // write or every publication of the context's whole table (an artist page answering albums re-rendered the docked queue panel
             // whenever the queue played from an album — the owner's 2026-10-25 census, audit PERF r3 MOTION).
             Autoplay = UseComputed(s_autoplay).Value;
+            _ = UseComputed(s_autoplayListed).Value;       // the stage peeks repeat, but the autoplay rows it lists follow it (#215)
             bool shuffle = rail ? Playback.Shuffle.Value : Playback.Shuffle.Peek();
             RepeatMode repeat = rail ? Playback.Repeat.Value : Playback.Repeat.Peek();
             string? contextName = UseComputed(s_contextName).Value;
@@ -343,6 +344,7 @@ public static partial class Queue
 
         static readonly Func<ulong> s_rowsDigest = RowsDigest;
         static readonly Func<bool> s_autoplay = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayEnabled(); };
+        static readonly Func<bool> s_autoplayListed = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayListed(Shell.QueueModel.AutoplayEnabled(), Playback.Repeat.Value); };
         static readonly Func<string?> s_contextName = static () =>
         {
             var wire = Playback.ContextLabel.Value;

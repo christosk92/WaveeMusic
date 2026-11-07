@@ -56,6 +56,7 @@ public static unsafe class CoverImage
         IWICBitmapDecoder* decoder = null;
         IWICBitmapFrameDecode* frame = null;
         IWICBitmapClipper* clipper = null;
+        using var crashRegion = FluentGpu.Foundation.CrashTrail.Enter(FluentGpu.Foundation.NativeRegion.WicDecode, "app", source.Length);   // names a fault in the codec
         try
         {
             Guid clsid = ClsidFactory;

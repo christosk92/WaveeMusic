@@ -130,8 +130,10 @@ internal sealed class ZuneBand : Component
         var scrollSig = _scroll;
         float row2H = rec.Row2H, restH = rec.HeightWith(row2);
         float Tie() => tied && scrollSig is { } sg ? ZuneBandRules.TiedFold(sg.Value.Offset, row2H) : 0f;
-        // A detail page (no destination of its own) leads row 2 with its title; its current view takes the underline (the tab style).
-        bool detail = current < 0;
+        // A detail page (no destination of its own) leads row 2 with its title; its current view takes the underline (the tab style). Asked of the chrome's
+        // own page, which follows the landing as row 2's words do: `current` lights a clicked destination at once, so a detail page left for home dropped
+        // its title and hairline while its views stood, and they jumped to the lead for the exit leg (audit FU2d).
+        bool detail = band.ChromeIsDetail?.Invoke() ?? current < 0;
         string? title = rec.TitleAndActions && detail && views.Count > 0 && chrome is { Title.Length: > 0 } c ? c.Title : null;
 
         void OnTabKey(BandTabRow row, int at, KeyEventArgs e)

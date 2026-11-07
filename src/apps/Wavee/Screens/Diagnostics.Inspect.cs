@@ -425,6 +425,8 @@ public static partial class Diagnostics
             Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
+                case Inspect.Verb.Transport:
+                    return Transport(id, name, a);
                 case Inspect.Verb.Skeleton:
                     return Skeleton(id, name, a, shell);
                 case Inspect.Verb.GoTo:
@@ -554,7 +556,7 @@ public static partial class Diagnostics
                         // context (the stage's "playing from …" line) has one
                         EntityId contextId = default;
                         if (a.Has("context") && !EntityId.TryParse(a.Str("context").AsSpan(), out contextId)) return Inspect.Reply.Fail(id, name, "context wants a spotify: uri, not '" + a.Str("context") + "'");
-                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0), context: contextId)) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
+                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0), context: contextId, at: a.Int("at", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         // The load opens on the audio chain on the wall clock, which a frame-counted settle can outrun (the reply then read the bar and the
                         // rows before the track played: no playing row, no lyrics button). Wait for it to land first; `phase` says where it stands.
@@ -595,11 +597,11 @@ public static partial class Diagnostics
                         string kind = a.Str("kind").ToLowerInvariant();
                         BeforeState(shell);
                         if (a.Has("page")) return PageState(id, name, a, kind, shell);
-                        // A detail page's header unknown in place, then its landing (Entities.Fake.Cold.cs, audit B7 r2).
+                        // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
                             string uri = a.Str("uri");
-                            if (!Entities.StageHead(uri)) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show or episode the fake holds>, not '" + uri + "'");
+                            if (!Entities.StageHead(uri)) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
                             InspectKit.ColdStaged = true;   // the next mount puts the header back
                             Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
                             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
@@ -640,6 +642,8 @@ public static partial class Diagnostics
                     return Trace(id, name, a, shell);
                 case Inspect.Verb.Drag:
                     return Drag(id, name, a);
+                case Inspect.Verb.Window:
+                    return Window(id, name, a, shell);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
@@ -807,6 +811,9 @@ public static partial class Diagnostics
             };
             string images = a.Str("images", "fake").ToLowerInvariant();
             if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
+            string motion = a.Str("motion", "full").ToLowerInvariant();
+            if (motion is not ("full" or "reduced")) { error = "motion is full or reduced"; return false; }
+            FluentGpu.Dsl.Motion.ReducedMotion = motion == "reduced";   // the OS setting a headless server never reads; every mount sets it
             string materials = a.Str("materials", "on").ToLowerInvariant();
             if (materials is not ("on" or "off")) { error = "materials is on or off"; return false; }
             // The one switch the engine reads for "no acrylic" besides the OS's two (Materials.AcrylicEnabled); every mount sets it.
@@ -943,6 +950,27 @@ public static partial class Diagnostics
             w.WriteString("preferred", s.Preferred.ToString());
             w.WriteString("transport", Video.State.Transport.Peek().ToString());
             w.WriteBoolean("player", Playback.Video.Player.Peek().Player is not null);
+            w.WriteEndObject();
+        }
+
+        /// <summary>`canvas{shows, track, file, owner, bound, inView, run, state, natural}`: the Spotify Canvas host (Shell/Canvas.cs) — what the
+        /// surfaces draw for the playing track, which surface presents the one player, and where that player is. `state` and `natural`
+        /// are the engine player's own (a headless render cannot show the composited frame: these say whether it decodes).</summary>
+        static void WriteCanvasFacts(Utf8JsonWriter w)
+        {
+            var now = CanvasVideo.Current.Peek();
+            w.WriteStartObject("canvas");
+            w.WriteBoolean("shows", now.Shows);
+            w.WriteString("track", now.Uri ?? "");
+            w.WriteBoolean("file", now.File is { Length: > 0 });
+            w.WriteString("owner", CanvasVideo.Owner.Peek().ToString());
+            w.WriteString("bound", CanvasVideo.Bound.Peek().ToString());
+            w.WriteBoolean("inView", CanvasVideo.InView.Peek());
+            w.WriteBoolean("run", CanvasVideo.Running);
+            w.WriteString("state", CanvasVideo.PlayerState());
+            var natural = CanvasVideo.PlayerNatural();
+            w.WriteString("natural", natural.Width + "x" + natural.Height);
+            if (CanvasVideo.PlayerError() is { Length: > 0 } error) w.WriteString("error", error);
             w.WriteEndObject();
         }
 
@@ -1557,6 +1585,7 @@ public static partial class Diagnostics
             w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
             WriteHealth(w);   // overlays, memory and GC (Diagnostics.Inspect.Picture.cs)
             WriteVideoFacts(w);
+            WriteCanvasFacts(w);
             if (_shell is { } shell)
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)

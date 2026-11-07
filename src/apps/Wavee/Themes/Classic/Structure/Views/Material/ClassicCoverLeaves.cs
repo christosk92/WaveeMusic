@@ -239,7 +239,7 @@ internal sealed class ClassicCoverVeil : Component
         Element veil = new BoxEl
         {
             Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
-            HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical, p.Hold),
+            HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical, p.Hold, p.Ramp),
             // Fade only a re-key, never the first paint - and never a PRE-SETTLEMENT re-key either: see the sibling
             // in ClassicCoverBlend. An Enter with no Exit beneath it unveils the photo for the length of the fade.
             Enter = enterAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,

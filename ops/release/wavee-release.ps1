@@ -22,7 +22,8 @@
                        of the Wavee.exe that ships (Assert-CrashIngestStamp). No stamp, no release (#165).
       3b symbols       Publish-WaveeSymbolMap per arch: Wavee.ReleaseTool symbol-map (Wavee.pdb + Wavee.exe from the
                        staged msix) -> Wavee.symmap, uploaded with the crash Worker's own wrangler
-                       (ops\crash\worker\node_modules\.bin) to wavee-crash/symbols/<quad>/win-<arch>.symmap; -DryRun /
+                       (ops\crash\worker\node_modules\.bin) to wavee-crash/symbols/<quad>/win-<arch>.symmap, and that
+                       Wavee.exe + the symbols zip beside it (symbols/<quad>/win-<arch>/) for WinDbg; -DryRun /
                        -NoUpload build the maps and upload nothing
       5  sign          ONE Azure Trusted Signing signtool call over every .msix, then verify each
       6  appinstaller  one .appinstaller per architecture, pointing at this release's msix and at the rolling feed
@@ -1048,6 +1049,10 @@ function Invoke-Symbols {
         Good "$(Split-Path -Leaf $r.Symmap)  $([math]::Round($r.Bytes / 1KB, 1)) KB"
         if ($r.Uploaded) { Good "uploaded -> wavee-crash/$($r.Key)" }
         else { Warn "symbols upload skipped ($($r.Reason)): wavee-crash/$($r.Key) was NOT written to R2" }
+        # The exe + PDB zip beside the map, so a dump of this release opens in WinDbg (crash-diagnostics.md §4).
+        if ($r.BinaryKeys.Count -eq 0) { Warn "no symbols zip for $($a): Wavee.exe and Wavee.pdb were NOT uploaded" }
+        elseif ($r.BinariesUploaded) { foreach ($k in $r.BinaryKeys) { Good "uploaded -> wavee-crash/$k" } }
+        else { Warn "binaries upload skipped ($($r.Reason)): $($r.BinaryKeys -join ', ') NOT written to R2" }
     }
 }
 

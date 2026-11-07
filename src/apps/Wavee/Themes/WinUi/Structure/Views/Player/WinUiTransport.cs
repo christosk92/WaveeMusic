@@ -41,6 +41,8 @@ internal static class WinUiTransport
 
         var host = props.Host;
         bool enabled = props.Enabled;
+        // How it LOOKS: enabled, or refused only while the row loads (a skip): the fills and the thumb hold, only the input waits.
+        bool drawn = enabled || props.Pending;
         // The mini bar's hairline (TC2, board C-PlayerBar mini): the played fraction as a 2-DIP line, the strong rail behind it, nothing to grab.
         if (props.Hairline)
             return new BoxEl
@@ -51,7 +53,7 @@ internal static class WinUiTransport
                 [
                     new BoxEl
                     {
-                        Grow = 1f, Fill = enabled ? Tok.AccentDefault : Tok.FillControlStrong, HitTestVisible = false,
+                        Grow = 1f, Fill = drawn ? Tok.AccentDefault : Tok.FillControlStrong, HitTestVisible = false,
                         TransformOriginX = 0f, Transform = host.FillTransform,
                     },
                 ],
@@ -60,7 +62,7 @@ internal static class WinUiTransport
         var fill = new BoxEl
         {
             Grow = 1f, Height = WinUiTransportLayout.SeekTrack, AlignSelf = FlexAlign.Center,
-            Fill = enabled ? Tok.AccentDefault : Tok.AccentDisabled,
+            Fill = drawn ? Tok.AccentDefault : Tok.AccentDisabled,
             // Square: a scaled rounded rect shows cap slivers at the value edge.
             Corners = CornerRadius4.All(0f), HitTestVisible = false,
             TransformOriginX = 0f, Transform = host.FillTransform,
@@ -90,7 +92,7 @@ internal static class WinUiTransport
                 new BoxEl
                 {
                     Height = WinUiTransportLayout.SeekTrack, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Center,
-                    Fill = enabled ? Tok.FillControlStrong : Tok.FillControlStrongDisabled,
+                    Fill = drawn ? Tok.FillControlStrong : Tok.FillControlStrongDisabled,
                     Corners = CornerRadius4.All(WinUiTransportLayout.SeekTrack / 2f), ClipToBounds = true, ZStack = true,
                     HitTestVisible = false, Children = railKids,
                 },
@@ -103,7 +105,7 @@ internal static class WinUiTransport
                     AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Corners = CornerRadius4.All(ring / 2f),
                     Fill = Tok.FillControlSolid, BorderColor = Tok.StrokeControlDefault, BorderWidth = 1f,
-                    Opacity = enabled ? 1f : 0f,
+                    Opacity = drawn ? 1f : 0f,
                     HitTestVisible = false, Transform = host.ThumbTransform(ring), OnRealized = host.ThumbRealized,
                     Children =
                     [
@@ -111,7 +113,7 @@ internal static class WinUiTransport
                         {
                             Width = WinUiTransportLayout.SeekDot, Height = WinUiTransportLayout.SeekDot,
                             Corners = CornerRadius4.All(WinUiTransportLayout.SeekDot * 0.5f),
-                            Fill = enabled ? Tok.AccentDefault : Tok.AccentDisabled,
+                            Fill = drawn ? Tok.AccentDefault : Tok.AccentDisabled,
                             HoverFill = enabled ? Tok.AccentSecondary : Tok.AccentDisabled,
                             PressedFill = enabled ? Tok.AccentTertiary : Tok.AccentDisabled,
                             HoverScale = enabled ? WinUiTransportLayout.SeekDotHover : 1f,

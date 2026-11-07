@@ -167,6 +167,7 @@ public static partial class Settings
             new(Tab.Playback, "Video", "videoQuality", "TvMonitor"),
             new(Tab.Playback, "Video", "videoMetered", "RadioTower"),
             new(Tab.Playback, "Video", "videoPrepareAhead", "Download"),
+            new(Tab.Playback, "Video", "showCanvas", "Picture"),
             new(Tab.Playback, "Video", "videoOverrides", "Edit"),
             new(Tab.Playback, "Player bar", "playerBarRemaining", "Clock"),
 
@@ -175,6 +176,10 @@ public static partial class Settings
             new(Tab.Storage, "On this PC", "logs", "Document"),
             new(Tab.Storage, "On this PC", "localStore", "Folder"),
             new(Tab.Storage, "On this PC", "imageCache", "Picture"),
+            // The feature's sparkle, as on its card (Appearance › Lyrics) and in What leaves this PC.
+            new(Tab.Storage, "On this PC", "aiModels", "RefineSparkle"),
+            // "FolderOpen", not "ThisPc": the section header owns ThisPc.
+            new(Tab.Storage, "On this PC", "otherData", "FolderOpen"),
             new(Tab.Storage, "Playback cache", "cacheAudio", "Audio"),
             // "Document", not "Tag": License keys keeps Tag; the two would collide within this one section.
             new(Tab.Storage, "Playback cache", "cacheKeys", "Document"),
@@ -400,9 +405,13 @@ public static partial class Settings
     // ══ 6. STORAGE FORMATTING AND LADDERS (0.2.9 `SettingsPage.Storage.cs:27-28, 50-51, 206-212, 245-255`) ═════════
 
     /// <summary>The census of the data folder. Sizes are bytes; <see cref="LogFiles"/> counts every log file, the live
-    /// one included.</summary>
+    /// one included. <see cref="AiModels"/> is the whole <c>ai\lyrics</c> folder (the runtime, the models, their compiled
+    /// NPU caches, the per-song results and a paused download), what the AI lyrics card's Remove deletes;
+    /// <see cref="AiLanguages"/> counts the aligner languages whose every file is verified and in place.
+    /// <see cref="Other"/> is the rest the app writes under the profile: the lyrics cache, the crash reports and captures
+    /// beside the app logs, the What's new / podcast-transcript / cover-upload caches and the modules.</summary>
     public sealed record StorageSnapshot(long LibraryDb, long Runtime, long Logs, int LogFiles, long Store,
-        long AudioBody, long LicenseDb, long ImageCache, long Total);
+        long AudioBody, long LicenseDb, long ImageCache, long AiModels, int AiLanguages, long Other, long Total);
 
     public enum StorageLoadPhase : byte { NotStarted, Loading, Ready, Failed }
 
@@ -587,10 +596,10 @@ public static partial class Settings
 
     public static class StorageRules
     {
-        /// <summary>The usage bar's seven categories, in the ONE order the seven hues are indexed by (ch 27 §4.1):
-        /// library · runtime · logs · local store · audio bodies · license keys · image cache.</summary>
+        /// <summary>The usage bar's nine categories, in the ONE order the nine hues are indexed by (ch 27 §4.1):
+        /// library · runtime · logs · local store · audio bodies · license keys · image cache · AI models · other app data.</summary>
         public static long[] Parts(StorageSnapshot s)
-            => [s.LibraryDb, s.Runtime, s.Logs, s.Store, s.AudioBody, s.LicenseDb, s.ImageCache];
+            => [s.LibraryDb, s.Runtime, s.Logs, s.Store, s.AudioBody, s.LicenseDb, s.ImageCache, s.AiModels, s.Other];
 
         /// <summary>W16's zero-total rule: a category at ≤ 0 bytes leaves the bar and the legend (its row stays); when
         /// EVERY category is zero there is no bar at all — not an empty track.</summary>

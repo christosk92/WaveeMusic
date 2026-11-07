@@ -39,6 +39,7 @@ public static unsafe class ToneImage
         IWICStream* stream = null;
         IWICBitmapDecoder* decoder = null;
         IWICBitmapFrameDecode* frame = null;
+        using var crashRegion = FluentGpu.Foundation.CrashTrail.Enter(FluentGpu.Foundation.NativeRegion.WicDecode, "app", source.Length);   // names a fault in the codec
         try
         {
             Guid clsid = ClsidFactory;

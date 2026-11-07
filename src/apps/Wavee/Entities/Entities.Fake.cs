@@ -106,6 +106,9 @@ public static partial class Entities
     /// <summary>The bundled bright header photograph (a white sky over a pale ground), as an absolute path like <see cref="Cover"/>.</summary>
     static string BrightHeaderPhoto() => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "header-bright.jpg");
 
+    /// <summary>The bundled tall portrait (900 x 1600, a drawn figure: the face at the top, the feet at the foot), as an absolute path like <see cref="Cover"/>.</summary>
+    static string TallPortraitPhoto() => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "portrait-tall.jpg");
+
     // ── the seed ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The demo catalog, as columns. Called once, from the app's boot sequence, only when
@@ -147,6 +150,7 @@ public static partial class Entities
         SeedLibrarySurfaces(now0);    // owner O: Entities.Fake.Library.cs (playlist, local, user, liked facts)
         SeedHomeSurfaces(now0);       // owner P: Entities.Fake.Home.cs (home, search, browse, recents)
         SeedProfileSurfaces(now0);    // profile pages: Entities.Fake.Profile.cs (the four users' social facts + shelves)
+        SeedCanvasSurfaces(now0);     // Spotify Canvas: Entities.Fake.Canvas.cs (which tracks loop a canvas, which have none)
 
         // ONE publication (ch 31 §7.5 step 5 / §1.2): every table this seed touched bumps its Changed signal exactly
         // once, here — never per row and never per relation.
@@ -189,6 +193,7 @@ public static partial class Entities
     static partial void SeedLibrarySurfaces(long now0);
     static partial void SeedHomeSurfaces(long now0);
     static partial void SeedProfileSurfaces(long now0);
+    static partial void SeedCanvasSurfaces(long now0);
 
     static string UserUri(int i) => i switch
     {
@@ -209,6 +214,41 @@ public static partial class Entities
         foreach (char c in id.Text) h = (h ^ c) * 16777619u;
         return h % 3u == 0u;
     }
+    /// <summary>The inspector's <c>transport do=dead</c>: the catalog rules <paramref name="track"/> terminally unavailable (withdrawn,
+    /// region-locked), as an extended-metadata envelope with no entity does (<c>Spotify.Decode.UnavailableTrack</c>): the
+    /// Availability fields only, so the row keeps its title and greys. <c>Track.Unplayable</c> then answers true.</summary>
+    internal static void RuleUnplayable(EntityId track)
+    {
+        if (track.Kind != EntityKind.Track || Current is null) return;
+        var s = Staging.Rent();
+        try
+        {
+            ref var row = ref s.Tracks.RowFor(new StagedId(s.AddText(Utf8(track.Text))), Authority.Full, (uint)TrackFields.Availability);
+            row.Flags |= (uint)TrackFlags.Unavailable;
+            row.AvailableAt = 0;
+            s.Tracks.Settle();
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+    }
+
+    /// <summary>The demo's autoplay answer (<c>Playback.UseFakeAutoplay</c>): <paramref name="count"/> pool tracks the queue does not hold
+    /// yet, walking the pool from a stable offset of the context's uri, as a radio of similar songs would.</summary>
+    internal static EntityId[] FakeAutoplay(EntityId context, int count)
+    {
+        uint h = 2166136261u;
+        foreach (char c in context.Text) h = (h ^ c) * 16777619u;
+        var held = new HashSet<EntityId>();
+        for (int i = 0; i < Queue.Count; i++) held.Add(Queue.RefAt(i).Id);
+        var picked = new List<EntityId>(count);
+        for (int k = 0; k < TrackCount && picked.Count < count; k++)
+        {
+            EntityId id = EntityId.Parse(TrackUri((int)(h % TrackCount) + 100 + k).AsSpan());
+            if (id.IsPlayable && held.Add(id)) picked.Add(id);
+        }
+        return picked.ToArray();
+    }
+
     /// <summary>The demo's outputs (<c>Playback.Audio.UseFake</c>): the machine's speakers, the default, and a headset, as a stock Windows laptop lists them.</summary>
     internal static Playback.Audio.LocalAudioDevice[] FakeOutputs() =>
     [

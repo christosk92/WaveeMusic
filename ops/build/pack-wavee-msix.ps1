@@ -207,9 +207,9 @@ if (-not (Test-Path (Join-Path $pubDir 'Wavee.exe'))) { throw "Wavee.exe missing
 # 1b. symbols -> $symDir + $symZip (BEFORE the recursive layout copy, so nothing of this can ship in the package)
 #
 #   Wavee.pdb      the native PDB link.exe /DEBUG wrote for THIS Wavee.exe. The ILC targets' _CopyAotSymbols target
-#                  copies it from bin\<cfg>\net10.0\<rid>\native\ into the publish folder (deleting the managed IL
+#                  copies it from bin\<cfg>\net11.0\<rid>\native\ into the publish folder (deleting the managed IL
 #                  PDB of the same name first); the bin\...\native\ copy is the fallback.
-#   Wavee.map.xml  the ILC --map output. Written to obj\<cfg>\net10.0\<rid>\native\ (NativeIntermediateOutputPath),
+#   Wavee.map.xml  the ILC --map output. Written to obj\<cfg>\net11.0\<rid>\native\ (NativeIntermediateOutputPath),
 #                  never to the publish folder. Names + lengths + content hashes of every emitted node; it carries
 #                  NO addresses - the PDB is what resolves an RVA, the map is what says which methods changed.
 #   SYMBOLS.txt    the build stamp + the sha256 of the exe the PDB belongs to, so a zip can be matched to a crash
@@ -219,10 +219,10 @@ Step "Collecting symbols -> $symDir"
 Remove-Item $symDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $symZip -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $symDir | Out-Null
-$objNative = Join-Path $root "src\apps\Wavee\obj\$Configuration\net10.0\$rid\native"
+$objNative = Join-Path $root "src\apps\Wavee\obj\$Configuration\net11.0\$rid\native"
 # A RID publish may also lay out obj\<platform>\<cfg>\... (Platform flows from the RID); both are candidates.
-$objNativePlat = Join-Path $root "src\apps\Wavee\obj\$Arch\$Configuration\net10.0\$rid\native"
-$binNative = Join-Path $root "src\apps\Wavee\bin\$Configuration\net10.0\$rid\native"
+$objNativePlat = Join-Path $root "src\apps\Wavee\obj\$Arch\$Configuration\net11.0\$rid\native"
+$binNative = Join-Path $root "src\apps\Wavee\bin\$Configuration\net11.0\$rid\native"
 
 function Find-WaveeBuildArtifact {
   <# The newest file of that name written by THIS publish: the expected locations, then anywhere under obj\ and bin\
