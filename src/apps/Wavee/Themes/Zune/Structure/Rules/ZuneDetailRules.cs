@@ -346,8 +346,8 @@ public static class ZuneDetailRules
     /// <summary>The credits' shimmer while the members' credits are asked: the board's paragraph is four lines, the last one short.</summary>
     public const int SkelCreditsLines = 4;
 
-    /// <summary>See <see cref="SkelCreditsLines"/>: the last line's bar (the others run the column's width).</summary>
-    public const float SkelCreditsLastW = 156f;
+    /// <summary>See <see cref="SkelCreditsLines"/>: the last line's bar, and a full line's (wider than any column the credits stand in: it shrinks to it).</summary>
+    public const float SkelCreditsLastW = 156f, SkelCreditsLineW = 1200f;
 
     /// <summary>"More by" as rows (Z-Album: a 56 cover, 12 to its words) and as a grid (Z-Album-Huge: two columns 16 apart).</summary>
     public const float MoreByArt = 56f, MoreByArtGap = 12f, MoreByGridGap = 16f;

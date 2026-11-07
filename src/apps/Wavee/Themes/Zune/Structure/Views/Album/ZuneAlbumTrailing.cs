@@ -500,16 +500,15 @@ internal static class ZuneAlbumTrailing
     {
         var lines = new Element[Z.SkelCreditsLines + 1];
         lines[0] = new BoxEl { Height = Z.AsideHeadingH, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(Z.SkelHeadingW, Z.SkelHeadingH)] };
-        // Each line a bar of the words' size on the line's height (a childless box the shimmer draws as a bar: stretched, the last one short).
+        // Each line a bar of the words' size on the line's height. The deriver draws only a SIZED childless box as a bar (a stretched one stays air),
+        // so a full line is a wide bar that shrinks to the column, the last one short.
         for (int i = 1; i <= Z.SkelCreditsLines; i++)
             lines[i] = new BoxEl
             {
-                Height = Z.CreditsLine, Direction = 1, Justify = FlexJustify.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Height = Z.CreditsLine, Direction = 0, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
                 Children =
                 [
-                    i == Z.SkelCreditsLines
-                        ? K.Bar(Z.SkelCreditsLastW, Z.CreditsSize)
-                        : new BoxEl { Height = Z.CreditsSize, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(Z.SkelRadius) },
+                    K.Bar(i == Z.SkelCreditsLines ? Z.SkelCreditsLastW : Z.SkelCreditsLineW, Z.CreditsSize) with { Shrink = 1f, MinWidth = 0f },
                 ],
             };
         return new BoxEl
