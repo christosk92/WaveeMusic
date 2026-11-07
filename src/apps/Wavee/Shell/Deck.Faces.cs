@@ -42,7 +42,7 @@ public static partial class Deck
     /// re-loads on a new album. Six bound channels: the eject slide, the two pack radii, the two hub angles.</summary>
     static class CassetteFace
     {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Element backdrop)
         {
             string shell = Rail.PlayerPrefs.ChoiceSlug(in preset, "shell");
             string labelStyle = Rail.PlayerPrefs.ChoiceSlug(in preset, "label");
@@ -132,6 +132,7 @@ public static partial class Deck
             return Canvas.Create(s, s,
             [
                 new CanvasChild(0f, 0f, new BoxEl { Width = s, Height = s, Shrink = 0f, Gradient = GradientSpec.Vertical(Hex(0x2B2F3A), Hex(0x1C1F27)) }),
+                new CanvasChild(0f, 0f, backdrop),
                 new CanvasChild(shellX, shellY, shellWrapper),
             ]);
         }
@@ -260,7 +261,7 @@ public static partial class Deck
         /// <summary>One string per whole second, wrapping at 10 000 s like the real counter.</summary>
         static readonly FormatCache<int> CounterCache = FormatCache.Create<int>();
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Element backdrop)
         {
             string reelStyle = Rail.PlayerPrefs.ChoiceSlug(in preset, "reel");
             float s = side, reel = 0.40f * s, reelY = 0.07f * s;
@@ -271,6 +272,7 @@ public static partial class Deck
             return Canvas.Create(s, s,
             [
                 new CanvasChild(0f, 0f, new BoxEl { Width = s, Height = s, Shrink = 0f, Gradient = GradientSpec.Vertical(Hex(0x2A2D33), Hex(0x1B1D22)) }),
+                new CanvasChild(0f, 0f, backdrop),
                 new CanvasChild(0.06f * s, reelY, Reel(sig, reel, s, flangeTint, left: true)),
                 new CanvasChild(s - 0.06f * s - reel, reelY, Reel(sig, reel, s, flangeTint, left: false)),
                 new CanvasChild(0.26f * s - guide * 0.5f, guideY, Guide(guide)),
@@ -375,13 +377,14 @@ public static partial class Deck
     /// window shows a slice of the same disc.</summary>
     static class CdFace
     {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Element backdrop)
         {
             bool md = Rail.PlayerPrefs.ChoiceSlug(in preset, "format") == "md";
             float s = side;
             var kids = new List<CanvasChild>(5)
             {
                 new(0f, 0f, new BoxEl { Width = s, Height = s, Shrink = 0f, Gradient = GradientSpec.Vertical(Hex(0x22252C), Hex(0x14161B)) }),
+                new(0f, 0f, backdrop),
                 new(0.06f * s, 0.05f * s, new TextEl(md ? "MD · ATRAC" : "COMPACT DISC · DIGITAL AUDIO")
                 {
                     Width = 0.80f * s, Height = 0.034f * s, Size = 0.021f * s, Weight = 600, CharSpacing = 180f,
@@ -531,7 +534,7 @@ public static partial class Deck
     /// the bar's fill is one bound scale, the thumb one bound translation, the clocks 1 Hz bound text in FIXED slots.</summary>
     static class IpodFace
     {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host, Element backdrop)
         {
             string body = Rail.PlayerPrefs.ChoiceSlug(in preset, "body");
             bool green = Rail.PlayerPrefs.ChoiceSlug(in preset, "lcd") == "green";
@@ -549,6 +552,7 @@ public static partial class Deck
             var gesture = host.Grip;
             return Canvas.Create(side, side,
             [
+                new CanvasChild(0f, 0f, backdrop),
                 new CanvasChild(bodyX, bodyY, new BoxEl
                 {
                     Width = bodyW, Height = bodyH, Shrink = 0f, Corners = CornerRadius4.All(side * 0.055f),
@@ -795,7 +799,7 @@ public static partial class Deck
         static readonly PathData RedArc = Intern("M68 32 A40 40 0 0 1 86 62");
         static readonly PathData RedTicks = Intern(BuildScale(red: true));
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Element backdrop)
         {
             string face = Rail.PlayerPrefs.ChoiceSlug(in preset, "face");
             ColorF plate = face switch { "blue" => Hex(0x0A2A5A), "black" => Hex(0x141519), _ => Hex(0xEFE6CF) };
@@ -811,6 +815,7 @@ public static partial class Deck
 
             return Canvas.Create(side, side,
             [
+                new CanvasChild(0f, 0f, backdrop),
                 new CanvasChild(0.05f * side, top, Meter(side, mw, mh, plate, ink, red, glow, sig.Angle0, "LEFT")),
                 new CanvasChild(side - 0.05f * side - mw, top, Meter(side, mw, mh, plate, ink, red, glow, sig.Angle1, "RIGHT")),
                 new CanvasChild((side - knob) * 0.5f, 0.60f * side, Knob(knob)),
@@ -1203,7 +1208,7 @@ public static partial class Deck
     {
         const int Bands = 24, WaveDots = 32;
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Element backdrop)
         {
             var option = Rail.PlayerCatalog.Option(in preset, "preset");
             int index = Rail.PlayerPrefs.Choice(in preset, in option);
@@ -1215,8 +1220,9 @@ public static partial class Deck
 
             float cover = 0.22f * side, capSize = MathF.Max(8f, side * 0.034f);
             var frac = sig.Frac;
-            var kids = new List<CanvasChild>(6)
+            var kids = new List<CanvasChild>(7)
             {
+                new(0f, 0f, backdrop),
                 new(0f, 0f, style switch
                 {
                     "alchemy" => Alchemy(side, sig, colour),

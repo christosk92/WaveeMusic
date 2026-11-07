@@ -2197,7 +2197,8 @@
       "preset": "Preset",
       "colour": "Colour",
       "drift": "Drift",
-      "bleed": "Bleed"
+      "bleed": "Bleed",
+      "background": "Background"
     },
     "choice": {
       "$comment": "Every choice across every option row (NpvPlayerCatalog.Choice.LabelKey). The default choice is always the FIRST one listed for its option.",
@@ -2243,7 +2244,9 @@
       "slow": "Slow",
       "fast": "Fast",
       "soft": "Soft",
-      "strong": "Strong"
+      "strong": "Strong",
+      "plainGround": "Default",
+      "canvasGround": "Canvas"
     },
     "fault": {
       "network": "Can’t play — check your connection",
