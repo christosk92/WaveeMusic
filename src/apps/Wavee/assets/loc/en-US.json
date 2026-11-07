@@ -2852,6 +2852,11 @@
   },
   "theme": {
     "$comment": "Installed themes: their names and one-line descriptions, referenced by each theme's manifest (Theming/Composition/ThemeManifest.cs).",
+    "swiftui": {
+      "$comment": "SwiftUI (spike): Apple's Liquid Glass design (iOS 26 / macOS 26) over the WinUI structure.",
+      "name": "SwiftUI",
+      "description": "Liquid Glass: floating glass sidebar and player, SF-style type"
+    },
     "classic": {
       "name": "Wavee Classic",
       "description": "Today’s Wavee: sidebar, tabs, washes"
