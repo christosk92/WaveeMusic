@@ -3060,6 +3060,44 @@
         "more": "Podcasts & audiobooks",
         "resultsFor": "Results for “{q}”"
       },
+      "library": {
+        "$comment": "WinUI's library and show controls (winui menus/podcasts): sentence-case sort, view and scope words for the DropDownButton menus and the SelectorBar pivots.",
+        "sortBy": "Sort by",
+        "sort": {
+          "recents": "Recents",
+          "alphabetical": "Alphabetical",
+          "creator": "Artist",
+          "recentlyAdded": "Recently added",
+          "releaseDate": "Release date",
+          "albums": "Albums"
+        },
+        "order": {
+          "header": "Order",
+          "ascending": "Ascending",
+          "descending": "Descending"
+        },
+        "view": "View",
+        "viewOptions": "View options",
+        "size": "Size",
+        "sizes": {
+          "small": "Small",
+          "medium": "Medium",
+          "large": "Large"
+        },
+        "readerSort": {
+          "newest": "Newest",
+          "oldest": "Oldest",
+          "alphabetical": "Alphabetical"
+        },
+        "scope": {
+          "inLibrary": "In your library",
+          "allReleases": "All releases",
+          "allShort": "All"
+        },
+        "filterShows": "Filter shows",
+        "showSort": "Sort episodes",
+        "showFilter": "Filter episodes"
+      },
       "lists": {
         "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
       },

@@ -49,6 +49,9 @@ internal static partial class ClassicLibraryPage
     {
         var cache = ctx.Hooks.UseRef(new PageCache()).Value;
         cache.Props = props;
+        // A structure that borrows this page may draw its own choice controls here (contract 1.85; WinUI's sort, pivots and view pair). Classic registers none.
+        var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
+        cache.Controls = registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var controls) ? controls : null;
         // The layout tier's record: the structure's ladder (the host's tier signal, `props.Collapsed`) decides the one-column drill-in, the content tier the split's numbers.
         cache.Layout = ClassicLibraryTiers.Of(ctx.Tier(), props.Collapsed);
         cache.Prepare();
@@ -95,6 +98,8 @@ internal static partial class ClassicLibraryPage
     {
         public LibraryPageProps Props = null!;
         public ClassicLibraryLayout Layout = null!;
+        /// <summary>The borrowing structure's choice controls (contract 1.85), null in Classic.</summary>
+        public LibraryControlsStyle? Controls;
         public Element? Picker, PickerCompact, PickerSort, LeftGrip, MidGrip, Sticky, Strip;
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;

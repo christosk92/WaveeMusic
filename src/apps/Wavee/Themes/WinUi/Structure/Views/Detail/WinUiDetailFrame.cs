@@ -43,11 +43,16 @@ internal static partial class WinUiDetailFrame
             Key = p.ContentKey, Grow = 1f, Shrink = 1f, MinWidth = p.ContentMinWidth, MinHeight = 0f, Direction = 1,
             Children = [p.Content],
         };
-        // A show's fixed header sits above its episodes (never the hero system), on the page's inset.
+        // A show's fixed header sits above its episodes (never the hero system), on the page's inset. The episodes' reader pads itself by the core's 24
+        // (16 narrow); the page's inset is 36 at Standard and 48 at Huge, so the reader's column stands that much further in (W-Show: the filter, the heads
+        // and the rows on the cover's edge). The spacers ease across a crossing (the inset's own rule), never a snap.
         Element content = new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true, DropTarget = p.Drop,
-            Children = p.ShowHeader is { } header ? [ctx.View(ViewKeys.DetailShowHeader, header), right] : [right],
+            // ONE shape for every page (the column never changes parent when a header arrives): the spacers are 0 without a show header.
+            Children = p.ShowHeader is { } header
+                ? [ctx.View(ViewKeys.DetailShowHeader, header), ReaderInset(right, tier.InsetX)]
+                : [ReaderInset(right, ShowReaderRules.Pad)],
         };
         Element page = new BoxEl
         {
@@ -71,6 +76,22 @@ internal static partial class WinUiDetailFrame
             ZStack = true, Grow = 1f, OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
             Children = [p.Tint, p.Tone, Arm("vertical", row)],
         });
+    }
+
+    /// <summary>The episodes' column between two easing spacers: the page's inset less the reader's own pad (0 where they agree: Compact, Small).</summary>
+    static Element ReaderInset(Element column, float inset)
+    {
+        float side = MathF.Max(0f, inset - ShowReaderRules.Pad);
+        return new BoxEl
+        {
+            Key = "detail:reader-inset", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+            Children =
+            [
+                new BoxEl { Key = "reader-inset:lead", Width = side, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
+                new BoxEl { Key = "reader-inset:column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [column] },
+                new BoxEl { Key = "reader-inset:trail", Width = side, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
+            ],
+        };
     }
 
     /// <summary>One arm of the frame under its own key, entering and leaving on opacity alone.</summary>

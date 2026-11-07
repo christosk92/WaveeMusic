@@ -27,6 +27,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **WinUI library sort and view menus look like Windows.** In the WinUI theme the library's sort is a button saying the
+  order in force ("Recently added") whose menu lists the orders in sentence case under "Sort by", with Ascending and
+  Descending below; the view menu lists the four views and the grid sizes the same way. The lowercase word rails,
+  "more" and the bold "alphabetical" button from the Zune look are gone from WinUI; Classic and Zune are unchanged.
+- **WinUI podcasts and shows follow the WinUI design.** A show's episodes are filtered with a WinUI pivot ("All · 14",
+  "Unplayed · 10"), sorted with a "Newest" menu, and the headings, the Continue card and the episode rows use WinUI's
+  type and the accent color instead of the show cover's color. Following a show reads "Following" next to Resume.
 - **No crash after a long time minimized.** Restoring Wavee after it sat minimized for hours on a big playlist, artist
   or Liked Songs page could crash it on the first frame.
 - **No crash when a song starts as the play log saves.** The play log and the visit history now take their snapshot on
