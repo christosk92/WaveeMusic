@@ -176,6 +176,15 @@ public readonly partial struct Artist
         /// re-reads the gate.</summary>
         readonly Signal<(uint Epoch, int Slot)> _overviewAsked = new((0u, Table.None));
 
+        /// <summary>THE STUCK-PAGE WATCH (Page.Stuck.cs): while the page shows its skeleton it re-reads the reveal gate every
+        /// <see cref="PageStuckWatch.WaitMs"/>, wakes the page when the data is all there, re-asks once when nothing is coming,
+        /// then fails the page to its Retry; keyed on (scope, artist). Its timer and its fire's delegate are below.</summary>
+        readonly PageStuckWatch _stuck = new();
+        TimerHandle _stuckTimer;
+        long _stuckKey;
+        bool _shownPending;
+        readonly Action _stuckFire, _reask;
+
         /// <summary>The hero photo's LATCHED art identity (ch 08 BUG E, <see cref="Detail.CoverLatch"/>): the incoming
         /// candidate (the avatar the card already carried, later the header once the overview lands) only replaces what
         /// is showing when it is genuinely different art — never on a same-artwork CDN-size swap. Reset to null on a
@@ -226,6 +235,9 @@ public readonly partial struct Artist
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
             _retry = RetryPage;
+            _reask = ReaskPage;
+            _stuckFire = () => _stuck.Fire(_stuckKey, _shownPending, _shownPending ? ProbeStuck() : default,
+                _props.Peek()?.RouteKey ?? "artist", _reask, _stuckTimer);
             _play = Play;
             _shuffle = Shuffle;
             _radio = Radio;
@@ -311,12 +323,8 @@ public readonly partial struct Artist
             // Version/Readiness values Render, PlanSections and the view's Compose actually paint (the PUSH — Memo's push-pull equality
             // cut-off), so an unrelated artist's shelf landing elsewhere recomputes this cheaply without re-rendering
             // the whole page. See Stamp()'s doc for the exact dependency table.
+            // The fold covers the reveal gate too (the overview's and the charted rows' marks): Stamp's doc.
             _ = UseComputed(_stampFn).Value;
-            // THE ONE EXCEPTION (ch 08 §9): ArtistReadiness.Chart/ChartFailed additionally read every popular
-            // track's Known/Asked/Inflight bits (up to ArtistPopularTracks.ExtendedCap rows), which change per
-            // in-flight row — folding them would cost as much as just re-rendering on them. Kept as a literal
-            // table-wide subscription, same as before.
-            _ = e.ArtistPopular.Changed.Value;
             UseEffect(_demand, DepKey.From(a.Slot, (int)scopeEpoch));   // once per artist per scope
             UseEffect(_demandRows);                                       // re-runs as the lists land
             UseEffect(_publishAccent);                                    // the watched chrome accent
@@ -341,7 +349,9 @@ public readonly partial struct Artist
                 && ((scope.Artists.Asked[a.Slot] & (uint)ArtistFields.Overview) != 0 || scope.Artists.Inflight[a.Slot] != 0);
             bool overviewStopped = a.IsValid && !_ready && _overviewAsked.Value == (scope.Epoch, a.Slot)
                 && ArtistSections.OverviewStopped(scope.Artists.Known[a.Slot], scope.Artists.Asked[a.Slot], scope.Artists.Inflight[a.Slot]);
-            _failed = !a.IsValid || overviewStopped || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot));
+            _stuckKey = PageStuckWatch.KeyOf(a.Slot, scope.Epoch);
+            _failed = !a.IsValid || overviewStopped || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot))
+                      || _stuck.GaveUpOn(_stuckKey);
 
             string routeKey = p.RouteKey;
             string? paletteUrl = a.IsValid ? Controls.ArtUrl(a.PaletteImageId) : null;
@@ -399,6 +409,10 @@ public readonly partial struct Artist
             bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, chartRowsAsked));
             _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
             if (_bodyReady) _heroGateOpened = true;
+            // The stuck-page watch (Page.Stuck.cs): armed while the skeleton shows, re-armed on each of its own steps and wakes.
+            _shownPending = a.IsValid && !_bodyReady && !_failed;
+            _stuckTimer = UseTimeout(_stuckFire, PageStuckWatch.WaitMs,
+                DepKey.From((int)_stuckKey, (int)(_stuckKey >> 32), _stuck.StageOf(_stuckKey) | (_shownPending ? 0x100 : 0), (int)_stuck.Wake));
 
             // THE PLAN: which sections the page renders, in order, and which of them are pivot destinations (one pass, so the pivot and the sections can never
             // disagree about what the page renders). Only a ready page has a body; a pending one keeps the last pivot.
@@ -691,11 +705,54 @@ public readonly partial struct Artist
         /// count; a plain <see cref="Demand"/> would skip a sealed group and fail again at once), then demand as on mount.</summary>
         void RetryPage()
         {
+            _stuck.Reset();
+            ReaskPage();
+        }
+
+        /// <summary>Ask for EVERYTHING the reveal gate waits on again, past any seal: the artist's groups (the overview and the chart bit), the popular
+        /// list while it is not complete, and the charted rows' shape (the chart host's own Retry asks the same), then demand as on mount. The failed
+        /// page's Retry and the stuck-page watch's one re-ask.</summary>
+        void ReaskPage()
+        {
             var a = _artist;
             if (!a.IsValid) return;
             int slot = a.Slot;
-            Entities.Refresh(Entities.Current.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.All);
+            var scope = Entities.Current;
+            Entities.Refresh(scope.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.All);
+            if (scope.Edges.ArtistPopular.State(slot) != EdgeState.Complete) Entities.RefreshEdge(FetchEdge.ArtistPopular, slot);
+            var popular = scope.Edges.ArtistPopular.Targets(slot);
+            if (popular.Length > 0) Entities.Refresh(scope.Tracks, popular, (uint)(TrackFields.Row | TrackFields.Video));
             Demand();
+        }
+
+        /// <summary>The reveal gate read FRESH from the tables (the watch's probe): what <see cref="Render"/> would decide now, whether a request for
+        /// the artist or a charted row is out, and what the page waits on (the overview's missing groups, the chart gate's deciding reason).</summary>
+        StuckProbe ProbeStuck()
+        {
+            var a = _artist;
+            if (!a.IsValid) return new StuckProbe(false, false, "-");
+            var scope = Entities.Current;
+            var e = scope.Edges;
+            int slot = a.Slot;
+            uint known = scope.Artists.Known[slot], asked = scope.Artists.Asked[slot], inflight = scope.Artists.Inflight[slot];
+            bool overview = ArtistReadiness.Overview(a);
+            bool stopped = !overview && _overviewAsked.Peek() == (scope.Epoch, slot) && ArtistSections.OverviewStopped(known, asked, inflight);
+            bool rowsAsked = _chartRowsAsked.Peek() == (scope.Epoch, slot, e.ArtistPopular.Version(slot));
+            bool chartReady = ArtistReadiness.Chart(a);
+            bool chartSettled = ArtistReadiness.ChartSettled(chartReady, ArtistReadiness.ChartFailed(a, rowsAsked));
+            bool pending = !stopped && !ArtistReadiness.BodyReady(overview, _measured, _heroGateOpened, chartSettled);
+            bool anyInflight = inflight != 0;
+            var targets = e.ArtistPopular.Targets(slot);
+            var tracks = scope.Tracks;
+            for (int i = 0; i < targets.Length && !anyInflight; i++)
+                anyInflight = targets[i] > Table.None && targets[i] < tracks.Count && tracks.Inflight[targets[i]] != 0;
+            var inv = CultureInfo.InvariantCulture;
+            string chart = chartReady ? "ready" : ArtistReadiness.ChartFailed(a, rowsAsked) ? "failed" : "pending";
+            string waiting = "overview=0x" + ((uint)ArtistFields.Overview & ~known).ToString("x", inv)
+                             + " asked=0x" + asked.ToString("x", inv)
+                             + " chart=" + chart + " rows=" + targets.Length.ToString(inv)
+                             + " edge=" + e.ArtistPopular.Readiness(slot) + (_measured ? "" : " unmeasured");
+            return new StuckProbe(pending, anyInflight, waiting);
         }
 
         void Demand()
@@ -747,14 +804,17 @@ public readonly partial struct Artist
         /// then every artist <see cref="ArtistSections.Fans"/> would actually pick.</item>
         /// <item>Gallery/Merch payload TEXT (pills, tiles) carries no separate target row — it lands whole with the
         /// edge's own <c>Replace</c>, so the edge's <c>Version(slot)</c> above is already the whole story.</item>
-        /// </list>
-        ///
-        /// <para><b>Kept OUT of this fold</b> (too dynamic to fold cheaply, per the render-cost fix's own escape
-        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/> additionally
-        /// read every popular track's <c>Known</c>/<c>Asked</c>/<c>Inflight</c> bits (up to
-        /// <see cref="ArtistPopularTracks.ExtendedCap"/> rows, each landing independently) to decide the chart gate —
-        /// folding that is as expensive as just re-rendering on it. Render keeps a literal
-        /// <c>e.ArtistPopular.Changed</c> subscription instead, exactly as before.</para></summary>
+        /// <item>THE REVEAL GATE's own inputs (<see cref="ArtistReadiness.BodyReady"/>, the overview's pending and stopped
+        /// tests, <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/>): this artist's
+        /// <c>Asked</c> and in-flight mark, the popular list's version and readiness, and per charted row (up to
+        /// <see cref="ArtistPopularTracks.ExtendedCap"/>) its <see cref="ArtistReadiness.ChartRowGroup"/> known and asked bits
+        /// and its in-flight mark. The marks move without a <c>Version</c> (a plan, a settle), so <see cref="Fetch.Settled"/>
+        /// is a wake too. Until 2026-11-07 the charted rows were left OUT ("as expensive as re-rendering on them") and the
+        /// render read <c>e.ArtistPopular.Changed</c> instead — the EDGE's publication, which a charted row's own answer never
+        /// makes. When those rows were the last thing to land (an overview warmed by the now-playing prefetch, the owner's
+        /// Fly By Midnight), the fold did not move, the page never re-read the chart gate, and the skeleton stood for the life
+        /// of the route. Folding them is ~150 array reads on a table publication.</item>
+        /// </list></summary>
         long Stamp()
         {
             _ = Entities.ScopeEpoch.Value;                      // FIRST (ch 08 §9 / G-179): re-point every table below
@@ -788,10 +848,27 @@ public readonly partial struct Artist
             _ = e.ArtistLinks.Changed.Value;
             _ = e.ArtistConcerts.Changed.Value;
             _ = e.FollowedArtists.Changed.Value;
+            _ = e.ArtistPopular.Changed.Value;
+            _ = global::Wavee.Fetch.Settled.Value;             // a settle that names no field still moves the marks below
 
             // ── the fold ──
             ulong h = RowFold.Row(RowFold.Seed, artists, slot);
             h = RowFold.Row(h, albums, a.Latest.Slot);
+
+            // The reveal gate (this method's doc): the artist's marks, the popular list, and each charted row's gate group.
+            h = RowFold.Add(h, artists.Asked[slot]);
+            h = RowFold.Add(h, artists.Inflight[slot] != 0 ? 1 : 0);
+            h = RowFold.Add(h, (int)e.ArtistPopular.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistPopular.Readiness(slot));
+            var charted = e.ArtistPopular.Targets(slot);
+            const uint chartGroup = ArtistReadiness.ChartRowGroup;
+            for (int i = 0; i < charted.Length; i++)
+            {
+                int t = charted[i];
+                bool live = t > Table.None && t < tracks.Count;
+                h = RowFold.Add(h, live ? tracks.Known[t] & chartGroup : 0u);
+                h = RowFold.Add(h, live ? (tracks.Asked[t] & chartGroup) | (tracks.Inflight[t] != 0 ? 0x8000_0000u : 0u) : 0u);
+            }
 
             h = RowFold.Add(h, (int)e.ArtistAlbums.Version(slot));
             h = RowFold.Add(h, (int)e.ArtistSingles.Version(slot));
