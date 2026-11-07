@@ -885,7 +885,8 @@
     "moveUp": "Omhoog verplaatsen",
     "moveDown": "Omlaag verplaatsen",
     "saveToLiked": "Opslaan in Nummers die je leuk vindt",
-    "saveToLibrary": "Opslaan in je bibliotheek"
+    "saveToLibrary": "Opslaan in je bibliotheek",
+    "removeFromLibrary": "Verwijderen uit je bibliotheek"
   },
   "videoOverride": {
     "menuTitle": "Video",

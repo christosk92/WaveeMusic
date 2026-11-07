@@ -885,7 +885,8 @@
     "moveUp": "위로 이동",
     "moveDown": "아래로 이동",
     "saveToLiked": "좋아요 표시한 곡에 저장",
-    "saveToLibrary": "내 라이브러리에 저장"
+    "saveToLibrary": "내 라이브러리에 저장",
+    "removeFromLibrary": "내 라이브러리에서 삭제"
   },
   "videoOverride": {
     "menuTitle": "비디오",

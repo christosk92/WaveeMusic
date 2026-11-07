@@ -411,7 +411,17 @@ internal static class ZuneDetailKit
             if (spring) kids.Add(Swap(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f }, swapEnter));
             if (lay.ShareRing && ShareActionFor(id) is { } share)
                 kids.Add(Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), false, null, share, lay));
-            if (lay.MoreRing && acts.More is { } more) kids.Add(MoreRing(more, lay));
+            if (lay.MoreRing && acts.More is { } more)
+            {
+                // The owner asked for save in the "..." as well (2026-11-08: the band's pill was not found): the save ring's own target and gate
+                // (none on your own playlist, a local file's or Liked Songs'), so menu and pill are one verb over one saved set.
+                if (cfg.Heart != HeartMode.None)
+                {
+                    var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
+                    more = WithSaveRow(more, target.Text, id.Title);
+                }
+                kids.Add(MoreRing(more, lay));
+            }
         }
         return new BoxEl
         {
@@ -419,6 +429,24 @@ internal static class ZuneDetailKit
             Layout = Shove, Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The page menu with the save verb leading it (its own group): "save to your library" or "remove from your library" as the saved set
+    /// reads at open, running the library seam's toggle (optimistic, rolled back on a failed write) that the band's save pill and the save ring run.
+    /// The page's menu unchanged where no library seam is connected; nothing where the page has no menu.</summary>
+    static Func<ContextMenuModel?> WithSaveRow(Func<ContextMenuModel?> menu, string uri, string name) => () =>
+    {
+        var model = menu();
+        if (model is not { } m || Controls.Library is not { } lib || uri.Length == 0) return model;
+        bool saved = lib.IsSaved(uri);
+        var rows = new List<MenuFlyoutItem>(m.Rows.Count + 2)
+        {
+            new(Loc.Get(saved ? Strings.Menu.RemoveFromLibrary : Strings.Menu.SaveToLibrary), saved ? Icons.HeartFill : Icons.Heart, true,
+                () => lib.ToggleSaved(uri, name)),
+        };
+        if (m.Rows.Count > 0) Actions.Menu.OpenGroup(rows);
+        for (int i = 0; i < m.Rows.Count; i++) rows.Add(m.Rows[i]);
+        return m with { Rows = rows };
+    };
 
     /// <summary>A ring only one arrangement of a re-arranging row draws: it enters on <paramref name="enter"/> (the swap's fade once the view has rendered)
     /// and leaves on the swap's fade. Unchanged where the row never re-arranges (<paramref name="enter"/> null and never rendered before).</summary>
