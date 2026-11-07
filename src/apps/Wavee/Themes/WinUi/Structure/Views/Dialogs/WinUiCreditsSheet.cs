@@ -57,8 +57,10 @@ internal static class WinUiCreditsSheet
                 kids.Add(R.Type.Eyebrow(heading) with { Color = Tok.TextTertiary });
             kids.Add(CreditRow(e.Name, e.Role, e.ArtistSlot, props.OpenArtist));
         }
+        // Sized to its rows up to the bound (ContentSized): a plain ScrollView is a hard viewport that measured 0 tall in the dialog's auto-sized body,
+        // so the sheet showed only its title.
         return ScrollView(new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = kids.ToArray() })
-            with { MaxHeight = listMax };
+            with { MaxHeight = listMax, ContentSized = true, Grow = 0f };
     }
 
     // A credit linked to an artist slot is an accent link; an unlinked contributor is plain text.

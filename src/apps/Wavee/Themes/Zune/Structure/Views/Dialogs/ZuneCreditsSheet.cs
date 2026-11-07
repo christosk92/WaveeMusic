@@ -46,7 +46,8 @@ internal static class ZuneCreditsSheet
         return new BoxEl { Key = "zcredits", Direction = 1, MinWidth = 0f, MaxWidth = ZuneOverlayRules.CreditsMaxWidth, Children = [body] };
     }
 
-    // The server's group headings in its own casing (never re-cased), one row per contributor, in a bounded scroll.
+    // The server's group headings in its own casing (never re-cased), one row per contributor, in a bounded scroll. The scroll sizes to its rows up to
+    // the bound (ContentSized): a plain ScrollView is a hard viewport that measured 0 tall in the dialog's auto-sized body, so the sheet showed only its title.
     static Element CreditsList(CreditsSheetProps props, float listMax)
     {
         var kids = new List<Element>(props.Entries.Count + 4);
@@ -54,11 +55,11 @@ internal static class ZuneCreditsSheet
         {
             var e = props.Entries[i];
             if (e.Heading is { } heading)
-                kids.Add(R.Type.Eyebrow(heading) with { Color = Tok.TextTertiary });
+                kids.Add(R.Type.Eyebrow(heading) with { Color = Tok.TextSecondary });   // 11 px on the dialog plate: tertiary read 4.41 : 1
             kids.Add(CreditRow(e.Name, e.Role, e.ArtistSlot, props.OpenArtist));
         }
         return ScrollView(new BoxEl { Direction = 1, Gap = ZuneOverlayRules.CreditsRowGap, MinWidth = 0f, Children = kids.ToArray() })
-            with { MaxHeight = listMax };
+            with { MaxHeight = listMax, ContentSized = true, Grow = 0f };
     }
 
     // A credit linked to an artist slot is an accent link; an unlinked contributor is plain text.
@@ -78,7 +79,7 @@ internal static class ZuneCreditsSheet
             Children =
             [
                 new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [label] },
-                role.Length == 0 ? new BoxEl() : R.Type.MicroMeta(role) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                role.Length == 0 ? new BoxEl() : R.Type.MicroMeta(role) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
     }
