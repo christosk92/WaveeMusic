@@ -35,8 +35,13 @@ internal static class ClassicDiscographyRules
     /// RowGap is the vertical gutter, folded into the LazyGrid row extra.</summary>
     public const float CardChrome = 50f, RowGap = 20f;
 
-    /// <summary>The card subtitle's chevron cue and its gap after the meta.</summary>
-    public const float SubtitleGap = 4f, SubtitleGlyph = 9f;
+    /// <summary>The card subtitle's gap after the meta, before the disclosure button.</summary>
+    public const float SubtitleGap = 4f;
+
+    /// <summary>The disclosure button after the card's meta line (it opens the inline drawer; the card opens the album): a 24 plate with a 12 chevron,
+    /// 4 of hit slop each side (a 32 target, the target floor above Compact; Compact's touch floor makes it 40), and 4 bled out of the 16 meta line
+    /// above and below, so the line, and the card's 50 chrome, keep their height.</summary>
+    public const float DisclosurePlate = 24f, DisclosureGlyph = 12f, DisclosureSlop = 4f, DisclosureBleed = 4f;
 
     // ── the drawer ──
     /// <summary>The caret under the opened card: its width, its height, the 1 DIP it sinks to hide the panel's top stroke, and its stroke.</summary>
