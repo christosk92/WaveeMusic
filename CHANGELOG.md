@@ -30,9 +30,9 @@ versions separately under `v*` and is not tracked in this file.)
   personal is in the list, and sending a report stays your choice.
 - **A crash in native code is reported as itself.** Wavee's crash hook no longer turns some native crashes into a
   "fail fast" with no details; they now arrive with their real error and a memory snapshot.
-- If playback that needs the private key path crashes Wavee twice in a row, Wavee skips it for that version and shows
-  those tracks as unavailable instead of crashing on every start; an update or a week without it brings it back.
-
+- **No crash loop on playback.** If starting a song crashes Wavee twice within a few launches, Wavee shows those songs
+  as unavailable for that version instead of crashing on every start. An update, or a week without the crash, brings
+  them back.
 
 ### Fixed
 
