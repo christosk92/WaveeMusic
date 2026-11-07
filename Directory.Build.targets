@@ -1,0 +1,25 @@
+<Project>
+  <!--
+    .NET 10 servicing floor: 10.0.14.
+    CVE-2026-111497 (GHSA-p3jp-9v83-76w9, 2026-11-03), an out-of-bounds write in the Brotli decoder, is fixed in 10.0.14. Wavee
+    publishes self-contained NativeAOT, so the runtime it ships comes from the SDK's known pack versions, and the installed SDKs
+    still name older ones (10.0.401 -> 10.0.12, 11.0 preview 4 -> 10.0.5). Restore then fails on NU1903 (warnings are errors),
+    and a release would ship the vulnerable decoder. Raising the known versions here makes every build, on any installed SDK,
+    restore the patched ILCompiler and runtime packs from NuGet. Drop this file once the SDKs in use bundle 10.0.14 or newer.
+  -->
+  <PropertyGroup>
+    <WaveeNet10ServicingFloor>10.0.14</WaveeNet10ServicingFloor>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler">
+      <ILCompilerPackVersion Condition="'%(TargetFramework)' == 'net10.0'">$(WaveeNet10ServicingFloor)</ILCompilerPackVersion>
+    </KnownILCompilerPack>
+    <KnownRuntimePack Update="Microsoft.NETCore.App">
+      <LatestRuntimeFrameworkVersion Condition="'%(TargetFramework)' == 'net10.0'">$(WaveeNet10ServicingFloor)</LatestRuntimeFrameworkVersion>
+    </KnownRuntimePack>
+    <KnownFrameworkReference Update="Microsoft.NETCore.App">
+      <LatestRuntimeFrameworkVersion Condition="'%(TargetFramework)' == 'net10.0'">$(WaveeNet10ServicingFloor)</LatestRuntimeFrameworkVersion>
+    </KnownFrameworkReference>
+  </ItemGroup>
+</Project>
