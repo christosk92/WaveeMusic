@@ -55,8 +55,10 @@ public sealed record CoverBlendProps(string? Url, float Height, float Boundary, 
 /// <param name="PayloadAccent">The header row's raw accent; 0 when the caller has none.</param>
 /// <param name="Hold">Where a horizontal veil's hold ends, as a fraction of its width (the caller's copy edge); NaN keeps the
 /// theme's default. Appended in contract 1.6.</param>
+/// <param name="Ramp">A held vertical veil's ramp length in DIP (the photograph's band, when the veil covers more than it): the ramp ends there at the copy
+/// plate and the plate holds to the veil's foot; NaN spreads the ramp over the whole height. Appended in contract 1.89.</param>
 public sealed record CoverVeilProps(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0,
-                                    float Hold = float.NaN);
+                                    float Hold = float.NaN, float Ramp = float.NaN);
 
 /// <summary>The props of <see cref="ViewKeys.ShellCoverTint"/>: the leaf that watches one cover and publishes the shell tint
 /// (flat arm only; Home publishes its washes itself).</summary>
