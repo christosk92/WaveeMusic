@@ -76,6 +76,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The daylist's picture fills its whole card on a narrow Home.** In the Classic theme at the narrowest size, the
+  daylist card's picture stopped at a hard line two thirds of the way down, with the title, tags, buttons and countdown
+  on a flat plate under it. The picture is now the whole card's background and fades smoothly behind the text.
 - **Repeat All repeats the playlist, and only the playlist.** With Repeat All on, Wavee no longer plays
   suggested songs from outside the playlist or album, with or without shuffle: after the last song it starts again
   from the first, and songs you queued or that Autoplay picked do not come round again. (#215)
