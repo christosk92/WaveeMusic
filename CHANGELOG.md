@@ -27,6 +27,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The player bar stays still when you skip.** Skipping a song no longer moves the play controls, the seek bar, the
+  heart or the buttons on the right. In the WinUI theme the play controls sit in the middle of the bar, the song title
+  has a fixed space, and the video button stays in its place, greyed out for a song without a video. The controls,
+  the lyrics button and the times also stay as they are while the next song loads, instead of greying out or
+  showing 0:00 for a moment.
 - **No crash after a long time minimized.** Restoring Wavee after it sat minimized for hours on a big playlist, artist
   or Liked Songs page could crash it on the first frame.
 - **No crash when a song starts as the play log saves.** The play log and the visit history now take their snapshot on
