@@ -88,10 +88,10 @@ internal static class WinUiEpisodeRow
     static Element ReaderRowContent(in BoundItemScope<RowItem> item, RowContext ctx, bool narrow, bool seed)
     {
         IReadSignal<RowItem> it = item.Item;
-        Func<ColorF> tone = ctx.Tone;
+        // WinUI marks what is lit with the ACCENT (W-Show: the playing bar, the progress rule, the "left" words), never the cover's tone (winui menus/podcasts).
+        Func<ColorF> tone = s_accent;
         Prop<ColorF> toneInk = Prop.Of(tone);
-        // Text and glyphs wear the tone READABLE on the page (a light page's orange read 2.6 : 1, audit B8); the bar and the rule keep the tone.
-        Prop<ColorF> textInk = Prop.Of(() => Design.Palette.ReadableInk(tone()));
+        Prop<ColorF> textInk = Prop.Of(static () => Tok.AccentTextPrimary);
         Action<Episode> open = ctx.Open ?? Episode.OpenPageAction;
 
         var copy = new BoxEl
@@ -180,15 +180,19 @@ internal static class WinUiEpisodeRow
     /// <summary>The equalizer (now playing) · the title (tone while playing) · the badge chips, on one centred line.</summary>
     static Element TitleLine(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, Func<ColorF> tone, bool seed = false) => new BoxEl
     {
-        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+        // No row gap: the equalizer's slot is empty on every row but the playing one, and a gap after an empty slot pushed every title 8 right of its
+        // description (W-Show: the two share one edge). The equalizer carries its own trailing space.
+        Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
         Children =
         [
-            seed ? new BoxEl() : item.ShowWhen(static r => Episode.IsNowPlaying(r.Episode), () => Controls.Equalizer(Track.DeckPlaying, tone, WinUiEpisodeRowLayout.EqualizerHeight)),
+            seed ? new BoxEl() : item.ShowWhen(static r => Episode.IsNowPlaying(r.Episode),
+                () => new BoxEl { Direction = 0, Shrink = 0f, Margin = new Edges4(0f, 0f, Spacing.S, 0f),
+                                  Children = [Controls.Equalizer(Track.DeckPlaying, tone, WinUiEpisodeRowLayout.EqualizerHeight)] }),
             new TextEl(seed ? SeedTitle : item.Text(static r => Episode.ShownTitle(r.Episode)))
             {
                 Size = WinUiEpisodeRowLayout.TitleSize, LineHeight = WinUiEpisodeRowLayout.TitleLine, Weight = 600, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                 MinWidth = 0f, Grow = 1f, Basis = 0f, Shrink = 1f,
-                Color = Prop.Of(() => Episode.IsNowPlaying(it.Value.Episode) ? Design.Palette.ReadableInk(tone()) : Tok.TextPrimary),
+                Color = Prop.Of(() => Episode.IsNowPlaying(it.Value.Episode) ? Tok.AccentTextPrimary : Tok.TextPrimary),
             },
         ],
     };
@@ -223,11 +227,8 @@ internal static class WinUiEpisodeRow
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
             Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-            R.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
-            {
-                Weight = 700, CharSpacing = 60f, Color = textInk, MaxLines = 1,
-                Visible = item.Show(static r => Episode.IsNew(in r)),
-            },
+            // "New" on the subtle chip (W-Show), never the letter-spaced bold word.
+            Controls.Chip(Loc.Get(Strings.Podcast.New)) with { Visible = item.Show(static r => Episode.IsNew(in r)) },
             new TextEl(item.Text(static r => Episode.LeftOf(r.Episode)))
             {
                 Size = Ui.Caption("").Size, LineHeight = Ui.Caption("").LineHeight,
@@ -295,15 +296,19 @@ internal static class WinUiEpisodeRow
         Children = [glyph],
     };
 
-    /// <summary>The 36 tone disc: play, or pause on the playing row (<c>Episode.Invoke</c> through the host's verb).</summary>
+    static readonly Func<ColorF> s_accent = static () => Tok.AccentDefault;
+
+    /// <summary>The 36 disc (W-Show): at rest the subtle control fill with the primary glyph, on the playing row the accent with pause
+    /// (<c>Episode.Invoke</c> through the host's verb).</summary>
     static Element Disc(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, RowContext ctx, Action<bool>? focus = null, bool seed = false)
     {
-        Func<ColorF> tone = ctx.Tone;
+        Func<bool> lit = () => Episode.IsNowPlaying(it.Value.Episode);
         Action<Episode> play = ctx.Play;
         var disc = new BoxEl
         {
             OnFocusChanged = focus,
-            Width = Episode.RowDisc, Height = Episode.RowDisc, Shrink = 0f, Corners = Radii.Circle(Episode.RowDisc), Fill = Prop.Of(tone),
+            Width = Episode.RowDisc, Height = Episode.RowDisc, Shrink = 0f, Corners = Radii.Circle(Episode.RowDisc),
+            Fill = Prop.Of(() => lit() ? Tok.AccentDefault : Tok.FillSubtleSecondary), BrushTransitionMs = Design.Motion.Faster,
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, BlocksDragArm = true,
@@ -313,7 +318,7 @@ internal static class WinUiEpisodeRow
                 Icon(Icons.Play, Episode.RowDiscGlyph) with
                 {
                     Text = Prop.Of(() => Episode.IsNowPlaying(it.Value.Episode) && Track.DeckPlaying.Value ? Icons.Pause : Icons.Play),
-                    Color = Prop.Of(() => ColorContrast.PickContrast(tone())),
+                    Color = Prop.Of(() => lit() ? Tok.TextOnAccentPrimary : Tok.TextPrimary),
                 },
             ],
         };
