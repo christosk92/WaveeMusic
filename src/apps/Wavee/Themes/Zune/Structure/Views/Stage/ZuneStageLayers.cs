@@ -89,7 +89,8 @@ internal static class ZuneStageBackdrop
         {
             HitTestVisible = false, HitTestPassThrough = false,
             Visible = Prop.Of(props.Shown),
-            Children = [backdrop, CanvasVideo.StageLayer(mode, scrim)],
+            // a presented canvas covers the backdrop whole: it then neither rasters nor composites (the canvas carries its own scrim)
+            Children = [backdrop with { Visible = Prop.Of(CanvasVideo.StageUncovered) }, CanvasVideo.StageLayer(mode, scrim)],
         };
     }
 }

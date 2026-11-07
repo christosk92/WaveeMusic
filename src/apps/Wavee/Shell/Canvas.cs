@@ -63,6 +63,14 @@ public static partial class CanvasVideo
     /// <summary>Bumps when an open lands (the observer then applies play / pause to the new session).</summary>
     static readonly Signal<int> Opened = new(0);
 
+    /// <summary>The surface whose element has PRESENTED a frame of the open canvas (its <c>SurfacePresented</c>), else None. From then on
+    /// the video covers its box entirely, so what the surface drew under it (the poster, the stage's backdrop) is not drawn at all.</summary>
+    public static readonly Signal<Surface> Presented = new(Surface.None);
+
+    /// <summary>Reactive: is the stage's backdrop covered by a presented canvas? The stage templates bind their backdrop's visibility to
+    /// its negation (<see cref="StageUncovered"/>), so a covered backdrop neither rasters nor composites.</summary>
+    public static readonly Func<bool> StageUncovered = static () => Presented.Value != Surface.Stage;
+
     /// <summary>The owner's element can be seen (its <c>InViewChanged</c>).</summary>
     public static readonly Signal<bool> InView = new(false);
 
@@ -122,6 +130,7 @@ public static partial class CanvasVideo
     internal static void UnbindSurface(Surface s)
     {
         if (Bound.Peek() == s) Bound.Value = Surface.None;
+        if (Presented.Peek() == s) Presented.Value = Surface.None;
         if (Owner.Peek() == s || Owner.Peek() == Surface.None) InView.Value = false;
     }
 
@@ -280,12 +289,17 @@ public static partial class CanvasVideo
             {
                 _open = now.File;
                 _playing = false;
+                if (Log.IsEnabled(WaveeLogLevel.Info))
+                    Log.Info("canvas", "canvas.player open track=" + now.Uri + " owner=" + owner + " file=" + System.IO.Path.GetFileName(now.File));
                 Open(player, now.File);
             }
             bool run = inView && playing && !occluded && !reduced;
             int opened = Opened.Value;                 // an open landed: apply the run state to the new session
             if (run == _playing && opened == _openedSeen) return;
             _openedSeen = opened;
+            if (run != _playing && Log.IsEnabled(WaveeLogLevel.Info))
+                Log.Info("canvas", "canvas.player " + (run ? "play" : "pause") + " inView=" + inView + " playing=" + playing + " occluded=" + occluded
+                    + " reduced=" + reduced);
             _playing = run;
             Running = run;
             _ = run ? player.PlayAsync() : player.PauseAsync();

@@ -78,7 +78,8 @@ internal static class WinUiStageBackdrop
             HitTestVisible = false, HitTestPassThrough = false,
             // under an opaque header photo the quarter-scale blobs would raster for nothing: hide the whole backdrop (Artist layout, Visualizer mode, photo known)
             Visible = Prop.Of(props.Shown),
-            Children = [backdrop, CanvasVideo.StageLayer(mode, scrim)],
+            // a presented canvas covers the backdrop whole: it then neither rasters nor composites (the canvas carries its own scrim)
+            Children = [backdrop with { Visible = Prop.Of(CanvasVideo.StageUncovered) }, CanvasVideo.StageLayer(mode, scrim)],
         };
     }
 }

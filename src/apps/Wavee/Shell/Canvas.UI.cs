@@ -16,6 +16,7 @@ using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -83,6 +84,8 @@ public static partial class CanvasVideo
                     Source = now.Poster, Fit = ImageFit.Cover, Corners = p.Corners, DecodePx = PosterDecodePx,
                     AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                     RevealTransition = ImageTransition.Fade(Design.Motion.Fast),
+                    // Under a presented frame the poster is erased by the hole every frame: stop drawing it at all.
+                    Visible = Prop.Of(() => Presented.Value != surface),
                 });
             if (now.File.Length > 0 && Presents(surface))
                 kids.Add(Embed.Comp(new VideoProps(surface, p.Corners.TopLeft), static () => new VideoView()) with { Key = "canvas-video" });
@@ -137,6 +140,7 @@ public static partial class CanvasVideo
                 Stretch = MediaStretch.UniformToFill,
                 CornerRadius = radius,
                 InViewChanged = NoteInView,
+                SurfacePresented = () => Presented.Value = surface,
             })],
             };
         }
