@@ -259,6 +259,50 @@ Resizes the window and settles. Use it to check a tier crossing on a live mount.
 | `max` | The settle's frame cap (600). With `trace`, the most nodes watched. |
 | `trace=N` | Traces N frames from the resize instead of settling; the `trace` args (`keys`, `prefix`, `scroll`, `every`, ...) apply. |
 
+### `window {state?, advance?, floor?, frames?}`
+
+Parks the mounted window the way the OS does, restores it, and moves the engine's cold-maintenance clock ahead. Use it for
+what happens to a window that sits minimized or in the tray: the restore-after-minimize crash (Wavee 0.3.7) was reproduced
+with it.
+
+| Arg | Values |
+|---|---|
+| `state` | `minimized` (the caption button: the placement reads Minimized), `hidden` (close to tray: the window reads invisible) or `restored` (back to Normal and shown). Positional: `window minimized`. |
+| `advance` | Moves the cold-maintenance clock this many ms ahead (`AppHost.AdvanceColdMaintenanceClock`) before the frames run, so a 30 s deadline falls due on the next frame: `advance=31000`. |
+| `floor` | Sets the scene slab's trim floor (`SceneStore.CapacityFloor`). The app runs with 8192 (`InitialSceneCapacity`); an inspector mount has none (0, the engine's own 256), so pass `floor=8192` to trim as the app does. |
+| `frames` | Frames to run after the change when not restoring (2). A restore runs one frame, then settles (`settle`, `max`, `loops` and `trace=N` apply). |
+
+**The parked path is production's.** While the window is minimized or hidden, every frame (from `window` itself and from any
+other verb that steps frames: `play`, `goto`, `frames`, `settle`) is a parked `AppHost.RunFrame`: it skips `Paint` (no layout,
+record or present) but still pumps, drains the UI posts, flushes the reactive work they schedule (components re-render, nodes
+are created and freed) and runs the cold maintenance. A settling verb on a parked window runs to its cap and replies
+`settled:false` (pass `max=60`). `state=restored` makes the next frame paint, as the restore message does.
+
+**The clock.** The cold services read the OS uptime clock, not the inspector's 16 ms frame clock: the scene slab trim falls
+due 30 s after the slab last grew or shrank, once the host has been free of input for 2 s. Without `advance` it fires only
+when that much wall clock passes during the session.
+
+The reply (every `window`, also with no args, which only runs the frames) carries `state` (`normal`, `minimized`, `hidden`),
+`parked` (`AppHost.IsParked`), `coldRuns` (frames that ran a cold service during this command) and `scene`:
+
+| Field | Meaning |
+|---|---|
+| `capacity`, `capacityBefore`, `trimmed` | The slab's column length now and before the command; `trimmed` when the trim shrank it. |
+| `highWater`, `highWaterBefore` | One past the highest slot handed out since the last trim. |
+| `live`, `highestLive`, `highestLiveKey` | Live nodes; the highest live slot (what keeps the trim from cutting lower) and its nearest key. |
+| `floor` | The trim floor. |
+| `dirty{pending, maxSlot, pastCapacity}` | The slots the next layout's subtree-dirty clear resets (they pile up while parked: no layout runs), the highest of them, and how many sit past `capacity`: above 0, the restore frame writes past the columns. |
+
+A frame that throws replies `ok:false` with the exception, `stack` (its frames) and the facts above.
+
+```text
+→ window state=minimized
+← {"id":5,"ok":true,"cmd":"window","framesRun":2,"state":"minimized","parked":true,"coldRuns":0,"scene":{"capacity":32768,...,"dirty":{"pending":38,"maxSlot":19326,"pastCapacity":0}}}
+→ window advance=31000
+← {"id":6,"ok":true,"cmd":"window","framesRun":2,"state":"minimized","parked":true,"coldRuns":1,"scene":{"capacity":8192,"capacityBefore":32768,"trimmed":true,...,"dirty":{"pending":2436,"maxSlot":19571,"pastCapacity":248}}}
+→ window restored
+```
+
 ### `frames {n}` and `settle {max?, loops?}`
 
 `frames` runs exactly `n` frames and replies with `{"frames":n,"animating":bool,"scrolling":bool,"wake":[...],"ambient":[...]}`:

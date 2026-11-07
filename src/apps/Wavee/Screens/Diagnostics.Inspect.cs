@@ -640,6 +640,8 @@ public static partial class Diagnostics
                     return Trace(id, name, a, shell);
                 case Inspect.Verb.Drag:
                     return Drag(id, name, a);
+                case Inspect.Verb.Window:
+                    return Window(id, name, a, shell);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
