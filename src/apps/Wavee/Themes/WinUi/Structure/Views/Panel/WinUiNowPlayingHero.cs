@@ -3,7 +3,8 @@
 // Board W-PaneNowPlaying: the pane's "Now playing" tab. The panel's frame places this tile at the top of the tab and "Next up" under it
 // (`WinUiPanel.cs`), so the tile carries the track itself:
 //
-//   the DECK SLOT   the cover, square at the column's width (r8), or (developer mode, the stored presentation) the core's deck under the keyed
+//   the DECK SLOT   the cover (the album art alone: a Canvas shows only where the user picked it, the Canvas player style or the
+//                   stage), square at the column's width (r8), or (developer mode, the stored presentation) the core's deck under the keyed
 //                   slot "<preset>@<side>" (a preset change remounts it; the hero hosts the deck and never builds it, and passes its padding so
 //                   the deck is the column's width). Its context menu is the Cover / ‹player› choice and "player style…" (developer-only), which
 //                   opens the ONE style flyout (the gear's).
@@ -137,11 +138,11 @@ internal sealed class WinUiHeroTile : Component
 
         Element face = presentation == Rail.PlayerPrefs.Player
             ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck(P.HeroPadding.Left + P.HeroPadding.Right, _column)] }
-            : CanvasVideo.OverArt(new ImageEl
+            : new ImageEl
             {
                 Key = "cover", Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = P.HeroDecodePx,
                 Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
-            }, CanvasVideo.Surface.Hero, R.Shape.All(ShapeRole.Cover));
+            };
         var p = preset;
         Element slot = new BoxEl { Key = WinUiNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f, AspectRatio = 1f, OnBoundsChanged = _onSlotBounds, Children = [face] }
             .WithContextMenu(overlay, () => WinUiNowPlayingHero.ArtMenu(props, presentation, p, styleVisible));

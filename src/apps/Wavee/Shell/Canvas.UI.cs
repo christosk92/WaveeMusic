@@ -36,15 +36,6 @@ public static partial class CanvasVideo
     /// <summary>The stage modes a canvas shows in.</summary>
     public static bool StageShows(Stage.Mode mode) => mode is Stage.Mode.Lyrics or Stage.Mode.Queue;
 
-    /// <summary>The art with the surface's canvas layer stacked over it: the art keeps the column it had (so its size, aspect and
-    /// stretch are exactly what they were), and the layer fills the art's box. The surfaces' one-line hook.</summary>
-    public static Element OverArt(Element art, Surface surface, CornerRadius4 corners)
-        => new BoxEl
-        {
-            ZStack = true, Shrink = 0f,
-            Children = [new BoxEl { Direction = 1, Shrink = 0f, Children = [art] }, Layer(surface, corners)],
-        };
-
     /// <summary>A box that fills a ZStack it is placed in, also as a COMPONENT ROOT (the anchor mirrors the root's participation:
     /// Stretch fills the width, Grow + Basis 0 the height — <c>Stage.Layer</c>'s shape).</summary>
     static readonly BoxEl FillBox = new()
