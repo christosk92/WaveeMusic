@@ -24,9 +24,12 @@ versions separately under `v*` and is not tracked in this file.)
 - **Full screen follows your player style.** The Canvas plays behind the lyrics only when the player style is Canvas
   (Settings > Appearance > Now playing, or the style chip in Now playing); every other style keeps the blurred album art
   there. Before, full screen played the Canvas whatever the style, so there was no way to turn it off there alone.
-- **Skipping songs in full screen is smooth.** The cover, the title, the artists and the chips cross-fade to the next song,
-  drifting in from the side you skipped to; the lyrics fade out and the next ones fade in; the Canvas fades through its
-  still into the next picture instead of cutting; and a burst of presses settles on the last song without stutter.
+- **Lyrics beside the queue in full screen read in phrases.** On a 1920-wide screen the lyrics next to the Up next column
+  fell to one word per line; the gap to the column now gives way first, so lines wrap at a readable width.
+- **Skipping songs in full screen is smooth.** The cover cross-fades to the next song; the title, the artists and the chips
+  fade out first and the next song's fade in after them, drifting in from the side you skipped to; the lyrics fade out
+  and the next ones fade in; the Canvas fades through its still into the next picture instead of cutting; and a burst of
+  presses settles on the last song without stutter.
 
 ## [0.3.8] - 2026-11-08
 

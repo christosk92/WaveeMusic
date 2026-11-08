@@ -75,9 +75,9 @@ internal static class ClassicStageIdentity
                     Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     MaxWidth = center ? titleW : float.NaN,
                 },
-            Embed.Comp(new ClassicStageMetaLink.Props(props.Meta, props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new ClassicStageMetaLink()),
+            Embed.Comp(new ClassicStageMetaLink.Props(Stage.HoldMeta(props.Stage, props.Meta), props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new ClassicStageMetaLink()),
         };
-        if (L.ShowChipsFor(in k)) titleKids.Add(Embed.Comp(new ClassicStageChips.Props(props.Chips), static () => new ClassicStageChips()) with { Key = "stage:chips" });
+        if (L.ShowChipsFor(in k)) titleKids.Add(Embed.Comp(new ClassicStageChips.Props(Stage.HoldChips(props.Stage, props.Chips)), static () => new ClassicStageChips()) with { Key = "stage:chips" });
         return Stage.Layer with
         {
             Children =

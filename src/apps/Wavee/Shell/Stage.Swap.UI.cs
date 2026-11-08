@@ -8,8 +8,9 @@
 // 0.3.8 cut every part at once on a track change: the cover, the title, the artists line and the chips flipped in one frame, the lyrics
 // vanished and the next document appeared (the owner's 0.3.9 report: "skipping next in fullscreen is not a smooth experience at all").
 //
-//   • ONE swap: the part is a keyed child (per track) of a stable ZStack box that fades in (`TrackSwapIn`) while the outgoing part fades out
-//     where it stands under a DECLARED swap exit (`TrackSwapFade`, which the inspector's gates read as the design): nothing reflows.
+//   • ONE swap: the part is a keyed child (per track) of a stable ZStack box; the outgoing part fades out where it stands under a DECLARED
+//     swap exit (`TrackSwapFade`, which the inspector's gates read as the design), nothing reflows. TEXT goes in sequence (`TrackSwapText`:
+//     the old words fade out quickly, then the new ones fade and drift in) so two strings never overlap mid-fade; the cover cross-fades.
 //   • THE DRIFT: the INCOMING part's entry starts a short way off on the side the track came from (next: from the right, previous: from
 //     the left, `Playback.SkipSense`) and travels to rest while the outgoing part fades where it stands. The production
 //     timing is the stage's own cross-fade clock (`Tone.CrossFadeMs`, which the backdrop art and the accent colours already change on);
@@ -48,6 +49,21 @@ public static partial class Stage
     /// <summary>How far the incoming part travels in from the direction of the skip (DIP).</summary>
     public const float TrackSwapDrift = 24f;
 
+    /// <summary>How long a leaving TEXT part takes to fade out before the incoming one starts (ms): text never cross-fades in one spot (two
+    /// different strings overlapping mid-fade read as a glitch, "Strobegia 2000s Mix"), so the old words go first and the new ones follow, the
+    /// whole swap still inside <see cref="Tone.CrossFadeMs"/>.</summary>
+    public const float TrackSwapOutMs = 180f;
+
+    /// <summary>The swap of a TEXT part (the title block, the lyrics): out first (<see cref="TrackSwapOutMs"/>, an ease-in fade), then in, delayed
+    /// by that much, fading and drifting over the rest of the stage's cross-fade clock. The cover keeps the overlapped cross-fade.</summary>
+    public static LayoutTransition TrackSwapText(bool entering, bool drift = true) => new(
+        TransitionChannels.Opacity,
+        TransitionDynamics.Tween(Tone.CrossFadeMs - TrackSwapOutMs, Easing.FluentDecelerate),
+        SizeMode.Auto,
+        Enter: entering ? (drift ? TrackSwapEnter : TrackSwapIn) with { DelayMs = TrackSwapOutMs } : default,
+        Exit: TrackSwapFade,
+        ExitDynamics: TransitionDynamics.Tween(TrackSwapOutMs, Easing.EaseIn));
+
     /// <summary><paramref name="body"/> as the part of track <paramref name="track"/> (any stable per-track key: the stage's
     /// <c>TrackKey</c>, a url): a change cross-fades the old part out and the new one in, the new one drifting in from the skip's side. The
     /// box is a ZStack sized by its child; <paramref name="fill"/> stretches it (and the part) over its slot instead.</summary>
@@ -61,6 +77,35 @@ public static partial class Stage
 
     /// <summary>The swap key of the playing track: its row slot (stable across a metadata refresh of the same track), "" for none.</summary>
     public static string SwapKey(Track track) => track.IsValid ? track.Slot.ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
+
+    /// <summary><paramref name="meta"/> held to the track playing NOW (the render that builds a swap part): once another track plays, the
+    /// line keeps answering this track's facts. A part's own components re-render on the track key before the part is swapped out, so
+    /// without the hold the leaving title faded out over the NEXT song's artists.</summary>
+    public static Func<int, Theming.Contracts.StageMetaFacts> HoldMeta(StageCtx stage, Func<int, Theming.Contracts.StageMetaFacts> meta)
+    {
+        long slot = stage.TrackKey.Peek() >> 32;
+        Theming.Contracts.StageMetaFacts held = default;
+        bool has = false;
+        return heroArtist =>
+        {
+            if ((stage.TrackKey.Value >> 32) != slot && has) return held;   // the part's track left: it is fading out with its own line
+            held = meta(heroArtist);
+            has = true;
+            return held;
+        };
+    }
+
+    /// <summary>The chips held to the track playing now, as <see cref="HoldMeta"/> holds the artists line.</summary>
+    public static Func<IReadOnlyList<Theming.Contracts.StageChipFact>> HoldChips(StageCtx stage, Func<IReadOnlyList<Theming.Contracts.StageChipFact>> chips)
+    {
+        long slot = stage.TrackKey.Peek() >> 32;
+        IReadOnlyList<Theming.Contracts.StageChipFact>? held = null;
+        return () =>
+        {
+            if ((stage.TrackKey.Value >> 32) != slot && held is not null) return held;
+            return held = chips();
+        };
+    }
 
     internal sealed record TrackSwapProps(string Track, Element Body, bool Fill);
 
@@ -81,7 +126,7 @@ public static partial class Stage
             {
                 Key = "swap:" + track, Direction = 1, MinWidth = 0f,
                 AlignSelf = p.Fill ? FlexAlign.Stretch : FlexAlign.Auto, JustifySelf = p.Fill ? FlexAlign.Stretch : FlexAlign.Auto,
-                Enter = swapped ? TrackSwapEnter : null, Exit = TrackSwapFade, Transition = TrackSwapMotion,
+                Layout = TrackSwapText(swapped),
                 Children = [p.Body],
             };
             return new BoxEl

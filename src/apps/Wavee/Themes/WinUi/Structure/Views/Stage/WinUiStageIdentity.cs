@@ -94,9 +94,9 @@ internal static class WinUiStageIdentity
                 Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 MaxWidth = center ? titleW : float.NaN,
             },
-            Embed.Comp(new WinUiStageMetaLink.Props(props.Meta, props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new WinUiStageMetaLink()),
+            Embed.Comp(new WinUiStageMetaLink.Props(Stage.HoldMeta(props.Stage, props.Meta), props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new WinUiStageMetaLink()),
         });
-        if (!card && !hero && L.ShowChipsFor(in k) && t.HeroTitles && k.Eff is Stage.VizLayout.Centered or Stage.VizLayout.Artist) titleKids.Add(Embed.Comp(new WinUiStageChips.Props(props.Chips), static () => new WinUiStageChips()) with { Key = "stage:chips" });
+        if (!card && !hero && L.ShowChipsFor(in k) && t.HeroTitles && k.Eff is Stage.VizLayout.Centered or Stage.VizLayout.Artist) titleKids.Add(Embed.Comp(new WinUiStageChips.Props(Stage.HoldChips(props.Stage, props.Chips)), static () => new WinUiStageChips()) with { Key = "stage:chips" });
         return Stage.Layer with
         {
             Children =

@@ -499,8 +499,8 @@ public static partial class Lyrics
                 M.PublishState(LyricsState.NoLyrics);
                 return MountView(message: Loc.Get(Strings.Lyrics.NoLyrics));
             }
-            // a skip from one document to the next cross-fades them (the stage's track swap): the old lines fade where they stand while the
-            // next document fades in over them, in the layer stack the structure's view places the body in; a first mount is born as it was
+            // a skip from one document to the next swaps them as text (the stage's track swap): the old lines fade out where they stand, then
+            // the next document fades in, in the layer stack the structure's view places the body in; a first mount is born as it was
             bool swapped = _trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal);
             if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
             _subjectEpoch = accountEpoch;
@@ -516,7 +516,7 @@ public static partial class Lyrics
                 : Embed.Comp(() => new DocHost(this, trackId)) with
                 {
                     Key = "lyrics-doc:" + trackId,
-                    Enter = swapped ? Stage.TrackSwapIn : null, Exit = Stage.TrackSwapFade, Transition = Stage.TrackSwapMotion,
+                    Layout = Stage.TrackSwapText(swapped, drift: false),   // the old lines go first, then the next document fades in
                 };
             // …and the frame stepper stays UNMOUNTED while the gate is up: OnFrame returns immediately for a
             // non-owning podcast, so a subscription to panel-rate frames would buy nothing but battery.

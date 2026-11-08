@@ -127,7 +127,7 @@ internal static class ZuneStageIdentity
                 var head = Title(title, ls.TitleSize, ls.TitleLine, G.TitleLight, 0f) with { Margin = new Edges4(0f, ls.TitleTop, 0f, 0f) };
                 kids.Add(head);
                 kids.Add(Meta(props, ls.ArtistSize, ls.ArtistLine, G.TitleRegular, ls.ArtistDisplay ? R.Type.DisplayFace : null, set.Text, Ink.Ink, false, heroArtist));
-                if (ls.TagLine > 0f && L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(props.Chips, ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
+                if (ls.TagLine > 0f && L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(Stage.HoldChips(props.Stage, props.Chips), ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
                 break;
             }
             default:
@@ -156,7 +156,7 @@ internal static class ZuneStageIdentity
                 // Lyrics mode's identity card (Z-Lyrics-Compact): the artist line rests in the accent
                 bool lyricsCard = k.Mode == Stage.Mode.Lyrics && L.IdentityCardOn(k.Mode);
                 kids.Add(Meta(props, meta.Size, meta.Line, G.TitleRegular, null, lyricsCard ? set.Text : Ink.InkSecondary, lyricsCard ? Ink.Ink : set.Text, center, heroArtist));
-                if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageChips.Props(props.Chips), static () => new ZuneStageChips()) with { Key = "stage:chips" });
+                if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageChips.Props(Stage.HoldChips(props.Stage, props.Chips)), static () => new ZuneStageChips()) with { Key = "stage:chips" });
                 break;
             }
         }
@@ -250,7 +250,7 @@ internal static class ZuneStageIdentity
     }
 
     static Element Meta(StageIdentityProps props, float size, float line, ushort weight, string? face, ColorF rest, ColorF hover, bool center, int heroArtist)
-        => Embed.Comp(new ZuneStageMetaLink.Props(props.Meta, props.OpenArtist, size, line, weight, face, rest, hover, center, heroArtist), static () => new ZuneStageMetaLink());
+        => Embed.Comp(new ZuneStageMetaLink.Props(Stage.HoldMeta(props.Stage, props.Meta), props.OpenArtist, size, line, weight, face, rest, hover, center, heroArtist), static () => new ZuneStageMetaLink());
 }
 
 /// <summary>The Artist layout's identity plate (Z-NowPlaying-Artist): the board's flat veil (0.6), darker where the photo under it is bright, so the

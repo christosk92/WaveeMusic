@@ -243,6 +243,10 @@ public static partial class Stage
         /// <summary>The Up next column's gap to the lyrics pane (C-Stage-Huge4K: the 1600 lyrics column stops 336 short of the column).</summary>
         public const float UpNextGap = 336f;
 
+        /// <summary>The narrowest the gap gets, and the measure the lyrics pane keeps beside the column before the gap gives way
+        /// (<see cref="LyricsPaneW"/>): about two dozen characters of the lyric type, so a line wraps at phrases, never word by word.</summary>
+        public const float UpNextGapMin = 48f, LyricsMeasureMin = 600f;
+
         /// <summary>Lyrics mode docks the Up next column beside the lyrics (C-Stage-Huge4K): the tier has one and the stage is a wide class with its pane.</summary>
         public bool UpNextShown(Mode mode) => M.UpNextW > 0f && mode == Mode.Lyrics && ShowPane && Aspect is Aspect.Desktop or Aspect.Ultrawide;
 
@@ -250,8 +254,17 @@ public static partial class Stage
         public (float X, float Y, float W, float H) UpNextRect
             => (MathF.Max(0f, W - TransportInset - M.UpNextW), GalleryTop, M.UpNextW, MathF.Max(0f, TransportTop - Pad - GalleryTop));
 
-        /// <summary>The lyrics pane's width beside the Up next column (never wider than the pane).</summary>
-        public float LyricsPaneW(Mode mode) => UpNextShown(mode) ? MathF.Max(0f, MathF.Min(PaneW, UpNextRect.X - UpNextGap - PaneX)) : PaneW;
+        /// <summary>The lyrics pane's width beside the Up next column (never wider than the pane). The board's gap (<see cref="UpNextGap"/>) is
+        /// a 3840 stage's: at 1920 the same 336 DIP left the lyrics about 250 wide and they fell to one word per line. So the GAP gives way
+        /// first, down to <see cref="UpNextGapMin"/>, while the room beside the column is short of <see cref="LyricsMeasureMin"/>; a 4K stage
+        /// keeps the board's gap and column exactly.</summary>
+        public float LyricsPaneW(Mode mode)
+        {
+            if (!UpNextShown(mode)) return PaneW;
+            float room = UpNextRect.X - PaneX;
+            float gap = Math.Clamp(room - LyricsMeasureMin, UpNextGapMin, UpNextGap);
+            return MathF.Max(0f, MathF.Min(PaneW, room - gap));
+        }
 
         /// <summary>The gap between the stacked identity block (two title lines' worth, so a title change never moves them) and the bars.</summary>
         public const float ArtBarsGap = 48f;
