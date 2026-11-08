@@ -251,7 +251,7 @@ internal sealed class WinUiVolumeButton : Component
                     Children =
                     [
                         WinUiPlayerBar.Button(props.Muted.Peek() ? Icons.Mute : Icons.Volume, props.ToggleMute, true, false, PL.ToolBox, PL.ToolBox, PL.Glyph),
-                        Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                        VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                             length: PL.VolumeFlyoutW, thickness: PL.VolumeThickness),
                     ],
                 },

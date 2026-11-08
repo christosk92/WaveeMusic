@@ -44,6 +44,8 @@ versions separately under `v*` and is not tracked in this file.)
   playlist. A playlist set to video shows how long each video is.
 - **Pin by dragging in Zune.** Drag a playlist, album or artist onto "pinned" to pin it, and right-click a pin to open
   it, unpin it or move it. While you drag a playlist, the preview shows the playlist itself.
+- **Scroll over the volume slider to change the volume.** Each notch of the mouse wheel moves it 5%, the same as the
+  arrow keys, on the player bar, the volume popups and the full screen player. (!220)
 
 ### Changed
 

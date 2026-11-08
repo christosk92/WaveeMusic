@@ -255,7 +255,7 @@ internal static partial class WinUiPlayerBar
                         AddTool(Lit(PL.VolumeSliderKey, (v.Lit & slot) != 0, new BoxEl
                         {
                             Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(PL.VolumeLead, 0f, 0f, 0f),
-                            Children = [Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                            Children = [VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                                 length: look.VolumeW, thickness: PL.VolumeThickness)],
                         }), look.VolumeW + PL.VolumeLead);
                         break;

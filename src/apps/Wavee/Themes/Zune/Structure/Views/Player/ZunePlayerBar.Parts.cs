@@ -172,7 +172,7 @@ internal static partial class ZunePlayerBar
                 return Slot("volume-slider", lit, new BoxEl
                 {
                     Margin = L.VolumeMargin, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-                    Children = [Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                    Children = [VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                         length: look.VolumeW, thickness: L.VolumeThickness, style: LineSlider())],
                 });
             case RightSlot.Lyrics:
@@ -266,7 +266,7 @@ internal sealed class ZuneVolumeGlyph : Component
                     Width = ZunePlayerLayout.VolumePopupW, Height = ZunePlayerLayout.VolumePopupH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Children =
                     [
-                        Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
+                        VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
                             length: ZunePlayerLayout.VolumePopupRail, thickness: ZunePlayerLayout.VolumeThickness, style: ZunePlayerBar.LineSlider()),
                     ],
                 },

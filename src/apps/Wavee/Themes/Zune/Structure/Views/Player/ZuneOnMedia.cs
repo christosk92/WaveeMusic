@@ -117,7 +117,7 @@ internal sealed class ZuneOverlayChrome : Component
                     Width = ZunePlayerLayout.VolumePopupW, Height = ZunePlayerLayout.VolumePopupH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Children =
                     [
-                        Slider.Create(props.VolumeCell, props.SetVolume, new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
+                        VolumeSlider.Create(props.VolumeCell, props.SetVolume, new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
                             length: ZunePlayerLayout.VolumePopupRail, thickness: ZunePlayerLayout.VolumeThickness, style: ZunePlayerBar.LineSlider()),
                     ],
                 },

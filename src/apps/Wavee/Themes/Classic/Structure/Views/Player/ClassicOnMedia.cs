@@ -20,6 +20,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -144,7 +145,7 @@ internal sealed class ClassicOverlayChrome : Component
                     Padding = ClassicOnMediaLayout.VolumePopupPadding,
                     Children =
                     [
-                        Slider.Create(props.VolumeCell, props.SetVolume,
+                        VolumeSlider.Create(props.VolumeCell, props.SetVolume,
                             new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
                             length: ClassicOnMediaLayout.VolumeSliderLength, thickness: ClassicOnMediaLayout.VolumeSliderThickness),
                     ],
