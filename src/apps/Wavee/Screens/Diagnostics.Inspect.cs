@@ -601,18 +601,37 @@ public static partial class Diagnostics
                         if (kind == "head")
                         {
                             string uri = a.Str("uri");
-                            if (!Entities.StageHead(uri)) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
+                            if (!Entities.StageHead(uri, artistOverview: a.Has("answer"))) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
                             InspectKit.ColdStaged = true;   // the next mount puts the header back
+                            // answer=hold: the page's own ask for its head goes through the real fetch layer and is held by a scripted transport
+                            // (Entities.Fake.Answer.cs), for `head-land answer=` to settle.
+                            if (a.Has("answer") && !Entities.BeginScripted(uri))
+                                return Inspect.Reply.Fail(id, name, "state kind=head answer= wants an album, playlist, show, episode or artist the fake holds");
                             Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
                             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
-                            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("uri", uri); AfterState(w, shell, kind); },
-                                loops: InspectKit.LoopMode.Skeletons);
+                            return Settled(id, name, a, w =>
+                            {
+                                w.WriteString("kind", kind);
+                                w.WriteString("uri", uri);
+                                if (a.Has("answer")) w.WriteNumber("held", Entities.ScriptedHeld);
+                                AfterState(w, shell, kind);
+                            }, loops: InspectKit.LoopMode.Skeletons);
                         }
                         if (kind == "head-land")
                         {
-                            Entities.RestoreHead();
+                            string word = a.Has("answer") ? a.Str("answer").ToLowerInvariant() : "fill";
+                            if (Entities.ScriptedAnswerOf(word) is not { } answer)
+                                return Inspect.Reply.Fail(id, name, "state kind=head-land answer= wants fill|omit|unfilled|fail|cancel, not '" + word + "'");
+                            int settled = Entities.LandScripted(answer);
                             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
-                            return Settled(id, name, a, w => { w.WriteString("kind", kind); AfterState(w, shell, kind); });
+                            return Settled(id, name, a, w =>
+                            {
+                                w.WriteString("kind", kind);
+                                w.WriteString("answer", word);
+                                w.WriteNumber("settled", settled);
+                                w.WriteNumber("held", Entities.ScriptedHeld);
+                                AfterState(w, shell, kind);
+                            });
                         }
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back

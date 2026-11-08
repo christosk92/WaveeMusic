@@ -55,8 +55,15 @@ public static partial class Fetch
         EdgeTableBase? edges = EdgeTableOf(scope, edge);
         Table? table = ParentTableOf(scope, edge);
         if (edges is null || table is null) return;
-        if (FetchRoutes.ForEdge(edge, offset).Transport == RouteTransport.None) return;
         offset = Math.Max(0, offset);
+        if (FetchRoutes.ForEdge(edge, offset).Transport == RouteTransport.None)
+        {
+            // No route can carry this relation: an ask that can never be answered is answered NOW, as a real negative
+            // (NoRoute, kept asked), so a surface reads a vacancy instead of a skeleton waiting for a request nobody sends.
+            for (int i = 0; i < parents.Length; i++)
+                if (parents[i] > Table.None && parents[i] < table.Count && !edges.WasAsked(parents[i], offset)) edges.MarkUnanswered(parents[i], offset);
+            return;
+        }
 
         bool queued = false;
         for (int i = 0; i < parents.Length; i++)
@@ -111,7 +118,11 @@ public static partial class Fetch
         Table? table = ParentTableOf(scope, edge);
         if (table is null || parent <= Table.None || parent >= table.Count || table.Id[parent] != id) return;
         EntityProvider provider = ProviderFor(scope, SubjectOf(scope, table, parent), id);
-        if (provider == EntityProvider.None) return;
+        if (provider == EntityProvider.None)
+        {
+            if (EdgeTableOf(scope, edge) is { } relation && relation.State(parent) == EdgeState.Unknown) relation.MarkUnanswered(parent, 0);   // nobody can answer the network leg
+            return;
+        }
         Bucket(table, FetchSubject.Edge, provider, 0, edge, 0, priority).Add(parent, id, s_door);
         s_toNetwork++;
         SendOrOwe(priority);                    // disk reads landing in one loop pass leave as one request per shape

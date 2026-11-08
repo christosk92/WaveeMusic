@@ -158,9 +158,11 @@ versions separately under `v*` and is not tracked in this file.)
   when you opened the artist of the song that was playing: its top tracks arrived last and the page never noticed.
   It now shows as soon as everything has arrived, and an artist whose details stopped coming shows "Something went
   wrong" with Retry instead of loading forever.
-- **No page waits forever.** If an artist, album, playlist, show or episode page is still loading after a few
-  seconds with nothing on its way, Wavee asks again once, and if that does not help it shows "Something went wrong"
-  with Retry. The log names the page and what it was waiting for (`page.stuck`).
+- **No page waits forever.** An artist, album, playlist, show or episode page now knows the moment its details stop
+  coming (an answer without them, a failed request, no connection) and shows "Something went wrong" with Retry right
+  away, instead of loading for good or for a fixed wait. While Wavee cannot reach Spotify a page says it is offline, and
+  it fills in by itself once the connection is back. The log names the page and what it was waiting for
+  (`page.failed`).
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
 - **No empty band under an artist's concerts, merch or gallery.** On the artist page, "Upcoming concerts" left about

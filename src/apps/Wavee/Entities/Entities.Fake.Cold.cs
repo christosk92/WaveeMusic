@@ -90,13 +90,13 @@ public static partial class Entities
 
     /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and every known field, the one the
     /// page's HeaderPending reads among them). False for another kind or an unknown uri.</summary>
-    public static bool StageHead(string uri)
+    public static bool StageHead(string uri, bool artistOverview = false)
     {
         RestoreHead();
         var kind = EntityUri.KindOf(uri.AsSpan());
         int slot = ResolveSeedSlot(kind, uri);
         if (slot == Table.None) return false;
-        if (kind == EntityKind.Artist) return StageChartLate(slot);
+        if (kind == EntityKind.Artist) return artistOverview ? StageArtistOverview(slot) : StageChartLate(slot);
         Scope s = Current;
         (Table Table, Column<StringId> Title)? head = kind switch
         {
@@ -125,6 +125,22 @@ public static partial class Entities
     /// <summary>The charted rows <see cref="StageChartLate"/> took the fields of, and what each knew.</summary>
     static (int[] Slots, uint[] Known)? s_chartLate;
 
+    /// <summary>The artist <see cref="StageArtistOverview"/> took the overview of, and what it knew.</summary>
+    static (int Slot, uint Known)? s_artistOverview;
+
+    /// <summary>`state kind=head uri=<artist> answer=hold`: the artist's overview and chart bit are not known (a cold open: the page asks for them, and
+    /// the scripted answer holds the ask). The landing puts the known bits back.</summary>
+    static bool StageArtistOverview(int artist)
+    {
+        var t = Current.Artists;
+        s_artistOverview = (artist, t.Known[artist]);
+        t.Known[artist] &= ~(uint)(ArtistFields.Overview | ArtistFields.Chart);
+        t.Version[artist]++;
+        t.MarkDirty();
+        Current.PublishAll();
+        return true;
+    }
+
     /// <summary>The request stamp of the staged chart rows' fetch (cleared by the landing).</summary>
     const uint ChartLateStamp = 0xC4A7u;
 
@@ -144,7 +160,7 @@ public static partial class Entities
             known[i] = t.Known[slot];
             t.Known[slot] &= ~group;
             t.Asked[slot] |= group;
-            t.Inflight[slot] = ChartLateStamp;
+            StageSeat(t, slot, ChartLateStamp);
             t.Version[slot]++;
         }
         s_chartLate = (slots, known);
@@ -164,17 +180,39 @@ public static partial class Entities
             int slot = c.Slots[i];
             if (slot <= Table.None || slot >= t.Count) continue;
             t.Known[slot] = c.Known[i];
-            t.Inflight[slot] = 0;
+            LandSeat(t, slot);
             t.Version[slot]++;
         }
         t.MarkDirty();
         Current.PublishAll();
     }
 
+    /// <summary>A staged request naming <paramref name="slot"/>: the fixture seats the row as a real request does (<see cref="Table.Seat"/>, the in-flight
+    /// stamp's only writer), once — a stage run twice does not stack seats.</summary>
+    static void StageSeat(Table t, int slot, uint stamp)
+    {
+        if (t.Outstanding[slot] == 0) t.Seat(slot, stamp);
+    }
+
+    /// <summary>The staged request's landing: every seat it took given back (<see cref="Table.Unseat"/>: the stamp clears and the table publishes).</summary>
+    static void LandSeat(Table t, int slot)
+    {
+        while (t.Outstanding[slot] > 0) t.Unseat(slot);
+    }
+
     /// <summary>The header <see cref="StageHead"/> took away, back in place (the landing); nothing when none is staged.</summary>
     public static void RestoreHead()
     {
         RestoreChartLate();
+        if (s_artistOverview is { } o)
+        {
+            s_artistOverview = null;
+            var t = Current.Artists;
+            t.Known[o.Slot] = o.Known;
+            t.Version[o.Slot]++;
+            t.MarkDirty();
+            Current.PublishAll();
+        }
         if (s_head is not { } h) return;
         s_head = null;
         h.Title[h.Slot] = h.Value;
@@ -197,7 +235,7 @@ public static partial class Entities
             bool warm = Array.IndexOf(s_coldWarm, k) >= 0;
             targets[k] = ResolveSeedSlot(EntityKind.Track, warm ? TrackUri(k + 7) : ColdTrackUri(k));
             payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0);
-            if (!warm && targets[k] != Table.None) Current.Tracks.Inflight[targets[k]] = stamp;
+            if (!warm && targets[k] != Table.None) StageSeat(Current.Tracks, targets[k], stamp);
         }
         RestoreColdHead();
         Current.Edges.PlaylistTracks.Replace(list, targets, payload, EdgeState.Complete, ColdRows);
@@ -235,7 +273,7 @@ public static partial class Entities
         {
             if (Array.IndexOf(s_coldWarm, k) >= 0) continue;
             int slot = Current.Tracks.Slot(ColdTrackUri(k).AsSpan());
-            if (slot != Table.None) Current.Tracks.Inflight[slot] = stamp;
+            if (slot != Table.None) StageSeat(Current.Tracks, slot, stamp);
         }
         Current.PublishAll();
     }
@@ -275,7 +313,7 @@ public static partial class Entities
             if (Array.IndexOf(s_coldWarm, k) >= 0) continue;
             int slot = Current.Tracks.Slot(ColdTrackUri(k).AsSpan());
             if (slot == Table.None) continue;
-            Current.Tracks.Inflight[slot] = 0;
+            LandSeat(Current.Tracks, slot);
             credit[0] = ResolveSeedSlot(EntityKind.Artist, ArtistUri(Wrap(k + 7, s_artistNames.Length)));
             if (credit[0] != Table.None) Current.Edges.TrackArtists.ReplaceRun(slot, credit, default);
         }

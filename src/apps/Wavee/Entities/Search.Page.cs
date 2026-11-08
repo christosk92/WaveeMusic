@@ -25,10 +25,10 @@
 //
 // ── READINESS ────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// Known → content. Not known and the group UN-ASKED after this page asked (a terminal transport failure,
-// `Fetch.Failed`) → the error vacancy WITH Retry (§9 gap 9). Asked, nothing in flight and still not known → the answer
-// concluded without it → the facet's empty. Otherwise pending. A row failure publishes no signal, so a one-shot
-// deadline (re-armed only while a request is still out) re-reads the marks; nothing ticks once the page has settled.
+// The store's total state of the group (`Table.Observe`, `GroupState`): Known → content; Failed (a terminal transport
+// failure, a route that did not answer) → the error vacancy WITH Retry (§9 gap 9); Absent (the answer concluded without
+// it) → the facet's empty; not asked yet or in flight → pending. The read is tracked, and every move of the state
+// publishes the searches table, so the page re-reads it on the publication that changed it: no deadline, no latch.
 //
 // ── THE SLIDE (§0.5) ─────────────────────────────────────────────────────────────────────────────────────────────────
 //
@@ -85,8 +85,6 @@ public readonly partial struct Search
         (EntityKind.User, (uint)UserFields.Identity),
     ];
 
-    /// <summary>The deadline after which an unanswered facet re-reads its marks.</summary>
-    const float RecheckMs = 10_000f;
 
     enum Readiness : byte { Pending, Ready, Concluded, Failed }
 
@@ -94,7 +92,6 @@ public readonly partial struct Search
     sealed class PageHost : Component
     {
         readonly Signal<int> _chip = new(0);
-        readonly Signal<int> _recheck = new(0);
         readonly SearchFacet[] _facets = new SearchFacet[SearchTable.FacetCount];
         readonly Action[] _selectors = new Action[SearchTable.FacetCount];
         int _facetCount = 1;
@@ -106,15 +103,13 @@ public readonly partial struct Search
         Shell.NavOrigin? _origin;
         HitContext _ctx;
         int _prevChip, _cols = 2;
-        bool _slideArmed, _hadChips, _bodyAnswered, _colsInit, _askedAll;
-        uint _askedFacets;
+        bool _slideArmed, _hadChips, _bodyAnswered, _colsInit;
         int[] _hitScratch = new int[64];
-        TimerHandle _deadline;
 
         readonly Func<float, int> _colsFor;
         readonly Func<bool> _pending, _failed;
         readonly Func<SearchBodyModel> _body;
-        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists, _selectArtists;
+        readonly Action _demand, _demandTracked, _retry, _retryAll, _clampChip, _selectPlaylists, _selectArtists;
 
         // ── row 2 (P5 Z5): the row last built, its signature, and the version the publishing effect is keyed on ──
         readonly Action _publishChrome;
@@ -140,7 +135,6 @@ public readonly partial struct Search
             _demandTracked = DemandTracked;
             _retry = Retry;
             _retryAll = RetryAll;
-            _recheckNow = Recheck;
             _clampChip = () => { if (_chip.Peek() >= _facetCount) _chip.Value = 0; };
             _selectPlaylists = () => SelectFacet(SearchFacet.Playlists);
             _selectArtists = () => SelectFacet(SearchFacet.Artists);
@@ -152,7 +146,6 @@ public readonly partial struct Search
             uint scopeEpoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
             var scope = Entities.Current;
             Subscribe(scope);
-            _ = _recheck.Value;
             var overlay = UseContext(Overlay.Service);
             string scrollScope = UseContext(Shell.PageScrollScope);
             _sink = UseContext(PageChromeSink.Context);
@@ -164,8 +157,6 @@ public readonly partial struct Search
                 _echo = p.Query.ToLowerInvariant();
                 _all = p.Query.Length == 0 ? default : Entities.Search(p.Query.AsSpan());
                 _origin = p.Query.Length == 0 ? null : new Shell.NavOrigin(p.Query, Shell.Parse("search".AsSpan(), p.Query.AsSpan()));
-                _askedAll = false;
-                _askedFacets = 0;
                 _hadChips = false;
                 _bodyAnswered = false;
             }
@@ -185,7 +176,6 @@ public readonly partial struct Search
 
             UseEffect(_demand, DepKey.From(_row.Slot, (int)scopeEpoch));
             UseEffect(_demandTracked);
-            _deadline = UseTimeout(_recheckNow, RecheckMs, DepKey.From(_row.Slot, (int)_facet));
 
             bool slide = Slides(_slideArmed, _prevChip, chip);
             bool forward = chip > _prevChip;
@@ -199,7 +189,7 @@ public readonly partial struct Search
             int selected = 0;
             if (!vacant)
             {
-                var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
+                var allReady = ReadinessOf(_all, SearchFields.Chips);
                 // The tabs arrive WITH the first result, not a beat before it: the chip row stays skeletal until the body has
                 // answered once for this query (Search.ChipRowSkeletal). The view keys both rows so the swap is a mount, not an
                 // in-place patch.
@@ -294,25 +284,26 @@ public readonly partial struct Search
 
         // ── readiness ───────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The four answers a group of a search row can give (file header).</summary>
-        static Readiness ReadinessOf(Search s, SearchFields group, bool askedByPage)
+        /// <summary>The four answers a group of a search row can give (file header): the store's total state, tracked.</summary>
+        static Readiness ReadinessOf(Search s, SearchFields group)
         {
             if (!s.IsValid) return Readiness.Pending;
-            if (s.Knows(group)) return Readiness.Ready;
-            var t = Entities.Current.Searches;
-            bool asked = (t.Asked[s.Slot] & (uint)group) != 0;
-            if (!asked) return askedByPage ? Readiness.Failed : Readiness.Pending;
-            return t.Inflight[s.Slot] == 0 ? Readiness.Concluded : Readiness.Pending;
+            return Entities.Current.Searches.Observe(s.Slot, (uint)group) switch
+            {
+                GroupState.Known => Readiness.Ready,
+                GroupState.Failed => Readiness.Failed,
+                GroupState.Absent => Readiness.Concluded,
+                _ => Readiness.Pending,
+            };
         }
 
         Readiness BodyReadiness()
         {
             _ = Entities.ScopeEpoch.Value;
             Subscribe(Entities.Current);
-            _ = _recheck.Value;
             return _facet == SearchFacet.Genres
-                ? ReadinessOf(_all, SearchFields.Genres, _askedAll)
-                : ReadinessOf(_row, SearchFields.Results, _facet == SearchFacet.All ? _askedAll : (_askedFacets & (1u << (int)_facet)) != 0);
+                ? ReadinessOf(_all, SearchFields.Genres)
+                : ReadinessOf(_row, SearchFields.Results);
         }
 
         // ── the facet dispatch (§1.1 ResultsFor) ────────────────────────────────────────────────────────────────────
@@ -383,8 +374,8 @@ public readonly partial struct Search
             }
             else if (n > 0) fallback = FallbackList(all);
 
-            var genreState = SectionOf(ReadinessOf(_all, SearchFields.Genres, _askedAll));
-            var relatedState = SectionOf(ReadinessOf(_all, SearchFields.Related, _askedAll));
+            var genreState = SectionOf(ReadinessOf(_all, SearchFields.Genres));
+            var relatedState = SectionOf(ReadinessOf(_all, SearchFields.Related));
             return new SearchBodyModel
             {
                 Kind = SearchBodyKind.All, Facet = SearchFacet.All, Hits = ctx,
@@ -531,13 +522,7 @@ public readonly partial struct Search
         {
             if (!_all.IsValid) return;
             Entities.Ensure(_all, SearchFields.All);
-            _askedAll = true;
-            if (_facet is not (SearchFacet.All or SearchFacet.Genres) && _row.IsValid)
-            {
-                Entities.Ensure(_row, SearchFields.Results);
-                _askedFacets |= 1u << (int)_facet;
-            }
-            _deadline.Restart();
+            if (_facet is not (SearchFacet.All or SearchFacet.Genres) && _row.IsValid) Entities.Ensure(_row, SearchFields.Results);
         }
 
         void DemandTracked()
@@ -573,32 +558,19 @@ public readonly partial struct Search
             }
         }
 
-        /// <summary>Retry the facet body: re-ask what a terminal failure un-asked, then re-read the marks.</summary>
+        /// <summary>Retry the facet body: re-ask what a terminal failure un-asked (the re-ask clears the failure and publishes,
+        /// so the vacancy gives way to the shimmer on the next frame).</summary>
         void Retry()
         {
             if (_facet is SearchFacet.All or SearchFacet.Genres) { RetryAll(); return; }
             if (!_row.IsValid) return;
             Entities.Ensure(_row, SearchFields.Results);
-            _deadline.Restart();
-            _recheck.Value = _recheck.Peek() + 1;
         }
 
         void RetryAll()
         {
             if (!_all.IsValid) return;
             Entities.Ensure(_all, SearchFields.All);
-            _deadline.Restart();
-            _recheck.Value = _recheck.Peek() + 1;
-        }
-
-        /// <summary>The deadline: re-read the marks, and re-arm only while a request for the bound rows is still out.</summary>
-        void Recheck()
-        {
-            if (_scope is null || !ReferenceEquals(_scope, Entities.Current)) return;
-            _recheck.Value = _recheck.Peek() + 1;
-            var t = _scope.Searches;
-            bool outstanding = (_all.IsValid && t.Inflight[_all.Slot] != 0) || (_row.IsValid && t.Inflight[_row.Slot] != 0);
-            if (outstanding) _deadline.Restart();
         }
     }
 }

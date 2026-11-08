@@ -1065,12 +1065,17 @@ public static partial class Shell
         else GoTo(new Route(RouteKind.Home));
     }
 
-    /// <summary>The probe's state on the page's gutter (16 / 24 / 48 by the window's width: the frame's, which the pages themselves sit on).</summary>
-    static Element InspectStateBody(string kind) => Responsive.Of("inspect-state", w => new BoxEl
+    /// <summary>The probe's state on the page's gutter (<see cref="PageStateBody"/>).</summary>
+    static Element InspectStateBody(string kind) => PageStateBody(InspectVacancy(kind));
+
+    /// <summary>A state that stands in for a whole page (a vacancy: the probe's, a detail page whose head stopped coming) on the page's gutter
+    /// (16 / 24 / 48 by the window's width: the frame's, which the pages themselves sit on), so a theme whose vacancy reads from the leading edge
+    /// (Zune) starts where the page's own content does.</summary>
+    internal static Element PageStateBody(Element state) => Responsive.Of(state, static (s, w) => new BoxEl
     {
         Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Padding = new Edges4(w < 640f ? 16f : w < 1008f ? 24f : 48f, 0f, w < 640f ? 16f : w < 1008f ? 24f : 48f, 0f),
-        Children = [InspectVacancy(kind)],
+        Children = [s],
     }, fallback: 1440f, grow: 1f);
 
     static Element InspectVacancy(string kind) => kind switch

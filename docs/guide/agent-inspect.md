@@ -514,7 +514,15 @@ pending head; `cold-rows` or `cold-warm` lands the header with the membership (o
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
 rating or cover; its rows stay), and `state kind=head-land` puts them back on the same page, so `state kind=head-land trace=40 prefix=...` traces the head landing
 in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). An **artist** uri (`ar3`) stages the late chart instead: everything is
-known but the charted rows' fields, asked and in flight (the page on its skeleton); `head-land` lands them as an answer does, and nothing else moves. A `state` with `trace=N` (or `settle=false`) runs no frames before its
+known but the charted rows' fields, asked and in flight (the page on its skeleton); `head-land` lands them as an answer does, and nothing else moves.
+**A real request, settled by hand** (`Entities.Fake.Answer.cs`): `state kind=head uri=<album|playlist|show|episode|artist> answer=hold` (an artist: its overview
+and chart bit instead of the late chart) also swaps a scripted
+transport in for the subject's provider, so the page's OWN ask for its head goes through the fetch layer (plan, bucket, drain, send) and is held in
+flight (the reply's `held`); `state kind=head-land answer=fill|omit|unfilled|fail|cancel` settles it: `fill` lands the head, `omit` answers without it
+(the fetch layer's miss retries are omitted too, then the group is Failed), `unfilled` answers it as a route that did not answer, `fail` is a terminal
+404, `cancel` a transport failure the fetch layer re-queues (still in flight; the retry is held again). The page turns into its error vacancy on the
+settle's own publication (no timer), its Retry re-asks through the same door (held again), and `head-land answer=fill` (or the next `mount`) puts
+the original transport back. A `state` with `trace=N` (or `settle=false`) runs no frames before its
 trace, so the trace starts on the frame the state lands. Its verdict judges that landing frame too: the watched nodes are sampled once
 before it (the reply's `baseline` row, frame -1) and f0 is compared with them, so a jump in the landing frame counts as moved at once.
 `baseline=false` turns that off; `baseline=true` turns it on for another verb's `trace=N`. Pass `trace=N` on a `state` command to trace its

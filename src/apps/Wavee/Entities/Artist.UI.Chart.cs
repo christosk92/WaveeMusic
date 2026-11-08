@@ -117,18 +117,6 @@ public readonly partial struct Artist
         Func<float, float>? _cardHeightFn;
         float _cardHeightFor = float.NaN;
 
-        // ── the failure gate's "after we asked" half (Search.Page.cs's `_askedAll`) ──
-        // `ArtistReadiness.ChartFailed` reads "not asked" as "un-asked by a failure", which is only true once this
-        // host's own asks have run for the (artist, scope) it is showing; the target marks likewise count only for the
-        // popular list version the host has asked rows for. Plain fields: written by effects, read by the next render.
-        int _demandedSlot = Table.None, _targetsSlot = Table.None;
-        uint _demandedEpoch, _targetsVersion;
-        /// <summary>Bumped by the recheck deadline and the Retry so the region re-reads the marks — an un-ask publishes
-        /// no signal, and a batch that fails terminally publishes nothing at all.</summary>
-        readonly Signal<int> _recheck = new(0);
-        TimerHandle _deadline;
-        /// <summary>The deadline after which the chart re-reads its marks while a request is still out (Search's).</summary>
-        const float RecheckMs = 10_000f;
 
         readonly Func<ChartItem, int, float, Element> _cardAt;
         readonly Func<ChartItem, int, string> _keyOf;
@@ -137,7 +125,7 @@ public readonly partial struct Artist
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Func<int, Track> _trackAt;
         readonly Prop<ColorF> _pillFill;
-        readonly Action _retry, _demand, _demandTargets, _recheckNow;
+        readonly Action _retry, _demand, _demandTargets;
         // WP3 — the shelf's invoke (Tap on a row / Enter / Space-on-single / double-click) and the check lane's visibility.
         readonly Action<ChartItem, int> _invoke;
         internal readonly Func<bool> ChecksVisible;
@@ -170,7 +158,6 @@ public readonly partial struct Artist
             _pillFill = Prop.Of(() => AccentSignal?.Value ?? Tok.AccentDefault);
             _demand = Demand;
             _demandTargets = DemandTargets;
-            _recheckNow = Recheck;
             _invoke = (_, i) => InvokeAt(i);
             ChecksVisible = () => { _ = Selection.Version.Value; return SelectionBarRules.ChecksVisible(Selection.SelectedCount, false); };
         }
@@ -185,20 +172,16 @@ public readonly partial struct Artist
             var scope = Entities.Current;
             _ = scope.Edges.ArtistPopular.Changed.Value;
             _ = scope.Artists.Changed.Value;
-            _ = scope.Tracks.Changed.Value;                  // the gate: every target Knows(TrackFields.Row)
-            _ = _recheck.Value;                              // the deadline and the Retry re-read the marks through this
+            _ = scope.Tracks.Changed.Value;                  // the rows the shelf paints (the gate subscribes itself: Explain)
             Owner = p.A;
             AccentSignal = p.Accent;
             ColorF accent = p.Accent.Value;
             Classic = ShellPolicy.Tracked.Lists.ClassicRows;
             ShowArtwork = ShellPolicy.Tracked.Lists.TrackArtwork;
 
-            // The chart's own asks (the same ones the page makes, so they dedupe to nothing) and the latch behind the
-            // failure gate; the deadline re-arms with the artist and the scope, and `Recheck` keeps it alive while a
-            // request is still out.
+            // The chart's own asks (the same ones the page makes, so they dedupe to nothing).
             UseEffect(_demand, DepKey.From(Owner.Slot, (int)scopeEpoch));
             UseEffect(_demandTargets);
-            _deadline = UseTimeout(_recheckNow, RecheckMs, DepKey.From(Owner.Slot, (int)scopeEpoch));
 
             var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
             if (style is null) return new BoxEl();
@@ -213,9 +196,12 @@ public readonly partial struct Artist
                 _cardHeightFor = rowHeight;
             }
 
-            _ready = ArtistReadiness.Chart(Owner);
-            _failed = !_ready && ChartFailedNow(scope);
-            NoteGate(scope);
+            // THE GATE, read through the store's total state (tracked: the artist row, the popular relation and the charted
+            // rows wake this render when its verdict can move). Not asked yet waits; Absent/Failed is the chart's Retry.
+            var gate = ArtistReadiness.Explain(Owner);
+            _ready = gate.Verdict == ArtistReadiness.ChartVerdict.Ready;
+            _failed = gate.Verdict == ArtistReadiness.ChartVerdict.Failed;
+            NoteGate(scope, gate);
             _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
             int fit = p.Rows?.Value ?? 0;   // the structure's live fit to its column (0: the tier's)
             _rows = fit > 0 ? fit : Math.Max(1, chartTiers.ChartRows(tierFacts));
@@ -263,54 +249,20 @@ public readonly partial struct Artist
             });
         }
 
-        // ── readiness: the failure gate, its latch, and the recheck ─────────────────────────────────────────────────
-
-        /// <summary>Has the chart stopped coming (<see cref="ArtistReadiness.ChartFailed"/>)? Reads the four marks off the
-        /// live tables for the artist and — once this host has asked rows for the list it is showing — for every target.
-        /// False until <see cref="Demand"/> has run for this (artist, scope): before that "not asked" is "not asked yet".</summary>
-        bool ChartFailedNow(Scope scope)
-        {
-            int slot = Owner.Slot;
-            if (!Owner.IsValid || _demandedSlot != slot || _demandedEpoch != scope.Epoch) return false;
-            var edges = scope.Edges.ArtistPopular;
-            var tracks = scope.Tracks;
-            ReadOnlySpan<int> targets = _targetsSlot == slot && _targetsVersion == edges.Version(slot)
-                ? edges.Targets(slot) : ReadOnlySpan<int>.Empty;
-            int n = targets.Length;
-            // Three parallel columns for at most ChartMaxTracks rows: one stack buffer, sliced. A longer list (never seen;
-            // the chart itself is capped) pays one array.
-            int stride = Math.Max(n, 64);
-            Span<uint> marks = n <= 64 ? stackalloc uint[192] : new uint[n * 3];
-            Span<uint> known = marks.Slice(0, n), asked = marks.Slice(stride, n), inflight = marks.Slice(2 * stride, n);
-            for (int i = 0; i < n; i++)
-            {
-                int t = targets[i];
-                bool live = t > Table.None && t < tracks.Count;
-                known[i] = live ? tracks.Known[t] : 0u;
-                asked[i] = live ? tracks.Asked[t] : 0u;
-                inflight[i] = live ? tracks.Inflight[t] : 0u;
-            }
-            return ArtistReadiness.ChartFailed(Owner.Knows(ArtistFields.Chart), scope.Artists.Asked[slot], scope.Artists.Inflight[slot],
-                                               edges.Readiness(slot), known, asked, inflight);
-        }
+        // ── readiness: the asks ─────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The chart's asks for this (artist, scope): the same two the page's own Demand makes (Artist.Page.cs), so
-        /// whichever runs first sends and the other dedupes to nothing. What this host needs from it is the LATCH: from
-        /// here on, a Chart bit that is not asked was un-asked by a failure, and the gate may say so.</summary>
+        /// whichever runs first sends and the other dedupes to nothing.</summary>
         void Demand()
         {
             if (!Owner.IsValid) return;
             var scope = Entities.Current;
             Entities.Ensure(Owner, ArtistFields.All);
             if (scope.Edges.ArtistPopular.State(Owner.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistPopular, Owner.Slot);
-            _demandedSlot = Owner.Slot;
-            _demandedEpoch = scope.Epoch;
-            _deadline.Restart();
         }
 
         /// <summary>Auto-tracked on the popular list: as it lands, ask its rows at the chart's row shape (the page asks
-        /// the same; the planner sends one request) and latch the list VERSION the rows were asked for — the gate reads
-        /// the target marks only for that version.</summary>
+        /// the same; the planner sends one request).</summary>
         void DemandTargets()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -321,14 +273,12 @@ public readonly partial struct Artist
             int slot = Owner.Slot;
             var popular = edges.Targets(slot);
             if (popular.Length > 0) Entities.Ensure(scope.Tracks, popular, (uint)(TrackFields.Row | TrackFields.Video));
-            _targetsSlot = slot;
-            _targetsVersion = edges.Version(slot);
         }
 
         /// <summary>The Retry vacancy's action: ask for everything the chart waits on AGAIN, whatever the edge's state —
         /// the popular list (<see cref="Entities.RefreshEdge"/>), the artist's Chart bit and the targets' row shape
         /// (<see cref="Entities.Refresh"/>, which un-seals what an earlier answer left asked). The rows already there keep
-        /// rendering until the answers replace them; the deadline and the recheck start over.</summary>
+        /// rendering until the answers replace them; the re-asks publish, so the vacancy gives way to the shimmer at once.</summary>
         void Retry()
         {
             if (!Owner.IsValid) return;
@@ -346,22 +296,20 @@ public readonly partial struct Artist
             Entities.Refresh(scope.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.Chart);
             var popular = scope.Edges.ArtistPopular.Targets(slot);
             if (popular.Length > 0) Entities.Refresh(scope.Tracks, popular, (uint)(TrackFields.Row | TrackFields.Video));
-            _deadline.Restart();
-            _recheck.Value = _recheck.Peek() + 1;
         }
 
         // ── evidence: the gate's flips (2026-09-25) ──────────────────────────────────────────────────────────────────
         //
-        // `artist.chart artist= state= prev= reason= index= slot= uri= missing= known= asked= inflight= targets= edge=
-        // chart=` — ONE line each time the chart's verdict (pending / ready / failed) CHANGES, naming the input that
-        // decided it (`ArtistReadiness.Explain`): which charted row, which of its groups are missing, and its asked /
-        // in-flight marks. It is the line that says "row 8682 is missing PlayCount, asked, nothing in flight ⇒ failed".
+        // `artist.chart artist= state= prev= reason= index= slot= uri= group= missing= targets= edge= chart=` — ONE line
+        // each time the chart's verdict (pending / ready / failed) CHANGES, naming the input that decided it
+        // (`ArtistReadiness.Explain`): which charted row, its state in the store (Unasked / Inflight / Absent / Failed) and
+        // which of its groups are missing. It is the line that says "row 8682 is missing Face, Absent ⇒ failed".
         // A steady render writes nothing (one enum compare).
 
         enum GateState : byte { None, Pending, Ready, Failed }
         GateState _gateState;
 
-        void NoteGate(Scope scope)
+        void NoteGate(Scope scope, ArtistReadiness.ChartGateTrace trace)
         {
             GateState state = _ready ? GateState.Ready : _failed ? GateState.Failed : GateState.Pending;
             if (state == _gateState) return;
@@ -373,21 +321,11 @@ public readonly partial struct Artist
             var tracks = scope.Tracks;
             ReadOnlySpan<int> targets = edges.Targets(slot);
             int n = targets.Length;
-            var known = new uint[n];
-            var asked = new uint[n];
-            var inflight = new uint[n];
-            for (int i = 0; i < n; i++)
-            {
-                int t = targets[i];
-                bool live = t > Table.None && t < tracks.Count;
-                known[i] = live ? tracks.Known[t] : 0u;
-                asked[i] = live ? tracks.Asked[t] : 0u;
-                inflight[i] = live ? tracks.Inflight[t] : 0u;
-            }
-            var trace = ArtistReadiness.Explain(Owner.Knows(ArtistFields.Chart), scope.Artists.Asked[slot], scope.Artists.Inflight[slot],
-                edges.State(slot), edges.Readiness(slot), known, asked, inflight);
             int deciding = trace.Index >= 0 && trace.Index < n ? targets[trace.Index] : 0;
-            string uri = deciding > Table.None && deciding < tracks.Count ? new Track(deciding).Uri.Text : "-";
+            bool row = deciding > Table.None && deciding < tracks.Count;
+            string uri = row ? new Track(deciding).Uri.Text : "-";
+            uint missing = row ? ArtistReadiness.ChartRowGroup & ~tracks.Known[deciding]
+                         : Owner.Knows(ArtistFields.Chart) ? 0u : (uint)ArtistFields.Chart;
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             Log.Event(WaveeLogLevel.Info, "ui", "artist.chart", "", null, -1, null,
                 WaveeLogField.Of("artist", Owner.Uri.Text),
@@ -397,32 +335,11 @@ public readonly partial struct Artist
                 WaveeLogField.Of("index", trace.Index),
                 WaveeLogField.Of("slot", deciding),
                 WaveeLogField.Of("uri", uri),
-                WaveeLogField.Of("missing", "0x" + trace.Missing.ToString("x", inv)),
-                WaveeLogField.Of("known", "0x" + trace.Known.ToString("x", inv)),
-                WaveeLogField.Of("asked", "0x" + trace.Asked.ToString("x", inv)),
-                WaveeLogField.Of("inflight", (long)trace.Inflight),
+                WaveeLogField.Of("group", trace.State.ToString()),
+                WaveeLogField.Of("missing", "0x" + missing.ToString("x", inv)),
                 WaveeLogField.Of("targets", n),
-                WaveeLogField.Of("edge", edges.State(slot).ToString()),
+                WaveeLogField.Of("edge", edges.Readiness(slot).ToString()),
                 WaveeLogField.Of("chart", Owner.Knows(ArtistFields.Chart)));
-        }
-
-        /// <summary>The deadline: re-read the marks (a failed batch publishes nothing, so nothing else would), and re-arm
-        /// only while a request for the artist, a target or the popular list is still out.</summary>
-        void Recheck()
-        {
-            if (!Owner.IsValid) return;
-            var scope = Entities.Current;
-            int slot = Owner.Slot;
-            _recheck.Value = _recheck.Peek() + 1;
-            if (_ready) return;
-            var edges = scope.Edges.ArtistPopular;
-            bool outstanding = scope.Artists.Inflight[slot] != 0
-                            || (edges.State(slot) == EdgeState.Unknown && !edges.IsFailed(slot) && edges.WasAsked(slot, 0));
-            var targets = edges.Targets(slot);
-            var tracks = scope.Tracks;
-            for (int i = 0; !outstanding && i < targets.Length; i++)
-                outstanding = targets[i] > Table.None && targets[i] < tracks.Count && tracks.Inflight[targets[i]] != 0;
-            if (outstanding) _deadline.Restart();
         }
 
         /// <summary>Rebuild the (index, slot) snapshot and the row keys only when the live list or an appearance key

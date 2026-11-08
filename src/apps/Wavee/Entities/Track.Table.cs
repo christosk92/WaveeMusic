@@ -767,16 +767,15 @@ public readonly partial struct Track
         }
 
         /// <summary>Have the HOT rows (the first page, source order) settled — each knows its face, or an answer has been
-        /// given and nothing is out for it (<see cref="TableRules.RowUnsettled"/>)? Re-evaluated on the membership, on every
-        /// track publication (a row landing) and on every settled batch (<see cref="Fetch.Settled"/>: a failure, or an
-        /// answer that did not name a row, publishes nothing else). Equality-gated, so the host re-renders on the flip
+        /// given and nothing is out for it (<see cref="TableRules.RowUnsettled"/>)? Re-evaluated on the membership and on every
+        /// track publication (a row landing; a settle, a failure or an answer that did not name a row, whose mark moves publish
+        /// the table too). Equality-gated, so the host re-renders on the flip
         /// only. Twelve rows at most, never per frame.</summary>
         bool ComputeHotSettled()
         {
             var src = _args.Value!.Source;
             src.Subscribe();
-            _ = Entities.Current.Tracks.Changed.Value;
-            _ = global::Wavee.Fetch.Settled.Value;
+            _ = Entities.Current.Tracks.Changed.Value;   // a row landing, and a settle or failure (a mark move publishes the table)
             int hot = TableRules.HotRows(src.Count);
             bool credits = RowsTogether();
             for (int i = 0; i < hot; i++)
@@ -2978,7 +2977,7 @@ public readonly partial struct Track
                 Pending: () =>
                 {
                     var t = row.Presentation.Value.Track;
-                    _ = global::Wavee.Fetch.Settled.Value;   // an answer that names no field still ends the wait for the credits
+                    _ = Entities.Current.Tracks.Changed.Value;   // an answer that names no field still ends the wait: its settle publishes the table
                     bool paints = TableRules.RowPaints(t.Knows(TrackFields.Face), t.Knows(TrackFields.Artists), t.InFlight, withCredits: true);
                     return !TableRules.RowHasData(t.IsValid, paints) || host.RowGateClosed();
                 },

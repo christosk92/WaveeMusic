@@ -282,24 +282,6 @@ public static class ArtistSections
         }
         return n;
     }
-
-    /// <summary>W23, with 0.3's Retry: the page is FAILED when the overview is not known, nobody is still asking for
-    /// it, and the overview transport's own relation (the chart edge rides the same pathfinder answer) reports a
-    /// failure. A pending ask, or a chart that has not failed, keeps the skeleton.</summary>
-    public static bool PageFailed(bool overviewKnown, bool overviewPending, EdgeState chartReadiness)
-        => !overviewKnown && !overviewPending && chartReadiness == EdgeState.Failed;
-
-    /// <summary>Has the overview stopped coming? A group of it is missing and nothing is in flight for the row: either nobody asks for it any more (a
-    /// terminal failure un-asked it) or it is asked and SEALED (an answer settled without filling it: a seal after repeated misses, or a row whose other
-    /// groups landed, which `Fetch.ReviewMisses` never reviews). No answer can complete the overview then, only a Retry can. The chart's own
-    /// <c>NothingComing</c> reading (<see cref="ArtistReadiness.ChartFailed(bool,uint,uint,EdgeState,ReadOnlySpan{uint},ReadOnlySpan{uint},ReadOnlySpan{uint})"/>):
-    /// until 2026-11-07 this read only the un-asked half, so a sealed group (asked, nothing in flight) kept the page "pending" for the life of the route.
-    /// Read only after the page asked (an unasked group is "not asked yet" before that).</summary>
-    public static bool OverviewStopped(uint known, uint asked, uint inflight)
-    {
-        uint missing = (uint)ArtistFields.Overview & ~known;
-        return missing != 0 && ((asked & missing) != missing || inflight == 0);
-    }
 }
 
 // ══ 4. THE HERO'S FACTS AND THE LIGHTBOX'S CORE ═══════════════════════════════════════════════════════════════════════

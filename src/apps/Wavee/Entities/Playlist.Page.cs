@@ -579,7 +579,6 @@ public readonly partial struct Playlist
             _ = e.PlaylistRecs.Changed.Value;
             _ = e.TrackArtists.Changed.Value;          // FactsHas: a keyed credit alone earns the bento
             _ = ListOpen.Changed.Value;                // the open's hold: taken, answered, out of budget
-            _ = global::Wavee.Fetch.Settled.Value;     // MetaSettlingOf: an answer that names no field still ends the wait
             // The open ITSELF — HeldRows.Held switches rule at it — is the source's own signal, read through Held below.
             bool editsLive = EditsLiveNow();           // subscribes to the session phase (item 58)
             var pl = _playlist;
@@ -769,8 +768,17 @@ public readonly partial struct Playlist
             // has no owner slot to ask about on its first run, and without this subscription the effect never ran again
             // on a list whose membership never publishes. That is why the owner avatar was "not always resolved".
             _ = scope.Playlists.Changed.Value;
+            _ = ListOpen.Changed.Value;                // the open's hold releasing (below)
             var pl = _playlist;
             if (!pl.IsValid) return;
+            // THE HEAD'S OWN ASK, once its carrier has settled without it. The membership answer owns the header (Demand's note), so the head is
+            // never asked beside it; but a membership that answered (or failed) while the head is still not known means nothing in flight carries
+            // the head any more, and an unasked head would leave the page's pending head with nothing coming. Asking it on its own route makes
+            // its state total (in flight, then Known, Absent or Failed: the frame's head readiness, Detail.UI.cs). Not while the open still holds
+            // the list for its revalidation (its answer carries the head).
+            if (!_local && !pl.Knows(PlaylistFields.Identity) && scope.Edges.PlaylistTracks.Readiness(pl.Slot) != EdgeState.Unknown
+                && !ListOpen.Holding(pl.Slot))
+                Entities.Ensure(pl, PlaylistFields.Identity);
             var slots = pl.TrackSlots;
             if (slots.Length > 0 && !_local)
                 Entities.Ensure(MemoryMarshal.Cast<int, Track>(slots), TrackFields.Row | TrackFields.Audio | TrackFields.Tags | TrackFields.Video);
