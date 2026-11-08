@@ -23,10 +23,13 @@ versions separately under `v*` and is not tracked in this file.)
 - **Storage & cache counts the rest of Wavee's data.** A new "Other app data" row covers the lyrics cache, crash
   reports, What's new, podcast transcripts and modules, so the total matches what Wavee keeps on this PC.
 - **Spotify Canvas.** When the playing song has a Canvas (the short looping visual artists add to their tracks), it
-  plays in Now playing in place of the cover, in full screen behind the lyrics and the queue, and in the Canvas player
-  style. It is silent and loops, and it pauses while you cannot see it. Wavee asks for it only for the song that is
+  plays in full screen behind the lyrics and the queue, and in the Canvas player style, where it fills the Now playing
+  panel edge to edge with the song's title over it (in Classic it ends in a slow wave tinted from the album art). It
+  grows with the panel's width. It is silent, loops without a seam, and pauses while you cannot see it. Wavee asks for it only for the song that is
   playing and the next two in the queue, keeps the videos on disk, and shows them offline for up to 30 days. A song
   without a Canvas looks the same as before.
+- **Resize the docked music video.** Drag the handle under the video in the side panel to make it taller or
+  shorter; double-click puts it back, the arrow keys work too, and Wavee remembers the height.
 - **Show Canvas** setting under Settings > Playback > Video, on by default. Turned off, no Canvas is fetched or shown
   anywhere.
 - **Music videos with Spotify Connect.** Wavee now tells your other devices which songs have a music video, as the
@@ -101,10 +104,12 @@ versions separately under `v*` and is not tracked in this file.)
   through them.
 - **The WinUI artist page stays put when the navigation pane opens or closes.** Its right-hand column used to fly
   across the page; it now reflows in place, and other pages resize the same way while you drag the window's edge.
-- **Now playing's player styles (Developer mode).** The style gear sits next to the heart instead of on a row of its
-  own, and its options open at the gear. The player fits the panel, so the record is no longer cut off; black vinyl,
-  marble, reel and wood look as they should; changing an option cross-fades; and "Reset options" puts a style back as
-  it was. A new "Background: Canvas" option per style plays the song's Canvas loop behind the player.
+- **One player style for Now playing, for everyone.** The Cover/Player switch, the style gear and its Finish, Size,
+  Speed, Sleeve and Background options are gone. Now playing has a single style: Cover (the default), Canvas,
+  Visualizer, Vinyl, CD, Cassette, Reel-to-reel, Pocket, Hi-fi, Skin or Metro. The chip beside the heading opens a
+  picker right in the art: step through the styles with the arrows, the dots or a swipe, see each one live, then
+  Done or Cancel. Only Vinyl and Pocket have finishes, and the record spins at 45 for singles and EPs, 33⅓ otherwise.
+  Your old choice carries over, and the same setting is in Settings for every theme, no longer only in Developer mode.
 - **Menus and drop-down lists mark your choice in each theme's style.** In Zune the chosen item has an accent dot and
   accent-coloured words, in Classic an accent dot on a lightly highlighted row, and in WinUI the check and the pill of
   Windows 11's own controls.
@@ -116,6 +121,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Pages no longer guess whether they are stuck.** Artist, album, playlist and search pages know whether their data
+  is loading, there, missing or failed, show exactly that, and recover by themselves when the connection comes back,
+  instead of waiting on a 10-second timer.
 - **The daylist's picture fills its whole card on a narrow Home.** In the Classic theme at the narrowest size, the
   daylist card's picture stopped at a hard line two thirds of the way down, with the title, tags, buttons and countdown
   on a flat plate under it. The picture is now the whole card's background and fades smoothly behind the text.
