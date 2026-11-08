@@ -274,7 +274,9 @@ internal static class ClassicFrame
         // ONE sheet drag for the primary host's bottom sheet: its scrim's dim and its arm both move with it (`ClassicSheetDrag`).
         return Ctx.Provide(ClassicPanel.SheetDragSlot, drag, new BoxEl
         {
-            Grow = 1f, ZStack = true, HitTestPassThrough = true,
+            // Shrink and no minimum: a ZStack layer measured taller than the body (a tall pinned hero in the docked panel) would otherwise keep its
+            // content height and run the panel past the play bar to the window's edge, video and all.
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true,
             Visible = Prop.Of(props.ChromeMounted),
             Children = kids.ToArray(),
         });
