@@ -490,6 +490,10 @@ public static partial class Shell
             bool concealed = _reveal is { } reveal && !reveal.Value;   // subscribe — the reveal re-renders and re-arms
             bool windowHidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;
             UseInterval(_recompute, dwell, enabled: SeekRail.Ticks(advances, mode, concealed, windowHidden));
+            // The re-scale stepper: a duration change on the same row eases the fill for SeekRail.RescaleMs at frame pace, then
+            // disarms (the controller's Rescaling edge re-renders this twice per change, never per frame).
+            bool rescaling = _scrub.Rescaling.Value;
+            UseInterval(_recompute, SeekRail.RescaleStepMs, enabled: rescaling && !concealed && !windowHidden);
             _overlay = UseContext(Overlay.Service);
             // V-PA24/X5: the rail can be unmounted mid-gesture (the stage closing, a tier remount, a theme swap): a live scrub must not leave
             // the pump holding the main voice behind a grain voice nobody will ever release. `ScrubCancel` is idempotent.

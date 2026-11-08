@@ -516,6 +516,22 @@ public static partial class Shell
         public static bool Ticks(bool advances, SeekRailMode mode, bool concealed, bool windowHidden)
             => advances && mode != SeekRailMode.Line && !concealed && !windowHidden;
 
+        /// <summary>How long a re-scaled rail eases to its new fraction, and the step of the stepper that drives it.</summary>
+        public const float RescaleMs = 360f, RescaleStepMs = 16f;
+
+        /// <summary>A row's duration changed under the rail (a music video's own length replacing the song's placeholder, the
+        /// song's length coming back with the audio): the same position is a different fraction, and drawing it at once snaps the
+        /// fill. What is LEFT of the old fraction's lead over the new one <paramref name="elapsedMs"/> into the ease:
+        /// <paramref name="fromOffset"/> decaying to 0 on FluentDecelerate, at once under reduced motion (<paramref name="easeMs"/> 0).</summary>
+        public static float RescaleOffset(float fromOffset, long elapsedMs, float easeMs)
+            => easeMs <= 0f || elapsedMs >= easeMs || fromOffset == 0f ? 0f
+                : fromOffset * (1f - FluentGpu.Foundation.Easings.Ease(FluentGpu.Foundation.Easing.FluentDecelerate, Math.Max(0L, elapsedMs) / easeMs));
+
+        /// <summary>Does a duration move re-scale the rail (ease) rather than restart it? The same row, both lengths known, and a
+        /// track rail (a DVR window moves its own edges).</summary>
+        public static bool Rescales(SeekRailMode mode, bool sameRow, long fromDurationMs, long toDurationMs)
+            => mode == SeekRailMode.Track && sameRow && fromDurationMs > 0L && toDurationMs > 0L && fromDurationMs != toDurationMs;
+
         /// <summary>How long the playhead dwells on one pixel: <c>clamp(span / railPx, 33, 250)</c> ms.</summary>
         public static float DwellMs(long spanMs, float railPx)
             => spanMs <= 0L || railPx <= 1f ? UnknownDwellMs : Math.Clamp(spanMs / railPx, MinDwellMs, MaxDwellMs);
