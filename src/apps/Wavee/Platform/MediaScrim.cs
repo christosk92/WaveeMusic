@@ -162,6 +162,9 @@ public static class MediaScrim
         return (MathF.Max(lt, lg) + 0.05f) / (MathF.Min(lt, lg) + 0.05f);
     }
 
+    /// <summary>The sRGB-encoded grey (0..1) of <paramref name="c"/>'s relative luminance, its alpha ignored: a colour as a ground the solve composites.</summary>
+    public static float GreyOf(ColorF c) => Enc(0.2126f * Lin(c.R) + 0.7152f * Lin(c.G) + 0.0722f * Lin(c.B));
+
     static float Lin(float c) => c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
 
     static float Enc(float l) => l <= 0.0031308f ? l * 12.92f : 1.055f * MathF.Pow(l, 1f / 2.4f) - 0.055f;

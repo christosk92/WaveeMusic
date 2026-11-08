@@ -44,8 +44,10 @@ public static class ClassicArtistRules
         return MathF.Min(MathF.Min(m.CopyMaxWidth, band), MathF.Max(HeroCopyFloor, HeroCopyShare * width - edge));
     }
 
-    /// <summary>Where the veil's hold ends, as a fraction of the hero's width: the copy column's right edge, so the veil keeps the copy on
-    /// its plate and fades over the photograph after it (<c>Controls.ArtistHeroVeil</c>). NaN on the stacked arms, which have no side veil.</summary>
+    /// <summary>The most the veil's hold reaches, as a fraction of the hero's width: the copy column's right edge, the plate under the whole copy
+    /// (<c>Controls.ArtistHeroVeil</c>). The hero holds it only until its photograph is measured; then the veil is solved per photograph and is
+    /// mostly 0.2's thinner ramp (<c>ClassicArtistHero.SolvedVeil</c>; held here unconditionally, D18 0.3.6, it veiled the photograph across the
+    /// hero: "WAYYY too thick", owner 2026-11-08). NaN on the stacked arms, which have no side veil.</summary>
     public static float HeroVeilHold(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form, float inset = float.NaN)
         => m.Stacked || width <= 1f ? float.NaN : ((float.IsNaN(inset) ? m.Gutter : inset) + HeroCopyWidth(width, in m, form, inset)) / width;
 

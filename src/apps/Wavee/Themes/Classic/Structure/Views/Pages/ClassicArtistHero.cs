@@ -81,7 +81,7 @@ internal static class ClassicArtistHero
             ClassicArtistHeroArm.Field => FieldArm(in text, uri, w, height, edge, in m, form, media, accent, compactCanHit, collapseEffects, acts),
             ClassicArtistHeroArm.Overlay => OverlayArm(in text, uri, paletteUrl, w, height, photoH, edge, in m, form, media, accent, compactCanHit, collapseEffects,
                 acts, headerAccent),
-            _ => PhotoArm(in text, uri, paletteUrl, w, height, edge, in m, form, media, accent, compactCanHit, collapseEffects, acts, headerAccent),
+            _ => PhotoArm(in text, uri, photoUrl, paletteUrl, w, height, edge, in m, form, media, accent, compactCanHit, collapseEffects, acts, headerAccent),
         };
         // One arm on screen under its COMPOSITION's key: the centred and the bottom arms are one tree (the photo arm, its copy centred or at the foot), so a
         // crossing between them (1008, 1920, the Short cap at 680) keeps every part and moves the copy; a crossing to the field or the overlay, genuinely
@@ -113,9 +113,9 @@ internal static class ClassicArtistHero
     /// <summary>The hero's verbs: Play, Shuffle, Radio and the More button's menu (all null on the skeleton arm).</summary>
     readonly record struct HeroActs(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
-    /// <summary>The photo arms: the photograph fills the hero, a horizontal veil holds to the copy's edge, the copy (with its actions) centred or at the
-    /// bottom-left, inset by the page column's <paramref name="edge"/>.</summary>
-    static Element PhotoArm(in Artist.HeroText text, string uri, string? paletteUrl, float w, float height, float edge, in ArtistHeroMetrics m,
+    /// <summary>The photo arms: the photograph fills the hero, a horizontal veil solved for this photograph falls off over the copy (<see cref="SolvedVeil"/>),
+    /// the copy (with its actions) centred or at the bottom-left, inset by the page column's <paramref name="edge"/>.</summary>
+    static Element PhotoArm(in Artist.HeroText text, string uri, string? photoUrl, string? paletteUrl, float w, float height, float edge, in ArtistHeroMetrics m,
                             ClassicArtistHeroForm form, Element media, ColorF accent, bool compactCanHit, ScrollEffectSpec[] collapseEffects,
                             HeroActs acts, uint headerAccent)
     {
@@ -142,10 +142,15 @@ internal static class ClassicArtistHero
                 Width = w, Height = height, ZStack = true, HitTestVisible = false, Animate = ClassicTierMotion.HeightReflow,
                 TransformOriginX = 0.5f, TransformOriginY = 0f,
                 EdgeFade = form.VeilFadeTop > 0f ? new EdgeFadeSpec(EdgeMask.Top, 0f, form.VeilFadeTop * height, 0f, 0f, FadeFalloff.Linear) : null,
+                // The copy may stand anywhere in its padded box (centred, or at the foot): the solve reads the photograph under all of it, below
+                // the veil's top fade.
                 Children =
                 [
-                    Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, float.NaN, key: "artist-veil:" + uri,
-                                           payloadAccent: headerAccent, hold: ClassicArtistRules.HeroVeilHold(w, in m, form, edge)),
+                    Embed.Comp(new SolvedVeilProps(photoUrl, paletteUrl, uri, headerAccent, w, height, edge,
+                                                   edge + ClassicArtistRules.HeroCopyWidth(w, in m, form, edge),
+                                                   MathF.Max(form.VeilFadeTop * height, Spacing.XXL), height - (bottom ? form.CopyBottom : Spacing.XXL),
+                                                   ClassicArtistRules.HeroVeilHold(w, in m, form, edge)),
+                               static () => new SolvedVeil()) with { Key = "artist-veil:" + uri },
                 ],
             }.StretchFromTop();
         return new BoxEl
@@ -265,7 +270,7 @@ internal static class ClassicArtistHero
         {
             // Moves (centred or at the foot) and changes its measure with the form inside the one photo arm: it reflows into its new box.
             Key = "artist-hero-copy", Direction = 1, Animate = shimmer ? null : ClassicTierMotion.Reflow,
-            // D18: on the centred photo arm the copy ends near 56 % of the hero and the veil holds to that edge (ClassicArtistRules).
+            // D18: on the centred photo arm the copy ends near 56 % of the hero; the veil is solved over this column (SolvedVeil).
             Width = ClassicArtistRules.HeroCopyWidth(w, in m, form, edge),
             MaxWidth = m.CopyMaxWidth, MinWidth = 0f, Gap = Spacing.S,
             // The page-level SkelRegion owns the single reveal. A second hero-copy entrance here made the
@@ -409,6 +414,36 @@ internal static class ClassicArtistHero
 
     /// <summary>A count in the current culture's grouping ("20,577,457"). Also the biography band's profile facts and the city bars'.</summary>
     internal static string CountLabel(long n) => n.ToString("N0", CultureInfo.CurrentCulture);
+
+    /// <summary>What the solved veil reads: the photograph it veils, the palette art its tint comes from, the copy column (box DIP: its left and
+    /// right edges, the band it may stand in) and the hold it keeps until the photograph is measured (the plate held to the column's edge).</summary>
+    sealed record SolvedVeilProps(string? PhotoUrl, string? PaletteUrl, string Uri, uint HeaderAccent, float Width, float Height,
+                                  float CopyLeft, float CopyRight, float CopyTop, float CopyBottom, float Hold);
+
+    /// <summary>The photo arms' veil, solved per photograph (<c>Controls.SolveHeroVeilHold</c> over <c>Palette.Tone</c>'s map): as thin as 0.2's
+    /// (0.92 to 30 % of the hero, the 0.35 shoulder at the copy's right edge, so the photograph shows behind the copy) wherever the copy's ink
+    /// reads there, held further right only as far as the photograph makes it need (a bright photograph under light ink, a dark one under dark
+    /// ink), never past the plate held to the copy's edge. The map lands in the same post as the subject the photograph's crop waits for, so the
+    /// photograph enters under its solved veil; until then the veil holds the plate to the copy's edge over the flat placeholder. A component of
+    /// its own so the measurement re-renders this leaf alone.</summary>
+    sealed class SolvedVeil : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<SolvedVeilProps>();
+            float hold = p.Hold;
+            if (!float.IsNaN(hold) && Palette.Tone(p.PhotoUrl) is { } map && Palette.Subject(p.PhotoUrl) is { } subject)
+            {
+                var crop = subject.Faces
+                    ? new MediaScrim.Crop(subject.X, subject.Y, ClassicArtistRules.PhotoFacesAtX, ClassicArtistRules.PhotoFacesAtY)
+                    : new MediaScrim.Crop(ClassicArtistRules.PhotoFocusX, ClassicArtistRules.PhotoFocusY, MediaScrim.Crop.Centred.FrameX, MediaScrim.Crop.Centred.FrameY);
+                hold = Controls.SolveHeroVeilHold(map, p.Width, p.Height, crop, p.CopyLeft, p.CopyTop, p.CopyRight, p.CopyBottom,
+                                                  Tok.TextSecondary, Tok.FillLayerDefault);
+            }
+            return Palette.ArtistHeroVeil(p.PaletteUrl, vertical: false, p.Width, float.NaN, key: "artist-veil:" + p.Uri,
+                                          payloadAccent: p.HeaderAccent, hold: hold);
+        }
+    }
 
     sealed record HeroArtProps(string Url, float Width, float PhotoHeight);
 
