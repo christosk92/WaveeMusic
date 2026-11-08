@@ -11,9 +11,9 @@
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // T6b MOVED THE PICTURE OF THE PANEL TO THE STRUCTURE. The rail's frame (docked + floating), its header, the docked video cap's
 // body, the NowPlaying arm and the other arms are `Shell.Panel` (`Themes\Classic\Structure\Views\Panel\ClassicPanel.cs`); the hero
-// tile, its header row, the art menu and the now-playing body are `Player.NowPlayingHero` (`ClassicNowPlayingHero.cs`); the friends
-// body is `Panel.Friends` (`ClassicFriends.cs`); the style flyout, the twelve mini-arts and the swatches are `Player.DeckStyleFlyout`
-// (`ClassicDeckFlyout.cs`, `Rules\DeckThumbnails.cs`). The core half (what each view reads, what each click asks for) is
+// tile, its header row (the style chip and the picker's header) and the now-playing body are `Player.NowPlayingHero`
+// (`ClassicNowPlayingHero.cs`); the friends body is `Panel.Friends` (`ClassicFriends.cs`). The core half (what each view reads, what each
+// click asks for) is
 // `RailWiring` (`Shell/Rail.Wiring.cs`); the state machine stays `Shell.PanelHost` and the decisions stay `Rail.VideoCoupling`.
 //
 // T7c MOVED THE VIDEO BODY (the track meta, the "Up next" eyebrow, the "no video for this song" placeholder) to the structure
@@ -25,7 +25,7 @@
 // DATA (`NextUpRows`: the window, the queue reads, each row's verbs and key). The queue body is the core host
 // `Queue.RailPanelHost` (`Entities/Queue.UI.cs`), which installs itself through `Rail.QueueBody` and mounts the `Queue.Panel` view (T7d).
 //
-// Mounted from other stage-B files: `Deck.View()` (K2), `Lyrics.NpvPeek()` (the core host of `Player.LyricsPeek`) and `Lyrics.View()` (K3).
+// Mounted from other stage-B files: `Deck.Stage()` (K2), `Lyrics.NpvPeek()` (the core host of `Player.LyricsPeek`) and `Lyrics.View()` (K3).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

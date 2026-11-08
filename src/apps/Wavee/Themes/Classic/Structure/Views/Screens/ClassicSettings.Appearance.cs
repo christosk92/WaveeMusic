@@ -39,7 +39,7 @@ internal static partial class ClassicSettings
     /// <see cref="DaylistClockPicker"/>.</summary>
     static readonly Signal<int> s_daylistClock = new((int)DaylistClockMode.Both);
     /// <summary>The player-style combo's selection, kept in step with every other style writer by <see cref="NpvStylePicker"/>.</summary>
-    static readonly Signal<int> s_npvStyle = new(Rail.PlayerCatalog.DefaultPresetId);
+    static readonly Signal<int> s_npvStyle = new(Rail.PlayerCatalog.DefaultStyleId);
 
     static readonly Slider.SliderOptions s_lyricsBlurOptions = new()
     {
@@ -83,10 +83,6 @@ internal static partial class ClassicSettings
 
     private static Element[] AppearanceTab()
     {
-        // The now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
-        // write it, and these two rows must follow them live.
-        int npvPresentation = Rail.PlayerPrefs.Presentation();
-        var npvPreset = Rail.PlayerPrefs.CurrentPreset();
         var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
 
         // T1b (themes plan 8.1): Theme (the picker) · the active theme's options · App mode · Zoom, then what is not a theme
@@ -127,19 +123,12 @@ internal static partial class ClassicSettings
         kids.Add(DocRow(D(Tab.Appearance, "stageCalm"), RowToggle(D(Tab.Appearance, "stageCalm"))));
         kids.Add(DocRow(D(Tab.Appearance, "stageMoments"), RowToggle(D(Tab.Appearance, "stageMoments"))));
 
-        // DEVELOPER-ONLY, the whole section: the Cover/Player switch exists only in developer mode, and the player style is hidden
-        // until it affects Now playing (#199), so a normal build composes neither row nor their header.
+        // The player style: a normal user setting (the same one the now-playing style chip changes).
         if (D(Tab.Appearance, "npvStyle").Visible(facts))
         {
             kids.Add(Mark("Now playing"));
             kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
                 Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
-            // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
-            if (D(Tab.Appearance, "npvPresentation").Visible(facts))
-                kids.Add(DocRow(D(Tab.Appearance, "npvPresentation"),
-                    Selector([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
-                        new Signal<int>(npvPresentation),
-                        onChange: static i => D(Tab.Appearance, "npvPresentation").Writer.Choose!(i))));
             kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
         }
 
@@ -490,18 +479,18 @@ internal static partial class ClassicSettings
         Settings.Bump();
     }
 
-    /// <summary>The player-style combo: all twelve presets in catalog order, index == id. The selection follows every
-    /// other style writer through one effect on the now-playing epoch; the write goes through the rail's adapter (it also
-    /// flips the hero to Player and logs the source) and never bumps the page.</summary>
+    /// <summary>The player-style combo: the eleven styles in catalog order, index == id. The selection follows every
+    /// other style writer through one effect on the now-playing epoch; the write goes through the rail's adapter (it logs the
+    /// source) and never bumps the page.</summary>
     sealed class NpvStylePicker : SettingsComponent
     {
         public override Element Render()
         {
             UseLayout();
-            UseSignalEffect(static () => s_npvStyle.Value = D(Tab.Appearance, "npvStyle").Current is int style ? style : Rail.PlayerCatalog.DefaultPresetId);
-            var presets = Rail.PlayerCatalog.Presets;
-            var labels = new string[presets.Length];
-            for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
+            UseSignalEffect(static () => s_npvStyle.Value = D(Tab.Appearance, "npvStyle").Current is int style ? style : Rail.PlayerCatalog.DefaultStyleId);
+            var styles = Rail.PlayerCatalog.Styles;
+            var labels = new string[styles.Length];
+            for (int i = 0; i < styles.Length; i++) labels[i] = Loc.Get(styles[i].NameKey);
             return Combo(labels, s_npvStyle, width: ClassicSettingsRules.NpvComboWidth,
                 onChange: static i => D(Tab.Appearance, "npvStyle").Writer.Choose!(i));
         }

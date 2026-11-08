@@ -1,7 +1,7 @@
 // ── Theming/Contracts/ViewKeys.Panel.cs — the right panel and the Player family's other keys (themes plan 6.0, T6b) ──────────
 //
 // T6b publishes the panel (the right rail's body: the frame, the header, the arm per mode), the panel's friends body, the
-// now-playing hero (the pinned tile with the Cover / Player switch and its art menu), the deck's style flyout, the device
+// now-playing hero (the pinned tile with the style chip and its in-place picker), the device
 // picker's menu and the on-media transport (the video overlays' strip). The lyrics and queue bodies are core hosts that mount their
 // own keys (`Lyrics.View`, `Queue.Panel`), handed to the panel as builders; the video body is the template's own. The leftovers lane (P3)
 // adds the lyrics header, the "Next up" rows and the lyrics peek (props in `PanelBitsProps.cs`).
@@ -19,12 +19,9 @@ public static partial class ViewKeys
     /// <summary>The panel's friends body: the activity feed's rows, skeleton, offline, error and empty faces. Props: <see cref="FriendsProps"/>.</summary>
     public static readonly ViewKey<FriendsProps> PanelFriends = new("Panel.Friends");
 
-    /// <summary>The now-playing hero: the pinned tile with its header strip (eyebrow, Cover | Player switch, the style gear), the
-    /// artwork or the deck, and the art menu. Props: <see cref="NowPlayingHeroProps"/>.</summary>
+    /// <summary>The now-playing hero: the pinned tile with its header ("Now playing" and the style chip), the stage (the player style, or the
+    /// picker's carousel) and the picker's strip. Props: <see cref="NowPlayingHeroProps"/>.</summary>
     public static readonly ViewKey<NowPlayingHeroProps> NowPlayingHero = new("Player.NowPlayingHero");
-
-    /// <summary>The deck's style flyout: the preset shelves and the selected preset's options. Props: <see cref="DeckStyleFlyoutProps"/>.</summary>
-    public static readonly ViewKey<DeckStyleFlyoutProps> DeckStyleFlyout = new("Player.DeckStyleFlyout");
 
     /// <summary>The device picker's menu body (the player bar's Devices button and "Playing on" line open it). Props: <see cref="DevicePickerProps"/>.</summary>
     public static readonly ViewKey<DevicePickerProps> DevicePicker = new("Player.DevicePicker");

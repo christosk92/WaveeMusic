@@ -254,6 +254,7 @@ internal sealed class ZunePanelFrame : Component
     bool _motionSeeded;
     PanelPlacement _seededPlacement;
     static readonly Element[] s_noLayers = [];
+    static readonly Element s_noBleed = new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     Action<RectF>? _onBounds;
     Action<KeyEventArgs>? _onKey;
     Action? _close;
@@ -425,7 +426,8 @@ internal sealed class ZunePanelFrame : Component
 
         return Ctx.Provide(ZunePanelInk.Current, ink, new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = R.Shape.All(ShapeRole.Overlay),
+            // Shrink: the edge-to-edge canvas in the stack is taller than a short panel and must not stretch it past the play bar.
+            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = R.Shape.All(ShapeRole.Overlay),
             HitTestVisible = open,                                             // a closed panel is laid out off-canvas and unhittable
             BlocksBackgroundScroll = open && floating,
             Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,          // no shadow docked
@@ -433,7 +435,66 @@ internal sealed class ZunePanelFrame : Component
             Children =
             [
                 new BoxEl { Grow = 1f, ClipToBounds = true, ZStack = true, OnBoundsChanged = _onBounds, Children = surface },
+                // The Canvas style at rest: the canvas fills the panel from its very top, under the pivots and the body.
+                body == PanelMode.NowPlaying && view.Pinned != PanelPinned.DockedVideo
+                    ? Embed.Comp(new ZuneBleedProps(props.NowPlaying, width), static () => new ZuneBleed())
+                    : s_noBleed,
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
+            ],
+        });
+    }
+}
+
+internal sealed record ZuneBleedProps(NowPlayingHeroProps NowPlaying, float Width);
+
+/// <summary>The edge-to-edge canvas (BleedZune): the ground, the canvas over it from the panel's top, its lower half fading into the ground, the
+/// pivots' scrim and the artist's name in giant light type drifting over it. Shown while the Canvas style rests with a canvas to play; it fades
+/// in and out. A component: the name follows the playing track without re-rendering the frame.</summary>
+internal sealed class ZuneBleed : Component
+{
+    static readonly EnterExit Fade = new(Opacity: 0f, Active: true);
+
+    public override Element Render()
+    {
+        var p = UseProps<ZuneBleedProps>();
+        var np = p.NowPlaying;
+        float width = p.Width;
+        float vh = MathF.Round(width * ZunePanelBodies.BleedAspect), fade = MathF.Round(vh * ZunePanelBodies.BleedFadeShare);
+        ColorF ground = Tok.FillSolidBase;
+        var track = np.NowTrack();
+        string artist = track.IsValid && track.ArtistSlots.Length > 0 ? new Artist(track.ArtistSlots[0]).Name : "";
+        return Flow.Show(np.Bleeds, new BoxEl
+        {
+            // Shrink, no minimum and a clip: a canvas taller than the panel must not grow the panel's stack (it is cut at the panel's foot).
+            ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, HitTestVisible = false,
+            Enter = Fade, Exit = Fade, Transition = MotionTok.StandardEnter,
+            Children =
+            [
+                new BoxEl { Grow = 1f, Fill = ground },
+                np.BleedVideo(width),
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(ZunePanelBodies.BleedFadeFull, ground)),
+                },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Height = ZunePanelBodies.BleedHeadScrimH,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = ZunePanelBodies.BleedHeadScrimA }), new GradientStop(1f, ground with { A = 0f })),
+                },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Direction = 0, MinWidth = 0f, ClipToBounds = true,
+                    Margin = new Edges4(ZunePanelBodies.BleedNameInset, ZunePanelBodies.BleedStageTop - ZunePanelBodies.HeroGap + ZunePanelBodies.BleedNameDrop, 0f, 0f),
+                    Children =
+                    [
+                        Deck.Drift(new TextEl(artist)
+                        {
+                            Size = ZunePanelBodies.BleedNameSize, LineHeight = ZunePanelBodies.BleedNameSize, Weight = ZunePanelBodies.BleedNameWeight, Color = Tok.TextPrimary with { A = ZunePanelBodies.BleedNameA },
+                            Case = R.Case.For(LabelKind.Heading), Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
+                        }, ZunePanelBodies.BleedNameDrift, ZunePanelBodies.BleedNameDriftMs, pingPong: true),
+                    ],
+                },
             ],
         });
     }

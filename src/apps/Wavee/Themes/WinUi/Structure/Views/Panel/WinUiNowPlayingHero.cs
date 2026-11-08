@@ -1,25 +1,20 @@
-// ── Themes/WinUi/Structure/Views/Panel/WinUiNowPlayingHero.cs — WinUI's `Player.NowPlayingHero` and `Player.DeckStyleFlyout` (P6 W4a) ──
+// ── Themes/WinUi/Structure/Views/Panel/WinUiNowPlayingHero.cs — WinUI's `Player.NowPlayingHero` (P6 W4a; the player style redesign 2026-11-08) ──
 //
-// Board W-PaneNowPlaying: the pane's "Now playing" tab. The panel's frame places this tile at the top of the tab and "Next up" under it
-// (`WinUiPanel.cs`), so the tile carries the track itself:
+// Board W-PaneNowPlaying and the approved player-style design (canvas-design `Main.dc.html`, `Styles.dc.html`): the pane's "Now playing" tab.
+// The panel's frame places this tile at the top of the tab and "Next up" under it (`WinUiPanel.cs`), so the tile carries the track itself:
 //
-//   the DECK SLOT   the cover, square at the column's width (r8), or (developer mode, the stored presentation) the core's deck under the keyed
-//                   slot "<preset>@<side>" (a preset change remounts it; the hero hosts the deck and never builds it, and passes its padding so
-//                   the deck is the column's width). Its context menu is the Cover / ‹player› choice and "player style…" (developer-only), which
-//                   opens the ONE style flyout (the gear's).
-//   the meta        the title (Subtitle 20/28 semibold), then its trailing commands: in developer mode the player style gear, then the heart
-//                   (both 40); the artists as accent links (Body 14), "from" and the album as an accent link (Caption 12)
-//   the peek        the lyrics card (the core host `props.LyricsPeek`, which mounts `Player.LyricsPeek`), keyed per track.
+//   the head       "Now playing" (Subtitle 20/28 semibold) and the STYLE CHIP naming the player style ("Cover ⌄": a 32 pill, 13/20, a
+//                  hairline). The chip opens the in-place picker: the head becomes "Player style" with Cancel and Done (Escape is Cancel).
+//   the stage      the core's `props.Stage` (the cover, the canvas or a deck; the picker's carousel), in the column; the neighbours peek into
+//                  the tile's padding.
+//   the meta       the title (Subtitle 20/28 semibold) and the heart (40); the artists as accent links (Body 14), "from" and the album as an
+//                  accent link (Caption 12). PICKING, the strip takes its place: the 40 round arrows either side of the focused style's name
+//                  and its one-line description, the finish swatches (Vinyl, Pocket; the row is there for every style) and the dots. The block
+//                  eases its height as one cross-fades into the other.
+//   the peek       the lyrics card (the core host `props.LyricsPeek`, which mounts `Player.LyricsPeek`), keyed per track.
 //
-// The demand for the playing track and its first artist is asked here (the panel is not a page and never mounts on a route).
-//
-// NO HEAD ROW (owner, 2026-11-07). The board's "Now playing" caption over the stage repeated the selected tab's own word and spent a whole
-// row on it and the gear. The gear joins the meta row's trailing commands beside the heart instead: it costs no row, it is visible at rest
-// and touch-sized, and its flyout drops beneath it, so the stage stays in view while the flyout (open across picks) previews each style.
-//
-// THE STYLE FLYOUT (no WinUI board): a heading, then each group's label over its presets as text toggles (the current one in the accent),
-// then the current preset's options, each a label over its choices or, for a colour, swatches with the accent ring, then "Reset options"
-// (disabled while every option of the style is at its default). It stays open across picks.
+// No pivot, no gear, no flyout, no option dial (owner, 2026-11-08: "4000 different dials"). The demand for the playing track and its first
+// artist is asked here (the panel is not a page and never mounts on a route).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -37,38 +32,14 @@ using P = Wavee.Themes.WinUi.WinUiPanelBodies;
 
 namespace Wavee.Themes.WinUi;
 
-/// <summary>Zune's now-playing hero and the deck style flyout.</summary>
+/// <summary>WinUI's now-playing hero.</summary>
 internal static class WinUiNowPlayingHero
 {
-    /// <summary>The node keys `find` reads: the deck slot, the meta block and the style gear.</summary>
-    public const string SlotKey = WinUiPanelBodies.HeroSlotKey, MetaKey = WinUiPanelBodies.HeroMetaKey, GearKey = WinUiPanelBodies.HeroGearKey;
-
-    /// <summary>The style flyout's keys: a style ("npv-style:record"), an option's choice ("npv-choice:size:7"), the options block, the reset.</summary>
-    public const string FlyoutStylePrefix = "npv-style:", FlyoutChoicePrefix = "npv-choice:", FlyoutOptionsKey = "npv-style-options",
-        FlyoutResetKey = "npv-style-reset";
+    /// <summary>The node keys `find` reads: the stage's slot and the meta block.</summary>
+    public const string SlotKey = WinUiPanelBodies.HeroSlotKey, MetaKey = WinUiPanelBodies.HeroMetaKey;
 
     /// <summary>The registered template of <see cref="ViewKeys.NowPlayingHero"/>.</summary>
     public static Element Template(NowPlayingHeroProps props, in ViewContext ctx) => Embed.Comp(props, static () => new WinUiHeroTile());
-
-    /// <summary>The registered template of <see cref="ViewKeys.DeckStyleFlyout"/>.</summary>
-    public static Element FlyoutTemplate(DeckStyleFlyoutProps props, in ViewContext ctx) => Embed.Comp(props, static () => new WinUiStyleFlyout());
-
-    /// <summary>The slot's menu: Cover / ‹player› as one radio choice, then "player style…"; none outside developer mode (a style cannot change
-    /// the face there).</summary>
-    internal static ContextMenuModel? ArtMenu(NowPlayingHeroProps props, int presentation, in Rail.PlayerCatalog.Preset preset, bool styleVisible)
-    {
-        if (!styleVisible) return null;
-        var verbs = props.Style;
-        return new ContextMenuModel(
-        [
-            MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.PresentationCover), presentation == Rail.PlayerPrefs.Cover,
-                () => verbs.SetPresentation(Rail.PlayerPrefs.Cover, DeckStyleSource.ArtMenu), Icons.Picture),
-            MenuFlyoutItem.RadioItem(Loc.Get(preset.ShortLabelKey), presentation == Rail.PlayerPrefs.Player,
-                () => verbs.SetPresentation(Rail.PlayerPrefs.Player, DeckStyleSource.ArtMenu), Icons.Album),
-            MenuFlyoutItem.Separator,
-            new MenuFlyoutItem(Loc.Get(Strings.Player.PlayerStyleEllipsis), Icons.Settings, Invoke: () => verbs.OpenStyleFlyout()),
-        ]);
-    }
 
     /// <summary>The playing track's artists as links (each opens its artist), or null with no credited artist.</summary>
     internal static Element? ArtistLinks(NowPlayingHeroProps props, Track track)
@@ -90,10 +61,208 @@ internal static class WinUiNowPlayingHero
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
     }
+
+    static readonly EnterExit Fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>One of two cross-fading layers (the head's rest and picking rows; the meta and the strip).</summary>
+    internal static BoxEl Layer(string key, Element body) => new()
+    {
+        Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, AlignItems = FlexAlign.Stretch,
+        Enter = Fade, Exit = Fade, Transition = MotionTok.ControlFast, Children = [body],
+    };
+
+    /// <summary>The head: "Now playing" and the chip at rest (the frosted chip alone over the edge-to-edge canvas: the tabs already say "Now
+    /// playing"); "Player style", Cancel and Done while picking. A fixed 36 row.</summary>
+    internal static Element Head(IPlayerStyleVerbs verbs, bool open, int shown, bool bleeds)
+    {
+        Element body = open
+            ? new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = P.HeadGap, Height = P.HeadH,
+                Children =
+                [
+                    Heading(Loc.Get(Strings.Player.PlayerStyle)),
+                    Button.Subtle(Loc.Get(Strings.Player.Picker.Cancel), verbs.Cancel) with { Key = P.CancelKey, Shrink = 0f },
+                    Button.Accent(Loc.Get(Strings.Player.Picker.Done), verbs.Done) with { Key = P.DoneKey, Shrink = 0f },
+                ],
+            }
+            : bleeds
+            ? new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Height = P.HeadH,
+                Children = [Chip(verbs, shown, frosted: true)],
+            }
+            : new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = P.HeadGap, Height = P.HeadH,
+                Children = [Heading(Loc.Get(Strings.Player.NowPlaying)), Chip(verbs, shown, frosted: false)],
+            };
+        return new BoxEl
+        {
+            Key = P.HeadKey, Height = P.HeadH, Shrink = 0f, ZStack = true,
+            Children = [Layer(open ? "head:pick" : bleeds ? "head:bleed" : "head:rest", body)],
+        };
+    }
+
+    static TextEl Heading(string text) => new(text)
+    {
+        Size = P.HeroTitleSize, LineHeight = P.HeroTitleLine, Weight = P.HeroTitleWeight, Color = Tok.TextPrimary,
+        Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+    };
+
+    /// <summary>The style chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, the ground at
+    /// 55 % under a light hairline).</summary>
+    static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted) => ToolTip.Wrap(new BoxEl
+    {
+        Key = P.ChipKey, Height = P.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.ChipGap, Padding = P.ChipPadding,
+        Corners = Radii.Circle(P.ChipH),
+        Fill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlDefault,
+        HoverFill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlSecondary,
+        PressedFill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlTertiary,
+        BorderWidth = 1f, BorderColor = frosted ? Tok.TextPrimary with { A = P.BleedChipStrokeA } : Tok.StrokeControlDefault,
+        BrushTransitionMs = Design.Motion.Faster,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
+        Children =
+        [
+            new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
+            {
+                Size = P.ChipTextSize, LineHeight = P.ChipTextLine, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+            },
+            Ui.Icon(Icons.ChevronDown, P.ChipGlyph, Tok.TextSecondary),
+        ],
+    }, Loc.Get(Strings.Player.PlayerStyle));
+
+    /// <summary>The picker's strip: the arrows and the focused style's name and line, the finish swatches, the dots.</summary>
+    internal static Element Strip(IPlayerStyleVerbs verbs, int focus, Func<string?> artUrl)
+    {
+        var style = Rail.PlayerCatalog.ById(focus);
+        var swatches = new Element[style.Finishes.Length];
+        if (style.HasFinish)
+        {
+            int current = Rail.PlayerPrefs.Finish(focus);
+            for (int i = 0; i < swatches.Length; i++) swatches[i] = Swatch(verbs, style.Finishes[i], i, i == current, artUrl);
+        }
+        var dots = new Element[Rail.PlayerCatalog.Count];
+        for (int i = 0; i < dots.Length; i++) dots[i] = Dot(i, i == focus);
+        return new BoxEl
+        {
+            Key = P.StripKey, Direction = 1, Gap = P.StripGap,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.NameGap, Height = P.NameBlockH, Justify = FlexJustify.Center,
+                            Children =
+                            [
+                                new TextEl(Loc.Get(style.NameKey))
+                                {
+                                    Size = P.HeroTitleSize, LineHeight = P.HeroTitleLine, Weight = P.HeroTitleWeight, Color = Tok.TextPrimary,
+                                    TextAlign = TextAlign.Center, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                },
+                                new TextEl(Loc.Get(style.LineKey))
+                                {
+                                    Size = P.LineSize, LineHeight = P.LineLine, Color = Tok.TextSecondary, TextAlign = TextAlign.Center,
+                                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                // Only a style with finishes has swatches: the row opens to their height and closes to nothing, eased (no jump).
+                new BoxEl
+                {
+                    Height = style.HasFinish ? P.SwatchRowH : 0f, ClipToBounds = true, Direction = 0, AlignItems = FlexAlign.Center,
+                    Justify = FlexJustify.Center, Gap = P.SwatchGap, Animate = Design.Reduced ? null : P.SwatchRowMotion, Children = swatches,
+                },
+                // The arrows flank the dots, clear of the name and line above.
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = P.HeadGap,
+                    Children =
+                    [
+                        Arrow(P.PrevKey, Icons.ChevronLeft, Strings.Player.Picker.Previous, () => verbs.Step(-1)),
+                        Dots(verbs, dots),
+                        Arrow(P.NextKey, Icons.ChevronRight, Strings.Player.Picker.Next, () => verbs.Step(+1)),
+                    ],
+                },
+            ],
+        };
+    }
+
+    static Element Arrow(string key, string glyph, string labelKey, Action step) => ToolTip.Wrap(new BoxEl
+    {
+        Key = key, Width = P.ArrowBox, Height = P.ArrowBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Corners = Radii.Circle(P.ArrowBox), Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, BrushTransitionMs = Design.Motion.Faster,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = step,
+        Children = [Ui.Icon(glyph, P.ArrowGlyph, Tok.TextPrimary)],
+    }, Loc.Get(labelKey));
+
+    static Element Swatch(IPlayerStyleVerbs verbs, Rail.PlayerCatalog.Finish finish, int index, bool on, Func<string?> artUrl)
+    {
+        Prop<ColorF> fill = finish.Swatch == Rail.PlayerCatalog.FromCover
+            ? Prop.Of(() => WinUiHeroWash.Of(artUrl()))
+            : ColorScience.ToColor(finish.Swatch);
+        return ToolTip.Wrap(new BoxEl
+        {
+            Key = P.SwatchPrefix + finish.Slug, Width = P.SwatchHit, Height = P.SwatchHit, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
+            Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = () => verbs.SetFinish(index),
+            Children =
+            [
+                new BoxEl
+                {
+                    Width = P.Swatch, Height = P.Swatch, Shrink = 0f, Corners = Radii.Circle(P.Swatch), Fill = fill,
+                    BorderWidth = P.SwatchRing, BorderColor = on ? Tok.AccentDefault : Tok.StrokeControlStrongDefault, BrushTransitionMs = Design.Motion.Faster,
+                    HitTestVisible = false,
+                },
+            ],
+        }, Loc.Get(finish.LabelKey));
+    }
+
+    /// <summary>The dots' laid-out width (one strip shows at a time), noted by its bounds callback: a re-render keeps the node and its bounds,
+    /// so the width outlives the element that first reported it.</summary>
+    static float s_dotsWidth;
+    static readonly Action<RectF> s_noteDotsWidth = static r => s_dotsWidth = r.W;
+
+    /// <summary>The dots: ONE target (40 tall, up to a dot's 24 each, narrower where the arrows beside it leave less) whose click picks the dot
+    /// under the pointer.</summary>
+    static Element Dots(IPlayerStyleVerbs verbs, Element[] dots)
+    {
+        return new BoxEl
+        {
+            Key = P.DotsKey, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = P.DotBox * dots.Length, Height = P.DotHitH, Direction = 0,
+            AlignItems = FlexAlign.Center, Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
+            Role = AutomationRole.Slider, Focusable = true, Cursor = CursorId.Hand,
+            OnBoundsChanged = s_noteDotsWidth,
+            OnPointerDown = p => verbs.FocusOn(Math.Clamp((int)(p.X * dots.Length / MathF.Max(1f, s_dotsWidth)), 0, dots.Length - 1)),
+            Children = dots,
+        };
+    }
+
+    static Element Dot(int id, bool on) => new BoxEl
+    {
+        Key = P.DotPrefix + Rail.PlayerCatalog.ById(id).Slug, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = P.DotHitH,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = on ? P.DotOnW : P.DotW, Height = P.DotH, Shrink = 0f,
+                Corners = Radii.Circle(P.DotH), Fill = on ? Tok.AccentDefault : Tok.TextTertiary,
+                BrushTransitionMs = Design.Motion.Faster, Animate = Design.Reduced ? null : P.DotMotion,
+            },
+        ],
+    };
 }
 
-/// <summary>The cover-derived wash: the hero's placeholder and the flyout's "from the cover" swatch (one function, so the two never grade the
-/// artwork differently). The palette watch is read inside, so a late grading repaints a bound fill without a render.</summary>
+/// <summary>The cover-derived wash: the hero's placeholder and the picture disc's swatch (one function, so the two never grade the artwork
+/// differently). The palette watch is read inside, so a late grading repaints a bound fill without a render.</summary>
 internal static class WinUiHeroWash
 {
     public static ColorF Of(string? url)
@@ -104,49 +273,90 @@ internal static class WinUiHeroWash
     }
 }
 
-/// <summary>The tile: the deck slot, the meta and the peek. A component (its bound cover thunks are built once).</summary>
+/// <summary>The tile: the head, the stage, the meta (or the picker's strip) and the peek. A component (its bound cover thunks are built once).</summary>
 internal sealed class WinUiHeroTile : Component
 {
     Func<string>? _source;
     Func<ColorF>? _placeholder;
-    FloatSignal? _column;
-    Action<RectF>? _onSlotBounds;
+    Func<Element>? _cover;
+    Func<float, float>? _bleedRoom;
 
     public override Element Render()
     {
         var props = UseProps<NowPlayingHeroProps>();
-        // The deck slot's laid-out width: the deck's column (the docked pane's, or a Compact sheet's, which is the window's, not the rail's).
-        _column = UseFloatSignal(float.NaN);
-        // The slot is a square of the column from its first layout (the cover's own shape), so the meta under it never moves while the deck
-        // takes the measured side.
-        _onSlotBounds ??= r => { if (_column is { } c && !(MathF.Abs(c.Peek() - r.W) <= 0.25f)) c.Value = r.W; };
-        var overlay = UseContext(Overlay.Service);
         var track = props.NowTrack();
         var nowArtist = Rail.NowPlayingArtist(track);
         int trackSlot = track.Slot, artistSlot = nowArtist.Slot;
         // The panel is not a page and never mounts on a route: its demand is keyed on the PLAYING track.
         UseEffect(() => props.DemandNowPlaying(trackSlot, artistSlot), DepKey.From(trackSlot, artistSlot));
-        int presentation = Rail.PlayerPrefs.ResolvedPresentation();
-        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();
-        var preset = Rail.PlayerPrefs.CurrentPreset();
+        bool open = props.Picking();
+        int shown = props.ShownStyle();
         if (!track.IsValid) return new BoxEl();
         props.SubscribeEntities();
 
         _source ??= () => props.NowArtUrl() ?? "";
         _placeholder ??= () => WinUiHeroWash.Of(props.NowArtUrl());
+        _cover ??= () => new ImageEl
+        {
+            Key = "cover", Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = P.HeroDecodePx,
+            Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
+        };
 
-        Element face = presentation == Rail.PlayerPrefs.Player
-            ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck(P.HeroPadding.Left + P.HeroPadding.Right, _column)] }
-            : CanvasVideo.OverArt(new ImageEl
-            {
-                Key = "cover", Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = P.HeroDecodePx,
-                Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
-            }, CanvasVideo.Surface.Hero, R.Shape.All(ShapeRole.Cover));
-        var p = preset;
-        Element slot = new BoxEl { Key = WinUiNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f, AspectRatio = 1f, OnBoundsChanged = _onSlotBounds, Children = [face] }
-            .WithContextMenu(overlay, () => WinUiNowPlayingHero.ArtMenu(props, presentation, p, styleVisible));
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta's top 196 above the canvas's foot (or the panel's).
+        _bleedRoom ??= panelW =>
+        {
+            float vh = MathF.Round(panelW * P.BleedAspect), ph = props.RailHeight.Value;
+            return MathF.Min(vh, ph > 0f ? ph : vh) - P.BleedMetaLift - P.BleedStageTop - P.HeroGap;
+        };
+        bool bleeds = props.Bleeds();
+
+        var verbs = props.Style;
+        Element slot = new BoxEl
+        {
+            Key = WinUiNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f,
+            Children = [props.Stage(P.HeroPadding.Left + P.HeroPadding.Right, _cover, R.Shape.All(ShapeRole.Cover), _bleedRoom)],
+        };
 
         string uri = track.Uri.Text, title = track.Title;
+        Element swap = open ? WinUiNowPlayingHero.Layer("npv-strip", WinUiNowPlayingHero.Strip(verbs, shown, props.NowArtUrl))
+                     : bleeds ? WinUiNowPlayingHero.Layer("npv-meta:bleed", Meta(props, track, uri, title, BleedCover()))
+                     : WinUiNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title, null));
+
+        return new BoxEl
+        {
+            Direction = 1, Shrink = 0f, Gap = P.HeroGap, Padding = P.HeroPadding,
+            Children =
+            [
+                WinUiNowPlayingHero.Head(verbs, open, shown, bleeds),
+                slot,
+                new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
+                props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
+            ],
+        };
+    }
+
+    /// <summary>The meta's 56 cover over the edge-to-edge canvas: the art under a light hairline.</summary>
+    Element BleedCover() => new BoxEl
+    {
+        Width = P.BleedCover, Height = P.BleedCover, Shrink = 0f, ZStack = true, Corners = CornerRadius4.All(P.BleedCoverRadius), ClipToBounds = true,
+        Children =
+        [
+            new ImageEl
+            {
+                Source = Prop.Of(_source!), Fit = ImageFit.Cover, DecodePx = P.HeroDecodePx, Corners = CornerRadius4.All(P.BleedCoverRadius),
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder!),
+            },
+            new BoxEl
+            {
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Corners = CornerRadius4.All(P.BleedCoverRadius), HitTestVisible = false,
+                BorderWidth = 1f, BorderColor = Tok.TextPrimary with { A = P.BleedCoverStrokeA },
+            },
+        ],
+    };
+
+    /// <summary>The title, the artists and "from" the album beside the heart; <paramref name="lead"/> (the 56 cover over the canvas) before them.</summary>
+    static Element Meta(NowPlayingHeroProps props, Track track, string uri, string title, Element? lead)
+    {
         var lines = new List<Element>(3)
         {
             new TextEl(title)
@@ -174,214 +384,13 @@ internal sealed class WinUiHeroTile : Component
                 ],
             });
         }
-        var metaKids = new List<Element>(3)
-        {
-            new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.HeroMetaGap, Children = lines.ToArray() },
-        };
-        // The ONE style flyout hangs off this gear (developer-only, as all its doors are); the art menu's "player style…" opens the same one.
-        if (styleVisible) metaKids.Add(Embed.Comp(props, static () => new WinUiStyleGear()) with { Key = WinUiNowPlayingHero.GearKey });
-        metaKids.Add(Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri });
-        var meta = new BoxEl
-        {
-            Key = WinUiNowPlayingHero.MetaKey, Direction = 0, AlignItems = FlexAlign.Start, Gap = P.HeroMetaGap, Children = metaKids.ToArray(),
-        };
-
+        var text = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.HeroMetaGap, Children = lines.ToArray() };
+        var heart = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri };
         return new BoxEl
         {
-            Direction = 1, Shrink = 0f, Gap = P.HeroGap, Padding = P.HeroPadding,
-            Children =
-            [
-                slot,
-                meta,
-                props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
-            ],
-        };
-    }
-}
-
-/// <summary>The player style gear and the popup it owns, attached to the gear (their right edges flush, dropping beneath it). Its own component: it
-/// reads the flyout's open flag, so the gear's plate follows the flyout wherever it was opened from without re-rendering the tile.</summary>
-internal sealed class WinUiStyleGear : Component
-{
-    public override Element Render()
-    {
-        var props = UseProps<NowPlayingHeroProps>();
-        bool open = Rail.PlayerPrefs.StyleFlyoutOpen.Value;
-        var verbs = props.Style;
-        var flyout = props.Flyout;
-        Element gear = ToolTip.Wrap(WinUiPlayerBar.Button(Icons.Settings, () => verbs.ToggleStyleFlyout(), true, false, P.HeroHeart, P.HeroHeart,
-            P.HeroHeartGlyph, plated: open), Loc.Get(Strings.Theme.Winui.Player.DeckStyle));
-        return Popup.Create(gear, () => Slots.View(ViewKeys.DeckStyleFlyout, flyout), Rail.PlayerPrefs.StyleFlyoutOpen,
-            onOpenChanged: static nowOpen => { if (!nowOpen) Rail.NpvDiagnostics.FlyoutClosed(); },
-            placement: FlyoutPlacement.BottomEdgeAlignedRight,
-            options: new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup));
-    }
-}
-
-/// <summary>The style flyout's body.</summary>
-internal sealed class WinUiStyleFlyout : Component
-{
-    static readonly Rail.PlayerCatalog.Preset[] s_group = new Rail.PlayerCatalog.Preset[Rail.PlayerCatalog.PerGroup];
-
-    /// <summary>A choice's hit height this render (32; 40 at Compact).</summary>
-    float _hit;
-
-    public override Element Render()
-    {
-        var props = UseProps<DeckStyleFlyoutProps>();
-        var verbs = props.Verbs;
-        var preset = Rail.PlayerPrefs.CurrentPreset();                      // epoch-subscribed
-        bool atDefaults = Rail.PlayerPrefs.AtDefaults(in preset);            // epoch-subscribed: a pick lights the reset, a reset dims it
-        // Every word and swatch is a hit row of its own: 32 tall, 40 at Compact (the touch floor; the rows' gap stays 12).
-        var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
-        _hit = tiers.Policy is not null && tiers.Window == WidthTier.Compact ? P.TouchButton : P.DeckChoiceH;
-        var options = new Element[preset.Options.Length];
-        for (int i = 0; i < options.Length; i++) options[i] = Option(props, preset, preset.Options[i]);
-        var kids = new List<Element>(5)
-        {
-            new TextEl(Loc.Get(Strings.Player.PlayerStyle))
-            {
-                Size = P.DeckTitleSize, LineHeight = P.DeckTitleLine, Weight = P.DeckTitleWeight, Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Heading),
-            },
-            Group(verbs, Strings.Player.StyleGroupMedia, Rail.PlayerGroup.Media, preset.Id),
-            Group(verbs, Strings.Player.StyleGroupDevices, Rail.PlayerGroup.Devices, preset.Id),
-            Group(verbs, Strings.Player.StyleGroupSoftware, Rail.PlayerGroup.Software, preset.Id),
-            // The options block, its own keyed box: a style with more or fewer options eases the block's height (and the flyout with it), and
-            // the rows cross-fade per style (keyed "<style>.<option>"), so a style pick never snaps the flyout's edge.
-            new BoxEl
-            {
-                Key = WinUiNowPlayingHero.FlyoutOptionsKey, Direction = 1, Gap = P.DeckGap, ClipToBounds = true,
-                Animate = Design.Reduced ? null : P.DeckOptionsMotion,
-                Children =
-                [
-                    OptionsHead(verbs, preset, atDefaults),
-                    ..options,
-                ],
-            },
-        };
-        return new BoxEl { Width = P.DeckW, Direction = 1, Gap = P.DeckGap, Padding = Edges4.All(P.DeckPad), Children = kids.ToArray() };
-    }
-
-    static TextEl Label(string text) => new(text)
-    {
-        Size = P.DeckLabelSize, LineHeight = P.DeckLabelLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-    };
-
-    /// <summary>"Options", and at its end "Reset options": always there (its slot never comes or goes), disabled while every option of the style
-    /// is at its default, so whether it can act reads at rest.</summary>
-    Element OptionsHead(IDeckStyleVerbs verbs, Rail.PlayerCatalog.Preset preset, bool atDefaults) => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Height = _hit, Gap = P.DeckWordGap,
-        Children =
-        [
-            Label(Loc.Get(Strings.Player.StyleOptions)) with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
-            new BoxEl
-            {
-                Key = WinUiNowPlayingHero.FlyoutResetKey, Height = _hit, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-                Padding = P.DeckResetPadding, Corners = CornerRadius4.All(P.DeckResetCorner),
-                Fill = ColorF.Transparent, HoverFill = atDefaults ? ColorF.Transparent : Tok.FillSubtleSecondary,
-                PressedFill = atDefaults ? ColorF.Transparent : Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-                Role = AutomationRole.Button, Focusable = !atDefaults, IsEnabled = !atDefaults, Cursor = atDefaults ? null : CursorId.Hand,
-                OnClick = atDefaults ? null : () => verbs.ResetChoices(in preset),
-                Children =
-                [
-                    new TextEl(Loc.Get(Strings.Player.ResetOptions))
-                    {
-                        Size = P.DeckLabelSize, LineHeight = P.DeckLabelLine, Color = atDefaults ? Tok.TextDisabled : Tok.AccentTextPrimary,
-                        BrushTransitionMs = Design.Motion.Faster, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
-                    },
-                ],
-            },
-        ],
-    };
-
-    BoxEl Choice(string key, string text, bool on, Action pick) => new()
-    {
-        Key = key, Height = _hit, MinWidth = _hit, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = pick,
-        Children =
-        [
-            new TextEl(text)
-            {
-                Size = P.DeckWordSize, LineHeight = P.DeckWordLine, Color = on ? Tok.AccentTextPrimary : Tok.TextSecondary, HoverColor = on ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                Case = R.Case.For(LabelKind.Command), Wrap = TextWrap.NoWrap,
-            },
-        ],
-    };
-
-    static BoxEl Words(Element[] words) => new()
-    {
-        Direction = 0, Wrap = true, Gap = P.DeckWordGap, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
-        Children = words,
-    };
-
-    /// <summary>A label in its fixed column beside its choices (one line per group or option: the flyout stays short enough to drop beneath the
-    /// gear at a 960 window instead of flipping over the stage).</summary>
-    static BoxEl Row(string label, Element choices) => new()
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = P.DeckWordGap,
-        Children = [Label(label) with { Width = P.DeckLabelW, Shrink = 0f }, choices],
-    };
-
-    Element Group(IDeckStyleVerbs verbs, string labelKey, Rail.PlayerGroup group, int selectedId)
-    {
-        int n = Rail.PlayerCatalog.Group(group, s_group);
-        var words = new Element[n];
-        for (int i = 0; i < n; i++)
-        {
-            int id = s_group[i].Id;
-            words[i] = Choice(WinUiNowPlayingHero.FlyoutStylePrefix + s_group[i].Slug, Loc.Get(s_group[i].ShortLabelKey), id == selectedId, () => verbs.SetStyle(id));
-        }
-        return Row(Loc.Get(labelKey), Words(words));
-    }
-
-    Element Option(DeckStyleFlyoutProps props, Rail.PlayerCatalog.Preset preset, Rail.PlayerCatalog.OptionDef option)
-    {
-        int current = Rail.PlayerPrefs.Choice(preset, option);
-        var verbs = props.Verbs;
-        var choices = new Element[option.Choices.Length];
-        string keyStem = WinUiNowPlayingHero.FlyoutChoicePrefix + option.Slug + ":";
-        for (int i = 0; i < choices.Length; i++)
-        {
-            int index = i;
-            var choice = option.Choices[i];
-            bool on = index == current;
-            Action pick = () => verbs.SetChoice(in preset, in option, index);
-            if (option.Kind != Rail.OptionKind.Swatch)
-            {
-                choices[i] = Choice(keyStem + choice.Slug, Loc.Get(choice.LabelKey), on, pick);
-                continue;
-            }
-            Prop<ColorF> fill = choice.Swatch == Rail.PlayerCatalog.FromCover
-                ? Prop.Of(() => WinUiHeroWash.Of(props.NowArtUrl()))
-                : ColorScience.ToColor(choice.Swatch);
-            // Round, with a hairline: the black finish is the flyout's own ground in the dark theme and vanished without one.
-            choices[i] = ToolTip.Wrap(new BoxEl
-            {
-                Key = keyStem + choice.Slug,
-                Width = MathF.Max(_hit, P.DeckSwatchRing), Height = _hit, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = pick,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = P.DeckSwatchRing, Height = P.DeckSwatchRing, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Corners = Radii.Circle(P.DeckSwatchRing), BorderWidth = on ? P.DeckSwatchStroke : 0f, BorderColor = on ? Tok.AccentDefault : ColorF.Transparent,
-                        HitTestVisible = false,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Width = P.DeckSwatchDot, Height = P.DeckSwatchDot, Shrink = 0f, Corners = Radii.Circle(P.DeckSwatchDot), Fill = fill,
-                                BorderWidth = P.DeckSwatchHairline, BorderColor = Tok.StrokeCardDefault, HitTestVisible = false,
-                            },
-                        ],
-                    },
-                ],
-            }, Loc.Get(choice.LabelKey));
-        }
-        return Row(Loc.Get(option.LabelKey), Words(choices)) with
-        {
-            Key = preset.Slug + "." + option.Slug, Enter = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
+            Key = WinUiNowPlayingHero.MetaKey, Direction = 0, AlignItems = lead is null ? FlexAlign.Start : FlexAlign.Center,
+            Gap = lead is null ? P.HeroMetaGap : P.BleedMetaGap,
+            Children = lead is null ? [text, heart] : [lead, text, heart],
         };
     }
 }

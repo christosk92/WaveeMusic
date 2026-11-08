@@ -242,6 +242,16 @@ internal static class ClassicPanel
         }) with { Key = ClassicPanelTiers.SheetScrollKey, Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
+    /// <summary>The panel's surface with the edge-to-edge canvas over it (Tideline) while the Canvas style rests with a canvas to play; the docked
+    /// video pinned in the hero's place keeps the plain surface.</summary>
+    internal static Element WithBleed(Element surface, PanelProps props, PanelView view) => view.Pinned == PanelPinned.DockedVideo
+        ? surface
+        : new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, HitTestPassThrough = true,
+            Children = [surface, Embed.Comp(new ClassicBleedProps(props.NowPlaying, view.Width), static () => new ClassicBleed())],
+        };
+
     /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both.</summary>
     internal static Element PinnedHero(PanelProps props, PanelView view)
     {
@@ -254,12 +264,14 @@ internal static class ClassicPanel
         };
     }
 
-    /// <summary>The 2-state Art|Video toggle over the ART's top-right corner. Its offset is DERIVED from
+    /// <summary>The 2-state Art|Video toggle over the ART's top-right corner (hidden while the style picker is open). Its offset is DERIVED from
     /// <see cref="Rail.Hero.ArtTop"/> (in the sheet, from the art's own top: the head carries the header row); each half's tooltip names the
     /// action IT performs.</summary>
     static Element ArtVideoToggle(PanelProps props, bool sheet) => new BoxEl
     {
         Height = ClassicPanelLayout.ToggleH, Shrink = 0f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End,
+        // Picking a player style, the art is the carousel: the toggle would sit over a neighbour's corner, so it steps aside until the picker closes.
+        Visible = Prop.Of(() => !props.NowPlaying.Picking()),
         Margin = sheet
             ? new Edges4(0f, ClassicPanelTiers.SheetArtTop + Spacing.XS, Spacing.XS, 0f)
             : new Edges4(0f, Rail.Hero.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),
@@ -478,7 +490,7 @@ internal sealed class ClassicPanelFrame : Component
                         Direction = 1, Children = [Embed.Comp(props, static () => new ClassicSheetHeader())],
                     }),
                     ClassicPanel.NowPlayingSheet(props, view, vp, _ask))
-                : ClassicPanel.Arm(open, placement, surface, edge, null,
+                : ClassicPanel.Arm(open, placement, ClassicPanel.WithBleed(surface, props, view), edge, null,
                     ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
         else
         {

@@ -107,11 +107,7 @@ public static partial class SettingsDoc
                 captionKey: Strings.Stage.Settings.MomentsSub, value: BoolOf(Platform.Keys.StageMoments))),
 
         Sect(T.Appearance, "Now playing", Strings.Settings.NowPlaying.Title, Strings.Settings.NowPlaying.Subtitle,
-            // DEVELOPER-ONLY, exactly like the rail header switch it duplicates — a normal build shows the cover. No page re-read:
-            // the tab reads `Prefs.NpvPlayer`'s epoch.
-            Make(T.Appearance, "Now playing", "npvPresentation", K.Segmented, Strings.Settings.Appearance.NpvPresentation,
-                SettingsWriter.OfChoice("npv.presentation", SettingsVerbs.SetNpvPresentation),
-                captionKey: Strings.Settings.Appearance.NpvPresentationSub, value: _ => Rail.PlayerPrefs.Presentation()),
+            // The player style, the same setting the now-playing style chip changes. No page re-read: the tab reads `Prefs.NpvPlayer`'s epoch.
             Make(T.Appearance, "Now playing", "npvStyle", K.Choice, Strings.Settings.Appearance.NpvStyle,
                 SettingsWriter.OfChoice("npv.style", SettingsVerbs.SetNpvStyle),
                 captionKey: Strings.Settings.Appearance.NpvStyleSub, value: _ => Rail.PlayerPrefs.Style())),
@@ -284,13 +280,7 @@ public static partial class SettingsVerbs
         return false;
     }
 
-    // ── Now playing (the rail's adapter flips the hero to Player and logs the source; the tab reads its epoch) ───────
-
-    public static bool SetNpvPresentation(int index)
-    {
-        Shell.DeckPrefs.SetPresentation(index, Shell.DeckPrefSource.Settings);
-        return false;
-    }
+    // ── Now playing (the rail's adapter logs the source; the tab reads its epoch) ─────────────────────────────────────
 
     public static bool SetNpvStyle(int index)
     {

@@ -8,15 +8,15 @@
 // Spec: ch 23 §9 (1,450-1,600)
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// THE DECK'S PHYSICS. Twelve player presets, six models, one contract: a model folds a `Deck.Input` and returns a
+// THE DECK'S PHYSICS. Nine deck styles, six models, one contract: a model folds a `Deck.Input` and returns a
 // `Deck.Frame`. It never sees an `Element`, a `Signal`, a bridge or a clock — which is exactly why every one of the
 // thirteen classes below is unit-testable without a GPU, and why `Wavee.Tests` can drive the entire tonearm
 // choreography at a 33 ms step and assert against the constants rather than against a screenshot.
 //
 // THE THREE-LAYER SEAM, whole:
-//   1. `Deck.cs` (here)      physics. `System`-only. Twelve presets → six models (`Deck.Models.Create`).
+//   1. `Deck.cs` (here)      physics. `System`-only. Nine deck styles → six models (`Deck.Models.Create`).
 //   2. `Deck.UI.cs`          the host, the per-frame clock, the signal slab, art, gesture, the record family's face.
-//   3. `Deck.Faces.cs`       the other eight faces.
+//   3. `Deck.Faces.cs`       the other seven faces.
 // The clock diff-writes one `Frame` into a FIXED slab of signals per tick inside ONE batch, value-gated at a
 // perceptual quantum; the faces bind that slab ONCE at mount and are never re-rendered by the tick path. Adding a
 // deck therefore adds no signal, no bind and no wake.
@@ -49,10 +49,10 @@ public static partial class Deck
         RunOut, LockedGroove, AutoReturn, Buffering, Error, Stopped, Unavailable, Winding,
     }
 
-    /// <summary>Which record-family face a <see cref="RecordModel"/> is driving. The physics are shared (one tonearm
-    /// machine); the variant only changes geometry and which parts a face draws — which is why it lives beside the
+    /// <summary>Which record-family face a <see cref="RecordModel"/> is driving: Vinyl's turntable or Metro's poster. The physics are
+    /// shared (one tonearm machine); the variant only changes geometry and which parts a face draws — which is why it lives beside the
     /// frame rather than inside the machine.</summary>
-    public enum RecordVariant : byte { Record, Turntable, Zune, Picture }
+    public enum RecordVariant : byte { Turntable, Zune }
 
     /// <summary>What a deck model hands back for ONE tick. Deliberately a flat POD of scalars rather than a per-deck
     /// shape: the faces bind a FIXED slab of float signals and the clock diff-writes this into them, so adding a deck
@@ -837,9 +837,9 @@ public static partial class Deck
 
     // ── 7. RecordModel — the record family's physics ────────────────────────────────────────────────────────────────
 
-    /// <summary>The record family's model: Record, Turntable, Zune and Picture disc all spin the same platter and run
-    /// the same <see cref="TonearmMachine"/>. Only the FACE differs — the Zune draws no arm at all, and runs the
-    /// machine anyway so that its platter brakes, spins up and rides the run-out exactly like its siblings.
+    /// <summary>The record family's model: Vinyl's turntable and Metro's poster spin the same platter and run the same
+    /// <see cref="TonearmMachine"/>. Only the FACE differs — Metro draws no arm at all, and runs the machine anyway so that its
+    /// platter brakes, spins up and rides the run-out exactly like the turntable's.
     ///
     /// <para>Engine-free and allocation-free: one <see cref="TonearmState"/> value, one <see cref="SpinIntegrator"/>,
     /// and a <see cref="Frame"/> struct out per tick.</para></summary>
@@ -874,7 +874,7 @@ public static partial class Deck
             if (_state.PlatterOn && !seed.ReducedMotion) _platter.Omega = seed.Rpm * 6f;
         }
 
-        /// <summary>Which face is drawing this model. The machine is identical for all four.</summary>
+        /// <summary>Which face is drawing this model. The machine is identical for both.</summary>
         public RecordVariant Variant => _variant;
 
         /// <summary>The tonearm's state, for the diagnostics page and the tests.</summary>
@@ -1140,18 +1140,13 @@ public static partial class Deck
         const float RestDeg = -45f;
         const float RightOffsetOmega = 2.1f;  // rad/s — L→R stereo derivation
 
-        readonly bool _ppm;
         readonly Func<(float rms, float peak)?>? _levels;
 
         float _t;
         float _angleL = RestDeg, _angleR = RestDeg;
         bool _playing;
 
-        public MeterModel(bool ppm, Func<(float rms, float peak)?> levels)
-        {
-            _ppm = ppm;
-            _levels = levels;
-        }
+        public MeterModel(Func<(float rms, float peak)?> levels) => _levels = levels;
 
         public ReadOnlySpan<float> Bands => ReadOnlySpan<float>.Empty;
         public ReadOnlySpan<float> Peaks => ReadOnlySpan<float>.Empty;
@@ -1180,7 +1175,7 @@ public static partial class Deck
                 else { targetL = RestDeg; targetR = RestDeg; }                            // no tap => the needles rest; nothing is invented
             }
 
-            float tau = _ppm ? 0.05f : 0.3f;
+            const float tau = 0.3f;   // VU ballistics
             float k = 1f - MathF.Exp(-dtSec / tau);
             _angleL += (targetL - _angleL) * k;
             _angleR += (targetR - _angleR) * k;
@@ -1193,7 +1188,7 @@ public static partial class Deck
         public static float RmsToDb(float rms) => 20f * MathF.Log10(MathF.Max(rms, 1e-4f)) + 18f;
     }
 
-    // ── 11. LevelModel — the Winamp / WMP analyser ──────────────────────────────────────────────────────────────────
+    // ── 11. LevelModel — the Skin / Visualizer analyser ─────────────────────────────────────────────────────────────
 
     /// <summary>The analyser decks (Winamp 19, WMP 24): the stage's 48 folded band levels remapped onto N bars, with the deck's
     /// own peak caps (hold 400 ms, fall 1.2/s). No tap => the bars release to the floor and the model settles; nothing is
@@ -1286,11 +1281,10 @@ public static partial class Deck
         }
     }
 
-    // ── 12. ProgressModel — the two faces whose only moving part is progress ────────────────────────────────────────
+    // ── 12. ProgressModel — the face whose only moving part is progress ─────────────────────────────────────────────
 
-    /// <summary>The deck model for faces whose ONLY moving part is progress — the iPod Classic (a click-wheel screen:
-    /// bar, thumb, clocks) and Canvas drift (whose motion is slab-driven keyframes on the cover, not a per-tick fold).
-    /// <para>It exists so those two faces are not special-cased in the clock: they get the same ticker, the same
+    /// <summary>The deck model for a face whose ONLY moving part is progress — Pocket (a click-wheel screen: bar, thumb, clocks).
+    /// <para>It exists so that face is not special-cased in the clock: it gets the same ticker, the same
     /// value-gated writes and the same phase name as every other deck, for the cost of one struct copy per tick.
     /// <see cref="IsSettled"/> is always true, so the ticker runs while (and only while) audio is playing.</para></summary>
     public sealed class ProgressModel : IModel
@@ -1299,8 +1293,7 @@ public static partial class Deck
 
         public Frame Tick(in Input input, float dtSec)
         {
-            // The cover swap is the one edge these faces DO care about: Canvas keys its whole drift frame on CoverGen
-            // and cross-fades, and the iPod's LCD art changes with it. Only a NEW ALBUM counts — a same-album advance
+            // The cover swap is the one edge this face DOES care about: the screen's art changes with it. Only a NEW ALBUM counts — a same-album advance
             // keeps the artwork, so bumping there would flash the cover on every track of a record.
             if (input.Boundary is Boundary.NaturalNewAlbum or Boundary.SkipNewAlbum) _coverGen++;
             return new Frame(input.Frac, 0f, 0f, 0f, 1f, 0f, 0f, _coverGen, false, PhaseOf(in input));
@@ -1324,24 +1317,6 @@ public static partial class Deck
         }
     }
 
-    // ── 13. DriftPath — the Canvas deck's Ken Burns table ───────────────────────────────────────────────────────────
-
-    /// <summary>Pure keyframe data for the Canvas-drift deck's slow pan/zoom. No model and no tick — the face drives
-    /// an engine keyframe loop directly off this table; it exists purely so the timing/shape is pinned in one
-    /// engine-free place instead of copied into face code.</summary>
-    public static class DriftPath
-    {
-        public const float SlowSeconds = 40f, FastSeconds = 16f;
-
-        /// <summary>(offset 0..1 through the loop, tx, ty, scale) — tx/ty are fractions of the frame size, MIRRORED so
-        /// the loop (0 → 1) has no seam when played back-and-forth.</summary>
-        public static readonly (float Offset, float Tx, float Ty, float Scale)[] Keys =
-        [
-            (0f, 0f, 0f, 1f),
-            (0.5f, -0.05f, 0.03f, 1.06f),
-            (1f, 0.04f, -0.04f, 1.02f),
-        ];
-    }
 
     // ── 14. the pure Fold (ch 23 §8) ────────────────────────────────────────────────────────────────────────────────
 
@@ -1414,78 +1389,49 @@ public static partial class Deck
         return Fold(in f, ref interp, nowMs, Boundary.None);
     }
 
-    // ── 15. the catalog: preset id → physics ────────────────────────────────────────────────────────────────────────
+    // ── 15. the catalog: style id → physics ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Preset id → the deck's PHYSICS. The ONE place a preset becomes a model, so the host holds no per-deck
-    /// knowledge at all and the twelve decks can be built (and unit-tested) independently. The mirror of
-    /// `Deck.UI.cs`'s face dispatch: physics on one side, geometry on the other, and nothing in between knows both.
+    /// <summary>Style id → the deck's PHYSICS. The ONE place a style becomes a model, so the host holds no per-deck
+    /// knowledge at all and the decks can be built independently. The mirror of `Deck.UI.cs`'s face dispatch: physics on
+    /// one side, geometry on the other, and nothing in between knows both.
     ///
     /// <para><b>Why the seed.</b> The record family is the only one with a mount-time DECISION to make: a deck mounted
     /// mid-song must show a record that has been playing all along, not replay a three-second cue sequence. It
     /// therefore takes the transport as it stands; every other model starts from its own rest pose and converges
-    /// within a tick or two, so they take only their options.</para></summary>
+    /// within a tick or two.</para></summary>
     public static class Models
     {
-        /// <summary>Winamp's spectrum window is 19 bars (the face binds the first 19 of the slab's 24).</summary>
-        public const int WinampBands = 19;
-        /// <summary>WMP's bar visualizer.</summary>
-        public const int WmpBands = 24;
+        /// <summary>The skin's spectrum window is 19 bars (the face binds the first 19 of the slab's 24).</summary>
+        public const int SkinBands = 19;
+        /// <summary>The visualizer's bars.</summary>
+        public const int VisualizerBands = 24;
 
-        /// <summary>Build the model for a preset.</summary>
-        /// <param name="preset">The catalog row (`Rail.PlayerCatalog`).</param>
-        /// <remarks>The preset's options are read through `Rail.PlayerPrefs` (clamped on read, under the one epoch).</remarks>
+        /// <summary>Build the model for a style (`Rail.PlayerCatalog` id).</summary>
         /// <param name="levels">The audio level tap as a PULL, not a subscription: levels are published on the audio
         /// control thread, so a deck must peek them from its own ticker — a reactive edge there would schedule UI work
-        /// from that thread. Only the VU reads it; null (Connect playback, a remote device, `--fake`) is a real answer —
-        /// the needles rest.</param>
+        /// from that thread. Only the hi-fi's VU reads it; null (Connect playback, a remote device, `--fake`) is a real
+        /// answer — the needles rest.</param>
         /// <param name="seed">The transport as it stands, for the record family's mount-time decision.</param>
-        /// <param name="spectrum">The analyser decks' (Winamp, WMP) band pull — the rail's own fold of the engine's FFT
+        /// <param name="spectrum">The analyser decks' (Skin, Visualizer) band pull — the rail's own fold of the engine's FFT
         /// (<c>Deck.SpectrumFold</c>). Null (or an empty pull) is a real answer: the bars rest at the floor.</param>
-        public static IModel Create(in Rail.PlayerCatalog.Preset preset,
-                                    Func<(float rms, float peak)?> levels, in Input seed, SpectrumPull? spectrum = null)
-            => preset.Id switch
+        public static IModel Create(int styleId, Func<(float rms, float peak)?> levels, in Input seed, SpectrumPull? spectrum = null)
+            => styleId switch
             {
-                Rail.PlayerCatalog.Record => new RecordModel(in seed, RecordVariant.Record),
-                Rail.PlayerCatalog.Turntable => new RecordModel(in seed, RecordVariant.Turntable),
-                Rail.PlayerCatalog.Zune => new RecordModel(in seed, RecordVariant.Zune),
-                Rail.PlayerCatalog.Picture => new RecordModel(in seed, RecordVariant.Picture),
+                Rail.PlayerCatalog.Vinyl => new RecordModel(in seed, RecordVariant.Turntable),
+                Rail.PlayerCatalog.Metro => new RecordModel(in seed, RecordVariant.Zune),
                 Rail.PlayerCatalog.Cassette => new TapeModel(TapeKind.Cassette),
                 Rail.PlayerCatalog.Reel => new TapeModel(TapeKind.Reel),
                 Rail.PlayerCatalog.Cd => new DiscModel(),
-                Rail.PlayerCatalog.Vu => new MeterModel(Rail.PlayerPrefs.ChoiceSlug(in preset, "ballistics") == "ppm", levels),
-                Rail.PlayerCatalog.Winamp => new LevelModel(WinampBands, spectrum),
-                Rail.PlayerCatalog.Wmp => new LevelModel(WmpBands, spectrum),
-                // iPod and Canvas: progress is the only thing that moves per tick (Canvas's drift is slab keyframes).
+                Rail.PlayerCatalog.Hifi => new MeterModel(levels),
+                Rail.PlayerCatalog.Skin => new LevelModel(SkinBands, spectrum),
+                Rail.PlayerCatalog.Visualizer => new LevelModel(VisualizerBands, spectrum),
+                // Pocket: progress is the only thing that moves per tick.
                 _ => new ProgressModel(),
             };
 
-        /// <summary>Which record-family variant a preset drives, for the face dispatch. Non-record presets answer
-        /// <see cref="RecordVariant.Record"/>; the caller only asks when it already knows the family.</summary>
-        public static RecordVariant VariantOf(int presetId) => presetId switch
-        {
-            Rail.PlayerCatalog.Turntable => RecordVariant.Turntable,
-            Rail.PlayerCatalog.Zune => RecordVariant.Zune,
-            Rail.PlayerCatalog.Picture => RecordVariant.Picture,
-            _ => RecordVariant.Record,
-        };
-
-        /// <summary>Is this preset one of the four the record family draws? The tonearm machine runs for all four,
-        /// including the Zune, which draws no arm — that is what makes its platter brake, spin up and ride the run-out
-        /// exactly like its siblings.</summary>
-        public static bool IsRecordFamily(int presetId) => presetId
-            is Rail.PlayerCatalog.Record or Rail.PlayerCatalog.Turntable
-            or Rail.PlayerCatalog.Zune or Rail.PlayerCatalog.Picture;
-
-        /// <summary>The ONE option of a preset that is read at MODEL construction rather than by the face — VU ›
-        /// needles (<c>ballistics</c>: the τ); null for every other preset. ch 23 §6.4(4): 0.2.9 built the model once,
-        /// so flipping it restyled the face and kept the old physics until a remount. The host compares this option's
-        /// current slug with the one its model was built from and rebuilds the model IN PLACE when they differ — no
-        /// remount, no entrance fade.</summary>
-        public static string? ModelOptionSlug(int presetId) => presetId switch
-        {
-            Rail.PlayerCatalog.Vu => "ballistics",
-            _ => null,
-        };
+        /// <summary>Is this style one the record family draws (Vinyl, Metro)? The tonearm machine runs for both, including Metro, which draws
+        /// no arm — that is what makes its platter brake, spin up and ride the run-out exactly like the turntable's.</summary>
+        public static bool IsRecordFamily(int styleId) => styleId is Rail.PlayerCatalog.Vinyl or Rail.PlayerCatalog.Metro;
     }
 
     // ── 16. the shell's decisions, pure (stage 2: the clock's gates, the grips, the lettering latch) ────────────────
@@ -1531,7 +1477,7 @@ public static partial class Deck
         public static bool ShouldTick(bool reducedMotion, bool railOpen, bool playing, bool playWhenReady, bool buffering, bool settled)
             => !reducedMotion && railOpen && (playing || playWhenReady || buffering || !settled);
 
-        /// <summary>May a face's LOOPING motion run (the Winamp marquee, the Canvas drift)? Only while audio is meant to
+        /// <summary>May a face's LOOPING motion run (the skin's marquee)? Only while audio is meant to
         /// be coming out, the rail is open, the window is active and motion is not reduced — a paused deck owns no
         /// looping animation row, so it wakes no frame.</summary>
         public static bool LoopsMayRun(bool reducedMotion, bool railOpen, bool active, bool playing)
@@ -1563,8 +1509,9 @@ public static partial class Deck
         /// <summary>Round to a perceptual quantum; a write that lands on the same step writes nothing.</summary>
         public static float Quantize(float v, float q) => q > 0f ? MathF.Round(v / q) * q : v;
 
-        /// <summary>The platter speed for the <c>rpm</c> option's slug.</summary>
-        public static float RpmFor(string? rpmSlug) => rpmSlug == "45" ? Rpm45 : Rpm33;
+        /// <summary>The platter speed for the playing release: a single (or an EP) at 45, an album at 33⅓. Automatic: there is no speed
+        /// option.</summary>
+        public static float RpmFor(bool single) => single ? Rpm45 : Rpm33;
 
         /// <summary>The deck's square edge for a rail width: the content width (<c>rail − 2·inset</c>) on the 4-DIP
         /// grid, never below one quantum.</summary>

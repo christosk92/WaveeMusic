@@ -234,8 +234,9 @@ public static partial class Platform
         public static readonly SettingKey<string> NotificationsReadIds = new("notifications.readIds", "");
 
         // ── now playing / deck ──
-        public static readonly SettingKey<int> NpvPresentation = new("npv.presentation", 0);
-        public static readonly SettingKey<int> NpvPlayerStyle = new("npv.player.style", 0);
+        /// <summary>The now-playing player style (`Rail.PlayerCatalog` id; 0 = Cover). Copied once from the retired presentation and
+        /// preset keys by the "NowPlayingStyle" bootstrap step (`ThemeBootstrap.cs`).</summary>
+        public static readonly SettingKey<int> NpvStyle = new("npv.style", 0);
 
         // ── caches ──
         public static readonly SettingKey<bool> AudioBodyCacheEnabled = new("audio.cache.body.enabled", true);
@@ -351,8 +352,8 @@ public static partial class Platform
         // new key must not take one of those strings. `LibraryAlbumSort` is still read (the reader's own sort, whose old 0-4
         // discography values clamp to 0).
 
-        /// <summary>A deck/player preset's own option (`npv.player.&lt;preset&gt;.&lt;option&gt;`).</summary>
-        public static SettingKey<int> NpvOption(string presetSlug, string optionSlug) => new("npv.player." + presetSlug + "." + optionSlug, 0);
+        /// <summary>A player style's finish (`npv.style.&lt;style&gt;.finish`): only Vinyl and Pocket carry one.</summary>
+        public static SettingKey<int> NpvFinish(string styleSlug) => new("npv.style." + styleSlug + ".finish", 0);
     }
 }
 

@@ -9,7 +9,7 @@
 // track's video and the next one's are downloaded (the next only off a metered network).
 //
 // ONE PLAYER. Each MediaPlayer owns a Media Foundation engine (tens of MB), so Canvas has exactly one, muted and looping, and at most one
-// surface presents it: the highest-priority surface that is mounted and active (Stage > Deck > Hero) is the OWNER; the others show the
+// surface presents it: the highest-priority surface that is mounted and active (Stage > Deck) is the OWNER; the others show the
 // poster. A new owner mounts its element only after the old one let go (`Bound`), so two elements never present one player.
 //
 // WHEN IT DECODES. The source is open only while an owner exists and the setting is on; it PLAYS only while the owner's element can be
@@ -47,8 +47,10 @@ public static partial class CanvasVideo
         return true;
     }
 
-    /// <summary>Where a canvas can show, by priority: the higher value owns the one player when several are mounted.</summary>
-    public enum Surface : byte { None = 0, Hero = 1, Deck = 2, Stage = 3 }
+    /// <summary>Where a canvas can show, by priority: the higher value owns the one player when several are mounted. The now-playing
+    /// cover is not one: "Cover" is the album art alone, and a canvas in the panel is the Canvas player style's: edge to edge behind the panel
+    /// at rest (Bleed), in the picker's Canvas cell while picking (Deck).</summary>
+    public enum Surface : byte { None = 0, Bleed = 1, Deck = 2, Stage = 3 }
 
     /// <summary>The playing track's canvas as the surfaces draw it. <see cref="Shows"/> false: draw nothing (the surface is exactly what it
     /// is without Canvas). <see cref="File"/> is empty until the mp4 is on disk (the poster shows meanwhile).</summary>
