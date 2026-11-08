@@ -149,27 +149,28 @@ internal static class WinUiStageRoot
 
     static readonly EnterExit s_upNextMotion = new(Dx: G.UpNextSlide, Opacity: 0f, Active: true);
 
-    /// <summary>The Up next column beside the lyrics at Huge (W-Lyrics-Huge): the acrylic r8 pane at the allocator's rect, the core's queue host inside.</summary>
+    /// <summary>The Up next column beside the lyrics at Huge (W-Lyrics-Huge): the acrylic r8 pane at the allocator's rect, the core's queue host
+    /// inside, as the core's drawer (its tab collapses it off the right edge and back: <c>Stage.UpNextDrawer</c>).</summary>
     static Element UpNext(StageRootView v)
     {
         var r = v.Stage.Layout.Value.UpNextRect;
         var build = v.Layers.UpNext;
+        var column = new BoxEl
+        {
+            Width = r.W, Height = r.H, Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
+            Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Children = build is null ? [] : [build()],
+        };
         return Stage.Layer with
         {
             Key = "stage:upnext",
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
-            Children =
-            [
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
-                    Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
-                    Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
-                    Children = build is null ? [] : [build()],
-                },
-            ],
+            Children = [Stage.UpNextDrawer(v.Stage, r.X, r.Y, r.W, r.H, column, s_upNextTab, G.GalleryYieldMs)],
         };
     }
+
+    /// <summary>The drawer tab's plate: the column's acrylic and stroke.</summary>
+    static BoxEl s_upNextTab => new() { Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke };
 
     static ColorF Shade(float a) => Ink.Veil with { A = a };
 }

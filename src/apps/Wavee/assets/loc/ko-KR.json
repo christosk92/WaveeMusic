@@ -961,6 +961,8 @@
     "moments": "음악에 맞춰 변화",
     "syncOffset": "동기화 오프셋",
     "upNext": "다음 재생",
+    "upNextHide": "다음 재생 숨기기",
+    "upNextShow": "다음 재생 표시",
     "nextTrack": "다음",
     "nextFrom": "{context}의 다음 곡",
     "playingFrom": "{kind}에서 재생 중",

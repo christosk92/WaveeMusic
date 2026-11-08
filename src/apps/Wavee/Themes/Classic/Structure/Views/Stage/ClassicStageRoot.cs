@@ -218,20 +218,19 @@ internal static class ClassicStageRoot
         var L = v.Stage.Layout.Value;
         var r = L.UpNextRect;
         var build = v.Layers.UpNext;
+        var column = new BoxEl
+        {
+            Width = r.W, Height = r.H, Direction = 1, Padding = Edges4.All(ClassicStageGeometry.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
+            Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Children = build is null ? [] : [build()],
+        };
+        // the core's drawer: its tab collapses the column off the right edge and back (Stage.UpNextDrawer)
         return Stage.Layer with
         {
             Key = "stage:upnext",
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
-            Children =
-            [
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
-                    Direction = 1, Padding = Edges4.All(ClassicStageGeometry.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
-                    Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
-                    Children = build is null ? [] : [build()],
-                },
-            ],
+            Children = [Stage.UpNextDrawer(v.Stage, r.X, r.Y, r.W, r.H, column, new BoxEl { Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke },
+                ClassicStageGeometry.GalleryYieldMs)],
         };
     }
 

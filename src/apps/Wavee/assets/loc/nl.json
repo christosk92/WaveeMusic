@@ -961,6 +961,8 @@
     "moments": "Veranderen met de muziek",
     "syncOffset": "Synchronisatie-offset",
     "upNext": "Hierna",
+    "upNextHide": "Hierna verbergen",
+    "upNextShow": "Hierna tonen",
     "nextTrack": "Volgende",
     "nextFrom": "Hierna uit {context}",
     "playingFrom": "Afspelen uit {kind}",

@@ -4124,6 +4124,8 @@
     "moments": "Change with the music",
     "syncOffset": "Sync offset",
     "upNext": "Up next",
+    "upNextHide": "Hide Up next",
+    "upNextShow": "Show Up next",
     "nextTrack": "Next",
     "nextFrom": "Next from {context}",
     "playingFrom": "Playing from {kind}",

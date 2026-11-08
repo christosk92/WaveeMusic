@@ -116,6 +116,9 @@ public static partial class Stage
         /// <summary>The gallery was asked for during this stage's life (the face chip, G, the options footer): a tier whose gallery opens only
         /// on request (<c>StageTierMetrics.GalleryOnDemand</c>, C-Stage-Compact) shows it from then on (<c>Layout.GalleryOpenFor</c>).</summary>
         public readonly Signal<bool> GalleryAsked = new(false);
+        /// <summary>The Up next column beside the lyrics is open (<c>Prefs.Stage.UpNextOpen</c>, mirrored by the epoch effect); closed, its drawer
+        /// slides off the stage's right edge leaving the tab that opens it again (<see cref="UpNextDrawer"/>). <see cref="ToggleUpNext"/> flips it.</summary>
+        public readonly Signal<bool> UpNextOpen = new(true);
         /// <summary>DERIVED by SurfaceCore: the bars under the cover show (<c>Layout.ArtBarsShown</c>, Lyrics mode on a Huge 4K stage), narrowed
         /// to one bool so the clock's lease flips only when they come or go.</summary>
         public readonly Signal<bool> ArtBars = new(false);
@@ -164,6 +167,8 @@ public static partial class Stage
         public Action OpenGallery = static () => { };
         public Action<Mode> SetMode = static _ => { };
         public Action ToggleGallery = static () => { }, Exit = static () => { }, Activity = static () => { };
+        /// <summary>Collapse or open the Up next column (persisted: the stage reopens as it was left).</summary>
+        public Action ToggleUpNext = static () => { };
         /// <summary>The idle machine's holds: pointer over a control · a menu/tip/flyout open (counted) · a seek scrub.</summary>
         public Action<bool> OverControls = static _ => { }, MenuOpen = static _ => { }, Scrubbing = static _ => { };
         /// <summary>The playing track's row from the key — <c>Value</c> subscribes the caller to the KEY (one write per slot/version change).</summary>
@@ -246,6 +251,7 @@ public static partial class Stage
             _ctx.OpenGallery = () => { _verbs.OpenGallery(); _ctx.GalleryAsked.Value = true; };
             _ctx.Exit = _verbs.Exit;
             _ctx.Activity = _verbs.Activity;
+            _ctx.ToggleUpNext = () => { Prefs.Stage.SetUpNextOpen(!_ctx.UpNextOpen.Peek()); _verbs.Activity(); };
             _ctx.OpenOptions = _verbs.OpenOptions;
             _ctx.ToggleSecondLine = static () => LyricsVerbs.Global.ToggleSecondLine();
             _ctx.ResyncLyrics = static () => Lyrics.ViewCore.StageResync?.Invoke();
@@ -362,6 +368,7 @@ public static partial class Stage
                 Diagnostics.NoteMode(m);                          // gated: logs only on a real change, keeps the card's mode truthful
                 ctx.Kind.SetIfChanged((Visualizer.Kind)Prefs.Stage.Visualizer());
                 ctx.GalleryOpen.SetIfChanged(Prefs.Stage.GalleryOpen());
+                ctx.UpNextOpen.SetIfChanged(Prefs.Stage.UpNextOpen());
                 ctx.LyricsOverlay.SetIfChanged(Prefs.Stage.LyricsOverlay());
                 ctx.Calm.SetIfChanged(Prefs.Stage.Calm());
                 ctx.Moments.SetIfChanged(Prefs.Stage.Moments());

@@ -222,19 +222,15 @@ internal sealed class ZuneStageUpNextFrame : Component
         var t = ZuneStageTiers.StageOf(in tiers);
         var r = p.Stage.Layout.Value.UpNextRect;
         float x = G.UpNextPaneX(p.Stage.Layout.Value, t), y = r.Y + t.Drop, h = MathF.Max(0f, r.H - t.Drop);
-        return Stage.Layer with
+        var pane = new BoxEl
         {
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = "stage:upnext:pane", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = h, Margin = new Edges4(x, y, 0f, 0f),
-                    Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = R.Shape.All(ShapeRole.Overlay), ClipToBounds = true,
-                    Fill = R.Layer.FloatingPane,
-                    Children = p.Build is null ? [] : [p.Build()],
-                },
-            ],
+            Key = "stage:upnext:pane", Width = r.W, Height = h,
+            Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = R.Shape.All(ShapeRole.Overlay), ClipToBounds = true,
+            Fill = R.Layer.FloatingPane,
+            Children = p.Build is null ? [] : [p.Build()],
         };
+        // the core's drawer: its tab (the pane's flat fill) collapses the pane off the right edge and back (Stage.UpNextDrawer)
+        return Stage.UpNextDrawer(p.Stage, x, y, r.W, h, pane, new BoxEl { Fill = R.Layer.FloatingPane }, G.GalleryYieldMs);
     }
 }
 

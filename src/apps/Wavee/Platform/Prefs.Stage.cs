@@ -40,6 +40,8 @@ public static partial class Prefs
         public static void SetMoments(bool on) { Platform.Settings.Set(Platform.Keys.StageMoments, on); Bump(); }
         public static bool GalleryOpen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageGalleryOpen); }
         public static void SetGalleryOpen(bool on) { Platform.Settings.Set(Platform.Keys.StageGalleryOpen, on); Bump(); }
+        public static bool UpNextOpen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageUpNextOpen); }
+        public static void SetUpNextOpen(bool on) { Platform.Settings.Set(Platform.Keys.StageUpNextOpen, on); Bump(); }
         public static int Layout() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.Coerce(Platform.Settings.Get(Platform.Keys.StageLayout)); }
         public static void SetLayout(int layout) { Platform.Settings.Set(Platform.Keys.StageLayout, global::Wavee.Stage.LayoutRules.Coerce(layout)); Bump(); }
         public static int Spectrum() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.CoerceSpectrum(Platform.Settings.Get(Platform.Keys.StageSpectrum)); }
