@@ -698,7 +698,8 @@ public static partial class Video
         {
             // The Cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before any
             // resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
-            // (`NaturalSeed`; 16:9 when nothing is known). A splitter drag pins it — for THIS source only.
+            // (`NaturalSeed`; 16:9 when nothing is known). The handle pins it until its double-click: the pin is READ here (an
+            // unpin re-fits at once, and the card eases there) and written only by the handle's verbs.
             UseSignalEffect(() =>
             {
                 var src = Playback.Video.Source.Value;
@@ -709,14 +710,10 @@ public static partial class Video
                 if (face != DockedFace.Cap) return;
                 // The fit itself — the source change that unpins, the natural size's source, the pinned-or-fitted height —
                 // is the pure `DockedFit`; this effect applies it.
-                var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Peek(),
+                var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Value,
                     Shell.Ui.DockedVideoHeight.Peek(), railW, decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
                     src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, Shell.Ui.RailBodyHeight.Peek()));
-                if (fit.SourceChanged)
-                {
-                    _fittedFor = sourceKey;
-                    if (Shell.Ui.DockedVideoHeightPinned.Peek()) Shell.Ui.DockedVideoHeightPinned.Value = false;
-                }
+                if (fit.SourceChanged) _fittedFor = sourceKey;
                 string dimSource = fit.DimSource;
                 var natural = new SizeI(fit.NaturalW, fit.NaturalH);
                 bool pinned = fit.Pinned;

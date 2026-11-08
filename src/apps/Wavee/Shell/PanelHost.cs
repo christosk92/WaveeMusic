@@ -124,6 +124,9 @@ public static partial class Shell
         public float LoadDockedVideoHeight(float railWidth)
             => ClampDockedVideoHeight(store.Get(PanelSize.DockedVideoHeight), railWidth);
 
+        /// <summary>Did the user size the docked video (a stored height above 0)? Then the cap starts pinned to it, against every track's fit.</summary>
+        public bool DockedVideoPinned() => store.Get(PanelSize.DockedVideoHeight) > 0f;
+
         public void SaveWidth(float width) => store.Set(PanelSize.RailWidth, width);
 
         public void SaveDockedVideoHeight(float height) => store.Set(PanelSize.DockedVideoHeight, height);
@@ -340,6 +343,7 @@ public static partial class Shell
             Cells.Width.Value = sizes.LoadWidth();
             Cells.DragWidth.Value = Cells.Width.Peek();
             Cells.DockedVideoHeight.Value = sizes.LoadDockedVideoHeight(Cells.Width.Peek());
+            Cells.DockedVideoPinned.Value = sizes.DockedVideoPinned();
         }
 
         /// <summary>Restore the session's open state, mode and the queue beside the panel. A mode outside the vocabulary (a newer
@@ -475,12 +479,24 @@ public static partial class Shell
             if (Cells.DragWidth.Peek() != fitted) Cells.DragWidth.Value = fitted;
         }
 
-        public void ResizeDockedVideo()
+        public void ResizeDockedVideo() => SizeDockedVideo(Cells.DockedVideoHeight.Peek());
+
+        /// <summary>Size the docked video to <paramref name="height"/> (clamped to the 16:9 floor and the ceiling), pin it and persist it: the
+        /// handle's key steps and Home / End.</summary>
+        public void SizeDockedVideo(float height)
         {
-            float h = ClampDockedVideoHeight(Cells.DockedVideoHeight.Peek(), Cells.Width.Peek(), Cells.BodyHeight.Peek());
+            float h = ClampDockedVideoHeight(height, Cells.Width.Peek(), Cells.BodyHeight.Peek());
             Cells.DockedVideoHeight.Value = h;
             Cells.DockedVideoPinned.Value = true;
             sizes.SaveDockedVideoHeight(h);
+        }
+
+        /// <summary>The handle's double-click: forget the user's height (persisted as 0) and let the content fit size the cap again (the docked
+        /// surface's fit follows the pin; the card eases to it).</summary>
+        public void ResetDockedVideo()
+        {
+            Cells.DockedVideoPinned.Value = false;
+            sizes.SaveDockedVideoHeight(0f);
         }
 
         public void ShowVideoAt(Video.SurfacePlacement at) => env.OpenVideoAt(at, env.NowTrackHasVideo());

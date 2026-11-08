@@ -235,31 +235,20 @@ internal static class WinUiPanel
         return ScrollView(new BoxEl { Direction = 1, Children = kids.ToArray() }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
-    /// <summary>The docked video card with its splitter: the height cell the splitter writes and the card binds (a stable bind).</summary>
+    /// <summary>The docked video card over its resize handle: the card binds the height cell the handle writes (a stable bind) and the column hugs
+    /// both, so the content under them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card
+    /// takes every press on it), its grip the sheet grabber's pill.</summary>
     internal static Element DockedCap(PanelProps props, bool docked, float width)
     {
         Element video = props.DockedCard();
         if (!docked) return video;                                         // the card's own gate: zero size, no reflow
         return new BoxEl
         {
-            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
-            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Direction = 1, Shrink = 0f,
             Children =
             [
                 video,
-                new BoxEl
-                {
-                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
-                        {
-                            Min = props.DockedVideoMin(width),
-                            Max = props.DockedVideoMax(),
-                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
-                        }),
-                    ],
-                },
+                props.DockedVideoHandle(new DockedVideoGrip(F.GrabberW, F.GrabberH, F.GrabberH / 2f, Tok.FillControlStrong, F.DockedGripRest), width),
             ],
         };
     }

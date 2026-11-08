@@ -1164,15 +1164,15 @@ public static partial class Shell
         /// pointer. Equal to <see cref="RailWidth"/> at rest; <c>FrameRules.RailDragCommit</c> is the one commit rule.</summary>
         public static readonly FloatSignal RailDragWidth = new(RailDefaultW);
 
-        /// <summary>Docked music-video cap height in DIP. Floor is 16:9 of <see cref="RailWidth"/>; the vertical
-        /// splitter only grows from there.</summary>
+        /// <summary>Docked music-video cap height in DIP. Floor is 16:9 of <see cref="RailWidth"/>; the handle under the card
+        /// (<c>Rail.DockedVideoHandle</c>) only grows it from there, up to <see cref="DockedCapCeiling"/>.</summary>
         public static readonly FloatSignal DockedVideoHeight = new(DockedVideoNaturalH(RailDefaultW));
 
-        /// <summary>Has the user DELIBERATELY sized the docked cap for what is playing right now? False (the default)
-        /// means <see cref="DockedVideoHeight"/> follows the content's own aspect
-        /// (<see cref="FitDockedVideoHeight"/>), so a 16:9 stream fills the card edge to edge instead of sitting in
-        /// letterbox bars. The vertical splitter sets it on a committed drag; the docked surface CLEARS it when the
-        /// source changes.</summary>
+        /// <summary>Has the user DELIBERATELY sized the docked cap? False (the default) means <see cref="DockedVideoHeight"/>
+        /// follows the content's own aspect (<see cref="FitDockedVideoHeight"/>), so a 16:9 stream fills the card edge to edge
+        /// instead of sitting in letterbox bars. The handle sets it on a committed drag or a key step and it holds across tracks
+        /// and restarts (the persisted height is its memory: 0 = not pinned); a double-click on the handle clears it, and the
+        /// cap eases back to the content fit.</summary>
         public static readonly Signal<bool> DockedVideoHeightPinned = new(false);
 
         /// <summary>The rail column's laid-out height. The docked cap clamps against the remainder so a 560 DIP video
@@ -1240,7 +1240,7 @@ public static partial class Shell
     /// <summary>The one panel-width clamp: the active panel policy's bounds (Classic 200-500), or <paramref name="policy"/>'s.</summary>
     public static float ClampRailWidth(float w, Theming.PanelPolicy? policy = null) => ShellPolicy.PanelOr(policy).ClampWidth(w);
 
-    /// <summary>16:9 height of a full-bleed rail-width video cap (no inset). The splitter's floor — drag only grows
+    /// <summary>16:9 height of a full-bleed rail-width video cap (no inset). The handle's floor — a drag only grows
     /// from here.</summary>
     public static float DockedVideoNaturalH(float railW) => railW * 9f / 16f;
 
@@ -1267,9 +1267,13 @@ public static partial class Shell
     /// <param name="naturalH">The media's natural pixel height; ≤ 0 = not reported yet.</param>
     public static float DockedCapCeiling(float remainingRailH)
     {
-        float cap = remainingRailH > 0f && float.IsFinite(remainingRailH) ? remainingRailH : DockedVideoMaxH;
+        float cap = remainingRailH > 0f && float.IsFinite(remainingRailH) ? remainingRailH - DockedVideoKeepBelowH : DockedVideoMaxH;
         return Math.Clamp(cap, DockedVideoFitMinH, DockedVideoMaxH);
     }
+
+    /// <summary>What the panel keeps UNDER the docked cap at its tallest: the handle, the panel's head and the playing track's title stay
+    /// in view however far the card is dragged (or however tall a portrait stream fits).</summary>
+    public const float DockedVideoKeepBelowH = 200f;
 
     public static float FitDockedVideoHeight(float railW, int naturalW, int naturalH, float remainingRailH = DockedVideoMaxH)
     {

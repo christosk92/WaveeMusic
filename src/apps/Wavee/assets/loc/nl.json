@@ -764,6 +764,7 @@
     "videoMiniPlayer": "Afspelen in minispeler",
     "videoFullScreen": "Volledig scherm",
     "videoExitFullScreen": "Volledig scherm afsluiten",
+    "videoHeight": "Videohoogte {height}",
     "fullscreen": "Volledig scherm",
     "noVideoForThisSong": "Geen video voor dit nummer",
     "videoNeedsWiderWindow": "Vereist een breder venster",

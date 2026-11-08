@@ -28,6 +28,10 @@ internal static class ClassicPanelLayout
     /// <summary>A header glyph button's glyph (row 1 of the icon-button table pairs the 32-square with a 16-DIP glyph, never 12).</summary>
     public const float HeaderGlyph = 16f;
 
+    /// <summary>The docked video's resize handle under the card: a grabber pill (32 x 4, r2, FillControlStrong, the sheet grabber's size) at this
+    /// opacity at rest, full while the band is hovered or dragged.</summary>
+    public const float DockedGripW = 32f, DockedGripH = 4f, DockedGripRadius = 2f, DockedGripRest = 0.55f;
+
     /// <summary>The Art | Video toggle's height and each half's box.</summary>
     public const float ToggleH = 24f, ToggleHalfBox = 24f;
 

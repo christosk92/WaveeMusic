@@ -1285,13 +1285,13 @@ public static partial class Video
 
     /// <summary>The docked cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before
     /// any resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
-    /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). A splitter drag PINS the height — for THIS source only: a
-    /// new source key unpins it.</summary>
+    /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). The handle PINS the height (a drag or a key step) and the pin
+    /// holds across sources and restarts, clamped to the current floor and ceiling; only its double-click unpins it.</summary>
     public static class DockedFit
     {
         /// <param name="SourceKey">The playing source's key ("" with none).</param>
         /// <param name="FittedFor">The source key the cap last fitted for (null before the first fit).</param>
-        /// <param name="Pinned">Is the height pinned by a splitter drag right now?</param>
+        /// <param name="Pinned">Has the user sized the cap (the handle's pin)?</param>
         /// <param name="PinnedHeight">The stored height (what a pinned cap keeps).</param>
         /// <param name="RailW">The rail's width — the card is full-bleed, so this IS the video's width.</param>
         /// <param name="RemainingRailH">The rail height left for the cap (the fit's ceiling).</param>
@@ -1299,23 +1299,25 @@ public static partial class Video
                                             int DecodedW, int DecodedH, int ManifestW, int ManifestH, int CatalogueW, int CatalogueH,
                                             float RemainingRailH);
 
-        /// <param name="SourceChanged">A different source than the last fit: the caller records it and drops the pin.</param>
-        /// <param name="Pinned">Is the height pinned for THIS source (a source change unpins)?</param>
+        /// <param name="SourceChanged">A different source than the last fit: the caller records it.</param>
+        /// <param name="Pinned">Is the height the user's (the pin, which a source change keeps)?</param>
         /// <param name="NaturalW">The natural size the fit used (0×0 ⇒ none known; 16:9 applies).</param>
         /// <param name="DimSource">Which fact sized it (<see cref="NaturalSeed.Name"/>), for the always-on fit line.</param>
-        /// <param name="Height">The cap height: the pinned one, else the content fit.</param>
-        /// <param name="WritesHeight">Should the caller publish <paramref name="Height"/>? Only when not pinned.</param>
+        /// <param name="Height">The cap height: the pinned one inside the floor and the ceiling, else the content fit.</param>
+        /// <param name="WritesHeight">Should the caller publish <paramref name="Height"/>? Always: a pinned height is only re-clamped.</param>
         public readonly record struct Result(bool SourceChanged, bool Pinned, int NaturalW, int NaturalH, string DimSource,
                                              float Height, bool WritesHeight);
 
         public static Result Decide(in Input i)
         {
             bool changed = !string.Equals(i.SourceKey, i.FittedFor, StringComparison.Ordinal);
-            bool pinned = i.Pinned && !changed;
+            bool pinned = i.Pinned;
             string dimSource = NaturalSeed.Name(NaturalSeed.Pick(i.DecodedW, i.DecodedH, i.ManifestW, i.ManifestH,
                 i.CatalogueW, i.CatalogueH, out int naturalW, out int naturalH));
-            float height = pinned ? i.PinnedHeight : Shell.FitDockedVideoHeight(i.RailW, naturalW, naturalH, i.RemainingRailH);
-            return new Result(changed, pinned, naturalW, naturalH, dimSource, height, WritesHeight: !pinned);
+            float height = pinned
+                ? Shell.ClampDockedVideoHeight(i.PinnedHeight, i.RailW, i.RemainingRailH)
+                : Shell.FitDockedVideoHeight(i.RailW, naturalW, naturalH, i.RemainingRailH);
+            return new Result(changed, pinned, naturalW, naturalH, dimSource, height, WritesHeight: true);
         }
     }
 

@@ -407,9 +407,7 @@ internal static class RailWiring
             if (MathF.Abs(Shell.Ui.RailBodyHeight.Peek() - h) > 0.5f) Shell.Ui.RailBodyHeight.Value = h;
         },
         DockedVideoHeight = Shell.Ui.DockedVideoHeight,
-        DockedVideoMin = static railWidth => Shell.DockedVideoNaturalH(railWidth),
-        DockedVideoMax = static () => Shell.DockedCapCeiling(Shell.Ui.RailBodyHeight.Peek()),
-        CommitDockedVideo = Shell.PanelHost.CommitDockedVideo,
+        DockedVideoHandle = static (grip, width) => Rail.DockedVideoHandle(grip, width),
         Close = static () => Shell.PanelHost.Shared.Close(),
         ShowMode = static mode => Shell.PanelHost.Shared.SetMode((Shell.RailMode)(byte)mode),
         ShowArt = static () => Shell.PanelHost.Shared.HideVideo(),

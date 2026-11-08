@@ -764,6 +764,7 @@
     "videoMiniPlayer": "미니 플레이어에서 재생",
     "videoFullScreen": "전체 화면",
     "videoExitFullScreen": "전체 화면 종료",
+    "videoHeight": "비디오 높이 {height}",
     "fullscreen": "전체 화면",
     "noVideoForThisSong": "이 곡에는 비디오가 없습니다",
     "videoNeedsWiderWindow": "창을 더 넓혀야 합니다",
