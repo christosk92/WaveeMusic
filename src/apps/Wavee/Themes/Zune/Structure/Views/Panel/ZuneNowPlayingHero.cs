@@ -314,12 +314,9 @@ internal sealed class ZuneHeroTile : Component
             Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
         };
 
-        // Over the edge-to-edge canvas the stage holds the room that puts the meta's top 196 above the canvas's foot (or the panel's).
-        _bleedRoom ??= panelW =>
-        {
-            float vh = MathF.Round(panelW * P.BleedAspect), ph = props.RailHeight.Value;
-            return MathF.Min(vh, ph > 0f ? ph : vh) - P.BleedMetaLift - P.BleedStageTop - P.HeroGap;
-        };
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta's top 196 above where the copy ends (Deck.CopyFoot: the canvas's
+        // foot in the dark kind, its light foot's top in the light kind; never below the panel's foot).
+        _bleedRoom ??= panelW => Deck.CopyFoot(MathF.Round(panelW * P.BleedAspect), props.RailHeight.Value) - P.BleedMetaLift - P.BleedStageTop - P.HeroGap;
         bool bleeds = props.Bleeds();
 
         var verbs = props.Style;
@@ -341,11 +338,11 @@ internal sealed class ZuneHeroTile : Component
             [
                 ZuneNowPlayingHero.Head(verbs, open, shown, bleeds),
                 slot,
-                // The meta and the lyrics: over the canvas in the light kind they reach down to the canvas's foot and its ramp (the meta's top
-                // sits BleedMetaLift above the foot), so what follows ("Next up", on the light ground) never starts over the dark media scope.
+                // The meta and the lyrics: over the canvas in the light kind they hold the room down to the canvas's foot (the copy, then the
+                // foot's dissolve into the light ground), so what follows ("up next") starts on the light ground, never over the canvas.
                 new BoxEl
                 {
-                    Direction = 1, Shrink = 0f, Gap = P.HeroGap, MinHeight = bleeds && R.IsLight ? P.BleedMetaLift + P.BleedFootRamp : 0f,
+                    Direction = 1, Shrink = 0f, Gap = P.HeroGap, MinHeight = bleeds && R.IsLight ? P.BleedMetaLift + Deck.LightFoot : 0f,
                     Animate = Design.Reduced ? null : P.SwapMotion,
                     Children =
                     [

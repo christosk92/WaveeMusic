@@ -107,8 +107,9 @@ internal static class ClassicNowPlayingHero
         };
     }
 
-    /// <summary>The meta under the canvas's crest (Tideline): the glowing 64 cover, the title, the artist in the art's warm accent and "album ·
-    /// year", the saved heart in that accent on a soft circle of it; the lyrics peek under them.</summary>
+    /// <summary>The meta under the canvas's crest (Tideline), on the plain panel: the 64 cover glowing in the art's dominant colour, the title,
+    /// the artist in the art's hue (solved as text on the ground) and "album · year", the saved heart in that hue on a soft circle of it; the
+    /// lyrics peek under them.</summary>
     static Element BleedMeta(NowPlayingHeroProps props, Track track)
     {
         string uri = track.Uri.Text, title = track.Title;
@@ -121,7 +122,7 @@ internal static class ClassicNowPlayingHero
                 Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
         };
-        if (ArtistLinks(props, track, ClassicHeroLayout.ArtistSize, ClassicHeroLayout.ArtistLine) is SpanTextEl artists) lines.Add(artists with { Color = ink.Warm });
+        if (ArtistLinks(props, track, ClassicHeroLayout.ArtistSize, ClassicHeroLayout.ArtistLine) is SpanTextEl artists) lines.Add(artists with { Color = ink.Text });
         var album = track.Album;
         if (album.IsValid && album.Title.Length > 0)
         {
@@ -134,7 +135,7 @@ internal static class ClassicNowPlayingHero
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
         }
-        ColorF warm = ink.Warm;
+        ColorF accent = ink.Text, glow = ink.Back;
         return new BoxEl
         {
             Direction = 1, Gap = Spacing.M,
@@ -150,7 +151,7 @@ internal static class ClassicNowPlayingHero
                         {
                             Width = ClassicHeroLayout.BleedCover, Height = ClassicHeroLayout.BleedCover, Shrink = 0f,
                             Corners = CornerRadius4.All(ClassicHeroLayout.BleedCoverRadius),
-                            Shadow = new ShadowSpec(ClassicHeroLayout.BleedGlowBlur, ClassicHeroLayout.BleedGlowY, 0f, warm with { A = ClassicHeroLayout.BleedGlowA }),
+                            Shadow = new ShadowSpec(ClassicHeroLayout.BleedGlowBlur, ClassicHeroLayout.BleedGlowY, 0f, glow with { A = ClassicHeroLayout.BleedGlowA }),
                             Children =
                             [
                                 new ImageEl
@@ -164,10 +165,10 @@ internal static class ClassicNowPlayingHero
                         new BoxEl
                         {
                             Width = ClassicHeroLayout.BleedHeart, Height = ClassicHeroLayout.BleedHeart, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-                            Justify = FlexJustify.Center, Corners = Radii.Circle(ClassicHeroLayout.BleedHeart), Fill = warm with { A = ClassicHeroLayout.BleedHeartA },
+                            Justify = FlexJustify.Center, Corners = Radii.Circle(ClassicHeroLayout.BleedHeart), Fill = accent with { A = ClassicHeroLayout.BleedHeartA },
                             Children =
                             [
-                                Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ClassicHeroLayout.SaveGlyph, Box = ClassicHeroLayout.BleedHeart, Accent = () => warm })
+                                Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ClassicHeroLayout.SaveGlyph, Box = ClassicHeroLayout.BleedHeart, Accent = () => accent })
                                     with { Key = "save:" + uri },
                             ],
                         },
