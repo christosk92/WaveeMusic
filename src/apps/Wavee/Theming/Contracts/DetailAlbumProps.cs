@@ -84,9 +84,10 @@ public sealed record AlbumReleasePanelProps(bool OuterPadding, string? Released,
 public sealed record AlbumTrailingProps(string SkeletonKey, Album.PageRules.TrailingShape Shape, Func<bool> Pending, Func<Element> Content);
 
 /// <summary>One music video of the section: what its card shows and the verbs it runs. A music video is a TRACK (kind 99 keys it on its song): its
-/// identity for the now-playing relation is the song's uri, its menu and its drag are the track's, and a click or the badge WATCHES it.</summary>
+/// identity for the now-playing relation is the VIDEO's uri (lit only while the deck shows that video), its menu and its drag are the song's, and a
+/// click or the badge WATCHES it.</summary>
 /// <param name="Key">The card's key (`video:&lt;member slot&gt;`).</param>
-/// <param name="Uri">The song's uri ("" for a stale handle).</param>
+/// <param name="Uri">The video's uri — the song's kind-99 counterpart, else the song's own ("" for a stale handle).</param>
 /// <param name="Title">The video's title (the counterpart's once it landed, else the song's).</param>
 /// <param name="Thumb">The video's own still.</param>
 /// <param name="Meta">The hero arm's subtitle ("Music video · 3:12").</param>
@@ -142,8 +143,13 @@ public sealed record AlbumCredits(IReadOnlyList<AlbumCreditRun> Runs, Action? Al
 public sealed record AlbumAsideProps
 {
     /// <summary>The album's credits paragraph, or null: nothing to state, and a theme draws no credits section at all (no heading, no gap). Contract
-    /// 1.82. Today always null: the core has no album-level credits source yet (<c>Album.PageRules.CreditsOf</c>).</summary>
+    /// 1.82; folded from every member's CreditsV2 roles since 1.84 (<c>Album.PageRules.Credits</c>), and only under a structure that states them
+    /// (<c>ShellCapabilities.AlbumCredits</c>).</summary>
     public AlbumCredits? Credits { get; init; }
+
+    /// <summary>The credits are still being asked (a member's credits unanswered): a theme that draws them reserves the section as a shimmer, so the
+    /// paragraph lands in place. Appended (contract 1.84).</summary>
+    public bool CreditsPending { get; init; }
 
     /// <summary>About this release (the `Album.ReleasePanel` host, without outer padding); null before the album row exists.</summary>
     public Element? Release { get; init; }
@@ -195,6 +201,13 @@ public sealed record AlbumSectionsProps
 
     /// <summary>The list sections, in order: each a keyed `Album.StackHost` (it owns its expand state and its stamp).</summary>
     public required IReadOnlyList<Element> Lists { get; init; }
+
+    /// <summary>The album's credits paragraph where no aside holds it (null: none, or the docked aside states it). Appended (contract 1.84).</summary>
+    public AlbumCredits? Credits { get; init; }
+
+    /// <summary>The credits are still being asked (see <see cref="AlbumAsideProps.CreditsPending"/>); false where the docked aside holds them.
+    /// Appended (contract 1.84).</summary>
+    public bool CreditsPending { get; init; }
 
     /// <inheritdoc />
     public bool Equals(AlbumSectionsProps? other) => ReferenceEquals(this, other);

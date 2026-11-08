@@ -15,7 +15,7 @@ instance, settings and caches. Run one bench at a time.
 
 ```powershell
 dotnet build Wavee.slnx -c Release
-$exe = 'src\apps\Wavee\bin\Release\net10.0\Wavee.exe'
+$exe = 'src\apps\Wavee\bin\Release\net11.0\Wavee.exe'
 
 # Offline (no account, no network): the --fake catalogue, a silent audio endpoint.
 & $exe --fake --profile C:\scratch\bench-fake --frame-bench --probe-out C:\scratch\bench\fake-base

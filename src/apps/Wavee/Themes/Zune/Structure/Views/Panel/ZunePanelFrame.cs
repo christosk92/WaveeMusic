@@ -98,12 +98,13 @@ internal static class ZunePanel
     /// on a linked pane). Every word keeps its size: the ones that do not fit the strip of a panel <paramref name="paneWidth"/> wide run off under its
     /// right edge fade, never wrapped, shrunk or cut mid-word (the owner, 2026-10-24). The strip reaches the panel's left edge and carries the gutter
     /// as its own inset, so a word that slides out to the left fades over the empty gutter while the lead never stands under the fade.</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePivotCarousel<PanelMode> pivots, ZunePanelInk? ink, float paneWidth, bool sheet)
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePivotCarousel<PanelMode> pivots, ZunePanelInk? ink, float paneWidth, bool sheet,
+        CanvasInk over = default)
     {
         var order = pivots.Order;
         var words = new Element[order.Length];
         // A closed panel (laid out off-canvas) offers no tab stop.
-        for (int i = 0; i < order.Length; i++) words[i] = Pivot(order[i], order[i] == body, props.ShowMode is not null, view.Open, pivots, ink, sheet);
+        for (int i = 0; i < order.Length; i++) words[i] = Pivot(order[i], order[i] == body, props.ShowMode is not null, view.Open, pivots, ink, sheet, over);
         float strip = paneWidth - ZuneFrameRules.PanelHeadPadding.Right - (view.Linked ? 0f : ZuneFrameRules.Button);
         var fade = WordsOverflow(order, strip - ZuneFrameRules.PanelGutter, sheet) ? EdgeMask.Left | EdgeMask.Right : EdgeMask.Left;
 
@@ -119,7 +120,7 @@ internal static class ZunePanel
                 Children = words,
             },
         };
-        if (!view.Linked) row.Add(Close(props.Close));
+        if (!view.Linked) row.Add(Close(props.Close, over));
         return new BoxEl
         {
             Key = ZuneFrameRules.PanelHeadKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
@@ -129,10 +130,10 @@ internal static class ZunePanel
     }
 
     /// <summary>A pivot word as drawn (the heading voice, the navigation case; the Compact sheet's 40/48 page-title voice, Z-Frame-Panel-Compact); the
-    /// selection's ink change cross-fades on the pivot slide.</summary>
-    private static TextEl WordRun(string text, bool current, ZunePanelInk? ink, bool sheet) => (sheet ? R.Type.PageHero(text) : R.Type.Heading(text)) with
+    /// selection's ink change cross-fades on the pivot slide. Over the edge-to-edge canvas (<paramref name="over"/>) the media scope's ink.</summary>
+    private static TextEl WordRun(string text, bool current, ZunePanelInk? ink, bool sheet, CanvasInk over = default) => (sheet ? R.Type.PageHero(text) : R.Type.Heading(text)) with
     {
-        Color = current ? Tok.TextPrimary : ink?.Tertiary ?? Tok.TextTertiary, HoverColor = Tok.TextPrimary,
+        Color = current ? over.Primary : over.Over && R.IsLight ? over.Tertiary : ink?.Tertiary ?? Tok.TextTertiary, HoverColor = over.Primary,
         Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f, BrushTransitionMs = ZuneMotion.PivotSlideMs,
     };
 
@@ -162,30 +163,32 @@ internal static class ZunePanel
     /// selection to the front), the head's whole height (the
     /// touch floor of 40 holds at every tier). A click on a trailing word brings it to the front. One element shape for every state, so a word
     /// keeps its node as the carousel moves it.</summary>
-    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePivotCarousel<PanelMode> carousel, ZunePanelInk? ink, bool sheet) => new BoxEl
+    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePivotCarousel<PanelMode> carousel, ZunePanelInk? ink, bool sheet,
+        CanvasInk over) => new BoxEl
     {
         Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, MinHeight = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
         Role = AutomationRole.Tab, Focusable = pivots && open, TabStop = pivots && open && current, AllowFocusOnInteraction = false,
         Cursor = pivots && !current ? CursorId.Hand : CursorId.Arrow,
         OnClick = pivots && !current ? carousel.ClickOf(mode) : null,
         OnRealized = carousel.RealizedOf(mode),
-        Children = [WordRun(Word(mode), current, ink, sheet)],
+        Children = [WordRun(Word(mode), current, ink, sheet, over)],
     };
 
-    /// <summary>✕ closes the panel whatever it shows (a docked video is demoted by the coupling).</summary>
-    private static Element Close(Action close) => ToolTip.Wrap(new BoxEl
+    /// <summary>✕ closes the panel whatever it shows (a docked video is demoted by the coupling); over the edge-to-edge canvas in the media scope's
+    /// ink.</summary>
+    private static Element Close(Action close, CanvasInk over) => ToolTip.Wrap(new BoxEl
     {
         Key = ZuneFrameRules.PanelCloseKey,
         Width = ZuneFrameRules.Button, Height = ZuneFrameRules.Button, Shrink = 0f,
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = R.Shape.All(ShapeRole.Control),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-        HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
+        HoverFill = over.Over && R.IsLight ? over.Hover : R.Layer.ChromeHover, PressedFill = over.Over && R.IsLight ? over.Pressed : R.Layer.ChromePressed,
         OnClick = close,
         Children =
         [
             new TextEl(Icons.ChromeClose)
             {
-                Size = ZuneFrameRules.PanelCloseGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary,
+                Size = ZuneFrameRules.PanelCloseGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = over.Secondary, HoverColor = over.Primary,
             },
         ],
     }, Loc.Get(Strings.Theme.Zune.Frame.ClosePanel));
@@ -218,31 +221,21 @@ internal static class ZunePanel
         }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
-    /// <summary>The docked video card with its splitter: the height cell the splitter writes and the card binds (a stable bind).</summary>
+    /// <summary>The docked video card over its resize handle: the card binds the height cell the handle writes (a stable bind) and the column hugs
+    /// both, so what lies under them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card
+    /// takes every press on it), its grip a flat square rule in the tertiary ink.</summary>
     internal static Element DockedCap(PanelProps props, bool docked, float width)
     {
         Element video = props.DockedCard();
         if (!docked) return video;                                         // the card's own gate: zero size, no reflow
         return new BoxEl
         {
-            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
-            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Direction = 1, Shrink = 0f,
             Children =
             [
                 video,
-                new BoxEl
-                {
-                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
-                        {
-                            Min = props.DockedVideoMin(width),
-                            Max = props.DockedVideoMax(),
-                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
-                        }),
-                    ],
-                },
+                props.DockedVideoHandle(new DockedVideoGrip(ZuneFrameRules.PanelGripW, ZuneFrameRules.PanelGripH, 0f, Tok.TextTertiary,
+                    ZuneFrameRules.PanelGripRest), width),
             ],
         };
     }
@@ -264,6 +257,7 @@ internal sealed class ZunePanelFrame : Component
     bool _motionSeeded;
     PanelPlacement _seededPlacement;
     static readonly Element[] s_noLayers = [];
+    static readonly Element s_noBleed = new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     Action<RectF>? _onBounds;
     Action<KeyEventArgs>? _onKey;
     Action? _close;
@@ -297,6 +291,7 @@ internal sealed class ZunePanelFrame : Component
 
     readonly Dictionary<PanelMode, Action<NodeHandle>> _paneRealized = new();
     PanelMode? _shown;     // the body last drawn on the open panel
+    Func<bool>? _bleeds;   // the hero's "does the canvas fill the panel" (the memo reads the latest)
     PanelMode? _leaving;   // the pane a pivot change replaced, sliding out
     int _paneGen, _paneSeeded;
 
@@ -427,7 +422,12 @@ internal sealed class ZunePanelFrame : Component
         // their nodes and glide to their new places on the pivot slide.
         LayoutTransition? slide = Design.Reduced ? null : ZuneMotion.PivotSlide;
         Element card = ZunePanel.DockedCap(props, view.DockedHere, width) with { Key = ZuneFrameRules.PanelCardKey, Layout = slide };
-        Element head = ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet) with { Layout = slide };
+        // Over the edge-to-edge canvas (laid under the now playing pivot unless the docked video holds it) the head paints in the media scope's ink;
+        // the memo re-renders the frame only when that answer flips.
+        _bleeds = props.NowPlaying.Bleeds;
+        var bleeds = UseComputed(() => _bleeds!());
+        bool over = bleeds.Value && body == PanelMode.NowPlaying && view.Pinned != PanelPinned.DockedVideo;
+        Element head = ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet, new CanvasInk(over)) with { Layout = slide };
         var column = new List<Element>(3);
         if (body == PanelMode.NowPlaying) { column.Add(head); column.Add(card); }
         else { column.Add(card); column.Add(head); }
@@ -435,7 +435,8 @@ internal sealed class ZunePanelFrame : Component
 
         return Ctx.Provide(ZunePanelInk.Current, ink, new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = R.Shape.All(ShapeRole.Overlay),
+            // Shrink: the edge-to-edge canvas in the stack is taller than a short panel and must not stretch it past the play bar.
+            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = R.Shape.All(ShapeRole.Overlay),
             HitTestVisible = open,                                             // a closed panel is laid out off-canvas and unhittable
             BlocksBackgroundScroll = open && floating,
             Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,          // no shadow docked
@@ -443,7 +444,70 @@ internal sealed class ZunePanelFrame : Component
             Children =
             [
                 new BoxEl { Grow = 1f, ClipToBounds = true, ZStack = true, OnBoundsChanged = _onBounds, Children = surface },
+                // The Canvas style at rest: the canvas fills the panel from its very top, under the pivots and the body.
+                body == PanelMode.NowPlaying && view.Pinned != PanelPinned.DockedVideo
+                    ? Embed.Comp(new ZuneBleedProps(props.NowPlaying, width), static () => new ZuneBleed())
+                    : s_noBleed,
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
+            ],
+        });
+    }
+}
+
+internal sealed record ZuneBleedProps(NowPlayingHeroProps NowPlaying, float Width);
+
+/// <summary>The edge-to-edge canvas (BleedZune): the ground, the canvas over it from the panel's top, its lower half fading into the ground in the
+/// dark kind (in the light kind the veil behind the copy and the foot's dissolve into the light ground, <see cref="Deck.LightScope"/>), the pivots'
+/// scrim and the artist's name in giant light type (the media scope's ink) drifting over it. Shown while the Canvas style rests with a canvas to play; it fades
+/// in and out. A component: the name follows the playing track without re-rendering the frame.</summary>
+internal sealed class ZuneBleed : Component
+{
+    static readonly EnterExit Fade = new(Opacity: 0f, Active: true);
+
+    public override Element Render()
+    {
+        var p = UseProps<ZuneBleedProps>();
+        var np = p.NowPlaying;
+        float width = p.Width;
+        float vh = MathF.Round(width * ZunePanelBodies.BleedAspect), fade = MathF.Round(vh * ZunePanelBodies.BleedFadeShare);
+        ColorF ground = Tok.FillSolidBase, shade = Deck.BleedShade(ground);
+        var ink = new CanvasInk(true);
+        var track = np.NowTrack();
+        string artist = track.IsValid && track.ArtistSlots.Length > 0 ? new Artist(track.ArtistSlots[0]).Name : "";
+        return Flow.Show(np.Bleeds, new BoxEl
+        {
+            // Shrink, no minimum and a clip: a canvas taller than the panel must not grow the panel's stack (it is cut at the panel's foot).
+            ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, HitTestVisible = false,
+            Enter = Fade, Exit = Fade, Transition = MotionTok.StandardEnter,
+            Children =
+            [
+                new BoxEl { Grow = 1f, Fill = ground },
+                np.BleedVideo(width),
+                R.IsLight
+                    ? Deck.LightScope(np, width, ZunePanelBodies.BleedMetaLift, ground)
+                    : new BoxEl
+                    {
+                        AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
+                        Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(ZunePanelBodies.BleedFadeFull, ground)),
+                    },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Height = ZunePanelBodies.BleedHeadScrimH,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = ZunePanelBodies.BleedHeadScrimA }), new GradientStop(1f, shade with { A = 0f })),
+                },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Direction = 0, MinWidth = 0f, ClipToBounds = true,
+                    Margin = new Edges4(ZunePanelBodies.BleedNameInset, ZunePanelBodies.BleedStageTop - ZunePanelBodies.HeroGap + ZunePanelBodies.BleedNameDrop, 0f, 0f),
+                    Children =
+                    [
+                        Deck.Drift(new TextEl(artist)
+                        {
+                            Size = ZunePanelBodies.BleedNameSize, LineHeight = ZunePanelBodies.BleedNameSize, Weight = ZunePanelBodies.BleedNameWeight, Color = ink.Primary with { A = ZunePanelBodies.BleedNameA },
+                            Case = R.Case.For(LabelKind.Heading), Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
+                        }, ZunePanelBodies.BleedNameDrift, ZunePanelBodies.BleedNameDriftMs, pingPong: true),
+                    ],
+                },
             ],
         });
     }

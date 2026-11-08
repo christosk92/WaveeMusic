@@ -7,14 +7,14 @@
 
 .EXAMPLE
   powershell -File ops/tools/perf-tour.ps1
-  powershell -File ops/tools/perf-tour.ps1 -Exe C:\wavee\WaveeMusic\src\apps\Wavee\bin\Release\net10.0\Wavee.exe -Laps 2
+  powershell -File ops/tools/perf-tour.ps1 -Exe C:\wavee\WaveeMusic\src\apps\Wavee\bin\Release\net11.0\Wavee.exe -Laps 2
 
 .NOTES
   Uses SendInput for the wheel bursts: the machine must be unlocked and the Wavee window focusable. Nothing here
   reads production source; the report is built only from the log the app writes for every user.
 #>
 param(
-    [string]$Exe = "C:\wavee\WaveeMusic\src\apps\Wavee\bin\Release\net10.0\Wavee.exe",
+    [string]$Exe = "C:\wavee\WaveeMusic\src\apps\Wavee\bin\Release\net11.0\Wavee.exe",
     [string]$Out = "",
     [ValidateRange(1, 20)][int]$Laps = 2,
     [ValidateRange(1, 60)][int]$SettleSeconds = 6,

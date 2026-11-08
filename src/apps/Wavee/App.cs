@@ -131,6 +131,7 @@ public static class App
         Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
         StartupTimeline.Mark("entities");
         if (Platform.Args.Fake) Playback.OnThisPc.UseFake(Entities.FakeOnThisPc);   // --fake: a stable spread of "on this PC" rows (ZC2's fact has no cache to read)
+        if (Platform.Args.Fake) Playback.UseFakeAutoplay(Entities.FakeAutoplay);   // --fake: autoplay answers from the demo catalogue (#215 verification)
         if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
         Spotify.Boot();                  // session static, signals created once; login later
         Spotify.Api.Boot();              // Fetch.Register(Transport): the planner's provider (G-003)
@@ -168,6 +169,7 @@ public static class App
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
         StartupTimeline.Mark("playback");
         Shell.InstallUi();               // RootFactory + the Wave-4 pages; must precede Run (I1)
+        Shell.InstallLinkSeams();        // every rich-text anchor through the link door (Controls.RouteForUri / LinkOpener)
         FrameModel.UnknownRouteSink = static key => Log.Warn("nav", "route.unknown: " + key);   // the frame decides when (first sighting), the host says it
         Modules.InstallUi();             // the module: page, ModuleOpen/LocalPath, PlayLinkRouter.Modules/Match (WP-6.T)
         Queue.InstallUi();               // rail/stage queue bodies, the queue verbs and Shell.OnPlayContext; after Actions.Registry.Build (WP-5.Q)

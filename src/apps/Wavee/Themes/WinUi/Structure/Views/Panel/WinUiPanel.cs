@@ -126,7 +126,7 @@ internal static class WinUiPanel
 
     /// <summary>The head's tree for the fit <paramref name="mask"/> (<see cref="FitMask"/>); <paramref name="onBounds"/> reports the width it is
     /// laid out at.</summary>
-    internal static Element HeadTree(PaneHeadProps p, List<PanelMode> modes, Action<PanelMode>? show, int mask, Action<RectF> onBounds)
+    internal static Element HeadTree(PaneHeadProps p, List<PanelMode> modes, Action<PanelMode>? show, int mask, Action<RectF> onBounds, CanvasInk ink)
     {
         var (props, body, compact) = (p.Props, p.Body, p.Compact);
         float close = compact ? F.CloseTouchBox : F.CloseBox;
@@ -144,7 +144,7 @@ internal static class WinUiPanel
             {
                 Key = F.TabSlotKeyPrefix + modes[i], Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true, Animate = motion,
                 Padding = new Edges4(tabs.Count > 0 ? F.TabGap : 0f, 0f, 0f, 0f),
-                Children = [Tab(modes[i], i == current, show)],
+                Children = [Tab(modes[i], i == current, show, ink)],
             });
         }
 
@@ -161,9 +161,9 @@ internal static class WinUiPanel
             {
                 Key = F.MoreSlotKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
                 Animate = Design.Reduced ? null : F.MoreSlotMotion,
-                Children = [Embed.Comp(new MoreTabsProps(rest.ToArray(), show, close), static () => new WinUiPaneMoreTabs()) with { Key = F.MoreKey }],
+                Children = [Embed.Comp(new MoreTabsProps(rest.ToArray(), show, close, ink), static () => new WinUiPaneMoreTabs()) with { Key = F.MoreKey }],
             });
-        row.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.ChromeClose, props.Close, true, false, close, close, F.CloseGlyph) with { Key = F.CloseKey },
+        row.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.ChromeClose, props.Close, true, false, close, close, F.CloseGlyph, ink: ink) with { Key = F.CloseKey },
             Loc.Get(Strings.Theme.Winui.Player.ClosePane)));
         return new BoxEl
         {
@@ -175,26 +175,27 @@ internal static class WinUiPanel
         };
     }
 
-    /// <summary>A tab's word as drawn (the selected one semibold in the primary ink, the rest secondary).</summary>
-    static TextEl Label(PanelMode mode, bool current) => new(Word(mode))
+    /// <summary>A tab's word as drawn (the selected one semibold in the primary ink, the rest secondary), in <paramref name="ink"/> (over the
+    /// edge-to-edge canvas, the media scope's).</summary>
+    static TextEl Label(PanelMode mode, bool current, CanvasInk ink = default) => new(Word(mode))
     {
         Size = F.TabSize, LineHeight = F.TabLine, Weight = current ? F.TabSelectedWeight : F.TabWeight,
-        Color = current ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+        Color = current ? ink.Primary : ink.Secondary, HoverColor = ink.Primary, MaxLines = 1, Wrap = TextWrap.NoWrap,
     };
 
-    /// <summary>The "⋯" props: the tabs it lists, the verb that shows one, its box.</summary>
-    internal sealed record MoreTabsProps(PanelMode[] Modes, Action<PanelMode> Show, float Box);
+    /// <summary>The "⋯" props: the tabs it lists, the verb that shows one, its box, the head's ink.</summary>
+    internal sealed record MoreTabsProps(PanelMode[] Modes, Action<PanelMode> Show, float Box, CanvasInk Ink);
 
     /// <summary>One tab: the word over the pill (reserved on every tab, painted on the selected one), its hit box the row's 48.</summary>
-    private static Element Tab(PanelMode mode, bool current, Action<PanelMode>? show)
+    private static Element Tab(PanelMode mode, bool current, Action<PanelMode>? show, CanvasInk ink)
     {
         var column = new BoxEl
         {
             Direction = 1, AlignItems = FlexAlign.Stretch, Gap = F.PillGap, Shrink = 0f,
             Children =
             [
-                Label(mode, current),
-                new BoxEl { Height = F.PillH, Corners = CornerRadius4.All(F.PillH / 2f), Fill = current ? Tok.AccentDefault : ColorF.Transparent },
+                Label(mode, current, ink),
+                new BoxEl { Height = F.PillH, Corners = CornerRadius4.All(F.PillH / 2f), Fill = current ? ink.AccentFill : ColorF.Transparent },
             ],
         };
         bool clickable = show is not null && !current;
@@ -223,6 +224,40 @@ internal static class WinUiPanel
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
+    static readonly EnterExit BleedFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The edge-to-edge canvas (BleedWinUI): the panel's ground, the canvas over it from the top, its lower half fading into the ground
+    /// in the dark kind (in the light kind the veil behind the copy and the foot's dissolve into the light ground, <see cref="Deck.LightScope"/>),
+    /// and the head's scrim. Shown while the Canvas style rests with a canvas to play; it fades in and out.</summary>
+    internal static Element Bleed(NowPlayingHeroProps np, float width)
+    {
+        float vh = MathF.Round(width * B.BleedAspect), fade = MathF.Round(vh * B.BleedFadeShare);
+        ColorF ground = Tok.FillSolidBase, shade = Deck.BleedShade(ground);
+        return Flow.Show(np.Bleeds, new BoxEl
+        {
+            // Shrink, no minimum and a clip: a canvas taller than the pane must not grow the pane's ZStack (it is cut at the pane's foot).
+            ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, HitTestVisible = false,
+            Enter = BleedFade, Exit = BleedFade, Transition = MotionTok.StandardEnter,
+            Children =
+            [
+                new BoxEl { Grow = 1f, Fill = ground },
+                np.BleedVideo(width),
+                R.IsLight
+                    ? Deck.LightScope(np, width, B.BleedMetaLift, ground)
+                    : new BoxEl
+                    {
+                        AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
+                        Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(B.BleedFadeFull, ground)),
+                    },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Height = B.BleedHeadScrimH,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = B.BleedHeadScrimA }), new GradientStop(1f, shade with { A = 0f })),
+                },
+            ],
+        });
+    }
+
     /// <summary>The Now playing tab: the pinned slot (the hero, or the docked video in its place), the sheet's transport, then "Next up".</summary>
     private static Element NowPlaying(PanelProps props, PanelView view, bool sheet)
     {
@@ -235,31 +270,20 @@ internal static class WinUiPanel
         return ScrollView(new BoxEl { Direction = 1, Children = kids.ToArray() }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
-    /// <summary>The docked video card with its splitter: the height cell the splitter writes and the card binds (a stable bind).</summary>
+    /// <summary>The docked video card over its resize handle: the card binds the height cell the handle writes (a stable bind) and the column hugs
+    /// both, so the content under them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card
+    /// takes every press on it), its grip the sheet grabber's pill.</summary>
     internal static Element DockedCap(PanelProps props, bool docked, float width)
     {
         Element video = props.DockedCard();
         if (!docked) return video;                                         // the card's own gate: zero size, no reflow
         return new BoxEl
         {
-            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
-            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Direction = 1, Shrink = 0f,
             Children =
             [
                 video,
-                new BoxEl
-                {
-                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
-                        {
-                            Min = props.DockedVideoMin(width),
-                            Max = props.DockedVideoMax(),
-                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
-                        }),
-                    ],
-                },
+                props.DockedVideoHandle(new DockedVideoGrip(F.GrabberW, F.GrabberH, F.GrabberH / 2f, Tok.FillControlStrong, F.DockedGripRest), width),
             ],
         };
     }
@@ -300,8 +324,15 @@ internal sealed class WinUiPaneHead : Component
         var fit = UseComputed(() => WinUiPanel.FitMask(_widths, _current, _compact, WidthOf(_laid!.Value)));
         _ = fit.Value;
         int mask = WinUiPanel.FitMask(_widths, _current, _compact, WidthOf(laid.Peek()));
-        return WinUiPanel.HeadTree(p, modes, show, mask, _onBounds);
+        // Over the edge-to-edge canvas (the frame lays it under the Now playing tab unless the docked video holds that tab) the head paints in
+        // the media scope's ink; the memo re-renders the head only when that answer flips.
+        _bleeds = p.Props.NowPlaying.Bleeds;
+        var bleeds = UseComputed(() => _bleeds!());
+        bool over = bleeds.Value && p.Body == PanelMode.NowPlaying && p.View.Pinned != PanelPinned.DockedVideo;
+        return WinUiPanel.HeadTree(p, modes, show, mask, _onBounds, new CanvasInk(over));
     }
+
+    Func<bool>? _bleeds;   // the hero's "does the canvas fill the panel" (the memo reads the latest)
 
     /// <summary>The width the head fits: where it is laid out, else (before its first layout) the committed width.</summary>
     float WidthOf(float laid) => float.IsFinite(laid) && laid > 0f ? laid : _committed;
@@ -319,6 +350,7 @@ internal sealed class WinUiPanelFrame : Component
     Action? _close;
     bool _escapes;
     static readonly Action s_absorb = static () => { };
+    static readonly Element s_noBleed = new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
 
     public override Element Render()
     {
@@ -403,7 +435,9 @@ internal sealed class WinUiPanelFrame : Component
         var surface = new BoxEl
         {
             Key = F.SurfaceKey,
-            Direction = 1, Grow = sheet ? F.SheetShare : 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+            // Shrink (and the wrapper's below): the edge-to-edge canvas under the column is taller than the pane at a wide width, and must not
+            // stretch the pane, its body and its scroll past the host's clip.
+            Direction = 1, Grow = sheet ? F.SheetShare : 1f, Shrink = 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
             Corners = corners, HitTestVisible = open,                       // a closed pane is laid out off-canvas and unhittable
             // A docked pane beside the primary that is closed (its tier docks none, or it slid out and let its body go) leaves the tree: its head
             // was a second tab strip laid out under the primary's, clipped by its host, that `find` listed as shown.
@@ -436,6 +470,8 @@ internal sealed class WinUiPanelFrame : Component
                         },
                     ],
                 },
+                // The Canvas style at rest: the canvas fills the pane from its very top, under the tabs and the body.
+                body == PanelMode.NowPlaying && view.Pinned != PanelPinned.DockedVideo ? WinUiPanel.Bleed(props.NowPlaying, width) : s_noBleed,
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
         };
@@ -444,7 +480,7 @@ internal sealed class WinUiPanelFrame : Component
         // bottom, the room above it letting taps through to the frame's scrim; docked or floating, no room.
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, HitTestPassThrough = true,
+            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, HitTestPassThrough = true,
             Children = [new BoxEl { Grow = 1f - F.SheetShare, Basis = 0f, HitTestVisible = false, Visible = sheet }, surface],
         };
     }
@@ -491,7 +527,7 @@ internal sealed class WinUiPaneMoreTabs : Component
             handle.Value.ClosedAction = () => handle.Value = null;
         }
         string names = string.Join(", ", Array.ConvertAll(p.Modes, WinUiPanel.Word));
-        return ToolTip.Wrap(WinUiPlayerBar.Button(Icons.More, Toggle, true, false, p.Box, p.Box, F.MoreGlyph, h => anchor.Value = h),
+        return ToolTip.Wrap(WinUiPlayerBar.Button(Icons.More, Toggle, true, false, p.Box, p.Box, F.MoreGlyph, h => anchor.Value = h, ink: p.Ink),
             Strings.Theme.Winui.Player.MorePaneTabs(names));
     }
 }

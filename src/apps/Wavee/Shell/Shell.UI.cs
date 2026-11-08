@@ -750,7 +750,7 @@ public static partial class Shell
     /// player the element consumes F11 first (focused routing precedes accelerators), so exactly one of them fires.</summary>
     internal static void ToggleVideoFullscreen()
     {
-        switch (FrameRules.F11(Video.State.Resolved == Video.SurfacePlacement.Fullscreen, Video.State.IsActive, Ui.ImmersiveLyrics.Peek()))
+        switch (FrameRules.F11(Video.State.IsFullscreen, Video.State.IsActive, Ui.ImmersiveLyrics.Peek()))
         {
             case FrameRules.FullscreenToggle.Enter: Video.State.EnterFullscreen(); break;
             case FrameRules.FullscreenToggle.Exit: Video.State.ExitFullscreen(); break;
@@ -774,7 +774,7 @@ public static partial class Shell
         if (e.KeyCode == Keys.Escape)
         {
             switch (FrameRules.Escape(false, PaletteOpen.Peek(), Ui.ImmersiveLyrics.Peek(),
-                        Video.State.Resolved == Video.SurfacePlacement.Fullscreen))
+                        Video.State.IsFullscreen))
             {
                 case FrameRules.EscapeAction.CloseImmersiveLyrics:
                     Stage.Close(null, "escape-shell");   // the stage root normally takes Esc first; this is the unfocused fallback
@@ -848,7 +848,11 @@ public static partial class Shell
         SuppressLayoutTransitionsOnActivation: true,
         // The page's enter/exit slide and fade are composite parameters (the page root is a composited layer): a transition
         // re-records nothing below the page root instead of the whole page every frame of the fade (page-mount RCA #4).
-        CompositeTransitions: true);
+        CompositeTransitions: true,
+        // A structure with per-kind page motion staggers the incoming page's units in (PageMotionPolicy.Cascade).
+        CascadeFor: PageCascade,
+        // Reduced motion is the recipes' call (PageTransition): a structure's quick fade, or the cut the shell always made.
+        RecipeOwnsReducedMotion: true);
 
 
     /// <summary>The route whose page is ON SCREEN, as opposed to <see cref="Current"/>, the route just committed: the two
@@ -952,8 +956,27 @@ public static partial class Shell
             return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
+        var pageMotion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
+        // Reduced motion: the structure's quick fade (no slide, no scale, no stagger), else the cut the shell always made. A fade
+        // would wash out a composited video hole, so a video-safe swap cuts.
+        if (FgMotion.ReducedMotion) return videoSafe ? null : pageMotion.ReducedFade;
         if (videoSafe) return RecipeForVideoSafe(motion);
+        // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
+        if (pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own) return own;
         return RecipeFor(motion);
+    }
+
+    /// <summary>The incoming page's staggered entrance (<see cref="Theming.PageMotionPolicy.Cascade"/>), asked on the same edges as
+    /// <see cref="PageTransition"/>: none for a facet switch inside Home, a video-safe swap, under reduced motion, or under a structure
+    /// that declares none.</summary>
+    static EntranceCascade? PageCascade(object oldToken, object newToken)
+    {
+        if (newToken is not Route next || FgMotion.ReducedMotion) return null;
+        if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
+            return null;
+        Route from = oldToken is Route r ? r : Route.None;
+        if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
+        return Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is { } cascade ? cascade(SwapOf(from, next, Motion.Peek())) : null;
     }
 
     /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the
@@ -1024,6 +1047,9 @@ public static partial class Shell
             case "cold-rows": Entities.StageColdRows(); return true;
             case "cold-warm": Entities.StageColdWarm(); return true;
             case "cold-faces": Entities.StageColdFaces(); return true;
+            // The album's credits (Entities.Fake.Album.cs): al2's members' credits asked and unanswered, then answered (`goto` al2 first).
+            case "cold-credits": Entities.StageColdCredits(); return true;
+            case "credits-land": Entities.LandFakeCredits(); return true;
             default: return false;
         }
     }
@@ -1039,12 +1065,17 @@ public static partial class Shell
         else GoTo(new Route(RouteKind.Home));
     }
 
-    /// <summary>The probe's state on the page's gutter (16 / 24 / 48 by the window's width: the frame's, which the pages themselves sit on).</summary>
-    static Element InspectStateBody(string kind) => Responsive.Of("inspect-state", w => new BoxEl
+    /// <summary>The probe's state on the page's gutter (<see cref="PageStateBody"/>).</summary>
+    static Element InspectStateBody(string kind) => PageStateBody(InspectVacancy(kind));
+
+    /// <summary>A state that stands in for a whole page (a vacancy: the probe's, a detail page whose head stopped coming) on the page's gutter
+    /// (16 / 24 / 48 by the window's width: the frame's, which the pages themselves sit on), so a theme whose vacancy reads from the leading edge
+    /// (Zune) starts where the page's own content does.</summary>
+    internal static Element PageStateBody(Element state) => Responsive.Of(state, static (s, w) => new BoxEl
     {
         Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Padding = new Edges4(w < 640f ? 16f : w < 1008f ? 24f : 48f, 0f, w < 640f ? 16f : w < 1008f ? 24f : 48f, 0f),
-        Children = [InspectVacancy(kind)],
+        Children = [s],
     }, fallback: 1440f, grow: 1f);
 
     static Element InspectVacancy(string kind) => kind switch

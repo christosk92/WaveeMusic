@@ -59,7 +59,9 @@ public static partial class Playback
             => total > 0 && (ahead <= MinAhead || ahead * ConsumedDen < total * (ConsumedDen - ConsumedNum));
 
         /// <summary>The verdict for a deck at <paramref name="cursor"/>. Nothing while an ask is out, before the host has
-        /// said whether the context pages (<paramref name="pagesKnown"/>), under repeat-track, or off the queue.</summary>
+        /// said whether the context pages (<paramref name="pagesKnown"/>), under repeat-track, or off the queue. Autoplay is
+        /// asked (and paged) only with repeat OFF and the setting on: under repeat-context the run wraps, and an autoplay
+        /// tail fetched there would only wait to be played by mistake (#215; librespot connect/src/state/tracks.rs:298-310).</summary>
         public static RefillKind Decide(ReadOnlySpan<QueueEdge> rows, int cursor, AutoplayPhase phase, bool pagesKnown,
             bool morePages, bool autoplayPages, Spotify.Decode.RepeatMode repeat, bool autoplayEnabled = true)
         {
@@ -70,12 +72,13 @@ public static partial class Playback
                 Run(rows, cursor, QueueProvider.Context, out int total, out int ahead);
                 return NearlyConsumed(total, ahead) ? RefillKind.PageContext : RefillKind.None;
             }
+            if (repeat != Spotify.Decode.RepeatMode.Off || !autoplayEnabled) return RefillKind.None;
             Run(rows, cursor, QueueProvider.Autoplay, out int autoTotal, out int autoAhead);
             if (autoTotal == 0)
             {
                 // Owners ask when about five context rows remain, not at play start; a single-track context has 0 ahead.
                 Run(rows, cursor, QueueProvider.Context, out _, out int ctxAhead);
-                return autoplayEnabled && ctxAhead <= AutoplayLead ? RefillKind.AskAutoplay : RefillKind.None;
+                return ctxAhead <= AutoplayLead ? RefillKind.AskAutoplay : RefillKind.None;
             }
             if (!NearlyConsumed(autoTotal, autoAhead)) return RefillKind.None;
             return autoplayPages ? RefillKind.PageAutoplay : RefillKind.AskAutoplay;

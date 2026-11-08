@@ -70,7 +70,7 @@ internal static partial class ZuneReleaseNotes
         var body = new List<Element>(5)
         {
             Media(item.Poster, store),
-            ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with { Color = store ? R.Ink.AccentDecor : Tok.TextTertiary, MaxLines = 1 },
+            KindLine(h, store),
             R.Type.TrackTitle(h.Title) with { Wrap = TextWrap.Wrap, MaxLines = K.CardTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), IgnoreLink), isTextSelectionEnabled: false)
                 with { Size = R.Type.TrackMeta("").Size, LineHeight = R.Type.TrackMeta("").LineHeight, MaxLines = compact ? K.CardBodyLinesCompact : K.CardBodyLines, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis, Color = Tok.TextSecondary },
@@ -86,12 +86,13 @@ internal static partial class ZuneReleaseNotes
         if (layout.HighlightColumns <= 1 && !store && !compact)
         {
             bool action = h.DeepLink is { Length: > 0 };
-            var words = new List<Element>(2)
+            var words = new List<Element>(3)
             {
                 R.Type.TrackTitle(h.Title) with { Wrap = TextWrap.Wrap, MaxLines = K.CardTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                 RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), IgnoreLink), isTextSelectionEnabled: false)
                     with { Size = R.Type.TrackMeta("").Size, LineHeight = R.Type.TrackMeta("").LineHeight, MaxLines = K.CardBodyLines, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis, Color = Tok.TextSecondary },
             };
+            if (IsCommunity(h)) words.Insert(0, CommunityWord());   // the row form shows no kind word: the badge leads the words
             var row = new List<Element>(3)
             {
                 new BoxEl { Direction = 1, Shrink = 0f, Children = [Media(item.Poster, store)] },
@@ -129,6 +130,17 @@ internal static partial class ZuneReleaseNotes
             ],
         };
     }
+
+    /// <summary>The kind word over the title and, for a highlight from a community pull request, the "community" word beside it in the accent.</summary>
+    static Element KindLine(ReleaseHighlight h, bool store)
+    {
+        var kind = ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with { Color = store ? R.Ink.AccentDecor : Tok.TextTertiary, MaxLines = 1 };
+        if (!IsCommunity(h)) return kind;
+        return new BoxEl { Direction = 0, Gap = Spacing.S, MinWidth = 0f, AlignItems = FlexAlign.End, Children = [kind with { Shrink = 0f }, CommunityWord()] };
+    }
+
+    /// <summary>The "community" badge: Zune's lowercase label voice in the accent.</summary>
+    static TextEl CommunityWord() => ZuneText.Hint(Loc.Get(Strings.WhatsNew.Community)) with { Color = R.Ink.AccentDecor, MaxLines = 1, Shrink = 0f };
 
     /// <summary>The panel's picture: the poster when the loader found one, else the board's swatch (a square of the accent: a card that loses its picture reads as broken).</summary>
     static Element Media(string? poster, bool store)

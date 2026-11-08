@@ -965,6 +965,7 @@ public readonly partial struct Track
 
         FilterCaps CapsNow()
         {
+            _ = _args.Value;   // new args can bring a new source: a caller's memo re-runs on them
             var src = _latest.Source;
             src.Subscribe();
             uint version = src.Version, publication = Entities.Current.Tracks.Changed.Value;
@@ -998,7 +999,7 @@ public readonly partial struct Track
 
         /// <summary>The rows <see cref="FilterFlags.PlayableOnly"/> would hide, by why (<see cref="FilterModel.HiddenByPlayable"/>: the filter's own
         /// rule), over the whole membership. Cached per (membership version, track publication) like <see cref="CapsNow"/>; reading it subscribes
-        /// the caller to both.</summary>
+        /// the caller to both and to the args (the bar reads it through a memo).</summary>
         UnavailableTally UnavailableNow()
         {
             var src = _latest.Source;
@@ -1036,10 +1037,14 @@ public readonly partial struct Track
         /// bar only (the tally is read here, never in the host), and the host hears the on / off edge alone (<c>_unavailableShown</c>).</summary>
         sealed class TableUnavailableBar(TableHost host) : Component
         {
+            Func<UnavailableTally>? _tally;
+
             public override Element Render()
             {
                 var h = host;
-                var tally = h.UnavailableNow();
+                // Through a memo: the tally reads every track publication, and a render that read it directly re-ran (and re-worded the bar)
+                // on each one; the memo re-renders it only when the tally itself moves.
+                var tally = UseComputed(_tally ??= h.UnavailableNow).Value;
                 var filters = h._filters.Value;
                 var template = h._listStyle?.Chrome.UnavailableBar;
                 bool shown = template is not null && FilterModel.OffersHide(in tally, in filters);

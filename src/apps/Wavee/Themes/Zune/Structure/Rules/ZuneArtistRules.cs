@@ -291,6 +291,10 @@ public static class ZuneArtistRules
     /// <summary>The merch card's gap and padding.</summary>
     public const float MerchGap = 8f, MerchPad = 8f;
 
+    /// <summary>A merch card's text: the name's two lines and the price's one, each on the 13 voice's 18 line (the card's height and its shelf's extent).</summary>
+    public const float MerchLine = 18f;
+    public const int MerchNameLines = 2;
+
     /// <summary>The concert stub: its height and its date column.</summary>
     public const float StubH = 64f, StubDateW = 48f;
 
@@ -329,8 +333,13 @@ public static class ZuneArtistRules
     /// <summary>The cell's chrome under its square cover (the shared surface's geometry), and the row gap folded into the grid.</summary>
     public const float CardChrome = 50f, RowGap = 20f;
 
-    /// <summary>The card subtitle's disclosure cue and its gap after the meta.</summary>
-    public const float SubtitleGap = 4f, SubtitleGlyph = 9f;
+    /// <summary>The card subtitle's gap after the meta, before the disclosure button.</summary>
+    public const float SubtitleGap = 4f;
+
+    /// <summary>The disclosure button after the card's meta line (it opens the inline drawer; the card opens the album): a 24 plate with a 12 chevron,
+    /// 4 of hit slop each side (a 32 target, the target floor above Compact; Compact's touch floor makes it 40), and 4 bled out of the 16 meta line
+    /// above and below, so the line, and the card's 50 chrome, keep their height.</summary>
+    public const float DisclosurePlate = 24f, DisclosureGlyph = 12f, DisclosureSlop = 4f, DisclosureBleed = 4f;
 
     /// <summary>The drawer panel's padding, the head's pieces (play ring, cover, open ring) and the caret.</summary>
     public const float PanelPadX = 12f, PanelPadY = 6f, PanelPadSum = 12f, HeadPlay = 32f, HeadCover = 28f;

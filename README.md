@@ -6,13 +6,13 @@
 
 <p align="center">
   A Spotify desktop client for Windows 11, built on <a href="https://github.com/christosk92/fluent-gpu">FluentGpu</a> —
-  a from-scratch, NativeAOT, GPU-rendered UI engine for .NET 10.
+  a from-scratch, NativeAOT, GPU-rendered UI engine for .NET 11.
 </p>
 
 <p align="center">
   <a href="https://github.com/christosk92/WaveeMusic/releases/tag/wavee-stable"><img src="https://img.shields.io/github/v/release/christosk92/WaveeMusic?filter=wavee-v*&label=release&color=0A6CC0" alt="Latest release" /></a>
   <a href="https://github.com/christosk92/WaveeMusic/releases"><img src="https://img.shields.io/github/downloads/christosk92/WaveeMusic/total?label=downloads&color=0A6CC0" alt="Downloads" /></a>
-  <img src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white" alt=".NET 10" />
+  <img src="https://img.shields.io/badge/.NET-11-512BD4?logo=dotnet&logoColor=white" alt=".NET 11" />
   <a href="https://github.com/christosk92/fluent-gpu"><img src="https://img.shields.io/badge/engine-FluentGpu-0078D4?logo=windows11&logoColor=white" alt="FluentGpu engine" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT License" /></a>
 </p>

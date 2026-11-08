@@ -172,7 +172,7 @@ internal static partial class ZunePlayerBar
                 return Slot("volume-slider", lit, new BoxEl
                 {
                     Margin = L.VolumeMargin, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-                    Children = [Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                    Children = [VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                         length: look.VolumeW, thickness: L.VolumeThickness, style: LineSlider())],
                 });
             case RightSlot.Lyrics:
@@ -194,15 +194,18 @@ internal static partial class ZunePlayerBar
                         new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                     videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
                 }
-                bool on = v.VideoLive && lit;
+                // The level's slot whatever the track: lit while a playable is on the deck (loading included), pressable only while the track
+                // has a video (the disabled word in place otherwise: never a gap, never a reflow).
+                bool can = lit && v.HasVideo;
+                bool on = v.VideoLive && can;
                 return Slot("video", lit, new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, OnRealized = h => videoAnchor.Value = h, OnContextRequested = _ => OpenMenu(),
+                    Direction = 0, AlignItems = FlexAlign.Center, OnRealized = h => videoAnchor.Value = h, OnContextRequested = can ? _ => OpenMenu() : null,
                     Children =
                     [
-                        ToolTip.Wrap(Word(Loc.Get(Strings.Player.Video), () => verbs.ToggleVideo(), lit, on, box, look.WordSize),
+                        ToolTip.Wrap(Word(Loc.Get(Strings.Player.Video), () => verbs.ToggleVideo(), can, on, box, look.WordSize),
                             Loc.Get(v.VideoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
-                        ToolTip.Wrap(Glyph(Icons.ChevronDownSmall, OpenMenu, lit, on ? Tok.AccentTextPrimary : Tok.TextSecondary, box, L.ChevronGlyph),
+                        ToolTip.Wrap(Glyph(Icons.ChevronDownSmall, OpenMenu, can, on ? Tok.AccentTextPrimary : Tok.TextSecondary, box, L.ChevronGlyph),
                             Loc.Get(Strings.Player.VideoOptions)),
                     ],
                 });
@@ -263,7 +266,7 @@ internal sealed class ZuneVolumeGlyph : Component
                     Width = ZunePlayerLayout.VolumePopupW, Height = ZunePlayerLayout.VolumePopupH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Children =
                     [
-                        Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
+                        VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
                             length: ZunePlayerLayout.VolumePopupRail, thickness: ZunePlayerLayout.VolumeThickness, style: ZunePlayerBar.LineSlider()),
                     ],
                 },
@@ -445,7 +448,7 @@ internal sealed class ZuneCredits : Component
         var p = UseProps<ZunePlayerBar.CreditsProps>();
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
-        var credits = props.Credits();
+        var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
         if (credits.Show is { } show)
             return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [Name(show, p)] };
         var artists = credits.Artists;

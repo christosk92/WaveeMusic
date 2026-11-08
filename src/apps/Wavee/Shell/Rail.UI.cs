@@ -11,9 +11,9 @@
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // T6b MOVED THE PICTURE OF THE PANEL TO THE STRUCTURE. The rail's frame (docked + floating), its header, the docked video cap's
 // body, the NowPlaying arm and the other arms are `Shell.Panel` (`Themes\Classic\Structure\Views\Panel\ClassicPanel.cs`); the hero
-// tile, its header row, the art menu and the now-playing body are `Player.NowPlayingHero` (`ClassicNowPlayingHero.cs`); the friends
-// body is `Panel.Friends` (`ClassicFriends.cs`); the style flyout, the twelve mini-arts and the swatches are `Player.DeckStyleFlyout`
-// (`ClassicDeckFlyout.cs`, `Rules\DeckThumbnails.cs`). The core half (what each view reads, what each click asks for) is
+// tile, its header row (the style chip and the picker's header) and the now-playing body are `Player.NowPlayingHero`
+// (`ClassicNowPlayingHero.cs`); the friends body is `Panel.Friends` (`ClassicFriends.cs`). The core half (what each view reads, what each
+// click asks for) is
 // `RailWiring` (`Shell/Rail.Wiring.cs`); the state machine stays `Shell.PanelHost` and the decisions stay `Rail.VideoCoupling`.
 //
 // T7c MOVED THE VIDEO BODY (the track meta, the "Up next" eyebrow, the "no video for this song" placeholder) to the structure
@@ -25,11 +25,14 @@
 // DATA (`NextUpRows`: the window, the queue reads, each row's verbs and key). The queue body is the core host
 // `Queue.RailPanelHost` (`Entities/Queue.UI.cs`), which installs itself through `Rail.QueueBody` and mounts the `Queue.Panel` view (T7d).
 //
-// Mounted from other stage-B files: `Deck.View()` (K2), `Lyrics.NpvPeek()` (the core host of `Player.LyricsPeek`) and `Lyrics.View()` (K3).
+// Mounted from other stage-B files: `Deck.Stage()` (K2), `Lyrics.NpvPeek()` (the core host of `Player.LyricsPeek`) and `Lyrics.View()` (K3).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Input;
+using FluentGpu.Localization;
 using Wavee.Theming.Contracts;
 
 namespace Wavee;
@@ -70,6 +73,110 @@ public static partial class Rail
         return slots.Length > 0 && slots[0] > 0 ? new Artist(slots[0]) : default;
     }
 
+    // ── the docked video's resize handle (contract 1.92; the grip's look is the theme's) ─────────────────────────────────────────
+
+    /// <summary>The docked video handle's key (one card per window, so one handle).</summary>
+    public const string DockedVideoHandleKey = "panel-video-handle";
+
+    /// <summary><see cref="PanelProps.DockedVideoHandle"/>: the band UNDER the docked card that resizes it. It lives in the content layer below
+    /// the picture's rect, because the stay-mounted presenter that follows the card is the window's top layer and its transport takes every
+    /// press on the picture (the splitter that used to overlay the card's foot was never reachable).</summary>
+    internal static Element DockedVideoHandle(DockedVideoGrip grip, float panelWidth)
+        => Embed.Comp(new DockedHandleProps(grip, panelWidth), static () => new DockedVideoHandleHost()) with { Key = DockedVideoHandleKey };
+
+    sealed record DockedHandleProps(DockedVideoGrip Grip, float PanelWidth);
+
+    /// <summary>The handle: the kit's vertical <see cref="Splitter"/> over <see cref="Shell.Ui.DockedVideoHeight"/> (1:1 binds per pointer move,
+    /// layout transitions held for the gesture, one commit on release), clamped to the 16:9 floor of the panel width and the ceiling that keeps
+    /// the panel's head and the track's title in view (<see cref="Shell.DockedCapCeiling"/>). Its parts make it a slider: focusable with Tab,
+    /// Up / Down step it (Shift: a larger step), Home / End go to the floor and the ceiling, and a double-click hands the cap back to the
+    /// content's own fit (the card eases there: the card's height channel animates every change but a drag).</summary>
+    [CoreHost]
+    sealed class DockedVideoHandleHost : Component
+    {
+        const float Step = 16f, LargeStep = 64f;
+
+        readonly Action<KeyEventArgs> _onKey;
+        readonly Action<PointerEventArgs> _onPressed;
+        readonly Action<PointerEventArgs> _onReleased;
+        TemplateParts? _parts;
+        DockedVideoGrip? _partsFor;
+        float _min, _max, _heightAtPress;
+        bool _resetArmed;
+
+        public DockedVideoHandleHost()
+        {
+            _onKey = OnKey;
+            _onPressed = OnPressed;
+            _onReleased = OnReleased;
+        }
+
+        public override Element Render()
+        {
+            var p = UseProps<DockedHandleProps>();
+            _min = Shell.DockedVideoNaturalH(p.PanelWidth);
+            // The ceiling follows the panel's height (a window made taller or shorter): read here, so that re-renders this band alone.
+            _max = MathF.Max(_min, Shell.DockedCapCeiling(Shell.Ui.RailBodyHeight.Value));
+            if (_parts is null || _partsFor != p.Grip)
+            {
+                _parts = Parts(p.Grip);
+                _partsFor = p.Grip;
+            }
+            return Splitter.Create(Shell.Ui.DockedVideoHeight, Shell.PanelHost.CommitDockedVideo, new Splitter.SplitterOptions
+            {
+                Min = _min, Max = _max, Axis = SplitterAxis.Vertical, ShowIndicator = true,
+            }, style: new Splitter.Style { IndicatorW = p.Grip.Thickness, IndicatorInset = 0f, IndicatorFill = p.Grip.Fill }, parts: _parts);
+        }
+
+        /// <summary>The root as a slider (the kit re-asserts only its size, cursor and drag handlers) and the indicator as the theme's grip: a
+        /// centred pill at rest opacity, full while the band is hovered or pressed.</summary>
+        TemplateParts Parts(DockedVideoGrip grip)
+        {
+            var parts = new TemplateParts();
+            parts[Splitter.PartRoot] = b => b with
+            {
+                Focusable = true, TabStop = true, AllowFocusOnInteraction = false, Role = AutomationRole.Slider,
+                OnKeyDown = _onKey, OnPointerPressed = _onPressed, OnPointerReleased = _onReleased,
+            };
+            parts[Splitter.PartIndicator] = b => b with
+            {
+                Width = grip.Length, Grow = 0f, Margin = default, Corners = CornerRadius4.All(grip.Radius), Opacity = grip.RestOpacity,
+            };
+            return parts;
+        }
+
+        void OnKey(KeyEventArgs e)
+        {
+            if (e.Handled) return;
+            float h = Shell.Ui.DockedVideoHeight.Peek(), step = e.Shift ? LargeStep : Step;
+            switch (e.KeyCode)
+            {
+                case Keys.Up: h -= step; break;
+                case Keys.Down: h += step; break;
+                case Keys.Home: h = _min; break;
+                case Keys.End: h = _max; break;
+                default: return;
+            }
+            e.Handled = true;
+            Shell.PanelHost.Shared.SizeDockedVideo(MathF.Min(h, _max));
+            Announcer.Say(Strings.Player.VideoHeight((int)MathF.Round(Shell.Ui.DockedVideoHeight.Peek())));
+        }
+
+        // A double-click resets on its RELEASE: the press holds layout transitions for a possible drag, and the reset is meant to ease.
+        void OnPressed(PointerEventArgs e)
+        {
+            _resetArmed = e.ClickCount == 2;
+            _heightAtPress = Shell.Ui.DockedVideoHeight.Peek();
+        }
+
+        void OnReleased(PointerEventArgs e)
+        {
+            if (!_resetArmed) return;
+            _resetArmed = false;
+            if (Shell.Ui.DockedVideoHeight.Peek() == _heightAtPress) Shell.PanelHost.Shared.ResetDockedVideo();   // a double-click that dragged keeps its drag
+        }
+    }
+
     // ── "Next up" rows (the NPV section and the Video body share them; the picture is `Panel.NextUp`) ────────────────────────────
 
     /// <summary>The "Next up" rows' data, read inside the `Panel.NextUp` view's render: it subscribes what the rows read (the queue edge,
@@ -107,7 +214,7 @@ public static partial class Rail
         Action play = () => Shell.QueueVerbs.Default.Play(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
         Action click = () => Track.Invoke(t, play);
         var data = Track.RowData(t, new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art,
-                                                             ShowExplicit: false, ShowVideo: true,
+                                                             ShowExplicit: false,
                                                              ShowMenu: QueueRowRules.ShowsMenuButton));
         return new NextUpRow((itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart"), art, data);
     }

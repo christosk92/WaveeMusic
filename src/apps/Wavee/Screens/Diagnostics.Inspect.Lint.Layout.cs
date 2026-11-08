@@ -792,7 +792,8 @@ public static partial class Diagnostics
         /// of 4 up to 64, or a value of the active definition's <c>Spacing.*</c>, <c>R.Space</c> or <c>R.Shape</c> (the capture lists them). A value
         /// of the control-internal set under a control with a role is the control's. Grouped by (value, the node's nearest keyed pattern: not a
         /// family counted over the scope, so the fingerprint holds at every scope and scroll position); one info per group naming the nearest
-        /// token. A guide <see cref="LintIntent.OffScaleOk"/> makes it intended.</summary>
+        /// token. A guide <see cref="LintIntent.OffScaleOk"/> makes it intended. A z-stack layer's leading margins are its placement, not spacing,
+        /// and are not read.</summary>
         static int SpaceScaleRule(Snapshot s, List<Finding> into)
         {
             IReadOnlyList<Node> nodes = s.Nodes;
@@ -814,8 +815,11 @@ public static partial class Diagnostics
                 if (l.Padding.Top != 0f) { values[k] = l.Padding.Top; props[k++] = 2; }
                 if (l.Padding.Right != 0f) { values[k] = l.Padding.Right; props[k++] = 3; }
                 if (l.Padding.Bottom != 0f) { values[k] = l.Padding.Bottom; props[k++] = 4; }
-                if (l.Margin.Left != 0f) { values[k] = l.Margin.Left; props[k++] = 5; }
-                if (l.Margin.Top != 0f) { values[k] = l.Margin.Top; props[k++] = 6; }
+                // A z-stack layer's leading margin is its PLACEMENT (the stack arranges each layer at its aligned origin plus that margin: a
+                // virtual grid's placed cells and drawer slots), not spacing; its trailing margin still reserves room and stays on the scale.
+                bool placed = n.Parent >= 0 && nodes[n.Parent].ZStack;
+                if (l.Margin.Left != 0f && !placed) { values[k] = l.Margin.Left; props[k++] = 5; }
+                if (l.Margin.Top != 0f && !placed) { values[k] = l.Margin.Top; props[k++] = 6; }
                 if (l.Margin.Right != 0f) { values[k] = l.Margin.Right; props[k++] = 7; }
                 if (l.Margin.Bottom != 0f) { values[k] = l.Margin.Bottom; props[k++] = 8; }
                 for (int j = 0; j < k; j++)

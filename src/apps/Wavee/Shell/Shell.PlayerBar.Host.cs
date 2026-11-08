@@ -140,8 +140,12 @@ public static partial class Shell
                 levelSignal.Value = next;
             });
 
-            // ── 2/3. the catalog stamp and the volume mirror ──
+            // ── 2/3. the catalog stamp, the face and the volume mirror ──
             var rowStamp = hooks.UseComputed<(EntityKind Kind, int Slot, uint Version)>(BarRowStamp);
+            // The face through a memo: resolving it reads the whole track (or episode) table, and a render that read it directly re-ran on
+            // EVERY catalog write anywhere in the scope (a page loading its rows, the queue asking its own) and rebuilt the whole bar, its
+            // buttons and their tooltips (the owner's census, 2026-11-07). The memo's equality cut-off re-renders it only when a fact moves.
+            var face = hooks.UseComputed(s_barFace);
             hooks.UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.Volume.Value));
 
             // ── 4. the facts ──
@@ -165,20 +169,23 @@ public static partial class Shell
             // One arm for the whole block (art, title, artists, heart, both routes), so its parts cannot disagree
             // while a skip lands. `BarFaceNow` is the same read the bound channels make, so the marquee's text
             // and this render's art can never be one frame apart.
-            var (faceArm, faceRef) = BarFaceNow();
+            var faceFacts = face.Value;
+            var (faceArm, faceRef) = (faceFacts.Arm, faceFacts.Ref);
             bool identityShowing = PlayerBarRules.IdentityShowing(faceArm);
             bool holding = faceArm == FaceArm.Hold;
-            bool titleKnown = NowPlayingFace.TitleKnown(current);
+            bool titleKnown = faceFacts.TitleKnown;
             bool loadingNow = phase == Playback.Phase.Loading || buffering;
             bool shuffle = Playback.Shuffle.Value;
             var repeat = Playback.Repeat.Value;
             bool ownsTransport = PlayerBarRules.OwnsTransport(Video.State.Transport.Value);
-            bool videoLive = Video.PlacementCore.IsActive(Video.State.Surface.Value);
+            var deckVideo = Playback.DeckVideo.Value;
+            // Lit: the video is on. While another device owns playback that is ITS mode (the button switches it), never our
+            // surface, which opens only when the user asks for it (the owner's call, 2026-11-07).
+            bool videoLive = deckVideo.Remote ? deckVideo.OnVideo : Video.PlacementCore.IsActive(Video.State.Surface.Value);
             bool railOpen = Ui.RailOpen.Value;
             var railMode = Ui.Mode.Value;
             bool isTrack = !current.IsNone && current.Kind == EntityKind.Track;
-            var track = isTrack ? new Track(current.Slot) : default;
-            bool hasVideo = isTrack && track.IsValid && track.HasVideo;
+            bool hasVideo = Video.DeckHasVideo(deckVideo, Playback.CurrentId.Value);   // the deck's facts, local or the owner's
             // The SAVE target is the face's row, not the deck's: while the face is held the heart states the held
             // track's savedness (and is inert — see `likeEnabled`), so it cannot flicker off and back on a skip.
             bool faceIsEpisode = faceRef.Kind == EntityKind.Episode;
@@ -229,21 +236,21 @@ public static partial class Shell
                 }
             }
 
-            bool titleNav = !BarTitleRoute().IsNone;
-            bool artNav = !BarArtRoute().IsNone;
-            string? artUrl = BarArtUrl(faceRef);
+            bool titleNav = faceFacts.TitleNav;
+            bool artNav = faceFacts.ArtNav;
+            string? artUrl = faceFacts.ArtUrl;
 
             // Materialised here (a Span cannot cross into a closure); the "⋯" face is keyed over it.
             Span<OverflowCommand> overflow = stackalloc OverflowCommand[PlayerBarRules.MaxOverflow];
             int overflowCount = PlayerBarRules.Overflow(L, ownsTransport, active, hasVideo, overflow);
             OverflowCommand[] overflowCommands = overflow[..overflowCount].ToArray();
 
-            var slots = PlayerBarRules.RightSlots(in L, hasVideo);
+            var slots = PlayerBarRules.RightSlots(in L);
             var lit = RightSlot.None;
             for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
             {
                 var slot = (RightSlot)bit;
-                if ((slots & slot) != 0 && PlayerBarRules.SlotFaceVisible(slot, facts.State, hasVideo)) lit |= slot;
+                if ((slots & slot) != 0 && PlayerBarRules.SlotFaceVisible(slot, facts.State)) lit |= slot;
             }
             var widths = L;   // a copy the width function closes over (an `in` parameter cannot be captured)
 
@@ -300,7 +307,7 @@ public static partial class Shell
                 RemoteLine = remoteSlot >= 0,
                 Slots = slots,
                 Lit = lit,
-                RightWidth = PlayerBarRules.RightWidth(in L, hasVideo),
+                RightWidth = PlayerBarRules.RightWidth(in L),
                 SlotWidth = slot => PlayerBarRules.SlotWidth(slot, in widths),
                 Overflow = overflowCommands,
                 HasVideo = hasVideo,

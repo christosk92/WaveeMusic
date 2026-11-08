@@ -205,6 +205,26 @@ public static class QueueOrder
         return at;
     }
 
+    /// <summary>A repeat-context WRAP put the cursor back on the context's first row: the rows after it become the next lap.
+    /// A lap is the context alone (librespot refills the next tracks from the context after its delimiter,
+    /// <c>connect/src/state/tracks.rs:292-297</c>, and a queued track is consumed once played, <c>tracks.rs:113-118</c>):
+    /// every row after <paramref name="cursor"/> that the context did not provide — a queued row already played, the
+    /// autoplay tail — is dropped, so the walk never comes round to it again. Rows before the cursor and the cursor's own
+    /// index never move. Answers the rows kept; an out-of-range cursor keeps them all.</summary>
+    public static int DropLap(Span<int> targets, Span<QueueEdge> rows, int cursor)
+    {
+        if ((uint)cursor >= (uint)rows.Length) return rows.Length;
+        int w = cursor + 1;
+        for (int i = cursor + 1; i < rows.Length; i++)
+        {
+            if (rows[i].Provider != (byte)QueueProvider.Context) continue;
+            targets[w] = targets[i];
+            rows[w] = rows[i];
+            w++;
+        }
+        return w;
+    }
+
     // THE SHUFFLE ORDER IS DELIBERATELY NOT HERE. It landed with the playback host in the same round
     // (`Playback.ShuffleOrder` in Playback.Transitions.cs, applied by Playback.Host.Context.cs's ReorderQueue, which also
     // keeps the context's saved order), and a second copy in this file would be two rules for one gesture. Rehoming it
@@ -429,12 +449,25 @@ public static partial class Queue
         return pos;
     }
 
-    /// <summary>Where a repeat-context WRAP lands: the first row the context itself provided (a consumed queue row or an
-    /// autoplay row must not replay), else the first row that is not history.</summary>
-    public static int WrapIndex(ReadOnlySpan<QueueEdge> rows)
+    /// <summary>Where a repeat-context WRAP lands: the first row the context itself provided at or after
+    /// <paramref name="contextStart"/> (<see cref="ContextStart"/>: a radio parked behind a track wraps inside the radio,
+    /// not into the old context's history; a consumed queue row or an autoplay row must not replay), else the first row
+    /// that is not history.</summary>
+    public static int WrapIndex(ReadOnlySpan<QueueEdge> rows, int contextStart = 0)
     {
-        for (int i = 0; i < rows.Length; i++) if (rows[i].Provider == (byte)QueueProvider.Context) return i;
+        for (int i = Math.Max(0, contextStart); i < rows.Length; i++) if (rows[i].Provider == (byte)QueueProvider.Context) return i;
         return NextIndex(rows, -1);
+    }
+
+    /// <summary>Where a repeat-context Previous on the context's first row lands: the LAST row the context itself provided
+    /// that the deck may land on (librespot-java <c>StateWrapper.java:1312-1314</c>, ncspot <c>queue.rs:402-412</c>), or
+    /// −1. A queued or autoplay row is never the context's last.</summary>
+    public static int LastContextRow<TRows>(ReadOnlySpan<QueueEdge> rows, TRows playable, int contextStart = 0)
+        where TRows : struct, IPlayableRows
+    {
+        for (int i = rows.Length - 1; i >= Math.Max(0, contextStart); i--)
+            if (rows[i].Provider == (byte)QueueProvider.Context && playable.IsPlayable(i)) return i;
+        return -1;
     }
 
     // ── the item-id mint ────────────────────────────────────────────────────────────────────────────────────────────
@@ -525,6 +558,24 @@ public static partial class Queue
         try
         {
             if (!QueueOrder.Follow(run.T, run.R, cursor.Index)) return false;
+            Land(in run);
+            return true;
+        }
+        finally { Return(in run); }
+    }
+
+    /// <summary>A repeat-context wrap landed the deck on <paramref name="cursor"/>: the rows after it become the next lap, the
+    /// context alone (<see cref="QueueOrder.DropLap"/>). True when anything was dropped.</summary>
+    public static bool Lap(in QueueCursor cursor)
+    {
+        if (cursor.IsNone || (uint)cursor.Index >= (uint)Count) return false;
+        var run = Copy(0);
+        try
+        {
+            int kept = QueueOrder.DropLap(run.T, run.R, cursor.Index);
+            if (kept == run.Count) return false;
+            Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId, a: "lap", n0: cursor.Index, n1: run.Count - kept);
+            run.Count = kept;
             Land(in run);
             return true;
         }

@@ -206,32 +206,21 @@ internal static class ClassicPanel
 
     // ── the docked cap (the card is the video lane's; this is the height, the letterbox and the splitter) ─────────────
 
-    /// <summary>The rail's ONE docked card, reached from both arms. Its Height is the SAME FloatSignal the splitter
-    /// writes — a stable bind, never a fresh thunk (that left the height NaN and collapsed the ZStack to the strip).</summary>
+    /// <summary>The rail's ONE docked card over its resize handle, reached from both arms. The card's Height is the SAME FloatSignal the handle
+    /// writes — a stable bind, never a fresh thunk (that left the height NaN and collapsed the card) — and the column hugs both, so the body under
+    /// them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card takes every press on it).</summary>
     internal static Element DockedCap(PanelProps props, bool docked, float railWidth)
     {
         Element video = props.DockedCard();
         if (!docked) return video;                                         // the card's own gate: zero size, no reflow
         return new BoxEl
         {
-            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
-            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Direction = 1, Shrink = 0f,
             Children =
             [
                 video,
-                new BoxEl
-                {
-                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
-                        {
-                            Min = props.DockedVideoMin(railWidth),
-                            Max = props.DockedVideoMax(),
-                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
-                        }),
-                    ],
-                },
+                props.DockedVideoHandle(new DockedVideoGrip(ClassicPanelLayout.DockedGripW, ClassicPanelLayout.DockedGripH,
+                    ClassicPanelLayout.DockedGripRadius, Tok.FillControlStrong, ClassicPanelLayout.DockedGripRest), railWidth),
             ],
         };
     }
@@ -253,6 +242,16 @@ internal static class ClassicPanel
         }) with { Key = ClassicPanelTiers.SheetScrollKey, Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
+    /// <summary>The panel's surface with the edge-to-edge canvas over it (Tideline) while the Canvas style rests with a canvas to play; the docked
+    /// video pinned in the hero's place keeps the plain surface.</summary>
+    internal static Element WithBleed(Element surface, PanelProps props, PanelView view) => view.Pinned == PanelPinned.DockedVideo
+        ? surface
+        : new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, HitTestPassThrough = true,
+            Children = [surface, Embed.Comp(new ClassicBleedProps(props.NowPlaying, view.Width), static () => new ClassicBleed())],
+        };
+
     /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both.</summary>
     internal static Element PinnedHero(PanelProps props, PanelView view)
     {
@@ -265,12 +264,14 @@ internal static class ClassicPanel
         };
     }
 
-    /// <summary>The 2-state Art|Video toggle over the ART's top-right corner. Its offset is DERIVED from
+    /// <summary>The 2-state Art|Video toggle over the ART's top-right corner (hidden while the style picker is open). Its offset is DERIVED from
     /// <see cref="Rail.Hero.ArtTop"/> (in the sheet, from the art's own top: the head carries the header row); each half's tooltip names the
     /// action IT performs.</summary>
     static Element ArtVideoToggle(PanelProps props, bool sheet) => new BoxEl
     {
         Height = ClassicPanelLayout.ToggleH, Shrink = 0f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End,
+        // Picking a player style, the art is the carousel: the toggle would sit over a neighbour's corner, so it steps aside until the picker closes.
+        Visible = Prop.Of(() => !props.NowPlaying.Picking()),
         Margin = sheet
             ? new Edges4(0f, ClassicPanelTiers.SheetArtTop + Spacing.XS, Spacing.XS, 0f)
             : new Edges4(0f, Rail.Hero.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),
@@ -489,7 +490,7 @@ internal sealed class ClassicPanelFrame : Component
                         Direction = 1, Children = [Embed.Comp(props, static () => new ClassicSheetHeader())],
                     }),
                     ClassicPanel.NowPlayingSheet(props, view, vp, _ask))
-                : ClassicPanel.Arm(open, placement, surface, edge, null,
+                : ClassicPanel.Arm(open, placement, ClassicPanel.WithBleed(surface, props, view), edge, null,
                     ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
         else
         {

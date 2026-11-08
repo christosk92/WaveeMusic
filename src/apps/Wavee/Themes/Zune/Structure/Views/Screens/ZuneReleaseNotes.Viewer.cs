@@ -143,7 +143,12 @@ internal static partial class ZuneReleaseNotes
                         new BoxEl
                         {
                             Margin = new Edges4(Spacing.M, Spacing.M, 0f, 0f),
-                            Children = [ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with { Color = Tok.OnMediaPrimary, MaxLines = 1 }],
+                            // the word sits straight on the band: media ink only over the DARK capture; over the light twin (light mode) or the
+                            // bare band it takes the page's text ink (white media ink read 1.8 : 1 on a light poster's pale field)
+                            Direction = 0, Gap = Spacing.S,
+                            Children = IsCommunity(h)
+                                ? [BandWord(Loc.Get(KindPillLocKey(h.Kind, store)), item), BandWord(Loc.Get(Strings.WhatsNew.Community), item)]
+                                : [BandWord(Loc.Get(KindPillLocKey(h.Kind, store)), item)],
                         },
                         ToolTip.Wrap(Circle(Icons.ChromeClose, K.CloseGlyph, enabled: true, props.Close, "zhv:close", ov.ChromeCircle) with
                             { Margin = new Edges4(0f, VL.ChromeInset, VL.ChromeInset, 0f) }, Loc.Get(Strings.WhatsNew.Viewer.Close)),
@@ -157,6 +162,10 @@ internal static partial class ZuneReleaseNotes
                 },
             ],
         };
+
+        /// <summary>A word straight on the band: the kind and, for a community pull request, "community" beside it.</summary>
+        static TextEl BandWord(string word, HighlightItem item) => ZuneText.Hint(word) with
+            { Color = item.Poster is { Length: > 0 } shown && shown == item.DarkPoster ? Tok.OnMediaPrimary : Tok.TextPrimary, MaxLines = 1, Shrink = 0f };
 
         // The glyph-only circles' tooltip is the ONLY name each carries. A dimmed end button is not hit-testable, so it simply never raises one.
         Element Prev(int index, int count) => ToolTip.Wrap(
@@ -272,12 +281,19 @@ internal static partial class ZuneReleaseNotes
             var k = new ZuneKit(ZuneSettingsTiers.For(ov.Tier));
             var openUrl = props.OpenUrl;
             var body = R.Type.DenseTitle("");
-            var content = new List<Element>(3)
+            var content = new List<Element>(4)
             {
                 R.Type.Heading(h.Title) with { Wrap = TextWrap.Wrap, MinWidth = 0f },
-                RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
-                    with { Size = body.Size, LineHeight = body.LineHeight, Color = Tok.TextSecondary, Margin = new Edges4(0f, Spacing.S, 0f, 0f) },
             };
+            // A community highlight credits its contributors under the title (the band says "community"), each @login a link to the profile (live like the body's links).
+            if (CommunityCredit(h) is { Length: > 0 } credit)
+            {
+                var meta = R.Type.DenseMeta("");
+                content.Add(RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(credit), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
+                    with { Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextSecondary, Margin = new Edges4(0f, Spacing.XS, 0f, 0f) });
+            }
+            content.Add(RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
+                with { Size = body.Size, LineHeight = body.LineHeight, Color = Tok.TextSecondary, Margin = new Edges4(0f, Spacing.S, 0f, 0f) });
             Element? action = null;
             if (store) action = k.Go(Loc.Get(Strings.WhatsNew.StoreCta), live ? props.OpenStoreListing : Inert, live);
             else if (props.TryItFor(h) is { } tryIt) action = k.Go(Loc.Get(Strings.WhatsNew.TryIt), live ? tryIt : Inert, live);

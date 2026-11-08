@@ -210,6 +210,32 @@
 // `TrailCardData.TypeYear` (a release row's kind and year).
 // 1.82 (audit FU2b): `AlbumAsideProps.Credits` (`AlbumCredits`, `AlbumCreditRun`: the album's credits paragraph; null until a source exists) and
 // `PageChromeRow.ActionsPending` (the page's head has not answered: a band draws its actions as a shimmer until it has).
+// 1.83 (audit FU2d): `DetailTierPolicy.LeadBleed` (the most the structure's display title hangs left of the page column: the hero arm's clipping
+// containers leave that much room, so the hang is drawn and not cut); `BandProps.ChromeIsDetail` (whether the page whose chrome a band shows is a
+// detail page: it follows the swap's landing, as the chrome does, where `Current` follows the click).
+// 1.84 (album credits): the album's credits have a source (every member's CreditsV2 roles, folded by person: `Album.PageRules.Credits`).
+// `ShellCapabilities.AlbumCredits` (the structure states them: only then does the core ask the members' credits), `AlbumAsideProps.CreditsPending`
+// and `AlbumSectionsProps.Credits` / `.CreditsPending` (the paragraph under the rows where no aside holds it; pending: reserve it as a shimmer).
+// 1.85 (winui menus/podcasts): the optional `StyleKeys.LibraryControls` (`LibraryControlsStyle`: the library page's sort, Podcasts' modes, the
+// view toggle and its menu, the artists' reader's scope and sort, the Compact head's kinds), so a structure that borrows another's library page draws its own controls there.
+// 1.86 (the stable player bar): `SeekRailProps.Pending` (a rail that cannot seek only because the row is loading: drawn enabled, inert). The
+// player bar's `RightSlot.Video` is the level's slot whatever the track (`PlayerBarView.HasVideo` says whether it can be pressed), and
+// `PlayerBarView.Lit` lights lyrics and video for a playable that is loading or reconnecting too, not only an active one.
+// 1.87 (winui page motion): `ThemePolicies.PageMotion` (`PageMotionPolicy`: a structure's page-swap recipe and staggered entrance per
+// `PageSwap` kind, its reduced-motion fade and its in-page pivot slide). A structure that declares none keeps the core's fade-through.
+// 1.88 (winui show pages): the show page's ASIDE (`ShowReaderStyle.Aside`, `ShowAsideArgs`, `ShowDetail`; the show page hands it as its
+// `Detail.FrameSlots.Aside`, which only a frame that reads its show header's slots draws: the core's two-column aside stays an album's), and
+// `ShowFootArgs.Aside` (the same aside, for a structure that stands it under the episodes where its frame has no column for it);
+// `LibraryControlsStyle.Head` / `LibraryHeadArgs` (a borrowing structure's head across the library page: W-Library's "Library" over the kinds).
+// 1.89 (the daylist backdrop): the optional `CoverVeilProps.Ramp` (a held vertical veil's ramp in DIP: the photograph's band of a veil that covers the
+// whole surface, which ends at the copy plate and holds it to the foot; the Classic daylist's Compact stack, whose art is the card's backdrop).
+// 1.90 (frame drops): `IQueueLane.RowStamp` (a digest of what a queue row shows), so a structure builds its rows from data and an unchanged row
+// skips its render when the panel re-renders.
+// 1.91 (Zune pins): `BandPin.Menu` (a pin's context menu: the entity's own, with Unpin and the band's moves) and `BandProps.PinDrop` (`BandPinDrop`:
+// the band's drag-to-pin target, whether a drag is over it and whether a pinnable drag is live).
+// 1.92 (the docked video handle): `PanelProps.DockedVideoHandle` and its `DockedVideoGrip` (the core's resize band under the docked card, in the
+// theme's grip look: the old splitter overlaid the card's foot, where the presenter's transport took every press). `PanelProps.DockedVideoMin`,
+// `DockedVideoMax` and `CommitDockedVideo` went with it (the handle owns the clamp and the commit), removed before any external theme existed.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -225,7 +251,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 82;
+    public const int Minor = 92;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

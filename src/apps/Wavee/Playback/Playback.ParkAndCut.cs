@@ -83,6 +83,8 @@ public static partial class Playback
             void VideoPause();
             /// <summary>Stop and release the session.</summary>
             void VideoStop();
+            /// <summary>The live session's clock now, on the row's timeline; -1 when there is none.</summary>
+            long VideoClockMs { get; }
             /// <summary>Seek to <paramref name="atMs"/> and play.</summary>
             void VideoGo(long atMs);
             /// <summary>Seek to <paramref name="atMs"/> and leave the transport alone.</summary>
@@ -226,6 +228,11 @@ public static partial class Playback
         {
             uint parkedEpoch = s_parkedEpoch;
             s_audioParked = false;
+            // The song resumes where the video's OWN clock stands at this instant, read before it is paused: the reducer's
+            // position is its last report extrapolated (a report the tick posted up to a tick ago), the clock is where the
+            // picture and its sound are. No live clock (the session is gone) leaves the reducer's.
+            long clock = Hosts.VideoClockMs;
+            if (clock >= 0) fromMs = (int)Math.Min(clock, int.MaxValue);
             Hosts.VideoSilence();                                            // two decoders are never both audible
             bool keepVideo = origin == LoadOrigin.MediaKindRefresh;          // a faulted video (VideoRecovery) is not worth keeping
             if (keepVideo) Hosts.VideoPause();
@@ -267,6 +274,7 @@ public static partial class Playback
         {
             if (!s_attaching || s_attachEpoch != epoch) return;
             s_attaching = false;
+            Video.Timeline.Mark("cut", "epoch=" + epoch + " wantsPlay=" + s_attachWantsPlay);
             long songPos = Hosts.AudioClockMs;
             long pc = Video.AudioHandoff.CutAtMs(songPos, Hosts.AudioSampleRate);
             if (Hosts.AudioPark())
@@ -396,6 +404,7 @@ public static partial class Playback
             public void VideoSilence() => Video.Silence();
             public void VideoPause() => Video.Pause();
             public void VideoStop() => Video.Stop();
+            public long VideoClockMs => Video.ClockPositionMs();
             public void VideoGo(long atMs) => Video.Go(atMs);
             public void VideoSeek(long atMs) => Video.Seek(atMs, accurate: true);
             public void VideoSyncSeekGen(uint gen) => Video.SyncSeekGen(gen);

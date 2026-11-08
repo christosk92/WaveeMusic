@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.8",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Music videos with Spotify Connect, album credits in Zune, and a smoother, steadier Wavee.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "connect-video",
+      "title": "Music videos with Spotify Connect",
+      "body": "Spotify on your phone or computer now shows its video switch while Wavee plays a song with a music video, and switching there switches Wavee. When another device is playing, Wavee's video button switches that device, with Play here to move it to this PC. Spotify's \"Video\" choice on a playlist plays the videos, and other playlists get a Video option in their \"…\" menu.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/connect-video.jpg",
+        "srcLight": "media/connect-video-light.jpg",
+        "alt": "The video panel while a song plays on another device, saying Playing on Kitchen with a Play here button",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "album-credits",
+      "title": "Album credits in Zune",
+      "body": "An album page now says who wrote, produced and played on the record, gathered from its songs' credits. Select \"all credits\" for everyone, grouped by role. A song's own credits sheet lists everyone again in Zune and WinUI.",
+      "kind": "new",
+      "deepLink": "wavee://open?route=albums",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/album-credits.jpg",
+        "srcLight": "media/album-credits-light.jpg",
+        "alt": "An album's full credits in Zune, grouped into performers, songwriters and producers",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "volume-wheel",
+      "title": "Scroll to change the volume",
+      "body": "A community contribution from @ZERO949, thank you! Point at the volume slider and turn the mouse wheel: each notch moves the volume 5%, on the player bar, in the volume pop-ups and in the full screen player.",
+      "kind": "new",
+      "community": [
+        "ZERO949"
+      ],
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/volume-wheel.jpg",
+        "srcLight": "media/volume-wheel-light.jpg",
+        "alt": "The player bar's volume slider at 65%, with its value showing above the thumb",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

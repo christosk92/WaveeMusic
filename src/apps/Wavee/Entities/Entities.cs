@@ -64,6 +64,45 @@ public enum EntityKind : byte { Unknown, Track, Episode, Album, Artist, Playlist
 /// <summary>Who owns a uri — the routing half of the parse, kept separate from <see cref="EntityKind"/>, which is the
 /// hydration half. Typed rather than the raw <c>byte</c> plan §4.1 sketched: the same one byte in a column, but a
 /// <c>switch</c> over it is exhaustive and a magic 2 cannot be mistyped as a 3.</summary>
+/// <summary>THE state of a requested field group on one row (<see cref="Table.StateOf"/>), total: every group a page can
+/// wait on is in exactly one of these, and every settle of a request moves the groups it asked for out of
+/// <see cref="Inflight"/> into a terminal one (<c>Fetch.Answer</c> / <c>Fetch.Failed</c>; the disk leg's continuation).
+/// A readiness gate maps it once: <see cref="Unasked"/> and <see cref="Inflight"/> wait, <see cref="Known"/> renders,
+/// <see cref="Absent"/> and <see cref="Failed"/> are the page's error vacancy with Retry (which re-asks past the seal).</summary>
+public enum GroupState : byte
+{
+    /// <summary>Some missing bit has not been asked this scope (yet): the page's own ask is about to go out.</summary>
+    Unasked = 0,
+    /// <summary>Every missing bit is asked and a request naming the row is out (a bucket seat, a batch, the disk read).</summary>
+    Inflight = 1,
+    /// <summary>Every bit is filled.</summary>
+    Known = 2,
+    /// <summary>A REAL NEGATIVE: asked, and the request settled without filling it (the answer omitted it, no route
+    /// carries it, nobody owns the uri). Nothing is coming this scope unless somebody re-asks past the seal.</summary>
+    Absent = 3,
+    /// <summary>The last ask for a missing bit failed (a terminal transport failure, a route that did not answer beside
+    /// one that did, a miss retried out, the session unreachable). <c>Table.Failed</c>; cleared the moment it is re-asked.</summary>
+    Failed = 4,
+}
+
+/// <summary>The one evidence line a page's readiness writes: <c>page.failed route= waiting= state=</c>, always on (a
+/// Warning), once each time a page turns into its error vacancy because a group it waits on stopped (Absent or Failed).
+/// It names the page and what it waited on, so the next report says why without a timer having to guess.</summary>
+public static class PageReadiness
+{
+    /// <summary>Does a group's state mean the page can never complete it without a Retry (a real negative, or a failure)?</summary>
+    public static bool Stopped(GroupState state) => state is GroupState.Absent or GroupState.Failed;
+
+    public static void NoteFailed(string route, string waiting, GroupState state)
+    {
+        if (!Log.IsEnabled(WaveeLogLevel.Warning)) return;
+        Log.Event(WaveeLogLevel.Warning, "ui", "page.failed", "a page's data stopped coming; it shows its Retry", null, -1, null,
+            WaveeLogField.Of("route", route),
+            WaveeLogField.Of("waiting", waiting),
+            WaveeLogField.Of("state", state.ToString()));
+    }
+}
+
 public enum EntityProvider : byte
 {
     /// <summary>Nobody owns it: an unrecognized uri. Never a guess — an unowned uri must not be addressed at a
@@ -991,7 +1030,11 @@ public abstract class Table : Publishable
     /// <summary>Seconds since the app epoch when a page last read this row (LRU for the store's trim scan, P7).</summary>
     public Column<int> Touched;
     /// <summary>The scope epoch that owns this row's in-flight request, 0 = none (C7). Ten pages asking for the same
-    /// rows in one drain produce one request; a scope switch bumps the epoch and orphans the late answer.</summary>
+    /// rows in one drain produce one request; a scope switch bumps the epoch and orphans the late answer.
+    /// <para><b>Written by <see cref="Seat"/> and <see cref="Unseat"/> and nothing else</b> (and zeroed with the row): the
+    /// stamp exists exactly while <see cref="Outstanding"/> counts a request naming the row — a planner bucket seat, a batch
+    /// on the wire, or the disk leg's read — so no settle, exception or early return can leave it behind (a "leaked
+    /// stamp" is a seat whose owner forgot to give it back, and every owner gives it back on its settle path).</para></summary>
     public Column<uint> Inflight;
     /// <summary>THE GROUPS THE PLANNER HAS ASKED FOR, this scope (G-040). <c>Inflight</c> answers "is a request out";
     /// this answers "which groups has anybody already asked about", and it is the one that stops the request loop: a
@@ -1375,6 +1418,47 @@ public abstract class Table : Publishable
     /// the moment the planner re-asks. Out-of-range slots answer false, so a caller may pass a stale slot.</summary>
     public bool IsFailed(int slot, uint groups) => (uint)slot < (uint)Count && (Failed[slot] & groups) != 0;
 
+    /// <summary>THE state of <paramref name="groups"/> on this row, total (<see cref="GroupState"/>): the one reading of the
+    /// five marks every readiness gate shares, so no page derives "is anything still coming?" from the raw columns again.
+    /// UNTRACKED: the planner, a handler and the evidence lines read it here; a page's readiness reads
+    /// <see cref="Observe"/>, which is the same answer with the table's <c>Changed</c> subscribed.
+    /// <para>Every transition into a terminal state, and out of <see cref="GroupState.Failed"/>, marks the table dirty
+    /// (<see cref="Applied"/>, <see cref="Unseat"/>, <c>Fetch.MarkFailed</c>, a plan that clears a failure), so a tracked
+    /// read of this function is woken by every change of its own answer: subscription is the dependency.</para></summary>
+    public GroupState StateOf(int slot, uint groups)
+    {
+        if ((uint)slot >= (uint)Count || slot == None || groups == 0) return GroupState.Unasked;
+        uint missing = groups & ~Known[slot];
+        if (missing == 0) return GroupState.Known;
+        if ((Failed[slot] & missing) != 0) return GroupState.Failed;
+        if ((Asked[slot] & missing) != missing) return GroupState.Unasked;
+        if (Inflight[slot] == 0) return GroupState.Absent;
+        // The one impossible state, said once (never a recovery): a stamp no request owns. Only Seat/Unseat write it.
+        if (Outstanding[slot] == 0) NoteOrphanStamp(slot);
+        return GroupState.Inflight;
+    }
+
+    /// <summary><see cref="StateOf"/>, TRACKED: reads the table's <c>Changed</c> first, so a render, memo or effect that
+    /// asks re-runs on the publication that moves the answer. What every page readiness derivation reads.</summary>
+    public GroupState Observe(int slot, uint groups)
+    {
+        _ = Changed.Value;
+        return StateOf(slot, groups);
+    }
+
+    bool _orphanNoted;
+
+    /// <summary>`fetch.orphan table= slot= inflight=`: an in-flight stamp with no seat. Seat/Unseat are its only writers,
+    /// so this cannot happen; if it ever does the line names the row, once per table, and a Debug build stops on it.</summary>
+    void NoteOrphanStamp(int slot)
+    {
+        if (_orphanNoted) return;
+        _orphanNoted = true;
+        Log.Event(WaveeLogLevel.Warning, "fetch", "fetch.orphan", "an in-flight stamp no request owns", null, -1, null,
+            WaveeLogField.Of("table", Kind.ToString()), WaveeLogField.Of("slot", slot), WaveeLogField.Of("inflight", (long)Inflight[slot]));
+        System.Diagnostics.Debug.Fail("fetch.orphan: Table.Inflight is written only by Seat/Unseat");
+    }
+
     /// <summary>The groups the planner counts as done: filled AND current. What <c>Known</c> was to the planner before
     /// the fifth mark; a page keeps reading <c>Known</c>, because a stale row still renders.</summary>
     public uint Settled(int slot) => Known[slot] & ~Stale[slot];
@@ -1393,9 +1477,9 @@ public abstract class Table : Publishable
         => Accepts(incoming, (Wavee.Authority)groupAuthority.Span[slot], Settled(slot), group);
 
     /// <summary>Record that a group WAS written: mark its bits known, raise the group's authority, stamp freshness,
-    /// clear the in-flight marker — only when no request for the row is still outstanding (<see cref="Outstanding"/>:
-    /// a write landing through another door is not the end of the row's own request) — bump the row's version and
-    /// mark the table dirty. The two-call shape
+    /// bump the row's version and mark the table dirty. It never touches the in-flight stamp: a write is not the end of a
+    /// request (an edge answer or a second batch writes rows it did not ask for), the request's own settle is
+    /// (<see cref="Unseat"/>). The two-call shape
     /// (<c>Accepts</c> … write … <c>Applied</c>) keeps the column writes in
     /// the kind's own file with no delegate and no boxing (P9).</summary>
     public void Applied(int slot, uint group, Authority incoming, ref Column<byte> groupAuthority)
@@ -1408,23 +1492,32 @@ public abstract class Table : Publishable
         if (incoming > (Wavee.Authority)Authority[slot]) Authority[slot] = (byte)incoming;
         Version[slot]++;
         FetchedAt[slot] = Entities.Now;
-        if (Outstanding[slot] == 0) Inflight[slot] = 0;
         MarkDirty();
     }
 
-    /// <summary>A request now names this row (a planner seat; <see cref="Outstanding"/>). UI thread, <c>Fetch</c> only.</summary>
-    public void Seat(int slot)
+    /// <summary>A request now names this row — a planner bucket seat (carried onto the batch that sends it) or the disk
+    /// leg's read (<see cref="Outstanding"/>) — and the row is in flight under <paramref name="stamp"/>. Paired with
+    /// exactly one <see cref="Unseat"/> on the owner's settle path. UI thread, <c>Fetch</c> (and the inspector's fixtures).</summary>
+    public void Seat(int slot, uint stamp)
     {
-        System.Diagnostics.Debug.Assert(Outstanding[slot] < byte.MaxValue, "a row is named by at most one seat per bucket plus MaxInFlight batches");
+        System.Diagnostics.Debug.Assert(Outstanding[slot] < byte.MaxValue, "a row is named by at most one seat per bucket plus MaxInFlight batches and its disk read");
         Outstanding[slot]++;
+        Inflight[slot] = stamp;
     }
 
-    /// <summary>One request that named this row settled. True when it was the LAST one — the caller clears
-    /// <see cref="Inflight"/> then. UI thread, <c>Fetch</c> only.</summary>
+    /// <summary>One request that named this row settled. True when it was the LAST one: the in-flight stamp goes with it
+    /// and the table is marked dirty, because every group still asked and not known has just become terminal
+    /// (<see cref="GroupState.Absent"/>) and a page reading it must hear so. UI thread, <c>Fetch</c> (and fixtures).</summary>
     public bool Unseat(int slot)
     {
         if (Outstanding[slot] > 0) Outstanding[slot]--;
-        return Outstanding[slot] == 0;
+        if (Outstanding[slot] != 0) return false;
+        if (Inflight[slot] != 0)
+        {
+            Inflight[slot] = 0;
+            MarkDirty();
+        }
+        return true;
     }
 
     /// <summary>A write that is not a provider answer (a user edit, an optimistic flip): mark known, bump, dirty.</summary>
@@ -2224,6 +2317,8 @@ public static partial class Entities
         // them — after the rows, for the same reason every edge rides after the rows (Edges.cs §6, §7).
         CommitRootlist(staging);
         CommitTraits(staging);
+        // A track's Canvas (kind 16): one row of owned text per track, landed by its owner (Entities/Canvas.cs).
+        CommitCanvas(staging);
         // Recents is its own relation with its own payload (ch 16 §7.2) and rides after the edges for the same reason
         // the edges ride after the rows.
         CommitRecents(staging);
@@ -2245,6 +2340,7 @@ public static partial class Entities
     static partial void CommitEdges(Staging s);
     static partial void CommitRootlist(Staging s);
     static partial void CommitTraits(Staging s);
+    static partial void CommitCanvas(Staging s);
     static partial void CommitRecents(Staging s);
     static partial void CommitGradings(Staging s);
 

@@ -803,15 +803,27 @@ public static partial class Entities
         CommitTuningOptions(s);
     }
 
-    /// <summary>0.2.9 <c>PlaylistFetcher.CapabilitiesOf</c>: owner = the owner row is the account OR the server granted
-    /// permission administration, and an owner administers. The decoder cannot see "me"; the commit can.</summary>
+    /// <summary>Is this playlist the account's own? The OWNER ROW decides whenever it and the account are known: the owner is the
+    /// account, or it is not, whatever the capabilities say. Spotify grants the listener permission administration on a
+    /// personalised "made for you" mix it owns (owner "spotify"; the owner's Comforting Mix, 2026-11-07), and reading that grant
+    /// as ownership hid Save / the heart on every theme and offered the owner-only verbs. Only while the owner row or the
+    /// account is unknown does 0.2.9 <c>PlaylistFetcher.CapabilitiesOf</c>'s fallback stand: permission administration (or an
+    /// owner fact already derived) says owner.</summary>
+    internal static bool IsOwnPlaylist(int ownerSlot, int meSlot, byte caps)
+        => ownerSlot > Table.None && meSlot > Table.None
+            ? ownerSlot == meSlot
+            : (caps & (byte)(PlaylistCaps.CanAdministratePermissions | PlaylistCaps.IsOwner)) != 0;
+
+    /// <summary>The derived owner fact (<see cref="IsOwnPlaylist"/>): an owner administers; a playlist someone else owns carries no
+    /// owner bit (a stale one, derived from a grant before the owner row landed or kept on disk, is cleared). The server's own
+    /// capability bits are left as it sent them. The decoder cannot see "me"; the commit can.</summary>
     static void DeriveOwner(PlaylistTable t, int slot, int meSlot)
     {
         if (!t.Knows(slot, (uint)PlaylistFields.Capabilities)) return;
         byte caps = t.Caps[slot];
-        bool owner = (meSlot > Table.None && t.Owner[slot] == meSlot)
-                     || (caps & (byte)(PlaylistCaps.CanAdministratePermissions | PlaylistCaps.IsOwner)) != 0;
-        byte next = owner ? (byte)(caps | (byte)(PlaylistCaps.IsOwner | PlaylistCaps.CanAdministratePermissions)) : caps;
+        byte next = IsOwnPlaylist(t.Owner[slot], meSlot, caps)
+            ? (byte)(caps | (byte)(PlaylistCaps.IsOwner | PlaylistCaps.CanAdministratePermissions))
+            : (byte)(caps & ~(byte)PlaylistCaps.IsOwner);
         if (next != caps) { t.Caps[slot] = next; t.Bump(slot); }
     }
 

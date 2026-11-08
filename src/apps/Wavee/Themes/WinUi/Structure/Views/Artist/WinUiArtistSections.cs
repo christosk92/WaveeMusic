@@ -59,7 +59,7 @@ internal static class WinUiArtistSections
     /// <summary>A section: its title in Subtitle (20/28) over its body, 12 apart; <paramref name="trailing"/> stands on the title's line (a link).</summary>
     public static Element SectionBlock(string title, Element body, Element? trailing = null) => new BoxEl
     {
-        Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f,
+        Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f, EntranceGroup = true,   // the header, then the body (WinUiPageMotion)
         Children =
         [
             new BoxEl
@@ -114,20 +114,22 @@ internal static class WinUiArtistSections
 
     /// <summary>A measured PagedShelf under an accent header, at the tier's fit (<paramref name="band"/>: cards between 150 and 200, gap 12, stock chevrons;
     /// a 164 strip whose third card peeks at Compact; ten columns at Huge), one row, edge fade 36. The items are VALUE records (slot + version), so a publish that changes nothing
-    /// a card paints rebuilds no card; a hydrated name bumps the version and rebuilds exactly that card.</summary>
+    /// a card paints rebuilds no card; a hydrated name bumps the version and rebuilds exactly that card. <paramref name="cardHeight"/> is the card's own extent at
+    /// a fitted width, and every shelf states it: the strip (and its loading shims) is exactly that tall, so a shelf of short tiles (the concert stubs) never
+    /// reserves a cover card's height under them.</summary>
     static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, ColorF accent, WinUiShelfBand band,
-                           Func<float, float>? cardHeight = null, Action<ShelfEntity, int>? onInvoke = null)
+                           Func<float, float> cardHeight, Action<ShelfEntity, int>? onInvoke = null)
         => new BoxEl
         {
             Direction = 1, MinWidth = 0f,
-            // Artist shelf cards are the shared surface's `s_shelfShape`: a fixed square art and label budget (the
-            // videos shelf passes its own 16:9 extent). Supplying the shared height formula keeps the virtual shelf
+            // Each shelf hands its card's extent: the surface cards' `s_shelfShape` (a fixed square art and label budget), the
+            // videos' 16:9 extent, the stub's, the merch card's, the gallery's square. Supplying the height formula keeps the virtual shelf
             // from mounting a probe row of full cards (artwork, tooltips, playback overlays) just to discover a height
             // it already knows. The probe was a major source of late mount/layout bursts during navigation and could
             // make the page appear to flicker.
             // A shelf of SURFACE cards passes `onInvoke` (the slot root is then the one click/focus owner: one Tab stop
             // per card, Enter/Space invoke); a shelf whose cards own their click (concert stub, merch, gallery) omits it.
-            Children = [PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight ?? s_squareHeight,
+            Children = [PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight,
                 header: R.Type.RailHeader(title) with { MaxLines = 1, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis }, measured: false, keyOf: s_shelfKey,
                 pager: band.Pager ? ShelfPager.Chevrons : ShelfPager.None, minCardW: band.MinCardW, maxCardW: band.MaxCardW, gap: band.Gap,
                 fixedCardW: band.FixedCardW, maxColumns: band.MaxColumns,
@@ -140,6 +142,9 @@ internal static class WinUiArtistSections
     /// re-fits the SAME shelf (its cards and its page survive) instead of remounting it.</summary>
     internal const string ShelfKey = "shelf";
     static readonly Func<float, float> s_squareHeight = static w => SurfaceGeometry.ShelfHeight(w);
+
+    /// <summary>A gallery photograph is a w x w square with no caption: the strip is exactly the square.</summary>
+    static readonly Func<float, float> s_galleryHeight = static w => w;
 
     static ShelfEntity[] Items(ReadOnlySpan<int> slots, EntityKind kind, int cap)
     {
@@ -164,7 +169,7 @@ internal static class WinUiArtistSections
 
     static Element AppearsOnShelf(Artist a, ColorF accent, WinUiShelfBand band)
         => ShelfOf(Items(a.AppearsOnSlots, EntityKind.Album, ArtistSections.AppearsOnCap), AlbumCard,
-                   Loc.Get(Strings.Artist.AppearsOn), accent, band, onInvoke: static (item, _) => OpenAlbum(item));
+                   Loc.Get(Strings.Artist.AppearsOn), accent, band, s_squareHeight, static (item, _) => OpenAlbum(item));
 
     /// <summary>One album card for a slot at a cell width (the overview's discography preview).</summary>
     internal static Element AlbumCardAt(int slot, float w)
@@ -255,8 +260,8 @@ internal static class WinUiArtistSections
         for (int i = 0; i < n; i++)
             items[i] = new ShelfEntity(slots[i], new Playlist(slots[i]).Version, i < subtitles.Length ? subtitles[i] : default, 0,
                 slots[i].ToString(CultureInfo.InvariantCulture));
-        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), accent, band,
-                       onInvoke: static (item, _) => OpenPlaylist(item));
+        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), accent, band, s_squareHeight,
+                       static (item, _) => OpenPlaylist(item));
     }
 
     /// <summary>The playlist card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
@@ -281,7 +286,10 @@ internal static class WinUiArtistSections
 
     static Element ConcertsShelf(Artist a, ColorF accent, WinUiShelfBand band)
         => ShelfOf(Items(a.ConcertSlots, EntityKind.Concert, ArtistSections.ConcertCap), s_concertCard,
-                   Loc.Get(Strings.Artist.UpcomingConcerts), accent, band);
+                   Loc.Get(Strings.Artist.UpcomingConcerts), accent, band, s_stubHeight);
+
+    /// <summary>The stub's extent at any width: <see cref="WinUiArtistRules.StubH"/>, the height the stub itself is built at.</summary>
+    static readonly Func<float, float> s_stubHeight = static _ => WinUiArtistRules.StubH;
 
     /// <summary>The concert stub is the concert cells' (`WinUiArtistBanners.Stub`, T10b3; ch 08 §9: 0.2.9's ArtistPage.ConcertStub). No menu.</summary>
     static readonly Func<ShelfEntity, int, float, Element> s_concertCard = static (item, _, w) =>
@@ -291,10 +299,16 @@ internal static class WinUiArtistSections
     };
 
     static Element MerchShelf(Artist a, ColorF accent, WinUiShelfBand band)
-        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), accent, band);
+        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), accent, band, s_merchHeight);
+
+    /// <summary>The merch card's extent at a card width, the height the card is built at: the padding (S over the art, M under the price), the square art
+    /// inside the S side padding, the two gaps, the name's two lines and the price's one (<see cref="WinUiArtistRules.MerchLine"/> each).</summary>
+    static readonly Func<float, float> s_merchHeight = static w
+        => Spacing.S + (w - 2f * Spacing.S) + 2f * Spacing.S + (WinUiArtistRules.MerchNameLines + 1) * WinUiArtistRules.MerchLine + Spacing.M;
 
     /// <summary>Square art, a 2-line name, the price in accent ink (Shelves.cs:139-165). 0.2.9's card was the one inert
-    /// card on the page (parity 91): 0.3 opens the shop link when the row carries one.</summary>
+    /// card on the page (parity 91): 0.3 opens the shop link when the row carries one. The card is <see cref="s_merchHeight"/> tall: the name keeps
+    /// its two lines' room, so every price in the row sits on one line and a two-line name never runs past the strip.</summary>
     static readonly Func<ShelfEntity, int, float, Element> s_merchCard = static (item, _, w) =>
     {
         ref readonly Merch merch = ref Album.MerchAt(item.Slot);
@@ -305,7 +319,7 @@ internal static class WinUiArtistSections
         bool link = shop.Length > 0;
         return new BoxEl
         {
-            Direction = 1, Gap = Spacing.S, Width = w, Shrink = 0f, ClipToBounds = true,
+            Direction = 1, Gap = Spacing.S, Width = w, Height = s_merchHeight(w), Shrink = 0f, ClipToBounds = true,
             Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
             Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverFill = Tok.FillCardDefault,
@@ -323,10 +337,10 @@ internal static class WinUiArtistSections
                 },
                 R.Type.DenseTitle(name) with
                 {
-                    Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2,
-                    Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = WinUiArtistRules.MerchNameLines, LineHeight = WinUiArtistRules.MerchLine,
+                    Trim = TextTrim.CharacterEllipsis, Grow = 1f,
                 },
-                R.Type.DenseTitle(price) with { Weight = 700, Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                R.Type.DenseTitle(price) with { Weight = 700, Color = Tok.AccentTextPrimary, MaxLines = 1, LineHeight = WinUiArtistRules.MerchLine },
             ],
         };
     };
@@ -351,14 +365,14 @@ internal static class WinUiArtistSections
             HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
             OnClick = () => open(urls, index),
             Children = [Controls.Artwork(urls[index], w, w, Radii.Card, decodePx: 480)],
-        }, Loc.Get(Strings.Artist.Gallery), accent, band);
+        }, Loc.Get(Strings.Artist.Gallery), accent, band, s_galleryHeight);
     }
 
     /// <summary>"Fans also like": circular cards with the subtitle "Artist" — the related artists, or the fallback
     /// pool of followed artists (the section keys differ, so the two never share a subtree).</summary>
     static Element ArtistsShelf(ReadOnlySpan<int> slots, ColorF accent, WinUiShelfBand band)
         => ShelfOf(Items(slots, EntityKind.Artist, ArtistSections.FansCap), ArtistCard,
-                   Loc.Get(Strings.Detail.FansAlsoLike), accent, band, onInvoke: static (item, _) => OpenArtist(item));
+                   Loc.Get(Strings.Detail.FansAlsoLike), accent, band, s_squareHeight, static (item, _) => OpenArtist(item));
 
     /// <summary>The artist card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
     static void OpenArtist(ShelfEntity item) => Track.GoToArtist(new Artist(item.Slot));
@@ -393,18 +407,14 @@ internal static class WinUiArtistSections
 
     // ── about ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>About: the shared artist card (the image band, the name beside Follow, the monthly listeners, a four-line bio), then the external links and the cities.
-    /// Follow is the tier's control size: the 40 target at Compact.</summary>
+    /// <summary>About: WinUI's own card (W-Artist-Huge: the photograph band, the stats, the bio and "Read more", `WinUiArtistAbout`), then the external
+    /// links and the cities. Not the shared about card: its body links to the artist, which on the artist's own page went nowhere.</summary>
     static Element AboutBlock(ArtistPageProps p, WidthTier tier)
     {
-        ControlSize followSize = WinUiDetailRules.TargetOf(tier) > WinUiDetailRules.Target ? ControlSize.Large : ControlSize.Medium;
         Artist a = p.Artist;
         LinkEdge[] links = a.Links.ToArray();
         CityEdge[] cities = a.TopCities.ToArray();
-        var kids = new List<Element>(3)
-        {
-            Controls.ArtistAboutCard(a, AboutLayout.Aside, WinUiArtistRules.AboutBand, (uri, name) => WinUiDetailKit.Follow(uri, name, followSize)) with { Key = "about:" + a.Uri.Text },
-        };
+        var kids = new List<Element>(3) { WinUiArtistAbout.Card(a, p.OpenGallery) };
         if (links.Length > 0) kids.Add(LinkPills(links));
         if (cities.Length > 0) kids.Add(CityBars(cities, p.Accent));
         return SectionBlock(Loc.Get(Strings.Theme.Winui.Detail.About), new BoxEl

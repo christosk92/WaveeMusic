@@ -9,7 +9,7 @@
 
 .EXAMPLE
   ops\build\bench-wavee.cmd
-  pwsh ops/build/bench-wavee.ps1 -Exe src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\Wavee.exe
+  pwsh ops/build/bench-wavee.ps1 -Exe src\apps\Wavee\bin\Release\net11.0\win-arm64\publish\Wavee.exe
 #>
 [CmdletBinding()]
 param(
@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $Exe) {
-  $Exe = Join-Path $root "src\apps\Wavee\bin\$Configuration\net10.0\win-$Arch\publish\Wavee.exe"
+  $Exe = Join-Path $root "src\apps\Wavee\bin\$Configuration\net11.0\win-$Arch\publish\Wavee.exe"
 }
 if (-not $OutputDir) { $OutputDir = Join-Path $root 'artifacts\bench' }
 

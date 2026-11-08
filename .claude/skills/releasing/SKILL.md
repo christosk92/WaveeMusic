@@ -106,7 +106,7 @@ The flags combine, so `-CrashService -Channel stable -Quad 0.0.1.0` tests both. 
 
 Shipped builds have `StackTraceSupport=false`: a crash report's frames are `at Wavee!<BaseAddress>+0x7b1fc6` and
 nothing else. `pack-wavee-msix.ps1` therefore ALWAYS publishes with `NativeDebugSymbols=true DebugType=portable
-IlcGenerateMapFile=true`, moves `Wavee.pdb` (from `publish\`) + `Wavee.map.xml` (from `obj\Release\net10.0\<rid>\native\`)
+IlcGenerateMapFile=true`, moves `Wavee.pdb` (from `publish\`) + `Wavee.map.xml` (from `obj\Release\net11.0\<rid>\native\`)
 into `<staging>\symbols\<quad>\win-<arch>\` **before** the layout copy, zips them as `Wavee-<quad>-win-<arch>-symbols.zip`,
 and the release script uploads that zip beside the `.msix`. The PDB matches exactly one exe (`SYMBOLS.txt` carries its
 sha256); the map has names/sizes/hashes but **no addresses**.

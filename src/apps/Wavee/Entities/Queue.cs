@@ -252,20 +252,26 @@ public static partial class Queue
     /// — repeat-context — a forward walk that runs off the end resumes at <see cref="WrapIndex"/> (the first row the
     /// context itself provided) and continues up to AND INCLUDING <paramref name="index"/>: a context whose only live
     /// row is the one on the deck replays that row rather than ending. Every row is visited at most once, so the answer
-    /// is bounded by the list's length however many rows are dead. Pass -1 to start at the head.</summary>
-    public static int NextPlayable<TRows>(ReadOnlySpan<QueueEdge> rows, TRows playable, int index, bool forward, bool wrap)
+    /// is bounded by the list's length however many rows are dead. Pass -1 to start at the head.
+    /// <para>AUTOPLAY ROWS ARE LANDED ON ONLY WHEN <paramref name="autoplay"/> (#215): the caller says whether the end of the
+    /// context may continue into suggestions — never under repeat (Spotify's fill-up turns to the autoplay context only
+    /// with repeat-context off, librespot <c>connect/src/state/tracks.rs:298-310</c>) and never with the Autoplay setting
+    /// off — so a tail appended earlier is stepped over, never played. The wrap lands on CONTEXT rows only: a consumed
+    /// queued row or an autoplay row behind the deck never comes round again.</para></summary>
+    public static int NextPlayable<TRows>(ReadOnlySpan<QueueEdge> rows, TRows playable, int index, bool forward, bool wrap,
+        bool autoplay = true, int contextStart = 0)
         where TRows : struct, IPlayableRows
     {
         if (forward)
         {
             for (int i = NextIndex(rows, index); i >= 0; i = NextIndex(rows, i))
-                if (playable.IsPlayable(i)) return i;
+                if ((autoplay || rows[i].Provider != (byte)QueueProvider.Autoplay) && playable.IsPlayable(i)) return i;
             if (!wrap) return -1;
-            int head = WrapIndex(rows);
+            int head = WrapIndex(rows, contextStart);
             if (head < 0) return -1;
             int last = (uint)index < (uint)rows.Length ? index : rows.Length - 1;
             for (int i = head; i <= last; i++)
-                if (playable.IsPlayable(i)) return i;
+                if (rows[i].Provider == (byte)QueueProvider.Context && playable.IsPlayable(i)) return i;
             return -1;
         }
         for (int i = PrevIndex(rows, index); i >= 0; i = PrevIndex(rows, i))
@@ -607,12 +613,23 @@ public static partial class Queue
     /// targets that are ALREADY packed (<see cref="Pack(ReadOnlySpan{EntityRef},Span{int})"/>). The bucket-order
     /// invariant is CHECKED here rather than assumed: a decoder that hands rows over in wire order would otherwise
     /// break <see cref="Range"/> and the cursor walk in a way that only surfaces as the wrong song.</summary>
-    public static void Replace(ReadOnlySpan<int> packedRefs, ReadOnlySpan<QueueEdge> rows)
+    public static void Replace(ReadOnlySpan<int> packedRefs, ReadOnlySpan<QueueEdge> rows, int contextStart = 0)
     {
         System.Diagnostics.Debug.Assert(IsOrdered(rows),
             "queue rows must arrive in reading order: history, now-playing, user queue, next up");
         Q.ReplaceRun(Session, packedRefs, rows);
+        s_contextStart = Math.Max(0, contextStart);
     }
+
+    static int s_contextStart;
+
+    /// <summary>The first row of the CONTEXT ON THE DECK (#215). 0 for every layout but one: a radio parked behind a live
+    /// track (<c>Playback.ParkRadio</c>) keeps the old context's rows as history, and a repeat-context wrap, a whole-context
+    /// shuffle and the Previous wrap must stay inside the radio. A write that only appends or re-lays the same context
+    /// (an autoplay or page append, a shuffle, a controller's splice behind the deck) passes it on through
+    /// <see cref="Replace(ReadOnlySpan{int},ReadOnlySpan{QueueEdge},int)"/>; every other layout restarts it at 0. Rows are
+    /// only ever inserted or removed AFTER the deck, so an index at or before the deck's next row stays true.</summary>
+    public static int ContextStart => s_contextStart;
 
     /// <summary>The same, from cross-kind row pointers. Packs through a POOLED buffer rather than a new array: a
     /// cluster push is tens of rows and arrives on a wire answer, so this allocates nothing after warm-up (P8).</summary>
@@ -680,5 +697,9 @@ public static partial class Queue
 
     /// <summary>Forget the queue: back to <see cref="EdgeState.Unknown"/>, which renders as a skeleton and not as "the
     /// queue is empty". What a device transfer does before the new owner's cluster lands (C7).</summary>
-    public static void Clear() => Q.Clear(Session);
+    public static void Clear()
+    {
+        Q.Clear(Session);
+        s_contextStart = 0;
+    }
 }

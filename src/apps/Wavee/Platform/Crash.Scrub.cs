@@ -100,6 +100,13 @@ public static partial class Crash
                 ExceptionMessage = ReportRedactor.Redact(s.ExceptionMessage ?? "", rules),
                 LastRoute = ReportRedactor.Redact(s.LastRoute ?? "", rules),
                 FaultModule = ReportRedactor.Redact(s.FaultModule ?? "", rules),
+                // Crash round 2026-11-07: module FILE names (never paths) of third-party modules, the native region label and
+                // the VM hint are code- or OS-owned, but they leave the machine, so the same redactor sees them.
+                ThirdPartyModules = s.ThirdPartyModules is { } mods ? Array.ConvertAll(mods, m => ReportRedactor.Redact(m ?? "", rules)) : null,
+                NativeRegion = s.NativeRegion is { } region ? ReportRedactor.Redact(region, rules) : null,
+                VmHint = s.VmHint is { } hint ? ReportRedactor.Redact(hint, rules) : null,
+                // A driver version is four dot-separated numbers, which the generic pass would mistake for an IPv4 address.
+                GpuDriver = s.GpuDriver is { } driver ? (IsVersionQuad(driver) ? driver : ReportRedactor.Redact(driver, rules)) : null,
             };
             return new ScrubbedBundle(scrubbedSummary, report, tail);
         }
@@ -219,6 +226,7 @@ public static partial class Crash
         {
             "route", "arg", "navId", "state", "code", "status", "reason", "mode", "kind", "source",
             "seq", "tid", "t", "pid", "op", "elapsed",
+            "fired", "hook",   // crash.native.hook fired=veh|filter|gate: code-owned
         };
 
         /// <summary>The <c>startup</c> event's own fields that are dropped even though nothing in
@@ -228,8 +236,20 @@ public static partial class Crash
 
         static readonly string[] CredentialMarkers = { "Authorization", "Cookie", "client-token", "set-cookie" };
 
-        static readonly HashSet<string> GpuStatusKeys = new(StringComparer.Ordinal)
-            { "recorded", "currentReason", "hr", "ntstatus", "exceptionCode" };
+        /// <summary>Keys whose value on an engine GPU / window-state line is NEVER kept, whatever its shape: the adapter's
+        /// marketing name (the summary already carries it), per-boot or per-session handles and the monitor's device path.</summary>
+        static readonly HashSet<string> GpuDeniedKeys = new(StringComparer.Ordinal)
+            { "desc", "luid", "hwnd", "monitor", "name", "exception", "message", "note", "sid" };
+
+        /// <summary>Keys whose value on an engine diagnostic line may be an enum-like NAME (anything else there keeps only a
+        /// hex code or a number): the device-removed reasons, the recovery path, the backend and the engine's own states.</summary>
+        static readonly HashSet<string> GpuEnumKeys = new(StringComparer.Ordinal)
+        {
+            "recorded", "currentReason", "reason", "hr", "ntstatus", "exceptionCode", "path", "backend", "mode", "stage",
+            "from", "park", "hold", "tier", "uma", "software", "eligible", "keepAlive", "resized", "reconciled", "layout",
+            "xform", "unchanged", "skip", "uploads", "composite", "tile", "present", "waitable", "slotWait", "topology",
+            "kind", "state", "status", "result",
+        };
         static readonly HashSet<string> GpuPhases = new(StringComparer.Ordinal)
         {
             "recover-start", "recover-end", "recover-failed", "submit-start", "submit-end",
@@ -278,7 +298,7 @@ public static partial class Crash
             if (i < tokens.Count && tokens[i] != "-" && !tokens[i].Contains('='))
                 eventId = tokens[i];
             bool startup = eventId == "startup";
-            bool gpuDiagnostic = tokens.Contains("[d3d12]") || tokens.Contains("[d3d12.recovery]") || tokens.Contains("[d3d12.teardown]");
+            bool gpuDiagnostic = IsEngineDiagnostic(tokens);
 
             var sb = new StringBuilder(rawLine.Length);
             for (int k = 0; k < tokens.Count; k++)
@@ -313,13 +333,41 @@ public static partial class Crash
             _ => null,
         };
 
+        /// <summary>The engine's own always-on GPU and window-state lines (<c>[d3d12]</c>, <c>[d3d12.*]</c>,
+        /// <c>[device-lost]</c>, <c>[hidden]</c>): their values are HRESULTs, enum names and counters the engine formats
+        /// itself, which production tails showed as <c>&lt;dropped&gt;</c> (<c>currentReason=</c>, <c>path=</c>,
+        /// <c>backend=</c>, <c>recorded=</c>).</summary>
+        static bool IsEngineDiagnostic(List<string> tokens)
+        {
+            foreach (string t in tokens)
+                if (t.Length > 2 && t[0] == '[' && t[^1] == ']'
+                    && (t.StartsWith("[d3d12", StringComparison.Ordinal) || t is "[device-lost]" or "[hidden]")) return true;
+            return false;
+        }
+
+        /// <summary>The value shapes an engine diagnostic line may keep, and ONLY these (never free text): an HRESULT or other
+        /// hex code (<c>0x</c> + 1-16 hex digits), an enum-like name (a letter, then letters, digits, <c>_</c> or <c>-</c>,
+        /// at most 48), or numbers joined by <c>x</c>, <c>/</c>, <c>@</c> or <c>.</c> (a size, a ratio, a driver version).</summary>
+        public static bool IsDiagnosticValueShape(string value, bool allowName = true)
+        {
+            if (IsHex(value, 1, 16)) return true;
+            if (allowName && value.Length is > 0 and <= 48 && char.IsAsciiLetter(value[0]))
+            {
+                foreach (char c in value) if (!(char.IsAsciiLetterOrDigit(c) || c is '_' or '-')) goto notName;
+                return true;
+            }
+            notName:
+            string digits = value.StartsWith('-') ? value[1..] : value;
+            if (digits.Length is 0 or > 48 || !char.IsAsciiDigit(digits[0]) || !char.IsAsciiDigit(digits[^1])) return false;
+            foreach (char c in digits) if (!(char.IsAsciiDigit(c) || c is 'x' or '/' or '@' or '.')) return false;
+            return true;
+        }
+
         static bool KeepValue(string key, string rawValue, bool gpuDiagnostic)
         {
             string value = StripQuotes(rawValue);
-            if (gpuDiagnostic && (GpuStatusKeys.Contains(key) || key == "reason")) return IsHex(value, 8, 8);
-            if (gpuDiagnostic && key is "vendorId" or "deviceId") return IsHex(value, 4, 8);
             if (gpuDiagnostic && key == "phase") return GpuPhases.Contains(value);
-            if (gpuDiagnostic && key == "backend") return value == "D3D12";
+            if (gpuDiagnostic) return !GpuDeniedKeys.Contains(key) && IsDiagnosticValueShape(value, GpuEnumKeys.Contains(key));
             if (key == "stage" && Enum.TryParse<ShutdownPhase>(value, out var phase)
                 && Enum.IsDefined(phase) && phase.ToString() == value) return true;
             if (AllowlistedKeys.Contains(key)) return true;
@@ -328,6 +376,19 @@ public static partial class Crash
             if (key.EndsWith("Bytes", StringComparison.Ordinal)) return true;
             if (key.StartsWith("frames", StringComparison.Ordinal)) return true;
             return false;
+        }
+
+        /// <summary><c>a.b.c.d</c> with 1-5 digits each: a driver version, nothing personal.</summary>
+        public static bool IsVersionQuad(string value)
+        {
+            string[] parts = value.Split('.');
+            if (parts.Length != 4) return false;
+            foreach (string part in parts)
+            {
+                if (part.Length is 0 or > 5) return false;
+                foreach (char c in part) if (!char.IsAsciiDigit(c)) return false;
+            }
+            return true;
         }
 
         static bool IsHex(string value, int minDigits, int maxDigits)

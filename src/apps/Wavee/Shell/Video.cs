@@ -693,34 +693,6 @@ public static partial class Video
         }
     }
 
-    /// <summary>The Connect-wire half of the same rule: which video facts the cluster has ALREADY been told about the
-    /// current track. A badge-only association land changes no media host and fires no playback event, so nothing
-    /// would otherwise re-publish the player state — remote controllers would never see the offer for the song they
-    /// are watching us play. This tracker turns that land into EXACTLY ONE extra PutState: the FIRST observation of a
-    /// track is only a baseline (its facts ride the track-change PutState the publisher already sends), and afterwards
-    /// only a real gain — has-video false→true, or a gid arriving/changing — announces. Idempotent re-observations are
-    /// silent.</summary>
-    public sealed class ConnectVideoFacts
-    {
-        string? _uri;
-        bool _hasVideo;
-        string? _gidHex;
-
-        /// <summary>Fold the current track's video facts. Returns true iff a PLAYER_STATE_CHANGED PutState must be
-        /// enqueued.</summary>
-        public bool Observe(string? trackUri, bool hasVideo, string? videoGidHex)
-        {
-            bool sameTrack = string.Equals(trackUri, _uri, StringComparison.Ordinal);
-            bool gained = sameTrack
-                && ((hasVideo && !_hasVideo)
-                    || (videoGidHex is { Length: > 0 } && !string.Equals(videoGidHex, _gidHex, StringComparison.Ordinal)));
-            _uri = trackUri;
-            _hasVideo = hasVideo;
-            _gidHex = videoGidHex;
-            return gained;
-        }
-    }
-
     // ── stage input affordances ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Which input affordances a video stage gets, by the surface it sits in. Returns plain bools rather than
@@ -743,6 +715,10 @@ public static partial class Video
         /// <summary>Mount the player stage whenever a player exists. Source may be null — overlay Loading/poster on
         /// top; do not tear down the only pump.</summary>
         public static bool ShouldMountPlayerStage(bool playerPresent) => playerPresent;
+
+        /// <summary>…and never while another device plays the video (<see cref="JoinVisual.Remote"/>): a player left bound from this
+        /// device's own earlier turn is idle there, and its stage and strip would sit over the poster's "Play here".</summary>
+        public static bool ShouldMountPlayerStage(bool playerPresent, JoinVisual join) => playerPresent && join != JoinVisual.Remote;
 
         /// <summary>Whether the poster layer over the stage is shown. The poster is ALWAYS a child of the stage wrapper (keyed,
         /// so the wrapper's shape never changes at first frame) and is merely collapsed once the live picture is the one
@@ -1309,13 +1285,13 @@ public static partial class Video
 
     /// <summary>The docked cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before
     /// any resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
-    /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). A splitter drag PINS the height — for THIS source only: a
-    /// new source key unpins it.</summary>
+    /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). The handle PINS the height (a drag or a key step) and the pin
+    /// holds across sources and restarts, clamped to the current floor and ceiling; only its double-click unpins it.</summary>
     public static class DockedFit
     {
         /// <param name="SourceKey">The playing source's key ("" with none).</param>
         /// <param name="FittedFor">The source key the cap last fitted for (null before the first fit).</param>
-        /// <param name="Pinned">Is the height pinned by a splitter drag right now?</param>
+        /// <param name="Pinned">Has the user sized the cap (the handle's pin)?</param>
         /// <param name="PinnedHeight">The stored height (what a pinned cap keeps).</param>
         /// <param name="RailW">The rail's width — the card is full-bleed, so this IS the video's width.</param>
         /// <param name="RemainingRailH">The rail height left for the cap (the fit's ceiling).</param>
@@ -1323,23 +1299,25 @@ public static partial class Video
                                             int DecodedW, int DecodedH, int ManifestW, int ManifestH, int CatalogueW, int CatalogueH,
                                             float RemainingRailH);
 
-        /// <param name="SourceChanged">A different source than the last fit: the caller records it and drops the pin.</param>
-        /// <param name="Pinned">Is the height pinned for THIS source (a source change unpins)?</param>
+        /// <param name="SourceChanged">A different source than the last fit: the caller records it.</param>
+        /// <param name="Pinned">Is the height the user's (the pin, which a source change keeps)?</param>
         /// <param name="NaturalW">The natural size the fit used (0×0 ⇒ none known; 16:9 applies).</param>
         /// <param name="DimSource">Which fact sized it (<see cref="NaturalSeed.Name"/>), for the always-on fit line.</param>
-        /// <param name="Height">The cap height: the pinned one, else the content fit.</param>
-        /// <param name="WritesHeight">Should the caller publish <paramref name="Height"/>? Only when not pinned.</param>
+        /// <param name="Height">The cap height: the pinned one inside the floor and the ceiling, else the content fit.</param>
+        /// <param name="WritesHeight">Should the caller publish <paramref name="Height"/>? Always: a pinned height is only re-clamped.</param>
         public readonly record struct Result(bool SourceChanged, bool Pinned, int NaturalW, int NaturalH, string DimSource,
                                              float Height, bool WritesHeight);
 
         public static Result Decide(in Input i)
         {
             bool changed = !string.Equals(i.SourceKey, i.FittedFor, StringComparison.Ordinal);
-            bool pinned = i.Pinned && !changed;
+            bool pinned = i.Pinned;
             string dimSource = NaturalSeed.Name(NaturalSeed.Pick(i.DecodedW, i.DecodedH, i.ManifestW, i.ManifestH,
                 i.CatalogueW, i.CatalogueH, out int naturalW, out int naturalH));
-            float height = pinned ? i.PinnedHeight : Shell.FitDockedVideoHeight(i.RailW, naturalW, naturalH, i.RemainingRailH);
-            return new Result(changed, pinned, naturalW, naturalH, dimSource, height, WritesHeight: !pinned);
+            float height = pinned
+                ? Shell.ClampDockedVideoHeight(i.PinnedHeight, i.RailW, i.RemainingRailH)
+                : Shell.FitDockedVideoHeight(i.RailW, naturalW, naturalH, i.RemainingRailH);
+            return new Result(changed, pinned, naturalW, naturalH, dimSource, height, WritesHeight: true);
         }
     }
 
@@ -1371,6 +1349,9 @@ public static partial class Video
         /// <summary>The poster PLUS the fault line and NO ring: this one is not coming. In 0.2.9 a dead licence and a
         /// slow one drew the identical picture; the whole point of reading <c>Phase</c> is that they no longer do.</summary>
         Failed = 3,
+        /// <summary>The poster PLUS "Playing on &lt;device&gt;" and "Play here", NO ring: another device plays the video (a Connect
+        /// controller's surface). No local player is coming, so it is neither a join nor a fault.</summary>
+        Remote = 4,
     }
 
     /// <summary>A join's SHAPE — the four facts that say what the surface is looking at, without its clock.</summary>
@@ -1381,7 +1362,11 @@ public static partial class Video
     /// <param name="FrameSeen">Does the CURRENT source already have a picture? (<c>Playback.Video.FirstFrame</c> bumped
     /// while this source key was live.) The join's end is an EVENT, which is what stops the clock and the budget with
     /// it — and what makes a later re-buffer or seek behind that picture not a join at all.</param>
-    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen);
+    /// <param name="Hosted">Does the reducer have the row on the LOCAL video host (<c>Playback.DeckVideo</c>: on video, not
+    /// remote)? Without it no local player is coming, so a surface with no player is not "joining" — it is the poster.</param>
+    /// <param name="Remote">Does a FOREIGN device own playback (<c>Playback.DeckVideo.Remote</c>)? The surface is a controller's: it shows
+    /// what the owner plays, never a local join.</param>
+    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen, bool Hosted = true, bool Remote = false);
 
     /// <summary>The loading picture, decided. The artwork shows at once and the ring only for a join that outlasts
     /// <see cref="Playback.Video.Budgets.JoiningNoSpinnerMs"/> — a spinner that flashes for 200 ms reports trouble that
@@ -1402,14 +1387,16 @@ public static partial class Video
         /// spinner (the previous frame stays — the video plan §3.2.3).</summary>
         public static bool IsJoining(in JoinState s)
             => s.Wanted && !s.FrameSeen && s.Phase != SwitchPhase.Failed
-               && (!s.PlayerPresent
-                   || s.Phase is SwitchPhase.Resolving or SwitchPhase.Licensing or SwitchPhase.Buffering or SwitchPhase.Attaching);
+               && (!s.PlayerPresent ? s.Hosted || s.Phase == SwitchPhase.Resolving
+                   : s.Phase is SwitchPhase.Resolving or SwitchPhase.Licensing or SwitchPhase.Buffering or SwitchPhase.Attaching);
 
         /// <summary>THE loading decision, for every surface.</summary>
         /// <param name="joinElapsedMs">How long this join has run on the caller's monotonic clock (the surfaces use the
         /// host timer's own, so the budget and the wake that samples it agree); 0 when no join is in flight.</param>
         public static JoinVisual Decide(in JoinState s, long joinElapsedMs)
         {
+            // A controller's surface: the owner plays the video elsewhere — say where, offer to take it, never a spinner.
+            if (s.Remote && s.Wanted) return JoinVisual.Remote;
             // A failure DURING a join the user asked for replaces the loading picture — that IS the ask: a slow licence
             // and a dead one must not look alike. Gated on `Wanted` so a stale failure cannot flash on the NEXT time
             // video is turned on, and on `!FrameSeen` because a failure that arrives after the video started is the

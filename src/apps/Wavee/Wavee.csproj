@@ -4,7 +4,7 @@
     <!-- WinExe = Windows GUI subsystem: no console window spawns on launch. -->
     <OutputType>WinExe</OutputType>
     <!-- NativeAOT is the publish target (single self-contained native exe). Scoped to THIS csproj so
-         the net10 app build/run stay JIT; AOT/trim analyzers engage here, never on the referenced engine projects' path. -->
+         the net11 app build/run stay JIT; AOT/trim analyzers engage here, never on the referenced engine projects' path. -->
     <PublishAot>true</PublishAot>
     <!-- The Windows composition root references the Windows-only backend, so CA1416 is noise here: the Win32 paths are
          intentional. The portable core (Entities/Spotify/Playback)'s cross-platform discipline is enforced by
@@ -161,7 +161,7 @@
   <Target Name="CopyBundledModules" AfterTargets="Build" Condition="'@(WaveeModule)' != ''"
           Outputs="%(WaveeModule.Identity)">
     <PropertyGroup>
-      <_WaveeModuleBin>$(MSBuildProjectDirectory)\..\modules\Wavee.Module.%(WaveeModule.Identity)\bin\$(Configuration)\net10.0\</_WaveeModuleBin>
+      <_WaveeModuleBin>$(MSBuildProjectDirectory)\..\modules\Wavee.Module.%(WaveeModule.Identity)\bin\$(Configuration)\net11.0\</_WaveeModuleBin>
       <_WaveeModuleDest>$(TargetDir)modules\%(WaveeModule.ModuleId)\</_WaveeModuleDest>
     </PropertyGroup>
     <ItemGroup>

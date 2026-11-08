@@ -114,6 +114,7 @@ static class Validator
 
         errors.AddRange(ReleaseNotesValidation.ValidateMedia(doc, notesDir));
         errors.AddRange(ReleaseNotesValidation.ValidateDeepLinks(doc));
+        errors.AddRange(ValidateCommunity(doc));
 
         // ── commits.json cross-check ────────────────────────────────────────────────────────────────────────
         DefaultRepos(doc, repo);
@@ -199,6 +200,24 @@ static class Validator
     }
 
     /// <summary>A bare <c>#123</c> in CHANGELOG.md means "this repo".</summary>
+    /// <summary>A highlight's <c>community</c> logins (the card's "Community" badge and the viewer's "Contributed by @login" credit): each one a bare GitHub
+    /// login, 1-39 ASCII letters, digits or hyphens with no leading '@', so the credit's mention tokenizes whole and links to that profile.</summary>
+    static IEnumerable<string> ValidateCommunity(ReleaseNotesDocument doc)
+    {
+        foreach (var h in doc.Highlights)
+            foreach (var login in h.Community)
+            {
+                if (string.IsNullOrWhiteSpace(login))
+                {
+                    yield return $"highlight '{h.Id}': community lists an empty login";
+                    continue;
+                }
+                bool ok = login.Length <= 39 && login[0] != '-';
+                foreach (char c in login) ok &= char.IsAsciiLetterOrDigit(c) || c == '-';
+                if (!ok) yield return $"highlight '{h.Id}': community login '{login}' is not a GitHub login (letters, digits and '-', at most 39, no '@')";
+            }
+    }
+
     static void DefaultRepos(ReleaseNotesDocument doc, string repo)
     {
         foreach (var s in doc.Sections)

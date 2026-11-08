@@ -257,7 +257,7 @@ internal sealed class ZuneCoverVeil : Component
         {
             Width = p.Width, Height = p.Height, Grow = float.IsNaN(p.Height) ? 1f : 0f,
             ZStack = true, HitTestVisible = false,
-            Children = [new BoxEl { HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(Tok.FillLayerDefault, p.Vertical, p.Hold) }],
+            Children = [new BoxEl { HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(Tok.FillLayerDefault, p.Vertical, p.Hold, p.Ramp) }],
         };
     }
 }

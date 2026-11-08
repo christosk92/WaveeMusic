@@ -89,6 +89,7 @@ internal static partial class ZuneSettings
                     chips: false, width: Z.WideComboWidth)),
                 k.DocRow(videoMetered, k.Choice(videoMetered, [Loc.Get(Strings.Settings.Playback.VideoQualityUnlimited), "480p", "720p", "1080p"], chips: false, width: Z.WideComboWidth)),
                 ToggleRow(k, Tab.Playback, "videoPrepareAhead"),
+                ToggleRow(k, Tab.Playback, "showCanvas"),
                 Embed.Comp(static () => new VideoOverridesRow()) with { Key = "zs:video-overrides" }),
 
             Group(k, Tab.Playback, "Player bar", ToggleRow(k, Tab.Playback, "playerBarRemaining")),

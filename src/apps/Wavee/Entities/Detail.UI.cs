@@ -593,6 +593,13 @@ public static partial class Detail
         readonly Action _republishAccent;
         readonly Func<bool> _railPending;
 
+        // ── THE HEAD'S READINESS (album, playlist, show, episode): ONE tracked derivation of the header group's total state (ReadHead, through
+        //    Table.Observe), so a head whose answer settled without it (Absent) or whose ask failed (Failed) turns the page into the error vacancy with
+        //    Retry on the publication that said so — no timer — and Retry re-asks the head past the seal ──
+        readonly Func<GroupState> _headStateFn;
+        readonly Action _retryHead;
+        GroupState _headNoted = GroupState.Unasked;
+
         // trampolines into _latest
         readonly Action _tShuffle, _tCoverClick, _tGoLibrary, _tInvite, _tTune;
         readonly Func<ContextMenuModel?> _tMore;
@@ -636,6 +643,8 @@ public static partial class Detail
             _republishAccent = RepublishAccent;
             _pageEstimate = PageEstimate;
             _railPending = () => _spec.Value?.Identity.HeaderPending ?? true;
+            _headStateFn = ReadHead;
+            _retryHead = () => { if (_latest is { } live) DetailHead.Reask(live.Identity.Subject); };
 
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
             _tCoverClick = () => _latest?.Actions.CoverClick?.Invoke();
@@ -690,6 +699,22 @@ public static partial class Detail
             hooks.FocusNode?.Invoke(node, false);
         }
 
+        /// <summary>THE HEAD'S READINESS, the <c>UseComputed</c> body: the subject from the pushed spec (tracked) and its header group's total state
+        /// (<see cref="DetailHead.State"/>, tracked), so the memo subscribes to exactly the table row the verdict reads.</summary>
+        GroupState ReadHead()
+        {
+            _ = Entities.ScopeEpoch.Value;
+            return _spec.Value is { } spec ? DetailHead.State(spec.Identity.Subject) : GroupState.Unasked;
+        }
+
+        /// <summary>`page.failed`, once per stop of the head (a Retry that re-asks it clears the note).</summary>
+        void NoteHead(string route, EntityUri subject, GroupState stopped)
+        {
+            if (stopped == _headNoted) return;
+            _headNoted = stopped;
+            if (stopped != GroupState.Unasked) PageReadiness.NoteFailed(route, "detail.head " + subject.Kind, stopped);
+        }
+
         /// <summary>Every re-push lands here (the reconciler calls it at mount and on every parent render).</summary>
         public void ApplyProps(object props)
         {
@@ -724,6 +749,19 @@ public static partial class Detail
             var spec = _latest!;                                // …and the newest delegates
             var id = spec.Identity;
             var cfg = spec.Config;
+
+            // The head's readiness (ReadHead): while the page's own head is pending, a header group the store reads stopped (Absent: the answers
+            // settled without it; Failed: the ask failed, or the session cannot reach the server) is the error vacancy with Retry (voiced Offline
+            // by the shell while offline). The Retry re-asks the head; the re-ask publishes, and the page is back on its pending head next frame.
+            GroupState headState = UseComputed(_headStateFn).Value;
+            bool headStopped = id.HeaderPending && PageReadiness.Stopped(headState);
+            NoteHead(spec.RouteKey, id.Subject, headStopped ? headState : GroupState.Unasked);
+            if (headStopped)
+                return Ctx.Provide(AsideDocked, false, new BoxEl
+                {
+                    Key = "detail-failed", Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                    Children = [Shell.PageStateBody(Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retryHead))],
+                });
 
             // ── the structure's decision (the page layout, the rails' uniformity: a tracked read of the published policy) and the rail epoch
             //    (each write to a rail's remembered size subscribes it, then re-reads the store) ──
@@ -1345,4 +1383,46 @@ public static partial class Detail
 
     /// <summary>The brush budget every accent consumer shares — a VALUE under reduced motion (0 ⇒ an instant swap).</summary>
     static float AccentTransitionMs => Design.Reduced ? 0f : Design.Motion.Standard;
+}
+
+/// <summary>A detail page's HEAD in the store (album, playlist, show, episode): the group its header waits on, the bit its pending test reads
+/// (<c>Identity.HeaderPending</c>), that bit's total state, and the head's re-ask. One home for the frame host's head readiness.</summary>
+public static class DetailHead
+{
+    /// <summary>The group a detail page's head is asked as, and what its Retry re-asks: the kind's identity group. 0 for a kind with no detail head.</summary>
+    public static uint Group(EntityKind kind) => kind switch
+    {
+        EntityKind.Album => (uint)AlbumFields.Identity,
+        EntityKind.Playlist or EntityKind.Collection => (uint)PlaylistFields.Identity,
+        EntityKind.Show => (uint)ShowFields.Identity,
+        EntityKind.Episode => (uint)EpisodeFields.Identity,
+        _ => 0u,
+    };
+
+    /// <summary>The bits of <see cref="Group"/> the head's pending test reads (the title, or a playlist's whole identity).</summary>
+    public static uint Title(EntityKind kind) => kind switch
+    {
+        EntityKind.Album => (uint)AlbumFields.Title,
+        EntityKind.Playlist or EntityKind.Collection => (uint)PlaylistFields.Identity,
+        EntityKind.Show => (uint)ShowFields.Title,
+        EntityKind.Episode => (uint)EpisodeFields.Title,
+        _ => 0u,
+    };
+
+    /// <summary>The head's state, TRACKED (<see cref="Table.Observe"/>). Unasked for a kind with no head or a subject the table does not hold.</summary>
+    public static GroupState State(EntityUri subject)
+    {
+        uint title = Title(subject.Kind);
+        if (title == 0 || Entities.TableFor(subject.Kind) is not { } table) return GroupState.Unasked;
+        _ = table.Changed.Value;   // a row that is not there yet subscribes too: its arrival is a publication of this table
+        return table.TryGetSlot(subject.Id, out int slot) ? table.Observe(slot, title) : GroupState.Unasked;
+    }
+
+    /// <summary>The head's Retry: its identity group asked again, past any seal (<c>Refresh</c> clears the asks, then plans).</summary>
+    public static void Reask(EntityUri subject)
+    {
+        uint group = Group(subject.Kind);
+        if (group == 0 || Entities.TableFor(subject.Kind) is not { } table || !table.TryGetSlot(subject.Id, out int slot)) return;
+        Entities.Refresh(table, new ReadOnlySpan<int>(in slot), group);
+    }
 }

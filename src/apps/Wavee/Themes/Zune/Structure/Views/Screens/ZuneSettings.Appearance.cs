@@ -68,19 +68,14 @@ internal static partial class ZuneSettings
                 static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + " ms"))),
             ToggleRow(k, Tab.Appearance, "stageCalm"), ToggleRow(k, Tab.Appearance, "stageMoments")));
 
-        // DEVELOPER-ONLY, the whole group: the Cover / Player switch exists only in developer mode, and the player style is hidden until it affects Now playing.
+        // The player style: a normal user setting (the same one the now-playing style chip changes).
         var npvStyle = D(Tab.Appearance, "npvStyle");
         if (npvStyle.Visible(facts))
         {
-            var presentation = D(Tab.Appearance, "npvPresentation");
-            var preset = Rail.PlayerPrefs.CurrentPreset();
-            var presets = Rail.PlayerCatalog.Presets;
-            var styleLabels = new string[presets.Length];
-            for (int i = 0; i < styleLabels.Length; i++) styleLabels[i] = Loc.Get(presets[i].LabelKey);
+            var styles = Rail.PlayerCatalog.Styles;
+            var styleLabels = new string[styles.Length];
+            for (int i = 0; i < styleLabels.Length; i++) styleLabels[i] = Loc.Get(styles[i].NameKey);
             groups.Add(Group(k, Tab.Appearance, "Now playing",
-                Shown(presentation)
-                    ? k.DocRow(presentation, k.Choice(presentation, [Loc.Get(Strings.Player.PresentationCover), Loc.Get(preset.ShortLabelKey)], chips: true))
-                    : null,
                 k.DocRow(npvStyle, k.Choice(npvStyle, styleLabels, chips: false, width: Z.WideComboWidth))));
         }
 

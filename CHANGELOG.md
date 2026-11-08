@@ -10,10 +10,224 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.8] - unreleased
 
+### Added
+
+- **Album credits in Zune.** An album page names who wrote, produced and played on the record, gathered from its
+  songs' credits, and "all credits" opens the full list grouped by role. The song credits sheet, which showed only its
+  title in Zune and WinUI, lists everyone again.
+- **Storage & cache shows the AI models.** The models that time lyrics word by word on this PC (around a gigabyte
+  per language once compiled for the NPU) now count in the "On this PC" total, with their own colour in the bar
+  and a row that says how many languages are installed, opens their folder and removes them after asking. Removing
+  them stops a lyrics job in progress safely, and the Lyrics settings can download them again. When none are
+  downloaded the row shows 0 B and says where to get them.
+- **Storage & cache counts the rest of Wavee's data.** A new "Other app data" row covers the lyrics cache, crash
+  reports, What's new, podcast transcripts and modules, so the total matches what Wavee keeps on this PC.
+- **Spotify Canvas.** When the playing song has a Canvas (the short looping visual artists add to their tracks), it
+  plays in full screen behind the lyrics and the queue, and in the Canvas player style, where it fills the Now playing
+  panel edge to edge with the song's title over it (in Classic it ends in a slow wave in the album art's colours, over
+  the plain panel). In light mode the text over the Canvas stays light on a soft shade and the video fades into the
+  light panel below it, and the panel's rounded corner cuts the video. It grows with the panel's width. It is silent, loops without a seam, and pauses while you cannot see it.
+  Wavee asks for it only for the song that is playing and the next two in the queue, keeps the videos on disk, and
+  shows them offline for up to 30 days. A song without a Canvas looks the same as before.
+- **Resize the docked music video.** Drag the handle under the video in the side panel to make it taller or
+  shorter; double-click puts it back, the arrow keys work too, and Wavee remembers the height.
+- **Show Canvas** setting under Settings > Playback > Video, on by default. Turned off, no Canvas is fetched or shown
+  anywhere.
+- **Music videos with Spotify Connect.** Wavee now tells your other devices which songs have a music video, as the
+  official app does, so Spotify on your phone or computer shows its video switch while Wavee plays. Switching between
+  the video and the song from another device switches Wavee too, and a music video started from another device opens
+  as a video in Wavee.
+- **Switch another device's video.** While a phone, computer or speaker plays, Wavee's video button switches that
+  device between the video and the song. Instead of a "Loading…" that never ended, the video panel says which device is
+  playing, with a Play here button, and "Up next" shows the songs in that device's queue.
+- **Playlists that play their videos.** Spotify's "Video" choice on a playlist now plays the music videos. Playlists
+  without it, such as Today's Top Videos, have a Video option in their "…" menu, and Wavee remembers it for each
+  playlist. A playlist set to video shows how long each video is.
+- **Pin by dragging in Zune.** Drag a playlist, album or artist onto "pinned" to pin it, and right-click a pin to open
+  it, unpin it or move it. While you drag a playlist, the preview shows the playlist itself.
+- **Scroll over the volume slider to change the volume.** Each notch of the mouse wheel moves it 5%, the same as the
+  arrow keys, on the player bar, the volume popups and the full screen player. (!220)
+
+### Changed
+
+- **WinUI theme: pages move like Windows apps do.** Changing pages in the WinUI theme now uses the navigation
+  transitions of WinUI itself instead of fading the whole page as one block. A page opened from the navigation pane
+  rises into place, a card or row opens its album, artist or playlist with a short zoom, and Back plays the reverse.
+  The library's pages and the artist page's Overview, Albums, Singles & EPs, Appears on and About tabs slide in from the
+  side of the tab you picked. The parts of the new page arrive one after another, the header first, then the sections,
+  rows and cards that are on screen, and the whole page is in place within about half a second. A page that is still
+  loading enters with its placeholders, and its content fades in where they stood. With Windows animation effects
+  turned off, pages just fade. Zune and Classic move exactly as before.
+- **WinUI podcast pages look like WinUI.** In the WinUI theme the show page's header reads as one line ("publisher ·
+  rating · episodes · weekly · since"), the played counts sit under it, and Follow shows its check. At Compact the
+  Resume button fills the row beside a square Following button. The show's About, topics and (on large windows) its
+  details stand beside the episodes, or under them on small windows. The episode page has WinUI buttons for Mark as
+  played and Save, a WinUI tab bar, and About and Chapters beside the Transcript. The podcasts library opens on a
+  "Library" heading with tabs for each kind, and the selected show's panel uses WinUI's buttons. The Continue and
+  "New since you were here" sections stay at the top of the episodes.
+- **More Popular songs beside a tall side column (WinUI).** On a WinUI artist page with two columns, Popular shows as
+  many songs as fit next to the latest release, discography and artist pick (up to ten), so the space under it is no
+  longer empty. Pages of the song list follow that size. Artists whose columns already line up keep five.
+- **The artist's About card in WinUI.** The card no longer looks clickable without doing anything: it shows the
+  monthly listeners and world rank, and "Read more" opens the full biography with the artist's photos in place.
+- **Artist photos keep the face in view.** The About card's photo is cropped around the faces it finds, and a tall
+  portrait without a detected face keeps its top, instead of showing the middle of the picture.
+- **Release cards open the album; the arrow shows its songs.** On an artist's Singles & EPs and other release grids,
+  clicking a card opens the album like any other card. The arrow after "1 track" is now a proper button with hover and
+  focus states: it opens the songs inline under the row, and closes them again. The panel opens and closes smoothly
+  instead of drawing rows over each other for a moment.
+- **Fewer hitches while scrolling and changing pages.** Wavee now reuses graphics memory instead of handing it back to
+  the graphics driver in the middle of a frame, so the slowest frames while moving between pages take about half as
+  long to reach the graphics card. A page that slides in is drawn from one picture instead of being redrawn on every
+  frame. To do this Wavee keeps up to about 30 MB more graphics memory while it runs.
+- **Crash reports explain sudden closes.** When the .NET runtime closes Wavee itself, the crash report now keeps the
+  runtime's own reason and how long Wavee had been unresponsive, under your existing diagnostics settings.
+- **Crash reports say what led up to the crash.** A report now lists the app's last events (the kind of page, a track
+  starting or skipping, the window being minimized or restored, a graphics reset or GPU switch, memory clean-ups), which
+  native component the crashing thread was in, the graphics driver version and any overlay loaded into Wavee. Nothing
+  personal is in the list, and sending a report stays your choice.
+- **A crash in native code is reported as itself.** Wavee's crash hook no longer turns some native crashes into a
+  "fail fast" with no details; they now arrive with their real error and a memory snapshot.
+- **No crash loop on playback.** If starting a song crashes Wavee twice within a few launches, Wavee shows those songs
+  as unavailable for that version instead of crashing on every start. An update, or a week without the crash, brings
+  them back. (#217)
+- **The video mark in every song list.** A song with a music video shows the video mark in every list. The playlist,
+  album and Liked Songs tables of the WinUI theme were missing it.
+- **"Watch the official video" plays it.** The card on an album page now plays the music video.
+- **Spotify links open in Wavee.** A link to Spotify in Wavee's notifications, Windows notifications, playlist
+  descriptions, artist biographies and these release notes opens the page in Wavee instead of the browser, and a link
+  to a song plays it.
+- **The first video opens sooner.** Wavee gets video playback ready as soon as a song that has a music video plays, so
+  the first video opens up to about a second sooner. Listening to songs without a video does none of this work.
+- **Exact seeks in a video are about 30 % faster.**
+- **A smoother queue.** The queue draws only the songs you can see, so pressing Play does about half the work and
+  starting a playlist no longer hitches. Dragging a song in the queue slides the others into place.
+- **Menus stay open while you use them.** Clicking inside a flyout no longer closes it. Submenus open after a short
+  pause and stay open while you move the pointer toward them, also several levels deep, and the arrow keys move
+  through them.
+- **The WinUI artist page stays put when the navigation pane opens or closes.** Its right-hand column used to fly
+  across the page; it now reflows in place, and other pages resize the same way while you drag the window's edge.
+- **One player style for Now playing, for everyone.** The Cover/Player switch, the style gear and its Finish, Size,
+  Speed, Sleeve and Background options are gone. Now playing has a single style: Cover (the default), Canvas,
+  Visualizer, Vinyl, CD, Cassette, Reel-to-reel, Pocket, Hi-fi, Skin or Metro. The chip beside the heading opens a
+  picker right in the art: step through the styles with the arrows, the dots or a swipe, see each one live, then
+  Done or Cancel. Only Vinyl and Pocket have finishes, and the record spins at 45 for singles and EPs, 33⅓ otherwise.
+  Your old choice carries over, and the same setting is in Settings for every theme, no longer only in Developer mode.
+- **Menus and drop-down lists mark your choice in each theme's style.** In Zune the chosen item has an accent dot and
+  accent-coloured words, in Classic an accent dot on a lightly highlighted row, and in WinUI the check and the pill of
+  Windows 11's own controls.
+- **WinUI drop-down lists react to a press.** The selected item's pill squishes when you press it, as in Windows 11.
+- **Save from the "…" menu in Zune.** An album's or playlist's "…" menu now has "save to your library" (or "remove
+  from your library"), the same as the save button in the band. Your own playlists don't show it.
+- **The video menu says what is set.** Its rows show the current aspect, quality and speed, check marks show what is
+  playing, and right-clicking the video opens the same menu.
+
 ### Fixed
 
+- **The CD player style spins calmly.** The disc turned at a real CD's 200 to 500 rpm, about 44 degrees from one frame to
+  the next, so its printed cover strobed and blurred instead of turning. It now turns at a steady, readable speed that still
+  slows a little as the disc plays, spins up and coasts down like a motor, stops when you pause and holds still with
+  Animation effects off. The disc now sits half out of its jewel case with the cover printed on it. The rainbow sheen shows
+  only at its rim and centre, around a clear ring and the player's clamp.
+- **The Vinyl player style plays like a turntable.** The tonearm swung the wrong way, so the stylus never reached the
+  record. Now it drops onto the first groove when you press play, moves inward as the song plays, lifts when you pause,
+  crosses to where you seek and goes back to its rest. When you skip, it lifts from where it is instead of first jumping
+  out to the edge of the record. When the queue ends, the arm rides the run-out groove and returns,
+  because the deck no longer mistakes the stopped player's position for a jump back to the start. The record has a paper
+  label, smooth gaps between songs and a sheen that stays with the light as it turns. It sits on a graphite turntable
+  with a machined platter, a straight arm with a counterweight and headshell, an arm rest and a power lamp that is lit
+  while the motor runs.
+- **The artist photo shows again behind its name.** In the Classic theme the light or dark veil under an artist's name,
+  bio and buttons covered most of the photo since 0.3.6, so the picture was barely visible, worst in light mode. The
+  veil is back to 0.2's: strong at the left edge and fading out behind the copy, so the photo shows across the hero.
+  It now reads each photo and stays stronger only as far as that photo needs for the text to stay readable (a bright
+  photo in dark mode, a dark one in light mode).
+- **Pages no longer guess whether they are stuck.** Artist, album, playlist and search pages know whether their data
+  is loading, there, missing or failed, show exactly that, and recover by themselves when the connection comes back,
+  instead of waiting on a 10-second timer.
+- **The daylist's picture fills its whole card on a narrow Home.** In the Classic theme at the narrowest size, the
+  daylist card's picture stopped at a hard line two thirds of the way down, with the title, tags, buttons and countdown
+  on a flat plate under it. The picture is now the whole card's background and fades smoothly behind the text.
+- **Repeat All repeats the playlist, and only the playlist.** With Repeat All on, Wavee no longer plays
+  suggested songs from outside the playlist or album, with or without shuffle: after the last song it starts again
+  from the first, and songs you queued or that Autoplay picked do not come round again. (#215)
+- **Next moves on under Repeat One.** Repeat One still replays a song when it ends, but pressing Next now plays the
+  next song and switches to Repeat All, as Spotify does. (#215)
+- **Autoplay only continues when your music ends.** With the Autoplay setting off (Settings > Playback), playback
+  stops at the end of the playlist, even if suggestions were already in the queue; with it on, suggestions only play
+  after the last song and never while Repeat is on. The queue only shows the suggestions when they will play. (#215)
+- **Shuffle covers the whole playlist.** Turning shuffle on mixes in the songs before the current one too, and never
+  mixes suggestions in among the playlist's own songs. Turning it off puts the playlist back in order and carries on
+  from the song that is playing. (#215)
+- **Previous on the first song** restarts it, and with Repeat All on goes to the last song; it used to do nothing.
+  Repeat All on a long playlist started part-way now also comes back to its first song. (#215)
+- **Repeat on another device.** Changing repeat while another device plays now sets that device to exactly the mode
+  you chose; going from Repeat One to off or to Repeat All used to leave it repeating the song.
+- **WinUI library sort and view menus look like Windows.** In the WinUI theme the library's sort is a button saying the
+  order in force ("Recently added") whose menu lists the orders in sentence case under "Sort by", with Ascending and
+  Descending below; the view menu lists the four views and the grid sizes the same way. The lowercase word rails,
+  "more" and the bold "alphabetical" button from the Zune look are gone from WinUI; Classic and Zune are unchanged.
+- **WinUI podcasts and shows follow the WinUI design.** A show's episodes are filtered with a WinUI pivot ("All · 14",
+  "Unplayed · 10"), sorted with a "Newest" menu, and the headings, the Continue card and the episode rows use WinUI's
+  type and the accent color instead of the show cover's color. Following a show reads "Following" next to Resume.
+- **The player bar stays still when you skip.** Skipping a song no longer moves the play controls, the seek bar, the
+  heart or the buttons on the right. In the WinUI theme the play controls sit in the middle of the bar, the song title
+  has a fixed space, and the video button stays in its place, greyed out for a song without a video. The controls,
+  the lyrics button and the times also stay as they are while the next song loads, instead of greying out or
+  showing 0:00 for a moment.
+- **No crash after a long time minimized.** Restoring Wavee after it sat minimized for hours on a big playlist, artist
+  or Liked Songs page could crash it on the first frame.
+- **No crash when a song starts as the play log saves.** The play log and the visit history now take their snapshot on
+  the UI thread, so a song starting at the moment the save fired can no longer crash Wavee.
+- **Zune titles are never cut at the left.** A large playlist or album title that hangs into the margin draws its
+  first letter whole, and its focus ring and edit underline sit where they belong.
+- **Pages settle without jumping.** A show's header grows smoothly as its details load instead of dropping the episode
+  list in one step, and the Zune band keeps its place until the next page has landed.
+- **Artist pages no longer load forever.** An artist page could stay on its grey placeholders for good, most often
+  when you opened the artist of the song that was playing: its top tracks arrived last and the page never noticed.
+  It now shows as soon as everything has arrived, and an artist whose details stopped coming shows "Something went
+  wrong" with Retry instead of loading forever.
+- **No page waits forever.** An artist, album, playlist, show or episode page now knows the moment its details stop
+  coming (an answer without them, a failed request, no connection) and shows "Something went wrong" with Retry right
+  away, instead of loading for good or for a fixed wait. While Wavee cannot reach Spotify a page says it is offline, and
+  it fills in by itself once the connection is back. The log names the page and what it was waiting for
+  (`page.failed`).
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the
   other instead of squeezing side by side and wrapping, at any width.
+- **No empty band under an artist's concerts, merch or gallery.** On the artist page, "Upcoming concerts" left about
+  170 px of empty space under its date cards, and the gallery about 70, because their rows were sized for album
+  covers. Each row is now as tall as its own cards, in every theme. Merch cards all share one height, so a two-line
+  name no longer runs past the row.
+- **The time keeps running in video mode.** The time and the total no longer stand still and then jump while a video
+  plays.
+- **Turning video off resumes the song where the video was.**
+- **Dragging the seek bar no longer freezes the video.**
+- **No "protected content" error on the first video.** A rare failure stopped the first music video after starting
+  Wavee.
+- **No wait when turning video on.** Turning video on could stall for up to 10 seconds.
+- **Video plays at Wavee's volume from the start.**
+- **Full screen opens on the monitor the video window is on.**
+- **Video stays on when you skip.** Going to the next song keeps the video on when that song has one.
+- **Spotify's mixes can be saved again.** Mixes Spotify makes for you, such as "Comforting Mix", were treated as your
+  own playlists, so there was no way to save them. In every theme.
+- **One selected item in the sidebar.** In the Classic and WinUI themes the sidebar could show two items selected at
+  once.
+- **The "Playing on …" line fits in Classic.** A long device name now ends in "…" instead of being cut off.
+- **No restart on Snapdragon X PCs.** Blurring in the background could crash the graphics driver and restart Windows
+  on Snapdragon X devices.
+- **Playback speed works for video podcasts.** Changing the speed of a video podcast used to leave it playing at normal
+  speed. For a music video the speed is greyed out and says "Podcasts only".
+- **A video's quality no longer carries over.** A quality you picked for one video no longer holds the next video at
+  the wrong quality.
+- **Auto quality switches promptly.** Turning a quality choice back to Auto used to keep the lower quality for over a
+  minute; the best quality for your connection now returns within seconds.
+- **Always on top stays off when you turn it off.** A video window that went back into Wavee while on top came out on
+  top again even after you turned Always on top off.
+
+### Security
+
+- **Built on .NET 11.** Wavee carries its own .NET runtime, and this release moves it to .NET 11 (release candidate 3),
+  which also fixes an out-of-bounds write in the Brotli decoder (CVE-2026-111497).
 
 ## [0.3.7] - 2026-10-26
 

@@ -5,7 +5,7 @@
 // Everything here is core state the band must not reach for itself (WVTH002: a template never names Shell or the nav model):
 //   · ROW 1: the destinations (home, browse, library, recents) and which one is lit for the route on screen;
 //   · PINS: the user's pins, capped by the active structure's `ShellCapabilities.MaxBandPins`, each with its open and play verbs and
-//     its playing fact;
+//     its playing fact and its context menu (1.91), and the drag-to-pin target the band puts on them (`PinDrop`, 1.91);
 //   · ROW 2: the current page's `PageChrome` (its views, actions and backdrop), as a signal;
 //   · COLLAPSE: the current page's scroll (offset and direction), so a band can collapse to row 1 while the page scrolls down;
 //   · THE HUB LIST: the destinations a narrow band's lead word opens as a list (row 1 plus profile and settings).
@@ -13,6 +13,8 @@
 //
 // The record is one static instance (equal across re-pushes); every live value is a signal or a Func read by the template.
 
+using FluentGpu.Controls;
+using FluentGpu.Foundation;
 using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
@@ -32,7 +34,21 @@ public sealed record BandDestination(string Id, string Label, string Glyph, Acti
 /// <param name="Go">Opens the pinned destination.</param>
 /// <param name="Play">Plays it as a context; null when it is not playable (a route pin).</param>
 /// <param name="Playing">Is the playing context this pin (or inside it)? Read tracked.</param>
-public sealed record BandPin(string Id, string Label, string? Image, bool Circular, Action Go, Action? Play, Func<bool> Playing);
+public sealed record BandPin(string Id, string Label, string? Image, bool Circular, Action Go, Action? Play, Func<bool> Playing)
+{
+    /// <summary>The pin's context menu (contract 1.91), built when it opens: the entity's own menu (play, open, the queue pair, save, share) with
+    /// Unpin and the band's Move left / Move right; a route pin's Open, Unpin and the moves. Null: the pin has no menu.</summary>
+    public Func<ContextMenuModel?>? Menu { get; init; }
+}
+
+/// <summary>Dropping onto a band's pins (contract 1.91): an album, a playlist, an artist, a show or a route dragged there is pinned where the band
+/// shows it (after the last pin it shows; in the last place it shows when the band is full), an already pinned one moves there. A track drag is not
+/// this target's business (transparent), so it passes through.</summary>
+/// <param name="Target">The drop target the band puts on its pins (and on the drop slot it shows while <paramref name="Armed"/>).</param>
+/// <param name="Over">A pinnable drag is over <paramref name="Target"/> right now (the band lights its drop slot). A signal: bind it.</param>
+/// <param name="Armed">A pinnable drag is live (read on the drag's begin and end edges, e.g. from a <c>UseDragState</c> watcher): while it holds the
+/// band shows where a drop lands, even with no pins yet.</param>
+public sealed record BandPinDrop(DropTargetSpec Target, IReadSignal<bool> Over, Func<bool> Armed);
 
 /// <summary>Which way the current page last scrolled.</summary>
 public enum PageScrollDirection : byte
@@ -74,9 +90,18 @@ public sealed record BandProps
     /// <see cref="Current"/> alone.</summary>
     public Func<int>? Section { get; init; }
 
+    /// <summary>Whether the page whose <see cref="Chrome"/> the band shows is a detail page (no destination of its own), contract 1.83 (audit FU2d).
+    /// It follows the page swap's LANDING, as <see cref="Chrome"/> does, while <see cref="Current"/> lights a clicked destination at once: a band that
+    /// leads row 2 with the page's title reads this, so the leaving detail page's row keeps its title until the swap lands and its words never jump
+    /// to the lead under a destination's lit word. Read tracked. Null: <see cref="Current"/> &lt; 0.</summary>
+    public Func<bool>? ChromeIsDetail { get; init; }
+
     /// <summary>The pins, in the user's order, at most the active structure's <c>MaxBandPins</c>. Read tracked: it follows a pin, an
     /// unpin, a move and a capability change.</summary>
     public required Func<IReadOnlyList<BandPin>> Pins { get; init; }
+
+    /// <summary>Drag to pin (contract 1.91): the drop target a band puts on its pins. Null: the band takes no drop.</summary>
+    public BandPinDrop? PinDrop { get; init; }
 
     /// <summary>The current page's chrome (title, trail, row 2), or null before any page was shown.</summary>
     public required IReadSignal<PageChrome?> Chrome { get; init; }

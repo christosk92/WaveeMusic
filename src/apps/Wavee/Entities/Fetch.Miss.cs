@@ -200,9 +200,8 @@ public static partial class Fetch
                 // its plan and its send. Until 2026-09-25 this un-asked them ("a shimmer rather than a blank 0:00"), but
                 // "not asked" is also what a readiness gate reads as "nothing is coming" (the artist chart turned into
                 // "Something went wrong" at the FIRST miss), and it let every later `Ensure` of the same group seat the
-                // slot in the same bucket again (ticket 74: 22 rows for 8 tracks). `Answer`'s `Unask` clears the stamp
-                // when the retry settles, like any batch.
-                table.Inflight[slot] = Stamp(batch.Epoch);
+                // slot in the same bucket again (ticket 74: 22 rows for 8 tracks). The bucket seat below IS the stamp
+                // (`Table.Seat`), and the retry's own settle gives it back, like any batch.
                 Demand d = Bucket(table, batch.Subject, batch.Provider, miss, FetchEdge.None, 0, batch.Priority);
                 d.Add(slot, batch.Ids[i], DemandDoor.Miss);
                 // The same clamp `Failed`'s retryable arm reuses (attempt, not status/Retry-After): a miss is not a

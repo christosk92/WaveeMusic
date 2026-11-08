@@ -1,7 +1,7 @@
 // ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Storage.cs — the Storage tab (themes plan 6.3, Z8b) ───────────────────────────────────────
 //
 // Board Z-Settings-Sections ("downloads & storage"), without its downloads (owner Q29 / NQ4: no offline playback, so no downloaded songs, no "remove all downloads"):
-// the core Storage settings stay reachable. The census (the usage line and bar, the seven fixed hues), the playback-cache rows (the audio and key switches, the
+// the core Storage settings stay reachable. The census (the usage line and bar, the nine fixed hues), the playback-cache rows (the audio and key switches, the
 // three-mode budget editor, the cache location), the metadata cache and the factory reset. The census itself (the phase, the snapshot, the cache status, the key
 // count, the metadata stats; the first visit to the tab starts it; a clear re-runs it) is the core's (`Settings.Host.cs`) and arrives as `SettingsPageProps.Storage`;
 // the clears, the budget writes, the folder doors and the factory reset are the rows' writers.
@@ -24,12 +24,13 @@ namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
-    /// <summary>The census parts' words, in `Settings.StorageRules.Parts` order: library, runtime, logs, local store, audio bodies, license keys, images.</summary>
+    /// <summary>The census parts' words, in `Settings.StorageRules.Parts` order: library, runtime, logs, local store, audio bodies, license keys, images,
+    /// AI models, other app data.</summary>
     static readonly string[] s_storagePartKeys =
     [
         Strings.Settings.Storage.Library, Strings.Settings.Storage.Runtime, Strings.Settings.Storage.Logs,
         Strings.Settings.Storage.LocalStore, Strings.Settings.Storage.AudioBodies, Strings.Settings.Storage.LicenseKeys,
-        Strings.Settings.Storage.ImageCache,
+        Strings.Settings.Storage.ImageCache, Strings.Settings.Storage.AiModels, Strings.Settings.Storage.OtherData,
     ];
 
     static Named[] StorageTab(ZuneKit k, SettingsStorageProps storage)
@@ -52,6 +53,10 @@ internal static partial class ZuneSettings
             : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles);
         string keysSub = storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
             : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys);
+        string aiSub = s is null ? Loc.Get(Strings.Settings.Storage.AiModelsSub)
+            : s.AiModels <= 0 ? Loc.Get(Strings.Settings.Storage.AiModelsNone)
+            : s.AiLanguages == 1 ? Loc.Get(Strings.Settings.Storage.AiModelsCountOne)
+            : s.AiLanguages > 1 ? Strings.Settings.Storage.AiModelsCount(s.AiLanguages) : Loc.Get(Strings.Settings.Storage.AiModelsSub);
         var location = D(Tab.Storage, "cacheLocation");
         var locationDefault = D(Tab.Storage, "cacheLocationDefault");
         var metaBudget = D(Tab.Storage, "metadataBudget");
@@ -65,7 +70,9 @@ internal static partial class ZuneSettings
                 CategoryRow(k, 1, "runtime", Loc.Get(Strings.Settings.Storage.RuntimeSub), s?.Runtime),
                 CategoryRow(k, 2, "logs", logsSub, s?.Logs, ClearCmd(k, D(Tab.Storage, "logsClear"), facts)),
                 CategoryRow(k, 3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
-                CategoryRow(k, 6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache)),
+                CategoryRow(k, 6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
+                CategoryRow(k, 7, "aiModels", aiSub, s?.AiModels, ClearCmd(k, D(Tab.Storage, "aiModelsRemove"), facts)),
+                CategoryRow(k, 8, "otherData", Loc.Get(Strings.Settings.Storage.OtherDataSub), s?.Other)),
 
             Group(k, Tab.Storage, "Playback cache",
                 ToggleRow(k, Tab.Storage, "cacheAudio"), ToggleRow(k, Tab.Storage, "cacheKeys"),

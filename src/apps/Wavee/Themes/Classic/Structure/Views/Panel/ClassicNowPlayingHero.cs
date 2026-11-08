@@ -2,22 +2,22 @@
 //
 // From `Shell/Rail.UI.cs`: the pinned hero tile, its header strip, the art menu, and the now-playing body under it.
 //
-// THE HERO TILE. A header strip (eyebrow · Cover|‹Player› · gear) over a KEYED hero slot: "cover" or "<slug>@<side>". A preset
-// change REMOUNTS (a Cassette must not inherit a Record's mounted deck), an option flip restyles in place off the epoch, and the
-// side is quantised to 4 DIP because it is part of the key. The WRAPPER owns the art menu for both occupants. The deck itself is
-// the core's (`props.Deck`): the hero HOSTS it under that key and never builds it, so a mode switch, a theme switch of the panel or a
-// style flip re-mounts nothing the deck owns. Which face paints is the core's decision (`ResolvedPresentation`: the stored
-// presentation while developer mode is on, the cover otherwise).
+// THE HERO TILE (the player style redesign, 2026-11-08: canvas-design `Classic.dc.html`, `Styles.dc.html`). A header strip (the "Now
+// playing" eyebrow and the style CHIP, a hairline pill naming the player style) over the STAGE (`props.Stage`, the core's: the cover, the
+// canvas or a deck). The chip opens the in-place picker: the header reads "Player style" with Cancel and Done, the stage becomes the carousel
+// and the strip (the arrows, the style's name and line, the finish swatches, the dots) unfolds under it. No pivot, no gear, no flyout, no
+// option dial. The stage is hosted, never built here, so a mode switch or a theme switch re-mounts nothing a deck owns.
 //
-// IN THE COMPACT SHEET (`ClassicPanel.SheetArtSide` provided): the tile is the art alone, centred at the side the window leaves it (no header
-// strip: the sheet's head carries its own header, `ClassicSheetHeader`, which seats the developer-only style gear, `ClassicHeroHeaderRow.StyleGear`),
-// the deck scaled to that side; the identity, the transport and the rest are the sheet's own column (`ClassicNowPlayingSheet`).
+// IN THE COMPACT SHEET (`ClassicPanel.SheetArtSide` provided): the tile is the stage alone, centred at the side the window leaves it (no header
+// strip: the sheet's head carries its own header, `ClassicSheetHeader`, which seats the chip, and the picker's Cancel and Done while picking);
+// the identity, the transport and the rest are the sheet's own column (`ClassicNowPlayingSheet`).
 //
 // THE BODY (scrolls under the pinned hero) is the panel's now-playing arm: title · artist links · album link · heart, the lyrics
 // peek (the core host `props.LyricsPeek`, which mounts `Player.LyricsPeek`), then About the artist, the cities, merch and Next up
 // (the `Panel.NextUp` view). It subscribes the entity tables through `props.SubscribeEntities` and
 // asks for the playing track's demand (the rail is not a page and never mounts on a route).
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -36,30 +36,6 @@ internal static class ClassicNowPlayingHero
     /// <summary>The registered template of <see cref="ViewKeys.NowPlayingHero"/>: the pinned hero tile.</summary>
     public static Element Template(NowPlayingHeroProps props, in ViewContext ctx)
         => Embed.Comp(props, static () => new ClassicHeroTile());
-
-    // ── the art menu ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Cover / ‹Player› as ONE mutually exclusive radio choice, a separator, then "Player style…" opening the SAME
-    /// popup the gear owns (one controlled signal, one flyout instance — never a second copy).
-    /// <para>The whole menu follows the developer-only gate (<paramref name="styleVisible"/>, <c>Rail.PlayerPrefs.StyleChoiceVisible</c>):
-    /// outside developer mode a player style cannot change the face, so the art has no menu at all (#199) rather than a
-    /// "Player style…" that does nothing.</para></summary>
-    internal static ContextMenuModel? ArtMenu(NowPlayingHeroProps props, int presentation, in Rail.PlayerCatalog.Preset preset, bool styleVisible)
-    {
-        if (!styleVisible) return null;
-        var verbs = props.Style;
-        var style = new MenuFlyoutItem(Loc.Get(Strings.Player.PlayerStyleEllipsis), Icons.Settings,
-            Invoke: () => verbs.OpenStyleFlyout());
-        return new ContextMenuModel(
-        [
-            MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.PresentationCover), presentation == Rail.PlayerPrefs.Cover,
-                () => verbs.SetPresentation(Rail.PlayerPrefs.Cover, DeckStyleSource.ArtMenu), Icons.Picture),
-            MenuFlyoutItem.RadioItem(Loc.Get(preset.ShortLabelKey), presentation == Rail.PlayerPrefs.Player,
-                () => verbs.SetPresentation(Rail.PlayerPrefs.Player, DeckStyleSource.ArtMenu), Icons.Album),
-            MenuFlyoutItem.Separator,
-            style,
-        ]);
-    }
 
     // ── the body: title · artists · album · heart, then the lyrics peek ──────────────────────────────────────────────
 
@@ -87,6 +63,7 @@ internal static class ClassicNowPlayingHero
 
     internal static Element HeroMeta(NowPlayingHeroProps props, Track track)
     {
+        if (props.Bleeds()) return BleedMeta(props, track);
         string uri = track.Uri.Text;
         string title = track.Title;
         var meta = new List<Element>(2);
@@ -123,6 +100,78 @@ internal static class ClassicNowPlayingHero
                             ],
                         },
                         Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ClassicHeroLayout.SaveGlyph, Box = ClassicHeroLayout.SaveBox }) with { Key = "save:" + uri },
+                    ],
+                },
+                props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
+            ],
+        };
+    }
+
+    /// <summary>The meta under the canvas's crest (Tideline), on the plain panel: the 64 cover glowing in the art's dominant colour, the title,
+    /// the artist in the art's hue (solved as text on the ground) and "album · year", the saved heart in that hue on a soft circle of it; the
+    /// lyrics peek under them.</summary>
+    static Element BleedMeta(NowPlayingHeroProps props, Track track)
+    {
+        string uri = track.Uri.Text, title = track.Title;
+        var ink = ClassicBleedInk.Of(props.NowArtUrl());
+        var lines = new List<Element>(3)
+        {
+            new TextEl(title)
+            {
+                Size = ClassicHeroLayout.BleedTitleSize, LineHeight = ClassicHeroLayout.BleedTitleLine, Weight = ClassicHeroLayout.BleedTitleWeight,
+                Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            },
+        };
+        if (ArtistLinks(props, track, ClassicHeroLayout.ArtistSize, ClassicHeroLayout.ArtistLine) is SpanTextEl artists) lines.Add(artists with { Color = ink.Text });
+        var album = track.Album;
+        if (album.IsValid && album.Title.Length > 0)
+        {
+            string albumTitle = album.Title;
+            var albumUri = album.Uri;
+            string line = album.Year > 0 ? albumTitle + " · " + album.Year.ToString(System.Globalization.CultureInfo.InvariantCulture) : albumTitle;
+            lines.Add(new SpanTextEl([new TextSpan(line, OnClick: () => props.GoTo(albumUri, albumTitle))])
+            {
+                Size = ClassicHeroLayout.AlbumSize, LineHeight = ClassicHeroLayout.AlbumLine, Color = Tok.TextPrimary with { A = ClassicHeroLayout.BleedYearA },
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        }
+        ColorF accent = ink.Text, glow = ink.Back;
+        return new BoxEl
+        {
+            Direction = 1, Gap = Spacing.M,
+            Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.L),
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "npv-meta", Direction = 0, Gap = ClassicHeroLayout.BleedMetaGap, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Width = ClassicHeroLayout.BleedCover, Height = ClassicHeroLayout.BleedCover, Shrink = 0f,
+                            Corners = CornerRadius4.All(ClassicHeroLayout.BleedCoverRadius),
+                            Shadow = new ShadowSpec(ClassicHeroLayout.BleedGlowBlur, ClassicHeroLayout.BleedGlowY, 0f, glow with { A = ClassicHeroLayout.BleedGlowA }),
+                            Children =
+                            [
+                                new ImageEl
+                                {
+                                    Source = props.NowArtUrl() ?? "", Fit = ImageFit.Cover, DecodePx = ClassicHeroLayout.CoverDecodePx,
+                                    Width = ClassicHeroLayout.BleedCover, Height = ClassicHeroLayout.BleedCover, Corners = CornerRadius4.All(ClassicHeroLayout.BleedCoverRadius),
+                                },
+                            ],
+                        },
+                        new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ClassicHeroLayout.BleedLinesGap, Children = lines.ToArray() },
+                        new BoxEl
+                        {
+                            Width = ClassicHeroLayout.BleedHeart, Height = ClassicHeroLayout.BleedHeart, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                            Justify = FlexJustify.Center, Corners = Radii.Circle(ClassicHeroLayout.BleedHeart), Fill = accent with { A = ClassicHeroLayout.BleedHeartA },
+                            Children =
+                            [
+                                Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ClassicHeroLayout.SaveGlyph, Box = ClassicHeroLayout.BleedHeart, Accent = () => accent })
+                                    with { Key = "save:" + uri },
+                            ],
+                        },
                     ],
                 },
                 props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
@@ -224,77 +273,69 @@ internal static class ClassicNowPlayingHero
     });
 }
 
-/// <summary>The hero tile: the header strip over a keyed hero slot. A component of the theme (it owns the overlay context and the
-/// bound cover thunks, built once per instance so a re-render does not re-register them).</summary>
+//// <summary>The hero tile: the header strip over the stage (the player style, or the picker's carousel) and, while picking, the picker's strip.
+/// A component of the theme (it owns the bound cover thunks, built once per instance so a re-render does not re-register them).</summary>
 internal sealed class ClassicHeroTile : Component
 {
     Func<string>? _source;
     Func<ColorF>? _placeholder;
+    Func<Element>? _cover;
+    Func<float, float>? _bleedRoom;
 
     public override Element Render()
     {
         var props = UseProps<NowPlayingHeroProps>();
-        var overlay = UseContext(Overlay.Service);
         var track = props.NowTrack();
-        // The RESOLVED face, not the stored one: the Cover/‹Player› switch is developer-only, so a normal build paints
-        // the cover whatever is stored (and a stored ‹Player› is waiting, intact, for developer mode to come back).
-        int presentation = Rail.PlayerPrefs.ResolvedPresentation();
-        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();
-        var preset = Rail.PlayerPrefs.CurrentPreset();
-        float side = Rail.Hero.Side(props.RailWidth.Value);
+        bool open = props.Picking();
+        int focus = props.ShownStyle();
         var sheetSide = UseContext(ClassicPanel.SheetArtSide);
         if (!track.IsValid) return new BoxEl();                        // nothing playing: no square, no strip
 
         _source ??= () => props.NowArtUrl() ?? "";
         _placeholder ??= () => ClassicHeroWash.Of(props.NowArtUrl());
-        if (sheetSide is not null) return SheetTile(props, overlay, presentation, preset, styleVisible, side, sheetSide);
+        _cover ??= () => new ImageEl
+        {
+            Key = "cover",
+            Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = ClassicHeroLayout.CoverDecodePx,
+            Corners = Radii.CardAll, AlignSelf = FlexAlign.Stretch,
+            Placeholder = Prop.Of(_placeholder),
+        };
+        var verbs = props.Style;
+        // The strip under the stage while picking: a disclosure that mounts to open and unmounts to close (its height reveals, the body rides it).
+        var strip = open
+            ? new BoxEl { Key = "npv-strip", Direction = 1, Padding = ClassicStylePickerLayout.StripPadding, Animate = Design.Reduced ? null : Design.Reveal.Drawer, Children = [ClassicStylePicker.Strip(verbs, focus, props.NowArtUrl)] }
+            : null;
+        if (sheetSide is not null) return SheetTile(props, sheetSide, strip);
 
-        Element hero = presentation == Rail.PlayerPrefs.Player
-            ? new BoxEl { Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
-            : new ImageEl
-            {
-                Key = "cover",
-                Source = Prop.Of(_source), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = ClassicHeroLayout.CoverDecodePx,
-                Corners = Radii.CardAll, AlignSelf = FlexAlign.Stretch,
-                Placeholder = Prop.Of(_placeholder),
-            };
-
-        var heroBox = new BoxEl { Direction = 1, Shrink = 0f, Children = [hero] }
-            .WithContextMenu(overlay, () => ClassicNowPlayingHero.ArtMenu(props, presentation, preset, styleVisible));
-
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta (in the body under this pinned hero) 24 under the wave's crest.
+        _bleedRoom ??= panelW =>
+        {
+            float vh = MathF.Round(panelW * ClassicHeroLayout.BleedAspect), ph = props.RailHeight.Value;
+            float crest = MathF.Min(vh - ClassicHeroLayout.BleedCrestLift, (ph > 0f ? ph : vh) - ClassicHeroLayout.BleedCrestRoom);
+            return crest + ClassicHeroLayout.BleedMetaDrop - Rail.Hero.ArtTop - Spacing.M;
+        };
+        var stage = new BoxEl { Direction = 1, Shrink = 0f, Children = [props.Stage(2f * Rail.Hero.Inset, _cover, Radii.CardAll, _bleedRoom)] };
         return new BoxEl
         {
             Direction = 1, Shrink = 0f, Gap = Rail.Hero.Inset,
             Padding = new Edges4(Rail.Hero.Inset, Rail.Hero.Inset, Rail.Hero.Inset, 0f),
-            Children = [Embed.Comp(props, static () => new ClassicHeroHeaderRow()), heroBox],
+            Children = strip is null
+                ? [Embed.Comp(props, static () => new ClassicHeroHeaderRow()), stage]
+                : [Embed.Comp(props, static () => new ClassicHeroHeaderRow()), stage, strip],
         };
     }
 
-    /// <summary>The tile inside the Compact sheet: the art alone, centred, <paramref name="sheetSide"/> on a side (bound: a resize re-fits it
-    /// without a render); the deck keeps its own layout at the rail's side and is scaled down to the sheet's.</summary>
-    Element SheetTile(NowPlayingHeroProps props, IOverlayService overlay, int presentation, in Rail.PlayerCatalog.Preset preset, bool styleVisible,
-        float deckSide, Func<float> sheetSide)
+    /// <summary>The tile inside the Compact sheet: the stage alone, centred, <paramref name="sheetSide"/> wide (bound: a resize re-fits it without a
+    /// render); the stage measures that column and draws its style at it. The sheet's own header seats the chip (<see cref="ClassicSheetHeader"/>).</summary>
+    Element SheetTile(NowPlayingHeroProps props, Func<float> sheetSide, Element? strip)
     {
-        Element hero = presentation == Rail.PlayerPrefs.Player
-            ? new BoxEl
-            {
-                Key = "deck-face:" + preset.Slug, Direction = 1, Shrink = 0f, AlignSelf = FlexAlign.Start, Width = deckSide, Height = deckSide,
-                TransformOriginX = 0f, TransformOriginY = 0f,
-                Transform = Prop.Of(() => Affine2D.Scale(sheetSide() / MathF.Max(1f, deckSide), sheetSide() / MathF.Max(1f, deckSide))),
-                Children = [props.Deck()],
-            }
-            : new ImageEl
-            {
-                Key = "cover",
-                Source = Prop.Of(_source!), Fit = ImageFit.Cover, DecodePx = ClassicHeroLayout.CoverDecodePx,
-                Corners = Radii.CardAll, AspectRatio = 1f, AlignSelf = FlexAlign.Stretch,
-                Placeholder = Prop.Of(_placeholder!),
-            };
-        var p = preset;
         var heroBox = new BoxEl
         {
-            Direction = 1, Shrink = 0f, Width = Prop.Of(sheetSide), Height = Prop.Of(sheetSide), Children = [hero],
-        }.WithContextMenu(overlay, () => ClassicNowPlayingHero.ArtMenu(props, presentation, p, styleVisible));
+            Direction = 1, Shrink = 0f, Width = Prop.Of(sheetSide),
+            Children = strip is null
+                ? [props.Stage(0f, _cover!, Radii.CardAll)]
+                : [props.Stage(0f, _cover!, Radii.CardAll), strip],
+        };
         return new BoxEl
         {
             Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Center,
@@ -304,103 +345,256 @@ internal sealed class ClassicHeroTile : Component
     }
 }
 
-/// <summary>Eyebrow · Cover|‹Player› · gear. The SelectorBar's index is a component-owned MIRROR written by the bar on
-/// click (the pill moves in the press frame) and re-synced by an effect when another surface moved the pref — never
-/// written during Render.
-/// <para>The switch is DEVELOPER-ONLY: outside developer mode it is not composed at all (never disabled-and-shown),
-/// and <c>ResolvedPresentation</c> paints the cover. The gear keeps its place either way — the
-/// eyebrow then sits beside it alone.</para></summary>
+/// <summary>The header strip: the "Now playing" eyebrow and the style chip; while picking, "Player style" with Cancel and Done (Escape is Cancel,
+/// the stage's). A fixed 36 row; the two faces cross-fade.</summary>
 internal sealed class ClassicHeroHeaderRow : Component
 {
-    static readonly string?[] ModeIcons = [Icons.Picture, Icons.Album];
-
-    /// <summary>WinUI's SelectorBarItem builds a 47-DIP bar; the strip is 36. Compress the ITEM's content box to the
-    /// 30-DIP pill (shape-guarded: an item tree change makes this a no-op instead of a mangle).</summary>
-    static readonly TemplateParts CompactBar = new()
-    {
-        [SelectorBar.PartItem] = static item =>
-        {
-            if (item.Children.Length != 2 || !item.Children[0].Is(out BoxEl content)) return item;
-            var pill = item.Children[1];
-            var kids = new Element[content.Children.Length];
-            for (int i = 0; i < kids.Length; i++)
-            {
-                if (content.Children[i].Is(out TextEl t) && t.FontFamily is null)
-                {
-                    var rung = t.Weight is 600 or 650 or 700 or 540
-                        ? R.Type.DenseTitle("")
-                        : R.Type.DenseMeta("");
-                    kids[i] = t with { Size = rung.Size, LineHeight = rung.LineHeight, Weight = rung.ResolvedWeight };
-                }
-                else kids[i] = content.Children[i];
-            }
-            return item with { Children = [content with { Padding = ClassicHeroLayout.SelectorItemPadding, Gap = ClassicHeroLayout.SelectorItemGap, Children = kids }, pill] };
-        },
-    };
-
     public override Element Render()
     {
         var props = UseProps<NowPlayingHeroProps>();
-        int epoch = Rail.PlayerPrefs.Epoch.Value;
-        int stored = Rail.PlayerPrefs.Presentation();
-        var preset = Rail.PlayerPrefs.CurrentPreset();
-        var presentation = UseSignal(stored);
-        UseEffect(() => { presentation.SetIfChanged(stored); }, DepKey.From(epoch));
-        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();     // the switch AND the gear: developer-only (#199)
-
-        string[] items = [Loc.Get(Strings.Player.PresentationCover), Loc.Get(preset.ShortLabelKey)];
+        bool open = props.Picking();
+        int shown = props.ShownStyle();
+        bool bleeds = !open && props.Bleeds();
         var verbs = props.Style;
-
-        // Sentence case, never .ToUpper() on a localized string.
-        Element eyebrow = R.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
-        {
-            Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-        };
-        Element gearBox = StyleGear(props);
-
+        Element body = open
+            ? new BoxEl
+            {
+                Direction = 0, Height = Rail.Hero.HeaderRowH, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+                Children = [Eyebrow(Loc.Get(Strings.Player.PlayerStyle)), .. ClassicStylePicker.Commit(verbs)],
+            }
+            : bleeds ? BleedFace(props.Source(), verbs, shown)
+            : new BoxEl
+            {
+                Direction = 0, Height = Rail.Hero.HeaderRowH, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+                Children = [Eyebrow(Loc.Get(Strings.Player.NowPlaying)), ClassicStylePicker.Chip(verbs, shown)],
+            };
         return new BoxEl
         {
-            Direction = 0, Height = Rail.Hero.HeaderRowH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-            // Outside developer mode the row is the eyebrow alone: no switch, and no gear for a style that cannot change the face (#199).
-            Children = styleVisible
-                ? [
-                    eyebrow,
-                    SelectorBar.Create(items, presentation,
-                        onChange: i => verbs.SetPresentation(i, DeckStyleSource.Header),
-                        parts: CompactBar, icons: ModeIcons),
-                    gearBox,
-                  ]
-                : [eyebrow],
+            Height = Rail.Hero.HeaderRowH, Shrink = 0f, ZStack = true,
+            Children = [ClassicStylePicker.Layer(open ? "head:pick" : bleeds ? "head:bleed" : "head:rest", body)],
         };
     }
 
-    /// <summary>The style gear and the popup it owns (the one flyout instance: the art menu's "Player style…" opens the same one). Developer-only:
-    /// the caller composes it only while <c>Rail.PlayerPrefs.StyleChoiceVisible()</c>. Read inside a render: it subscribes the flyout's open flag
-    /// (the gear lights wherever the flyout was opened from). The docked header row and the Compact sheet's header both seat it.</summary>
-    internal static Element StyleGear(NowPlayingHeroProps props)
+    /// <summary>The header over the canvas (Tideline): "Playing from album" over the album's name, and the chip on a light plate, in the media
+    /// scope's ink (Deck.Bleed.cs).</summary>
+    static Element BleedFace(PanelSourceFacts source, IPlayerStyleVerbs verbs, int shown)
     {
-        bool open = Rail.PlayerPrefs.StyleFlyoutOpen.Value;
-        var verbs = props.Style;
-        var flyout = props.Flyout;
-        Element gear = ClassicPanel.HeaderButton(Icons.Settings, Loc.Get(Strings.Player.PlayerStyle),
-            () => verbs.ToggleStyleFlyout(), active: open);
-        // A plain wrapper takes the row's Center: the popup's own anchor wrapper is AlignSelf=Start.
+        var ink = new CanvasInk(true);
+        var words = new List<Element>(2);
+        if (source.HasSource)
+        {
+            words.Add(R.Type.Eyebrow(source.PlayingFrom) with
+            {
+                Size = ClassicHeroLayout.BleedEyebrowSize, LineHeight = ClassicHeroLayout.BleedEyebrowLine, Color = ink.Primary with { A = ClassicHeroLayout.BleedEyebrowA },
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+            words.Add(new TextEl(source.Name)
+            {
+                Size = ClassicHeroLayout.BleedSourceSize, LineHeight = ClassicHeroLayout.BleedSourceLine, Weight = ClassicHeroLayout.BleedSourceWeight,
+                Color = ink.Primary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        }
         return new BoxEl
         {
-            Direction = 0, Shrink = 0f,
+            Direction = 0, Height = Rail.Hero.HeaderRowH, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
             Children =
             [
-                Popup.Create(gear, () => Slots.View(ViewKeys.DeckStyleFlyout, flyout), Rail.PlayerPrefs.StyleFlyoutOpen,
-                    onOpenChanged: static nowOpen => { if (!nowOpen) Rail.NpvDiagnostics.FlyoutClosed(); },
-                    placement: FlyoutPlacement.BottomEdgeAlignedRight,
-                    options: new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)),
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = words.ToArray() },
+                ClassicStylePicker.Chip(verbs, shown, frosted: true),
             ],
         };
     }
+
+    // Sentence case, never .ToUpper() on a localized string.
+    static Element Eyebrow(string text) => R.Type.Eyebrow(text) with
+    {
+        Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
+        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+    };
 }
 
-/// <summary>The now-playing body (scrolls under the pinned hero).</summary>
+/// <summary>Classic's style chip and the picker's parts (pills: the chip, the arrows, the swatches and the dots).</summary>
+internal static class ClassicStylePicker
+{
+    static readonly EnterExit Fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>One of two cross-fading layers (the header's rest and picking faces).</summary>
+    internal static BoxEl Layer(string key, Element body) => new()
+    {
+        Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, AlignItems = FlexAlign.Stretch,
+        Enter = Fade, Exit = Fade, Transition = MotionTok.ControlFast, Children = [body],
+    };
+
+    /// <summary>Cancel and Done.</summary>
+    internal static Element[] Commit(IPlayerStyleVerbs verbs) =>
+    [
+        Button.Subtle(Loc.Get(Strings.Player.Picker.Cancel), verbs.Cancel) with { Key = ClassicStylePickerLayout.CancelKey, Shrink = 0f },
+        Button.Accent(Loc.Get(Strings.Player.Picker.Done), verbs.Done) with { Key = ClassicStylePickerLayout.DoneKey, Shrink = 0f },
+    ];
+
+    /// <summary>The chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, a light plate under a
+    /// light hairline).</summary>
+    internal static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted = false)
+    {
+        // Frosted: over the canvas, a light plate of the media scope's ink (Deck.Bleed.cs), the label in that ink.
+        var ink = new CanvasInk(frosted);
+        ColorF frost = ink.Primary with { A = ClassicHeroLayout.BleedChipFillA };
+        return ToolTip.Wrap(new BoxEl
+        {
+            Key = ClassicStylePickerLayout.ChipKey, Height = ClassicStylePickerLayout.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Gap = ClassicStylePickerLayout.ChipGap, Padding = ClassicStylePickerLayout.ChipPadding, Corners = Radii.Circle(ClassicStylePickerLayout.ChipH),
+            Fill = frosted ? frost : Tok.FillControlDefault,
+            HoverFill = frosted ? frost : Tok.FillControlSecondary,
+            PressedFill = frosted ? frost : Tok.FillControlTertiary,
+            BorderWidth = 1f, BorderColor = frosted ? ink.Primary with { A = ClassicHeroLayout.BleedChipStrokeA } : Tok.StrokeControlDefault,
+            BrushTransitionMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
+            Children =
+            [
+                new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
+                {
+                    Size = ClassicStylePickerLayout.ChipTextSize, LineHeight = ClassicStylePickerLayout.ChipTextLine, Color = ink.Primary,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap,
+                },
+                Icon(Icons.ChevronDown, ClassicStylePickerLayout.ChipGlyph, ink.Secondary),
+            ],
+        }, Loc.Get(Strings.Player.PlayerStyle));
+    }
+
+    /// <summary>The strip: the arrows either side of the focused style's name and line, the finish swatches, the dots.</summary>
+    internal static Element Strip(IPlayerStyleVerbs verbs, int focus, Func<string?> artUrl)
+    {
+        var style = Rail.PlayerCatalog.ById(focus);
+        var swatches = new Element[style.Finishes.Length];
+        if (style.HasFinish)
+        {
+            int current = Rail.PlayerPrefs.Finish(focus);
+            for (int i = 0; i < swatches.Length; i++) swatches[i] = Swatch(verbs, style.Finishes[i], i, i == current, artUrl);
+        }
+        var dots = new Element[Rail.PlayerCatalog.Count];
+        for (int i = 0; i < dots.Length; i++) dots[i] = Dot(i, i == focus);
+        return new BoxEl
+        {
+            Key = ClassicStylePickerLayout.StripKey, Direction = 1, Gap = ClassicStylePickerLayout.StripGap,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ClassicStylePickerLayout.NameGap,
+                            Height = ClassicStylePickerLayout.NameBlockH, Justify = FlexJustify.Center,
+                            Children =
+                            [
+                                new TextEl(Loc.Get(style.NameKey))
+                                {
+                                    Size = ClassicStylePickerLayout.NameSize, LineHeight = ClassicStylePickerLayout.NameLine, Weight = ClassicStylePickerLayout.NameWeight,
+                                    Color = Tok.TextPrimary, TextAlign = TextAlign.Center, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                },
+                                new TextEl(Loc.Get(style.LineKey))
+                                {
+                                    Size = ClassicStylePickerLayout.LineSize, LineHeight = ClassicStylePickerLayout.LineLine, Color = Tok.TextSecondary,
+                                    TextAlign = TextAlign.Center, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                // Only a style with finishes has swatches: the row opens to their height and closes to nothing, eased (no jump).
+                new BoxEl
+                {
+                    Height = style.HasFinish ? ClassicStylePickerLayout.SwatchRowH : 0f, ClipToBounds = true, Direction = 0, AlignItems = FlexAlign.Center,
+                    Justify = FlexJustify.Center, Gap = ClassicStylePickerLayout.SwatchGap, Animate = Design.Reduced ? null : ClassicStylePickerLayout.SwatchRowMotion, Children = swatches,
+                },
+                // The arrows flank the dots, clear of the name and line above.
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = ClassicStylePickerLayout.RowGap,
+                    Children =
+                    [
+                        Arrow(ClassicStylePickerLayout.PrevKey, Icons.ChevronLeft, Strings.Player.Picker.Previous, () => verbs.Step(-1)),
+                        Dots(verbs, dots),
+                        Arrow(ClassicStylePickerLayout.NextKey, Icons.ChevronRight, Strings.Player.Picker.Next, () => verbs.Step(+1)),
+                    ],
+                },
+            ],
+        };
+    }
+
+    static Element Arrow(string key, string glyph, string labelKey, Action step) => ToolTip.Wrap(new BoxEl
+    {
+        Key = key, Width = ClassicStylePickerLayout.ArrowBox, Height = ClassicStylePickerLayout.ArrowBox, Shrink = 0f,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.Circle(ClassicStylePickerLayout.ArrowBox),
+        Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, BrushTransitionMs = Design.Motion.Faster,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = step,
+        Children = [Icon(glyph, ClassicStylePickerLayout.ArrowGlyph, Tok.TextPrimary)],
+    }, Loc.Get(labelKey));
+
+    static Element Swatch(IPlayerStyleVerbs verbs, Rail.PlayerCatalog.Finish finish, int index, bool on, Func<string?> artUrl)
+    {
+        Prop<ColorF> fill = finish.Swatch == Rail.PlayerCatalog.FromCover
+            ? Prop.Of(() => ClassicHeroWash.Of(artUrl()))
+            : ColorScience.ToColor(finish.Swatch);
+        return ToolTip.Wrap(new BoxEl
+        {
+            Key = ClassicStylePickerLayout.SwatchPrefix + finish.Slug, Width = ClassicStylePickerLayout.SwatchHit, Height = ClassicStylePickerLayout.SwatchHit, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
+            Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, OnClick = () => verbs.SetFinish(index),
+            Children =
+            [
+                new BoxEl
+                {
+                    Width = ClassicStylePickerLayout.Swatch, Height = ClassicStylePickerLayout.Swatch,
+                    Shrink = 0f, Corners = Radii.Circle(ClassicStylePickerLayout.Swatch), Fill = fill,
+                    BorderWidth = ClassicStylePickerLayout.SwatchRing, BorderColor = on ? Tok.AccentDefault : Tok.StrokeControlStrongDefault,
+                    BrushTransitionMs = Design.Motion.Faster,
+                    HitTestVisible = false,
+                },
+            ],
+        }, Loc.Get(finish.LabelKey));
+    }
+
+    /// <summary>The dots' laid-out width (one strip shows at a time), noted by its bounds callback: a re-render keeps the node and its bounds,
+    /// so the width outlives the element that first reported it.</summary>
+    static float s_dotsWidth;
+    static readonly Action<RectF> s_noteDotsWidth = static r => s_dotsWidth = r.W;
+
+    /// <summary>The dots: ONE target (40 tall, up to a dot's 24 each, narrower where the arrows beside it leave less) whose click picks the dot
+    /// under the pointer.</summary>
+    static Element Dots(IPlayerStyleVerbs verbs, Element[] dots)
+    {
+        return new BoxEl
+        {
+            Key = ClassicStylePickerLayout.DotsKey, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = ClassicStylePickerLayout.DotBox * dots.Length, Height = ClassicStylePickerLayout.DotHitH, Direction = 0,
+            AlignItems = FlexAlign.Center, Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
+            Role = AutomationRole.Slider, Focusable = true, Cursor = CursorId.Hand,
+            OnBoundsChanged = s_noteDotsWidth,
+            OnPointerDown = p => verbs.FocusOn(Math.Clamp((int)(p.X * dots.Length / MathF.Max(1f, s_dotsWidth)), 0, dots.Length - 1)),
+            Children = dots,
+        };
+    }
+
+    static Element Dot(int id, bool on) => new BoxEl
+    {
+        Key = ClassicStylePickerLayout.DotPrefix + Rail.PlayerCatalog.ById(id).Slug, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = ClassicStylePickerLayout.DotHitH,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = on ? ClassicStylePickerLayout.DotOnW : ClassicStylePickerLayout.DotW, Height = ClassicStylePickerLayout.DotH, Shrink = 0f,
+                Corners = Radii.Circle(ClassicStylePickerLayout.DotH), Fill = on ? Tok.AccentDefault : Tok.TextTertiary,
+                BrushTransitionMs = Design.Motion.Faster, Animate = Design.Reduced ? null : ClassicStylePickerLayout.DotMotion,
+            },
+        ],
+    };
+}
+
+// <summary>The now-playing body (scrolls under the pinned hero).</summary>
 internal sealed class ClassicNowPlayingBody : Component
 {
     public override Element Render()

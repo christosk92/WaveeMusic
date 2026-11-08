@@ -20,7 +20,7 @@
   Evented exports retain stack durations but do not retain the original sample count.
 #>
 param(
-    [string]$Exe = "C:\wavee\WaveeMusic\src\apps\Wavee\bin\Release\net10.0\Wavee.exe",
+    [string]$Exe = "C:\wavee\WaveeMusic\src\apps\Wavee\bin\Release\net11.0\Wavee.exe",
     [string]$Out = "",
     [string[]]$Routes = @(
         "wavee://open?route=album&arg=spotify%3Aalbum%3A5Qg2iNuV6zTCGlIYunvvTd",

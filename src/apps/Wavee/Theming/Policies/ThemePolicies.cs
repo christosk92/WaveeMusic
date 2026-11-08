@@ -64,6 +64,10 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// nothing draws one tab per area, as the page shipped.</summary>
     public SettingsGrouping Settings { get; init; } = SettingsGrouping.Default;
 
+    /// <summary>How the structure moves one page to the next, per kind of swap (<see cref="PageMotionPolicy"/>: the page root's recipe and
+    /// the incoming page's staggered entrance). A structure that declares nothing keeps the core's one fade-through. (winui page motion)</summary>
+    public PageMotionPolicy PageMotion { get; init; } = PageMotionPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -82,6 +86,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (ArtistTiers is null) problems.Add("ArtistTiers is missing");
         if (LibraryTiers is null) problems.Add("LibraryTiers is missing");
         if (Settings is null) problems.Add("Settings is missing"); else problems.AddRange(Settings.Validate());
+        if (PageMotion is null) problems.Add("PageMotion is missing");
         return problems;
     }
 }
@@ -110,6 +115,11 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
     /// <summary>Ctrl+Tab / Ctrl+Shift+Tab activate the next / previous tab of the workspace (P6 WK; the WinUI board: "Ctrl+Tab still cycles"),
     /// while focus is inside the frame. Default false: the chord moves focus, as it always did. Appended (P6 WK).</summary>
     public bool CyclesTabs { get; init; }
+
+    /// <summary>The album page states its credits (Zune's Z-Album "credits": a paragraph the core folds from every member's CreditsV2 roles). Only under a
+    /// structure that draws them does the core ask each member's credits (one batched metadata request per album); default false: nothing is asked
+    /// and the album props carry no credits. Appended (contract 1.84, album credits).</summary>
+    public bool AlbumCredits { get; init; }
 
     /// <summary>The title row draws the tab strip: tabs are offered and the strip is not hidden.</summary>
     public bool ShowsTabStrip => Tabs && !HiddenTabStrip;

@@ -3,7 +3,7 @@
 // The play bar (`Player.Bar`) and the transport pieces it shares with the panel's sheet, the stage and the strip over a video (the seek rail,
 // the chapter ticks and tip, the scrub readout, the time labels), the device picker and the on-media strip; the panel's frame (`Shell.Panel`:
 // the tabs, the dock / overlay crossfade, the Compact sheet, Huge's two panes) and the bodies it places under its tabs: the queue, the
-// now-playing hero and its style flyout, the lyrics header, the lyrics peek, "next up" and friends. Numbers: `Rules\Tiers.Player.cs` (the
+// now-playing hero, the lyrics header, the lyrics peek, "next up" and friends. Numbers: `Rules\Tiers.Player.cs` (the
 // levels and the panel per tier), `Rules\WinUiPlayerLayout.cs` and `Rules\WinUiPanelLayout.cs` (the parts).
 
 using FluentGpu.Theming;
@@ -25,7 +25,6 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.OnMediaTransport, WinUiOnMedia.Template, "winui.player.on-media-transport");
         views.Add(ViewKeys.ShellPanel, WinUiPanel.Template, "winui.shell.panel");
         views.Add(ViewKeys.NowPlayingHero, WinUiNowPlayingHero.Template, "winui.player.now-playing-hero");
-        views.Add(ViewKeys.DeckStyleFlyout, WinUiNowPlayingHero.FlyoutTemplate, "winui.player.deck-style-flyout");
         views.Add(ViewKeys.LyricsPeek, WinUiLyricsPeek.Template, "winui.player.lyrics-peek");
         views.Add(ViewKeys.PanelFriends, WinUiFriends.Template, "winui.panel.friends");
         views.Add(ViewKeys.PanelLyricsHeader, WinUiLyricsHeader.Template, "winui.panel.lyrics-header");

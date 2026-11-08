@@ -2,11 +2,11 @@
 
   <!-- Wavee repo baseline (root Directory.Build.props: every project under src/apps, modules and vendor inherits it).
        Mirrors the engine's src/Directory.Build.props PropertyGroup so the Wavee projects share the engine's
-       net10 / zero-alloc / GC posture; the engine itself lives in the sibling checkout named by $(EngineRoot) below.
+       net11 / zero-alloc / GC posture; the engine itself lives in the sibling checkout named by $(EngineRoot) below.
        `PublishAot` is set ONLY on the WinExe csproj (avoids NETSDK1207 on the class lib). -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>14</LangVersion>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>15</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

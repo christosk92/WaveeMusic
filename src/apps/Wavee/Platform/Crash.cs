@@ -65,7 +65,15 @@ public static partial class Crash
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ReporterPid = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? DumpLocalCreated = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? DumpIncluded = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DumpOmissionReason = null);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DumpOmissionReason = null,
+        // Machine context and the crash-time native region (crash round 2026-11-07): all optional, so an older summary reads.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? GpuDriver = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? VirtualMachine = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? VmHint = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? ThirdPartyModules = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NativeRegion = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? TrailEvents = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] uint? DumpFlags = null);
 
     /// <summary><c>send.json</c> beside <c>summary.json</c> — the per-bundle send state. Written by the uploader
     /// (WP-C); read by <c>Crash.Host.Bundles()</c> (WP-B) so the Reports list (WP-E) never has to ask the network.</summary>

@@ -304,8 +304,8 @@ public static partial class ProfileLists
 
         /// <summary>Three stages, each skipped when its inputs did not move: (1) ENTRIES — re-read the target rows and re-sort
         /// when a table or the relation published; (2) FILTER — the chip and the (debounced) query; (3) ROWS — the letter
-        /// projection when the filter or the grid plan moved. Then the face (the load rule) is decided every run: marks move
-        /// without publishing a table, so <c>Fetch.Settled</c> wakes this too.</summary>
+        /// projection when the filter or the grid plan moved. Then the face (the load rule) is decided every run: a mark that moves
+        /// (a settle, a failure, a re-ask) publishes its table, so the reads above wake this too.</summary>
         void Sync()
         {
             _ = Entities.ScopeEpoch.Value;                             // FIRST: a scope switch re-points every table
@@ -316,7 +316,6 @@ public static partial class ProfileLists
 
             uint uv = scope.Users.Changed.Value, av = scope.Artists.Changed.Value;
             uint ev = User.ProfileRelation(_shelf).Changed.Value;
-            _ = global::Wavee.Fetch.Settled.Value;
             var chipRaw = _chip.Value;
             string query = _debounced?.Value ?? "";
             float bodyW = _bodyW.Value;

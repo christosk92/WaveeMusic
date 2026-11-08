@@ -774,7 +774,7 @@ public static partial class Entities
         if (t.Inflight[slot] != 0) return;   // already simulating this row's switch
 
         uint stamp = unchecked((uint)Environment.TickCount64) | 1u;
-        t.Inflight[slot] = stamp;
+        t.Seat(slot, stamp);                 // the simulated request seats the row; its conclusion gives the seat back
 
         string facetId = Entities.Strings.Resolve(h.FacetId);
         bool fail = facetId.Length > 0 && FakeHomeFacetTiming.Failing.Contains(facetId);
@@ -791,7 +791,7 @@ public static partial class Entities
         if (!ReferenceEquals(scope, Current)) return;    // the scope was replaced (sign-out, a fresh test) meanwhile
         var t = scope.Homes;
         if ((uint)slot >= (uint)t.Count || t.Inflight[slot] != stamp) return;
-        t.Inflight[slot] = 0;
+        t.Unseat(slot);
         // A failed attempt is ASKED-but-not-KNOWN — exactly what a live fetch that errored leaves — so
         // LiveAttemptConcluded reads true and the switch fails (InfoBar + revert) instead of loading forever.
         if (fail) { t.Known[slot] &= ~(uint)HomeFields.Sections; t.Asked[slot] |= (uint)HomeFields.Sections; }
@@ -1107,7 +1107,9 @@ public static partial class Entities
         if (missing != 0)
         {
             t.Asked[slot] |= missing;
-            if (pending) t.Inflight[slot] = FakePendingStamp;
+            // The pending query's request never lands: one seat, never given back (a second ask of the same row seats nothing more).
+            if (pending && t.Outstanding[slot] == 0) t.Seat(slot, FakePendingStamp);
+            t.MarkDirty();   // a mark move publishes the table, as every real one does (the page's readiness reads it tracked)
         }
         return true;
     }

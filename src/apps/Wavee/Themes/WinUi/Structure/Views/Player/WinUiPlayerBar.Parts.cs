@@ -43,22 +43,23 @@ internal static partial class WinUiPlayerBar
     // ── the buttons ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A subtle button: the glyph in the primary ink (the accent ink while <paramref name="latched"/>), transparent at rest, the subtle
-    /// fill on hover and press; <paramref name="plated"/> keeps the subtle fill (a pane on show).</summary>
+    /// fill on hover and press; <paramref name="plated"/> keeps the subtle fill (a pane on show). <paramref name="ink"/>: the pane head's ink (over
+    /// the edge-to-edge canvas, the media scope's glyph and fills).</summary>
     internal static BoxEl Button(string glyph, Action onClick, bool enabled, bool latched, float width, float height, float size,
-        Action<NodeHandle>? realized = null, string? font = null, bool plated = false)
+        Action<NodeHandle>? realized = null, string? font = null, bool plated = false, CanvasInk ink = default)
     {
-        ColorF ink = !enabled ? Tok.TextDisabled : latched && !plated ? Tok.AccentTextPrimary : Tok.TextPrimary;
+        ColorF glyphInk = !enabled ? Tok.TextDisabled : latched && !plated ? Tok.AccentTextPrimary : ink.Primary;
         return new BoxEl
         {
             Width = width, Height = height, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = CornerRadius4.All(PL.ButtonCorner),
-            Fill = plated && enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
-            HoverFill = enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
-            PressedFill = enabled ? Tok.FillSubtleTertiary : ColorF.Transparent,
+            Fill = plated && enabled ? ink.Hover : ColorF.Transparent,
+            HoverFill = enabled ? ink.Hover : ColorF.Transparent,
+            PressedFill = enabled ? ink.Pressed : ColorF.Transparent,
             BrushTransitionMs = Design.Motion.Faster,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
             OnClick = enabled ? onClick : null, Cursor = enabled ? CursorId.Hand : null, OnRealized = realized,
-            Children = [new TextEl(glyph) { Size = size, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = ink }],
+            Children = [new TextEl(glyph) { Size = size, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = glyphInk }],
         };
     }
 
@@ -180,8 +181,9 @@ internal static partial class WinUiPlayerBar
         }
     }
 
-    /// <summary>The video split (Medium up, while the track has a video): the switch (the film glyph; latched while the video is on) and the
-    /// chevron that opens "Where to play the video", in one bordered 32 control.</summary>
+    /// <summary>The video split (Medium up, its slot the level's whatever the track): the switch (the film glyph; latched while the video is on)
+    /// and the chevron that opens "Where to play the video", in one bordered 32 control. A track without a video shows it DISABLED in place
+    /// (WinUI's disabled control: the disabled fill and ink, no hover), so a skip between a video and a plain track moves nothing.</summary>
     static Element VideoSplit(PlayerBarProps props, PlayerBarView v, bool lit, IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> menu)
     {
         var verbs = props.Verbs;
@@ -201,8 +203,9 @@ internal static partial class WinUiPlayerBar
         return new BoxEl
         {
             Height = PL.SplitH, Direction = 0, AlignItems = FlexAlign.Center, Corners = CornerRadius4.All(PL.ButtonCorner), ClipToBounds = true,
-            Fill = on ? Tok.FillSubtleTertiary : Tok.FillSubtleSecondary, BorderColor = Tok.StrokeControlDefault, BorderWidth = 1f,
-            OnRealized = h => anchor.Value = h, OnContextRequested = _ => OpenMenu(),
+            Fill = !lit ? Tok.FillControlDisabled : on ? Tok.FillSubtleTertiary : Tok.FillSubtleSecondary, BorderColor = Tok.StrokeControlDefault, BorderWidth = 1f,
+            BrushTransitionMs = Design.Motion.Faster,
+            OnRealized = h => anchor.Value = h, OnContextRequested = lit ? _ => OpenMenu() : null,
             Children =
             [
                 ToolTip.Wrap(Button(Icons.Movie, () => verbs.ToggleVideo(), lit, on, PL.SplitMainW, PL.SplitInnerH, PL.Glyph),
@@ -249,7 +252,7 @@ internal sealed class WinUiVolumeButton : Component
                     Children =
                     [
                         WinUiPlayerBar.Button(props.Muted.Peek() ? Icons.Mute : Icons.Volume, props.ToggleMute, true, false, PL.ToolBox, PL.ToolBox, PL.Glyph),
-                        Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                        VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                             length: PL.VolumeFlyoutW, thickness: PL.VolumeThickness),
                     ],
                 },
@@ -472,7 +475,7 @@ internal abstract class WinUiCreditsLine : Component
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
         float slot = fit ? UseMeasuredWidth(PL.CreditSlotQuantum).Value : 0f;   // `fit` is the class's: the hook runs in every render or none
-        var credits = props.Credits();
+        var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
         // An episode's line is its show, one link; a track's, its credited names.
         var named = new List<PlayerCreditLink>(Math.Max(1, credits.Artists.Length));
         if (credits.Show is { } show) named.Add(show);

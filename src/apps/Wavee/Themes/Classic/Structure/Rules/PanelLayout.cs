@@ -28,6 +28,10 @@ internal static class ClassicPanelLayout
     /// <summary>A header glyph button's glyph (row 1 of the icon-button table pairs the 32-square with a 16-DIP glyph, never 12).</summary>
     public const float HeaderGlyph = 16f;
 
+    /// <summary>The docked video's resize handle under the card: a grabber pill (32 x 4, r2, FillControlStrong, the sheet grabber's size) at this
+    /// opacity at rest, full while the band is hovered or dragged.</summary>
+    public const float DockedGripW = 32f, DockedGripH = 4f, DockedGripRadius = 2f, DockedGripRest = 0.55f;
+
     /// <summary>The Art | Video toggle's height and each half's box.</summary>
     public const float ToggleH = 24f, ToggleHalfBox = 24f;
 
@@ -53,6 +57,46 @@ internal static class ClassicPanelLayout
 /// <summary>The constants of Classic's now-playing hero and body.</summary>
 internal static class ClassicHeroLayout
 {
+    // ── the edge-to-edge canvas, "Tideline" (canvas-design/project/BleedClassic.dc.html) ───────────────────────────────
+
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It ends in a slowly moving wave whose crest sits at
+    /// min(canvas foot - 110, panel height - 300): a 220 band darkens the canvas toward it (the media scope's shade at 35 %: the ground in the
+    /// dark kind, the media stage in the light kind, `Deck.BleedShade`), three swells (H 140, centred on the crest) drift at 33, 21 and 14 s a
+    /// panel's width: two in the art's colours (the dominant hue behind the second one) and the front one in the plain panel ground with a 1.5
+    /// crest line in the art's hue (55 %): the front swell is where the canvas gives way to the ground. Under the crest the panel is plain (its
+    /// own ground, as with the canvas off); a 150 band of the shade (75 %) keeps the header readable. The meta's top sits 24 under the crest.
+    /// Reduced motion: the swells stand still.</summary>
+    public const float BleedAspect = 16f / 9f, BleedCrestLift = 110f, BleedCrestRoom = 300f, BleedDarkBand = 220f, BleedDarkA = 0.35f,
+        BleedWaveH = 140f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f, BleedCrestLine = 1.5f, BleedCrestA = 0.55f;
+
+    /// <summary>The swells, back to front: amplitude, baseline (inside the 140 band), periods per panel width, and the drift (a panel's width
+    /// per period, ms); the art-coloured swells' alpha (the back one in the dominant hue, the middle one in the second).</summary>
+    public const float WaveBackAmp = 16f, WaveBackBase = 46f, WaveBackPeriods = 1f, WaveBackMs = 33000f,
+        WaveMidAmp = 12f, WaveMidBase = 58f, WaveMidPeriods = 2f, WaveMidMs = 21000f,
+        WaveFrontAmp = 10f, WaveFrontBase = 70f, WaveFrontPeriods = 2f, WaveFrontMs = 14000f,
+        WaveBackA = 0.85f, WaveMidA = 0.9f;
+
+    /// <summary>The art-coloured swells' HSL lightness, per kind (the back swell deeper, the middle one a step toward the plain ground, so the
+    /// tide steps down to the panel), the cap on their saturation (the art's own below it), and how far apart (degrees) a role's hue must stand to
+    /// be the art's second colour.</summary>
+    public const float WaveBackLightL = 0.58f, WaveMidLightL = 0.74f, WaveBackDarkL = 0.46f, WaveMidDarkL = 0.32f, WaveSatMax = 0.6f, WaveHueApart = 30f;
+
+    /// <summary>The ratio the meta's accent text (the art's hue) is solved to on the plain ground: AA's 4.5 with a little headroom.</summary>
+    public const float ArtTextContrast = 4.8f;
+
+    /// <summary>The header over the canvas: "Playing from album" (11/14, 14 % tracking, white at 72 %) over the album (15/20 semibold); the chip
+    /// a white 10 % plate under a 22 % hairline (no blur: a frost cannot sample the video, a separate DirectComposition surface).</summary>
+    public const float BleedEyebrowSize = 11f, BleedEyebrowLine = 14f, BleedEyebrowA = 0.72f, BleedSourceSize = 15f, BleedSourceLine = 20f,
+        BleedChipFillA = 0.10f, BleedChipStrokeA = 0.22f;
+
+    public const ushort BleedSourceWeight = 600, BleedTitleWeight = 600;
+
+    /// <summary>The meta under the crest: the 64 cover (r10) with a soft glow in the art's dominant colour (28 blur, 10 down, 35 %), 14 to the
+    /// title (22/26 semibold) over the artist in the art's hue as text (14/20) and "album · year" (12/16, the primary ink at 70 %), 3 apart; the
+    /// saved heart in that hue on a 40 circle of it at 14 %.</summary>
+    public const float BleedCover = 64f, BleedCoverRadius = 10f, BleedGlowBlur = 28f, BleedGlowY = 10f, BleedGlowA = 0.35f, BleedMetaGap = 14f,
+        BleedTitleSize = 22f, BleedTitleLine = 26f, BleedLinesGap = 3f, BleedYearA = 0.70f, BleedHeart = 40f, BleedHeartA = 0.14f;
+
     // ── the track meta ───────────────────────────────────────────────────────────────────────────────────────────────
     public const float ArtistSize = 14f, ArtistLine = 20f, AlbumSize = 12f, AlbumLine = 16f;
     public const float TitleColumnGap = 4f, MetaLinesGap = 2f;
@@ -115,28 +159,39 @@ internal static class ClassicFriendsLayout
     public const float SkeletonNameW = 120f, SkeletonDetailW = 160f, SkeletonBarH = 12f;
 }
 
-/// <summary>The constants of Classic's deck style flyout.</summary>
-internal static class ClassicDeckFlyoutLayout
+/// <summary>The constants of Classic's style chip and its in-place picker (canvas-design `Classic.dc.html`, `Styles.dc.html`): pills.</summary>
+internal static class ClassicStylePickerLayout
 {
-    /// <summary>The flyout's content width (four 74.5-DIP cards, three gaps, the padding) and the gap between cards.</summary>
-    public const float Width = 340f, CardGap = 6f;
+    /// <summary>The node keys `find` reads.</summary>
+    public const string ChipKey = "classic-npv-chip", CancelKey = "classic-npv-cancel", DoneKey = "classic-npv-done", StripKey = "classic-npv-strip",
+        PrevKey = "classic-npv-prev", NextKey = "classic-npv-next", SwatchPrefix = "classic-npv-finish:", DotPrefix = "classic-npv-dot:", DotsKey = "classic-npv-dots";
 
-    /// <summary>A card's padding and corner radius, and the selection ring.</summary>
-    public const float CardPad = 4f, CardRadius = 6f, SelectedRing = 2f;
+    /// <summary>The chip: a 32 pill with a hairline, 12 in before the name and 8 after the chevron, 6 between them; the name 13/20, the chevron 12.</summary>
+    public const float ChipH = 32f, ChipGap = 6f, ChipTextSize = 13f, ChipTextLine = 20f, ChipGlyph = 12f;
 
-    public const float TitleSize = 14f, TitleLine = 20f, LabelSize = 12f, LabelLine = 16f;
+    public static readonly Edges4 ChipPadding = new(12f, 0f, 8f, 0f);
 
-    /// <summary>An option row's gap and its label's floor.</summary>
-    public const float OptionGap = 10f, OptionLabelW = 60f;
+    /// <summary>The strip under the art (12 above it): 12 between its rows; the 40 round arrows either side of the style's name (16/22 bold) over
+    /// its line (13/18, two lines reserved), 2 apart; the finish swatches (28, a 2 ring) 12 apart (their 40 hit boxes side by side) in a 40 row there for every style; the dots
+    /// (6 tall, 18 wide on the focused style, 24 apart in ONE 40-tall target whose click picks the dot under it); a swatch's hit box is 40 (the Compact floor).</summary>
+    public const float StripGap = 12f, StripTop = 12f, ArrowBox = 40f, ArrowGlyph = 14f, RowGap = 8f, NameSize = 16f, NameLine = 22f, NameGap = 2f,
+        LineSize = 13f, LineLine = 18f, SwatchRowH = 40f, Swatch = 28f, SwatchRing = 2f, SwatchGap = 0f, SwatchHit = 40f, DotBox = 24f, DotHitH = 40f, DotH = 6f, DotW = 6f,
+        DotOnW = 18f;
 
-    /// <summary>A swatch's ring and dot.</summary>
-    public const float SwatchRing = 30f, SwatchDot = 22f;
+    public const ushort NameWeight = 700;
 
-    /// <summary>The compact Segmented of the option rows: 28 tall, 12 pt, items ≥ 56 — four choices share ~240 DIP.</summary>
-    public static Segmented.Style CompactSeg => Segmented.DefaultStyle with
-    {
-        Height = 28f, FontSize = 12f, ItemMinWidth = 56f, CornerRadius = 5f, ItemCornerRadius = 4f,
-    };
+    /// <summary>The name block: the name's line, the gap and two lines of description.</summary>
+    public const float NameBlockH = NameLine + NameGap + 2f * LineLine;
+
+    public static readonly Edges4 StripPadding = new(0f, StripTop, 0f, 0f);
+
+    /// <summary>A dot's width easing to the focused one's.</summary>
+    public static readonly LayoutTransition DotMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Width);
+
+    /// <summary>The swatch row opening to a style with finishes and closing to one without.</summary>
+    public static readonly LayoutTransition SwatchRowMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
 }
 
 /// <summary>The constants of Classic's on-media strip.</summary>

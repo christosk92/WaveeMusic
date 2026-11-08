@@ -41,7 +41,7 @@
 //
 //   static class Audio { Load(row, id, kind, epoch, fromMs, seekGen); Stop(); Pause(); Resume(); Seek(ms, epoch, gen);
 //                        SetVolume(linear01); Prepare(row, id); }
-//   static class Video { Load(source, epoch, fromMs, paused, seekGen, muted); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
+//   static class Video { Load(source, epoch, fromMs, paused, seekGen, muted, rowDurMs); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
 //                        SetVolume(amplitude); }
 //   static class Os    { Publish(in State s); }
 //   partial void PumpAdopt(uint from, uint to);  PumpPrefetch(row, id);  PumpCancelPrepared();   ← owner H implements
@@ -193,9 +193,45 @@ public static partial class Playback
     public static readonly Signal<long> TunedInAtMs = new(0L);
     /// <summary>The stream's quality badge, cleared the moment a remote device owns playback.</summary>
     public static readonly Signal<StringId> StreamFormat = new(StringId.Empty);
-    /// <summary>Is the video host what is actually playing? The lyrics peek suppresses itself — and stops its clock —
-    /// on this.</summary>
+    /// <summary>Is the LOCAL video host what is actually playing? The lyrics peek suppresses itself — and stops its clock —
+    /// on this. Never true while a foreign device owns playback (<see cref="VideoFacts.Remote"/>).</summary>
     public static readonly Signal<bool> VideoActive = new(false);
+    /// <summary>THE video facts of the row on the deck (<see cref="VideoFacts.Of"/>), local or a foreign owner's: the one
+    /// answer every "has video / which mode / may it switch" reader binds — the player bar, the placement menu, the availability
+    /// fold, the warm keeper, the now-playing face, the probe.</summary>
+    public static readonly Signal<VideoFacts> DeckVideo = new(default) { DebugName = "playback.deckVideo" };
+
+    /// <summary>The deck's video facts as every surface reads them, derived once per drain from <see cref="State.Video"/> and
+    /// <see cref="State.Kind"/>.</summary>
+    /// <param name="HasVideo">The row has a music video (locally: the catalogue's verdict; remotely: the owner offers the switch
+    /// to video or already plays it).</param>
+    /// <param name="Known">Someone has ruled on it — unknown is not "no video", and a fold keeps what it has.</param>
+    /// <param name="OnVideo">The row plays as video (locally: the video host holds a live load; remotely: the owner's player is video).</param>
+    /// <param name="CanSwitchToVideo">A switch to video may be asked now.</param>
+    /// <param name="CanSwitchToAudio">A switch back to audio may be asked now.</param>
+    /// <param name="Remote">A foreign device owns playback: a switch is a Connect signal to it, never a host swap here.</param>
+    /// <param name="ManifestId">The video's manifest id (interned 32 hex), or empty.</param>
+    public readonly record struct VideoFacts(bool HasVideo, bool Known, bool OnVideo, bool CanSwitchToVideo, bool CanSwitchToAudio,
+        bool Remote, StringId ManifestId)
+    {
+        /// <summary>The facts of <paramref name="s"/>. PURE.</summary>
+        public static VideoFacts Of(in State s)
+        {
+            RowVideo v = s.Video;
+            if (s.Own.Kind == Owner.Foreign)
+            {
+                bool onVideo = s.HasCurrent && s.Kind == PlayableKind.Video;
+                bool has = s.HasCurrent && ((v.Offered & VideoSignals.SwitchToVideo) != 0 || onVideo);
+                return new VideoFacts(has, v.Known || onVideo, onVideo,
+                    s.HasCurrent && (v.Offered & VideoSignals.SwitchToVideo) != 0,
+                    s.HasCurrent && (v.Offered & VideoSignals.SwitchToAudio) != 0, Remote: true, v.ManifestId);
+            }
+            bool local = s.HasCurrent && s.Kind == PlayableKind.Video && !s.Parked
+                && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused;
+            bool hasVideo = s.HasCurrent && v.HasVideo;
+            return new VideoFacts(hasVideo, v.Known, local, hasVideo && !local, local, Remote: false, v.ManifestId);
+        }
+    }
     /// <summary>Bumped to ask the shell to open the device picker (a toast's action, a media-key fallback).</summary>
     public static readonly Signal<int> DevicePickerRequest = new(0);
     /// <summary>The identity of the last row the deck stepped past ON ITS OWN because its load failed for good
@@ -330,6 +366,10 @@ public static partial class Playback
 
         if (Platform.Settings.Get(Platform.Keys.RememberVolume))
             s_state.Volume = Math.Clamp(Platform.Settings.Get(Platform.Keys.SavedVolume), 0f, 1f);
+        // The video host's level follows the reducer only through the volume EFFECT, which fires on a change - and setting
+        // the level it already has is no change. Seeded here, or every video opened at Video.s_volume's 1.0 (full volume,
+        // whatever the slider and the stored volume said - a stored 0 included) until the slider was moved (2026-11-07).
+        Video.SetVolume(Audio.VolumeTaper.Amplitude(s_state.Volume));
 
         // The dealer's mailbox wakes us; the drain reads it. One closure, made once.
         Spotify.Connect.Wake = static () => ToUi(s_drain);
@@ -338,6 +378,7 @@ public static partial class Playback
         Spotify.Connect.Hello = static () => ToUi(s_hello);
         s_boundScope = Entities.Current;                    // the scope the deck's slots belong to (G-241, Rebind)
         WatchSession();                                    // every transition into Online → Input.SessionOnline
+        InstallVideoFactsWatch();                          // a late association land → the offer's second PUT (G-143)
 
         Publish();
         StartTicker();
@@ -354,11 +395,13 @@ public static partial class Playback
     /// <c>Spotify.Connect.PublishNow</c>; the message id is minted by the glue.</summary>
     public static Snapshot SnapshotForConnect(PublishReason reason = PublishReason.NewDevice)
     {
-        bool hasVideo = CurrentHasVideo();
+        // The offer is the reducer's own facts (State.Video): the interned manifest id resolves without allocating.
+        bool hasVideo = s_state.Video.HasVideo;
+        StringId manifest = s_state.Video.ManifestId;
         long now = FrameNowMs();
         WireExtras wire = CaptureWire(now);                // the parity half (G-240), Playback.Host.Wire.cs
         return Snapshot.Of(in s_state, in s_identity, reason, 0, UnixNowMs(), now, CurrentUid(), hasVideo,
-            hasVideo ? CurrentVideoGid() : "", in wire);
+            hasVideo && !manifest.IsEmpty ? Entities.Strings.Resolve(manifest) : "", in wire);
     }
 
     /// <summary>Which reason a hello carries: the first announce of this boot is <see cref="PublishReason.NewDevice"/>,
@@ -400,6 +443,7 @@ public static partial class Playback
     /// never re-enter itself from an effect.</para></summary>
     public static void Post(in Input i)
     {
+        if (i.Kind is InputKind.Next or InputKind.Prev) Crash.Trail.Note(Crash.AppTrail.TrackSkip, i.Kind == InputKind.Next ? 1 : -1);
         bool wake;
         lock (s_gate)
         {
@@ -462,7 +506,16 @@ public static partial class Playback
                     StepOne(in i);
                 }
 
+                // The queue rewrites the reducer asked for, before the follow: the shuffle toggle's re-lay (its cursor move is
+                // folded right here) and a repeat-context wrap's next lap (#215).
+                if (s_fx.Reorder) { s_fx.Reorder = false; ReorderQueue(s_fx.ReorderShuffle, now); }
+                if (s_fx.Lap)
+                {
+                    s_fx.Lap = false;
+                    if (FollowsQueue(in s_state, Queue.RefAt(s_state.Cursor.Index)) && Queue.Lap(in s_state.Cursor)) WatchQueue(now);
+                }
                 FollowQueue(now);
+                ObserveVideoFacts(now);                    // the deck row's video facts, before the PUT this drain sends
                 Execute();
                 s_forward.Clear();                         // every staged forward was folded in this drain (G-248)
                 Publish();
@@ -589,7 +642,9 @@ public static partial class Playback
             d.PositionAsOfMs, d.TimestampMs, d.DurationMs,
             d.Shuffling, d.Repeat, d.ActiveVolume,
             d.NoPrev, d.NoNext, d.NoSeek,
-            Identify(buffer.Utf8(d.ContextUri)));   // the owner's context: what a takeover adopts (A4)
+            Identify(buffer.Utf8(d.ContextUri)),    // the owner's context: what a takeover adopts (A4)
+            d.HasTrack && d.Track.IsVideo, (VideoSignals)d.VideoOffered, (VideoSignals)d.VideoDisallowed,
+            d.HasTrack ? RemoteManifest(buffer.Utf8(d.Track.AssociatedVideoId), buffer.Utf8(d.Track.Uri)) : StringId.Empty);
 
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
@@ -605,6 +660,24 @@ public static partial class Playback
             s_foreign.Clear();
             if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included
         }
+    }
+
+    static ulong s_remoteManifestHash;
+    static StringId s_remoteManifest;
+
+    /// <summary>The owner's <c>associated_video_id</c> → an interned manifest id. Interned (and remembered in the resolver's memo
+    /// under the row's uri, so a takeover's resolve is a memo hit) only when the bytes moved: a heartbeat allocates nothing.
+    /// UI thread.</summary>
+    static StringId RemoteManifest(ReadOnlySpan<byte> hex, ReadOnlySpan<byte> uri)
+    {
+        if (hex.Length != 32) return StringId.Empty;
+        ulong hash = DeviceHash(hex) * 31UL + DeviceHash(uri);
+        if (hash == s_remoteManifestHash) return s_remoteManifest;
+        s_remoteManifestHash = hash;
+        string text = System.Text.Encoding.ASCII.GetString(hex);
+        s_remoteManifest = Entities.Strings.Intern(text);
+        Video.RememberManifestId(System.Text.Encoding.UTF8.GetString(uri), text);
+        return s_remoteManifest;
     }
 
     /// <summary>What the last foreign cluster said about its context, published as <see cref="ContextLabel"/>.</summary>
@@ -719,11 +792,10 @@ public static partial class Playback
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
         if (s_fx.Fetch) EnsureRow(s_fx.FetchId);
         if (s_fx.QueueAdd) EnqueueRemote(s_fx.QueueAddId);
-        if (s_fx.Reorder) ReorderQueue(s_fx.ReorderShuffle);
         if (s_fx.Autoplay) RequestAutoplay(s_fx.AutoplayContext);
         if (s_fx.AutoplayPage) RequestAutoplayPage(s_fx.AutoplayPageContext);
         if (s_fx.Page) RequestPage(s_fx.PageContext);
-        if (s_fx.VideoDemoted) OnVideoDemoted?.Invoke(s_fx.VideoDemotedWhy);
+        if (s_fx.VideoIntent) OnVideoIntent?.Invoke(s_fx.VideoIntentOn, s_fx.VideoIntentWhy);
         if (s_fx.SkippedUnavailable)
         {
             LastSkippedUnavailable.Value = s_fx.SkippedId;
@@ -800,46 +872,77 @@ public static partial class Playback
     /// row with no source demotes to audio through the reducer (<see cref="AudioSignal.VideoUnavailable"/>).</summary>
     static void LoadVideo(EntityRef row, EntityId id, uint epoch, int fromMs, bool paused, uint seekGen, bool muted)
     {
-        string gid = row.Kind == EntityKind.Track && !row.IsNone && Entities.Current is not null
-                     && (uint)row.Slot < (uint)Entities.Current.Tracks.Count
-            ? ManifestIdOfRow(new Track(row.Slot))
+        // The deck's own facts first: the row's manifest id (Track.ManifestGidId), or — on a takeover, before the counterpart's
+        // TrackV4 landed here — the one the departed owner's cluster offered (a manifest memo hit, no metadata POST).
+        string gid = id.Equals(s_state.CurrentId) && !s_state.Video.ManifestId.IsEmpty ? ManifestOf(s_state.Video.ManifestId)
+            : row.Kind == EntityKind.Track && !row.IsNone && Entities.Current is not null
+              && (uint)row.Slot < (uint)Entities.Current.Tracks.Count
+            ? ManifestOf(new Track(row.Slot).ManifestGidId)
             : "";
         Func<EntityId, string, CancellationToken, Video.VideoSource?> resolver = VideoResolver;
         // F162: the load's resolve + manifest ride the api pool's PRIORITY lane — a switch must not queue behind the catalogue
         // batches the page the user clicked from started.
+        long queuedTs = System.Diagnostics.Stopwatch.GetTimestamp();
+        Video.Timeline.Mark("resolve.queued", id.Text + (gid.Length == 0 ? " nogid" : " gid"));
         bool queued = Spotify.Api.RunPriority(() =>
         {
+            Video.Timeline.Span("resolve.lanewait", Video.Timeline.MsSince(queuedTs));
+            long resolveTs = System.Diagnostics.Stopwatch.GetTimestamp();
             Video.VideoSource? source = null;
             try { source = resolver(id, gid, CancellationToken.None); }
             catch (Exception ex) { Log.Warn("playback", "video resolve failed", ex); }
-            if (source is null) { Post(Input.Audio(AudioSignal.VideoUnavailable, epoch, FrameNowMs())); return; }
+            if (source is null)
+            {
+                ToUi(s_clearResolving);                    // no source: the join the resolve marked is over
+                Post(Input.Audio(AudioSignal.VideoUnavailable, epoch, FrameNowMs()));
+                return;
+            }
+            Video.Timeline.Span("resolve.run", Video.Timeline.MsSince(resolveTs));
             Video.VideoSource resolved = source;
+            long hopTs = System.Diagnostics.Stopwatch.GetTimestamp();
             ToUi(() =>
             {
-                if (s_state.LoadEpoch != epoch || s_hostKind != PlayableKind.Video) return;   // superseded while resolving
+                Video.Timeline.Span("resolve.uihop", Video.Timeline.MsSince(hopTs));
+                if (s_state.LoadEpoch != epoch || s_hostKind != PlayableKind.Video)
+                {
+                    // Superseded while resolving. The resolve marked the phase Resolving; a newer VIDEO load owns the phase from
+                    // here, anything else leaves no join in the air — a stuck Resolving read as an endless "Loading…".
+                    if (s_hostKind != PlayableKind.Video) Video.ClearResolving();
+                    return;
+                }
                 // The load starts under the generation the reducer is on NOW, not the one it had when this resolve began (V-PA2): a
                 // seek taken meanwhile found no player (Video.Seek stamps its generation and returns), and a load seeded with the
                 // older value would stamp every Position it posts with it — all dropped for the rest of the load. The same seek's
                 // drop point is where the open must land, so the position follows the generation (else the first report walks
                 // the playhead back to where the load began).
                 (uint gen, int startMs) = VideoLoadStart(s_state.SeekGen, s_state.PosMs, seekGen, fromMs);
-                Video.Load(resolved, epoch, startMs, paused, gen, muted);
+                Video.Load(resolved, epoch, startMs, paused, gen, muted, RowDurationMs(row, id));
             });
         });
         if (!queued) Post(Input.Audio(AudioSignal.VideoUnavailable, epoch, FrameNowMs()));
     }
 
-    /// <summary>The row's manifest id: its own video gid, else its linked counterpart's — one metadata POST fewer (B7).</summary>
-    static string ManifestIdOfRow(Track t)
+    /// <summary>The row's own duration, a video load's placeholder when its source carries no length (<see cref="Video.DeckTimeline"/>):
+    /// the deck's for the row on deck when it has one (a reload onto the video carries the audio's), else the catalogue's (the
+    /// track's, or the episode's). 0 = unknown, and the deck waits for the video session's own. UI thread.</summary>
+    static int RowDurationMs(EntityRef row, EntityId id)
     {
-        if (!t.VideoGidId.IsEmpty) return Entities.Strings.Resolve(t.VideoGidId);
-        Track counterpart = t.VideoCounterpart;
-        return counterpart.IsValid ? Entities.Strings.Resolve(counterpart.VideoGidId) : "";
+        if (id.Equals(s_state.CurrentId) && s_state.DurationMs > 0) return s_state.DurationMs;
+        if (Entities.Current is not { } scope) return 0;
+        if (row.Kind == EntityKind.Track && !row.IsNone && (uint)row.Slot < (uint)scope.Tracks.Count) return Math.Max(0, new Track(row.Slot).DurationMs);
+        if (id.Kind == EntityKind.Episode && scope.Episodes.TryGetSlot(id, out int slot)) return Math.Max(0, scope.Episodes.DurationMs[slot]);
+        return 0;
     }
 
-    /// <summary>The video placement was demoted to audio after its retry (G-142). Owner K's `Video.Host.cs` installs it:
-    /// turn the surface off and say why.</summary>
-    public static Action<Fault>? OnVideoDemoted { get; set; }
+    static readonly Action s_clearResolving = Video.ClearResolving;
+
+    /// <summary>An interned manifest id as text ("" for none) — the table's own string, so no allocation.</summary>
+    static string ManifestOf(StringId id) => id.IsEmpty ? "" : Entities.Strings.Resolve(id);
+
+    /// <summary>The reducer's video-mode decision for the surface (<see cref="Effects.VideoIntent"/>): on (a controller's
+    /// switch-to-video, a play that asked for video, or — with a fault — "this row has none, the mode stays"), off (a
+    /// controller's switch-to-audio, a load demoted after its retry). Owner K's `Video.Host.cs` installs it. UI thread.</summary>
+    public static Action<bool, Fault>? OnVideoIntent { get; set; }
 
     // D4 (F2): Playback priority bypasses F1's per-tick drain (it pumps INLINE, immediately) — so unlike a Visible/
     // Prefetch ask, calling `Entities.Ensure` once per `EnsureRow` invocation is not coalesced for free downstream.
@@ -882,7 +985,7 @@ public static partial class Playback
         {
             Entities.Ensure(Entities.Current.Tracks,
                 System.Runtime.InteropServices.CollectionsMarshal.AsSpan(s_ensureRowTrackSlots),
-                (uint)TrackFields.Identity, FetchPriority.Playback);
+                (uint)(TrackFields.Identity | TrackFields.Video), FetchPriority.Playback);   // the Video group rides the same POST
             s_ensureRowTrackSlots.Clear();
         }
         if (s_ensureRowEpisodeSlots.Count > 0)
@@ -951,28 +1054,6 @@ public static partial class Playback
         return s_uid;
     }
 
-    /// <summary>Does the row on the deck carry a music video (the snapshot's offer, G-143)?</summary>
-    static bool CurrentHasVideo()
-    {
-        EntityRef row = s_state.Current;
-        if (row.IsNone || Entities.Current is null) return false;
-        if (row.Kind == EntityKind.Episode) return (new Episode(row.Slot).Flags & EpisodeFlags.Video) != 0;
-        if (row.Kind != EntityKind.Track) return false;
-        return (uint)row.Slot < (uint)Entities.Current.Tracks.Count && new Track(row.Slot).HasVideo;
-    }
-
-    /// <summary>The deck row's 32-hex video manifest gid (the snapshot's <see cref="Snapshot.VideoGid"/>) — the interned
-    /// string the track table already holds, so an announce resolves it and allocates nothing.</summary>
-    static string CurrentVideoGid()
-    {
-        EntityRef row = s_state.Current;
-        if (row.Kind == EntityKind.Episode && !row.IsNone) return Video.KnownManifestId(s_state.CurrentId);
-        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null
-            || (uint)row.Slot >= (uint)Entities.Current.Tracks.Count) return "";
-        StringId gid = new Track(row.Slot).VideoGidId;
-        return gid.IsEmpty ? "" : Entities.Strings.Resolve(gid);
-    }
-
     /// <summary>A transport verb for the device that owns playback. Three ROUTES, not one — a player command, and
     /// volume's own PUT — and the glue blocks, so both run on an api thread (C9).</summary>
     static void SendRemote()
@@ -1007,11 +1088,33 @@ public static partial class Playback
         {
             // The texts are formatted HERE (UI thread; an EntityId's text is the interner's) and captured as strings.
             string contextUri = s_fx.RemoteContext.Text, trackUri = s_fx.RemoteTrack.Text;
-            bool shuffle = s_fx.RemoteFlag;
+            bool shuffle = s_fx.RemoteFlag, video = s_fx.RemoteVideo;
             Span<char> uidChars = stackalloc char[UidBook.MaxChars];
             string? skipUid = Spotify.Connect.SkipUidOf(new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]));
-            Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
-            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, skipUid: skipUid));
+            Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri + (video ? " video" : ""));
+            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, skipUid: skipUid, video: video));
+            return;
+        }
+        if (s_fx.RemoteCmd == RemoteCmd.Signal)
+        {
+            // The owner's audio ⇄ video switch (itsover.saz 772): RemoteArg carries the VideoSignal.
+            var signal = (Spotify.Decode.VideoSignal)s_fx.RemoteArg;
+            Log.Info("playback", "video signal forwarded to the owner: " + Spotify.Decode.SignalId(signal));
+            Spotify.Api.Run(() => Spotify.Connect.Signal(target, signal, CancellationToken.None));
+            return;
+        }
+        if (s_fx.RemoteCmd == RemoteCmd.SetRepeatingContext && s_fx.RemoteArg > 0)
+        {
+            // A complete repeat mode (DoRepeat): both flags, the one being turned off first, so the owner never passes through
+            // a mode nobody asked for (Track -> Context: track off, then context on; Off: track off, then context off).
+            var mode = (RepeatMode)(s_fx.RemoteArg - 1);
+            bool context = mode != RepeatMode.Off, track = mode == RepeatMode.Track;
+            Spotify.Api.Run(() =>
+            {
+                if (!track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, false, CancellationToken.None);
+                Spotify.Connect.Command(target, "set_repeating_context", "value", 0, context, CancellationToken.None);
+                if (track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, true, CancellationToken.None);
+            });
             return;
         }
         string endpoint = Endpoint(s_fx.RemoteCmd);
@@ -1103,7 +1206,9 @@ public static partial class Playback
         IsBehindLive.Value = s_state.Edge.IsBehind;
         TunedInAtMs.Value = s_state.TunedInAtMs;
         StreamFormat.Value = s_state.StreamFormat;
-        VideoActive.Value = s_state.Kind == PlayableKind.Video && s_state.Phase is Phase.Playing or Phase.Paused;
+        VideoFacts facts = VideoFacts.Of(in s_state);
+        DeckVideo.Value = facts;
+        VideoActive.Value = facts.OnVideo && !facts.Remote && s_state.Phase is Phase.Playing or Phase.Paused;
 
         // The in-flight bits retire on the state that ends the flight, not on a timer: the deck is audible, so the
         // load is over; someone else owns playback, so the transfer is over.
@@ -1125,14 +1230,10 @@ public static partial class Playback
     static EntityId s_watchId;
     static uint s_watchVersion;
     static int s_identityWaits;
-    static EntityId s_videoId;
-    static bool s_videoHas;
-    static StringId s_videoGid;
-    static global::Wavee.Video.ConnectVideoFacts s_videoFacts = new();
 
     /// <summary>The row's version moved under the same identity: the catalog committed something for it. The OS card
-    /// is pushed again (the bridge dedupes on id, identity and art, so only a real change costs a COM call), and the
-    /// video facts are observed for a gain the service must hear about.</summary>
+    /// is pushed again (the bridge dedupes on id, identity and art, so only a real change costs a COM call). The video
+    /// facts are not this watch's: <see cref="ObserveVideoFacts"/> folds them before the execute pass.</summary>
     static void WatchRow()
     {
         EntityRef row = s_state.Current;
@@ -1146,20 +1247,150 @@ public static partial class Playback
         s_watchId = s_state.CurrentId;
         s_watchVersion = version;
         if (sameRow) Os.Publish(in s_state);
-        if (row.Kind == EntityKind.Track) ObserveVideo(new Track(row.Slot));
     }
 
-    static void ObserveVideo(Track track)
+    // ── 9b. the deck row's video facts (G-143 the offer) ────────────────────────────────────────────────────────────
+
+    static EntityId s_counterpartAskedFor;
+    static EntityId s_episodeManifestFor;
+    static int s_episodeManifestVersion = -1;
+    static StringId s_episodeManifest;
+    static ReactiveRuntime? s_factsRuntime;
+    static Effect? s_factsWatch;
+    static bool s_factsFlushPosted;
+    static readonly Action s_factsFlush = static () => { s_factsFlushPosted = false; s_factsRuntime?.Flush(); };
+
+    /// <summary>The catalogue's video facts for the row on the deck — the Video group's verdict, the has-video flag and the
+    /// row's one manifest id (<see cref="Track.ManifestGidId"/>; an episode's from the resolver's memo). False when the deck
+    /// names no resident row. A positive is always a ruling; a local file and a non-catalogue row have nothing to ask, so
+    /// they are ruled too. UI thread; no allocation (an episode's manifest id is interned once per memo change).</summary>
+    static bool CatalogueFacts(out bool known, out bool hasVideo, out StringId manifest)
     {
-        bool has = track.HasVideo;
-        StringId gid = track.VideoGidId;
-        if (s_state.CurrentId.Equals(s_videoId) && has == s_videoHas && gid.Value == s_videoGid.Value) return;
-        s_videoId = s_state.CurrentId;
-        s_videoHas = has;
-        s_videoGid = gid;
-        // Owner K's tracker holds the rule (baseline on first sight, then only a real gain); strings only on a change.
-        if (s_videoFacts.Observe(s_videoId.Text, has, gid.IsEmpty ? null : Entities.Strings.Resolve(gid)))
-            Post(Input.VideoOffer(s_videoId));
+        known = false; hasVideo = false; manifest = StringId.Empty;
+        EntityRef row = s_state.Current;
+        EntityId id = s_state.CurrentId;
+        if (row.IsNone || id.IsEmpty || Entities.Current is not { } scope || !RowNamesId(row, id)) return false;
+        switch (row.Kind)
+        {
+            case EntityKind.Track:
+                {
+                    if ((uint)row.Slot >= (uint)scope.Tracks.Count) return false;
+                    var t = new Track(row.Slot);
+                    // A self-contained music video carries its OWN manifest id (TrackV4 field 38) and may have no association
+                    // flag; "no video" is a verdict only once both answers are in: the Video group (kinds 99/182) AND this
+                    // session's TrackV4 (Artists is the bit only a live answer sets — the gid is not persisted).
+                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty;
+                    known = hasVideo || (t.Knows(TrackFields.Video) && t.Knows(TrackFields.Artists))
+                        || t.IsLocal || id.Provider != EntityProvider.Spotify;
+                    manifest = hasVideo ? t.ManifestGidId : StringId.Empty;
+                    return true;
+                }
+            case EntityKind.Episode:
+                {
+                    if ((uint)row.Slot >= (uint)scope.Episodes.Count) return false;
+                    var e = new Episode(row.Slot);
+                    hasVideo = (e.Flags & EpisodeFlags.Video) != 0;
+                    known = hasVideo || e.Knows(EpisodeFields.Identity);
+                    if (!hasVideo) return true;
+                    int version = Video.KnownManifestVersion;
+                    if (!id.Equals(s_episodeManifestFor) || version != s_episodeManifestVersion)
+                    {
+                        s_episodeManifestFor = id;
+                        s_episodeManifestVersion = version;
+                        string text = Video.KnownManifestId(id);
+                        s_episodeManifest = text.Length == 0 ? StringId.Empty : Entities.Strings.Intern(text);
+                    }
+                    manifest = s_episodeManifest;
+                    return true;
+                }
+            default:
+                known = true;
+                return true;
+        }
+    }
+
+    /// <summary>Fold the deck row's catalogue facts into the reducer, INLINE, after the inputs and before the execute pass —
+    /// so a track change whose association is already known announces it in its own PUT, and a late land announces it in
+    /// the next one (the desktop's own two-step). A linked song's manifest id is its counterpart's TrackV4 gid: the
+    /// counterpart's identity is asked for here, once per row, at playback priority (the resolver's wire tier, done up front
+    /// and committed to the catalogue). UI thread, every drain; allocation-free when nothing changed.</summary>
+    static void ObserveVideoFacts(long now)
+    {
+        if (!s_state.RoutesLocal || !CatalogueFacts(out bool known, out bool hasVideo, out StringId manifest)) return;
+        EnsureAhead();
+        if (CounterpartDue(hasVideo, manifest, out Track counterpart))
+        {
+            s_counterpartAskedFor = s_state.CurrentId;
+            Entities.Ensure(counterpart, TrackFields.Identity, FetchPriority.Playback);
+        }
+        RowVideo v = s_state.Video;
+        manifest = KeptManifest(in v, hasVideo, manifest);
+        if (v.Known == known && v.HasVideo == hasVideo && v.ManifestId == manifest) return;
+        StepOne(Input.VideoFacts(s_state.CurrentId, known, hasVideo, manifest, now));
+    }
+
+    /// <summary>A manifest id the deck already holds for THIS row (a departed owner's offer, kept across a takeover) survives a
+    /// catalogue that has not learnt it yet: the offer never blinks out of the PUT while the counterpart's TrackV4 is in the air.
+    /// <see cref="State.Video"/> is reset whenever another row goes on the deck, so it can only be this row's.</summary>
+    static StringId KeptManifest(in RowVideo v, bool hasVideo, StringId manifest)
+        => manifest.IsEmpty && hasVideo && v.HasVideo ? v.ManifestId : manifest;
+
+    /// <summary>The catalogue landed something: when it moved the deck row's video facts away from the reducer's, ask for a
+    /// drain (which folds them, <see cref="ObserveVideoFacts"/>). Tracked: re-runs on every tracks / episodes publication and
+    /// scope switch; reads columns only, allocates nothing, and posts nothing while the facts agree.</summary>
+    static void WatchVideoFacts()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        if (Entities.Current is not { } scope) return;
+        _ = scope.Tracks.Changed.Value;
+        _ = scope.Episodes.Changed.Value;
+        if (!s_state.RoutesLocal || !CatalogueFacts(out bool known, out bool hasVideo, out StringId manifest)) return;
+        RowVideo v = s_state.Video;
+        manifest = KeptManifest(in v, hasVideo, manifest);
+        if (v.Known != known || v.HasVideo != hasVideo || v.ManifestId != manifest || CounterpartDue(hasVideo, manifest, out _)) RequestDrain();
+    }
+
+    static EntityId s_aheadFor;
+
+    /// <summary>The facts ahead: once per deck row, the next queued track's identity and Video group at prefetch priority, so a
+    /// skip with video on lands on a row whose kind is already known and opens straight on the video host (no audio-first swap).
+    /// A row that already knows both is not asked again (the planner drops it).</summary>
+    static void EnsureAhead()
+    {
+        if (s_state.CurrentId.Equals(s_aheadFor) || Entities.Current is not { } scope || !Queue.UpNext(out int start, out int length)
+            || length <= 0) return;
+        s_aheadFor = s_state.CurrentId;
+        EntityRef next = Queue.RefAt(start);
+        if (next.Kind != EntityKind.Track || next.IsNone || (uint)next.Slot >= (uint)scope.Tracks.Count) return;
+        var t = new Track(next.Slot);
+        if (!t.Knows(TrackFields.Identity | TrackFields.Video)) Entities.Ensure(t, TrackFields.Identity | TrackFields.Video, FetchPriority.Prefetch);
+    }
+
+    /// <summary>Is the deck row a linked song whose counterpart's identity (the TrackV4 that carries the manifest id) has not
+    /// been asked for yet? Once per row.</summary>
+    static bool CounterpartDue(bool hasVideo, StringId manifest, out Track counterpart)
+    {
+        counterpart = default;
+        if (!hasVideo || !manifest.IsEmpty || s_state.Current.Kind != EntityKind.Track || s_state.CurrentId.Equals(s_counterpartAskedFor))
+            return false;
+        counterpart = new Track(s_state.Current.Slot).VideoCounterpart;
+        return counterpart.IsValid && !counterpart.Knows(TrackFields.Identity) && !counterpart.InFlight;
+    }
+
+    /// <summary>Install the permanent catalogue watch (<see cref="WatchVideoFacts"/>). Once, at <see cref="Boot"/>.</summary>
+    static void InstallVideoFactsWatch()
+    {
+        if (s_factsRuntime is not null) return;
+        s_factsRuntime = new ReactiveRuntime
+        {
+            FrameRequested = static () =>
+            {
+                if (s_factsFlushPosted) return;
+                s_factsFlushPosted = true;
+                ToUi(s_factsFlush);
+            },
+        };
+        s_factsWatch = new Effect(s_factsRuntime, WatchVideoFacts);
     }
 
     static bool AwaitsIdentity()
@@ -1231,6 +1462,9 @@ public static partial class Playback
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
     public static void Previous() => Post(Input.Prev(FrameNowMs()));
+    /// <summary>Diagnostics (the inspector's <c>transport do=end</c>): the row on the deck ran out with nothing prepared, as the
+    /// pump's Ended reports it, so a case can walk the natural-end path without waiting out a track.</summary>
+    public static void EndNow() => Post(Input.Ended(s_state.LoadEpoch, FrameNowMs()));
     // The local play/pause verbs take a `cause`: the UI entry that pressed it ("space", "playerbar.button", "tray", …).
     // ALWAYS-ON attribution, one line per user action (the SMTC twin is "smtc transport button: …", inbound Connect is
     // "[connect] cmd endpoint=…"). Without it a resume that claims the parked restored row (`connect.owner Nobody → Us
@@ -1315,6 +1549,11 @@ public static partial class Playback
     /// <c>IsActive</c> edge; the reducer switches hosts at the carried position when the row has a video (G-141).</summary>
     public static void SetVideoPlacement(bool active) => Post(Input.VideoPlacement(active, FrameNowMs()));
 
+    /// <summary>The user's EXPLICIT switch of the deck's mode (the bar's lit video button): like <see cref="SetVideoPlacement"/>, and while a
+    /// foreign device owns playback it is the one post forwarded to it as a Connect <c>signal</c>. Our own surface opening or closing never
+    /// is — closing our panel must not switch the owner to audio.</summary>
+    public static void SwitchVideo(bool toVideo) => Post(Input.VideoPlacement(toVideo, FrameNowMs(), explicitSwitch: true));
+
     /// <summary>Transfer to a roster row. The core refuses self-to-self (the service answers 400); this refuses an
     /// index that is not a row, so the two together mean the picker cannot send a request that cannot be honoured.</summary>
     public static void TransferTo(int rosterSlot)
@@ -1335,6 +1574,7 @@ public static partial class Playback
     public static void TakeOver()
     {
         Log.Info("playback", "take over requested owner=" + s_state.Owner);
+        Video.WarmForClaim();   // the runtime starts coming up now, ahead of the claim's resolve and open
         Post(Input.TakeOver(FrameNowMs()));
     }
 
@@ -1411,10 +1651,13 @@ public static partial class Playback
         s_watchId = default;
         s_watchVersion = 0;
         s_identityWaits = 0;
-        s_videoId = default;
-        s_videoHas = false;
-        s_videoGid = StringId.Empty;
-        s_videoFacts = new global::Wavee.Video.ConnectVideoFacts();
+        s_counterpartAskedFor = default;
+        s_aheadFor = default;
+        s_remoteManifestHash = 0;
+        s_remoteManifest = StringId.Empty;
+        s_episodeManifestFor = default;
+        s_episodeManifestVersion = -1;
+        s_episodeManifest = StringId.Empty;
         s_ensureRowTrackSlots.Clear();
         s_ensureRowEpisodeSlots.Clear();
         ResetContextForTests();

@@ -664,7 +664,7 @@ internal sealed class ZuneStageVolume : Component
             ThumbRing = Ink.Ink, ThumbFill = Ink.Ink, ThumbFillPointerOver = Ink.Ink, ThumbFillPressed = Ink.InkSecondary, ThumbFillDisabled = Ink.Ink with { A = ZuneStageGeometry.ThumbDisabledA },
             ThumbBorder = null, ThumbBorderWidth = 0f,
         };
-        return Slider.Create(_level, t.SetVolume, s_options, length: p.Length, thickness: ZuneStageGeometry.VolumeThickness, style: style);
+        return VolumeSlider.Create(_level, t.SetVolume, s_options, length: p.Length, thickness: ZuneStageGeometry.VolumeThickness, style: style);
     }
 }
 

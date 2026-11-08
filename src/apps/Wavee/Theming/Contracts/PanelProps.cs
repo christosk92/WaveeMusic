@@ -146,19 +146,17 @@ public sealed record PanelProps
     /// <summary>The body's height changed (the docked video's ceiling follows it). The core ignores sub-half-DIP changes.</summary>
     public required Action<float> BodyHeightChanged { get; init; }
 
-    // ── the docked video card's splitter ─────────────────────────────────────────────────────────────────────────────
+    // ── the docked video card's height and its handle ────────────────────────────────────────────────────────────────
 
-    /// <summary>The docked card's height cell: the very signal the splitter writes and the card binds. A stable bind, never a thunk.</summary>
+    /// <summary>The docked card's height cell: the very signal the handle writes and the card binds. A stable bind, never a thunk.</summary>
     public required FloatSignal DockedVideoHeight { get; init; }
 
-    /// <summary>The card's floor at a panel width (the 16:9 height).</summary>
-    public required Func<float, float> DockedVideoMin { get; init; }
-
-    /// <summary>The card's ceiling against the panel body's current height.</summary>
-    public required Func<float> DockedVideoMax { get; init; }
-
-    /// <summary>Commit the card's height (clamped, pinned, persisted).</summary>
-    public required Action CommitDockedVideo { get; init; }
+    /// <summary>The docked card's resize handle, the band the template places right UNDER the card (contract 1.92): the core's vertical
+    /// splitter over <see cref="DockedVideoHeight"/> at the given panel width, with its clamp (the 16:9 floor of that width, the ceiling that
+    /// keeps the panel's head and the track's title in view), the commit (pinned and persisted per theme), Up / Down steps (Shift: larger),
+    /// Home / End, and a double-click back to the content's own fit. The template hands the grip's look (<see cref="DockedVideoGrip"/>). It
+    /// sits outside the picture: the stay-mounted presenter over the card takes every press on the picture itself.</summary>
+    public required Func<DockedVideoGrip, float, Element> DockedVideoHandle { get; init; }
 
     // ── verbs ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -294,6 +292,11 @@ public readonly record struct PanelSourceFacts(string PlayingFrom, string Name, 
     /// <summary>There is a source to name.</summary>
     public bool HasSource => Name is { Length: > 0 };
 }
+
+/// <summary>The look of the docked video handle's grip (contract 1.92): a pill <paramref name="Length"/> x <paramref name="Thickness"/> centred in
+/// the 16-DIP band under the card, <paramref name="Radius"/> corners, <paramref name="Fill"/> at <paramref name="RestOpacity"/>, fully opaque
+/// while the band is hovered or pressed. The band itself paints nothing.</summary>
+public sealed record DockedVideoGrip(float Length, float Thickness, float Radius, ColorF Fill, float RestOpacity);
 
 /// <summary>The device playback is on, for the now-playing sheet's Devices door (contract 1.22).</summary>
 /// <param name="Name">The device's name ("This computer" when it is this one).</param>

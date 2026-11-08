@@ -231,7 +231,7 @@ internal static class WinUiArtistBanners
         return new BoxEl
         {
             Key = "concert-stub:" + c.Slot.ToString(CultureInfo.InvariantCulture),
-            Direction = 0, Width = width, Shrink = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Center,
+            Direction = 0, Width = width, Height = WinUiArtistRules.StubH, Shrink = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Center,
             Padding = Edges4.All(Spacing.M), Corners = Radii.CardAll, Fill = Tok.FillCardSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverFill = Tok.FillCardDefault,
             Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered, Cursor = CursorId.Hand,

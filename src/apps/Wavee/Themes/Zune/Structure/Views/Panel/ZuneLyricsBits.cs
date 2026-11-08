@@ -144,45 +144,50 @@ internal static class ZuneLyricsPeek
     static readonly EnterExit FlipIn = new(Dy: P.PeekRowH, Opacity: 0f, Active: true);
     static readonly EnterExit FlipOut = new(Dy: -P.PeekRowH, Opacity: 0f, Active: true);
 
-    /// <summary>The registered template of <see cref="ViewKeys.LyricsPeek"/>.</summary>
-    public static Element Template(LyricsPeekProps props, in ViewContext ctx) => props.Face switch
+    /// <summary>The registered template of <see cref="ViewKeys.LyricsPeek"/>. Over the edge-to-edge canvas (<see cref="Deck.OverCanvas"/>) the
+    /// lines are drawn in the media scope's ink.</summary>
+    public static Element Template(LyricsPeekProps props, in ViewContext ctx)
     {
-        LyricsPeekFace.Reel => Reel(props),
-        LyricsPeekFace.Note => Note(props.OpenLyrics),
-        _ => new BoxEl(),
-    };
+        var ink = new CanvasInk(ctx.Hooks.UseContext(Deck.OverCanvas));
+        return props.Face switch
+        {
+            LyricsPeekFace.Reel => Reel(props, ink),
+            LyricsPeekFace.Note => Note(props.OpenLyrics, ink),
+            _ => new BoxEl(),
+        };
+    }
 
-    static Element Reel(LyricsPeekProps props) => new BoxEl
+    static Element Reel(LyricsPeekProps props, CanvasInk ink) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Stretch, Gap = P.PeekGap, Height = P.PeekReelH,
         Cursor = CursorId.Hand, OnClick = props.OpenLyrics, Role = AutomationRole.Button, Focusable = true,
         Children =
         [
-            new BoxEl { Width = P.PeekSpineW, Shrink = 0f, Fill = Tok.AccentDefault },
+            new BoxEl { Width = P.PeekSpineW, Shrink = 0f, Fill = ink.AccentFill },
             new BoxEl
             {
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = P.PeekReelH, ClipToBounds = true,
-                Children = [Line(props.Active, props.ActiveText, faded: false), Line(props.Peek, props.PeekText, faded: true)],
+                Children = [Line(props.Active, props.ActiveText, faded: false, ink), Line(props.Peek, props.PeekText, faded: true, ink)],
             },
         ],
     };
 
-    static Element Note(Action openLyrics) => new BoxEl
+    static Element Note(Action openLyrics, CanvasInk ink) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = P.PeekGap, Height = P.PeekRowH,
         Cursor = CursorId.Hand, OnClick = openLyrics, Role = AutomationRole.Button, Focusable = true,
         Children =
         [
-            new BoxEl { Width = P.PeekSpineW, Height = P.PeekRowH, Shrink = 0f, Fill = Tok.TextTertiary },
+            new BoxEl { Width = P.PeekSpineW, Height = P.PeekRowH, Shrink = 0f, Fill = ink.Tertiary },
             new TextEl(Loc.Get(Strings.Player.LyricsSyncUnavailableDuringVideo))
             {
-                Size = P.PeekNoteSize, Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Size = P.PeekNoteSize, Color = ink.Tertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
         ],
     };
 
-    static Element Line(int index, string? text, bool faded)
+    static Element Line(int index, string? text, bool faded, CanvasInk ink)
     {
         Element inner = text is not null
             ? new BoxEl
@@ -190,7 +195,7 @@ internal static class ZuneLyricsPeek
                 Key = "l:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 Height = P.PeekRowH, MinWidth = 0f, Grow = 1f, Basis = 0f, Direction = 1, Justify = FlexJustify.Center,
                 Enter = FlipIn, Exit = FlipOut, Transition = MotionTok.ControlFast,
-                Children = [R.Type.NpvLyric(text) with { Color = faded ? Tok.TextPrimary : Tok.AccentTextPrimary, MaxLines = 1, MinWidth = 0f, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis }],
+                Children = [R.Type.NpvLyric(text) with { Color = faded ? ink.Primary : ink.Accent, MaxLines = 1, MinWidth = 0f, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis }],
             }
             : new BoxEl { Height = P.PeekRowH };
         return new BoxEl

@@ -421,7 +421,11 @@ public static partial class Shell
             Current = static () => BandRules.IndexOf(Shell.Current.Value.Kind) is >= 0 and var lit ? lit : BandRules.IndexOf(OnScreenRoute().Kind),
             // A detail page lights the destination it lives under, from its trail, when its page lands (the leaving page's word holds until then).
             Section = static () => BandRules.IndexOf(Shell.Current.Value.Kind) is >= 0 and var lit ? lit : BandRules.SectionOf(OnScreenRoute(), s_originOf),
+            // The chrome's own page (it follows the landing): a detail page's row 2 keeps its title until the swap lands, even when the click lit a destination.
+            ChromeIsDetail = static () => BandRules.IndexOf(OnScreenRoute().Kind) < 0,
             Pins = static () => Sidebar.Model.BandPins(ShellCaps.PinCap(ShellCaps.Tracked)),
+            // Drag to pin (contract 1.88): the pins take an entity or a route dropped on them (NavModel.Band.cs).
+            PinDrop = NavModel.BandDrop,
             Chrome = s_current,
             Scroll = s_scroll,
             Hub = HubList,

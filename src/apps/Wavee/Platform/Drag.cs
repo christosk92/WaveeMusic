@@ -153,9 +153,13 @@ public sealed record DragPayload(
     /// the "Moved {n} items to {name}" toast both read this — it is the ONE count.</summary>
     public int RootlistCount => RootlistItems?.Length ?? (RootlistItem ? 1 : 0);
 
-    /// <summary>This payload's chip data (the engine-free resolution rules).</summary>
+    /// <summary>This payload's chip data (the engine-free resolution rules). A CONTAINER dragged as itself (a playlist's, an album's or a show's cover)
+    /// travels as that container: its name and cover, one thing carried. Its track snapshot is what a playlist drop deposits, not what the gesture
+    /// is: read as a selection, the chip said the first song's title and "50" and never the playlist the user picked up (owner, Zune pins).</summary>
     public DragChipModel ChipModel()
-        => DragChipModel.For(Name, ArtUrl, Tracks is { Length: > 0 } t ? t : default, RootlistCount);
+        => Kind is DragKind.Playlist or DragKind.Album or DragKind.Show && !RootlistItem && Name.Length > 0
+            ? DragChipModel.For(Name, ArtUrl ?? (Tracks is { Length: > 0 } t0 ? Controls.ArtUrl(t0[0].ImageId) : null), default)
+            : DragChipModel.For(Name, ArtUrl, Tracks is { Length: > 0 } t ? t : default, RootlistCount);
 
     /// <summary>This payload OFFERS its tracks to a destination (a playlist deposit, a queue insert). Not merely "has
     /// tracks": a queue row travels with its track (the chip reads it) and offers it to nobody — the rule is

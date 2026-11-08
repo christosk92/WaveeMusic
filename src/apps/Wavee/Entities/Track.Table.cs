@@ -767,16 +767,15 @@ public readonly partial struct Track
         }
 
         /// <summary>Have the HOT rows (the first page, source order) settled — each knows its face, or an answer has been
-        /// given and nothing is out for it (<see cref="TableRules.RowUnsettled"/>)? Re-evaluated on the membership, on every
-        /// track publication (a row landing) and on every settled batch (<see cref="Fetch.Settled"/>: a failure, or an
-        /// answer that did not name a row, publishes nothing else). Equality-gated, so the host re-renders on the flip
+        /// given and nothing is out for it (<see cref="TableRules.RowUnsettled"/>)? Re-evaluated on the membership and on every
+        /// track publication (a row landing; a settle, a failure or an answer that did not name a row, whose mark moves publish
+        /// the table too). Equality-gated, so the host re-renders on the flip
         /// only. Twelve rows at most, never per frame.</summary>
         bool ComputeHotSettled()
         {
             var src = _args.Value!.Source;
             src.Subscribe();
-            _ = Entities.Current.Tracks.Changed.Value;
-            _ = global::Wavee.Fetch.Settled.Value;
+            _ = Entities.Current.Tracks.Changed.Value;   // a row landing, and a settle or failure (a mark move publishes the table)
             int hot = TableRules.HotRows(src.Count);
             bool credits = RowsTogether();
             for (int i = 0; i < hot; i++)
@@ -1506,13 +1505,22 @@ public readonly partial struct Track
         /// node (its anchor) cannot carry a handler, so the root is this box: it hears the focus edge and feeds the slot's
         /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
         /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
-        static Element FocusRoot(Element slot, Action<bool> focusEdge)
-            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, HitTestPassThrough = true, Children = [slot] };
+        static Element FocusRoot(Element slot, Action<bool> focusEdge, float room = 0f)
+            => new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, HitTestPassThrough = true, Children = [slot],
+                // The hero list's slots span its viewport's leading bleed (VerticalList): the item stands back in the list's column. The slot root stays the
+                // focus node; a row's ring is drawn on its list column (InsetList's ring host), the hero and the chrome take no focus.
+                Padding = room > 0f ? new Edges4(room, 0f, 0f, 0f) : default,
+            };
 
         /// <summary>The keyboard-focus ring of a row, drawn INSIDE the slot's bounds. The slot root (this box) is the focus node (the roving tab stop), not
         /// the row's skin; the engine's default margin (WinUI's -3) pushed the ring 3 DIP outside it, where the list's viewport clipped its left and
         /// right edges. A positive margin never shrinks the ring, so 0 puts the 2 DIP outer and 1 DIP inner strokes on the row's own edge.</summary>
         static readonly Edges4 s_rowFocusRing = Edges4.All(0f);
+
+        /// <summary>The structure's display-title hang room (<see cref="DetailTierPolicy.LeadBleed"/>: one number for every tier).</summary>
+        static float LeadBleedNow() => ShellPolicy.Tracked.DetailTiers.LeadBleed;
 
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
@@ -1573,8 +1581,9 @@ public readonly partial struct Track
         Element VerticalList(int visible, bool recs, RepeatLayout layout, float stickyInset, bool narrate)
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
+            float room = LeadBleedNow();
             return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, recs),
-                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged),
+                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged, room),
                 layout,
                 new ListOptions
                 {
@@ -1607,6 +1616,10 @@ public readonly partial struct Track
                         ItemClipTopInset = stickyInset,
                         ItemClipTopInsetSource = _itemBandSig,
                         ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
+                        // The hero hangs its display title left of the column (DetailTierPolicy.LeadBleed): the viewport reaches that far past the list's
+                        // box, and every slot sets its item back in by as much (FocusRoot), so the hang is drawn and nothing else moves. The list's box,
+                        // its drop surface and line, and the column (measured: the tier, the lanes) keep their place.
+                        LeadingBleed = room,
                     },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
@@ -1684,9 +1697,18 @@ public readonly partial struct Track
             // content's reset epoch (exactly like the flat list's, ListScrollKey): an album evicted from KeepAlive and revisited,
             // or remounted by a theme switch, opens at the offset it was left at, in its first layout (E8/F12), and a
             // different album or a new content load starts at the top.
-            return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children }) with
+            // The hero arm's hero is the scroller's first child: its display title's hang (DetailTierPolicy.LeadBleed) needs room inside the scroller's
+            // clip, so the scroller reaches that far left of the column and its content is set back in by as much (nothing else moves).
+            float bleed = vertical ? LeadBleedNow() : 0f;
+            return ScrollView(new BoxEl
+            {
+                // EntranceGroup: a structure's staggered page entrance (PageMotionPolicy) takes the hero, the rows and the trailing in turn.
+                Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children, EntranceGroup = true,
+                Padding = bleed > 0f ? new Edges4(bleed, 0f, 0f, 0f) : default,
+            }) with
             {
                 Key = "trail:" + _latest.ScrollKey,
+                Margin = bleed > 0f ? new Edges4(-bleed, 0f, 0f, 0f) : default,
                 ScrollKey = TrailScrollKey,
                 Handle = _trailScroll,
                 Grow = 1f,
@@ -1710,7 +1732,7 @@ public readonly partial struct Track
             var root = new BoxEl
             {
                 // The columns form (audit B9) pins the head whole and its side columns hang below it, beside the rows: no clip there.
-                Key = "vertical:hero-root", Direction = 1, ClipToBounds = !columns,
+                Key = "vertical:hero-root", Direction = 1, ClipToBounds = !columns, EntranceGroup = true,   // the pinned root stays; its header enters
                 Children = [new BoxEl { Key = "vhero:header", Direction = 1, Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))] }],
             }
             .Sticky(0f, TrailScope);
@@ -2639,7 +2661,18 @@ public readonly partial struct Track
                 t.IsValid ? t.Version : 0u, t.Album.IsValid ? t.Album.Version : 0u, artists,
                 orig >= 0 ? src.AddedAt(orig) : 0, by,
                 orig >= 0 ? src.ChartStatus(orig) : (byte)0,
-                snap.Marquee, snap.Config.ShowTrackArtist, snap.Config.ShowAlbumColumn, IsOpen(t, display));
+                snap.Marquee, snap.Config.ShowTrackArtist, snap.Config.ShowAlbumColumn, IsOpen(t, display),
+                VideoFirstContext(src.Context.Id) ? PlaylistVideo.VideoDurationMs(t) : 0);
+        }
+
+        /// <summary>Is the table's context a video-first playlist (<see cref="PlaylistVideo"/>)? Subscribing: the toggle's version and the
+        /// playlists table (a tune answer that selects the "Video" chip lands there).</summary>
+        static bool VideoFirstContext(EntityId context)
+        {
+            if (context.Kind != EntityKind.Playlist) return false;
+            var scope = Entities.Current;
+            _ = scope.Playlists.Changed.Value;
+            return scope.Playlists.TryGetSlot(context, out int slot) && PlaylistVideo.IsVideoFirst(new Playlist(slot));
         }
 
         // ══ 9. CHOREOGRAPHY ══════════════════════════════════════════════════════════════════════════════════════════
@@ -2944,7 +2977,7 @@ public readonly partial struct Track
                 Pending: () =>
                 {
                     var t = row.Presentation.Value.Track;
-                    _ = global::Wavee.Fetch.Settled.Value;   // an answer that names no field still ends the wait for the credits
+                    _ = Entities.Current.Tracks.Changed.Value;   // an answer that names no field still ends the wait: its settle publishes the table
                     bool paints = TableRules.RowPaints(t.Knows(TrackFields.Face), t.Knows(TrackFields.Artists), t.InFlight, withCredits: true);
                     return !TableRules.RowHasData(t.IsValid, paints) || host.RowGateClosed();
                 },

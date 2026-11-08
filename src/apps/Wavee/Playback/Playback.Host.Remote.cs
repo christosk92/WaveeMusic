@@ -157,6 +157,7 @@ public static partial class Playback
     /// The buffer is this call's to return, or the resolve's.</summary>
     static void RunLoad(in Spotify.Decode.RemoteCommand command, in RemoteLoad load, ClusterBuffer buffer, long now)
     {
+        if (load.Kind == RemoteCmd.Transfer) Video.WarmForClaim();   // the owner's row comes here: start the runtime now
         StepOne(Input.Controller(in command, now));      // the claim and its is_active announce, in THIS drain
         if (load.Kind is not (RemoteCmd.Play or RemoteCmd.Transfer)) { ClusterBuffer.Return(buffer); return; }
 
@@ -235,8 +236,9 @@ public static partial class Playback
             // unshuffle); set_queue is already the order the controller wants played.
             if (ReshufflesAfter(body.Kind, s_state.Shuffle))
                 Reorder(packed.AsSpan(0, written), laid.AsSpan(0, written), deck, shuffle: true);
-            Queue.Replace(packed.AsSpan(0, written), laid.AsSpan(0, written));
+            Queue.Replace(packed.AsSpan(0, written), laid.AsSpan(0, written), Math.Min(Queue.ContextStart, deck + 1));
             s_uids.Retain(Queue.Rows);
+            EnsureQueueIdentities(deck);                  // a controller's body names rows by uri alone
             WatchQueue(now);                              // re-arm the next row (and announce the queue) inside this drain
             Log.Info("playback", (body.Kind == RemoteCmd.SetQueue ? "set_queue" : "update_context")
                 + " applied rows=" + written + " deck=" + deck);
@@ -409,7 +411,24 @@ public static partial class Playback
             ArrayPool<QueueEdge>.Shared.Return(rows);
         }
         s_state.Cursor = Queue.CursorOf(deck);
+        EnsureQueueIdentities(deck);                  // the owner's rows were stubs: their titles (and video facts) paint
         RequestDrain();
+    }
+
+    /// <summary>The queue as it now stands → <see cref="EnsureRestoredIdentities"/> around <paramref name="deck"/>: a foreign
+    /// owner's rows (and a controller's spliced body) arrive as bare uris, and "Up next" paints titles only once their
+    /// identities land. Once per queue rewrite, never per heartbeat.</summary>
+    static void EnsureQueueIdentities(int deck)
+    {
+        int n = Queue.Rows.Length;
+        if (n == 0) return;
+        EntityRef[] refs = ArrayPool<EntityRef>.Shared.Rent(n);
+        try
+        {
+            for (int i = 0; i < n; i++) refs[i] = Queue.RefAt(i);
+            EnsureRestoredIdentities(refs.AsSpan(0, n), Math.Clamp(deck, 0, n - 1));
+        }
+        finally { ArrayPool<EntityRef>.Shared.Return(refs); }
     }
 
     /// <summary>One foreign-queue row as the pure layout reads it (<see cref="Queue.LayoutMirror"/>) plus the packed target

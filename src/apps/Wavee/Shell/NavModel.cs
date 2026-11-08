@@ -262,24 +262,29 @@ public sealed partial class NavModel : INavVerbs
             string routeKey = pin.RouteKey;
             if (pin.Kind == SidebarEntryKind.Folder || routeKey.Length == 0) continue;
             string name = pin.Name.Length > 0 ? pin.Name : PinName(pin.Id);
-            string uri = pin.Uri;
+            string uri = pin.Uri, pinId = pin.Id;
             bool playable = uri.Length > 0 && pin.Kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album
                 or SidebarEntryKind.Artist or SidebarEntryKind.Show;
             list.Add(new BandPin(
-                pin.Id, name, pin.Cover.Length > 0 ? pin.Cover : null, pin.Kind == SidebarEntryKind.Artist,
+                pin.Id, name, pin.Cover.Length > 0 ? pin.Cover : BandCoverOf(pin), pin.Kind == SidebarEntryKind.Artist,
                 Go: () => Navigate(routeKey, name),
                 Play: playable ? () => Play(uri) : null,
-                Playing: uri.Length > 0 ? () => ReadPlaying().Active && PlayingRelatesTo(uri) : static () => false));
+                Playing: uri.Length > 0 ? () => ReadPlaying().Active && PlayingRelatesTo(uri) : static () => false)
+            {
+                Menu = () => BandPinMenu(pinId),   // NavModel.Band.cs (contract 1.88)
+            });
         }
         return list;
     }
 
     // ── verbs ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The nav pane's step to a destination: a top-level navigation whatever the route (a pin opens its playlist as a
+    /// destination, not as a drill from a card), so a structure with per-kind page motion refreshes (<see cref="Shell.SwapOf"/>).</summary>
     public void Navigate(string routeKey, string? arg)
     {
         if (routeKey.Length == 0) return;
-        Shell.GoTo(Shell.Parse(routeKey, arg));
+        Shell.GoTo(Shell.Parse(routeKey, arg), motion: Shell.NavTransitionKind.Top);
     }
 
     public void Play(string uri)

@@ -308,6 +308,19 @@ npx wrangler r2 object put `
   --file "Wavee-<quad>-win-<arch>.symmap"
 ```
 
+Beside the map the same phase uploads that release's **`Wavee.exe`** (from the package) and its **symbols
+zip** (`Wavee.pdb` + `Wavee.map.xml`, about 55 MB; the bare NativeAOT PDB is ~180 MB), so any dump opens in
+WinDbg with full names (`Invoke-SymbolsBinariesUpload` in `ops/release/Wavee.Release.psm1`):
+
+```powershell
+npx wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>/Wavee.exe --file Wavee.exe --remote
+npx wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>/Wavee-<quad>-win-<arch>-symbols.zip `
+  --file "Wavee-<quad>-win-<arch>-symbols.zip" --remote
+```
+
+The Worker never reads these two (only the `.symmap`); they are for a person with a dump. Like the maps they live
+under `symbols/`, which has no lifecycle rule (step 3). Fetching them: `docs/guide/crash-diagnostics.md` §4.
+
 This route is **not** exposed through the Worker's HTTP API (there is no `PUT /v1/symbols/:quad/:arch`
 handler to keep the ingest surface small) — it only ever happens through this `wrangler` command, run by
 whoever cuts the release, same trust level as the rest of `wavee-release.ps1`. The Worker discovers a map

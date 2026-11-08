@@ -146,6 +146,9 @@ internal static partial class ClassicReleaseNotes
                 });
             if (IsVideo(h))
                 layers.Add(new BoxEl { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false, Children = [PlayGlyph(h)] });
+            // A community pull request's badge sits on the picture's top corner, a layer of the tile (the tile keeps its size).
+            if (IsCommunity(h))
+                layers.Add(new BoxEl { AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Margin = Edges4.All(pad), HitTestVisible = false, Children = [CommunityPill()] });
             layers.Add(new BoxEl
             {
                 AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 1, MinWidth = 0f, HitTestVisible = store,
@@ -247,7 +250,7 @@ internal static partial class ClassicReleaseNotes
     {
         var kids = new List<Element>(3)
         {
-            new BoxEl { AlignSelf = FlexAlign.Start, Children = [KindPill(h.Kind, store)] },
+            new BoxEl { AlignSelf = FlexAlign.Start, Children = [Pills(h, store)] },
             new TextEl(h.Title)
             {
                 Size = layout.RowTitleSize, LineHeight = layout.RowTitleLine, Weight = 600, Color = Tok.TextPrimary,
@@ -281,7 +284,7 @@ internal static partial class ClassicReleaseNotes
         layers.Add(new BoxEl
         {
             Grow = 1f, Direction = 0, AlignItems = FlexAlign.Start, Padding = Edges4.All(8f), HitTestVisible = false,
-            Children = [KindPill(h.Kind, store), Spacer(), PlayGlyph(h)],
+            Children = [Pills(h, store), Spacer(), PlayGlyph(h)],
         });
         // The ratio sits on a PLAIN column box and the layers on a ZStack inside it (G-256): a ZStack's measure ignores
         // AspectRatio and reports its tallest layer, so without a poster the band collapsed to the pill row (~36 DIP).
@@ -299,13 +302,25 @@ internal static partial class ClassicReleaseNotes
     // Issue #89 (L3): FillSolidTertiary is a deliberately LIGHTER opaque rung than the plate so the pill is never read as
     // "the plate behind it" where the poster does not paint, plus a 0/1/4 #00000066 shadow; an explicit Height + Radii.Full
     // (clamped to H/2) because Radii.Pill (16) exceeded half this pill's height.
-    static Element KindPill(string? kind, bool store) => new BoxEl
+    static Element KindPill(string? kind, bool store) => BadgePill(Loc.Get(KindPillLocKey(kind, store)), store ? Tok.AccentDefault : Tok.FillSolidTertiary,
+        store ? Tok.TextOnAccentPrimary : Tok.TextPrimary);
+
+    /// <summary>The "Community" badge of a highlight from a community pull request: the kind pill's shape in the accent (the Fluent InfoBadge's colour), on
+    /// the picture like the kind pill, so it never changes the card's size.</summary>
+    static Element CommunityPill() => BadgePill(Loc.Get(Strings.WhatsNew.Community), Tok.AccentDefault, Tok.TextOnAccentPrimary);
+
+    /// <summary>The kind pill, then the "Community" pill when the highlight came from the community.</summary>
+    static Element Pills(ReleaseHighlight h, bool store) => !IsCommunity(h)
+        ? KindPill(h.Kind, store)
+        : new BoxEl { Direction = 0, Gap = K.PillGap, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [KindPill(h.Kind, store), CommunityPill()] };
+
+    static Element BadgePill(string label, ColorF fill, ColorF ink) => new BoxEl
     {
         Shrink = 0f, Height = K.KindPillHeight, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = new Edges4(8f, 0f, 8f, 0f), Corners = CornerRadius4.All(Radii.Full),
-        Fill = store ? Tok.AccentDefault : Tok.FillSolidTertiary,
+        Fill = fill,
         Shadow = K.KindPillShadow,
-        Children = [R.Type.MicroMeta(Loc.Get(KindPillLocKey(kind, store))) with { Weight = 600, Color = store ? Tok.TextOnAccentPrimary : Tok.TextPrimary }],
+        Children = [R.Type.MicroMeta(label) with { Weight = 600, Color = ink }],
     };
 
     static bool IsVideo(ReleaseHighlight h) => h.Media is { } m && string.Equals(m.Kind, "video", StringComparison.OrdinalIgnoreCase);

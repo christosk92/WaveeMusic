@@ -528,7 +528,13 @@ internal static partial class ClassicDetailFrame
                     Children = [slots.Cover?.Invoke(coverSize)
                         ?? Controls.Artwork(id.CoverUrl, coverSize, coverSize, Radii.Card, decodePx: RailCoverDecodePx)],
                 }, acts.CoverClick),
-                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS, Children = info.ToArray() },
+                // The column is centred on the cover, so a row the show's head brings late (the publisher, the rating) re-centres it: its height eases
+                // through layout and the eyebrow and title ride up with it, instead of stepping 24 in the landing frame (audit FU2d).
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS, Children = info.ToArray(),
+                    Layout = Design.Reduced ? null : ClassicTierMotion.HangingReflow,
+                },
             ],
         };
 

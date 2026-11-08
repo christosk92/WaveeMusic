@@ -1,7 +1,7 @@
 // ── Entities/Profile.Page.cs ───────────────────────────────────────────────────────────────────────────────────────────
 // The PROFILE page (spotify:user:…): install + mount point and the CORE HOST — demand on mount and on every revisit
-// (through the data layer's ProfileAsk plan), the render-cost stamp (marks + Fetch.Settled folded too: a 404 seal /
-// failure moves no Version), the load faces (ProfileLoadRule.Header), the section plan and each section's body verdict and
+// (through the data layer's ProfileAsk plan), the render-cost stamp (the row's marks folded too: a 404 seal /
+// failure moves no Version, but it publishes the table), the load faces (ProfileLoadRule.Header), the section plan and each section's body verdict and
 // cards, the person's tone (accent, shell tint), the scroll spy and the verbs. The hero, the band, the sections and the
 // cards are Classic's (T10c2: `Themes\Classic\Structure\Views\Pages\ClassicProfile*.cs`); the pure decisions are
 // Profile.Rules.cs; what a card opens or plays is `ProfileVerbs` (Profile.Verbs.cs).
@@ -540,9 +540,9 @@ public static partial class Profile
         // ── the render-cost fold (Artist.Page.Stamp's shape) ───────────────────────────────────────────────────────────
 
         /// <summary>WAKE on every table/edge the page paints; PUSH only what moved for THIS user. Unlike the artist fold it
-        /// also folds the row's MARKS (Known/Asked/Failed/Inflight) and each shelf's READINESS + version, and wakes on
-        /// <c>Fetch.Settled</c>: a 404 seal or a terminal failure bumps no Version and publishes no table (mark-only
-        /// changes), and without these the page would shimmer forever instead of turning Unavailable/Failed.</summary>
+        /// also folds the row's MARKS (Known/Asked/Failed/Inflight) and each shelf's READINESS + version: a 404 seal or a terminal
+        /// failure bumps no Version (a mark-only change, which publishes the table the wakes above read), and without these the
+        /// page would shimmer forever instead of turning Unavailable/Failed.</summary>
         long Stamp()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -562,7 +562,6 @@ public static partial class Profile
             _ = e.ProfileFollowing.Changed.Value;
             _ = e.ProfileFollowers.Changed.Value;
             _ = e.UserTopArtists.Changed.Value;
-            _ = global::Wavee.Fetch.Settled.Value;
             var top = Home.Feeds.TopContentState.Value;
 
             // ── the fold ──

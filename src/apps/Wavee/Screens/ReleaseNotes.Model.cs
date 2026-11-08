@@ -95,6 +95,7 @@ public static partial class ReleaseNotes
                 h.Body ??= "";
                 h.Kind ??= "new";
                 h.Issues ??= [];
+                h.Community = Compact(h.Community);
                 if (h.Media is { } hm)
                 {
                     hm.Kind ??= "image";
@@ -181,6 +182,10 @@ public static partial class ReleaseNotes
         /// <summary>A <c>wavee://open?route=…</c> deep link, or null.</summary>
         public string? DeepLink { get; set; }
         public int[] Issues { get; set; } = [];
+        /// <summary>The GitHub logins of the community contributors this highlight came from (a pull request from outside the
+        /// project): the card wears a "Community" badge and the viewer credits them. Absent or empty = a normal card. A FIELD,
+        /// not a <see cref="Kind"/>: a build that predates it ignores the member and still renders the card by its kind.</summary>
+        public string[] Community { get; set; } = [];
     }
 
     public sealed class ReleaseMediaRef

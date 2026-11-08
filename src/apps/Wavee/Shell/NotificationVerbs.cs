@@ -13,14 +13,16 @@ namespace Wavee;
 /// <summary>The notification panel's verbs.</summary>
 public interface INotificationVerbs
 {
-    /// <summary>A social row: an in-app route when the target resolves to a destination, else the web page.</summary>
+    /// <summary>A social row: its target through <see cref="OpenLink"/>.</summary>
     void OpenSocial(Notification n);
 
-    /// <summary>A new-release row: an album opens its page; an episode has no detail route yet, so it opens the web player.</summary>
+    /// <summary>A new-release row: the album or episode opens its page.</summary>
     void OpenRelease(Notification n);
 
-    /// <summary>Open a link in the user's browser (an entity uri maps to its web page) and dismiss the panel.</summary>
-    void OpenWeb(string? uri);
+    /// <summary>Follow a link and dismiss the panel: in-app when it addresses a destination (a <c>spotify:</c> uri or an
+    /// <c>open.spotify.com</c> link, <see cref="Shell.OpenLink"/>), else the browser (an entity with no page maps to its
+    /// web page).</summary>
+    void OpenLink(string? uri);
 
     /// <summary>An update row's pill: What's new navigates (and, on a completed update, acknowledges it); every other verb is the updater's.</summary>
     void RunUpdateRow(UpdateRowAction verb, AppUpdateSnapshot snapshot);
@@ -55,36 +57,35 @@ public sealed class NotificationVerbs : INotificationVerbs
     {
         Notify.MarkRead(n.Id);
         Notify.Dismiss(n.Id);   // G-090: acting on the in-app row also pulls its live OS banner, if one is still up
-        if (n.ActionType == SocialActionType.Navigate && n.ActionUri is { Length: > 0 } uri
-            && !uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            && Shell.For(EntityUri.Parse(uri)) is { IsNone: false } route)
-        {
-            Shell.GoTo(route);
-            ClosePanel();
-            return;
-        }
-        OpenWeb(n.ActionUri);
+        // Both action types: the feed hands out `https://open.spotify.com/…` targets as well as `spotify:` uris, and a web
+        // target that names an entity is still that entity's page (the link door decides, never the spelling).
+        OpenLink(n.ActionUri);
     }
 
     public void OpenRelease(Notification n)
     {
         Notify.MarkRead(n.Id);
         Notify.Dismiss(n.Id);   // G-090
-        if (n.ReleaseKind == NewReleaseKind.Album && Shell.For(n.Subject, n.Title) is { IsNone: false } route)
+        if (Shell.For(n.Subject, n.Title) is { IsNone: false } route)
         {
             Shell.GoTo(route);
             ClosePanel();
             return;
         }
-        OpenWeb(n.Subject.IsValid ? n.Subject.Text : null);
+        OpenLink(n.Subject.IsValid ? n.Subject.Text : null);
     }
 
-    public void OpenWeb(string? uri)
+    public void OpenLink(string? uri)
     {
-        if (string.IsNullOrEmpty(uri)) return;
-        string web = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : Actions.WebLinkOf(EntityUri.Parse(uri));
-        if (web.Length == 0) return;
-        Actions.Services.OpenExternal?.Invoke(web);
+        if (string.IsNullOrWhiteSpace(uri)) return;
+        if (!Shell.OpenLink(uri))
+        {
+            // A Spotify uri with no in-app page (a search, a genre) is still a web page.
+            if (!Shell.TryEntityOfLink(uri, out string entity)) return;
+            string web = Actions.WebLinkOf(EntityUri.Parse(entity));
+            if (web.Length == 0) return;
+            Shell.OpenBrowser(web);
+        }
         ClosePanel();
     }
 

@@ -579,7 +579,6 @@ public readonly partial struct Playlist
             _ = e.PlaylistRecs.Changed.Value;
             _ = e.TrackArtists.Changed.Value;          // FactsHas: a keyed credit alone earns the bento
             _ = ListOpen.Changed.Value;                // the open's hold: taken, answered, out of budget
-            _ = global::Wavee.Fetch.Settled.Value;     // MetaSettlingOf: an answer that names no field still ends the wait
             // The open ITSELF — HeldRows.Held switches rule at it — is the source's own signal, read through Held below.
             bool editsLive = EditsLiveNow();           // subscribes to the session phase (item 58)
             var pl = _playlist;
@@ -769,17 +768,48 @@ public readonly partial struct Playlist
             // has no owner slot to ask about on its first run, and without this subscription the effect never ran again
             // on a list whose membership never publishes. That is why the owner avatar was "not always resolved".
             _ = scope.Playlists.Changed.Value;
+            _ = ListOpen.Changed.Value;                // the open's hold releasing (below)
             var pl = _playlist;
             if (!pl.IsValid) return;
+            // THE HEAD'S OWN ASK, once its carrier has settled without it. The membership answer owns the header (Demand's note), so the head is
+            // never asked beside it; but a membership that answered (or failed) while the head is still not known means nothing in flight carries
+            // the head any more, and an unasked head would leave the page's pending head with nothing coming. Asking it on its own route makes
+            // its state total (in flight, then Known, Absent or Failed: the frame's head readiness, Detail.UI.cs). Not while the open still holds
+            // the list for its revalidation (its answer carries the head).
+            if (!_local && !pl.Knows(PlaylistFields.Identity) && scope.Edges.PlaylistTracks.Readiness(pl.Slot) != EdgeState.Unknown
+                && !ListOpen.Holding(pl.Slot))
+                Entities.Ensure(pl, PlaylistFields.Identity);
             var slots = pl.TrackSlots;
             if (slots.Length > 0 && !_local)
                 Entities.Ensure(MemoryMarshal.Cast<int, Track>(slots), TrackFields.Row | TrackFields.Audio | TrackFields.Tags | TrackFields.Video);
+            if (slots.Length > 0 && !_local && PlaylistVideo.IsVideoFirst(pl)) DemandVideoLengths(scope, slots);
             Span<int> people = stackalloc int[64];
             int n = pl.CollaboratorSlots(people);
             if (n > 0 && !_local) Entities.Ensure(scope.Users, people[..n], (uint)UserFields.Identity);
             if (!_local) DemandOwner(scope, pl.Owner.Slot);
             if (pl.MembershipState == EdgeState.Partial) Entities.EnsureEdge(FetchEdge.PlaylistTracks, pl.Slot, pl.TrackSlots.Length);
             pl.Refold();
+        }
+
+        /// <summary>A video-first list shows each row's MUSIC VIDEO length (<see cref="PlaylistVideo"/>): kind 99 names the video and nothing
+        /// else, so the videos' identities need one Prefetch ask (the album page's DemandVideos rule). A row whose video has not landed keeps its
+        /// own length — an upgrade, never a blank.</summary>
+        static void DemandVideoLengths(Scope scope, ReadOnlySpan<int> slots)
+        {
+            var tracks = scope.Tracks;
+            int[] wanted = System.Buffers.ArrayPool<int>.Shared.Rent(slots.Length);
+            int n = 0;
+            try
+            {
+                foreach (int slot in slots)
+                {
+                    if ((uint)slot >= (uint)tracks.Count) continue;
+                    var video = new Track(slot).VideoCounterpart;
+                    if (video.IsValid && !video.Knows(TrackFields.Duration)) wanted[n++] = video.Slot;
+                }
+                if (n > 0) Entities.Ensure(tracks, wanted.AsSpan(0, n), (uint)TrackFields.Identity, FetchPriority.Prefetch);
+            }
+            finally { System.Buffers.ArrayPool<int>.Shared.Return(wanted); }
         }
 
         /// <summary>THE OWNER'S NAME AND PORTRAIT. CollaboratorSlots often excludes the owner, so Identity=0 was
@@ -833,7 +863,15 @@ public readonly partial struct Playlist
             if (!pl.IsValid) return null;
             var tracks = TracksOf(pl);
             var target = ActionTarget.ForPlaylist(pl.Uri, TitleOf(pl), new PlaylistHost(pl.Uri, pl.Caps, Array.Empty<int>()));
-            var tail = new List<MenuFlyoutItem>(3);
+            var tail = new List<MenuFlyoutItem>(4);
+            // "Video" (PlaylistVideo): play this list's music videos, remembered for the list. A list with Spotify's own "Video" chip keeps
+            // the chip (Tune) as its switch.
+            if (!_local && PlaylistVideo.OffersToggle(pl))
+            {
+                string uri = pl.Uri.Text;
+                bool on = PlaylistVideo.ToggledOn(uri);
+                tail.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Video), on, () => PlaylistVideo.SetToggle(uri, !on), Icons.Movie));
+            }
             AppendOwnerItems(tail, pl, _overlay);
             string owner = pl.Owner.IsValid ? Entities.Strings.Resolve(pl.Owner.NameId) : "";
             return Menus.Container(in target, Controls.ArtUrl(pl.ImageId), owner.Length > 0 ? owner : null, new ContainerExtras

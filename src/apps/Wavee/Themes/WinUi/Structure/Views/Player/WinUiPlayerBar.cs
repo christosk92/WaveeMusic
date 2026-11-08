@@ -10,7 +10,10 @@
 //                  seek 24        elapsed · the rail · remaining (40 slots either side)
 //     tools      flush right, 4 apart: the episode speed · lyrics · queue · devices ("This PC" with its name at Huge) · mute · the volume slider
 //                (96, 128 at Huge) · the video split · full screen · ⋯. A pane on show plates its button (the subtle fill).
-//   At Compact the columns are `1fr 300 auto` 16 apart; from Medium the centre is centred (`1fr | column | 1fr`, the tools keeping their room).
+//   At Compact the columns are `1fr 300 auto` 16 apart; from Medium the centre sits on the bar's centre line (`1fr | column | 1fr`, twin side
+//   columns each at least the tools' width, the column between the 300 floor and the level's). Nothing in the row is sized by the track: the
+//   lines are the level's slot (`MetaW`), every tool slot is the level's (the video split disabled in place without a video), so a skip moves
+//   nothing.
 //
 //   THE MINI BAR (Compact window, 64 tall): the 2-px accent progress edge along the top, then ONE door to the now-playing sheet (the 40 cover
 //   and the two lines; a remote output says "Playing on <device>" in the accent instead of the artists) · the heart · play · next (+10 for an
@@ -97,7 +100,7 @@ internal static partial class WinUiPlayerBar
         }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
         // ── the identity ──────────────────────────────────────────────────────────────────────────────────────────────
-        var meta = MetaColumn(props, v, mini, titleLinkHover, metaNode, marquees.Value);
+        var meta = MetaColumn(props, v, mini, look.MetaW, titleLinkHover, metaNode, marquees.Value);
         var art = new BoxEl
         {
             Key = "art", Width = look.Art, Height = look.Art, Shrink = 0f, ZStack = true, Animate = PL.MoveMotion,
@@ -207,9 +210,14 @@ internal static partial class WinUiPlayerBar
             },
         };
         if (!mini) centreKids.Add(SeekRow(props, v, look));
+        // From Medium the centre is the bar's centre (below): it starts from the 300 floor and fills toward the level's column first, its share
+        // of the room many times the side columns'; at Compact and in the Mini bar it is the level's fixed column.
+        bool centred = look.Level is not (WinUiBarLevel.Compact or WinUiBarLevel.Mini);
         var centre = new BoxEl
         {
-            Key = PL.CentreKey, Width = mini ? float.NaN : look.SeekW, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center, Animate = PL.MoveMotion,
+            Key = PL.CentreKey, Width = !centred && !mini ? look.SeekW : float.NaN, Basis = centred ? PL.CentreMinW : float.NaN,
+            Grow = centred ? PL.CentreFill : 0f, MaxWidth = centred ? look.SeekW : float.NaN,
+            Shrink = 0f, Direction = 1, Justify = FlexJustify.Center, Animate = PL.MoveMotion,
             // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
             DropTarget = Drop.Target<DragPayload>(Drag.Resource,
                 accepts: static p => p.CanCopyTracks,
@@ -247,12 +255,13 @@ internal static partial class WinUiPlayerBar
                         AddTool(Lit(PL.VolumeSliderKey, (v.Lit & slot) != 0, new BoxEl
                         {
                             Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(PL.VolumeLead, 0f, 0f, 0f),
-                            Children = [Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                            Children = [VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                                 length: look.VolumeW, thickness: PL.VolumeThickness)],
                         }), look.VolumeW + PL.VolumeLead);
                         break;
                     case RightSlot.Video:
-                        AddTool(Lit(PL.VideoKey, (v.Lit & slot) != 0, VideoSplit(props, v, (v.Lit & slot) != 0, overlay, videoAnchor, videoMenu)),
+                        // The level's slot whatever the track: disabled in place while the track has no video (never a hole, never a reflow).
+                        AddTool(Lit(PL.VideoKey, (v.Lit & slot) != 0, VideoSplit(props, v, (v.Lit & slot) != 0 && v.HasVideo, overlay, videoAnchor, videoMenu)),
                             PL.SplitMainW + 1f + PL.SplitChevronW + 2f);
                         break;
                     case RightSlot.More:
@@ -269,22 +278,25 @@ internal static partial class WinUiPlayerBar
             Key = PL.RightKey, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = PL.ToolGap,
             Animate = PL.MoveMotion, Children = tools.ToArray(),
         };
-        // From Medium the identity and the tools share the room either side of the centred column, the tools keeping theirs (the identity
-        // shrinks first); at Compact and in the Mini bar the tools are `auto` and the identity takes the rest. One column box at every level
-        // (its share is the level's), so the tools keep their nodes across a level change.
-        bool centred = look.Level is not (WinUiBarLevel.Compact or WinUiBarLevel.Mini);
+        // From Medium the centre sits on the bar's centre line (the board's `minmax(0, 1fr) column minmax(0, 1fr)`, WinUI's media transport):
+        // the identity and the tools columns are twins (the same basis, the tools' width, and the same grow), so whatever room is left over
+        // they take equal shares of it and the centre stays centred. The tools' width is the LEVEL's (every slot is reserved, the video split's
+        // included), never the track's, so no skip moves a column. The room goes to the centre first (from the 300 floor up to the level's
+        // column, `PL.CentreFill`); where the centre is at its column, `SpaceBetween` splits what is left on both sides of it, so the columns
+        // keep their edges and the centre its line. Only below the floor (the low end of a level, under a hundred DIP) does the identity
+        // give way and the centre sit left of the line, at a place that is still the window width's alone. At Compact and in the Mini bar the tools are
+        // `auto` and the identity takes the rest. One column box at every level (its share is the level's), so the tools keep their nodes
+        // across a level change.
         var rightColumn = new BoxEl
         {
             Key = "right-column", Grow = centred ? 1f : 0f, Shrink = 0f, Basis = centred ? toolsW : float.NaN, MinWidth = centred ? toolsW : 0f,
             Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Animate = PL.MoveMotion, Children = [right],
         };
-
-        // The two flexible columns start from the tools' width (the identity shrinks first, below it) so the free room splits evenly and the
-        // centre stays centred in the window.
         if (centred) left = left with { Basis = toolsW };
         var row = new BoxEl
         {
             Key = PL.RowKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = look.ColumnGap,
+            Justify = centred ? FlexJustify.SpaceBetween : FlexJustify.Start,
             Padding = mini ? PL.MiniPadding : PL.RowPadding,
             Children = [left, centre, rightColumn],
         };
@@ -368,7 +380,7 @@ internal static partial class WinUiPlayerBar
     /// Each line is one slot of the column's width: a line that does not fit ends in an ellipsis with its full text in a tooltip, or, with
     /// the app's marquee setting on, the title and the artists are marquees of one group (the start at rest, a pass now and then, one line moving
     /// at a time).</summary>
-    private static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode,
+    private static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, bool mini, float metaW, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode,
                                     Marquee.Group marquees)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
@@ -430,9 +442,12 @@ internal static partial class WinUiPlayerBar
                 Children = [Embed.Comp(new RemoteProps(props, Accent: false), static () => new WinUiRemoteLine())],
             });
 
+        // The full bar's lines are one slot of the level's width (`WinUiBarLook.MetaW`, narrower only where the window leaves less), never
+        // the text's: a short title and a long one put the heart in the same place, so a skip moves nothing. The Mini bar's door takes the row.
         return new BoxEl
         {
-            Key = "meta", Direction = 1, Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f, Justify = FlexJustify.Center, ClipToBounds = true,
+            Key = "meta", Direction = 1, Width = mini ? float.NaN : metaW, Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f, Justify = FlexJustify.Center,
+            ClipToBounds = true,
             Animate = PL.MoveMotion, OnRealized = h => metaNode.Value = h,
             Children = kids.ToArray(),
         };

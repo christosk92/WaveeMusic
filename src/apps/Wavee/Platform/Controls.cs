@@ -73,10 +73,15 @@ public static partial class Controls
     /// <inheritdoc cref="LibrarySeam"/>
     public static LibrarySeam? Library { get; set; }
 
-    /// <summary>An entity uri → the app's route key ("pl:…", "album:…", "artist:…", "liked", "module:…"). Owner I's
-    /// route table installs it; null leaves every rich-text anchor STYLED but inert, which is the honest degradation —
-    /// a link to a route nothing renders is worse than a link that does not click.</summary>
+    /// <summary>A link (a <c>spotify:</c> uri, an <c>open.spotify.com</c> link, a <c>wavee://open</c> verb) → the app's route
+    /// key ("pl:…", "album:…", "artist:…", "liked", "module:…"), handed to the anchor's own <c>onNavRoute</c>. The shell's
+    /// link door installs it (<c>Shell.RouteKeyOfLink</c>, App.cs).</summary>
     public static Func<string, string?>? RouteForUri { get; set; }
+
+    /// <summary>A link with no route the anchor's <c>onNavRoute</c> can take → its click (a track plays, an external page
+    /// opens in the browser), or null when the link door refuses it. The shell's link door installs it (App.cs). Null, or a
+    /// refused link, leaves the anchor STYLED but inert, which is the honest degradation.</summary>
+    public static Func<string, Action?>? LinkOpener { get; set; }
 
     /// <summary>The album → prerelease hop (extension kind 138). The collection write only accepts the
     /// <c>spotify:prerelease:</c> entity and a card usually only knows the album, so <see cref="PreSaveButton"/> costs
@@ -475,11 +480,15 @@ public static partial class Controls
     /// themes so the always-on bottom photo fade read as "the" fade; it was restored by explicit ruling. The VERTICAL
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
     /// image into a painted plate.</para>
-    /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) to where the caller's copy column
-    /// ends, and the 0.35 shoulder keeps its distance after it (tuned Classic D18): the copy stays on the plate at every width.
-    /// NaN (or a hold left of the default) keeps the default stops. On the VERTICAL arm a finite <paramref name="hold"/> is where the copy
-    /// starts (a fraction of the height): the veil reaches its peak there and holds it to the foot.</para></summary>
-    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN)
+    /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) right, and the 0.35 shoulder keeps its
+    /// distance after it: the Classic daylist holds the plate under its whole copy column; the Classic artist hero solves it per photograph
+    /// (<see cref="SolveHeroVeilHold"/>). NaN (or a hold left of the default) keeps the default stops. On the VERTICAL arm a finite <paramref name="hold"/> is where the copy
+    /// starts (a fraction of the height): the veil reaches its peak there and holds it to the foot.</para>
+    /// <para><paramref name="ramp"/> (vertical and held only; NaN = the whole height) confines that ramp to the top <paramref name="ramp"/> DIP of a veil that
+    /// covers more than the photograph's band (the Classic daylist's Compact stack, whose art is the whole card's backdrop): <paramref name="hold"/> is then a
+    /// fraction of the ramp, the veil climbs from its peak to the copy plate (<see cref="HeroVeilPlate"/>) by the ramp's foot and holds the plate to the
+    /// veil's foot, so the copy under the band sits on a real surface with no seam where the band used to end.</para></summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN, float ramp = float.NaN)
     {
         ColorF layer = Tok.FillLayerDefault;
         var wash = R.Wash;
@@ -490,6 +499,12 @@ public static partial class Controls
             // A held vertical veil (the copy over the photograph's lower part): it eases in above the copy and holds its peak from the copy's top
             // to the foot, so the copy's first line (a Verified tick, an eyebrow) never sits on the veil's thin upper ramp.
             float at = Math.Clamp(hold, HeroVeilShoulder, 1f);
+            if (ramp > 0f)
+                return GradientDown(
+                    new GradientStop(0f, veil with { A = 0f }),
+                    new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
+                    new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
+                    new GradientStop(1f, veil with { A = HeroVeilPlate })) with { AxisLengthPx = ramp };
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
@@ -505,17 +520,84 @@ public static partial class Controls
                 new GradientStop(0.82f, veil with { A = top }),
                 new GradientStop(1f, veil with { A = 0f }));
         }
-        float h = float.IsNaN(hold) ? HeroVeilHold : Math.Clamp(hold, HeroVeilHold, 1f - HeroVeilShoulder - HeroVeilTail);
+        float h = HeroVeilHoldOf(hold);
         return GradientRight(
-            new GradientStop(0f, veil with { A = 0.96f }),
-            new GradientStop(h, veil with { A = 0.92f }),
-            new GradientStop(h + HeroVeilShoulder, veil with { A = 0.35f }),
+            new GradientStop(0f, veil with { A = HeroVeilEdge }),
+            new GradientStop(h, veil with { A = HeroVeilPlate }),
+            new GradientStop(h + HeroVeilShoulder, veil with { A = HeroVeilShoulderAlpha }),
             new GradientStop(1f, veil with { A = 0f }));
     }
+
+    /// <summary>The horizontal veil's alpha at <paramref name="x"/> (a fraction of its width) for <paramref name="hold"/>, clamped as
+    /// <see cref="ArtistHeroVeil"/> clamps it: the gradient's own ramp, linear between its stops.</summary>
+    public static float HeroVeilAlphaAt(float x, float hold)
+    {
+        float h = HeroVeilHoldOf(hold), s = h + HeroVeilShoulder;
+        if (x <= h) return HeroVeilEdge + (HeroVeilPlate - HeroVeilEdge) * Math.Clamp(x / h, 0f, 1f);
+        if (x <= s) return HeroVeilPlate + (HeroVeilShoulderAlpha - HeroVeilPlate) * ((x - h) / HeroVeilShoulder);
+        return HeroVeilShoulderAlpha * (1f - Math.Clamp((x - s) / (1f - s), 0f, 1f));
+    }
+
+    /// <summary>The horizontal veil's hold for a copy column over a measured photograph (<see cref="MediaScrim"/>'s map): the THINNEST veil
+    /// under which the copy's <paramref name="ink"/> reads at body contrast (with the solve's headroom) over the photograph's worst ground in
+    /// every strip of the column (<paramref name="left"/>..<paramref name="right"/>, <paramref name="top"/>..<paramref name="bottom"/>, box DIP),
+    /// each strip judged at its right edge, where the veil is lightest. It runs from 0.2's stops (the 0.35 shoulder on the column's right
+    /// edge, so the hold sits no right of its 0.30 default: the photograph shows behind the copy) to the 0.92 plate held to the column's right
+    /// edge (the most this veil gives). The worst ground is the photograph's brightest tenth under light ink and its darkest tenth under dark
+    /// ink; the veil is composited over it in sRGB-encoded grey, as the compositor blends.</summary>
+    public static float SolveHeroVeilHold(MediaScrim.LumaMap map, float boxW, float boxH, MediaScrim.Crop crop,
+                                          float left, float top, float right, float bottom, ColorF ink, ColorF veil)
+    {
+        float w = MathF.Max(1f, boxW);
+        float thick = Math.Clamp(right / w, 0f, 1f), thin = thick - HeroVeilShoulder;
+        float veilGrey = MediaScrim.GreyOf(veil);
+        float percentile = MediaScrim.GreyOf(ink) > veilGrey ? MediaScrim.Percentile : 1f - MediaScrim.Percentile;
+        crop = crop.OrCentred;
+        Span<float> grey = stackalloc float[HeroVeilStrips];
+        Span<float> at = stackalloc float[HeroVeilStrips];
+        float step = MathF.Max(1f, right - left) / HeroVeilStrips;
+        for (int i = 0; i < HeroVeilStrips; i++)
+        {
+            float x0 = left + i * step, x1 = x0 + step;
+            grey[i] = MediaScrim.GreyAt(map, MediaScrim.CoverUv(map.Aspect, w, boxH, x0, top, x1, bottom, crop.FocusX, crop.FocusY, crop.FrameX, crop.FrameY), percentile);
+            at[i] = x1 / w;
+        }
+        float need = MediaScrim.NeedBody * MediaScrim.Headroom;
+        if (Reads(thin, grey, at, ink, veilGrey, need)) return thin;
+        if (!Reads(thick, grey, at, ink, veilGrey, need)) return thick;
+        float lo = thin, hi = thick;
+        for (int i = 0; i < HeroVeilSolveSteps; i++)
+        {
+            float mid = (lo + hi) / 2f;
+            if (Reads(mid, grey, at, ink, veilGrey, need)) hi = mid; else lo = mid;
+        }
+        return hi;
+
+        static bool Reads(float hold, ReadOnlySpan<float> grey, ReadOnlySpan<float> at, ColorF ink, float veilGrey, float need)
+        {
+            for (int i = 0; i < grey.Length; i++)
+            {
+                float a = HeroVeilAlphaAt(at[i], hold);
+                if (MediaScrim.Contrast(ink, a * veilGrey + (1f - a) * grey[i]) < need) return false;
+            }
+            return true;
+        }
+    }
+
+    static float HeroVeilHoldOf(float hold) => float.IsNaN(hold) ? HeroVeilHold : Math.Clamp(hold, HeroVeilHold, 1f - HeroVeilShoulder - HeroVeilTail);
 
     /// <summary>The horizontal veil's default hold stop, the distance from the hold to the 0.35 shoulder, and the least room the
     /// shoulder keeps before the veil's clear edge.</summary>
     const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.32f, HeroVeilTail = 0.04f;
+
+    /// <summary>The horizontal veil's alpha at its left edge and at its shoulder.</summary>
+    const float HeroVeilEdge = 0.96f, HeroVeilShoulderAlpha = 0.35f;
+
+    /// <summary>The strips a solved veil judges its copy column in, and the bisection steps of its solve.</summary>
+    const int HeroVeilStrips = 8, HeroVeilSolveSteps = 12;
+
+    /// <summary>The copy plate's alpha: the horizontal veil's hold, and a ramped vertical veil's foot.</summary>
+    const float HeroVeilPlate = 0.92f;
 
     /// <summary>Where a held vertical veil's 0.35 rung sits, as a share of the way to its hold.</summary>
     const float HeroVeilRampShare = 0.55f;
@@ -869,6 +951,9 @@ public static partial class Controls
         public float Box { get; init; } = ButtonHeight;
         /// <inheritdoc cref="SaveButton"/>
         public Func<ColorF>? Accent { get; init; }
+        /// <summary>The unsaved heart's ink (null: the secondary text ink); a thunk like <see cref="Accent"/> (a heart over a canvas takes the
+        /// media scope's).</summary>
+        public Func<ColorF>? Rest { get; init; }
 
         public override Element Render()
         {
@@ -877,6 +962,7 @@ public static partial class Controls
             if (lib is null) return new BoxEl();                 // no mutation source → no affordance
             bool saved = lib.IsSaved(Uri);                       // subscribe → re-skin on any saved-set change
             ColorF ink = Accent?.Invoke() ?? (ctx is { } a ? a.Value.Ink : Tok.AccentTextPrimary);
+            ColorF rest = Rest?.Invoke() ?? Tok.TextSecondary;
             return new BoxEl
             {
                 Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -884,7 +970,7 @@ public static partial class Controls
                 HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button,
                 OnClick = () => lib.ToggleSaved(Uri, Name),
-                Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, Glyph, saved ? ink : Tok.TextSecondary)],
+                Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, Glyph, saved ? ink : rest)],
             }.Interactive(Interaction.Subtle);
         }
     }
