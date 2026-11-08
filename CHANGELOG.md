@@ -24,10 +24,11 @@ versions separately under `v*` and is not tracked in this file.)
   reports, What's new, podcast transcripts and modules, so the total matches what Wavee keeps on this PC.
 - **Spotify Canvas.** When the playing song has a Canvas (the short looping visual artists add to their tracks), it
   plays in full screen behind the lyrics and the queue, and in the Canvas player style, where it fills the Now playing
-  panel edge to edge with the song's title over it (in Classic it ends in a slow wave tinted from the album art). It
-  grows with the panel's width. It is silent, loops without a seam, and pauses while you cannot see it. Wavee asks for it only for the song that is
-  playing and the next two in the queue, keeps the videos on disk, and shows them offline for up to 30 days. A song
-  without a Canvas looks the same as before.
+  panel edge to edge with the song's title over it (in Classic it ends in a slow wave tinted from the album art). The
+  part of the panel over the Canvas stays dark with light text in light mode too, and the panel's rounded corner cuts
+  the video. It grows with the panel's width. It is silent, loops without a seam, and pauses while you cannot see it.
+  Wavee asks for it only for the song that is playing and the next two in the queue, keeps the videos on disk, and
+  shows them offline for up to 30 days. A song without a Canvas looks the same as before.
 - **Resize the docked music video.** Drag the handle under the video in the side panel to make it taller or
   shorter; double-click puts it back, the arrow keys work too, and Wavee remembers the height.
 - **Show Canvas** setting under Settings > Playback > Video, on by default. Turned off, no Canvas is fetched or shown
