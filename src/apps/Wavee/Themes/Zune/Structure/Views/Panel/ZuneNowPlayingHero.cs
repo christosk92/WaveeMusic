@@ -89,14 +89,14 @@ internal static class ZuneNowPlayingHero
             : bleeds
             ? new BoxEl
             {
-                // Over the canvas the pivot already says "now playing": the chip alone, at the end.
+                // Over the canvas the pivot already says "now playing": the chip alone, at the end, in the media scope's ink.
                 Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Height = P.HeadH,
-                Children = [Chip(verbs, shown)],
+                Children = [Chip(verbs, shown, new CanvasInk(true))],
             }
             : new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = P.WordGap, Height = P.HeadH,
-                Children = [Label(Loc.Get(Strings.Player.NowPlaying)), Chip(verbs, shown)],
+                Children = [Label(Loc.Get(Strings.Player.NowPlaying)), Chip(verbs, shown, default)],
             };
         return new BoxEl
         {
@@ -127,8 +127,8 @@ internal static class ZuneNowPlayingHero
         ],
     };
 
-    /// <summary>The style chip: the style's name (lowercase) and a chevron, flat.</summary>
-    static Element Chip(IPlayerStyleVerbs verbs, int shown) => ToolTip.Wrap(new BoxEl
+    /// <summary>The style chip: the style's name (lowercase) and a chevron, flat, in <paramref name="ink"/>.</summary>
+    static Element Chip(IPlayerStyleVerbs verbs, int shown, CanvasInk ink) => ToolTip.Wrap(new BoxEl
     {
         Key = P.ChipKey, Height = P.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.ChipGap,
         Padding = new Edges4(P.WordPad, 0f, P.WordPad, 0f),
@@ -138,10 +138,10 @@ internal static class ZuneNowPlayingHero
         [
             new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
             {
-                Size = P.ChipTextSize, LineHeight = P.ChipTextLine, Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                Size = P.ChipTextSize, LineHeight = P.ChipTextLine, Color = ink.Primary, HoverColor = ink.Accent,
                 Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
             },
-            Ui.Icon(Icons.ChevronDown, P.ChipGlyph, Tok.TextPrimary),
+            Ui.Icon(Icons.ChevronDown, P.ChipGlyph, ink.Primary),
         ],
     }, Loc.Get(Strings.Player.PlayerStyle));
 
@@ -341,19 +341,31 @@ internal sealed class ZuneHeroTile : Component
             [
                 ZuneNowPlayingHero.Head(verbs, open, shown, bleeds),
                 slot,
-                new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
-                props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
+                // The meta and the lyrics: over the canvas in the light kind they reach down to the canvas's foot and its ramp (the meta's top
+                // sits BleedMetaLift above the foot), so what follows ("Next up", on the light ground) never starts over the dark media scope.
+                new BoxEl
+                {
+                    Direction = 1, Shrink = 0f, Gap = P.HeroGap, MinHeight = bleeds && R.IsLight ? P.BleedMetaLift + P.BleedFootRamp : 0f,
+                    Animate = Design.Reduced ? null : P.SwapMotion,
+                    Children =
+                    [
+                        new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
+                        // Over the canvas the lyric lines are drawn in the media scope (Deck.Bleed.cs).
+                        Ctx.Provide(Deck.OverCanvas, bleeds, props.LyricsPeek()) with { Key = "npv-lyrics:" + uri },
+                    ],
+                },
             ],
         };
     }
 
     /// <summary>The meta over the canvas's fade (BleedZune): the 88 square cover, the title over the album in the accent, the heart in its ring, all
-    /// on the cover's foot. The artist is the giant name drifting over the canvas.</summary>
+    /// on the cover's foot, in the media scope's ink. The artist is the giant name drifting over the canvas.</summary>
     Element BleedMeta(NowPlayingHeroProps props, Track track, string uri, string title)
     {
+        var ink = new CanvasInk(true);
         var lines = new List<Element>(2)
         {
-            R.Type.NowPlayingTitle(title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            R.Type.NowPlayingTitle(title) with { Color = ink.Primary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
         };
         var album = track.Album;
         if (album.IsValid && album.Title.Length > 0)
@@ -362,7 +374,7 @@ internal sealed class ZuneHeroTile : Component
             var albumUri = album.Uri;
             lines.Add(new SpanTextEl([new TextSpan(albumTitle, OnClick: () => props.GoTo(albumUri, albumTitle))])
             {
-                Size = P.BleedAlbumSize, LineHeight = P.BleedAlbumLine, Color = Tok.AccentTextPrimary,
+                Size = P.BleedAlbumSize, LineHeight = P.BleedAlbumLine, Color = ink.Accent,
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
         }
@@ -380,8 +392,14 @@ internal sealed class ZuneHeroTile : Component
                 new BoxEl
                 {
                     Width = P.HeroHeart, Height = P.HeroHeart, Shrink = 0f, ZStack = true, Corners = Radii.Circle(P.HeroHeart),
-                    BorderWidth = P.BleedHeartRing, BorderColor = Tok.TextPrimary,
-                    Children = [Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri }],
+                    BorderWidth = P.BleedHeartRing, BorderColor = ink.Primary,
+                    Children =
+                    [
+                        Embed.Comp(() => new Controls.SaveButton
+                        {
+                            Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart, Accent = () => ink.Accent, Rest = () => ink.Secondary,
+                        }) with { Key = "save:" + uri },
+                    ],
                 },
             ],
         };

@@ -60,10 +60,11 @@ internal static class ClassicHeroLayout
     // ── the edge-to-edge canvas, "Tideline" (canvas-design/project/BleedClassic.dc.html) ───────────────────────────────
 
     /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It ends in a slowly moving wave whose crest sits at
-    /// min(canvas foot - 110, panel height - 300): a 220 band darkens the canvas toward it (the ground at 35 %), three swells (H 140, centred
-    /// on the crest) drift at 33, 21 and 14 s a panel's width: a violet one (30 %), a warm one tinted from the art (34 %) and the front one in the
-    /// ground with a 1.5 light crest line (55 %). Under the crest the ground deepens toward the panel's foot; a 150 band of the ground (75 %)
-    /// keeps the header readable. The meta's top sits 24 under the crest. Reduced motion: the swells stand still.</summary>
+    /// min(canvas foot - 110, panel height - 300): a 220 band darkens the canvas toward it (the media scope's shade at 35 %: the ground in the
+    /// dark kind, the media stage in the light kind, `Deck.BleedShade`), three swells (H 140, centred on the crest) drift at 33, 21 and 14 s a
+    /// panel's width: a violet one (30 %), a warm one tinted from the art (34 %) and the front one in the ground with a 1.5 light crest line
+    /// (55 %): the front swell is where the canvas gives way to the ground. Under the crest the ground deepens toward the panel's foot; a 150
+    /// band of the shade (75 %) keeps the header readable. The meta's top sits 24 under the crest. Reduced motion: the swells stand still.</summary>
     public const float BleedAspect = 16f / 9f, BleedCrestLift = 110f, BleedCrestRoom = 300f, BleedDarkBand = 220f, BleedDarkA = 0.35f,
         BleedWaveH = 140f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f, BleedCrestLine = 1.5f, BleedCrestA = 0.55f;
 

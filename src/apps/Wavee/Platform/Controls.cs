@@ -951,6 +951,9 @@ public static partial class Controls
         public float Box { get; init; } = ButtonHeight;
         /// <inheritdoc cref="SaveButton"/>
         public Func<ColorF>? Accent { get; init; }
+        /// <summary>The unsaved heart's ink (null: the secondary text ink); a thunk like <see cref="Accent"/> (a heart over a canvas takes the
+        /// media scope's).</summary>
+        public Func<ColorF>? Rest { get; init; }
 
         public override Element Render()
         {
@@ -959,6 +962,7 @@ public static partial class Controls
             if (lib is null) return new BoxEl();                 // no mutation source → no affordance
             bool saved = lib.IsSaved(Uri);                       // subscribe → re-skin on any saved-set change
             ColorF ink = Accent?.Invoke() ?? (ctx is { } a ? a.Value.Ink : Tok.AccentTextPrimary);
+            ColorF rest = Rest?.Invoke() ?? Tok.TextSecondary;
             return new BoxEl
             {
                 Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -966,7 +970,7 @@ public static partial class Controls
                 HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button,
                 OnClick = () => lib.ToggleSaved(Uri, Name),
-                Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, Glyph, saved ? ink : Tok.TextSecondary)],
+                Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, Glyph, saved ? ink : rest)],
             }.Interactive(Interaction.Subtle);
         }
     }

@@ -176,50 +176,55 @@ internal static class WinUiLyricsPeek
     static readonly EnterExit FlipIn = new(Dy: P.PeekRowH, Opacity: 0f, Active: true);
     static readonly EnterExit FlipOut = new(Dy: -P.PeekRowH, Opacity: 0f, Active: true);
 
-    /// <summary>The registered template of <see cref="ViewKeys.LyricsPeek"/>.</summary>
-    public static Element Template(LyricsPeekProps props, in ViewContext ctx) => props.Face switch
+    /// <summary>The registered template of <see cref="ViewKeys.LyricsPeek"/>. Over the edge-to-edge canvas (<see cref="Deck.OverCanvas"/>) the
+    /// card is a plate of the media scope, in its ink.</summary>
+    public static Element Template(LyricsPeekProps props, in ViewContext ctx)
     {
-        LyricsPeekFace.Reel => Reel(props),
-        LyricsPeekFace.Note => Note(props.OpenLyrics),
-        _ => new BoxEl(),
-    };
+        var ink = new CanvasInk(ctx.Hooks.UseContext(Deck.OverCanvas));
+        return props.Face switch
+        {
+            LyricsPeekFace.Reel => Reel(props, ink),
+            LyricsPeekFace.Note => Note(props.OpenLyrics, ink),
+            _ => new BoxEl(),
+        };
+    }
 
-    static Element Reel(LyricsPeekProps props) => new BoxEl
+    static Element Reel(LyricsPeekProps props, CanvasInk ink) => new BoxEl
     {
-        Direction = 1, Padding = P.PeekPadding, Gap = P.PeekGap, Corners = CornerRadius4.All(P.CardRadius), Fill = Tok.FillCardDefault,
-        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+        Direction = 1, Padding = P.PeekPadding, Gap = P.PeekGap, Corners = CornerRadius4.All(P.CardRadius), Fill = ink.Plate,
+        BorderWidth = 1f, BorderColor = ink.Stroke,
         Children =
         [
-            new TextEl(Loc.Get(Strings.Player.Lyrics)) { Size = P.PeekCaptionSize, LineHeight = P.PeekCaptionLine, Color = Tok.TextSecondary },
+            new TextEl(Loc.Get(Strings.Player.Lyrics)) { Size = P.PeekCaptionSize, LineHeight = P.PeekCaptionLine, Color = ink.Secondary },
             new BoxEl
             {
                 Direction = 1, Height = P.PeekReelH, ClipToBounds = true,
-                Children = [Line(props.Active, props.ActiveText, faded: false), Line(props.Peek, props.PeekText, faded: true)],
+                Children = [Line(props.Active, props.ActiveText, faded: false, ink), Line(props.Peek, props.PeekText, faded: true, ink)],
             },
             new BoxEl
             {
                 Shrink = 0f, AlignSelf = FlexAlign.Start, Cursor = CursorId.Hand, OnClick = props.OpenLyrics, Role = AutomationRole.Hyperlink, Focusable = true,
-                Children = [new TextEl(Loc.Get(Strings.Theme.Winui.Player.ShowLyrics)) { Size = P.PeekCaptionSize, LineHeight = P.PeekCaptionLine, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary }],
+                Children = [new TextEl(Loc.Get(Strings.Theme.Winui.Player.ShowLyrics)) { Size = P.PeekCaptionSize, LineHeight = P.PeekCaptionLine, Color = ink.Accent, HoverColor = ink.Over ? ink.Primary : Tok.AccentTextSecondary }],
             },
         ],
     };
 
-    static Element Note(Action openLyrics) => new BoxEl
+    static Element Note(Action openLyrics, CanvasInk ink) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = P.PeekGap, Height = P.PeekRowH,
         Cursor = CursorId.Hand, OnClick = openLyrics, Role = AutomationRole.Button, Focusable = true,
         Children =
         [
-            new BoxEl { Width = P.PeekSpineW, Height = P.PeekRowH, Shrink = 0f, Fill = Tok.TextTertiary },
+            new BoxEl { Width = P.PeekSpineW, Height = P.PeekRowH, Shrink = 0f, Fill = ink.Tertiary },
             new TextEl(Loc.Get(Strings.Player.LyricsSyncUnavailableDuringVideo))
             {
-                Size = P.PeekNoteSize, Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Size = P.PeekNoteSize, Color = ink.Tertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
         ],
     };
 
-    static Element Line(int index, string? text, bool faded)
+    static Element Line(int index, string? text, bool faded, CanvasInk ink)
     {
         Element inner = text is not null
             ? new BoxEl
@@ -227,7 +232,7 @@ internal static class WinUiLyricsPeek
                 Key = "l:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 Height = P.PeekRowH, MinWidth = 0f, Grow = 1f, Basis = 0f, Direction = 1, Justify = FlexJustify.Center,
                 Enter = FlipIn, Exit = FlipOut, Transition = MotionTok.ControlFast,
-                Children = [new TextEl(text) { Size = P.PeekLineSize, LineHeight = P.PeekRowH, Weight = faded ? P.PeekNextWeight : P.HeaderTitleWeight, Color = faded ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, MinWidth = 0f, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis }],
+                Children = [new TextEl(text) { Size = P.PeekLineSize, LineHeight = P.PeekRowH, Weight = faded ? P.PeekNextWeight : P.HeaderTitleWeight, Color = faded ? ink.Secondary : ink.Primary, MaxLines = 1, MinWidth = 0f, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis }],
             }
             : new BoxEl { Height = P.PeekRowH };
         return new BoxEl
