@@ -72,6 +72,24 @@ public static partial class ReleaseNotes
         _ => Strings.WhatsNew.Kind.New,
     };
 
+    /// <summary>Did this highlight come from a community pull request (its <see cref="ReleaseHighlight.Community"/> names a login)? The card's badge.</summary>
+    public static bool IsCommunity(ReleaseHighlight h)
+    {
+        foreach (var login in h.Community)
+            if (!string.IsNullOrWhiteSpace(login)) return true;
+        return false;
+    }
+
+    /// <summary>The viewer's credit line as markdown-lite, "Contributed by @a, @b": each login a mention, so the span bridge makes it a link to the
+    /// profile. "" when <see cref="IsCommunity"/> is false.</summary>
+    public static string CommunityCredit(ReleaseHighlight h)
+    {
+        var logins = new List<string>(h.Community.Length);
+        foreach (var login in h.Community)
+            if (!string.IsNullOrWhiteSpace(login)) logins.Add("@" + login.Trim().TrimStart('@'));
+        return logins.Count == 0 ? "" : Strings.WhatsNew.ContributedBy(string.Join(", ", logins));
+    }
+
     public static string SectionTitleLocKey(string? kind) => kind switch
     {
         "added" => Strings.WhatsNew.Section.Added,

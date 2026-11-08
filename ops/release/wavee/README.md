@@ -20,7 +20,7 @@ document with the dated `CHANGELOG.md` entry and stamps the rest.
 
 | Field | Who |
 |---|---|
-| `version`, `name`, `tagline`, `lang`, `minOs`, `arch`, `highlights`, `notices` | **you** |
+| `version`, `name`, `tagline`, `lang`, `minOs`, `arch`, `highlights` (a highlight's `community` logins too), `notices` | **you** |
 | `packageVersion`, `date`, `channel` | the tool (from `--quad` / the CHANGELOG date / `--channel`) |
 | `sections` | the tool — parsed from the `## [<semver>]` entry in `CHANGELOG.md`. **Leave it `[]`.** |
 | `links`, `generatedAt`, `media` (hashes), issue/PR `title`/`state`/`stateReason`/`merged` | the tool |
@@ -48,6 +48,8 @@ layer on top of it. Writing bullets into `sections` by hand is silently overwrit
 
   A release note should almost always deep-link to `whatsnew`, `settings` or a stable top-level page — an entity
   URI baked into a release document goes stale the moment that playlist or show does.
+- **A highlight's `community` logins must be GitHub logins** (letters, digits and `-`, at most 39, no leading `@`);
+  an empty entry is an error. See [Community highlights](#community-highlights).
 - **Media budgets:**
   - no GIF, ever; allowed extensions are `.webp`, `.png`, `.jpg`, `.jpeg`, `.mp4`
   - ≤ 150 KB per still (`.webp` / `.png` / `.jpg`)
@@ -90,6 +92,25 @@ is a byte in every install.
 ```
 
 Omit `media` entirely when a highlight has nothing to show — that is the normal case, and it is what `0.2.0` does.
+
+## Community highlights
+
+A highlight that came from a community pull request names its contributors' GitHub logins in `community`. The card then
+wears a **Community** badge (WinUI and Classic: an accent pill beside the kind pill; Zune: the lowercase word beside the
+kind word), and the highlight viewer adds "Contributed by @login" under the title, each login a link to that profile.
+
+```jsonc
+{
+  "id": "volume-wheel",
+  "title": "Scroll to change the volume",
+  "body": "A community contribution from @ZERO949, thank you! Point at the volume slider and turn the mouse wheel...",
+  "kind": "new",                   // stays new | improved | rebuilt: community is NOT a kind
+  "community": ["ZERO949"]         // optional; absent or [] = a normal card
+}
+```
+
+`community` is a field, not a `kind`, on purpose: a Wavee that predates it reads a newer document, ignores the unknown
+member and still renders the card by its kind.
 
 ## Making the images
 
