@@ -71,6 +71,9 @@ public static class ClassicReleaseNotesRules
     /// <summary>The kind pill's height, the play glyph's disc and the "Read more" row's gap and size.</summary>
     public const float KindPillHeight = 20f, PlayDisc = 32f, ReadMoreGap = 4f;
 
+    /// <summary>The gap between the kind pill and the "Community" pill beside it (a highlight from a community pull request).</summary>
+    public const float PillGap = 4f;
+
     /// <summary>The decode width of a poster (the authored width: without it the poster is a smear).</summary>
     public const float PosterDecodePx = 1200f;
 
@@ -127,6 +130,9 @@ public static class ClassicReleaseNotesRules
 
     /// <summary>The viewer's text column: the title's size and line, the body's size and line, the column's measure and the action row's gap.</summary>
     public const float ViewerTitleSize = 20f, ViewerTitleLine = 28f, ViewerBodySize = 14f, ViewerBodyLine = 20f, ViewerTextMaxWidth = 720f, ViewerActionGap = 8f;
+
+    /// <summary>The viewer's "Contributed by @login" credit under a community highlight's title: its size and line, and its gap from the title.</summary>
+    public const float ViewerCreditSize = 12f, ViewerCreditLine = 16f, ViewerCreditGap = 4f;
 
     /// <summary>The text half's padding (a pager above it takes the smaller top).</summary>
     public static Edges4 ViewerTextPadding(bool hasPager) => new(24f, hasPager ? 8f : 16f, 24f, 24f);

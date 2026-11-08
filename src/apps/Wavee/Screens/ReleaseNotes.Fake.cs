@@ -2,7 +2,7 @@
 //
 // Under `--fake` the store never reaches GitHub: `GetAsync` answers any safe version with this notes document (the named release's own words for the six
 // versions of the rail, a generic one for any other), and `RefreshIndexAsync` publishes the rail's index. The words are the demo's, written like a real
-// changelog: three highlight cards, then added / changed / fixed items citing closed issues, two with a first-time contributor.
+// changelog: three highlight cards (the third from a community pull request, with its badge), then added / changed / fixed items citing closed issues, two with a first-time contributor.
 //
 // A demo that has real notes of its own (a packaged build's `Assets/whatsnew`, or `--whatsnew <dir>` pointing at a release folder the release tool
 // emitted) plays THAT release instead: its notes, its images, and the index that came with them (or a one-entry index), so a release can be read in
@@ -73,7 +73,7 @@ public static partial class ReleaseNotes
             [
                 new ReleaseHighlight { Id = "themes", Title = "Themes", Body = "Classic, WinUI and Zune: one app, three looks, each with its own options.", Kind = "new", DeepLink = "wavee://open?route=settings" },
                 new ReleaseHighlight { Id = "band", Title = "The Zune band", Body = "Pivots across the top, your pins beside them, no sidebar.", Kind = "new", DeepLink = "wavee://open?route=home" },
-                new ReleaseHighlight { Id = "liked", Title = "Liked songs, grouped", Body = "This week, last week, then the months.", Kind = "improved", DeepLink = "wavee://open?route=liked" },
+                new ReleaseHighlight { Id = "liked", Title = "Liked songs, grouped", Body = "This week, last week, then the months. A community contribution from @octocat, thank you!", Kind = "improved", DeepLink = "wavee://open?route=liked", Community = ["octocat"] },
             ],
             Sections =
             [

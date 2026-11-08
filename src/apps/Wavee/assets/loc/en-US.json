@@ -3565,6 +3565,8 @@
     "tag": "Tag",
     "empty": "No release notes were found for this version.",
     "firstContribution": "{login} · first contribution",
+    "community": "Community",
+    "contributedBy": "Contributed by {logins}",
     "kind": {
       "new": "New",
       "improved": "Improved",

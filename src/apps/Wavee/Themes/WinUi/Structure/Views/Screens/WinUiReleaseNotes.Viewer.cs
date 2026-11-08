@@ -151,7 +151,7 @@ internal static partial class WinUiReleaseNotes
                     Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Start,
                     Children =
                     [
-                        new BoxEl { Margin = new Edges4(8f, 8f, 0f, 0f), Children = [KindPill(h.Kind, store)] },
+                        new BoxEl { Margin = new Edges4(8f, 8f, 0f, 0f), Children = [Pills(h, store)] },
                         ToolTip.Wrap(Circle(Icons.ChromeClose, K.CloseGlyph, enabled: true, props.Close, "hv:close", ov.ChromeCircle) with { Margin = new Edges4(0f, 12f, 12f, 0f) },
                             Loc.Get(Strings.WhatsNew.Viewer.Close)),
                     ],
@@ -303,12 +303,17 @@ internal static partial class WinUiReleaseNotes
         Element TextColumn(ReleaseHighlight h, bool store, bool live)
         {
             var openUrl = props.OpenUrl;
-            var content = new List<Element>(3)
+            var content = new List<Element>(4)
             {
                 new TextEl(h.Title) { Size = K.ViewerTitleSize, Weight = 600, LineHeight = K.ViewerTitleLine, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-                RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
-                    with { Size = K.ViewerBodySize, LineHeight = K.ViewerBodyLine, Color = Tok.TextPrimary, Margin = new Edges4(0f, 8f, 0f, 0f) },
             };
+            // A community highlight credits its contributors under the title, each @login a link to the profile (live like the body's links).
+            if (CommunityCredit(h) is { Length: > 0 } credit)
+                content.Add(RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(credit), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
+                    with { Size = K.ViewerCreditSize, LineHeight = K.ViewerCreditLine, Color = Tok.TextSecondary, Margin = new Edges4(0f, K.ViewerCreditGap, 0f, 0f) });
+            content.Add(
+                RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), live ? openUrl : IgnoreLink), isTextSelectionEnabled: live)
+                    with { Size = K.ViewerBodySize, LineHeight = K.ViewerBodyLine, Color = Tok.TextPrimary, Margin = new Edges4(0f, 8f, 0f, 0f) });
             Element? action = null;
             if (store)
                 action = Btn(Loc.Get(Strings.WhatsNew.StoreCta), live ? props.OpenStoreListing : Inert, ButtonAppearance.Accent, ControlSize.Medium, ov.Target, live);
