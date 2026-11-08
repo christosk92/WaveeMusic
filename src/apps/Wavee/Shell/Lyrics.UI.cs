@@ -499,6 +499,9 @@ public static partial class Lyrics
                 M.PublishState(LyricsState.NoLyrics);
                 return MountView(message: Loc.Get(Strings.Lyrics.NoLyrics));
             }
+            // a skip from one document to the next cross-fades them (the stage's track swap): the old lines fade where they stand while the
+            // next document fades in over them, in the layer stack the structure's view places the body in; a first mount is born as it was
+            bool swapped = _trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal);
             if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
             _subjectEpoch = accountEpoch;
             _trackId = trackId;
@@ -510,7 +513,11 @@ public static partial class Lyrics
             // treats a non-owning podcast as neutral (no active line, no wipe, no follow, no σ ladder).
             Element body = IsPodcast
                 ? Embed.Comp(() => new TranscriptHost(this, _subject)) with { Key = "transcript-doc:" + accountEpoch + ":" + trackId }
-                : Embed.Comp(() => new DocHost(this, trackId)) with { Key = "lyrics-doc:" + trackId };
+                : Embed.Comp(() => new DocHost(this, trackId)) with
+                {
+                    Key = "lyrics-doc:" + trackId,
+                    Enter = swapped ? Stage.TrackSwapIn : null, Exit = Stage.TrackSwapFade, Transition = Stage.TrackSwapMotion,
+                };
             // …and the frame stepper stays UNMOUNTED while the gate is up: OnFrame returns immediately for a
             // non-owning podcast, so a subscription to panel-rate frames would buy nothing but battery.
             Element? ticker = open && owns ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;

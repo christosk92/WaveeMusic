@@ -471,7 +471,11 @@ public static partial class Diagnostics
             if (!Platform.Args.Fake) { Say("[lyrics-demo] needs --fake (the seeded track and the fixture lyrics)"); return false; }
             if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[lyrics-demo] unavailable: requires Win32Window + D3D12Device"); return false; }
             if (!WarmUntilShell(host, w, gpu, 600)) { Say("[lyrics-demo] the shell never activated a route"); return false; }
-            Playback.PlayContext("spotify:track:tr0");
+            // `--stage-canvas`: the Canvas player style and a fake track that carries a canvas, so the stage's background is the canvas video
+            // presented through the compositor (the real-hardware check of the frosted cards over a video hole; the headless inspector has none)
+            bool canvas = Array.IndexOf(Platform.Args.Argv, "--stage-canvas") >= 0;
+            if (canvas) Rail.PlayerPrefs.SetStyle(Rail.PlayerCatalog.Canvas, "probe");
+            Playback.PlayContext(canvas ? "spotify:track:tr" + Entities.FakeCanvasTracks[0] : "spotify:track:tr0");
             if (s_options.StageDemo)
             {
                 if (s_options.StageViz) Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);

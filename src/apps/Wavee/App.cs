@@ -103,9 +103,10 @@ public static class App
         // owner's launches never see it.
         string[] argv = Environment.GetCommandLineArgs();
         int themeAt = Array.IndexOf(argv, "--theme");
-        // A `--fake --frame-bench` run takes it too (the bench's theme, e.g. the nav-gc scenario on Zune): --fake keeps the setting in memory.
+        // A `--fake --frame-bench` run takes it too (the bench's theme, e.g. the nav-gc scenario on Zune), and a `--fake --stage-demo` probe (the
+        // full-screen stage on real hardware in a given theme): --fake keeps the setting in memory.
         bool fakeBench = Array.IndexOf(argv, "--fake") >= 0
-            && Array.Exists(argv, static a => a == "--frame-bench" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
+            && Array.Exists(argv, static a => a == "--frame-bench" || a == "--stage-demo" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
         if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench))
         {
             Wavee.Theming.ThemeHost.SelectForRun(argv[themeAt + 1]);

@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.9] - unreleased
+
+### Added
+
+- **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
+  column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
+  left it open.
+
+### Fixed
+
+- **Acrylic over the Canvas in full screen.** The player bar, the Up next column and the view switcher at the top were flat
+  dark slabs while a Canvas played behind them. They are frosted glass again: the video shows through them blurred and
+  tinted, as the album art does.
+- **Full screen follows your player style.** The Canvas plays behind the lyrics only when the player style is Canvas
+  (Settings > Appearance > Now playing, or the style chip in Now playing); every other style keeps the blurred album art
+  there. Before, full screen played the Canvas whatever the style, so there was no way to turn it off there alone.
+- **Skipping songs in full screen is smooth.** The cover, the title, the artists and the chips cross-fade to the next song,
+  drifting in from the side you skipped to; the lyrics fade out and the next ones fade in; the Canvas fades through its
+  still into the next picture instead of cutting; and a burst of presses settles on the last song without stutter.
+
 ## [0.3.8] - 2026-11-08
 
 ### Added

@@ -1461,7 +1461,21 @@ public static partial class Playback
     }
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
-    public static void Previous() => Post(Input.Prev(FrameNowMs()));
+    public static void Previous()
+    {
+        s_previousPressedMs = Environment.TickCount64;
+        Post(Input.Prev(FrameNowMs()));
+    }
+
+    static long s_previousPressedMs = long.MinValue / 2;
+
+    /// <summary>The direction of the last track change as the user caused it, for motion only: -1 when Previous was pressed in the last
+    /// <see cref="SkipSenseWindowMs"/> (the change it caused goes back), +1 otherwise (Next, a natural end, a row picked from the queue,
+    /// autoplay all go forward). The full-screen stage's track swap drifts the incoming part in from this side (<c>Stage.TrackSwap</c>).</summary>
+    public static int SkipSense => Environment.TickCount64 - s_previousPressedMs < SkipSenseWindowMs ? -1 : 1;
+
+    /// <summary>How long a Previous press decides the direction of the change it causes.</summary>
+    public const long SkipSenseWindowMs = 2000;
     /// <summary>Diagnostics (the inspector's <c>transport do=end</c>): the row on the deck ran out with nothing prepared, as the
     /// pump's Ended reports it, so a case can walk the natural-end path without waiting out a track.</summary>
     public static void EndNow() => Post(Input.Ended(s_state.LoadEpoch, FrameNowMs()));
