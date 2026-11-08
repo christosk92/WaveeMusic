@@ -161,7 +161,8 @@ public sealed record PlayerBarView
 
     /// <summary>The slots the cluster has, in row order.</summary>
     public RightSlot Slots { get; init; }
-    /// <summary>The slots whose face is lit (a present slot may be dark: lyrics and video need a playable).</summary>
+    /// <summary>The slots whose face is lit (a present slot may be dark: lyrics and video need a playable on the deck). The video split is
+    /// pressable only while <see cref="HasVideo"/>; a lit split without one is drawn disabled in its slot.</summary>
     public RightSlot Lit { get; init; }
     /// <summary>The cluster's width.</summary>
     public float RightWidth { get; init; }
@@ -171,7 +172,7 @@ public sealed record PlayerBarView
     public OverflowCommand[] Overflow { get; init; } = [];
     /// <summary>The current track has a video.</summary>
     public bool HasVideo { get; init; }
-    /// <summary>The video is on (it has a surface).</summary>
+    /// <summary>The video is on: it has a surface, or, while another device owns playback, that device plays it as video.</summary>
     public bool VideoLive { get; init; }
     /// <summary>The panel is open on lyrics.</summary>
     public bool LyricsOpen { get; init; }
@@ -258,7 +259,8 @@ public sealed record PlayerBarProps
     /// <summary>The credits line's stamp: the face's row version folded with its credited artists' (or its show's). The line reads it
     /// through a memo, so it re-renders only when THESE rows change.</summary>
     public required Func<long> CreditsStamp { get; init; }
-    /// <summary>What the credits line states, read inside the line's render (the face read subscribes it).</summary>
+    /// <summary>What the credits line states. Reading it subscribes the whole track table (the face's resolve): a render reads it UNTRACKED
+    /// (<c>Reactive.Untrack</c>) behind its <see cref="CreditsStamp"/> memo; a bound channel may read it as it is.</summary>
     public required Func<PlayerCredits> Credits { get; init; }
     /// <summary>One "⋯" row, built from live reads when the menu opens. The second argument is the shared-transition begin.</summary>
     public required Func<OverflowCommand, Action<string>?, MenuFlyoutItem> OverflowRow { get; init; }

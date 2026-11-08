@@ -13,7 +13,7 @@
 //   #        the number (Body 14, tertiary), the accent bars on the playing row (keyed "winui.row.now"), the ring while buffering, the play / pause glyph on
 //            hover (none on a withheld row);
 //   art      the row's cover at the control radius (r4) where the lane set has a thumb (a list's rows; an album's have none);
-//   title    Body 14 (the accent text on the playing row, the marquee on the playing row when the core asks), the explicit "E" after it (no film glyph);
+//   title    Body 14 (the accent text on the playing row, the marquee on the playing row when the core asks), the explicit "E" and a video's film glyph after it;
 //   subline  Caption 12 in the secondary ink: the linked artists (the Compact form adds " · album", or " · 598.9M plays" on an album: W-Album-Compact);
 //   lanes    album, added by, date, plays and time in Body 14 and the secondary ink, a withheld row says "Unavailable" in the time lane (the long reason in its
 //            tooltip) and steps back as a whole (45 %);
@@ -357,7 +357,10 @@ internal static class WinUiTrackTable
             [
                 new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] },
                 WinUiRowCells.ExplicitMark() with { Visible = Prop.Of(() => r.P.Track.ForDisplay.IsExplicit) },
-                // No film glyph after the title (W-Playlist, W-Album, W-LikedSongs draw none): a song's video is the drawer's fact and the play bar's toggle.
+                // A song with a music video wears the film glyph after its title, as the eager rows, the queue panel and every other theme's table do
+                // (the boards drew none; the owner asked for one mark everywhere, 2026-11-07). A bound flip after the title: the video group landing
+                // late (the row's TrackVersion) shows it without moving the title's start.
+                Glyph(Icons.Movie, WinUiListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary), Prop.Of(() => r.P.Track.HasVideo)) with { Shrink = 0f },
                 // A row with no subline of its own (an album's one-line rows) wears the "on this PC" ring after its title.
                 .. oneLineMark ? new Element[] { WinUiRowCells.OnThisPcMark(RowInk(r, static () => Tok.TextSecondary)) with { Visible = Prop.Of(() => r.P.State.OnThisPc) } } : []
             ],
@@ -533,7 +536,7 @@ internal static class WinUiTrackTable
             var p = r.P;
             return !Track.Withheld(in p, Track.NowUnix) && Track.OfflineGone(in p)
                 ? Loc.Get(Strings.Track.NotOnThisPc)
-                : Track.DurationLabel(p.Track, Track.NowUnix);
+                : Track.DurationLabel(in p, Track.NowUnix);
         });
         var clock = Factual(label, RowInk(r, static () => Tok.TextSecondary), visible: Prop.Of(() => !withheld()));
         var reason = new TextEl(label)

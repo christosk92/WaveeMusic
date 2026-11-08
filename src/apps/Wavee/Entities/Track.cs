@@ -367,6 +367,11 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     public StringId LocalVideoId => T.LocalVideo[Slot];
     /// <inheritdoc cref="TrackTable.VideoGid"/>
     public StringId VideoGidId => T.VideoGid[Slot];
+    /// <summary>THE manifest id of this row's music video, and its one home: the row's own gid (a self-contained music video),
+    /// else its kind-99 counterpart's (a linked song). Empty while neither has landed. What the video load, the Connect offer and
+    /// the warm keeper all read.</summary>
+    public StringId ManifestGidId => !T.VideoGid[Slot].IsEmpty ? T.VideoGid[Slot]
+        : VideoCounterpart is { IsValid: true } c ? c.VideoGidId : StringId.Empty;
     /// <inheritdoc cref="TrackTable.VideoW"/>
     public ushort VideoWidth => T.VideoW[Slot];
     /// <inheritdoc cref="TrackTable.VideoW"/>

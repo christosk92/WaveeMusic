@@ -31,13 +31,16 @@ internal static partial class ClassicLibraryPage
         // The sort is a button (with its own menu) at Compact and at Small (C-Library-Small), except for the artists' list and Podcasts' mode words, whose rails the boards keep. The
         // Small button (32) is its own cached element: it never shares a node with the Compact one (40).
         bool sortButton = layout.SortButton && !p.IsPodcasts && p.Entity != EntityKind.Artist;
-        Element picker = layout.Single ? c.PickerCompact ??= CompactPicker(p, layout)
+        // A borrowing structure's controls (contract 1.85) are ONE form at every tier: no cached forms, no swap.
+        var styled = c.Controls;
+        Element picker = styled is not null ? StyledPicker(p, layout, styled)
+            : layout.Single ? c.PickerCompact ??= CompactPicker(p, layout)
             : sortButton ? c.PickerSort ??= CompactPicker(p, layout)
             : c.Picker ??= WidePicker(p, layout);
         // The sort button (Small) and the word rail (Standard, Huge) are different trees in ONE slot: a crossing between them swaps under the shared tier cross-fade (the entering
         // form fades in, the leaving one fades out as an orphan beside it) in a slot that RESERVES the row's height, so the head and the list under it never jump while the two overlap.
         // Only the kinds that can show either form swap (the artists' list and Podcasts keep one form at every tier).
-        bool swaps = !p.IsPodcasts && p.Entity != EntityKind.Artist;
+        bool swaps = styled is null && !p.IsPodcasts && p.Entity != EntityKind.Artist;
         picker = new BoxEl
         {
             Key = "lib:picker", Direction = 1, MinWidth = 0f, MinHeight = layout.ControlH, Layout = ClassicTierMotion.Shove,
@@ -69,7 +72,7 @@ internal static partial class ClassicLibraryPage
             filter = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = [filter.Value, ViewToggle(p.View(), p.Size(), layout.ViewCell)],
+                Children = [filter.Value, styled is not null ? styled.View(new LibraryViewArgs(p.View(), p.Size(), layout.ViewCell)) : ViewToggle(p.View(), p.Size(), layout.ViewCell)],
             };
         Element titleRow = new BoxEl
         {
@@ -86,11 +89,14 @@ internal static partial class ClassicLibraryPage
             ],
         };
         var rows = new List<Element>(4);
-        if (layout.KindChips) rows.Add(KindChips(p, layout));
+        // A borrowing structure's page head (contract 1.88) names the page and switches the kinds over the columns: the toolbar keeps only the count.
+        bool headed = styled?.Head is not null;
+        if (layout.KindChips && !headed) rows.Add(styled?.Kinds is { } kinds ? kinds(new LibraryKindsArgs(p.Kinds(), layout.ChipH)) : KindChips(p, layout));
         // The head's rows glide when a crossing changes their gap (10 at Small, 8 at Standard) instead of snapping.
-        rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
+        if (!headed) rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
         if (filter is not null) rows.Add(filter.Value with { Layout = ClassicTierMotion.Shove });
+        if (headed) rows.Add(new TextEl(p.CountText) { Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",
@@ -106,6 +112,20 @@ internal static partial class ClassicLibraryPage
         Children = p.IsPodcasts
             ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], p.PodcastsMode(), fill: true)]
             : [ClassicLibraryRails.WordRail(p.Entity, p.Sort(), p.Desc()), ViewToggle(p.View(), p.Size(), layout.ViewCell)],
+    };
+
+    /// <summary>A borrowing structure's head row (contract 1.85): its modes for Podcasts, else its sort and its view toggle, at the tier's control height.</summary>
+    static Element StyledPicker(LibraryPageProps p, ClassicLibraryLayout layout, LibraryControlsStyle style) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+        Children = p.IsPodcasts
+            ? [style.Modes(new LibraryModesArgs(p.PodcastsMode(), layout.ControlH))]
+            :
+            [
+                style.Sort(new LibrarySortArgs(p.Entity, p.Sort(), p.Desc(), layout.ControlH)),
+                new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f },
+                style.View(new LibraryViewArgs(p.View(), p.Size(), layout.ViewCell)),
+            ],
     };
 
     /// <summary>The Compact head's second row (<c>C-Library-Compact</c>): the sort as a 40 button with its menu and the 40 view cells; Podcasts' mode words as two 40 pills.</summary>

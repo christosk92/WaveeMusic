@@ -90,6 +90,10 @@ public static partial class Crash
                 UseShellExecute = false,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
+                // A pipe whose read end `HandlerChild.Start` closes at once: the child's own stderr writes fail instead of
+                // landing on the PARENT's stderr handle value, which is the parent's fatal-text file (Crash.FatalText) and
+                // is not inheritable, so in the child it would name an unrelated handle.
+                RedirectStandardError = true,
                 CreateNoWindow = true,
             };
             if (leadArg is { Length: > 0 }) psi.ArgumentList.Add(leadArg);
@@ -219,6 +223,7 @@ public static partial class Crash
                     if (job is not null && !job.Assign(p.Handle)) { /* stays unbound: Assigned is false */ }
                 }
                 catch { }
+                try { p.StandardError.Dispose(); } catch { }   // CreateHandlerStartInfo: nobody reads the child's stderr
                 var stdin = p.StandardInput;
                 stdin.AutoFlush = true;
                 return new HandlerChild(p, stdin, job);

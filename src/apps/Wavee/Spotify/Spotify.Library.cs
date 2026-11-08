@@ -72,8 +72,11 @@ public static partial class Spotify
 
         static readonly Action s_flush = static () => { s_flushPosted = false; s_runtime?.Flush(); };
         static readonly Action s_syncNow = SyncNow;
-        static readonly Action s_pumpFetch = static () => Fetch.Pump(PumpVia.External);   // the Online transition's pump (fetch.send via=External)
-        static bool s_wasOnline;
+        static readonly Action s_pumpFetch = static () => Fetch.Pump(PumpVia.External);   // the unreachable edge's pump (fetch.send via=External)
+        /// <summary>The Online transition: whatever an auth refusal or an unreachable session failed is planned again
+        /// (<see cref="Fetch.Resume"/>, so a page that failed during the outage fills by itself), then the held asks leave.</summary>
+        static readonly Action s_resumeFetch = static () => { Fetch.Resume(); Fetch.Pump(PumpVia.External); };
+        static bool s_wasOnline, s_wasUnreachable;
         static readonly Action s_afterPublish = AfterPublish;
         static readonly Action s_flushPushes = FlushPushes;
         static readonly Action s_pumpWaiters = PumpWaiters;
@@ -108,6 +111,10 @@ public static partial class Spotify
             // the fallback spclient that 401 and retry. The Online transition pumps (WatchSession). Local files, modules
             // and the fake catalog are never held; the disk leg is never gated.
             Fetch.CanSend = static p => p != EntityProvider.Spotify || Spotify.Current.IsOnline;
+            // …and while the session's own verdict is that this device cannot reach Spotify (Reconnecting, Failed), a held
+            // ask is not held but FAILED (remembered for the Online transition's Resume): a page shows its offline vacancy,
+            // never a skeleton for the length of an outage. The unreachable edge pumps (WatchSession), so it happens at once.
+            Fetch.Unreachable = static p => p == EntityProvider.Spotify && Telemetry.ProgressUnreachable(Spotify.Current.Phase);
             Sidebar.LibraryWrites = Writes;
             s_pinSync = new LibraryPinSync(Sidebar.Pins, Sidebar.PinLatch, WritePin, IsPinWritePending, static id => "");
             s_runtime = new FluentGpu.Signals.ReactiveRuntime { FrameRequested = RequestFlush };
@@ -204,9 +211,12 @@ public static partial class Spotify
             var phase = Status.Value;
             uint scopeGeneration = Entities.ScopeEpoch.Value;
             bool online = phase == SessionPhase.Online;
-            if (online && !s_wasOnline) Post(s_pumpFetch);
+            if (online && !s_wasOnline) Post(s_resumeFetch);
             s_wasOnline = online;
-            if (Telemetry.ProgressUnreachable(phase)) Post(s_settleProgress);
+            bool unreachable = Telemetry.ProgressUnreachable(phase);
+            if (unreachable && !s_wasUnreachable) Post(s_pumpFetch);   // the held asks fail now (Fetch.Unreachable), not at the next ask
+            s_wasUnreachable = unreachable;
+            if (unreachable) Post(s_settleProgress);
             var verdict = LibrarySyncRules.Decide(ref s_syncMemo, online, IsAccountScope(Entities.Current),
                                                   Current.Epoch, scopeGeneration, Environment.TickCount64);
             if (verdict == LibrarySyncVerdict.Sync) Post(s_syncNow);

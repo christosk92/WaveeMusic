@@ -152,14 +152,14 @@ internal static partial class ClassicPlayerBar
             if (props.DeviceIsRemote())
                 metaKids.Add(new BoxEl
                 {
-                    Key = "remote-device-line", ClipToBounds = true, MinWidth = 0f,
+                    Key = "remote-device-line", Direction = 1, ClipToBounds = true, MinWidth = 0f,
                     Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
                     Children = [Embed.Comp(() => new MiniRemote(props))],
                 });
             else if (v.ShowArtistLine)
                 metaKids.Add(new BoxEl
                 {
-                    Key = artistsKey, ClipToBounds = true, MinWidth = 0f,
+                    Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f,
                     Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
                     Children = [Embed.Comp(() => new MiniCredits(props))],
                 });
@@ -169,7 +169,7 @@ internal static partial class ClassicPlayerBar
             if (v.RemoteLine)
                 metaKids.Add(new BoxEl
                 {
-                    Key = "remote-device-line", Animate = ClassicPlayerBarLayout.ItemMotion,
+                    Key = "remote-device-line", Direction = 1, MinWidth = 0f, Animate = ClassicPlayerBarLayout.ItemMotion,
                     Children = [Embed.Comp(() => new RemoteDeviceLine(props))],
                 });
             metaKids.Add(titleSlot);
@@ -384,12 +384,10 @@ internal static partial class ClassicPlayerBar
         }
 
         // ── RIGHT — shuffle/repeat · volume · lyrics · video · queue · devices · expand · ⋯ ──────────────────────
-        // Every slot the LEVEL has is in the row at its fixed width (the core's `RightSlots`, in bit order) EXCEPT the
-        // video split, which exists iff the current track has a video — the cluster reclaims its 52 DIP otherwise
-        // rather than carrying an unlit hole (user decision 2026-09-16). Playback state only lights a face
-        // (the core's `SlotFaceVisible`, `v.Lit`). The cluster's width is therefore one of exactly TWO values per level
-        // (with / without the split; the wider is the layout's `RightWMax`), a track starting WITHOUT a video moves nothing in the
-        // centre, and a video track landing eases the row once via MoveMotion on `right`.
+        // Every slot the LEVEL has is in the row at its fixed width (the core's `RightSlots`, in bit order), the video split's included:
+        // a track without a video shows the split disabled in place (2026-11-07; from 2026-09-16 the split existed only with a video,
+        // and every skip between a video and a plain track moved the cluster and the centre). Playback state only lights a face (the
+        // core's `SlotFaceVisible`, `v.Lit`), so the cluster's width is the level's alone and no skip moves anything in the row.
         void OpenVideoMenu()
         {
             if (videoMenu.Value is { IsOpen: true } open) { open.Close(); return; }
@@ -435,30 +433,33 @@ internal static partial class ClassicPlayerBar
                         ToolTip.Wrap(BarButton(WaveeIcons.Lyrics, props.OpenLyrics, lit, v.LyricsOpen, box, glyph, font: WaveeIcons.Font),
                             Loc.Get(v.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics)));
                 case RightSlot.Video:
-                    // Only built while hasVideo holds (the slot is in `slots` iff the track has a video); the face
-                    // additionally needs an Active playable, so it stays dark through Loading/Reconnecting/Error.
+                {
+                    // The level's slot whatever the track: lit while a playable is on the deck (loading included), pressable only
+                    // while the track has a video (disabled in place otherwise: never a hole, never a reflow).
                     // Latched, the SPLIT wears the one checked plate across both halves (tuned P2: the same plate Lyrics, Queue and
                     // Devices take, never a 32 plate beside an unplated chevron); both glyphs take the latched ink.
-                    var (videoPlate, videoPlateHover) = CheckedPlate(v.VideoLive && lit);
+                    bool videoOn = lit && v.HasVideo;
+                    var (videoPlate, videoPlateHover) = CheckedPlate(v.VideoLive && videoOn);
                     return Slot("video", w, box, lit, new BoxEl
                     {
                         Direction = 0, AlignItems = FlexAlign.Center,
                         Corners = Radii.ControlAll, Fill = videoPlate, HoverFill = videoPlateHover, PressedFill = videoPlate,
                         BrushTransitionMs = Design.Motion.Faster,
                         OnRealized = h => videoAnchor.Value = h,
-                        OnContextRequested = _ => OpenVideoMenu(),
+                        OnContextRequested = videoOn ? _ => OpenVideoMenu() : null,
                         Children =
                         [
                             ToolTip.Wrap(
-                                BarButton(Icons.Movie, () => verbs.ToggleVideo(), lit, v.VideoLive, box, glyph, platedWhenLatched: false),
+                                BarButton(Icons.Movie, () => verbs.ToggleVideo(), videoOn, v.VideoLive, box, glyph, platedWhenLatched: false),
                                 Loc.Get(v.VideoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
                             // Narrow but FULL-HEIGHT, so the two glyphs share one centre line.
                             ToolTip.Wrap(
-                                BarButton(Icons.ChevronDownSmall, OpenVideoMenu, lit, v.VideoLive, m.SplitChevronW, ClassicPlayerBarLayout.SplitChevronGlyph,
+                                BarButton(Icons.ChevronDownSmall, OpenVideoMenu, videoOn, v.VideoLive, m.SplitChevronW, ClassicPlayerBarLayout.SplitChevronGlyph,
                                     boxHeight: box, platedWhenLatched: false),
                                 Loc.Get(Strings.Player.VideoOptions)),
                         ],
                     });
+                }
                 case RightSlot.Queue:
                     return Slot("queue", w, box, lit,
                         BarButton(Icons.Queue, props.OpenQueue, true, v.QueueOpen, box, glyph));
@@ -595,7 +596,7 @@ internal static partial class ClassicPlayerBar
         public override Element Render()
         {
             _ = UseComputed(props.CreditsStamp).Value;
-            var credits = props.Credits();
+            var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
             string text = credits.Show is { } show ? show.Text : JoinNames(credits.Artists);
             return new TextEl(text)
             {
@@ -875,7 +876,7 @@ internal static partial class ClassicPlayerBar
                         [
                             new TextEl(Strings.Player.PlayingOn(name))
                             {
-                                Size = ClassicPlayerBarLayout.RemoteLineSize, LineHeight = ClassicPlayerBarLayout.RemoteLineTextHeight,
+                                Size = ClassicPlayerBarLayout.RemoteLineSize, LineHeight = ClassicPlayerBarLayout.RemoteLineHeight,
                                 Weight = ClassicPlayerBarLayout.RemoteLineWeight, Color = rest, HoverColor = accent,
                                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
                             },

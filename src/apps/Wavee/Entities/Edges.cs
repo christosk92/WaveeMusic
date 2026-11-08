@@ -140,6 +140,16 @@ public abstract class EdgeTableBase : Publishable
         return state == EdgeState.Unknown && IsFailed(parent) ? EdgeState.Failed : state;
     }
 
+    /// <summary><see cref="Readiness"/>, TRACKED: reads the relation's <c>Changed</c> first, so a page readiness derivation
+    /// that asks re-runs on the publication that moves the answer (a structural write, <see cref="MarkFailed"/>,
+    /// <see cref="MarkUnanswered"/>, <see cref="MarkAnswered"/> and a re-ask that clears a failure all mark the relation
+    /// dirty). The edge twin of <c>Table.Observe</c>.</summary>
+    public EdgeState Observe(int parent)
+    {
+        _ = Changed.Value;
+        return Readiness(parent);
+    }
+
     /// <summary>Did the last ask for this parent fail without landing?</summary>
     public bool IsFailed(int parent) => (uint)parent < (uint)_marked && _failure[parent] != 0;
 
@@ -909,6 +919,7 @@ public sealed partial class Edges
     {
         for (int p = 0; p < Rootlist.ParentCount; p++) ReleaseRootlistText(p);
         for (int p = 0; p < TrackCredits.ParentCount; p++) ReleaseCreditText(p);
+        ReleaseAllCanvasText();
         ReleaseSearchText();
         ReleaseArtistPayloadText();
         for (int p = 0; p < PlaylistTuning.ParentCount; p++) ReleaseTuningText(p);

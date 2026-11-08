@@ -173,6 +173,8 @@ public static partial class Video
             Transport.Value = PlacementCore.TransportOwnerFor(resolved);
             MainHostFullscreen.Value = resolved == SurfacePlacement.Fullscreen;
             if (before.Equals(next)) return;
+            if (PlacementCore.Resolve(before) == SurfacePlacement.None && resolved != SurfacePlacement.None) Playback.Video.Timeline.ResetUnlessRecent("commit " + resolved, 1500);
+            Playback.Video.Timeline.Mark("ui.commit", PlacementCore.Resolve(before) + "->" + resolved);
             if (PlacementPost.ShouldPost(in before, in next, HostCapability.Peek(), out bool wanted)) Playback.SetVideoPlacement(wanted);
             if (next.Preferred != before.Preferred) PersistPreferred(next.Preferred);
             long gen = Playback.Video.Player.Peek().Generation;
@@ -192,14 +194,57 @@ public static partial class Video
         /// <summary>Open at a chosen home (the placement menu's rows). Callers that act on a LIVE has-video answer
         /// (the menu, the rail) must <see cref="FoldAvailability"/> first: <c>Available</c> is stamped only at a track
         /// boundary or a primary click, so a session restored mid-track leaves it at <c>None</c> and an unfolded OpenAt
-        /// resolves to None — the video loads and plays with no surface to show it.</summary>
-        public static void OpenAt(SurfacePlacement target) => Commit(PlacementCore.OpenAt(Surface.Peek(), target));
+        /// resolves to None — the video loads and plays with no surface to show it.
+        /// <para>While the video lives in the pop-out, Fullscreen is the POP-OUT's own fullscreen (<see cref="DetachedFullscreen"/>):
+        /// that window goes borderless on the monitor it is on. Committing <see cref="SurfacePlacement.Fullscreen"/> there instead
+        /// moved the video into the MAIN window and fullscreened that on the main window's monitor — the picture jumped screens
+        /// (2026-11-07: "I selected fullscreen on my 2nd monitor but it switched to my main monitor"). "In a separate window"
+        /// while the pop-out is fullscreen means windowed again.</para></summary>
+        public static void OpenAt(SurfacePlacement target)
+        {
+            if (Resolved == SurfacePlacement.Detached)
+            {
+                if (target == SurfacePlacement.Fullscreen) { SetPopOutFullscreen(true, "open-at"); return; }
+                if (target == SurfacePlacement.Detached) SetPopOutFullscreen(false, "open-at");
+            }
+            Commit(PlacementCore.OpenAt(Surface.Peek(), target));
+        }
 
         /// <summary>Off — globally and stickily. Every user-initiated close lands here.</summary>
         public static void TurnOff() => Commit(PlacementCore.TurnOff(Surface.Peek()));
 
-        public static void EnterFullscreen() => Commit(PlacementCore.EnterFullscreen(Surface.Peek()));
-        public static void ExitFullscreen() => Commit(PlacementCore.ExitFullscreen(Surface.Peek()));
+        /// <summary>Fullscreen where the video IS: the pop-out's own fullscreen while it is Detached (its monitor), else the main
+        /// window's full-bleed surface (the main window's monitor). See <see cref="OpenAt"/>.</summary>
+        public static void EnterFullscreen()
+        {
+            if (Resolved == SurfacePlacement.Detached) { SetPopOutFullscreen(true, "enter"); return; }
+            Commit(PlacementCore.EnterFullscreen(Surface.Peek()));
+        }
+
+        /// <summary>Leave whichever fullscreen is up (<see cref="IsFullscreen"/>).</summary>
+        public static void ExitFullscreen()
+        {
+            if (Resolved == SurfacePlacement.Detached) { SetPopOutFullscreen(false, "exit"); return; }
+            Commit(PlacementCore.ExitFullscreen(Surface.Peek()));
+        }
+
+        /// <summary>Is the video fullscreen on EITHER window: the main window's full-bleed surface, or the pop-out presenting
+        /// borderless on its own monitor. What a fullscreen toggle (F11, Escape) asks before choosing enter or exit.</summary>
+        public static bool IsFullscreen
+        {
+            get
+            {
+                var resolved = Resolved;
+                return resolved == SurfacePlacement.Fullscreen || (resolved == SurfacePlacement.Detached && DetachedFullscreen.Peek());
+            }
+        }
+
+        static void SetPopOutFullscreen(bool on, string why)
+        {
+            if (DetachedFullscreen.Peek() == on) return;
+            DetachedFullscreen.Value = on;
+            Log.Info(LogCategory, "video pop-out fullscreen " + (on ? "on" : "off") + " why=" + why);
+        }
 
         /// <summary>An AMBIENT move that is not the user closing the feature (the rail being closed while docked).
         /// <c>Preferred</c> survives, so restoring the condition re-docks automatically.</summary>
@@ -572,6 +617,9 @@ public static partial class Video
                     if (State.DetachedFullscreen.Peek()) return;   // Peek: a persistence guard is not a subscription
                     save.Set(Platform.Keys.VideoWindowRect, PlacementPersistence.SaveRect(r.X, r.Y, r.W, r.H));
                 };
+            // A fullscreen asked for while this open was still queued (State.EnterFullscreen in the frame the pop-out was
+            // requested) found no window to apply to, and the apply effect does not re-run for a handle (a ref, not a signal).
+            if (State.DetachedFullscreen.Peek()) win.SetFullscreen(true);
             State.ReportLive(Owned, mounted: true);
         }
     }

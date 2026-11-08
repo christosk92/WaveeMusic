@@ -12,7 +12,7 @@
   modules.json - see docs/guide/playback-modules.md section 9.
 
 .EXAMPLE
-  powershell -File ops\build\pack-module.ps1 -ModuleDir src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\modules\wavee.youtube -OutputDir artifacts\modules -Arch arm64
+  powershell -File ops\build\pack-module.ps1 -ModuleDir src\apps\Wavee\bin\Release\net11.0\win-arm64\publish\modules\wavee.youtube -OutputDir artifacts\modules -Arch arm64
 
 .NOTES
   ASCII only inside string literals: this file has no BOM, so Windows PowerShell 5.1 decodes it as ANSI and a

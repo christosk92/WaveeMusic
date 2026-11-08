@@ -554,9 +554,10 @@ public readonly record struct SidebarPillState(
 
     /// <summary>As <see cref="For(string)"/>, but with the pane's own row-level verdict folded in: the pill is lit
     /// only when the PANE says this row draws selected (<see cref="SidebarRowResolve.SelectsRoute"/>, the one owner
-    /// the selection sweep also uses) AND the route this pill was drawn for is still the live one. The conjunction
-    /// is what makes a recycled slot dark for the one frame in which its index has moved but its snapshot has
-    /// not.</summary>
+    /// the selection sweep also uses) AND the route this pill registers under is the live one. Both halves are read
+    /// off the slot's LIVE index (the theme row's pill probe), never off a snapshot its row wrote in its render: the
+    /// pill re-renders on the same edge as its row, often first, so a snapshot route registered the pill under the
+    /// row its slot used to show (two pills lit after a rail switch).</summary>
     public SidebarPillState For(string liveRoute, bool rowSelectsRoute)
         => this with { Selected = rowSelectsRoute && Lit(Route, liveRoute) };
 }

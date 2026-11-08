@@ -48,7 +48,8 @@ internal static class ZuneTransport
         var host = props.Host;
         bool enabled = props.Enabled;
         ColorF rail = Tok.TextPrimary with { A = T.RailA };
-        ColorF value = enabled ? R.Ink.AccentDecor : Tok.TextTertiary;
+        // The value's ink at rest: enabled, or refused only while the row loads (a skip): the line holds its colour, only the input waits.
+        ColorF value = enabled || props.Pending ? R.Ink.AccentDecor : Tok.TextTertiary;
 
         if (props.Hairline)
             return new BoxEl

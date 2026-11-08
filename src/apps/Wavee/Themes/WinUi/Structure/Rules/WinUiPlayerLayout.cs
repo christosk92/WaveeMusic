@@ -92,6 +92,10 @@ public static class WinUiPlayerLayout
     /// <summary>The centre: the transport row (36, buttons 8 apart) over the seek row (24, 8 between the times and the rail).</summary>
     public const float TransportRowH = 36f, TransportGap = 8f, SeekRowH = 24f, SeekGap = 8f;
 
+    /// <summary>The centred column (Medium up): its floor (Compact's 300: the transport and a usable rail) and its share of the row's spare room
+    /// against each side column's 1, so the room fills the centre toward the level's column before the sides grow.</summary>
+    public const float CentreMinW = 300f, CentreFill = 64f;
+
     /// <summary>A transport button (40 x 32), a tool (40 x 40), a glyph (16), the ±10 s glyph (18), the button's corner (4).</summary>
     public const float TransportW = 40f, TransportH = 32f, ToolBox = 40f, Glyph = 16f, StepGlyph = 18f, ButtonCorner = 4f;
 

@@ -164,7 +164,20 @@ public sealed class PlayerVerbs : IPlayerVerbs
 
     public void OpenStage(Action<string>? begin, string cause) => Stage.Open(begin, cause);
 
-    public void ToggleVideo() => Video.State.TogglePrimary(Shell.NowPlayingFace.HasVideoPeek());
+    public void ToggleVideo()
+    {
+        bool hasVideo = Shell.NowPlayingFace.HasVideoPeek();
+        var facts = Playback.DeckVideo.Peek();
+        if (!facts.Remote) { Video.State.TogglePrimary(hasVideo); return; }
+        // While another device owns playback the button is THAT device's mode (lit while it plays video): a click switches it — the
+        // ONE path that does (Playback.SwitchVideo; closing our own panel never switches the owner). Asking for video opens our surface
+        // too (the user asked to watch); asking for audio closes it.
+        bool toVideo = !facts.OnVideo;
+        bool open = Video.State.IsActive;
+        if (toVideo && !open) Video.State.TogglePrimary(hasVideo);
+        else if (!toVideo && open) Video.State.TurnOff();
+        Playback.SwitchVideo(toVideo);
+    }
 
     public void SetVideoPlacement(Video.SurfacePlacement placement, bool hasVideo)
     {

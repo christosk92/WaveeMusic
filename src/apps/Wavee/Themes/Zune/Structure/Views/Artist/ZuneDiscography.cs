@@ -12,7 +12,7 @@
 //     clicked card; its head is a play ring, the cover, the title and meta (it opens the album) and an open ring; the rows are Zune's own eager row
 //     (# · heart · title · time · "..."), the selection a 12 % accent wash, "show all N tracks" an accent word.
 //
-// Motion is the core's drawer reveal (`Design.Reveal.Drawer`). Numbers are `Rules\ZuneArtistRules.cs` and the tier records (`ZuneArtistTiers`).
+// Motion is the grid's drawer slot (`LazyGrid`: it opens, closes and moves with its row on the reveal spring). Numbers are `Rules\ZuneArtistRules.cs` and the tier records (`ZuneArtistTiers`).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -59,14 +59,14 @@ internal static class ZuneDiscography
 
     /// <summary>The card's data off its row. The PINNED height keeps the card OUT of the grid's folded row gap.</summary>
     static Controls.CardData Card(DiscoCardArgs a)
-        => new(a.Uri, a.Title, SubtitleOf(a.Meta, Icons.ChevronDown), a.Cover, a.Click, OnPlay: a.Play, Drag: a.Drag)
+        => new(a.Uri, a.Title, SubtitleOf(a.Meta, expanded: false, a.Toggle), a.Cover, a.Click, OnPlay: a.Play, Drag: a.Drag)
         {
             Height = a.Height, Menu = a.Menu,
         };
 
     /// <summary>The opened card wears the selected skin (the accent border over the accent wash) and the up cue.</summary>
-    static Controls.CardData Opened(Controls.CardData plain, string meta, Func<ColorF> accent)
-        => plain with { Selected = true, SelectedAccent = accent, Subtitle = SubtitleOf(meta, Icons.ChevronUp) };
+    static Controls.CardData Opened(Controls.CardData plain, DiscoCardArgs a, Func<ColorF> accent)
+        => plain with { Selected = true, SelectedAccent = accent, Subtitle = SubtitleOf(a.Meta, expanded: true, a.Toggle) };
 
     /// <summary>The seed (no row yet) at the card's pinned height.</summary>
     static Controls.CardData Seed(float height) => Controls.CardData.Seed with { Height = height };
@@ -74,14 +74,17 @@ internal static class ZuneDiscography
     /// <summary>One cell. A constant key, shared by the seed and the card: a seed hydrating is a props re-push, never a remount.</summary>
     static Element Cell(Controls.CardData data) => Controls.Surface(data, Shape.Grid) with { Key = "album" };
 
-    /// <summary>The meta line (data and labels: kept as written) with a small tertiary disclosure cue after it.</summary>
-    static Element SubtitleOf(string meta, string glyph) => new BoxEl
+    /// <summary>The meta line with the disclosure button after it (<see cref="Controls.Disclosure"/>): the card opens the album, the button
+    /// opens and closes the card's drawer, its chevron turning up while open. Zune's flat glyph button (the track drawer's split halves): square, the row layers on hover and press; its plate bleeds out of
+    /// the meta line, so the line keeps its height.</summary>
+    static Element SubtitleOf(string meta, bool expanded, Action toggle) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Rules.SubtitleGap, MinWidth = 0f,
         Children =
         [
             R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-            Icon(glyph, Rules.SubtitleGlyph, Tok.TextTertiary),
+            Controls.Disclosure(expanded, toggle, new DisclosureSkin(Rules.DisclosurePlate, Rules.DisclosureGlyph, Rules.DisclosureSlop,
+                0f, Rules.DisclosureBleed, static () => Tok.TextSecondary, static () => R.Layer.RowHover, static () => R.Layer.RowPressed)),
         ],
     };
 
@@ -109,7 +112,7 @@ internal static class ZuneDiscography
         float caretY = DrawerVerdict.TopGap - Rules.CaretH + Rules.CaretOverlap;
         return new BoxEl
         {
-            Key = "disco-drawer", Direction = 1, Height = a.SlotHeight, ClipToBounds = true, Animate = Design.Reveal.Drawer,
+            Key = "disco-drawer", Direction = 1, Height = a.SlotHeight, ClipToBounds = true,
             Children =
             [
                 new BoxEl

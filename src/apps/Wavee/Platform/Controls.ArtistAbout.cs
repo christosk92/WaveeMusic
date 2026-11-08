@@ -61,7 +61,7 @@ public static partial class Controls
         Element band = new BoxEl
         {
             Height = bandH, ZStack = true, ClipToBounds = true, Fill = Tok.FillSubtleSecondary,
-            Children = image is { Length: > 0 } url ? [Ui.Image(url, ImageFit.Cover, 1.6f, 640f, 0f, Tok.FillSubtleSecondary)] : [],
+            Children = image is { Length: > 0 } url && AboutPhoto(url, 1280f, 0f) is { } photo ? [photo] : [],
         };
         var words = new List<Element>(4)
         {
@@ -188,7 +188,7 @@ public static partial class Controls
                 EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, 56f),
                 Children =
                 [
-                    Ui.Image(heroUrl, ImageFit.Cover, 2.6f, 320f, Radii.Card, Tok.FillSubtleSecondary),
+                    AboutPhoto(heroUrl, 640f, Radii.Card) is { } heroPhoto ? heroPhoto : new BoxEl { Height = heroH },
                     new BoxEl
                     {
                         Height = heroH, Corners = Radii.CardAll,
@@ -242,6 +242,21 @@ public static partial class Controls
                 },
                 new BoxEl { Direction = 0, Padding = new Edges4(Spacing.M, 0f, Spacing.M, Spacing.M), Children = [follow] },
             ],
+        };
+    }
+
+    /// <summary>The card's photograph filling its band, cropped to keep its subject in view: a header photograph is a wide
+    /// picture of a person, and a centred crop of it into a short band showed the waist and the legs with the face cut off above (owner 2026-11-07,
+    /// INNA). The band frames where the subject stands (<see cref="Palette.Subject"/>: the faces, or Spotify's safe zone a third of the way down) in its
+    /// middle, and waits for that measure (it always settles) so the crop never moves once the photograph shows: null until then (the band's fill
+    /// stands).</summary>
+    static ImageEl? AboutPhoto(string url, float decodePx, float corners)
+    {
+        if (Palette.Subject(url) is not { } subject) return null;
+        return new ImageEl
+        {
+            Source = url, Fit = ImageFit.Cover, DecodePx = decodePx, Corners = CornerRadius4.All(corners), AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+            FocusX = subject.X, FocusY = subject.Y, FocusFrameX = 0.5f, FocusFrameY = 0.5f, Placeholder = Tok.FillSubtleSecondary,
         };
     }
 

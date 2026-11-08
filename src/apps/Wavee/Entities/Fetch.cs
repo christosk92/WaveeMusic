@@ -43,21 +43,29 @@
 //                              the row; it SURVIVES the answer — a group asked and not answered is the "exhausted"
 //                              seal 0.2.9's ledger needed a second cache to hold, and it is what stops a TrackV4 answer
 //                              (which fills Identity and not PlayCount) from being re-POSTed by the next `Ensure(Row)`.
-//                              A TERMINAL transport failure un-asks the batch's groups (a 503 is not an answer); so does
-//                              an ANSWER for the groups of a route that did not answer beside one that did (`Answer`'s
-//                              `unfilled`: a 401 on the top-tracks REST next to a 200 overview un-asks Chart, and Chart
-//                              only); `Refresh` un-asks on demand (a Retry); the scope being replaced drops every mark
-//                              with its tables. An auth refusal (401/403, `Queue.SeedRetryOn`) is un-asked AND remembered
-//                              (`s_refused`), so the next Online transition re-plans it (`Resume`) without a remount.
-//   `Inflight[slot] == stamp`  a request for this row is out right now. `Table.Outstanding[slot]` counts the requests
-//                              naming it (row-bucket seats + row batches on the wire); a batch settling (`Answer` or
-//                              `Failed`) unseats every row it carried and clears the stamp for the rows it was the LAST
-//                              request of, and `Table.Applied` clears it only when nothing is outstanding — an answer that
-//                              did not name a row is still that row's answer, but an EDGE answer or a second batch writing
-//                              the row is not the end of its own request (the artist chart's Failed flash, 2026-09-25).
-//                              `Asked && Inflight == 0` is how a surface reads "asked, nothing coming" (Search.Page.cs,
-//                              Artist.UI.Chart.cs). The store's trim reads it as "pinned". It does not gate the dedupe —
-//                              `Asked` does.
+//                              A TERMINAL transport failure un-asks the batch's groups (a 503 is not an answer) AND marks
+//                              them `Failed`; so does an ANSWER for the groups of a route that did not answer beside one
+//                              that did (`Answer`'s `unfilled`: a 401 on the top-tracks REST next to a 200 overview un-asks
+//                              and fails Chart, and Chart only). An un-ask is never silent, so "not asked" only ever means
+//                              "not asked YET". `Refresh` un-asks on demand (a Retry); the scope being replaced drops every
+//                              mark with its tables. An auth refusal (401/403, `Queue.SeedRetryOn`), and a bucket held
+//                              while its provider is UNREACHABLE (`Unreachable`, the session's own verdict), are failed AND
+//                              remembered (`s_refused`), so the next Online transition re-plans them (`Resume`) without a
+//                              remount.
+//   `Inflight[slot] == stamp`  a request for this row is out right now. STRUCTURAL: `Table.Seat` / `Table.Unseat` are its
+//                              only writers. `Table.Outstanding[slot]` counts the requests naming the row: a row-bucket
+//                              seat (carried onto the batch that sends it, given back when that batch settles through
+//                              `Answer` or `Failed`, or when a held bucket is failed), and the disk leg's read (given back
+//                              by `Continue`, after the rows the disk could not fill have taken their bucket seats). The
+//                              stamp lives exactly while the count is non-zero, and the unseat that zeroes it publishes
+//                              the table, so a page that read the row's state hears the request end. `Table.Applied` never
+//                              touches it: a write landing through another door is not the end of the row's own request
+//                              (the artist chart's Failed flash, 2026-09-25). The store's trim reads it as "pinned". It
+//                              does not gate the dedupe — `Asked` does.
+//   THE TOTAL STATE a page reads is `Table.StateOf` / `Table.Observe` (`GroupState`): Known, Failed, Unasked (not asked
+//                              yet), Inflight, or Absent (asked, and the request settled without it: the seal, a real
+//                              negative). Every settle moves the groups it asked out of Inflight, so nothing a page reads
+//                              is ever "asked, nothing coming, still pending".
 //   `FetchedAt[slot] != 0`     somebody has answered about this row before — including the disk answering "I do not
 //                              have it" (Store.ReadCore stamps the whole batch). It is what makes the disk leg run
 //                              ONCE per row per session instead of once per page mount.
@@ -269,11 +277,6 @@ public abstract class FetchProvider
 /// <c>Entities.EnsureEdge</c> (relations, <c>Fetch.Edges.cs</c>); there is no single-uri entry point to reach for (P4).</summary>
 public static partial class Fetch
 {
-    /// <summary>Bumps once per batch that SETTLED — answered or failed. A commit publishes the tables it wrote, but a
-    /// batch that fails, or that answers without naming a row, only clears that row's <c>Inflight</c>/<c>Asked</c>
-    /// marks and publishes nothing; a surface whose verdict reads those marks (the track table's reveal gate,
-    /// <c>TableRules.RowUnsettled</c>) re-reads here so "asked, nothing coming" reaches it. UI THREAD.</summary>
-    public static readonly Signal<uint> Settled = new(0) { DebugName = "fetch.settled" };
 
     /// <summary>THE per-request entity ceiling — one extended-metadata POST. 0.2.9 carried seven copies of this 300
     /// (adornments, play counts, video detect, expansion, the closure, the paged hydrate, show episodes); here a page
@@ -425,7 +428,7 @@ public static partial class Fetch
             Doors[(int)door]++;
             // A ROW seat is a request naming the row until the batch that carries it settles (`Table.Outstanding`;
             // `Unask` unseats). An edge seat names a PARENT, whose in-flight mark the edge door never stamps.
-            if (Subject != FetchSubject.Edge) Table.Seat(slot);
+            if (Subject != FetchSubject.Edge) Table.Seat(slot, Stamp(s_scopeEpoch));
             return true;
         }
 
@@ -481,6 +484,16 @@ public static partial class Fetch
     /// <see cref="Drain"/> re-tries a held bucket every tick besides, so a missed transition is a delay of one frame,
     /// never a stranded ask. <see cref="Reset"/> clears it (the test seam).</para></summary>
     public static Func<EntityProvider, bool>? CanSend { get; set; }
+
+    /// <summary>Has this provider's transport said it CANNOT answer now — not "not yet" (the boot burst waiting for the
+    /// session, which <see cref="CanSend"/> holds), but the session's own verdict that the device cannot reach it
+    /// (<c>Spotify.Telemetry.ProgressUnreachable</c>: Reconnecting or Failed)? A bucket <see cref="CanSend"/> refuses for
+    /// such a provider is not held: <see cref="Pump"/> fails it terminally (<see cref="FailHeld"/>, status 0), so a page
+    /// waiting on it shows its error vacancy (voiced Offline by the shell) instead of a skeleton for the length of the
+    /// outage, and the ask is remembered for <see cref="Resume"/>, which the next Online transition runs — the page fills
+    /// without a Retry when the session comes back. No timer decides it: the session's phase does. Null lets nothing count
+    /// as unreachable (the fake catalog, modules, local files).</summary>
+    public static Func<EntityProvider, bool>? Unreachable { get; set; }
 
     /// <summary>The host's wake for an owed drain: called ONCE when a drain becomes owed (the first ask of a tick), never
     /// again until a pump has satisfied it. The GUI host posts its drain through the UI poster here, which wakes an idle
@@ -644,6 +657,14 @@ public static partial class Fetch
         Owe();
     }
 
+    /// <summary>The transport registered for <paramref name="provider"/>, or null. The inspector's scripted answer reads it to put it back
+    /// (<c>Entities.Fake.Answer.cs</c>).</summary>
+    internal static FetchProvider? ProviderOf(EntityProvider provider) => s_providers[(byte)provider];
+
+    /// <summary>Detach one provider's transport: its buckets wait, held, until one registers. The scripted answer's restore when none was
+    /// registered before it.</summary>
+    internal static void Unregister(EntityProvider provider) => s_providers[(byte)provider] = null;
+
     /// <summary>Detach every transport, drop the send gate and forget every pending row — the test seam, and what a
     /// sign-out runs. The host's <see cref="WakeForDrain"/> survives: it is the host's wiring, not a transport.</summary>
     public static void Reset()
@@ -651,6 +672,7 @@ public static partial class Fetch
         Boot();
         Array.Clear(s_providers);
         CanSend = null;
+        Unreachable = null;
         s_planned = s_deduped = s_toDisk = s_toNetwork = s_answered = s_failed = s_retried = s_abandoned = s_resumed = 0;
     }
 
@@ -685,6 +707,7 @@ public static partial class Fetch
             // produce ONE request, and the mark is what makes the second pass find nothing. The need is taken BEFORE
             // the mark (the mark is what would zero it) and travels with the row.
             int now = Entities.Now;
+            bool unfailed = false;
             for (int i = 0; i < need; i++)
             {
                 int slot = scratch[i];
@@ -692,11 +715,14 @@ public static partial class Fetch
                 needs[i] = groups;
                 table.Asked[slot] |= groups;
                 // A group being asked again is, by definition, no longer failed: the mark exists to tell a surface
-                // "nothing is coming", and something is. (`Ensure` reaches here; so does a Retry through `Refresh`.)
-                table.Failed[slot] &= ~groups;
-                table.Inflight[slot] = stamp;
+                // "nothing is coming", and something is. (`Ensure` reaches here; so does a Retry through `Refresh`.) The
+                // state moves Failed → Inflight, which a page shows (its vacancy gives way to the skeleton): publish it.
+                if ((table.Failed[slot] & groups) != 0) { table.Failed[slot] &= ~groups; unfailed = true; }
                 table.Touched[slot] = now;
             }
+            if (unfailed) table.MarkDirty();
+            // No in-flight stamp is written here: the request that carries each row seats it (`Table.Seat`) — its bucket
+            // below, or the disk read — and that request's settle gives the seat back.
 
             // DISK BEFORE NETWORK. A row nothing has ever answered about (`FetchedAt == 0`) might be on disk from a
             // previous launch, and sqlite costs one batched query against a round trip. A row the disk has already
@@ -718,6 +744,9 @@ public static partial class Fetch
             if (disk > 0 && Store.Read(scope, table, span[..disk], diskWanted, priority))
             {
                 s_toDisk += disk;
+                // THE DISK READ IS A REQUEST: it seats its rows until `Continue` (its continuation, posted to the UI thread
+                // whatever the read found) gives the seats back.
+                for (int i = 0; i < disk; i++) table.Seat(span[i], stamp);
                 queued = Queue(scope, table, span[disk..], groupsOf[disk..], priority);   // the rest do not wait for the disk
             }
             else
@@ -738,37 +767,39 @@ public static partial class Fetch
     /// <c>Store</c> from the cold read's completion, on the UI thread, with the same slots and groups the read was asked for.
     /// <para>It re-derives <c>wanted &amp; ~known</c> rather than trusting the caller's list, so a batch the disk
     /// filled completely asks for nothing — and it does NOT subtract <c>Asked</c>, because those marks are this plan's
-    /// own.</para></summary>
+    /// own.</para>
+    /// <para>THE DISK READ'S SETTLE: the rows still needing something take their bucket seats FIRST, then every row of the
+    /// read gives back the seat <see cref="Plan"/> took for it, so a row going on to the network never drops out of flight
+    /// between the two, and a row the disk answered whole (or whose ask was withdrawn meanwhile) leaves flight here.</para></summary>
     public static void Continue(Scope scope, Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority)
     {
-        if (wanted == 0 || slots.IsEmpty) return;
-        if (!ReferenceEquals(scope, Entities.Current)) return;   // C7: the disk answered into a replaced set
+        if (slots.IsEmpty) return;
+        if (!ReferenceEquals(scope, Entities.Current)) return;   // C7: the disk answered into a replaced set (its seats went with its tables)
 
-        uint stamp = Stamp(scope.Epoch);
         int[] scratch = ArrayPool<int>.Shared.Rent(slots.Length);
         uint[] needs = ArrayPool<uint>.Shared.Rent(slots.Length);
         try
         {
             int n = 0;
-            for (int i = 0; i < slots.Length; i++)
+            for (int i = 0; i < slots.Length && wanted != 0; i++)
             {
                 int slot = slots[i];
                 if (slot <= Table.None || slot >= table.Count) continue;
                 // Only the groups this plan asked (and the disk did not fill): a group another plan asked is its own.
                 uint groups = wanted & ~table.Settled(slot) & table.Asked[slot];
-                if (groups == 0) continue;                  // the disk had it; `Applied` already cleared the in-flight mark
+                if (groups == 0) continue;                  // the disk had it (or the ask was withdrawn): nothing more to send
                 scratch[n] = slot;
                 needs[n++] = groups;
-                // The disk's partial hit (`Applied`) cleared the in-flight mark while the network leg is only now going
-                // out: re-stamp it, or a surface reading `Asked && Inflight == 0` as "nothing coming" (Search.Page.cs,
-                // the artist chart) would call a warm page's live round trip a failure.
-                table.Inflight[slot] = stamp;
             }
-            if (n == 0) return;
-            if (Queue(scope, table, scratch.AsSpan(0, n), needs.AsSpan(0, n), priority) > 0) SendOrOwe(priority);
+            if (n > 0 && Queue(scope, table, scratch.AsSpan(0, n), needs.AsSpan(0, n), priority) > 0) SendOrOwe(priority);
         }
         finally
         {
+            for (int i = 0; i < slots.Length; i++)
+            {
+                int slot = slots[i];
+                if (slot > Table.None && slot < table.Count) table.Unseat(slot);
+            }
             ArrayPool<int>.Shared.Return(scratch);
             ArrayPool<uint>.Shared.Return(needs);
         }
@@ -796,7 +827,8 @@ public static partial class Fetch
             if (provider == EntityProvider.None)
             {
                 // Nobody owns this uri, so nobody can answer for it. Leave the asked bits set: it is the cheapest
-                // possible "do not ask again", and re-deriving the same verdict every drain is not free.
+                // possible "do not ask again", and re-deriving the same verdict every drain is not free. No seat is taken,
+                // so the group reads ABSENT at once (a real negative), never "in flight" with nothing out.
                 s_abandoned++;
                 continue;
             }
@@ -827,9 +859,8 @@ public static partial class Fetch
                 // that has only ever been a search hit or a playlist item has none — and a TrackV4 that genuinely names
                 // none seals the group at COMMIT (`CommitTracks`, §5.2), where the answer that said so is in hand. Here
                 // the question is merely premature: un-ask it, so the next `Ensure` after the identity lands really
-                // asks. (When the plain half went out, that batch's own `Applied` clears the in-flight mark.)
+                // asks. No seat was taken for it, so there is no in-flight stamp to give back.
                 table.Asked[slot] &= ~(uint)TrackFields.Files;
-                if (plain == 0 && table.Outstanding[slot] == 0) table.Inflight[slot] = 0;
                 s_abandoned++;
             }
         }
@@ -969,6 +1000,7 @@ public static partial class Fetch
             Demand d = s_order[i];
             if (d.Count == 0 || d.ReadyAt > now || s_providers[(byte)d.Provider] is null) continue;
             if (canSend is null || canSend(d.Provider)) return true;
+            if (Unreachable?.Invoke(d.Provider) == true) return true;   // a pump fails it (Pump → FailHeld) instead of holding it
         }
         return false;
     }
@@ -1041,7 +1073,12 @@ public static partial class Fetch
                 Demand d = s_order[i];
                 if (d.Count == 0 || d.ReadyAt > now) continue;
                 if (s_providers[(byte)d.Provider] is null) continue;
-                if (canSend is not null && !canSend(d.Provider)) { s_held = true; continue; }
+                if (canSend is not null && !canSend(d.Provider))
+                {
+                    if (Unreachable?.Invoke(d.Provider) == true) FailHeld(d);
+                    else s_held = true;
+                    continue;
+                }
                 if (best is null || Outranks(d, best)) best = d;
             }
             if (best is null) return;
@@ -1385,6 +1422,9 @@ public static partial class Fetch
             {
                 uint routedUnfilled = unfilled & batch.Wanted;
                 Unask(batch, table, routedUnfilled);
+                // …and FAILED, never silently un-asked: a page that asked once must read "the ask failed" (its Retry), not
+                // "not asked yet" (a skeleton waiting for an ask that will never come). The next Ensure re-asks and clears it.
+                MarkFailed(batch, table, routedUnfilled);
                 // THE OTHER HALF OF THE SEAL (ledger 2a, plan §4.1): `routedUnfilled` is a ROUTE that did not answer —
                 // `Unask` already un-asks it above. A group whose route DID answer (this is not in `routedUnfilled`)
                 // but whose ENTITY the 200 body simply omitted is a different failure, and until now it had no name:
@@ -1402,7 +1442,6 @@ public static partial class Fetch
         SettleTicket(ticket);
 
         Recycle(batch);
-        Settled.Value = Settled.Peek() + 1;
         Pump(PumpVia.Answer);
     }
 
@@ -1444,7 +1483,7 @@ public static partial class Fetch
             if (table is not null)
             {
                 if (batch.Subject == FetchSubject.Edge) EdgesFailed(batch, table, status);
-                else { Unask(batch, table, batch.Wanted); MarkFailed(batch, table); }
+                else { Unask(batch, table, batch.Wanted); MarkFailed(batch, table, batch.Wanted); }
                 // An authentication refusal is the one terminal failure the session itself will answer: remember what
                 // was un-asked so the next Online transition re-plans it (`Resume`) — the page has already mounted
                 // and nothing else will ask again.
@@ -1460,7 +1499,6 @@ public static partial class Fetch
         SettleTicket(ticket);
 
         Recycle(batch);
-        Settled.Value = Settled.Peek() + 1;
         Pump(PumpVia.Failed);
     }
 
@@ -1474,15 +1512,18 @@ public static partial class Fetch
     /// slot recycled since the plan (its identity moved on) is not this batch's to touch.</summary>
     static void Unask(FetchBatch batch, Table table, uint groups)
     {
-        uint stamp = Stamp(batch.Epoch);
+        bool any = false;
         for (int i = 0; i < batch.Count; i++)
         {
             int slot = batch.Slots[i];
             if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
-            if (table.Unseat(slot) && table.Inflight[slot] == stamp) table.Inflight[slot] = 0;
-            uint unask = groups & ~table.Settled(slot);
-            if (unask != 0) table.Asked[slot] &= ~unask;
+            table.Unseat(slot);          // the last seat's unseat clears the stamp and publishes the table
+            uint unask = groups & ~table.Settled(slot) & table.Asked[slot];
+            if (unask == 0) continue;
+            table.Asked[slot] &= ~unask;
+            any = true;
         }
+        if (any) table.MarkDirty();
     }
 
     /// <summary>Record the terminal failure ON THE ROWS (<c>Table.Failed</c>), so a surface can tell "still coming" from
@@ -1491,19 +1532,59 @@ public static partial class Fetch
     /// the row already KNOWS is not marked (a route that failed for a group another route filled changes nothing), and a
     /// slot recycled since the plan is not this batch's to touch. The table is marked dirty, so its <c>Changed</c> signal
     /// bumps at the next publication and the panes' readiness memos re-run.</summary>
-    static void MarkFailed(FetchBatch batch, Table table)
+    static void MarkFailed(FetchBatch batch, Table table, uint wanted)
     {
+        if (wanted == 0) return;
         bool any = false;
         for (int i = 0; i < batch.Count; i++)
         {
             int slot = batch.Slots[i];
             if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
-            uint groups = batch.Wanted & ~table.Settled(slot);
+            uint groups = wanted & ~table.Settled(slot);
             if (groups == 0) continue;
             table.Failed[slot] |= groups;
             any = true;
         }
         if (any) table.MarkDirty();
+    }
+
+    /// <summary>A bucket whose provider is UNREACHABLE (<see cref="Unreachable"/>): fail it terminally, exactly as a status-0
+    /// transport failure of the batch it would have become — each row gives back its seat, its groups are un-asked and
+    /// marked <c>Failed</c> (an edge parent's page is marked failed), and every ask is remembered for <see cref="Resume"/>
+    /// so the Online transition plans it again. One always-on <c>fetch.unreachable</c> line per bucket.</summary>
+    static void FailHeld(Demand d)
+    {
+        Scope scope = Entities.Current;
+        Table table = d.Table;
+        EdgeTableBase? edges = d.Subject == FetchSubject.Edge ? EdgeTableOf(scope, d.Edge) : null;
+        bool any = false;
+        for (int k = 0; k < d.Count; k++)
+        {
+            int slot = d.Slots[k];
+            if (slot <= Table.None || slot >= table.Count || table.Id[slot] != d.Ids[k]) continue;   // recycled since the plan
+            if (d.Subject == FetchSubject.Edge) edges?.MarkFailed(slot, d.Offset, EdgeTableBase.Transport);
+            else
+            {
+                table.Unseat(slot);
+                uint groups = d.Wanted & ~table.Settled(slot);
+                table.Asked[slot] &= ~groups;
+                table.Failed[slot] |= groups;
+                any = true;
+            }
+            if (s_refused.Count >= MaxRefused) s_refused.RemoveAt(0);
+            s_refused.Add(new RefusedAsk(table, slot, d.Ids[k], d.Wanted, d.Edge, d.Offset, d.Priority, s_scopeEpoch));
+        }
+        if (any) table.MarkDirty();
+        s_abandoned += d.Count;
+        if (Log.IsEnabled(WaveeLogLevel.Info))
+            Log.Event(WaveeLogLevel.Info, "fetch", "fetch.unreachable", "", null, -1, null,
+                WaveeLogField.Of("provider", d.Provider.ToString()),
+                WaveeLogField.Of("subject", d.Subject.ToString()),
+                WaveeLogField.Of("kind", d.Kind.ToString()),
+                WaveeLogField.Of("edge", d.Edge.ToString()),
+                WaveeLogField.Of("rows", d.Count),
+                WaveeLogField.Of("need", "0x" + d.Wanted.ToString("x", System.Globalization.CultureInfo.InvariantCulture)));
+        d.Drop(d.Count);
     }
 
     /// <summary>Remember a terminally refused batch for <see cref="Resume"/>: one entry per row (or parent) that still
@@ -1576,16 +1657,21 @@ public static partial class Fetch
     {
         if (groups == 0 || slots.IsEmpty) return;
         DropStaleScope(scope);
+        bool any = false;
         for (int i = 0; i < slots.Length; i++)
         {
             int slot = slots[i];
             if (slot <= Table.None || slot >= table.Count) continue;
+            // A sealed group (Absent) leaves its seal here: a state a page shows (its vacancy gives way to the skeleton), so
+            // the table publishes.
+            if ((table.Asked[slot] & groups & ~table.Settled(slot)) != 0) any = true;
             table.Asked[slot] &= ~groups;
             // A deliberate Retry vacancy is a clean slate for the omitted-entity count too (Fetch.Miss.cs): whatever
             // this row missed before, the caller asked for it again on purpose, so the next 200 that omits it again
             // starts counting from zero rather than sealing on the first repeat.
             if (s_misses.Count > 0) s_misses.Remove((table, slot));
         }
+        if (any) table.MarkDirty();
         s_door = DemandDoor.Refresh;
         try { Plan(scope, table, slots, groups, priority); }
         finally { s_door = DemandDoor.Plan; }

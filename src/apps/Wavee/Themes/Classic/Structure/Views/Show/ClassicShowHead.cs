@@ -30,14 +30,16 @@ internal static partial class ClassicShow
 
     static readonly MotionTarget s_lift = new() { OffsetY = -1f };
 
-    /// <summary>The head's padded shell around its reveal region: a hero-height shimmer until the host's pending read clears.</summary>
+    /// <summary>The head's padded shell around its reveal region: a hero-height shimmer until the host's pending read clears. The visit the head lands
+    /// as decides its height (a new listener's doors and about, a returning one's continue hero, a caught-up line), so the region eases from the
+    /// shimmer's height to the head's (SmoothResize) and the episodes under it ride it (audit FU2d: they dropped 52 at once in the landing frame).</summary>
     static Element HeadShell(Func<bool> pending, Func<Element> content) => new BoxEl
     {
         Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, HeadTop, 0f, SectionGap),
         Children =
         [
             new SkelRegionEl(Pending: pending, Failed: s_never, Content: content, ShimmerSource: s_headSeed,
-                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true),
         ],
     };
 

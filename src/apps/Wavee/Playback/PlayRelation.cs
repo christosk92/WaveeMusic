@@ -48,8 +48,23 @@ public static class PlayRelation
     /// the playing item for a playable, the playing context for everything else.</summary>
     public static bool Relates(EntityId target)
         => CardRelation.IsPlayable(target.Kind)
-            ? CardRelation.Relates(target, default, Playback.CurrentId.Value)
+            ? CardRelation.Relates(target, default, Playback.CurrentId.Value) || ShowsDeckVideo(target)
             : CardRelation.Relates(target, Playback.ContextUri.Value, default);
+
+    /// <summary>Does a surface standing for a song's MUSIC VIDEO — its kind-99 counterpart's uri (an album's "watch the
+    /// official video" card, a drawer's video version) — relate to the deck? Only while the deck plays that song AND shows
+    /// its video (<see cref="Playback.VideoFacts.OnVideo"/>): the song playing as audio is not the video playing, and a
+    /// video card that read the SONG's uri claimed "playing" (a pause glyph, the equalizer) over audio with no video
+    /// anywhere. Reads <see cref="Playback.DeckVideo"/> only once the deck row's counterpart IS the target, so every other
+    /// card stays off the video-facts fan-out.</summary>
+    static bool ShowsDeckVideo(EntityId target)
+    {
+        if (target.Kind != EntityKind.Track || Entities.Current is not { } scope) return false;
+        EntityId current = Playback.CurrentId.Value;
+        if (current.Kind != EntityKind.Track || !scope.Tracks.TryGetSlot(current, out int slot)) return false;
+        Track counterpart = new Track(slot).VideoCounterpart;
+        return counterpart.IsValid && counterpart.Id.Equals(target) && Playback.DeckVideo.Value.OnVideo;
+    }
 
     /// <summary>The card seam's relation for a uri (<c>Controls.PlaybackSeam.RelatesTo</c> / <c>Owns</c>): false for an
     /// empty or unparseable uri, else <see cref="Relates(EntityId)"/>. Installed by <see cref="Playback.InstallCardSeam"/>.</summary>

@@ -5,7 +5,6 @@
 // calls them as handlers (the way Home calls `HomeVerbs`). The decisions behind them (what Play does while the context plays, what a pick opens) are the
 // callees', not this file's.
 
-using System.Diagnostics;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 
@@ -65,20 +64,7 @@ public static class ArtistVerbs
         return target.Kind == TargetKind.None ? null : Menus.Container(in target, cover, subtitle);
     }
 
-    /// <summary>Open an http(s) link through the actions seam, else the shell. Anything else is refused: a decoded url
-    /// must never launch a program.</summary>
-    public static void OpenLink(string url)
-    {
-        if (!System.Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-            || (parsed.Scheme != System.Uri.UriSchemeHttps && parsed.Scheme != System.Uri.UriSchemeHttp)) return;
-        if (Actions.Services.OpenExternal is { } open) { open(url); return; }
-        try
-        {
-            Process.Start(new ProcessStartInfo(parsed.AbsoluteUri) { UseShellExecute = true })?.Dispose();
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            Log.Warn("artist", "could not open an external link", ex);
-        }
-    }
+    /// <summary>Follow a social, website or merch link through the link door: a Spotify link opens in-app, an http(s) page
+    /// in the browser, anything else is refused (a decoded url must never launch a program).</summary>
+    public static void OpenLink(string url) => Shell.OpenLink(url);
 }

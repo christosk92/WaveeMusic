@@ -893,7 +893,7 @@ public readonly partial struct Artist
     {
         DiscoCellProps _p = null!;
         readonly Func<DiscoCellStamp> _stamp;
-        readonly Action _click, _play;
+        readonly Action _click, _toggle, _play;
         readonly Func<object?> _payload;
         readonly Func<ContextMenuModel?> _menu;
         readonly Func<ColorF> _accent;
@@ -902,6 +902,7 @@ public readonly partial struct Artist
         int _slot = Table.None;
         uint _version;
         string _uri = "", _title = "", _meta = "";
+        DiscoCardArgs? _args;
         string? _cover;
         // The two data variants — plain and OPENED — cached so an expanded cell re-pushes one reference per render
         // (CardData equality short-circuits on ReferenceEquals) instead of cloning a record; both die with Rebuild.
@@ -912,7 +913,9 @@ public readonly partial struct Artist
         public DiscoCell()
         {
             _stamp = Stamp;
-            _click = () => { if (_slot > Table.None) _p.OnToggle(_slot); };
+            // The card opens its album; the disclosure button after its meta line opens / closes its drawer.
+            _click = () => { if (_slot > Table.None) Shell.GoTo(Shell.For(new Album(_slot).Uri, _title)); };
+            _toggle = () => { if (_slot > Table.None) _p.OnToggle(_slot); };
             _play = () => { if (_slot > Table.None) Playback.PlayOrToggleContext(new Album(_slot).Id); };
             _payload = () => _slot > Table.None
                 ? new DragPayload(Drag.KindOf(EntityKind.Album), _uri, _uri, _title, new EntityRef(EntityKind.Album, _slot), ArtUrl: _cover)
@@ -955,6 +958,7 @@ public readonly partial struct Artist
                 _slot = Table.None;
                 _data = null;
                 _dataSelected = null;
+                _args = null;
                 // The pinned height keeps the seed the SAME height as a real card (the grid's folded row gap must not
                 // stretch it). Keyed like the card, so the row landing is a props re-push into the same host.
                 if (_seed is null || !_seed.Height.Equals(height)) _seed = style.Seed(height);
@@ -967,7 +971,7 @@ public readonly partial struct Artist
             // index); the surface reads the accent inside ITS render, so a palette landing repaints the one expanded card
             // and no other.
             Controls.CardData data = _data!;
-            if (p.Expanded) data = _dataSelected ??= style.Opened(data, _meta, _accent);
+            if (p.Expanded) data = _dataSelected ??= style.Opened(data, _args!, _accent);
             return style.Cell(data);
         }
 
@@ -981,11 +985,12 @@ public readonly partial struct Artist
             _title = al.Title;
             _meta = DiscoCardText.AlbumMeta(al);
             _cover = Controls.ArtUrl(al.ImageId);
-            _data = style.Card(new DiscoCardArgs
+            _args = new DiscoCardArgs
             {
                 Uri = _uri, Title = _title, Meta = _meta, Cover = _cover,
-                Click = _click, Play = _play, Drag = _drag, Menu = _menu, Height = height,
-            });
+                Click = _click, Toggle = _toggle, Play = _play, Drag = _drag, Menu = _menu, Height = height,
+            };
+            _data = style.Card(_args);
             _dataSelected = null;
         }
 

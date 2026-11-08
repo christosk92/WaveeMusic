@@ -151,6 +151,8 @@ public static partial class Video
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
                 Embed.Comp(static () => new HostObserver()),
                 Embed.Comp(static () => new JoinWatch()),
+                // Spotify Canvas: the demand, the record and the one looping player (Shell/Canvas.cs) — mounted once, here.
+                Embed.Comp(static () => new CanvasVideo.Observer()),
             ]);
     }
 
@@ -171,13 +173,16 @@ public static partial class Video
     {
         var state = State.Surface.Peek();
         var now = PlacementCore.Resolve(state);
+        // The radio CHECK names where the video is presenting: the pop-out gone fullscreen on its own monitor is "Full screen"
+        // (the row that put it there, State.OpenAt), not "In a separate window".
+        var shown = now == SurfacePlacement.Detached && State.DetachedFullscreen.Peek() ? SurfacePlacement.Fullscreen : now;
 
         // The TRUTH behind each row, read live at open time rather than off the stale `Available` snapshot: the same
-        // source the availability fold reads (`HostObserver.CurrentHasVideo`, not subscribed — a menu that is open
-        // does not need to re-render on a kind-99 land) and the live host fact. `Available`/`Resolve` above still
+        // source the availability fold reads (`Playback.DeckVideo` through `DeckHasVideo`, peeked — a menu
+        // that is open does not need to re-render on a kind-99 land) and the live host fact. `Available`/`Resolve` above still
         // drive the radio CHECK (the resolved placement does not change just because the menu opened), but disabled +
         // reason now answer "why", not just "not now".
-        bool hasVideo = HostObserver.CurrentHasVideo(subscribe: false);
+        bool hasVideo = DeckHasVideo(Playback.DeckVideo.Peek(), Playback.CurrentId.Peek());
         var hostCapable = State.HostCapability.Peek();
 
         MenuFlyoutItem Row(SurfacePlacement p, string labelKey, string icon, string? accelWhenAllowed)
@@ -189,7 +194,7 @@ public static partial class Video
             // but the state's stamped Available is None for a session restored mid-track (it is stamped only at a track
             // boundary or a primary click) — committing OpenAt against that stale stamp resolved to None: the video
             // loaded and played with no surface to show it (2026-09-22: audio, an endless join spinner, no window).
-            return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), now == p,
+            return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), shown == p,
                 () => PlayerVerbs.Default.SetVideoPlacement(p, hasVideo), icon, allowed) with { AcceleratorText = accel };
         }
 
@@ -225,6 +230,13 @@ public static partial class Video
     static readonly Action s_play = static () => Playback.Resume("video.transport");
     static readonly Action s_pause = static () => Playback.Pause("video.transport");
     static readonly Action<TimeSpan, SeekMode> s_seek = static (target, mode) => SeekFromTransport(target, mode);
+    /// <summary>The element's rate keys (<c>[</c> <c>]</c> Backspace) go through the deck's speed, which applies only to an episode
+    /// (<see cref="Playback.SpeedApplies"/>); on a music video they do nothing, as the disabled ⋯ &gt; Playback speed says.</summary>
+    static readonly Action<double> s_rate = static rate =>
+    {
+        if (Playback.SpeedApplies(Playback.CurrentId.Peek().Kind)) Playback.SetEpisodeSpeed((float)rate);
+    };
+    static readonly Func<IReadOnlyList<MenuFlyoutItem>> s_moreMenu = static () => OnMedia.MoreMenu();
     static readonly Action s_toggleDetachedFullscreen = static () => State.DetachedFullscreen.Value = !State.DetachedFullscreen.Peek();
 
     /// <summary>The main window's fullscreen affordance. Constant (props freeze at mount on a stay-mounted presenter),
@@ -308,6 +320,17 @@ public static partial class Video
     /// line (bound reactively: the reducer types the fault and it can land after the notice mounted).</summary>
     static readonly Func<string?> s_artUrl = static () => CurrentArtUrl();
     static readonly Func<string> s_faultTitle = static () => Loc.Get(Shell.PlayerBarRules.FaultTitleKey(Playback.Error.Value));
+    /// <summary>"Playing on &lt;device&gt;" for the device that owns playback (the roster row the owner signal names).</summary>
+    static readonly Func<string> s_remoteLine = static () =>
+    {
+        if (Theming.InspectSwitches.RemoteDevice is { } stood) return Strings.Player.PlayingOn(stood);
+        int slot = Playback.ActiveDeviceSlot.Value;
+        _ = Playback.Devices.Changed.Value;
+        var rows = Playback.Devices.Rows;
+        string name = (uint)slot < (uint)rows.Length ? rows[slot].Name ?? "" : "";
+        return Strings.Player.PlayingOn(name);
+    };
+    static readonly Action s_playHere = static () => Playback.TakeOver();
 
     /// <summary>The "no picture yet" composition every surface shares (<c>Video.JoinPoster</c>): the live art over the letterbox and, only
     /// for the two states that have something to say, the notice over it. WHAT it says is <see cref="JoinNow"/>'s (decided by
@@ -316,7 +339,7 @@ public static partial class Video
     static Element Poster(JoinVisual visual, bool shown = true, string? callerKey = null)
         => ViewSlots.View(ViewKeys.VideoJoinPoster, new VideoJoinPosterProps
         {
-            Visual = visual, Shown = shown, ArtUrl = s_artUrl, FaultTitle = s_faultTitle,
+            Visual = visual, Shown = shown, ArtUrl = s_artUrl, FaultTitle = s_faultTitle, RemoteLine = s_remoteLine, PlayHere = s_playHere,
         }, callerKey);
 
     /// <summary>The ONE consumer of the host's switch events, and the only clock anywhere in the loading path. It folds
@@ -356,6 +379,8 @@ public static partial class Video
                 int buffered = Playback.Video.Buffered.Value;   // the join's progress heartbeat — it rides the log line
                 string key = Playback.Video.Source.Value?.Key ?? "";
                 bool wanted = PlacementCore.IsActive(State.Surface.Value);
+                var facts = Playback.DeckVideo.Value;
+                bool hosted = facts.OnVideo && !facts.Remote;
                 _ = _budget.Value;                              // the budget's wake re-runs this fold and nothing else
 
                 // `FirstFrame` bumps once per source; remember WHICH source it bought a picture for. Keying the answer
@@ -364,7 +389,9 @@ public static partial class Video
                 if (frame != _frameEpochWas) { _frameEpochWas = frame; _framedKey = key; }
                 bool framed = key.Length > 0 && string.Equals(_framedKey, key, StringComparison.Ordinal);
 
-                var shape = new JoinState(phase, binding.Player is not null, wanted, framed);
+                // `--fake` has no Connect cluster: the inspector's stood-in remote output (`remote=<name>`) is the owner here too.
+                bool remote = facts.Remote || Theming.InspectSwitches.RemoteDevice is not null;
+                var shape = new JoinState(phase, binding.Player is not null, wanted, framed, hosted && !remote, remote);
                 bool joining = Joining.IsJoining(in shape);
                 // The budget is earned ONCE per join, on its leading edge: a step from `Resolving` to `Licensing` is the
                 // same join and must not take the ring away again.
@@ -473,6 +500,11 @@ public static partial class Video
                         PlayRequested = s_play,
                         PauseRequested = s_pause,
                         SeekRequested = s_seek,
+                        RateRequested = s_rate,
+                        // A right-click on the picture opens the ⋯ menu itself (one home per verb): the element's own menu
+                        // offered a second aspect/speed set whose speed rows set the player's rate behind the deck's back.
+                        MoreMenuItems = s_moreMenu,
+                        MoreMenuHostOnly = true,
                         AspectMode = s_aspect,
                         CustomAspectRatio = s_customRatio,
                         AspectModeChanged = s_aspectChanged,
@@ -666,7 +698,8 @@ public static partial class Video
         {
             // The Cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before any
             // resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
-            // (`NaturalSeed`; 16:9 when nothing is known). A splitter drag pins it — for THIS source only.
+            // (`NaturalSeed`; 16:9 when nothing is known). The handle pins it until its double-click: the pin is READ here (an
+            // unpin re-fits at once, and the card eases there) and written only by the handle's verbs.
             UseSignalEffect(() =>
             {
                 var src = Playback.Video.Source.Value;
@@ -677,14 +710,10 @@ public static partial class Video
                 if (face != DockedFace.Cap) return;
                 // The fit itself — the source change that unpins, the natural size's source, the pinned-or-fitted height —
                 // is the pure `DockedFit`; this effect applies it.
-                var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Peek(),
+                var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Value,
                     Shell.Ui.DockedVideoHeight.Peek(), railW, decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
                     src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, Shell.Ui.RailBodyHeight.Peek()));
-                if (fit.SourceChanged)
-                {
-                    _fittedFor = sourceKey;
-                    if (Shell.Ui.DockedVideoHeightPinned.Peek()) Shell.Ui.DockedVideoHeightPinned.Value = false;
-                }
+                if (fit.SourceChanged) _fittedFor = sourceKey;
                 string dimSource = fit.DimSource;
                 var natural = new SizeI(fit.NaturalW, fit.NaturalH);
                 bool pinned = fit.Pinned;
@@ -838,7 +867,7 @@ public static partial class Video
             _ = Playback.Video.Source.Value;
             var binding = Playback.Video.Player.Value;
             var join = JoinNow.Value;
-            bool stage = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
+            bool stage = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null, join);
             var poster = Poster(join, SurfaceMount.PosterShown(stage, join), "poster");
             // the strip over the poster: a poster waiting for the first frame covers the picture, never the transport
             Element[] kids = stage
@@ -1170,7 +1199,7 @@ public static partial class Video
             return ViewSlots.View(ViewKeys.VideoPopOut, new VideoPopOutProps
             {
                 Size = vp,
-                HasPlayer = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null),
+                HasPlayer = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null, join),
                 Join = join,
                 BandShown = band,
                 Generation = generation,

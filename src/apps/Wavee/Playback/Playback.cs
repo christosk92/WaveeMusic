@@ -49,6 +49,7 @@ using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
 using RemoteCommand = Wavee.Spotify.Decode.RemoteCommand;
+using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 using ClusterOrigin = Wavee.Spotify.Decode.ClusterOrigin;
 
@@ -866,6 +867,23 @@ public static partial class Playback
 
     // ── 6. the state ────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The two Connect video signals as bits: what a player state offers in <c>signals</c> (field 33) or lists in
+    /// <c>disallow_signals</c> (field 29) with a non-empty reason.</summary>
+    [Flags]
+    public enum VideoSignals : byte { None = 0, SwitchToVideo = 1, SwitchToAudio = 2 }
+
+    /// <summary>THE video facts of the row on the deck, one value for both sides of Connect. While the deck routes locally it
+    /// is the catalogue's verdict (<see cref="DoVideoFacts"/>: the Video group's known bit, the has-video flag, the row's
+    /// <c>Track.ManifestGidId</c>); while a foreign device owns playback it is that owner's offer as its cluster states it
+    /// (<see cref="MirrorRemote"/>). Reset when another row goes on the deck (<see cref="PutOnDeck"/>), kept across a host
+    /// switch of the same row.</summary>
+    /// <param name="Known">Has anyone ruled on this row's video at all? Unknown is not "no video": a fold keeps what it has.</param>
+    /// <param name="HasVideo">The row carries a music video (the catalogue's association or the user's own mp4).</param>
+    /// <param name="ManifestId">The video's manifest id (32 hex, interned), or empty — what the offer's <c>associated_video_id</c> names.</param>
+    /// <param name="Offered">The foreign owner's <c>signals</c> (None while local: the local offer is derived).</param>
+    /// <param name="Disallowed">The foreign owner's <c>disallow_signals</c> (None while local).</param>
+    public readonly record struct RowVideo(bool Known, bool HasVideo, StringId ManifestId, VideoSignals Offered, VideoSignals Disallowed);
+
     /// <summary>What the remote's cluster said is playing THERE — the mirror the bar paints while another device owns
     /// playback, decoded to typed fields by the host so the core never touches a <see cref="TextRef"/>.</summary>
     /// <param name="HasTrack">Did the cluster name a current track at all?</param>
@@ -886,6 +904,10 @@ public static partial class Playback
     /// <see cref="MirrorRemote"/> paints it into <see cref="State.Context"/> while <see cref="Owner.Foreign"/> owns
     /// playback (<see cref="Queue.MirrorContextFor"/>), so the header names what the OWNER plays; a takeover (A4) then
     /// simply adopts what is already there.</param>
+    /// <param name="OnVideo">The owner plays the row as video (its <c>track_player</c> / <c>media.type</c>).</param>
+    /// <param name="Offered">The video switches the owner offers a controller (<c>signals</c>).</param>
+    /// <param name="Disallowed">The video switches it lists in <c>disallow_signals</c> with a reason.</param>
+    /// <param name="ManifestId">The row's music-video manifest id as the owner offers it (<c>associated_video_id</c>), interned.</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -901,7 +923,11 @@ public static partial class Playback
         bool NoPrev,
         bool NoNext,
         bool NoSeek,
-        EntityId Context = default);
+        EntityId Context = default,
+        bool OnVideo = false,
+        VideoSignals Offered = VideoSignals.None,
+        VideoSignals Disallowed = VideoSignals.None,
+        StringId ManifestId = default);
 
     /// <summary>THE playback state. One value, written on the UI thread only (C1), copied freely, and the single
     /// source every playback surface binds through the host's signals.
@@ -920,8 +946,11 @@ public static partial class Playback
         public EntityRef Current;
         /// <summary>Its identity. Survives a row the catalog has not fetched yet (a foreign device's track).</summary>
         public EntityId CurrentId;
-        /// <summary>Which host runs it (<see cref="MediaSwitch.KindOf"/>).</summary>
+        /// <summary>Which host runs it (<see cref="MediaSwitch.KindOf"/>) — or, while a foreign device owns playback, which mode
+        /// the OWNER plays it in (its cluster's <c>track_player</c>). Audio whenever no host holds the row.</summary>
         public PlayableKind Kind;
+        /// <summary>The row's video facts (<see cref="RowVideo"/>): the one answer to has / manifest / offer, local or remote.</summary>
+        public RowVideo Video;
         /// <summary>The context it is playing FROM — a playlist, an album, a station. The art tile's route. While
         /// <see cref="Owner.Foreign"/> owns playback it is the OWNER's context (<see cref="MirrorRemote"/>), so a takeover
         /// (A4: <c>DoResume</c>'s parked branch, <c>DoPlay</c> over the same row, <see cref="DoTakeOver"/>) adopts it
@@ -1034,7 +1063,7 @@ public static partial class Playback
         /// <summary>How many claims/announces this session has minted. Diagnostics; the wire's message id is the
         /// host's, because the glue owns the debounce that decides how many PUTs actually go out.</summary>
         public float EpisodeRate;
-        public readonly float ContentRate => SpeedApplies(CurrentId.Kind, VideoWanted) && EpisodeRate > 0 ? EpisodeRate : 1f;
+        public readonly float ContentRate => SpeedApplies(CurrentId.Kind) && EpisodeRate > 0 ? EpisodeRate : 1f;
         public uint PublishSeq;
 
         // ── the connect bookkeeping the PUT body carries ──
@@ -1222,10 +1251,12 @@ public static partial class Playback
         RemoteVolume,
         /// <summary>The queue changed under the deck: re-arm the next row.</summary>
         QueueChanged,
-        /// <summary>The video placement turned on or off (<c>IntArg</c> != 0 = on).</summary>
+        /// <summary>The video placement turned on or off (<c>IntArg</c> bit 0 = on); bit 1 = the user's explicit switch of the deck's mode
+        /// (the bar's video button), the one post that may forward a switch to a foreign owner.</summary>
         VideoPlacement,
-        /// <summary>The row <see cref="Input.Id"/> gained video facts the connect-state service has not been told.</summary>
-        VideoOffer,
+        /// <summary>The catalogue's video facts for the row <see cref="Input.Id"/> (<see cref="Input.VideoFacts"/>): <c>IntArg</c> bit 0 =
+        /// known, bit 1 = has video; <c>LongArg</c> = the manifest id's <see cref="StringId"/> value.</summary>
+        VideoFacts,
         /// <summary>Put the last session back on the deck at launch (<c>IntArg</c> = position, <c>LongArg</c> = duration).</summary>
         Restore,
         /// <summary>The autoplay answer for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended; <c>LongArg</c> bit 0 =
@@ -1247,6 +1278,9 @@ public static partial class Playback
         /// <summary>The deck's context becomes <see cref="Input.Context"/> WITHOUT a load — a radio parked behind the
         /// current row (G-251). <see cref="Input.Cursor"/> is the deck row's cursor in the rewritten queue.</summary>
         SwitchContext,
+        /// <summary>The host re-laid the queue around the deck (a whole-context shuffle or unshuffle, #215): the deck row now sits
+        /// at <see cref="Input.Cursor"/>. Nothing loads; the next row is re-armed off the new order.</summary>
+        Recursor,
         /// <summary>The pump DROPPED the join it had scheduled for the prepared row (a seek moved the playhead out from
         /// under the planned join frame): the next row is no longer prepared. <c>Epoch</c> = the load epoch the join belonged
         /// to; the reducer re-arms the prepare (V-PA33).</summary>
@@ -1388,9 +1422,10 @@ public static partial class Playback
         public static Input RemoteVolume(int wire, uint messageId, long nowMs = 0)
             => new(InputKind.RemoteVolume, intArg: wire, longArg: messageId, nowMs: nowMs);
         public static Input QueueChanged(long nowMs = 0) => new(InputKind.QueueChanged, nowMs: nowMs);
-        public static Input VideoPlacement(bool active, long nowMs = 0)
-            => new(InputKind.VideoPlacement, intArg: active ? 1 : 0, nowMs: nowMs);
-        public static Input VideoOffer(EntityId track) => new(InputKind.VideoOffer, id: track);
+        public static Input VideoPlacement(bool active, long nowMs = 0, bool explicitSwitch = false)
+            => new(InputKind.VideoPlacement, intArg: (active ? 1 : 0) | (explicitSwitch ? 2 : 0), nowMs: nowMs);
+        public static Input VideoFacts(EntityId row, bool known, bool hasVideo, StringId manifestId, long nowMs = 0)
+            => new(InputKind.VideoFacts, id: row, intArg: (known ? 1 : 0) | (hasVideo ? 2 : 0), longArg: manifestId.Value, nowMs: nowMs);
         public static Input Restore(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, int positionMs,
             int durationMs, long nowMs = 0)
             => new(InputKind.Restore, row, id, context, cursor, positionMs, durationMs, nowMs: nowMs);
@@ -1413,6 +1448,7 @@ public static partial class Playback
         /// around the row at <paramref name="cursor"/>.</summary>
         public static Input SwitchContext(EntityId context, QueueCursor cursor, long nowMs = 0)
             => new(InputKind.SwitchContext, context: context, cursor: cursor, nowMs: nowMs);
+        public static Input Recursor(QueueCursor cursor, long nowMs = 0) => new(InputKind.Recursor, cursor: cursor, nowMs: nowMs);
         public static Input Suspend(long nowMs = 0) => new(InputKind.Suspend, nowMs: nowMs);
         public static Input Wake(long nowMs = 0) => new(InputKind.Resume_, nowMs: nowMs);
 
@@ -1438,6 +1474,8 @@ public static partial class Playback
         SelfTransfer,
         /// <summary>An outbound transfer that named no device.</summary>
         NoTransferTarget,
+        /// <summary>A switch to video for a row that has none.</summary>
+        NoVideo,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -1527,6 +1565,9 @@ public static partial class Playback
         /// context's own order.</summary>
         public bool Reorder;
         public bool ReorderShuffle;
+        /// <summary>A repeat-context WRAP moved the cursor back to the context's first row: the rows after it become the next
+        /// lap, the context alone (<see cref="Queue.Lap"/>). The host applies it before it follows the queue, inside the drain.</summary>
+        public bool Lap;
         /// <summary>The context is running out: ask autoplay for <see cref="AutoplayContext"/> (the host declines when
         /// the setting is off) and answer with <see cref="Input.Autoplayed"/>.</summary>
         public bool Autoplay;
@@ -1541,10 +1582,13 @@ public static partial class Playback
         public EntityId AutoplayPageContext;
 
         // ── video (G-142) ──
-        /// <summary>The video placement was demoted to audio after its retry: the shell turns the surface off and says
-        /// why.</summary>
-        public bool VideoDemoted;
-        public Fault VideoDemotedWhy;
+        /// <summary>The reducer decided the video mode for the shell's surface: on (a controller's switch-to-video, a play that
+        /// asked for video) or off (a controller's switch-to-audio, a load demoted after its retry). The shell opens the
+        /// preferred placement or turns the surface off; <see cref="VideoIntentWhy"/> other than None also says why. The shell's
+        /// placement post that answers it is a no-op echo here.</summary>
+        public bool VideoIntent;
+        public bool VideoIntentOn;
+        public Fault VideoIntentWhy;
 
         // ── the auto-skip (a dead row the deck stepped past on its own) ──
         /// <summary>The deck advanced onto a row whose load failed for good and moved on to the next playable one in
@@ -1577,6 +1621,8 @@ public static partial class Playback
         /// <see cref="RemoteCmd.NextTrack"/>: the row to advance to (<see cref="RemoteTrack"/>, its item id in
         /// <see cref="RemoteArg"/>).</summary>
         public EntityId RemoteContext, RemoteTrack;
+        /// <summary><see cref="RemoteCmd.PlayContext"/>: ask the owner for the row's music video (<c>is_single_track_video_content</c>).</summary>
+        public bool RemoteVideo;
 
         // ── connect: a transfer ──
         public bool Transfer;
@@ -1631,7 +1677,7 @@ public static partial class Playback
             || ScrubBegin || ScrubMove || ScrubEnd || ScrubCancel
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
             || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
-            || VideoDemoted || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
+            || VideoIntent || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
     }
 
     // ── 9. Step — the reducer ───────────────────────────────────────────────────────────────────────────────────────
@@ -1685,7 +1731,7 @@ public static partial class Playback
             case InputKind.RemoteVolume: DoRemoteVolume(ref s, in i, ref fx); break;
             case InputKind.QueueChanged: DoQueueChanged(ref s, ref fx); break;
             case InputKind.VideoPlacement: DoVideoPlacement(ref s, in i, ref fx); break;
-            case InputKind.VideoOffer: DoVideoOffer(ref s, in i, ref fx); break;
+            case InputKind.VideoFacts: DoVideoFacts(ref s, in i, ref fx); break;
             case InputKind.Restore: DoRestore(ref s, in i, ref fx); break;
             case InputKind.Autoplayed: DoAutoplayed(ref s, in i, ref fx); break;
             case InputKind.AutoplayPaged: DoAutoplayPaged(ref s, in i, ref fx); break;
@@ -1694,6 +1740,7 @@ public static partial class Playback
             case InputKind.Paged: DoPaged(ref s, in i, ref fx); break;
             case InputKind.QueueToOwner: DoQueueToOwner(ref s, in i, ref fx); break;
             case InputKind.SwitchContext: DoSwitchContext(ref s, in i, ref fx); break;
+            case InputKind.Recursor: DoRecursor(ref s, in i, ref fx); break;
             case InputKind.PrepareLost: DoPrepareLost(ref s, in i, ref fx); break;
             case InputKind.ScrubBegin: DoScrubBegin(ref s, in i, ref fx); break;
             case InputKind.ScrubMove: DoScrubMove(ref s, in i, ref fx); break;
@@ -1740,7 +1787,7 @@ public static partial class Playback
         if (!cursor.IsNone && Entities.Current is not null && Queue.RefAt(in cursor) == row
             && !(row == s.Current && cursor == s.Cursor) && !RowPlayable(row))
         {
-            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), cursor.Index, forward: true, wrap: false);
+            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), cursor.Index, forward: true, wrap: false, AutoplayAllowed(in s));
             if (at >= 0) { cursor = Queue.CursorOf(at); row = Queue.RefAt(at); id = row.Id; fromMs = 0; }
         }
 
@@ -1763,6 +1810,9 @@ public static partial class Playback
         s.HasBeenPlayingForMs = 0;
         s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
         PlayableKind kind = i.PlayKind == PlayableKind.Audio ? KindOfRow(row, s.VideoWanted) : i.PlayKind;
+        // A play that ASKED for video (a controller's single-track video play, a "watch" click) is the video mode: the wish
+        // sticks for the rows after it, and the shell opens the surface to show it.
+        if (kind == PlayableKind.Video && i.PlayKind == PlayableKind.Video) VideoMode(ref s, ref fx, on: true);
         PutOnDeck(ref s, in i, row, id, cursor, kind, fromMs, paused);
         s.StartReason = inbound ? PlayReason.Remote : PlayReason.ClickRow;
         EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused, (i.LongArg & Input.ExplicitPositionBit) != 0);
@@ -1786,35 +1836,54 @@ public static partial class Playback
             return;
         }
 
-        // Repeat-one re-plays the same row rather than moving: the one place the cursor stands still under a transport
-        // verb. A natural end reloads the row (its session has ended); a click restarts the live one. An explicit
-        // Previous past the first three seconds also restarts the row instead of stepping back.
+        // Repeat-one re-plays the same row on its NATURAL end: the one place the cursor stands still under a transport
+        // verb. A MANUAL Next moves on and turns repeat-one off, leaving repeat-context on (#215; librespot "when we skip in
+        // repeat track, we don't repeat the current track anymore", connect/src/state/tracks.rs:106-109; ncspot drops to
+        // repeat-playlist, src/queue.rs:374-378): the listener asked for another song. An explicit Previous past the first
+        // three seconds restarts the row instead of stepping back (librespot spirc.rs:1747-1766, go-librespot
+        // daemon/controls.go:1034-1037, librespot-java Player.java:646-662: 3 s).
         if (jumpTo >= 0 && !(forward && default(LiveRows).IsPlayable(jumpTo))) jumpTo = -1;   // a dead named row: the plain walk
-        if (jumpTo < 0 && forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
+        if (forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
         {
-            if (!natural) { Restart(ref s, in i, ref fx, why); return; }
-            ReportEnd(ref s, ref fx, why, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-            PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, s.Kind, 0, paused: false);
-            s.StartReason = why;
-            EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
-            return;
+            if (natural && jumpTo < 0)
+            {
+                ReportEnd(ref s, ref fx, why, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
+                PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, s.Kind, 0, paused: false);
+                s.StartReason = why;
+                EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
+                return;
+            }
+            if (!natural) s.Repeat = RepeatMode.Context;   // announced by the load below (EmitLoad) or the end of the queue
         }
         if (!forward && s.Phase != Phase.Idle && s.Position(i.NowMs) > RestartWindowMs) { Restart(ref s, in i, ref fx, why); return; }
 
         // The walk steps past every row the catalog has ruled dead (`RowPlayable`): the deck never lands on a row whose
         // load can only fail, in either direction, and a context whose remaining rows are all dead has run out exactly
-        // like one with none left. Under repeat-context (and no page still to fetch — a context with a page pages
+        // like one with none left. Under repeat-context (and no page still to fetch: a context with a page pages
         // first, or the rows past its first page would never play, G-242) the walk wraps to the first row the CONTEXT
-        // provided (`Queue.WrapIndex`): a consumed queued or autoplay row must not replay.
+        // provided (`Queue.WrapIndex`) and the rows after it become the next lap, the context alone (`Effects.Lap`): a
+        // consumed queued or autoplay row must not replay. An autoplay row is landed on only while autoplay may continue
+        // the context (`AutoplayAllowed`, #215).
         bool wrap = forward && s.Repeat == RepeatMode.Context && !s.MorePages;
-        int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), s.Cursor.Index, forward, wrap);
+        int from = s.Cursor.Index;
+        int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), from, forward, wrap, AutoplayAllowed(in s), Queue.ContextStart);
+        if (at < 0 && !forward && s.HasCurrent && s.Phase != Phase.Idle)
+        {
+            // Previous on the context's first row: repeat-context goes round to its last row (librespot-java
+            // StateWrapper.java:1312-1314, ncspot src/queue.rs:402-412); otherwise the row starts again (go-librespot
+            // daemon/controls.go:1048-1067, librespot-java StateWrapper.java:1316, psst queue.rs:124-131).
+            int last = s.Repeat == RepeatMode.Context && !s.MorePages ? Queue.LastContextRow(Queue.Rows, default(LiveRows), Queue.ContextStart) : -1;
+            if (last <= from) { Restart(ref s, in i, ref fx, why); return; }
+            at = last;
+        }
         if (at < 0)
         {
-            if (!forward) return;                     // the head of history (or only dead rows behind us): stay
+            if (!forward) return;                     // nothing on the deck to restart
             if (!wrap) { EndOfContext(ref s, in i, ref fx, why); return; }
             EndOfQueue(ref s, in i, ref fx, why);        // repeat-context with nothing playable anywhere in it
             return;
         }
+        if (wrap && at <= from) fx.Lap = true;
         QueueCursor cursor = Queue.CursorOf(at);
         EntityRef row = Queue.RefAt(at);
 
@@ -1824,6 +1893,14 @@ public static partial class Playback
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
         fx.Snapshot = true;
     }
+
+    /// <summary>May the end of the context continue into autoplay? Only with repeat OFF (repeat-context wraps and
+    /// repeat-track replays, never a suggestion: librespot connect/src/state/tracks.rs:298-310; go-librespot
+    /// daemon/controls.go:1164-1176; librespot-java StateWrapper.java:1283-1291) and with the Autoplay setting on
+    /// (Spotify's "Autoplay", default on; librespot-java <c>player.autoplayEnabled</c> default true, go-librespot
+    /// <c>disable_autoplay</c> default false). #215.</summary>
+    public static bool AutoplayAllowed(in State s)
+        => s.Repeat == RepeatMode.Off && Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
 
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
@@ -1936,6 +2013,7 @@ public static partial class Playback
             if (verdict.Kind == ResumeStart.VerdictKind.StartNext)
             {
                 EntityRef next = NaturalNext(in s, out QueueCursor nextCursor);
+                if (!next.IsNone && s.Repeat == RepeatMode.Context && nextCursor.Index <= s.Cursor.Index) fx.Lap = true;   // a wrap: the next lap
                 if (!next.IsNone) { row = next; id = next.Id; cursor = nextCursor; }
                 fromMs = 0;
             }
@@ -2142,9 +2220,11 @@ public static partial class Playback
         var mode = (RepeatMode)i.IntArg;
         if (!s.RoutesLocal)
         {
-            // The wire carries TWO flags, not one mode: repeat-track and repeat-context.
-            Forward(ref s, mode == RepeatMode.Track ? RemoteCmd.SetRepeatingTrack : RemoteCmd.SetRepeatingContext,
-                ref fx, 0, mode != RepeatMode.Off);
+            // The wire carries TWO flags, not one mode: repeat-track and repeat-context, and the owner keeps whichever one a
+            // verb does not name. One verb left it stuck (Track then Off sent only set_repeating_context false: the owner
+            // kept repeating the track). So the COMPLETE mode is forwarded, both flags (docs/plans/wavee-playback-arbitration-
+            // rules.md "Shuffle / Repeat"): RemoteArg = 1 + the mode, which the host spells as the two verbs (#215).
+            Forward(ref s, RemoteCmd.SetRepeatingContext, ref fx, 1 + (long)mode, mode != RepeatMode.Off);
             return;
         }
         if (s.Repeat == mode) return;
@@ -2157,6 +2237,12 @@ public static partial class Playback
     }
 
     // ── 9.2 the pump's reports (C4: everything older than the load epoch is dropped) ─────────────────────────────────
+
+    /// <summary>How far behind the running extrapolation a <see cref="AudioSignal.Position"/> may land and still be held as clock
+    /// jitter rather than adopted (a playing, unbuffered deck only). Small on purpose: every report carries the instant it was
+    /// true, so anything further back is a real correction, and a clock drifting slower than the frame clock is re-anchored
+    /// once it has drifted this far.</summary>
+    public const int PositionJitterMs = 50;
 
     static void DoAudio(ref State s, in Input i, ref Effects fx)
     {
@@ -2186,6 +2272,10 @@ public static partial class Playback
                 // A report stamped with an older seek generation predates the user's last drop point: it would drag the
                 // playhead back over it (U-1, V-PA2).
                 if (i.Gen != s.SeekGen) break;
+                // i.NowMs is the instant the position was TRUE (a video report carries its clock sample's), so the anchor below
+                // corrects the playhead rather than restarting it from a stale value. A report a hair BEHIND the running
+                // extrapolation is clock jitter, not news: adopting it would tick the thumb backwards.
+                if (s.Phase == Phase.Playing && !s.Buffering && s.Position(i.NowMs) - i.LongArg is > 0 and <= PositionJitterMs) break;
                 // NOT an epoch bump: a position report changes nothing a shell is doing (C4), and bumping here would
                 // cancel the very load that is reporting. This is the ~5 Hz path — it must stay effect-light.
                 s.PosMs = (int)i.LongArg;
@@ -2365,6 +2455,8 @@ public static partial class Playback
         if (stop) LoseHost(ref s, in i, ref fx, StopReason.LostOwnership, PlayReason.Remote);
         // We cannot know a phone's format, and 0.2.9 left ours on screen (ch 21 G8).
         if (changed && s.Own.Kind != Owner.Us) s.StreamFormat = StringId.Empty;
+        // Nobody holds the row any more: no mode survives (the departed owner's facts stay on screen with the snapshot).
+        if (changed && s.Own.Kind == Owner.Nobody && before == Owner.Foreign) s.Kind = PlayableKind.Audio;
         if ((owner & OwnerFx.PublishInactive) != 0) Announce(ref s, ref fx, PublishReason.BecameInactive);
 
         // Mirror the remote's row so the bar paints what the OWNER is doing. Only while we do NOT own playback: a
@@ -2391,6 +2483,7 @@ public static partial class Playback
         s.Phase = Phase.Idle;
         s.Buffering = false;
         s.Parked = true;
+        s.Kind = PlayableKind.Audio;                      // no host holds the row: no mode survives the loss (a mirror restates the owner's)
         s.EndingSoon = false;
         s.NextId = default;
         s.NextArmed = false;
@@ -2497,8 +2590,22 @@ public static partial class Playback
         s.StreamFormat = StringId.Empty;
         // The slider follows the OWNER; our own volume (the sink's, the PUT body's) is untouched.
         if (r.Volume >= 0) s.MirrorVolume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
+        MirrorVideo(ref s, in r);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
+    }
+
+    /// <summary>The owner's video facts and mode, mirrored: <see cref="State.Kind"/> is the mode it plays the row in, and
+    /// <see cref="State.Video"/> its offer — what the bar's button (lit while the owner plays video), the menu and the fold read
+    /// while it owns playback. FACTS ONLY: the owner's mode never touches <see cref="State.VideoWanted"/>, the user's own wish
+    /// (the surface is open), so the surface opens only when the user asks for it (the owner's call, 2026-11-07), and a takeover
+    /// loads video when the user's surface is on (<see cref="DoTakeOver"/> reads the wish).</summary>
+    static void MirrorVideo(ref State s, in RemoteState r)
+    {
+        bool onVideo = r.HasTrack && r.OnVideo;
+        s.Kind = onVideo ? PlayableKind.Video : PlayableKind.Audio;
+        bool stated = onVideo || r.Offered != VideoSignals.None || r.Disallowed != VideoSignals.None;
+        s.Video = new RowVideo(stated, onVideo || (r.Offered & VideoSignals.SwitchToVideo) != 0, r.ManifestId, r.Offered, r.Disallowed);
     }
 
     /// <summary>A controller's verb addressed to us. <see cref="RemoteCommand.Ok"/> and
@@ -2574,6 +2681,22 @@ public static partial class Playback
                 {
                     var seek = new Input(InputKind.Seek, intArg: (int)Math.Clamp(c.SeekToMs, 0, int.MaxValue), nowMs: i.NowMs);
                     DoSeek(ref s, in seek, ref fx);
+                    break;
+                }
+
+            // A controller's video switch (itsover.saz 772/793): the row's audio ⇄ its music video, at the carried position,
+            // and the mode sticks for the rows after it. A switch to video for a row without one changes nothing (the PUT
+            // above still answers it); an unknown signal id was acked by the glue and is dropped here.
+            case RemoteCmd.Signal:
+                {
+                    if (c.Signal == VideoSignal.None) break;
+                    bool on = c.Signal == VideoSignal.ToVideo;
+                    if (on && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; break; }
+                    VideoMode(ref s, ref fx, on);
+                    PlayableKind kind = KindOfRow(s.Current, on);
+                    if (kind == s.Kind) break;
+                    if (!s.RoutesLocal || s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; break; }
+                    ReloadHost(ref s, in i, ref fx, kind, LoadOrigin.MediaKindRefresh);
                     break;
                 }
 
@@ -2986,6 +3109,17 @@ public static partial class Playback
         fx.PublishEpoch = s.Epoch;
     }
 
+    /// <summary>The reducer decides the video mode (a controller's signal, a play that asked for video): the wish is recorded
+    /// and the shell is told to open or close the surface (<see cref="Effects.VideoIntent"/>), whose placement post echoes back
+    /// as a no-op.</summary>
+    static void VideoMode(ref State s, ref Effects fx, bool on)
+    {
+        if (s.VideoWanted != on) { s.VideoWanted = on; s.VideoRetries = 0; }
+        fx.VideoIntent = true;
+        fx.VideoIntentOn = on;
+        fx.VideoIntentWhy = Fault.None;
+    }
+
     /// <summary>Forward a transport verb to the device that owns playback. THE routing rule: it reads the ownership
     /// verdict, never a raw cluster id (memory rule <c>connect-ownership-single-authority</c>).</summary>
     static void Forward(ref State s, RemoteCmd cmd, ref Effects fx, long arg, bool flag)
@@ -3029,6 +3163,7 @@ public static partial class Playback
         Forward(ref s, RemoteCmd.PlayContext, ref fx, rowItem, s.Shuffle);
         fx.RemoteContext = ForwardPlayEnvelope.For(i.Context, i.Id);
         fx.RemoteTrack = i.Id;
+        fx.RemoteVideo = i.PlayKind == PlayableKind.Video;   // a play that asked for video asks the owner for it too
     }
 
     // ── 10. the snapshot the PUT body encodes, and its parity half, live in Playback.Wire.cs ─────────────────────────

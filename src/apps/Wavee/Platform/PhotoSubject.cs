@@ -11,6 +11,7 @@
 //   SAFE ZONE  no face (a back, a silhouette, a landscape, an N edition without the detector, a decode that failed): Spotify's own guidance for
 //              artist headers (2660 x 1140, key content in the upper two-thirds, the bottom third under the name and its gradient), the subject at a
 //              third of the height, centred across.
+//              A PORTRAIT (taller than wide) with no face puts the subject in the top fifth instead: its head, not its chest.
 //
 // Why no saliency map: measured on the three real headers in the owner's cache (lane B10's PROGRESS), an edges + saturation + skin-tone map
 // (smartcrop style) put the subject at the legs and the floor (edges) or at brown leaves (skin tone) on two of three, lower than the fixed crop
@@ -32,11 +33,19 @@ public readonly record struct PhotoSubject(float X, float Y, bool Faces)
     /// <summary>The subject of a photograph with no face found.</summary>
     public static PhotoSubject SafeZone => new(SafeZoneX, SafeZoneY, false);
 
+    /// <summary>A PORTRAIT's safe zone (taller than wide, no face found): a person photographed standing, whose head is in the top fifth. A third of the way
+    /// down a tall portrait is the chest, so a wide band framing it there showed the waist and the legs (owner 2026-11-07, INNA's About card).</summary>
+    public const float PortraitSafeZoneY = 0.2f;
+
+    /// <summary>A photograph is a portrait when it is this much taller than wide.</summary>
+    public const float PortraitAspect = 1.1f;
+
     /// <summary>The subject of an image <paramref name="width"/> x <paramref name="height"/> whose faces are <paramref name="faces"/> (boxes in its pixels):
     /// the faces' centre weighted by their area, or the safe zone with none.</summary>
     public static PhotoSubject Of(ReadOnlySpan<(float X, float Y, float W, float H)> faces, int width, int height)
     {
-        if (faces.IsEmpty || width <= 0 || height <= 0) return SafeZone;
+        if (width <= 0 || height <= 0) return SafeZone;
+        if (faces.IsEmpty) return height > width * PortraitAspect ? new PhotoSubject(SafeZoneX, PortraitSafeZoneY, false) : SafeZone;
         double sx = 0, sy = 0, sa = 0;
         foreach (var f in faces)
         {

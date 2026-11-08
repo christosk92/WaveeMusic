@@ -10,7 +10,7 @@
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // THE SHELL OF THE DECK. `Deck.cs` is the physics; this file is everything that touches the engine around it:
 //
-//   View()   the mount point — reads the rail width and the chosen preset and keys ONE host on "deck:<slug>@<side>".
+//   Face()   the mount point — one style's deck at the side the now-playing stage (`Deck.Stage.cs`) gives it, keyed "deck:<slug>".
 //   Host     the layout firewall (Width = Height = side, ClipToBounds, IsolateLayout, 8-DIP corners, 320 ms entrance)
 //            holding exactly two children: the face (built once per render of the host, all binds) and the Clock.
 //   Clock    a 0×0 component that owns the only timer. It samples `Playback.PositionMs` against the FRAME clock
@@ -20,14 +20,14 @@
 //            requests no frame; a transport CHANGE is then the clock.
 //   Slab     the fixed set of signals every face binds at build and the clock writes.
 //   Gesture  the one scrub gesture per host (headshell, click wheel) — `GripRules` decides, `Playback.SeekTo` commits.
-//   the record family (Record / Turntable / Zune / Picture): one face, four skins, over one tonearm machine.
+//   the record family (Vinyl's turntable, Metro's poster): one face, two skins, over one tonearm machine.
 //
-// Stage-2 fixes owed by ch 23 §6.4, delivered here: (#1) the headshell wires OnDragCanceled → Gesture.Cancel; (#4) a
-// MODEL option (the VU needles) rebuilds the mounted model in place (`Models.ModelOptionSlug`); (#6)
+// Stage-2 fixes owed by ch 23 §6.4, delivered here: (#1) the headshell wires OnDragCanceled → Gesture.Cancel; (#6)
 // both grips refuse over an unknown duration (`GripRules.Enabled`). §6.4(5) (the paused analyser that never settled) is
-// the model's own `IsSettled`, in `Deck.cs`.
+// the model's own `IsSettled`, in `Deck.cs`. (#4, a model option reaching a mounted model, went with the options: the
+// 2026-11-08 styles have none.)
 //
-// THE ANALYSER DECKS READ THE REAL FFT (docs/plans/wavee/fullscreen-flagship-implementation.md §4.13). Winamp and WMP hold
+// THE ANALYSER DECKS READ THE REAL FFT (docs/plans/wavee/fullscreen-flagship-implementation.md §4.13). Skin and Visualizer hold
 // a SPECTRUM lease and read `SpectrumFold` — the rail's own fold of the engine's 48 bands — so nothing synthesises a
 // band any more; the VU holds the level lease and rests without a tap.
 //
@@ -51,25 +51,14 @@ public static partial class Deck
     /// <summary>The deck's square edge at the default rail width (340 − 2·8 = 324).</summary>
     public static float DefaultSide => Shell.RailDefaultW - 2f * Spacing.S;
 
-    /// <summary>The now-playing player deck for the rail's hero slot: a <c>side × side</c> square that fills the rail's
-    /// content width. It reads its own inputs — <see cref="Shell.Ui.RailWidth"/> (quantised to the 4-DIP grid) and the
-    /// chosen preset (<see cref="Rail.PlayerPrefs"/>) — and keys one host on <c>"deck:&lt;slug&gt;"</c>: a preset change is a
-    /// remount (another deck), a rail resize past a quantum re-pushes the side and the deck redraws at it in place (its model,
-    /// clock and gesture keep running; audit FU item 8). The caller owns the hero slot's
-    /// "nothing is playing" arm (ch 21: the slot mounts no deck without a current item).</summary>
-    // MOUNT POINT (stage B contract)
-    public static Element View() => Embed.Comp(static () => new ViewHost());
-
-    sealed class ViewHost : Component
+    /// <summary>One style's deck: a <c>side × side</c> square keyed <c>"deck:&lt;slug&gt;"</c> (another style is another deck, so the picker's
+    /// carousel holds one per style it shows). A re-pushed side redraws it in place (its model, clock and gesture keep running). The caller
+    /// (the now-playing stage, <see cref="Stage"/>) owns the "nothing is playing" arm and the side; only a deck style comes here
+    /// (<see cref="Rail.PlayerCatalog.IsDeck"/>): the cover and the canvas are the stage's own.</summary>
+    internal static Element Face(int styleId, float side)
     {
-        public override Element Render()
-        {
-            // A memo, so a splitter drag re-renders this only when the quantised side actually changes.
-            var side = UseComputed(static () => ClockRules.SideFor(Shell.Ui.RailWidth.Value, Spacing.S));
-            float s = side.Value;
-            var preset = Rail.PlayerPrefs.CurrentPreset();   // subscribes the prefs epoch
-            return Embed.Comp(new HostSide(s), () => new Host { Preset = preset }) with { Key = "deck:" + preset.Slug };
-        }
+        var style = Rail.PlayerCatalog.ById(styleId);
+        return Embed.Comp(new HostSide(side), () => new Host { Style = style }) with { Key = "deck:" + style.Slug };
     }
 
     // ══ 2. THE SLAB ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -79,7 +68,7 @@ public static partial class Deck
     /// are the record family's "nothing has happened yet" pose.</summary>
     public sealed class Slab
     {
-        /// <summary>24 covers the widest deck (WMP); Winamp binds the first 19.</summary>
+        /// <summary>24 covers the widest deck (the visualizer); the skin binds the first 19.</summary>
         public const int BandCount = 24;
 
         public readonly FloatSignal Frac = new(0f), Angle0 = new(0f), Angle1 = new(TonearmMachine.RestDeg),
@@ -94,8 +83,8 @@ public static partial class Deck
         public readonly Signal<long?> SeekTargetMs = new(null);
         /// <summary>Pointer-owned position: non-null MEANS a drag is live right now.</summary>
         public readonly Signal<long?> ScrubTargetMs = new(null);
-        /// <summary>May a face's LOOPING motion run (<see cref="ClockRules.LoopsMayRun"/>)? The Winamp marquee and the
-        /// Canvas drift gate on it, so a paused deck owns no looping animation row.</summary>
+        /// <summary>May a face's LOOPING motion run (<see cref="ClockRules.LoopsMayRun"/>)? The skin's marquee gates on it, so a paused
+        /// deck owns no looping animation row.</summary>
         public readonly Signal<bool> LoopsRun = new(false);
 
         /// <summary>The frame-clock stamp of the last commit (0 = none) — the latch window's origin.</summary>
@@ -111,10 +100,10 @@ public static partial class Deck
 
     // ══ 3. THE HOST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The deck's edge, re-pushed by the view on a rail quantum (the deck keeps its node, its model and its clock).</summary>
+    /// <summary>The deck's edge, re-pushed by the stage on a column quantum (the deck keeps its node, its model and its clock).</summary>
     sealed record HostSide(float Side);
 
-    /// <summary>The square that IS a deck. Re-renders on the prefs epoch (an option flip restyles the face IN PLACE) and
+    /// <summary>The square that IS a deck. Re-renders on the prefs epoch (a finish pick restyles the face IN PLACE) and
     /// never on the transport. The model is created from the CURRENT transport (<see cref="Seed"/>), so a deck mounted
     /// mid-song shows a record that was already playing.</summary>
     sealed class Host : Component
@@ -137,47 +126,51 @@ public static partial class Deck
         /// bands any more.</summary>
         static readonly SpectrumPull SpectrumTap = static () => SpectrumFold.Levels;
 
-        /// <summary>Which deck — frozen; the view's key remounts on a preset change.</summary>
-        public required Rail.PlayerCatalog.Preset Preset;
-        /// <summary>The square edge in DIP: the view's re-pushed <see cref="HostSide"/>, read on every render (the gesture reads it live).</summary>
+        /// <summary>Which deck — frozen; the stage's key remounts on another style.</summary>
+        public required Rail.PlayerCatalog.Style Style;
+        /// <summary>The square edge in DIP: the stage's re-pushed <see cref="HostSide"/>, read on every render (the gesture reads it live).</summary>
         public float Side = DefaultSide;
 
         public readonly Slab Sig = new();
         public readonly Gesture Grip;
         /// <summary>Raised on the needle-drop edge; the record face's puff subscribes.</summary>
         public Action? ThumpRequested;
-        /// <summary>The live model. Rebuilt IN PLACE when the preset's model option flips (ch 23 §6.4(4)).</summary>
+        /// <summary>The live model, built once from the transport as it stands.</summary>
         public IModel Model = null!;
 
-        string? _modelOption;
         bool _built;
 
         public Host() => Grip = new Gesture(Sig);
 
         public float SideDip => Side > 0f ? Side : DefaultSide;
-        /// <summary>The VU reads the post-gain level tap (an <c>AcquireLevels</c> lease).</summary>
-        public bool UsesLevels => Preset.Id is Rail.PlayerCatalog.Vu;
-        /// <summary>Winamp and WMP read the engine's 48-band FFT through <see cref="SpectrumFold"/> (an <c>AcquireSpectrum</c>
+        /// <summary>The hi-fi's VU reads the post-gain level tap (an <c>AcquireLevels</c> lease).</summary>
+        public bool UsesLevels => Style.Id is Rail.PlayerCatalog.Hifi;
+        /// <summary>The skin and the visualizer read the engine's 48-band FFT through <see cref="SpectrumFold"/> (an <c>AcquireSpectrum</c>
         /// lease, which implies the level tap).</summary>
-        public bool UsesSpectrum => Preset.Id is Rail.PlayerCatalog.Winamp or Rail.PlayerCatalog.Wmp;
+        public bool UsesSpectrum => Style.Id is Rail.PlayerCatalog.Skin or Rail.PlayerCatalog.Visualizer;
 
-        /// <summary>Re-read per tick: a 33 → 45 flip must reach a model that was built once.</summary>
-        public float Rpm() => Models.IsRecordFamily(Preset.Id)
-            ? ClockRules.RpmFor(Rail.PlayerPrefs.ChoiceSlug(in Preset, "rpm"))
-            : ClockRules.Rpm33;
+        /// <summary>Re-read per tick: the record family's speed follows the playing release (a single or an EP at 45, an album at 33⅓), and
+        /// the release lands after the track does.</summary>
+        public float Rpm() => Models.IsRecordFamily(Style.Id) ? ClockRules.RpmFor(PlayingSingle()) : ClockRules.Rpm33;
+
+        /// <summary>Is the playing track's release a single or an EP? An unknown release reads as an album (33⅓). Peeked: no subscription.</summary>
+        static bool PlayingSingle()
+        {
+            var t = Shell.NowPlayingFace.TrackPeek();
+            if (!t.IsValid) return false;
+            var album = t.Album;
+            return album.IsValid && album.Knows(AlbumFields.Release) && album.Kind is AlbumKind.Single or AlbumKind.EP;
+        }
 
         public override Element Render()
         {
             _ = Rail.PlayerPrefs.Epoch.Value;
             Side = UseProps<HostSide>().Side;
             float side = SideDip;
-            string? optionSlug = Models.ModelOptionSlug(Preset.Id);
-            string? option = optionSlug is null ? null : Rail.PlayerPrefs.ChoiceSlug(in Preset, optionSlug);
-            if (!_built || !string.Equals(option, _modelOption, StringComparison.Ordinal))
+            if (!_built)
             {
                 var facts = ReadFacts(Sig, Rpm(), null);
-                Model = Models.Create(in Preset, LevelTap, Seed(in facts, FrameTime.NowMs), SpectrumTap);
-                _modelOption = option;
+                Model = Models.Create(Style.Id, LevelTap, Seed(in facts, FrameTime.NowMs), SpectrumTap);
                 _built = true;
             }
 
@@ -190,29 +183,49 @@ public static partial class Deck
                 Animate = Entrance,
                 Children =
                 [
-                    BuildFace(in Preset, side, Sig, host),
+                    // THE LOOK SLOT. A face is absolute geometry built from its finish, so a finish that changes a part (the picture disc's
+                    // printed cover, Pocket's body) would SNAP if the face were rebuilt in place. The face sits under a key naming its look
+                    // instead: a finish pick (one write, one key change) cross-fades the old face out and the new one in over the same square.
+                    // The model, the clock and the gesture live on this host and never remount.
+                    new BoxEl
+                    {
+                        Width = side, Height = side, Shrink = 0f, ZStack = true,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = LookKey(Style), Width = side, Height = side, Shrink = 0f, ZStack = true,
+                                Enter = LookFade, Exit = LookFade, Transition = MotionTok.ControlFast,
+                                Children = [BuildFace(Style.Id, side, Sig, host)],
+                            },
+                        ],
+                    },
                     Embed.Comp(() => new Clock { Host = host }) with { Key = "deck-clock" },
                 ],
             };
         }
+
+        static readonly EnterExit LookFade = new(Opacity: 0f, Active: true);
+
+        /// <summary>The face's look as a key: the style and its finish (the only choice that changes a picture). Built on an epoch render, never
+        /// per frame.</summary>
+        static string LookKey(in Rail.PlayerCatalog.Style style)
+            => style.HasFinish ? "look:" + style.Slug + "." + style.Finishes[Rail.PlayerPrefs.Finish(style.Id)].Slug : "look:" + style.Slug;
     }
 
-    /// <summary>Preset id → the deck's PIXELS (the mirror of <see cref="Models.Create"/>). An id with no face draws a
-    /// blank square, never a crash.</summary>
-    static Element BuildFace(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host) => preset.Id switch
+    /// <summary>Style id → the deck's PIXELS (the mirror of <see cref="Models.Create"/>). An id with no face draws a blank square, never a crash.
+    /// Phase 1 of the 2026-11-08 redesign maps each style onto the deck face it replaces; phase 3 redraws them.</summary>
+    static Element BuildFace(int styleId, float side, Slab sig, Host host) => styleId switch
     {
-        Rail.PlayerCatalog.Record => RecordFace.Build(in preset, side, sig, host, RecordVariant.Record),
-        Rail.PlayerCatalog.Turntable => RecordFace.Build(in preset, side, sig, host, RecordVariant.Turntable),
-        Rail.PlayerCatalog.Zune => RecordFace.Build(in preset, side, sig, host, RecordVariant.Zune),
-        Rail.PlayerCatalog.Picture => RecordFace.Build(in preset, side, sig, host, RecordVariant.Picture),
-        Rail.PlayerCatalog.Cassette => CassetteFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Reel => ReelFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Cd => CdFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Ipod => IpodFace.Build(in preset, side, sig, host),
-        Rail.PlayerCatalog.Winamp => WinampFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Vu => VuFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Wmp => WmpFace.Build(in preset, side, sig),
-        Rail.PlayerCatalog.Canvas => CanvasFace.Build(in preset, side, sig),
+        Rail.PlayerCatalog.Vinyl => RecordFace.Build(side, sig, host, RecordVariant.Turntable, Rail.PlayerPrefs.Finish(Rail.PlayerCatalog.Vinyl)),
+        Rail.PlayerCatalog.Metro => RecordFace.Build(side, sig, host, RecordVariant.Zune, Rail.PlayerCatalog.VinylBlack),
+        Rail.PlayerCatalog.Cassette => CassetteFace.Build(side, sig),
+        Rail.PlayerCatalog.Reel => ReelFace.Build(side, sig),
+        Rail.PlayerCatalog.Cd => CdFace.Build(side, sig),
+        Rail.PlayerCatalog.Pocket => IpodFace.Build(side, sig, host, Rail.PlayerPrefs.Finish(Rail.PlayerCatalog.Pocket)),
+        Rail.PlayerCatalog.Skin => WinampFace.Build(side, sig),
+        Rail.PlayerCatalog.Hifi => VuFace.Build(side, sig),
+        Rail.PlayerCatalog.Visualizer => WmpFace.Build(side, sig),
         _ => new BoxEl { Width = side, Height = side },
     };
 
@@ -317,7 +330,6 @@ public static partial class Deck
             bool repeatOne = Playback.Repeat.Value == Spotify.Decode.RepeatMode.Track;
             _ = Playback.Error.Value;
             _ = Playback.DurationMs.Value;
-            _ = Rail.PlayerPrefs.Epoch.Value;              // a 33→45 flip / a model rebuild must re-fold a still deck
             var sig = Host.Sig;
             bool seekPending = sig.SeekTargetMs.Value is not null;
             _ = sig.ScrubTargetMs.Value;                   // a drag starting on a still deck must wake it
@@ -510,13 +522,27 @@ public static partial class Deck
     static ColorF Black(float a) => new(0f, 0f, 0f, a);
     static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
 
-    /// <summary>A bundled deck texture (grooves, wood grain, CD rainbow, marble, reel flange, Winamp title bar), tinted.
-    /// The placeholder is TRANSPARENT: a missing or undecoded texture shows the fallback under it, never a grey plate.</summary>
-    static Element Texture(string assetFile, float w, float h, CornerRadius4 corners, ColorF tint) => new ImageEl
-    {
-        Source = AssetPath(assetFile), Width = w, Height = h, Fit = ImageFit.Cover, Corners = corners,
-        ColorOverlay = tint, Placeholder = ColorF.Transparent,
-    };
+    /// <summary>A bundled ALPHA texture (a groove ring, a reel flange, the Winamp title bar) painted in an INK: the texture's alpha is the
+    /// shape, <paramref name="ink"/>'s colour fills it (the image overlay composites atop the texture's own pixels, so its transparent parts
+    /// stay transparent) and <paramref name="ink"/>'s alpha is the strength. The placeholder is TRANSPARENT: a missing or undecoded texture
+    /// shows the fallback under it, never a grey plate.</summary>
+    static Element Texture(string assetFile, float w, float h, CornerRadius4 corners, ColorF ink)
+        => Strength(new ImageEl
+        {
+            Source = AssetPath(assetFile), Width = w, Height = h, Fit = ImageFit.Cover, Corners = corners,
+            ColorOverlay = new ColorF(ink.R, ink.G, ink.B, 1f), Placeholder = ColorF.Transparent,
+        }, w, h, ink.A);
+
+    /// <summary>A bundled texture in its OWN colours (the wood grain, the CD rainbow, the marble) at <paramref name="strength"/>.</summary>
+    static Element OwnTexture(string assetFile, float w, float h, CornerRadius4 corners, float strength = 1f)
+        => Strength(new ImageEl
+        {
+            Source = AssetPath(assetFile), Width = w, Height = h, Fit = ImageFit.Cover, Corners = corners, Placeholder = ColorF.Transparent,
+        }, w, h, strength);
+
+    /// <summary>The texture at a strength: a plain box opacity (multiplied into the draw, no layer: these sit on nodes that turn per frame).</summary>
+    static Element Strength(ImageEl image, float w, float h, float strength)
+        => strength >= 1f ? image : new BoxEl { Width = w, Height = h, Shrink = 0f, Opacity = strength, HitTestVisible = false, Children = [image] };
 
     static string AssetPath(string assetFile)
     {
@@ -567,18 +593,6 @@ public static partial class Deck
         if (url is { Length: > 0 }) _ = Wavee.Palette.Watch(url).Value;
         return Wash(url);
     });
-
-    /// <summary>The LIVE cover accent of whatever is playing (read inside a thunk: a track change or a late grading
-    /// repaints the bound fill and never rebuilds the face). The fallback with "Now playing colours" off (CT9 U3; tracked, so a flip repaints).</summary>
-    static ColorF LiveCoverAccent(ColorF fallback)
-    {
-        if (!StageInk.NowPlayingColors) return fallback;
-        var cur = Playback.Current.Value;
-        string? url = CoverUrlOf(cur);
-        if (url is null) { WatchRow(cur); return fallback; }
-        _ = Wavee.Palette.Watch(url).Value;
-        return Design.SchemeFor(url) is { } s ? ColorScience.Accent(s) : fallback;
-    }
 
     /// <summary>The position a clock or a bar SHOWS: a live drag first, then a committed seek, then the report.</summary>
     static long PlayheadMs(Slab sig) => sig.ScrubTargetMs.Value ?? sig.SeekTargetMs.Value ?? Playback.PositionMs.Value;
@@ -745,70 +759,62 @@ public static partial class Deck
 
     // ══ 7. THE RECORD FAMILY ═════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Four skins over one geometry: the bare record, the wood-plinth turntable, the Zune's type-and-bar poster
-    /// and the picture disc. Absolute layout in fractions of <c>side</c>; the palettes are literal (a deck is a physical
-    /// object); exactly the deck ground behind a 7" hole and the album-colour vinyl follow the theme/cover.</summary>
+    /// <summary>Two skins over one geometry: Vinyl's wood-plinth turntable (its record in one of four finishes: black, smoke, ruby, or the
+    /// picture disc printing the cover) and Metro's type-and-bar poster. Absolute layout in fractions of <c>side</c>; the palettes are literal
+    /// (a deck is a physical object).</summary>
     static class RecordFace
     {
-        const uint ArmInk = 0xCFD4DD, ArmDarkInk = 0x9AA1AD, WoodTop = 0x6B4A2E, WoodBottom = 0x4A301B;
-        const uint VinylBlack = 0x15171C, SplatterBase = 0xF5F1EA, MarbleBase = 0x6B4FA8, SpindleInk = 0xE6E9EF;
-        const uint AlbumFallback = 0x1C4F9A, ZuneGrey = 0x9AA1AD;
+        const uint ArmInk = 0xF2F4F7, ArmDarkInk = 0x5D6470, WoodTop = 0x6B4A2E, WoodBottom = 0x4A301B;
+        const uint VinylBlack = 0x15171C, RubyBase = 0x7A1A2A, SpindleInk = 0xE6E9EF;
+        const uint ZuneGrey = 0x9AA1AD, MetroAccent = 0xF0568C;
+        /// <summary>The grooves' ink strength per finish.</summary>
+        const float GrooveBlack = 0.16f, GrooveSmoke = 0.30f, GrooveRuby = 0.20f;
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host, RecordVariant variant)
+        /// <param name="finish">Vinyl's finish index (<see cref="Rail.PlayerCatalog.VinylBlack"/> …); Metro passes black.</param>
+        public static Element Build(float side, Slab sig, Host host, RecordVariant variant, int finish)
         {
-            // `preset` is an `in` parameter and cannot be captured: every option becomes a plain local first. The
-            // variant flags guard every read an option row does not carry (ch 23 §6.4(7)).
-            bool zune = variant == RecordVariant.Zune, turntable = variant == RecordVariant.Turntable;
-            bool picture = variant == RecordVariant.Picture;
-            string finish = zune || picture ? "black" : Rail.PlayerPrefs.ChoiceSlug(in preset, "finish");
-            bool small = !zune && Rail.PlayerPrefs.ChoiceSlug(in preset, "size") == "7";
-            bool showSleeve = !zune && Rail.PlayerPrefs.ChoiceSlug(in preset, "sleeve") != "off";
-            string accentSlug = zune ? Rail.PlayerPrefs.ChoiceSlug(in preset, "accent") : "pink";
+            bool zune = variant == RecordVariant.Zune;
 
             float s = side > 0f ? side : DefaultSide;
-            Prop<ColorF> deckBg = zune ? Hex(0x000000) : turntable ? Hex(WoodBottom) : Prop.Of(static () => Tok.FillCardSecondary);
+            Prop<ColorF> deckBg = zune ? Hex(0x000000) : Hex(WoodBottom);
 
-            float d = zune ? 0.62f * s : small ? 0.52f * s : 0.70f * s;
-            float px = zune ? 0.08f * s : small ? 0.33f * s : 0.24f * s;
-            float py = zune ? 0.22f * s : small ? 0.25f * s : 0.16f * s;
-            if (!zune && !showSleeve) px = 0.15f * s;   // nothing to slide out of: the record sits where the sleeve was
+            float d = zune ? 0.62f * s : 0.70f * s;
+            float px = zune ? 0.08f * s : 0.24f * s;
+            float py = zune ? 0.22f * s : 0.16f * s;
 
-            var kids = new List<CanvasChild>(12);
-            if (turntable) Plinth(kids, s);
-
-            if (showSleeve)
+            var kids = new List<CanvasChild>(13);
+            if (!zune)
             {
+                Plinth(kids, s);
                 float sleeve = 0.64f * s;
                 kids.Add(new CanvasChild(0.06f * s, 0.12f * s, new BoxEl
                 {
                     Width = sleeve, Height = sleeve, Shrink = 0f, ZStack = true, ClipToBounds = true,
-                    Corners = CornerRadius4.All(4f), Rotation = turntable ? -4f : -2.5f,
+                    Corners = CornerRadius4.All(4f), Rotation = -4f,
                     Shadow = new ShadowSpec(30f, 10f, 0f, Black(0.25f)),
                     Fill = Black(0.35f),                     // a sleeve with no art is still a sleeve
                     Children = [CoverLeaf(sig, sleeve, round: false, key: "sleeve-art")],
                 }));
             }
 
-            kids.Add(new CanvasChild(px, py, Platter(d, finish, variant, sig, host, deckBg, small)));
+            kids.Add(new CanvasChild(px, py, Platter(d, finish, variant, sig, host)));
 
             if (!zune)
             {
                 float armW = 0.22f * s, armH = 0.92f * s, armX = 0.75f * s, armY = 0.02f * s;
-                kids.Add(new CanvasChild(armX, armY, Tonearm(d, px, py, armW, armH, armX, armY, turntable, sig, host)));
+                kids.Add(new CanvasChild(armX, armY, Tonearm(d, px, py, armW, armH, armX, armY, sig, host)));
                 kids.Add(new CanvasChild(0.845f * s, 0.06f * s, new BoxEl
                 {
-                    Width = 0.03f * s, Height = 0.09f * s, Shrink = 0f, Corners = CornerRadius4.All(3f),
-                    Fill = turntable ? Hex(0xC9CED8) : Hex(ArmDarkInk, 0.6f),
+                    Width = 0.03f * s, Height = 0.09f * s, Shrink = 0f, Corners = CornerRadius4.All(3f), Fill = Hex(0xC9CED8),
                 }));
             }
             else
             {
-                var accent = ZuneAccent(accentSlug);
+                var accent = Hex(MetroAccent);
                 float typeW = 0.34f * s;
                 kids.Add(new CanvasChild(0.62f * s, 0.08f * s,
-                    // The side and the accent are re-pushed (an option flip or a rail quantum redraws in place); the key names the accent's option.
-                    Embed.Comp(new ZuneTypeProps(sig, s, typeW, accent), static () => new ZuneType())
-                        with { Key = "zune-type:" + accentSlug }));
+                    // The side is re-pushed (a column quantum redraws in place).
+                    Embed.Comp(new ZuneTypeProps(sig, s, typeW, accent), static () => new ZuneType()) with { Key = "zune-type" }));
                 float barW = 0.86f * s;
                 var frac = sig.Frac;
                 kids.Add(new CanvasChild(0.08f * s, 0.88f * s, new BoxEl
@@ -832,8 +838,8 @@ public static partial class Deck
 
         static void Plinth(List<CanvasChild> kids, float s)
         {
-            // The grain PNG is alpha: tinted white, with the stain OVER it so the grain reads through.
-            kids.Add(new CanvasChild(0f, 0f, Texture("wood-grain-1024.png", s, s, CornerRadius4.All(Radii.Card), White(1f))));
+            // The grain in its own colours (an opaque photograph), with the stain OVER it so the grain reads through.
+            kids.Add(new CanvasChild(0f, 0f, OwnTexture("wood-grain-1024.png", s, s, CornerRadius4.All(Radii.Card))));
             kids.Add(new CanvasChild(0f, 0f, new BoxEl
             {
                 Width = s, Height = s, Shrink = 0f, Corners = CornerRadius4.All(Radii.Card),
@@ -865,7 +871,7 @@ public static partial class Deck
         }
 
         /// <summary>The record leaving its sleeve: one wrapper translating and scaling the whole disc, plus the puff.</summary>
-        static Element Platter(float d, string finish, RecordVariant variant, Slab sig, Host host, Prop<ColorF> deckBg, bool small)
+        static Element Platter(float d, int finish, RecordVariant variant, Slab sig, Host host)
         {
             var slide = sig.Slide;
             float dd = d, thump = 0.08f * d;
@@ -883,7 +889,7 @@ public static partial class Deck
                 Opacity = Prop.Of(() => Clamp01(slide.Value * 1.6f)),
                 Children =
                 [
-                    Disc(d, finish, variant, sig, deckBg, small),
+                    Disc(d, finish, variant, sig),
                     Offset((d - thump) * 0.5f, (d - thump) * 0.5f,
                         Embed.Comp(new RecordThumpProps(host, thump), static () => new RecordThump()) with { Key = "thump" }),
                 ],
@@ -892,11 +898,12 @@ public static partial class Deck
 
         /// <summary>The ONE rotating node: everything printed on the record is its child, so the platter costs a single
         /// transform write per tick however many layers the finish has.</summary>
-        static Element Disc(float d, string finish, RecordVariant variant, Slab sig, Prop<ColorF> deckBg, bool small)
+        static Element Disc(float d, int finish, RecordVariant variant, Slab sig)
         {
-            bool picture = variant == RecordVariant.Picture, zune = variant == RecordVariant.Zune;
+            bool zune = variant == RecordVariant.Zune;
+            bool picture = !zune && finish == Rail.PlayerCatalog.VinylPicture;
             var angle = sig.Angle0;
-            var layers = new List<Element>(14);
+            var layers = new List<Element>(8);
 
             if (picture)
             {
@@ -915,32 +922,18 @@ public static partial class Deck
                     Shadow = new ShadowSpec(34f, 14f, 0f, Black(0.45f)),
                     Fill = finish switch
                     {
-                        "album" => AlbumVinyl,
                         // Translucent, not Acrylic: this node rotates 30×/s and a backdrop layer would re-blur every frame.
-                        "clear" => new ColorF(40f / 255f, 44f / 255f, 54f / 255f, 0.55f),
-                        "splatter" => Hex(SplatterBase),
-                        "marble" => Hex(MarbleBase),
+                        Rail.PlayerCatalog.VinylSmoke => new ColorF(40f / 255f, 44f / 255f, 54f / 255f, 0.55f),
+                        Rail.PlayerCatalog.VinylRuby => Hex(RubyBase),
                         _ => Hex(VinylBlack),
                     },
                 });
-                if (finish == "splatter")
-                {
-                    float dot = 0.04f * d;
-                    AddDot(layers, d, dot, 0.30f, 0.25f, 0xFFD166);
-                    AddDot(layers, d, dot, 0.70f, 0.40f, 0xFFD166);
-                    AddDot(layers, d, dot, 0.60f, 0.78f, 0xEF476F);
-                    AddDot(layers, d, dot, 0.24f, 0.66f, 0xEF476F);
-                    AddDot(layers, d, dot, 0.82f, 0.70f, 0x06D6A0);
-                    AddDot(layers, d, dot, 0.45f, 0.12f, 0x06D6A0);
-                }
-                if (finish == "marble") layers.Add(Texture("marble-1024.png", d, d, Radii.Circle(d), White(0.9f)));
+                // The grooves in an ink over the finish (the ring's alpha is the shape): a faint light on the dark vinyl.
                 layers.Add(Texture("grooves-1024.png", d, d, Radii.Circle(d), finish switch
                 {
-                    "clear" => White(0.12f),
-                    "album" => White(0.08f),
-                    "splatter" => Black(0.08f),
-                    "marble" => Black(0.18f),
-                    _ => White(0.035f),
+                    Rail.PlayerCatalog.VinylSmoke => White(GrooveSmoke),
+                    Rail.PlayerCatalog.VinylRuby => White(GrooveRuby),
+                    _ => White(GrooveBlack),
                 }));
             }
 
@@ -959,15 +952,13 @@ public static partial class Deck
                 layers.Add(Offset(lx, lx, Ring(label, zune ? 3f : 2f, zune ? White(0.9f) : Black(0.6f))));
             }
 
-            // The spindle — or, on a 7", the big hole the deck itself shows through.
-            float hole = small ? 0.20f * d : 0.05f * d, hx = (d - hole) * 0.5f;
-            layers.Add(Offset(hx, hx, small
-                ? new BoxEl { Width = hole, Height = hole, Shrink = 0f, Corners = Radii.Circle(hole), Fill = deckBg }
-                : new BoxEl
-                {
-                    Width = hole, Height = hole, Shrink = 0f, Corners = Radii.Circle(hole),
-                    Fill = picture ? White(1f) : Hex(SpindleInk), BorderWidth = 1f, BorderColor = Black(0.5f),
-                }));
+            // The spindle.
+            float hole = 0.05f * d, hx = (d - hole) * 0.5f;
+            layers.Add(Offset(hx, hx, new BoxEl
+            {
+                Width = hole, Height = hole, Shrink = 0f, Corners = Radii.Circle(hole),
+                Fill = picture ? White(1f) : Hex(SpindleInk), BorderWidth = 1f, BorderColor = Black(0.5f),
+            }));
 
             return new BoxEl
             {
@@ -977,35 +968,19 @@ public static partial class Deck
             };
         }
 
-        static void AddDot(List<Element> into, float d, float dot, float fx, float fy, uint rgb)
-            => into.Add(Offset(fx * d - dot * 0.5f, fy * d - dot * 0.5f, new BoxEl
-            {
-                Width = dot, Height = dot, Shrink = 0f, Corners = Radii.Circle(dot),
-                Gradient = Ui.RadialGradient(new GradientStop(0f, Hex(rgb)), new GradientStop(1f, Hex(rgb, 0.75f))),
-            }));
-
-        /// <summary>The cover's accent, deepened ×0.55 (dyed vinyl, not paint) — bound, resolved inside the thunk.</summary>
-        static readonly Prop<ColorF> AlbumVinyl = Prop.Of(static () =>
-        {
-            var c = LiveCoverAccent(Hex(AlbumFallback));
-            return new ColorF(c.R * 0.55f, c.G * 0.55f, c.B * 0.55f, 1f);
-        });
-
         /// <summary>Where the headshell was last dragged to, so the release commits it. Allocated once, at build.</summary>
         sealed class ArmGrip { public long LastMs; }
 
-        static Element Tonearm(float d, float platterX, float platterY, float armW, float armH, float armX, float armY,
-                               bool turntable, Slab sig, Host host)
+        /// <summary>Vinyl's tonearm (Metro draws none).</summary>
+        static Element Tonearm(float d, float platterX, float platterY, float armW, float armH, float armX, float armY, Slab sig, Host host)
         {
             var angle1 = sig.Angle1;
             var lift = sig.Lift;
-            var arm = turntable ? Hex(0xF2F4F7) : Hex(ArmInk);
-            var armDark = turntable ? Hex(0x5D6470) : Hex(ArmDarkInk);
-            float tubeW = turntable ? 0.07f * armW : 0.09f * armW, tubeH = 0.62f * armH, tubeX = 0.455f * armW, tubeY = 0.09f * armH;
-            var tubeGradient = turntable
-                ? Ui.LinearGradient(0f, new GradientStop(0f, Hex(0x5D6470)), new GradientStop(0.4f, Hex(0xF2F4F7)),
-                    new GradientStop(0.6f, Hex(0xC3C8D1)), new GradientStop(1f, Hex(0x5D6470)))
-                : Ui.LinearGradient(0f, new GradientStop(0f, armDark), new GradientStop(0.5f, arm), new GradientStop(1f, armDark));
+            var arm = Hex(ArmInk);
+            var armDark = Hex(ArmDarkInk);
+            float tubeW = 0.07f * armW, tubeH = 0.62f * armH, tubeX = 0.455f * armW, tubeY = 0.09f * armH;
+            var tubeGradient = Ui.LinearGradient(0f, new GradientStop(0f, armDark), new GradientStop(0.4f, arm),
+                new GradientStop(0.6f, Hex(0xC3C8D1)), new GradientStop(1f, armDark));
             float pivotD = 0.44f * armW, headW = 0.22f * armW, headH = 0.12f * armH;
             float hitW = 0.44f * armW, hitH = 0.20f * armH, hitX = 0.28f * armW, hitY = 0.64f * armH;
 
@@ -1050,8 +1025,7 @@ public static partial class Deck
                     Offset(0.39f * armW, 0.69f * armH, new BoxEl
                     {
                         Width = headW, Height = headH, Shrink = 0f, ZStack = true, Corners = CornerRadius4.All(3f),
-                        Rotation = -18f, Fill = turntable ? Hex(0x2B2E34) : arm,
-                        BorderWidth = turntable ? 1f : 0f, BorderColor = turntable ? Hex(0x7A808A) : ColorF.Transparent,
+                        Rotation = -18f, Fill = Hex(0x2B2E34), BorderWidth = 1f, BorderColor = Hex(0x7A808A),
                         Children = [Offset((headW - 2f) * 0.5f, headH - 8f, new BoxEl { Width = 2f, Height = 8f, Shrink = 0f, Fill = Hex(0xDD3333) })],
                     }),
                     // The grip: transparent and larger than the cartridge. OnDragCanceled is wired (ch 23 §6.4(1)): a lost
@@ -1075,13 +1049,6 @@ public static partial class Deck
             };
         }
 
-        static ColorF ZuneAccent(string slug) => slug switch
-        {
-            "orange" => Hex(0xFF7A1A),
-            "green" => Hex(0x8CBF26),
-            "blue" => Hex(0x1BA1E2),
-            _ => Hex(0xF0568C),
-        };
 
         /// <summary>The needle drop: a dust ring that expands and fades ONCE per thump, driven straight from the
         /// animation scheduler — three one-shot tracks, zero re-renders.</summary>
@@ -1145,6 +1112,7 @@ public static partial class Deck
             Latch _latch;
 
             const string Display = "Segoe UI Variable Display";
+            const float LineFloor = 11f;
 
             public override Element Render()
             {
@@ -1153,7 +1121,8 @@ public static partial class Deck
                 float s = Side;
                 string title = TitleOf(_latch.Shown).ToLowerInvariant();
                 string artist = ArtistsOf(_latch.Shown);
-                float titleSize = 0.11f * s, lineSize = 0.036f * s;
+                // The grey line never drops under the 11-DIP type floor (a Zune hero's deck is 296 wide: 0.036 of it read 10.7).
+                float titleSize = 0.11f * s, lineSize = MathF.Max(LineFloor, 0.036f * s);
                 // Two runs rather than one span: this boundary only moves when the title does. < 3 chars: no accent run.
                 int cut = title.Length >= 3 ? title.Length - title.Length / 3 : title.Length;
                 var sig = Sig;

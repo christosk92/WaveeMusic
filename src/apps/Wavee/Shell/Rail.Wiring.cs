@@ -111,40 +111,32 @@ internal static class RailWiring
 
     // ══ THE NOW-PLAYING HERO ═════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The deck preferences' writes, attributed to the surface that made them.</summary>
-    sealed class DeckStyleVerbs : IDeckStyleVerbs
+    /// <summary>The style chip's and picker's writes (`Shell.StylePicker`, attributed "picker").</summary>
+    sealed class PlayerStyleVerbs : IPlayerStyleVerbs
     {
-        public void SetStyle(int id) => Shell.DeckPrefs.SetStyle(id, Shell.DeckPrefSource.Flyout);
-
-        public void SetChoice(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option, int index)
-            => Shell.DeckPrefs.SetChoice(in preset, in option, index, Shell.DeckPrefSource.Flyout);
-
-        public Signal<int> ChoiceMirror(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option)
-            => Shell.DeckPrefs.ChoiceMirror(in preset, in option);
-
-        public void SetPresentation(int presentation, DeckStyleSource source)
-            => Shell.DeckPrefs.SetPresentation(presentation, source switch
-            {
-                DeckStyleSource.Header => Shell.DeckPrefSource.Header,
-                DeckStyleSource.Flyout => Shell.DeckPrefSource.Flyout,
-                _ => Shell.DeckPrefSource.ArtMenu,
-            });
-
-        public void OpenStyleFlyout() => Shell.DeckPrefs.OpenStyleFlyout();
-
-        public void ToggleStyleFlyout() => Shell.DeckPrefs.ToggleStyleFlyout();
+        public void OpenPicker() => Shell.StylePicker.Begin();
+        public void Step(int delta) => Shell.StylePicker.Step(delta);
+        public void FocusOn(int styleId) => Shell.StylePicker.FocusOn(styleId);
+        public void SetFinish(int index) => Shell.StylePicker.SetFinish(index);
+        public void Done() => Shell.StylePicker.Done();
+        public void Cancel() => Shell.StylePicker.Cancel();
     }
 
-    static readonly DeckStyleVerbs s_deckVerbs = new();
+    static readonly PlayerStyleVerbs s_styleVerbs = new();
 
     static NowPlayingHeroProps BuildNowPlaying() => new()
     {
         NowTrack = static () => Rail.NowTrack(),
         NowArtUrl = static () => Rail.NowArtUrl(),
         RailWidth = Shell.Ui.RailWidth,
-        Deck = static () => Deck.View(),
-        Style = s_deckVerbs,
-        Flyout = new DeckStyleFlyoutProps { Verbs = s_deckVerbs, NowArtUrl = static () => Rail.NowArtUrl() },
+        RailHeight = Shell.Ui.RailBodyHeight,
+        Stage = static (chrome, cover, corners, bleed) => Deck.Stage(chrome, cover, corners, bleed),
+        Style = s_styleVerbs,
+        Picking = static () => Shell.StylePicker.Open.Value,
+        ShownStyle = static () => Shell.StylePicker.Shown(),
+        Bleeds = static () => Deck.Bleeds(),
+        BleedVideo = static width => Deck.BleedVideo(width),
+        Source = ReadSheetSource,
         SubscribeEntities = static () =>
         {
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
@@ -405,9 +397,7 @@ internal static class RailWiring
             if (MathF.Abs(Shell.Ui.RailBodyHeight.Peek() - h) > 0.5f) Shell.Ui.RailBodyHeight.Value = h;
         },
         DockedVideoHeight = Shell.Ui.DockedVideoHeight,
-        DockedVideoMin = static railWidth => Shell.DockedVideoNaturalH(railWidth),
-        DockedVideoMax = static () => Shell.DockedCapCeiling(Shell.Ui.RailBodyHeight.Peek()),
-        CommitDockedVideo = Shell.PanelHost.CommitDockedVideo,
+        DockedVideoHandle = static (grip, width) => Rail.DockedVideoHandle(grip, width),
         Close = static () => Shell.PanelHost.Shared.Close(),
         ShowMode = static mode => Shell.PanelHost.Shared.SetMode((Shell.RailMode)(byte)mode),
         ShowArt = static () => Shell.PanelHost.Shared.HideVideo(),

@@ -1,6 +1,6 @@
 param(
     [string]$Repo = "C:\wavee\waveemusic",
-    [string]$Exe = "C:\wavee\waveemusic\src\apps\Wavee\bin\Release\net10.0\Wavee.exe",
+    [string]$Exe = "C:\wavee\waveemusic\src\apps\Wavee\bin\Release\net11.0\Wavee.exe",
     [string]$Route = "wavee://open?route=pl&arg=spotify%3Aplaylist%3A2pnt79m93NytfAj2lByLlQ",
     [int]$SettleSeconds = 6,
     [int]$ScrollSeconds = 8,

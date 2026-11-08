@@ -758,6 +758,17 @@ public static partial class Diagnostics
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
             var lastNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);   // the node of each lone watched key on the frame before
             var nowNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);
+            // A key on several nodes (a "shim" cover tile on every card) is watched as key, key#1, ...: each node keeps the label it had on the frame
+            // before, so a node mounting or leaving earlier in reading order never renumbers the others into a move they did not make (audit FU2d: the
+            // Classic album head's cover tile leaving made five shelf tiles read as a 160 DIP instant).
+            var lastLabel = new Dictionary<NodeHandle, (string Key, string Label)>();
+            var nowLabel = new Dictionary<NodeHandle, (string Key, string Label)>();
+            var lastLabels = new HashSet<string>(StringComparer.Ordinal);
+            var nowLabels = new HashSet<string>(StringComparer.Ordinal);
+            var lastCount = new Dictionary<string, int>(StringComparer.Ordinal);
+            var lastLone = new Dictionary<string, string>(StringComparer.Ordinal);
+            var sampled = new List<(NodeHandle Node, string Key)>(64);
+            var ordinal = new Dictionary<string, int>(StringComparer.Ordinal);
             int sent = 0;
             bool moved = false;
             Point2 dragAt = default;
@@ -848,12 +859,43 @@ public static partial class Diagnostics
                         if (!reflowParents.Add(rp.Raw.Index)) break;   // the chain above is already in
                 dup.Clear();
                 nowNode.Clear();
+                nowLabel.Clear();
+                nowLabels.Clear();
+                sampled.Clear();
                 foreach (var (node, key) in keyed)
                 {
                     if (!Matches(o, key) || !seen.Add(node.Raw.Index)) continue;
-                    int n = dup.TryGetValue(key, out int c) ? c : 0;
-                    dup[key] = n + 1;
-                    string label = n == 0 ? key : key + "#" + n;
+                    dup[key] = dup.TryGetValue(key, out int c) ? c + 1 : 1;
+                    sampled.Add((node, key));
+                }
+                // A node labelled on the frame before keeps its label; a new one takes the label of the lone node it replaced (a lone key stays one
+                // watched entry across a remount), else the lowest of key, key#1, ... that no node holds now or held on the frame before.
+                foreach (var (node, key) in sampled)
+                    if (lastLabel.TryGetValue(node, out var had) && had.Key == key && nowLabels.Add(had.Label)) nowLabel[node] = had;
+                foreach (var (node, key) in sampled)
+                {
+                    if (nowLabel.ContainsKey(node)) continue;
+                    string? take = null;
+                    if (dup[key] == 1 && lastCount.TryGetValue(key, out int before) && before == 1 && lastLone.TryGetValue(key, out var lone) && !nowLabels.Contains(lone))
+                        take = lone;
+                    for (int k = 0; take is null; k++)
+                    {
+                        string next = k == 0 ? key : key + "#" + k;
+                        if (!nowLabels.Contains(next) && !lastLabels.Contains(next)) take = next;
+                    }
+                    nowLabels.Add(take);
+                    nowLabel[node] = (key, take);
+                }
+                lastCount.Clear();
+                lastLone.Clear();
+                foreach (var (key, count) in dup) lastCount[key] = count;
+                ordinal.Clear();
+                foreach (var (node, key) in sampled)
+                {
+                    string label = nowLabel[node].Label;
+                    int n = ordinal.TryGetValue(key, out int at) ? at : 0;
+                    ordinal[key] = n + 1;
+                    if (dup[key] == 1) lastLone[key] = label;
                     if (!watchIndex.TryGetValue(label, out int w))
                     {
                         if (watchIndex.Count >= o.MaxNodes) continue;
@@ -877,6 +919,10 @@ public static partial class Diagnostics
                         { Vis = VisiblePart(scene, node, pres, window) });
                     if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
                 }
+                lastLabel.Clear();
+                foreach (var (node, had) in nowLabel) lastLabel[node] = had;
+                lastLabels.Clear();
+                lastLabels.UnionWith(nowLabels);
                 foreach (var (key, node) in nowNode)
                     if (!node.IsNull && lastNode.TryGetValue(key, out NodeHandle was) && !was.IsNull && was != node)
                         result.Remounts.Add(new InspectTrace.Remount(key, f, FadingSwapFamily(shell, node)));

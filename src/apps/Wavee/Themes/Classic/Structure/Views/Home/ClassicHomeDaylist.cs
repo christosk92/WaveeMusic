@@ -26,8 +26,9 @@
 // hands in. What must SUBSCRIBE (the greeted name, whether the ▶ names Pause) was read by the host; the saved heart is the stock
 // `SaveButton`, which subscribes on its own. The cold-load skeleton is the SAME builders fed placeholders (`Skeleton`) — the placeholder
 // art slot across the card, no veil — so it shimmers as this card's real shape.
-// THE FORM IS THE TIER'S (`Rules/Tiers.Home.cs`, `ClassicDaylistLayout`): Compact stacks the art over the copy (`C-Home-Compact`: 140 art, the copy rising 28
-// over it, 40-high actions), Small is a 216 banner with 364 of copy (`C-Home-Small`), Standard is the tuned card, Huge is a 400 hero with 760 of copy at the
+// THE FORM IS THE TIER'S (`Rules/Tiers.Home.cs`, `ClassicDaylistLayout`): Compact stacks the copy under the art's 140 band (`C-Home-Compact`: the copy rising 28
+// over the band's foot, 40-high actions; the art is still the WHOLE card's backdrop, its vertical veil climbing to the copy plate by the band's foot, so
+// there is no seam), Small is a 216 banner with 364 of copy (`C-Home-Small`), Standard is the tuned card, Huge is a 400 hero with 760 of copy at the
 // 68/92 display size and the clock a plate in its corner (`C-Home-Huge`), and a Short window caps the hero at a 126 strip carrying the eyebrow and the title only
 // (`C-Shell-Short`). The first frame is built at the region's estimated width (`ClassicRegion`), never a fixed 1100.
 // Pure rules (core): `DaylistForm` / `DaypartTimeline` / `DaylistCountdownLine` / `DaylistArt` (Items.Rules.cs) and
@@ -102,9 +103,11 @@ internal static class ClassicHomeDaylist
         Element? veil = artUrl is null ? null
             : Palette.ArtistHeroVeil(artUrl, vertical: dl.Form == ClassicDaylistForm.Stacked, float.NaN, float.NaN, key: "daylist-veil:" + uri,
                                      payloadAccent: card.Accent,
-                                     // horizontal: held under the whole copy column; Compact's vertical: held from where the copy rises over the art
+                                     // horizontal: held under the whole copy column; Compact's vertical: held from where the copy rises over the art's band,
+                                     // its ramp the band (the plate holds from the band's foot to the card's)
                                      hold: dl.Form == ClassicDaylistForm.Stacked ? ClassicHomeRules.StackedVeilHold(dl.ArtH)
-                                         : DaylistForm.VeilHold(firstW, dl.CopyPad.Horizontal));
+                                         : DaylistForm.VeilHold(firstW, dl.CopyPad.Horizontal),
+                                     ramp: dl.Form == ClassicDaylistForm.Stacked ? dl.ArtH : float.NaN);
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
         // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.
@@ -259,32 +262,26 @@ internal static class ClassicHomeDaylist
         };
     }
 
-    /// <summary>Compact's stack (<c>C-Home-Compact</c>): the art band on top under a vertical veil, the copy rising 28 over its foot with the actions 40 high
-    /// and the clock under them. A daylist without art is the copy alone.</summary>
+    /// <summary>Compact's stack (<c>C-Home-Compact</c>): the copy starts 28 above the foot of the art's band (the band's height, less the rise, rides on its top
+    /// padding), the actions 40 high and the clock under them. The art and its vertical veil cover the WHOLE card, the tuned card's three slots: the veil's
+    /// ramp is the band, then the copy plate holds to the card's foot, so the art is the card's backdrop with no seam where the band ends. Neither layer
+    /// measures anything: the copy alone decides the card's height (the band plus the copy, less the rise, as when the band was a box). A daylist without art
+    /// is the copy alone.</summary>
     static Element Stacked(Parts p, ClassicDaylistLayout dl)
     {
         bool hasArt = p.Art is not null;
+        var pad = dl.CopyPad;
         var copy = new BoxEl
         {
             Key = "daylist-copy",
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = dl.CopyPad, Gap = Spacing.S,
-            Margin = hasArt ? new Edges4(0f, -ClassicHomeRules.StackedOverlap, 0f, 0f) : default,
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = Spacing.S,
+            Padding = hasArt ? pad with { Top = pad.Top + MathF.Max(0f, dl.ArtH - ClassicHomeRules.StackedOverlap) } : pad,
             Children = [Top(p, float.NaN, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                hasArt
-                    ? new BoxEl
-                    {
-                        Key = "daylist-art", ZStack = true, Height = dl.ArtH, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
-                        Children = [p.Art!.Value, p.Veil ?? NoLayer()],
-                    }
-                    : NoLayer(),
-                copy,
-            ],
+            ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy],
         };
     }
 

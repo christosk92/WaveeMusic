@@ -84,6 +84,18 @@ internal sealed class ClassicQueuePanel : Component
     float _rowExtent;
     ClassicPanelContentLayout _tier = ClassicStageTiers.Panel(WidthTier.Standard);   // this render's: the window tier's targets
 
+    // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead ("Playing from", the
+    // playing card), the lane's slots, then the vacancy. The slots' extents are stated EXACTLY (the lane's drag maths reads the same
+    // numbers); the lead and the vacancy, whose heights their content decides, are measured on their first realize.
+    readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
+    float[] _extents = new float[64];
+    int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3;
+    /// <summary>The lead's and the vacancy's estimates until their first measure.</summary>
+    const float PlayingFromEstimate = 28f, NowEstimate = 72f, VacancyEstimate = 120f;
+    /// <summary>The room under the last item.</summary>
+    const float BottomRoom = 14f;
+
     public ClassicQueuePanel()
     {
         _pushChip = () => _chipAccent.Value = _chipPending;
@@ -137,17 +149,25 @@ internal sealed class ClassicQueuePanel : Component
         if (fromCover && cover.Length > 0) _ = Wavee.Palette.Watch(cover).Value;
         ResolveChipAccent(queue.NowPlaying, cover, fromCover);
 
-        var content = new List<Element>(4);
-        if (queue.PlayingFrom is { } playingFrom) content.Add(PlayingFrom(playingFrom.Name, props.OpenPlayingFrom, _tier));
-        if (!queue.NowPlaying.IsNone) content.Add(NowPlayingCard(props, hairline));
-        if (lane.SlotCount > 0) content.Add(lane.List(Upcoming(props, art, hairline), "lane:upcoming"));
-        if (queue.NothingPlaying)
-            content.Add(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
-                                         title: Loc.Get(Strings.Player.NothingPlaying), subtitle: ""));
+        // The items, in list order: the lead, the lane's slots (under the live projection while a row is lifted, so each position states the
+        // extent of the slot shown there), the vacancy.
+        int count = lane.SlotCount + 3;
+        if (_extents.Length < count) { _extents = new float[count * 2]; _kinds = new int[count * 2]; }
+        int n = 0;
+        if (queue.PlayingFrom is not null) { _kinds[n] = ItemPlayingFrom; _extents[n++] = -PlayingFromEstimate; }
+        if (!queue.NowPlaying.IsNone) { _kinds[n] = ItemNow; _extents[n++] = -NowEstimate; }
+        int leadItems = n;
+        for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
+        if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -VacancyEstimate; }
+        _layout.SetExtents(_extents.AsSpan(0, n), 0f, BottomRoom);
 
-        Element body = new BoxEl { Direction = 1, MinHeight = 0f, Padding = new Edges4(0f, 0f, 0f, 14f), Children = content.ToArray() };
-        // Nothing upcoming: the same lane wraps the body, so a foreign drop still has a target (slot 0 = play next).
-        if (lane.SlotCount == 0) body = lane.List(body, "lane:empty");
+        var list = Virtual.Custom(n, _layout, i => Item(props, art, hairline, i)) with
+        {
+            Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll,
+        };
+        // The lane wraps the whole list (a foreign drop anywhere inserts at the slot under it; above the slots, at slot 0). The lead's extent is
+        // the measured one the list last laid out.
+        var body = lane.List(list, "lane:upcoming", _layout.OffsetOf(leadItems, 0f)).As<BoxEl>() with { Grow = 1f, MinHeight = 0f };
 
         return new BoxEl
         {
@@ -164,42 +184,45 @@ internal sealed class ClassicQueuePanel : Component
                         Pill("∞", Loc.Get(Strings.Player.Autoplay), queue.Autoplay.Enabled, _toggleAutoplay, glyphIsText: true),
                     ],
                 },
-                new ScrollEl
-                {
-                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll,
-                    Content = body,
-                },
+                body,
             ],
         };
     }
 
-    Element Upcoming(QueuePanelProps props, bool art, bool hairline)
+    /// <summary>The list's item <paramref name="i"/> (<see cref="_kinds"/>).</summary>
+    Element Item(QueuePanelProps props, bool art, bool hairline, int i)
     {
         var lane = props.Lane;
-        var kids = new Element[lane.SlotCount];
-        for (int i = 0; i < kids.Length; i++)
+        int kind = (uint)i < (uint)_kinds.Length ? _kinds[i] : ItemVacancy;
+        switch (kind)
         {
-            int item = lane.ItemAt(i);
-            var slot = lane.SlotAt(item);
-            if (slot.Kind == QueueSlotKind.Header) { kids[i] = SectionHeader(props, slot.Section); continue; }
-            if (slot.Kind == QueueSlotKind.More) { kids[i] = ShowMore(props, slot.Section); continue; }
-            kids[i] = props.Queue.TryRow(slot.Section, slot.Pos, out var row)
-                ? lane.Lane(item, Row(props, row, art, hairline), lane.RowKey("", row.ItemId, row.Index))
-                : new BoxEl();
+            case ItemPlayingFrom: return PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom, _tier);
+            case ItemNow: return NowPlayingCard(props, hairline);
+            case ItemVacancy:
+                return new BoxEl
+                {
+                    Key = "qp:empty", Direction = 1,
+                    Children = [Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: "")],
+                };
         }
-        return new BoxEl { Key = "upcoming", Direction = 1, Children = kids };
+        int item = lane.ItemAt(kind);
+        var slot = lane.SlotAt(item);
+        if (slot.Kind == QueueSlotKind.Header) return SectionHeader(props, slot.Section);
+        if (slot.Kind == QueueSlotKind.More) return ShowMore(props, slot.Section);
+        return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
+            ? lane.Lane(item, Row(props, row, art, hairline), lane.RowKey("", row.ItemId, row.Index))
+            : new BoxEl { Key = "qp:gap:" + kind };
     }
 
     Element Row(QueuePanelProps props, in QueueRowProps row, bool art, bool hairline)
     {
         var verbs = props.Verbs;
         EntityRef r = row.Ref;
-        QueueRowText text = props.Lane.TextOf(r);
         ulong itemId = row.ItemId;
         int index = row.Index;
         bool removable = row.Removable;
-        Element el = hairline ? HairlineRow(props, text, row)
-                              : SurfaceRow(props, text, row, art);
+        Element el = hairline ? HairlineRow(props, props.Lane.TextOf(r), row)
+                              : SurfaceRow(props, row, art);
         if (!removable || !Controls.SwipeArmed) return el;
         var remove = new SwipeAction(ActionIcons.Resolve(ActionIcons.Remove), Loc.Get(Strings.Menu.RemoveFromQueue))
         {
@@ -217,30 +240,43 @@ internal sealed class ClassicQueuePanel : Component
     /// a cursor move inside the live session (<see cref="IQueueVerbs.Play"/>), and the lane's reorder gesture rides the wrapper
     /// above the row, so the surface carries a drag of its own only for a viewer, who has no lane. The wrapper here carries what the surface has no dial for: the key (a skin flip REMOUNTS), the
     /// autoplay dim and the Enter/Exit/Slide motion.</summary>
-    Element SurfaceRow(QueuePanelProps props, QueueRowText text, in QueueRowProps row, bool art)
+    Element SurfaceRow(QueuePanelProps props, in QueueRowProps row, bool art)
     {
-        var verbs = props.Verbs;
-        EntityRef r = row.Ref;
-        ulong itemId = row.ItemId;
-        int index = row.Index;
-        bool viewer = props.Queue.Viewer;
-        Action skip = () => verbs.Play(itemId, index, r);
-        // The heart and the ✕ are built from their data (the verbs, the entry, the row's uri and title, the tier) by a static builder, so an
-        // unchanged row is an equal push and its surface does not re-render when the panel does (Controls.FromData; WinUI and Zune do the same).
-        Element trailing = Controls.FromData((verbs, itemId, index, r, row.Removable, text.Uri, text.Title, _tier),
-            static d => RowTrailing(d.Uri, d.Title, d.Removable, () => d.verbs.Remove(d.itemId, d.index, d.r), d._tier));
-        var data = SurfaceData(r, text, art, click: skip, play: skip, draggable: row.Draggable, queueItem: itemId,
-                               menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
-        var shape = Shape.Row(TrackRowRules.ArtEdge(ClassicQueueRules.QueueArt, art)) with { MinHeight = _rowExtent };
+        // The surface is built from the row's DATA (the verbs, the entry, the skin, the tier and the lane's digest of what the row shows) by a
+        // static builder, so an unchanged row is an equal push and skips its render when the panel re-renders (WinUI and Zune do the same).
+        var face = new RowFace(props.Verbs, props.Lane, row.Ref, row.ItemId, row.Index, row.Removable, row.Draggable, props.Queue.Viewer, art,
+                               _tier, _rowExtent, props.Lane.RowStamp(row.Ref));
         return new BoxEl
         {
-            Key = props.Lane.RowKey("", itemId, index) + ":art=" + art,
+            Key = props.Lane.RowKey("", row.ItemId, row.Index) + ":art=" + art,
             Direction = 1, Opacity = ClassicQueueRules.Dim(row.Section),
             Enter = ClassicQueue.RowEnter,
             Exit = ClassicQueue.RowExit,
             Layout = LayoutTransition.Slide,
-            Children = [Controls.Surface(data, shape)],
+            Children = [Controls.FromData(face, s_rowSurface)],
         };
+    }
+
+    /// <summary>What a Modern row's surface is built from (<see cref="SurfaceRow"/>).</summary>
+    readonly record struct RowFace(IQueueVerbs Verbs, IQueueLane Lane, EntityRef R, ulong ItemId, int Index, bool Removable, bool Draggable,
+                                   bool Viewer, bool Art, ClassicPanelContentLayout Tier, float RowExtent, ulong Stamp);
+
+    static readonly Func<RowFace, Element> s_rowSurface = RowSurface;
+
+    static Element RowSurface(RowFace d)
+    {
+        var verbs = d.Verbs;
+        EntityRef r = d.R;
+        ulong itemId = d.ItemId;
+        int index = d.Index;
+        bool viewer = d.Viewer;
+        QueueRowText text = d.Lane.TextOf(r);
+        Action skip = () => verbs.Play(itemId, index, r);
+        Element trailing = RowTrailing(text.Uri, text.Title, d.Removable, () => verbs.Remove(itemId, index, r), d.Tier);
+        var data = SurfaceData(r, text, d.Art, click: skip, play: skip, draggable: d.Draggable, queueItem: itemId,
+                               menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
+        var shape = Shape.Row(TrackRowRules.ArtEdge(ClassicQueueRules.QueueArt, d.Art)) with { MinHeight = d.RowExtent };
+        return Controls.Surface(data, shape);
     }
 
     /// <summary>The hairline row: square, no art, title and artists folded into one line — a look the surface
@@ -383,7 +419,7 @@ internal sealed class ClassicQueuePanel : Component
             default:
             {
                 var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art, ShowExplicit: false,
-                                                       ShowVideo: true, Draggable: draggable,
+                                                       Draggable: draggable,
                                                        ShowMenu: QueueRowRules.ShowsMenuButton,
                                                        QueueItemId: queueItem, Trailing: trailing,
                                                        Tracked: false);   // the host re-pushes when a shown row changes (its rows digest)

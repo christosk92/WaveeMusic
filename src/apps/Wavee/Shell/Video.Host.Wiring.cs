@@ -28,6 +28,7 @@
 // Every decision above is a pure function tested by `VideoHostRulesTests`; the leaf only reads signals and forwards.
 
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using InfoBarSeverity = FluentGpu.Controls.InfoBarSeverity;
@@ -49,26 +50,32 @@ public static partial class Video
         Overrides.FakeClip = Platform.Args.FakeVideo;   // --fake --fake-video: in memory only (never in the roster, so never persisted)
         Overrides.BrokenLink -= OnBrokenLink;
         Overrides.BrokenLink += OnBrokenLink;
-        Playback.Video.InstallLog();
-        // At COMPOSITION, not on the first switch: the native component's load plus its whole MF/PlayReady import chain
-        // is part of what a cold `runtime.create` pays for, and it is the one warm that survives `PrepareAhead` being
-        // off. After `InstallLog`, so the warmup's own `[video.native]` lines land in the app's log.
-        Playback.Video.Boot();
+        Playback.Video.InstallLog();   // before any warm-up, so its `[video.native]` lines land in the app's log
         Playback.Video.OnOverrideFailed = OnOverrideFailed;
         Playback.Video.InstallResolver();   // IN FRONT of the resolver installed before (the modules' tier), never replacing it
-        Playback.OnVideoDemoted = OnDemoted;
+        Playback.OnVideoIntent = OnIntent;
         var s = State.Surface.Peek();
         var preferred = PlacementPersistence.LoadPlacement(Platform.Settings.Get(Platform.Keys.VideoPreferredPlacement), PlacementPolicy.Music);
         if (s.Preferred != preferred) State.Commit(s with { Preferred = preferred });
     }
 
-    /// <summary>G-142: the reducer spent the video's one retry and reloaded the row on the audio host at the carried
-    /// position. UI thread (the drain's Execute). The surface turns off through the ONE write path and the user is told.</summary>
-    static void OnDemoted(Playback.Fault why)
+    /// <summary>The reducer decided the video mode (<c>Effects.VideoIntent</c>). UI thread (the drain's Execute). ON opens the
+    /// preferred placement — folded first, a controller's switch may land before the row's facts did — unless it carries a
+    /// fault, which means "this row has no video; the mode stays for the next one". OFF turns the surface off (a controller's
+    /// switch to audio; a load demoted after its retry, G-142). A fault is always said. Every change goes through the ONE
+    /// write path, and the placement post it causes is a no-op echo in the reducer.</summary>
+    static void OnIntent(bool on, Playback.Fault why)
     {
-        Log.Info(State.LogCategory, "video demoted to audio after its retry — fault=" + why);
-        State.TurnOff();
-        Notify.Say(Loc.Get(DemotedToastKey), InfoBarSeverity.Warning, dedupeKey: "video.demoted");
+        Log.Info(State.LogCategory, "video intent on=" + (on ? "true" : "false") + " fault=" + why);
+        if (!on) State.TurnOff();
+        else if (why == Playback.Fault.None)
+        {
+            var s = State.Surface.Peek();
+            if (!PlacementCore.IsActive(s))
+                State.Commit(PlacementCore.OpenAt(UpgradeGate.FoldAvailability(s, true, State.HostCapability.Peek()), s.Preferred));
+        }
+        if (why != Playback.Fault.None)
+            Notify.Say(Loc.Get(DemotedToastKey), InfoBarSeverity.Warning, dedupeKey: "video.demoted");
     }
 
     /// <summary>An attached file failed to open: skip it for the rest of the session, so the reducer's retry resolves
@@ -93,7 +100,7 @@ public static partial class Video
 
     public static partial class State
     {
-        /// <summary>Fold the current row's availability (G-150). <paramref name="boundary"/>: the row just changed, so an
+        /// <summary>Fold the current row's availability (G-150). <paramref name="boundary"/>: the row's first ruling, so an
         /// upgrade may commit; otherwise only a downgrade does.</summary>
         public static void FoldForTrack(bool hasVideo, bool boundary)
         {
@@ -101,6 +108,11 @@ public static partial class Video
             if (BoundaryFold.Commits(in before, hasVideo, HostCapability.Peek(), boundary, out var folded)) Commit(in folded);
         }
     }
+
+    /// <summary>Does the deck's row carry a video the SURFACE offers, from its one source (<c>Playback.DeckVideo</c>)? Songs only:
+    /// a video podcast keeps its own story. The availability fold, the placement menu, the player bar and the now-playing face
+    /// all read this SAME answer, so the menu's "no video" reason never disagrees with the fold that stamped <c>Available</c>.</summary>
+    public static bool DeckHasVideo(in Playback.VideoFacts facts, EntityId id) => facts.HasVideo && id.Kind != EntityKind.Episode;
 
     // ── 2-4. the pure edges ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -201,16 +213,19 @@ public static partial class Video
                 Playback.Video.ApplyQualityCaps();
             });
 
-            // The availability fold: the row, its late catalogue lands, the host's capability. The placement is PEEKED —
-            // the fold writes it.
+            // The availability fold: the row's facts (Playback.DeckVideo), the host's capability. The placement is PEEKED —
+            // the fold writes it. TRI-STATE: a row nobody has ruled on yet keeps what the surface has (no Docked → None flash
+            // on a skip while the association is in the air); the FIRST ruling of a row is its boundary, so a late "has video"
+            // still opens the surface the reducer is about to swap the row onto; a later change of the same row is not.
             UseSignalEffect(() =>
             {
                 EntityId id = Playback.CurrentId.Value;
                 _ = State.HostCapability.Value;
-                bool hasVideo = CurrentHasVideo(subscribe: true);
+                var facts = Playback.DeckVideo.Value;
+                if (!facts.Known) return;
                 bool boundary = BoundaryFold.IsBoundary(_foldedFor, id);
                 if (!id.IsEmpty) _foldedFor = id;
-                State.FoldForTrack(hasVideo, boundary);
+                State.FoldForTrack(DeckHasVideo(in facts, id), boundary);
             });
 
             // The badge-lit prefetch (§3.1.5) AND the warm keeper (D15), one effect because they read the same facts.
@@ -220,6 +235,10 @@ public static partial class Video
             // what makes the second and third switch of a session near-instant and what keeps the native runtime up —
             // while one of them is PROTECTED (F165), and for the playing row alone once the surface is off but a video
             // was asked for this session (F218). The row the video host already owns is not re-warmed (F225).
+            // A FOREIGN owner's row is warmed too, its key and the runtime only (no segments, no next row): "Play here" on a
+            // video row then finds the native runtime up and the key in its cache instead of paying the whole 1.2-1.4 s
+            // bring-up plus a cold challenge (sid=996ef8e4: 1.8-2.1 s to the first frame). The keeper's own rules decide
+            // whether it is wanted: the surface on (Beats), or a video asked for this session (WarmsOnIntent).
             UseSignalEffect(static () =>
             {
                 EntityRef row = Playback.Current.Value;
@@ -227,23 +246,33 @@ public static partial class Video
                 bool onVideoHost = Playback.VideoActive.Value;
                 var placement = State.Surface.Value;
                 bool metered = Platform.Network.Metered.Value;
-                bool local = Playback.OwnerSignal.Value != Playback.Owner.Foreign;   // a controller's row is not ours to fetch
+                bool local = Playback.OwnerSignal.Value != Playback.Owner.Foreign;   // a controller's row: its key, never its media
                 // Audio ALWAYS wins: while a track is opening, the keeper does not touch the api pool (§3.1.4). Reading
                 // the phase here is what re-runs this effect — and re-arms the beat — the moment the open lands.
                 bool audioBusy = Playback.PhaseSignal.Value == Playback.Phase.Loading;
                 if (Entities.Current is { } scope) _ = scope.Edges.Queue.Changed.Value;   // the next queued row moved
-                if (Platform.Args.Fake || !local || id.Provider != EntityProvider.Spotify)
+                if (Platform.Args.Fake || id.Provider != EntityProvider.Spotify)
                 {
                     Playback.Video.KeepWarm(Playback.Video.WarmRequest.Off);
                     return;
                 }
 
                 bool videoOn = PlacementPost.WantsVideo(in placement, State.HostCapability.Peek());
-                bool hasVideo = CurrentHasVideo(subscribe: true);
-                string gid = hasVideo ? Entities.Strings.Resolve(new Track(row.Slot).VideoGidId) : "";
+                var facts = Playback.DeckVideo.Value;
+                bool hasVideo = DeckHasVideo(in facts, id);
+                string gid = hasVideo && !facts.ManifestId.IsEmpty ? Entities.Strings.Resolve(facts.ManifestId) : "";
+                // A video-capable row PLAYING is also what boots the PlayReady component (the DLL and the CDM's one-time
+                // initialisation, Playback.Video.Boot): the keeper's one warm-up path, so a user who only plays songs pays nothing.
+                bool playing = Playback.PhaseSignal.Value == Playback.Phase.Playing;
+                if (!local)
+                {
+                    Playback.Video.KeepWarm(new Playback.Video.WarmRequest(
+                        videoOn, audioBusy, hasVideo ? id : default, gid, default, "", HostOwns: false, Playing: playing));
+                    return;
+                }
                 NextVideoRow(out EntityId nextId, out string nextGid);
                 Playback.Video.KeepWarm(new Playback.Video.WarmRequest(
-                    videoOn, audioBusy, hasVideo ? id : default, gid, nextId, nextGid, HostOwns: onVideoHost));
+                    videoOn, audioBusy, hasVideo ? id : default, gid, nextId, nextGid, HostOwns: onVideoHost, Playing: playing));
 
                 if (onVideoHost || !hasVideo) return;
                 var already = Playback.Video.PrefetchedLevel(id);
@@ -278,22 +307,10 @@ public static partial class Video
                 var t = new Track(r.Slot);
                 if (!t.IsValid || !t.HasVideo) continue;
                 id = t.Id;
-                manifestId = Entities.Strings.Resolve(t.VideoGidId);
+                StringId gid = t.ManifestGidId;
+                manifestId = gid.IsEmpty ? "" : Entities.Strings.Resolve(gid);
                 return;
             }
-        }
-
-        /// <summary>Does the playing row carry a video (catalogue or attachment)? Subscribing reads the tracks table's
-        /// publication, so a kind-99 land re-runs the caller. Internal (not private): <c>PlacementMenu</c>
-        /// (<c>Video.UI.cs</c>) reads this SAME source with <c>subscribe: false</c> so the menu's "no video" reason
-        /// never disagrees with the fold that stamped <c>Available</c>.</summary>
-        internal static bool CurrentHasVideo(bool subscribe)
-        {
-            EntityRef row = Playback.Current.Value;
-            if (row.Kind != EntityKind.Track || row.IsNone || Entities.Current is not { } scope) return false;
-            if (subscribe) _ = scope.Tracks.Changed.Value;
-            var t = new Track(row.Slot);
-            return t.IsValid && t.HasVideo;
         }
     }
 }

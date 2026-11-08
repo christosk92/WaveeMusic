@@ -26,6 +26,8 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 
+using Wavee.Theming;
+
 namespace Wavee;
 
 public static partial class Shell
@@ -618,6 +620,11 @@ public static partial class Shell
         // it cuts at the first NUL (privacy-diagnostics audit #16, G10).
         int nul = uriOrUrl.IndexOf('\0');
         if (nul >= 0) uriOrUrl = uriOrUrl[..nul];
+
+        // A Spotify entity in either spelling (`spotify:album:…`, `https://open.spotify.com/intl-de/album/…?si=…`): the
+        // opt-in `spotify:` handler, a toast, a pasted link and an in-app link click share ONE path with `wavee://`.
+        if (TryEntityOfLink(uriOrUrl, out string entity)) return EntityVerb(entity, developerMode);
+
         if (!TryParseVerb(uriOrUrl, out string name, out string route, out string arg, out string ctx, out string link, out string query))
             return default;
 
@@ -669,10 +676,6 @@ public static partial class Shell
     {
         name = route = arg = ctx = link = query = "";
         if (raw.IsWhiteSpace()) return false;
-
-        // A bare `spotify:` entity uri, so the opt-in `spotify:` handler shares ONE activation path with `wavee://`.
-        if (TryParseSpotifyUri(raw, out name, out route, out arg, out ctx)) return true;
-
         if (!TryExtractUri(raw, out string text)) return false;
         if (!Uri.TryCreate(text, UriKind.Absolute, out Uri? uri)) return false;
         if (!string.Equals(uri.Scheme, "wavee", StringComparison.OrdinalIgnoreCase)) return false;
@@ -690,53 +693,68 @@ public static partial class Shell
         return true;
     }
 
-    /// <summary>A bare Spotify entity uri. Pages become an OPEN on the shell's own route names; a PLAYABLE track
-    /// becomes a PLAY — which is what clicking a shared link to one means, and gating it on Track alone is why a
-    /// shared track link fell through to "route is null ⇒ refuse" and did nothing at all. An episode is now an OPEN
-    /// too (decision D-2, podcast plan §12): a shared episode link lands on the episode page, whose primary is one
-    /// click from playing, rather than starting playback the instant the link is followed. A <c>spotify:user:&lt;id&gt;</c>
-    /// opens that person's profile page (#161). Everything else (concerts, search links,
-    /// <c>https://open.spotify.com/…</c> web links) is refused, not guessed at.</summary>
-    static bool TryParseSpotifyUri(ReadOnlySpan<char> raw, out string name, out string route, out string arg, out string ctx)
+    /// <summary>A Spotify entity, as the verb following its link means. Pages become an OPEN through <see cref="For"/> (the ONE
+    /// entity → route composer, so a link, a menu and a sidebar row mint the same key); a PLAYABLE track becomes a PLAY,
+    /// which is what clicking a shared link to one means (a track has no page). An episode is an OPEN (decision D-2,
+    /// podcast plan §12): a shared episode link lands on the episode page, one click from playing. A user opens that
+    /// person's profile (#161), a concert its concert page, any Liked spelling Liked Songs. A kind no page renders (a
+    /// search, a genre) is refused here; <see cref="ResolveLink"/> then hands an https one to the browser.</summary>
+    static DeepLinkVerb EntityVerb(string uriText, bool developerMode)
     {
-        name = route = arg = ctx = "";
+        if (EntityUri.KindOf(uriText) is EntityKind.Track) return new DeepLinkVerb(DeepLinkKind.Play, default, Context: uriText);
+        var r = For(EntityUri.Parse(uriText));
+        return !r.IsNone && IsKnown(r, developerMode) ? new DeepLinkVerb(DeepLinkKind.Open, r) : default;
+    }
+
+    /// <summary>THE Spotify link parser: <c>spotify:&lt;kind&gt;:&lt;id&gt;</c>, or an <c>open.spotify.com</c> /
+    /// <c>play.spotify.com</c> web link (an <c>intl-xx</c> locale segment, an <c>embed</c> segment, a query such as
+    /// <c>?si=…</c>, a fragment and a trailing path such as <c>/discography/all</c> are all ignored) → the canonical
+    /// <c>spotify:</c> uri. The SHAPE is this parser's business; WHICH entity the uri addresses is EntityUri's, so an
+    /// unknown kind still answers true (and is refused by <see cref="EntityVerb"/>). The scheme and the kind are
+    /// lower-cased; the id stays verbatim (base62 IS case-sensitive). A <c>spotify:</c> uri must be exactly
+    /// <c>spotify:&lt;kind&gt;:&lt;id&gt;</c>: the nested spellings are refused rather than guessed at.</summary>
+    public static bool TryEntityOfLink(ReadOnlySpan<char> raw, out string uriText)
+    {
+        uriText = "";
         ReadOnlySpan<char> s = raw.Trim();
         if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') s = s[1..^1].Trim();
-        if (!s.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase)) return false;
-
-        // spotify:<kind>:<id> — reject the nested/extra-segment forms rather than guessing.
-        ReadOnlySpan<char> rest = s["spotify:".Length..];
-        int colon = rest.IndexOf(':');
-        if (colon <= 0 || colon + 1 >= rest.Length) return false;
-        ReadOnlySpan<char> kind = rest[..colon];
-        ReadOnlySpan<char> id = rest[(colon + 1)..];
-        if (id.IndexOf(':') >= 0 || id.IndexOfAny(' ', '\t', '"') >= 0) return false;
-
-        // The SHAPE is this parser's business; WHICH entity it addresses is EntityUri's. Lower-case the scheme and the
-        // kind (the id stays verbatim — base62 IS case-sensitive).
-        string uriText = string.Concat("spotify:", kind.ToString().ToLowerInvariant(), ":", id.ToString());
-        var entityKind = EntityUri.KindOf(uriText);
-        if (entityKind is EntityKind.Track)
+        if (s.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase))
         {
-            name = "play";
-            ctx = uriText;
+            ReadOnlySpan<char> rest = s["spotify:".Length..];
+            int colon = rest.IndexOf(':');
+            if (colon <= 0 || colon + 1 >= rest.Length) return false;
+            ReadOnlySpan<char> kind = rest[..colon], id = rest[(colon + 1)..];
+            if (!IsLinkId(id)) return false;
+            uriText = string.Concat("spotify:", kind.ToString().ToLowerInvariant(), ":", id.ToString());
             return true;
         }
-        route = entityKind switch
-        {
-            EntityKind.Album => "album",
-            EntityKind.Playlist => "pl",
-            EntityKind.Artist => "artist",
-            EntityKind.Show => "show",
-            EntityKind.Episode => "episode",
-            EntityKind.User => "user",
-            _ => "",
-        };
-        if (route.Length == 0) return false;
-        name = "open";
-        arg = uriText;
+        if (s.Length > MaxLinkChars || !s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!Uri.TryCreate(s.ToString(), UriKind.Absolute, out Uri? web)
+            || (web.Scheme != Uri.UriSchemeHttps && web.Scheme != Uri.UriSchemeHttp)
+            || !(web.Host.Equals("open.spotify.com", StringComparison.OrdinalIgnoreCase)
+                 || web.Host.Equals("play.spotify.com", StringComparison.OrdinalIgnoreCase))) return false;
+
+        string[] seg = web.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int i = 0;
+        if (i < seg.Length && seg[i].StartsWith("intl-", StringComparison.OrdinalIgnoreCase)) i++;
+        if (i < seg.Length && seg[i].StartsWith("embed", StringComparison.OrdinalIgnoreCase)) i++;   // embed, embed-podcast
+        if (seg.Length - i < 2) return false;
+        string head = seg[i].ToLowerInvariant();
+        // /user/<u>/playlist/<id>: the legacy user-namespaced playlist — the playlist is the destination.
+        if (head == "user" && seg.Length - i >= 4 && seg[i + 2].Equals("playlist", StringComparison.OrdinalIgnoreCase))
+            (head, i) = ("playlist", i + 2);
+        string id2 = Uri.UnescapeDataString(seg[i + 1]);
+        if (head.Length == 0 || !IsLinkId(id2)) return false;
+        for (int k = 0; k < head.Length; k++) if (head[k] is not (>= 'a' and <= 'z' or '-')) return false;
+        uriText = string.Concat("spotify:", head, ":", id2);
         return true;
     }
+
+    /// <summary>A link is user content (a description, a feed row): a parse past this length is refused, not attempted.</summary>
+    const int MaxLinkChars = 2048;
+
+    static bool IsLinkId(ReadOnlySpan<char> id)
+        => id.Length is > 0 and <= 256 && id.IndexOfAny(':', '"', '/') < 0 && !id.ContainsAnyInRange('\u0000', ' ');
 
     static bool TryExtractUri(ReadOnlySpan<char> raw, out string uri)
     {
@@ -1028,7 +1046,14 @@ public static partial class Shell
     /// <summary>Which direction the NEXT page swap travels. The nav verbs write this BEFORE the route signal in the
     /// same flush, so the reconciler can <c>Peek</c> it (an untracked read — a motion-only write must never re-run the
     /// keep-alive boundary) and get the direction that belongs to the route it is about to activate.</summary>
-    public enum NavTransitionKind : byte { Forward, Back, Neutral }
+    public enum NavTransitionKind : byte
+    {
+        Forward, Back, Neutral,
+        /// <summary>Forward from the nav pane (a pin, a library entry): a top-level destination whatever the route, so a structure
+        /// with per-kind motion refreshes rather than drills (<see cref="SwapOf"/>). The core's fade-through treats it as Forward.
+        /// (winui page motion)</summary>
+        Top,
+    }
 
     /// <summary>The IDENTITY of a keep-alive page slot: which tab, which route. The nav DIRECTION is deliberately NOT
     /// part of it — direction decides how a swap animates, not which page is cached. Folding it in made a motion-only
@@ -1076,6 +1101,36 @@ public static partial class Shell
     public static bool NeedsVideoSafe(in Route from, in Route to)
         => from.Kind == RouteKind.Module || to.Kind == RouteKind.Module;
 
+    /// <summary>The kind of the swap from <paramref name="from"/> to <paramref name="to"/> that <paramref name="motion"/> moved
+    /// (<see cref="PageSwap"/>, what a structure's <see cref="PageMotionPolicy"/> answers per kind). A sibling in a pivot's order
+    /// slides by that order, Forward or Back; a nav pane step refreshes; Forward into an entity page drills in, Back out of one
+    /// drills back; any other Forward refreshes, any other Back refreshes back; a tab switch is neutral.</summary>
+    public static PageSwap SwapOf(in Route from, in Route to, NavTransitionKind motion)
+    {
+        if (motion == NavTransitionKind.Neutral) return PageSwap.Neutral;
+        int a = SiblingOrder(from.Kind), b = SiblingOrder(to.Kind);
+        if (a >= 0 && b >= 0 && a != b) return b > a ? PageSwap.SlideFromRight : PageSwap.SlideFromLeft;
+        if (motion == NavTransitionKind.Back) return IsDetail(from.Kind) ? PageSwap.DrillBack : PageSwap.RefreshBack;
+        if (motion == NavTransitionKind.Top) return PageSwap.Refresh;
+        return IsDetail(to.Kind) ? PageSwap.DrillIn : PageSwap.Refresh;
+    }
+
+    /// <summary>An entity page a card or a row opens (a route family keyed by its entity: album, artist, playlist, show, ...), not a
+    /// module's page.</summary>
+    static bool IsDetail(RouteKind kind) => kind != RouteKind.Module && Row(kind).IsPrefix;
+
+    /// <summary>The library's kinds in the order its pivot lists them (WinUI's Compact library head: Playlists, Albums, Artists,
+    /// Podcasts, Audiobooks); -1 for a route outside it.</summary>
+    static int SiblingOrder(RouteKind kind) => kind switch
+    {
+        RouteKind.LibraryPlaylists => 0,
+        RouteKind.LibraryAlbums => 1,
+        RouteKind.LibraryArtists => 2,
+        RouteKind.LibraryPodcasts => 3,
+        RouteKind.LibraryAudiobooks => 4,
+        _ => -1,
+    };
+
     static Design.NavTransitionKind MapMotion(NavTransitionKind motion) => motion switch
     {
         NavTransitionKind.Back => Design.NavTransitionKind.Back,
@@ -1109,15 +1164,15 @@ public static partial class Shell
         /// pointer. Equal to <see cref="RailWidth"/> at rest; <c>FrameRules.RailDragCommit</c> is the one commit rule.</summary>
         public static readonly FloatSignal RailDragWidth = new(RailDefaultW);
 
-        /// <summary>Docked music-video cap height in DIP. Floor is 16:9 of <see cref="RailWidth"/>; the vertical
-        /// splitter only grows from there.</summary>
+        /// <summary>Docked music-video cap height in DIP. Floor is 16:9 of <see cref="RailWidth"/>; the handle under the card
+        /// (<c>Rail.DockedVideoHandle</c>) only grows it from there, up to <see cref="DockedCapCeiling"/>.</summary>
         public static readonly FloatSignal DockedVideoHeight = new(DockedVideoNaturalH(RailDefaultW));
 
-        /// <summary>Has the user DELIBERATELY sized the docked cap for what is playing right now? False (the default)
-        /// means <see cref="DockedVideoHeight"/> follows the content's own aspect
-        /// (<see cref="FitDockedVideoHeight"/>), so a 16:9 stream fills the card edge to edge instead of sitting in
-        /// letterbox bars. The vertical splitter sets it on a committed drag; the docked surface CLEARS it when the
-        /// source changes.</summary>
+        /// <summary>Has the user DELIBERATELY sized the docked cap? False (the default) means <see cref="DockedVideoHeight"/>
+        /// follows the content's own aspect (<see cref="FitDockedVideoHeight"/>), so a 16:9 stream fills the card edge to edge
+        /// instead of sitting in letterbox bars. The handle sets it on a committed drag or a key step and it holds across tracks
+        /// and restarts (the persisted height is its memory: 0 = not pinned); a double-click on the handle clears it, and the
+        /// cap eases back to the content fit.</summary>
         public static readonly Signal<bool> DockedVideoHeightPinned = new(false);
 
         /// <summary>The rail column's laid-out height. The docked cap clamps against the remainder so a 560 DIP video
@@ -1185,7 +1240,7 @@ public static partial class Shell
     /// <summary>The one panel-width clamp: the active panel policy's bounds (Classic 200-500), or <paramref name="policy"/>'s.</summary>
     public static float ClampRailWidth(float w, Theming.PanelPolicy? policy = null) => ShellPolicy.PanelOr(policy).ClampWidth(w);
 
-    /// <summary>16:9 height of a full-bleed rail-width video cap (no inset). The splitter's floor — drag only grows
+    /// <summary>16:9 height of a full-bleed rail-width video cap (no inset). The handle's floor — a drag only grows
     /// from here.</summary>
     public static float DockedVideoNaturalH(float railW) => railW * 9f / 16f;
 
@@ -1212,9 +1267,13 @@ public static partial class Shell
     /// <param name="naturalH">The media's natural pixel height; ≤ 0 = not reported yet.</param>
     public static float DockedCapCeiling(float remainingRailH)
     {
-        float cap = remainingRailH > 0f && float.IsFinite(remainingRailH) ? remainingRailH : DockedVideoMaxH;
+        float cap = remainingRailH > 0f && float.IsFinite(remainingRailH) ? remainingRailH - DockedVideoKeepBelowH : DockedVideoMaxH;
         return Math.Clamp(cap, DockedVideoFitMinH, DockedVideoMaxH);
     }
+
+    /// <summary>What the panel keeps UNDER the docked cap at its tallest: the handle, the panel's head and the playing track's title stay
+    /// in view however far the card is dragged (or however tall a portrait stream fits).</summary>
+    public const float DockedVideoKeepBelowH = 200f;
 
     public static float FitDockedVideoHeight(float railW, int naturalW, int naturalH, float remainingRailH = DockedVideoMaxH)
     {
@@ -1341,10 +1400,9 @@ public static partial class Shell
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
                 RightWMax: 0f,
                 ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit));
-            // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,
-            // hasVideo: true). The live cluster is that or the same less the split (the one state input, user decision
-            // 2026-09-16); the 300-DIP seek-bar floor and any arithmetic that must hold in the widest case use this.
-            return layout with { RightWMax = PlayerBarRules.RightWidth(in layout, hasVideo: true) };
+            // The right cluster's width at this tier (PlayerBarRules.RightWidth: the level's slots, the video split's whatever the track);
+            // the 300-DIP seek-bar floor and any arithmetic over the cluster use this.
+            return layout with { RightWMax = PlayerBarRules.RightWidth(in layout) };
         }
     }
 

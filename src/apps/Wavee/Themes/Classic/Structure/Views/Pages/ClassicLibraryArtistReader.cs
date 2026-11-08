@@ -36,12 +36,16 @@ internal static partial class ClassicLibraryArtistReader
         public Func<RowScope, Element>? ItemAt, DotAt;
         public Element? SubRail;
         public Signal<int>? RailScope, RailSort;
+        /// <summary>The borrowing structure's choice controls (contract 1.85), null in Classic.</summary>
+        public LibraryControlsStyle? Controls;
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.LibraryArtistReader"/>.</summary>
     public static Element Template(LibraryArtistReaderProps props, in ViewContext ctx)
     {
         var h = ctx.Hooks.UseRef(new Holder()).Value;           // before the guard: one hook order on every path
+        var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
+        h.Controls = registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var controls) ? controls : null;
         if (props.Vacant) return new BoxEl();
         h.Props = props;
         // The bound templates run ONCE per slot and are frozen at mount: they read the current props through the holder.
@@ -258,13 +262,13 @@ internal static partial class ClassicLibraryArtistReader
         if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort)) return h.SubRail.Value;
         h.RailScope = scope;
         h.RailSort = sort;
-        return (h.SubRail = SubRail(p.Host, scope, sort)).Value;
+        return (h.SubRail = SubRail(p.Host, scope, sort, h.Controls)).Value;
     }
 
     /// <summary>The two word rails — scope (in your library · all releases · N) — spacer — sort (newest · oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. A PLAIN
     /// section on the content card (Y1): no band fill, the 1-DIP divider under it is the edge. A pinned direct child of the content paints ABOVE the blocks sliding under it
     /// (<c>NodeFlags.StickyPinned</c>); what stops a track row showing through it is the list's pinned clip inset (<see cref="Artist.ReaderShape.SubRailH"/>).</summary>
-    static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort) => new BoxEl
+    static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort, LibraryControlsStyle? styled) => new BoxEl
     {
         Direction = 1, Shrink = 0f, Height = Artist.ReaderShape.SubRailH, MinWidth = 0f,
         Children =
@@ -273,11 +277,18 @@ internal static partial class ClassicLibraryArtistReader
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
                 Padding = new Edges4(ClassicTiers.PaneInset, Artist.ReaderShape.SubRailPadTop, ClassicTiers.PaneInset, Artist.ReaderShape.SubRailPadBottom),
-                Children =
-                [
-                    ClassicLibraryRails.ScopeRail(scope, host.ReleaseTotal, () => host.NarrowNow(), fill: true),   // the narrow arm folds "all · N"
-                    ClassicLibraryRails.ReaderSortRail(sort),
-                ],
+                // A borrowing structure's scope and sort (contract 1.85) stand where the rails do.
+                Children = styled is not null
+                    ?
+                    [
+                        styled.Scope(new LibraryScopeArgs(scope, host.ReleaseTotal, () => host.NarrowNow())),
+                        styled.ReaderSort(new LibraryReaderSortArgs(sort)),
+                    ]
+                    :
+                    [
+                        ClassicLibraryRails.ScopeRail(scope, host.ReleaseTotal, () => host.NarrowNow(), fill: true),   // the narrow arm folds "all · N"
+                        ClassicLibraryRails.ReaderSortRail(sort),
+                    ],
             },
             new BoxEl { Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
         ],

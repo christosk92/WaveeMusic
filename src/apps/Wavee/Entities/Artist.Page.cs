@@ -164,17 +164,16 @@ public readonly partial struct Artist
         // RowStamp's own Slot field is what keeps a reactivated page from aliasing the previous artist's cache.
         RowStamp _popularStamp, _popularImageStamp, _appearsStamp, _playlistsStamp, _videosStamp, _fansStamp, _latestStamp;
 
-        /// <summary>THE CHART DEMAND LATCH (tuned Classic D19): the (scope, artist, popular-list version) whose charted rows
-        /// <see cref="DemandRows"/> has asked. The chart gate reads the rows' marks only for that list
-        /// (<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/>); a signal, so the render after the ask re-reads the gate.</summary>
-        readonly Signal<(uint Epoch, int Slot, uint Version)> _chartRowsAsked = new((0u, Table.None, 0u));
-
-        /// <summary>THE OVERVIEW DEMAND LATCH: the (scope, artist) <see cref="Demand"/> has asked the overview for. Before it, an overview group nobody asks for
-        /// is "not asked yet"; after it, one nobody asks for any more (the planner gave up on it: a seal after repeated misses, a terminal failure) is never
-        /// coming, and the page fails to its Retry instead of shimmering for the life of the route (IVE, owner video 2026-10-25: the overview was missing a
-        /// group the planner no longer asked, the chart answered, and the skeleton stood until the owner left). A signal, so the render after the ask
-        /// re-reads the gate.</summary>
-        readonly Signal<(uint Epoch, int Slot)> _overviewAsked = new((0u, Table.None));
+        /// <summary>THE REVEAL GATE, as ONE tracked derivation (<see cref="ReadGate"/>): the overview's state and the chart's
+        /// verdict, read through the store's total state (<see cref="Table.Observe"/>, <see cref="EdgeTableBase.Observe"/>), so
+        /// the memo subscribes to exactly what it reads — the artist row, the popular relation, the charted rows — and a gate
+        /// input landing in any of them re-reads it (the owner's Fly By Midnight artist, 2026-11-07: the charted rows were the
+        /// last answer, and a hand-written subscription list had left them out). Equality-cut: the page re-renders only when
+        /// the verdict moves.</summary>
+        readonly record struct Gate(GroupState Overview, ArtistReadiness.ChartVerdict Chart, ArtistReadiness.ChartGateReason Reason);
+        readonly Func<Gate> _gateFn;
+        /// <summary>The failure this page last logged (`page.failed`), so the line is said once per stop, not per render.</summary>
+        GroupState _failedNoted = GroupState.Unasked;
 
         /// <summary>The hero photo's LATCHED art identity (ch 08 BUG E, <see cref="Detail.CoverLatch"/>): the incoming
         /// candidate (the avatar the card already carried, later the header once the overview lands) only replaces what
@@ -226,6 +225,7 @@ public readonly partial struct Artist
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
             _retry = RetryPage;
+            _gateFn = ReadGate;
             _play = Play;
             _shuffle = Shuffle;
             _radio = Radio;
@@ -311,12 +311,9 @@ public readonly partial struct Artist
             // Version/Readiness values Render, PlanSections and the view's Compose actually paint (the PUSH — Memo's push-pull equality
             // cut-off), so an unrelated artist's shelf landing elsewhere recomputes this cheaply without re-rendering
             // the whole page. See Stamp()'s doc for the exact dependency table.
+            // The REVEAL GATE is its own tracked derivation (ReadGate), so the fold covers only what the page paints.
             _ = UseComputed(_stampFn).Value;
-            // THE ONE EXCEPTION (ch 08 §9): ArtistReadiness.Chart/ChartFailed additionally read every popular
-            // track's Known/Asked/Inflight bits (up to ArtistPopularTracks.ExtendedCap rows), which change per
-            // in-flight row — folding them would cost as much as just re-rendering on them. Kept as a literal
-            // table-wide subscription, same as before.
-            _ = e.ArtistPopular.Changed.Value;
+            Gate gate = UseComputed(_gateFn).Value;
             UseEffect(_demand, DepKey.From(a.Slot, (int)scopeEpoch));   // once per artist per scope
             UseEffect(_demandRows);                                       // re-runs as the lists land
             UseEffect(_publishAccent);                                    // the watched chrome accent
@@ -336,12 +333,11 @@ public readonly partial struct Artist
             _metrics = ShellPolicy.Tracked.ArtistTiers.Hero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
             _bandClear = ShellPolicy.Tracked.ArtistTiers.BandClearance(in tierFacts);
 
-            _ready = ArtistReadiness.Overview(a);
-            bool overviewPending = a.IsValid
-                && ((scope.Artists.Asked[a.Slot] & (uint)ArtistFields.Overview) != 0 || scope.Artists.Inflight[a.Slot] != 0);
-            bool overviewStopped = a.IsValid && !_ready && _overviewAsked.Value == (scope.Epoch, a.Slot)
-                && ArtistSections.OverviewStopped(scope.Artists.Known[a.Slot], scope.Artists.Asked[a.Slot], scope.Artists.Inflight[a.Slot]);
-            _failed = !a.IsValid || overviewStopped || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot));
+            // The overview renders as a unit; a stopped overview (Absent: the answers settled without it; Failed: the ask
+            // failed, the session unreachable) is the page's error vacancy with Retry. No timer decides it: the store's state does.
+            _ready = gate.Overview == GroupState.Known;
+            _failed = !a.IsValid || PageReadiness.Stopped(gate.Overview);
+            NoteFailed(p.RouteKey, gate.Overview);
 
             string routeKey = p.RouteKey;
             string? paletteUrl = a.IsValid ? Controls.ArtUrl(a.PaletteImageId) : null;
@@ -395,8 +391,7 @@ public readonly partial struct Artist
 
             // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
             // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
-            bool chartRowsAsked = a.IsValid && _chartRowsAsked.Value == (scope.Epoch, a.Slot, e.ArtistPopular.Version(a.Slot));
-            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, chartRowsAsked));
+            bool chartSettled = gate.Chart != ArtistReadiness.ChartVerdict.Pending;   // ready, or stopped (the chart shows its own Retry)
             _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
             if (_bodyReady) _heroGateOpened = true;
 
@@ -563,19 +558,43 @@ public readonly partial struct Artist
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             int at = Array.IndexOf(_pivot, (ArtistSection)section, 0, _pivotCount);
+            int from = _active.Peek();
             if (at >= 0)
             {
                 _spyHold = at;
                 _spyHoldUntil = Environment.TickCount64 + SpyHoldMs;
                 _active.SetIfChanged(at);
             }
+            // A structure whose pivot slides its sections (WinUI): park the section at once and slide what then shows in from the side the
+            // tab order points to. Otherwise the glide.
+            if (PivotCascade(at >= 0 ? at : from, from) is { } slide && Context.EntranceCascade is { } cascade)
+            {
+                scene.BringIntoView(_viewport, node, align: 0f, ScrollMove.Immediate, margin: _bandClear);
+                cascade(_viewport, slide);
+                return;
+            }
             scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(),
                 margin: _bandClear);
         }
 
+        /// <summary>The structure's pivot slide for a step from tab <paramref name="from"/> to <paramref name="to"/> (the overview is
+        /// <see cref="Detail.BandLayout.NoSection"/>, before every tab), or null: none declared (or none under reduced motion), or no step.</summary>
+        static EntranceCascade? PivotCascade(int to, int from)
+            => to == from ? null
+             : Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Pivot?.Invoke(to > from);
+
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
         /// hero. A raw offset, not <see cref="GoToSection"/> — the top of the page has no section anchor to bring in.</summary>
-        void ScrollToTop() => _scroll.ScrollTo(0.0, GlideOrJump());
+        void ScrollToTop()
+        {
+            if (PivotCascade(Detail.BandLayout.NoSection, _active.Peek()) is { } slide && Context.EntranceCascade is { } cascade && !_viewport.IsNull)
+            {
+                _scroll.ScrollTo(0.0, ScrollMove.Immediate);
+                cascade(_viewport, slide);
+                return;
+            }
+            _scroll.ScrollTo(0.0, GlideOrJump());
+        }
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through,
         /// stopping at the first unrealized section; the pivot re-renders only when the answer changes.</summary>
@@ -687,15 +706,44 @@ public readonly partial struct Artist
         /// <summary>The whole model on mount (ch 08 §7), through what exists: the overview + the chart bit, the chart and
         /// concert edges ONLY while nobody has answered, the three facets. The seed marks everything complete, so an
         /// offline page reaches no network. Also the Retry.</summary>
-        /// <summary>The failed page's Retry: ask the artist's groups again past whatever the planner gave up on (<c>Refresh</c> clears the asks and the miss
-        /// count; a plain <see cref="Demand"/> would skip a sealed group and fail again at once), then demand as on mount.</summary>
+        /// <summary>The failed page's Retry: ask for EVERYTHING the reveal gate waits on again, past any seal — the artist's groups (the overview and
+        /// the chart bit; <c>Refresh</c> clears the asks and the miss count, where a plain <see cref="Demand"/> would skip a sealed group and fail again
+        /// at once), the popular list while it is not complete, and the charted rows' shape (the chart host's own Retry asks the same) — then demand as
+        /// on mount. The re-ask moves the stopped groups back in flight and publishes, so the vacancy gives way to the skeleton on the next frame.</summary>
         void RetryPage()
         {
             var a = _artist;
             if (!a.IsValid) return;
             int slot = a.Slot;
-            Entities.Refresh(Entities.Current.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.All);
+            var scope = Entities.Current;
+            Entities.Refresh(scope.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.All);
+            if (scope.Edges.ArtistPopular.State(slot) != EdgeState.Complete) Entities.RefreshEdge(FetchEdge.ArtistPopular, slot);
+            var popular = scope.Edges.ArtistPopular.Targets(slot);
+            if (popular.Length > 0) Entities.Refresh(scope.Tracks, popular, (uint)(TrackFields.Row | TrackFields.Video));
             Demand();
+        }
+
+        /// <summary>THE REVEAL GATE's compute (the <c>UseComputed</c> body; <see cref="Gate"/>): the overview's total state and the chart's verdict, every
+        /// input read through its tracked accessor, so what this memo subscribes to IS what it depends on. The props and the scope generation are read
+        /// first, so a re-pointed page re-derives against its new tables.</summary>
+        Gate ReadGate()
+        {
+            _ = Entities.ScopeEpoch.Value;
+            _ = _props.Value;
+            var a = _artist;
+            if (!a.IsValid) return new Gate(GroupState.Failed, ArtistReadiness.ChartVerdict.Pending, ArtistReadiness.ChartGateReason.ChartPending);
+            var chart = ArtistReadiness.Explain(a);
+            return new Gate(ArtistReadiness.OverviewState(a), chart.Verdict, chart.Reason);
+        }
+
+        /// <summary>`page.failed route= waiting= state=`: the page turned into its error vacancy, and why (the overview's state: Absent = the answers
+        /// settled without it, Failed = the ask failed). Once per stop; a Retry that re-asks clears it.</summary>
+        void NoteFailed(string route, GroupState overview)
+        {
+            GroupState stopped = PageReadiness.Stopped(overview) ? overview : GroupState.Unasked;
+            if (stopped == _failedNoted) return;
+            _failedNoted = stopped;
+            if (stopped != GroupState.Unasked) PageReadiness.NoteFailed(route, "artist.overview", stopped);
         }
 
         void Demand()
@@ -704,7 +752,6 @@ public readonly partial struct Artist
             if (!a.IsValid) return;
             var e = Entities.Current.Edges;
             Entities.Ensure(a, ArtistFields.All);
-            _overviewAsked.Value = (Entities.Current.Epoch, a.Slot);
             if (e.ArtistPopular.State(a.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistPopular, a.Slot);
             DemandDiscography(a);
             if (e.ArtistConcerts.State(a.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistConcerts, a.Slot);
@@ -748,13 +795,9 @@ public readonly partial struct Artist
         /// <item>Gallery/Merch payload TEXT (pills, tiles) carries no separate target row — it lands whole with the
         /// edge's own <c>Replace</c>, so the edge's <c>Version(slot)</c> above is already the whole story.</item>
         /// </list>
-        ///
-        /// <para><b>Kept OUT of this fold</b> (too dynamic to fold cheaply, per the render-cost fix's own escape
-        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/> additionally
-        /// read every popular track's <c>Known</c>/<c>Asked</c>/<c>Inflight</c> bits (up to
-        /// <see cref="ArtistPopularTracks.ExtendedCap"/> rows, each landing independently) to decide the chart gate —
-        /// folding that is as expensive as just re-rendering on it. Render keeps a literal
-        /// <c>e.ArtistPopular.Changed</c> subscription instead, exactly as before.</para></summary>
+        /// <para>The REVEAL GATE is not folded here: it is its own tracked derivation (<see cref="ReadGate"/>), which subscribes to exactly the
+        /// rows and relations its verdict reads. Until 2026-11-07 the gate was folded into this hand-written list and the charted rows were left
+        /// out, so when they were the last answer (the owner's Fly By Midnight) nothing re-read the chart gate and the skeleton stood.</para></summary>
         long Stamp()
         {
             _ = Entities.ScopeEpoch.Value;                      // FIRST (ch 08 §9 / G-179): re-point every table below
@@ -788,10 +831,15 @@ public readonly partial struct Artist
             _ = e.ArtistLinks.Changed.Value;
             _ = e.ArtistConcerts.Changed.Value;
             _ = e.FollowedArtists.Changed.Value;
+            _ = e.ArtistPopular.Changed.Value;
 
             // ── the fold ──
             ulong h = RowFold.Row(RowFold.Seed, artists, slot);
             h = RowFold.Row(h, albums, a.Latest.Slot);
+
+            // The popular list's presence (PlanSections' Top-tracks slot reads its readiness and length).
+            h = RowFold.Add(h, (int)e.ArtistPopular.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistPopular.Readiness(slot));
 
             h = RowFold.Add(h, (int)e.ArtistAlbums.Version(slot));
             h = RowFold.Add(h, (int)e.ArtistSingles.Version(slot));
@@ -866,7 +914,6 @@ public readonly partial struct Artist
                 var popular = a.PopularSlots;
                 if (popular.Length > 0)
                     Entities.Ensure(MemoryMarshal.Cast<int, Track>(popular), TrackFields.Row | TrackFields.Video);
-                _chartRowsAsked.Value = (scope.Epoch, slot, e.ArtistPopular.Version(slot));
             }
 
             // The edge and its track rows can publish in different drains.  Repeat the bounded image prefetch when

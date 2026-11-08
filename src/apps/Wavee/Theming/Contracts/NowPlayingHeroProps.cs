@@ -1,16 +1,17 @@
-// ── Theming/Contracts/NowPlayingHeroProps.cs — the props of `Player.NowPlayingHero` and `Player.DeckStyleFlyout` (T6b) ───────
+// ── Theming/Contracts/NowPlayingHeroProps.cs — the props of `Player.NowPlayingHero` (T6b; the player style redesign 2026-11-08) ───────
 //
-// THE NOW-PLAYING PANE. Its pinned slot is the hero tile (`Player.NowPlayingHero`): a header strip (eyebrow, the Cover | Player
-// switch, the style gear) over EITHER the cover art OR the deck, with an art menu on the wrapper. The scrolling body under it
-// (credits, the About card, cities, merch, Next up) is drawn by the panel's now-playing arm from the same record.
+// THE NOW-PLAYING PANE. Its pinned slot is the hero tile (`Player.NowPlayingHero`): a header ("Now playing" and the style CHIP naming the
+// player style) over the STAGE, the art area that draws the style. The chip opens the in-place picker: the stage becomes a carousel of the
+// eleven styles, the header reads "Player style" with Cancel and Done, and the style's name, its one-line description, its finish swatches
+// (Vinyl, Pocket) and the dots sit under the stage. There is no pivot, no gear, no flyout and no option dial. The scrolling body under the
+// hero (credits, the About card, cities, merch, Next up) is drawn by the panel's now-playing arm from the same record.
 //
-// WHAT STAYED CORE. The deck itself (`Deck.View()`: the twelve faces, the clock, the spectrum) arrives as a builder: the hero
-// HOSTS it and never builds it, so a mode or theme switch re-mounts nothing the deck owns. Which face the hero paints is the
-// core's decision (`Rail.PlayerPrefs.ResolvedPresentation()`, developer-gated as today); the preset table and its reactive reads are
-// `Rail.PlayerCatalog` / `Rail.PlayerPrefs`. Every WRITE a view makes (a style, an option, the presentation, the flyout's open
-// flag) goes through <see cref="IDeckStyleVerbs"/>, attributed to the surface that made it. The "Next up" rows are the `Panel.NextUp` key
-// (`NextUp`); the lyrics peek is a core host that mounts `Player.LyricsPeek`, handed over as a builder; the entity subscriptions, the
-// demand and the string table are verbs.
+// WHAT STAYED CORE. The stage itself (`Deck.Stage`: the cover, the canvas, the deck faces, the carousel and its motion) arrives as a
+// builder: the hero HOSTS it and never builds it, so a mode or theme switch re-mounts nothing a deck owns. The style table and its reactive
+// reads are `Rail.PlayerCatalog` / `Rail.PlayerPrefs`; the picker's state is `Shell.StylePicker` (open, the focused style). Every WRITE a
+// view makes (open, step, focus, a finish, Done, Cancel) goes through <see cref="IPlayerStyleVerbs"/>. The "Next up" rows are the
+// `Panel.NextUp` key (`NextUp`); the lyrics peek is a core host that mounts `Player.LyricsPeek`, handed over as a builder; the entity
+// subscriptions, the demand and the string table are verbs.
 //
 // WVTH006: sealed records with init-only members; the verbs object is one cached instance.
 
@@ -20,41 +21,34 @@ using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
-/// <summary>The surface that wrote a deck preference (the core logs it: without it "the style changed" is unattributable).</summary>
-public enum DeckStyleSource : byte { Header, Flyout, ArtMenu }
-
-/// <summary>Every write the now-playing pane's views make to the deck's content preferences.</summary>
-public interface IDeckStyleVerbs
+/// <summary>Every write the now-playing hero's style chip and picker make.</summary>
+public interface IPlayerStyleVerbs
 {
-    /// <summary>Pick a player style from the flyout. Picking a player ALSO shows it.</summary>
-    void SetStyle(int id);
+    /// <summary>The chip: open the picker on the stored style.</summary>
+    void OpenPicker();
 
-    /// <summary>Pick one option of a style from the flyout (the index is clamped against the option's choices).</summary>
-    void SetChoice(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option, int index);
+    /// <summary>The arrows: one style back (−1) or on (+1), round the ring.</summary>
+    void Step(int delta);
 
-    /// <summary>A controlled mirror of one option's choice for a segmented row: a fresh one per render ON PURPOSE (the option SET
-    /// changes with the style, so a hook per option would be a conditional hook). The store, not the mirror, is the truth.</summary>
-    Signal<int> ChoiceMirror(in Rail.PlayerCatalog.Preset preset, in Rail.PlayerCatalog.OptionDef option);
+    /// <summary>A dot: focus that style.</summary>
+    void FocusOn(int styleId);
 
-    /// <summary>Show the cover (<see cref="Rail.PlayerPrefs.Cover"/>) or the player (<see cref="Rail.PlayerPrefs.Player"/>).</summary>
-    void SetPresentation(int presentation, DeckStyleSource source);
+    /// <summary>A finish swatch of the focused style (Vinyl, Pocket).</summary>
+    void SetFinish(int index);
 
-    /// <summary>Open the style flyout (the SAME popup the gear owns, from wherever it was asked).</summary>
-    void OpenStyleFlyout();
+    /// <summary>Done: store the focused style and close.</summary>
+    void Done();
 
-    /// <summary>The gear: open the flyout if it is closed, close it if open.</summary>
-    void ToggleStyleFlyout();
+    /// <summary>Cancel (Escape too): close with the stored style and finishes as they were.</summary>
+    void Cancel();
 }
 
-/// <summary>The props of <see cref="ViewKeys.DeckStyleFlyout"/>.</summary>
-public sealed record DeckStyleFlyoutProps
-{
-    /// <summary>The writes the flyout makes.</summary>
-    public required IDeckStyleVerbs Verbs { get; init; }
-
-    /// <summary>The playing track's cover url, read live (the "Album colour" swatch paints the cover's grading).</summary>
-    public required Func<string?> NowArtUrl { get; init; }
-}
+/// <summary>Builds the now-playing stage for a hero whose stage column sits inside <paramref name="chrome"/> DIP of horizontal padding (both
+/// sides together: the carousel's neighbours peek into it). <paramref name="cover"/> builds the theme's cover image (a cached delegate);
+/// <paramref name="corners"/> rounds the canvas as the cover is rounded. <paramref name="bleed"/> (a hero in a panel whose frame draws the
+/// edge-to-edge canvas) is the stage's height, given the panel's width, while the canvas fills the panel behind it: the stage then draws
+/// nothing and holds the room that puts the meta over the canvas's lower part (reactive: it may read the panel's height).</summary>
+public delegate Element StageView(float chrome, Func<Element> cover, CornerRadius4 corners, Func<float, float>? bleed = null);
 
 /// <summary>The props of <see cref="ViewKeys.NowPlayingHero"/> (and of the now-playing body the panel draws under it).</summary>
 public sealed record NowPlayingHeroProps
@@ -71,16 +65,38 @@ public sealed record NowPlayingHeroProps
     /// <summary>The panel's committed width (the hero's side is derived from it, quantised).</summary>
     public required IReadSignal<float> RailWidth { get; init; }
 
+    /// <summary>The panel's height, head included (what the edge-to-edge canvas's meta is placed against).</summary>
+    public required IReadSignal<float> RailHeight { get; init; }
+
     // ── the hero ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The deck (core). The hero places it under the keyed wrapper and never builds it.</summary>
-    public required Func<Element> Deck { get; init; }
+    /// <summary>The stage (core): the art area that draws the player style and becomes the picker's carousel. The hero places it and never
+    /// builds it. It measures its own column (a Compact sheet's is the window's, not the rail's); the CHROME (the hero's horizontal padding,
+    /// both sides together) answers before the first layout and is where the neighbours peek.</summary>
+    public required StageView Stage { get; init; }
 
-    /// <summary>Every write the hero and its flyout make.</summary>
-    public required IDeckStyleVerbs Style { get; init; }
+    /// <summary>Every write the hero's chip and picker make.</summary>
+    public required IPlayerStyleVerbs Style { get; init; }
 
-    /// <summary>The style flyout's props (the gear's popup mounts <see cref="ViewKeys.DeckStyleFlyout"/> with them).</summary>
-    public required DeckStyleFlyoutProps Flyout { get; init; }
+    /// <summary>Is the style picker open? Reactive (a render that reads it re-renders when the picker opens or closes).</summary>
+    public required Func<bool> Picking { get; init; }
+
+    /// <summary>The style the chip names and the strip shows: the focused one while picking, the stored one otherwise (`Rail.PlayerCatalog`
+    /// id). Reactive.</summary>
+    public required Func<int> ShownStyle { get; init; }
+
+    // ── the edge-to-edge canvas (the Canvas style at rest) ───────────────────────────────────────────────────────────
+
+    /// <summary>Does the canvas fill the panel now: the Canvas style, not picking, a canvas to play? Reactive. The panel's frame then draws
+    /// <see cref="BleedVideo"/> from its very top, behind the head, and the hero draws its rest face over it.</summary>
+    public required Func<bool> Bleeds { get; init; }
+
+    /// <summary>The edge-to-edge canvas for a panel this wide: the full width, width × 16/9 tall, its height easing as the width changes.
+    /// A layer the frame places at the top of the panel, under its head and body.</summary>
+    public required Func<float, Element> BleedVideo { get; init; }
+
+    /// <summary>Where playback comes from ("Playing from album" over the album's name), for a hero that names it.</summary>
+    public required Func<PanelSourceFacts> Source { get; init; }
 
     // ── the body under the hero ──────────────────────────────────────────────────────────────────────────────────────
 

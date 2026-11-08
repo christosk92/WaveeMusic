@@ -194,18 +194,23 @@ internal static class ZuneArtistSections
 
     static readonly Func<ShelfEntity, int, string> s_shelfKey = static (item, _) => item.Key;
     static readonly Func<float, float> s_squareHeight = static w => SurfaceGeometry.ShelfHeight(w);
+
+    /// <summary>A gallery photograph is a w x w square with no caption: the strip is exactly the square.</summary>
+    static readonly Func<float, float> s_galleryHeight = static w => w;
     static readonly SurfaceShape s_shelfShape = Shape.Shelf(captionLines: 2);
     static readonly Track.MenuOptions s_trackMenu = new(ShowGoToAlbum: true);
 
-    /// <summary>A shelf of fixed cards under the heading row, the chevrons at its end; one key at every width (the fit is a live prop).</summary>
+    /// <summary>A shelf of fixed cards under the heading row, the chevrons at its end; one key at every width (the fit is a live prop).
+    /// <paramref name="cardHeight"/> is the card's own extent at the card width, and every shelf states it: the strip (and its loading shims) is exactly
+    /// that tall, so a shelf of short or caption-less cards (the gallery's squares) never reserves a cover card's height.</summary>
     static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, float cardW,
-                           Func<float, float>? cardHeight = null, Action<ShelfEntity, int>? onInvoke = null)
+                           Func<float, float> cardHeight, Action<ShelfEntity, int>? onInvoke = null)
         => new BoxEl
         {
             Direction = 1, MinWidth = 0f,
             Children =
             [
-                PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight ?? s_squareHeight,
+                PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight,
                     header: K.Heading(title, null, null), measured: false, keyOf: s_shelfKey,
                     pager: ShelfPager.Chevrons | ShelfPager.WhenPaged, minCardW: cardW, maxCardW: cardW, fixedCardW: cardW, gap: Rules.ShelfGap, headerGap: Rules.HeadGap,
                     edgeFade: Rules.ShelfEdgeFade, prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
@@ -238,7 +243,7 @@ internal static class ZuneArtistSections
 
     static Element AppearsOnShelf(Artist a, ZuneArtistLayout lay)
         => ShelfOf(Items(a.AppearsOnSlots, EntityKind.Album, ArtistSections.AppearsOnCap), AlbumCard, Loc.Get(Strings.Artist.AppearsOn), lay.ShelfCardW,
-                   onInvoke: static (item, _) => OpenAlbum(item));
+                   s_squareHeight, static (item, _) => OpenAlbum(item));
 
     static void OpenAlbum(ShelfEntity item) => Track.GoToAlbum(new Album(item.Slot));
 
@@ -306,7 +311,7 @@ internal static class ZuneArtistSections
         for (int i = 0; i < n; i++)
             items[i] = new ShelfEntity(slots[i], new Playlist(slots[i]).Version, i < subtitles.Length ? subtitles[i] : default, 0,
                 slots[i].ToString(CultureInfo.InvariantCulture));
-        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), lay.ShelfCardW, onInvoke: static (item, _) => OpenPlaylist(item));
+        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), lay.ShelfCardW, s_squareHeight, static (item, _) => OpenPlaylist(item));
     }
 
     static void OpenPlaylist(ShelfEntity item) => ArtistVerbs.OpenPlaylist(new Playlist(item.Slot));
@@ -371,9 +376,15 @@ internal static class ZuneArtistSections
     };
 
     static Element MerchShelf(Artist a, ZuneArtistLayout lay)
-        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), lay.ShelfCardW);
+        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), lay.ShelfCardW, s_merchHeight);
 
-    /// <summary>Square art, the name, the price in accent ink; it opens the shop link when the row carries one.</summary>
+    /// <summary>The merch card's extent at a card width, the height the card is built at: the padding round the square art, the two gaps, the name's two
+    /// lines and the price's one (<see cref="ZuneArtistRules.MerchLine"/> each).</summary>
+    static readonly Func<float, float> s_merchHeight = static w
+        => Rules.MerchPad + (w - 2f * Rules.MerchPad) + 2f * Rules.MerchGap + (Rules.MerchNameLines + 1) * Rules.MerchLine + Rules.MerchPad;
+
+    /// <summary>Square art, the name, the price in accent ink; it opens the shop link when the row carries one. The card is <see cref="s_merchHeight"/>
+    /// tall (a two-line name's extent), so a two-line name never runs past the strip; on Zune's plateless card the price follows the name.</summary>
     static readonly Func<ShelfEntity, int, float, Element> s_merchCard = static (item, _, w) =>
     {
         ref readonly Merch merch = ref Album.MerchAt(item.Slot);
@@ -384,7 +395,7 @@ internal static class ZuneArtistSections
         bool link = shop.Length > 0;
         return new BoxEl
         {
-            Direction = 1, Gap = Rules.MerchGap, Width = w, Shrink = 0f, ClipToBounds = true, Padding = Edges4.All(Rules.MerchPad),
+            Direction = 1, Gap = Rules.MerchGap, Width = w, Height = s_merchHeight(w), Shrink = 0f, ClipToBounds = true, Padding = Edges4.All(Rules.MerchPad),
             Corners = R.Shape.All(ShapeRole.Tile), HoverFill = link ? R.Layer.RowHover : ColorF.Transparent, PressedFill = R.Layer.RowPressed,
             Role = link ? AutomationRole.Button : AutomationRole.None, Focusable = link, FocusVisualMargin = Design.FocusInsetRow,
             Cursor = link ? CursorId.Hand : null,
@@ -392,8 +403,8 @@ internal static class ZuneArtistSections
             Children =
             [
                 new BoxEl { ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(R.Shape.Cover), Children = [Controls.ArtworkFill(image, R.Shape.Cover)] },
-                K.Name(name) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
-                R.Type.DenseMeta(price) with { Color = Prop.Of(static () => R.Ink.AccentDecor), MaxLines = 1 },
+                K.Name(name) with { Wrap = TextWrap.Wrap, MaxLines = Rules.MerchNameLines, LineHeight = Rules.MerchLine },
+                R.Type.DenseMeta(price) with { Color = Prop.Of(static () => R.Ink.AccentDecor), MaxLines = 1, LineHeight = Rules.MerchLine },
             ],
         };
     };
@@ -419,13 +430,13 @@ internal static class ZuneArtistSections
             HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
             OnClick = () => open(urls, index),
             Children = [Controls.Artwork(urls[index], w, w, R.Shape.Cover, decodePx: Rules.GalleryDecode)],
-        }, Loc.Get(Strings.Artist.Gallery), lay.ShelfCardW);
+        }, Loc.Get(Strings.Artist.Gallery), lay.ShelfCardW, s_galleryHeight);
     }
 
     /// <summary>"Fans also like": round cards with the subtitle "artist" — the related artists, or the fallback pool of followed artists.</summary>
     static Element ArtistsShelf(ReadOnlySpan<int> slots, ZuneArtistLayout lay)
         => ShelfOf(Items(slots, EntityKind.Artist, ArtistSections.FansCap), ArtistCard, Loc.Get(Strings.Detail.FansAlsoLike), lay.ShelfCardW,
-                   onInvoke: static (item, _) => OpenArtist(item));
+                   s_squareHeight, static (item, _) => OpenArtist(item));
 
     static void OpenArtist(ShelfEntity item) => Track.GoToArtist(new Artist(item.Slot));
 

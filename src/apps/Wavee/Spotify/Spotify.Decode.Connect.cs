@@ -49,6 +49,10 @@ public static partial class Spotify
             public TextRef DecisionId;
             /// <summary><c>metadata["queued_by"]</c>: who the owner says queued the row, kept exactly (empty when it stated none).</summary>
             public TextRef QueuedBy;
+            /// <summary><c>metadata["associated_video_id"]</c>: the row's music-video manifest id as the owner offers it (32 hex).</summary>
+            public TextRef AssociatedVideoId;
+            /// <summary>The owner plays the row as VIDEO (<c>track_player</c> / <c>media.type</c> = "video").</summary>
+            public bool IsVideo;
             public long DurationMs;
         }
 
@@ -155,6 +159,9 @@ public static partial class Spotify
             public ClusterTrack Track;
             public bool IsPlaying, IsPaused, IsBuffering;
             public bool NoPrev, NoNext, NoSeek;
+            /// <summary>The video switches the owner OFFERS (<c>signals</c>, field 33) and lists in <c>disallow_signals</c> with a
+            /// reason (restrictions field 29), as <c>Playback.VideoSignals</c> bits: 1 = switch-to-video, 2 = switch-to-audio.</summary>
+            public byte VideoOffered, VideoDisallowed;
             public bool Shuffling;
             public RepeatMode Repeat;
             public long PositionAsOfMs, TimestampMs, ServerTimestampMs, DurationMs, ActiveStartedPlayingAt;
@@ -374,6 +381,12 @@ public static partial class Spotify
                                     case 3: delta.NoSeek |= !x.Bytes().IsEmpty; break;
                                     case 6: delta.NoPrev |= !x.Bytes().IsEmpty; break;
                                     case 7: delta.NoNext |= !x.Bytes().IsEmpty; break;
+                                    case 29:                       // disallow_signals: map<string, Reasons{ repeated string reasons = 1 }>
+                                        {
+                                            x.Message().Fields(1, 2, out var signal, out var reasons);
+                                            if (!new ProtoReader(reasons).Bytes(1).IsEmpty) delta.VideoDisallowed |= SignalBit(signal);
+                                            break;
+                                        }
                                     default: x.Skip(); break;
                                 }
                             }
@@ -411,6 +424,7 @@ public static partial class Spotify
                         }
                     case 23: delta.SessionId = into.AddText(r.Bytes()); break;
                     case 24: delta.QueueRevision = into.AddText(r.Bytes()); break;
+                    case 33: delta.VideoOffered |= SignalBit(r.Bytes()); break;   // signals: what the owner offers a controller
                     default: r.Skip(); break;
                 }
             }
@@ -421,6 +435,10 @@ public static partial class Spotify
             delta.PrevCount = prev;
             delta.MetaStart = metaStart < 0 ? 0 : metaStart;
         }
+
+        /// <summary>A video signal's wire name → its <c>Playback.VideoSignals</c> bit (0 for any other signal).</summary>
+        static byte SignalBit(ReadOnlySpan<byte> signal)
+            => signal.SequenceEqual("switch-to-video"u8) ? (byte)1 : signal.SequenceEqual("switch-to-audio"u8) ? (byte)2 : (byte)0;
 
         /// <summary>A `ProvidedTrack`. The display fields live in its `metadata` map — the map the remote fills so a
         /// controller can paint a row for a track it has never fetched — and the cover falls back through
@@ -468,7 +486,17 @@ public static partial class Spotify
             /// uri + uid, which is how the official client jumps to a row of the owner's queue. The inbound
             /// `next_track` decodes as <see cref="SkipNext"/>.</summary>
             NextTrack,
+            /// <summary>BOTH WAYS: the `signal` endpoint — a controller asking the owner to switch the row it plays between its audio
+            /// and its music video (<see cref="RemoteCommand.Signal"/>; itsover.saz 772/793). Never refused: an unknown
+            /// <c>signal_id</c> is acked and dropped, because a refusal caches the sender out of the endpoint for good.</summary>
+            Signal,
         }
+
+        /// <summary>The <c>signal_id</c> of a <see cref="RemoteCmd.Signal"/>: the two video switches, or one we do not act on.</summary>
+        public enum VideoSignal : byte { None, ToVideo, ToAudio }
+
+        /// <summary>The wire spelling of a video signal. PURE.</summary>
+        public static string SignalId(VideoSignal signal) => signal == VideoSignal.ToAudio ? "switch-to-audio" : "switch-to-video";
 
         /// <summary>One decoded remote command — a pure value, no strings (ported from `ConnectCommand.TryParse`).
         ///
@@ -489,7 +517,7 @@ public static partial class Spotify
         public readonly record struct RemoteCommand(
             RemoteCmd Kind, bool Ok, uint MessageId, long SeekToMs, bool BoolArg,
             EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey,
-            ulong TrackUidItemId = 0, ulong TrackUidHash = 0);
+            ulong TrackUidItemId = 0, ulong TrackUidHash = 0, VideoSignal Signal = VideoSignal.None);
 
         /// <summary>The dealer REQUEST body → a <see cref="RemoteCommand"/>. `Utf8JsonReader` over the raw bytes:
         /// no `JsonDocument`, no DOM, nothing allocated on a path that runs per controller keypress.</summary>
@@ -502,6 +530,7 @@ public static partial class Spotify
             long seek = 0;
             bool boolArg = false, ok = false;
             var track = default(EntityId);
+            var signal = VideoSignal.None;
 
             while (r.Read())
             {
@@ -510,15 +539,16 @@ public static partial class Spotify
                 // put-state echoes it exactly); narrowing to int threw in 0.2.9 and then clamped here until 2026-10.
                 if (r.ValueTextEquals("message_id"u8)) { r.Read(); messageId = (uint)Math.Clamp(Long(ref r), 0L, (long)uint.MaxValue); }
                 else if (r.ValueTextEquals("sent_by_device_id"u8)) { r.Read(); sender = Hash(ref r); }
-                else if (r.ValueTextEquals("command"u8)) { r.Read(); ok = Command(ref r, ref kind, ref seek, ref boolArg, ref session, ref track, ref uidItem, ref uidHash); }
+                else if (r.ValueTextEquals("command"u8)) { r.Read(); ok = Command(ref r, ref kind, ref seek, ref boolArg, ref session, ref track, ref uidItem, ref uidHash, ref signal); }
                 else r.Skip();
             }
 
             ulong dedupe = Fnv(Fnv(sender, messageId), (ulong)kind);
-            return new RemoteCommand(kind, ok, messageId, seek, boolArg, track, sender, session, dedupe, uidItem, uidHash);
+            return new RemoteCommand(kind, ok, messageId, seek, boolArg, track, sender, session, dedupe, uidItem, uidHash, signal);
 
             static bool Command(ref System.Text.Json.Utf8JsonReader r, ref RemoteCmd kind, ref long seek,
-                                ref bool boolArg, ref ulong session, ref EntityId track, ref ulong uidItem, ref ulong uidHash)
+                                ref bool boolArg, ref ulong session, ref EntityId track, ref ulong uidItem, ref ulong uidHash,
+                                ref VideoSignal signal)
             {
                 if (r.TokenType != System.Text.Json.JsonTokenType.StartObject) { r.Skip(); return false; }
                 int depth = r.CurrentDepth;
@@ -526,6 +556,14 @@ public static partial class Spotify
                 {
                     if (r.TokenType != System.Text.Json.JsonTokenType.PropertyName || r.CurrentDepth != depth + 1) continue;
                     if (r.ValueTextEquals("endpoint"u8)) { r.Read(); kind = Endpoint(ref r); }
+                    else if (r.ValueTextEquals("signal_id"u8))
+                    {
+                        r.Read();
+                        signal = r.TokenType != System.Text.Json.JsonTokenType.String ? VideoSignal.None
+                            : r.ValueTextEquals("switch-to-video"u8) ? VideoSignal.ToVideo
+                            : r.ValueTextEquals("switch-to-audio"u8) ? VideoSignal.ToAudio
+                            : VideoSignal.None;
+                    }
                     else if (r.ValueTextEquals("position"u8) || r.ValueTextEquals("value"u8))
                     {
                         r.Read();
@@ -590,6 +628,7 @@ public static partial class Spotify
                 if (r.ValueTextEquals("set_queue"u8)) return RemoteCmd.SetQueue;
                 if (r.ValueTextEquals("update_context"u8)) return RemoteCmd.UpdateContext;
                 if (r.ValueTextEquals("set_options"u8)) return RemoteCmd.SetOptions;
+                if (r.ValueTextEquals("signal"u8)) return RemoteCmd.Signal;
                 return RemoteCmd.Unknown;
             }
 

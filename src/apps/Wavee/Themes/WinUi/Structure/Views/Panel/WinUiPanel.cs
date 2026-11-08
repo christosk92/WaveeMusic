@@ -223,6 +223,37 @@ internal static class WinUiPanel
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
+    static readonly EnterExit BleedFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The edge-to-edge canvas (BleedWinUI): the panel's ground, the canvas over it from the top, its lower half fading into the ground
+    /// and the head's scrim. Shown while the Canvas style rests with a canvas to play; it fades in and out.</summary>
+    internal static Element Bleed(NowPlayingHeroProps np, float width)
+    {
+        float vh = MathF.Round(width * B.BleedAspect), fade = MathF.Round(vh * B.BleedFadeShare);
+        ColorF ground = Tok.FillSolidBase;
+        return Flow.Show(np.Bleeds, new BoxEl
+        {
+            // Shrink, no minimum and a clip: a canvas taller than the pane must not grow the pane's ZStack (it is cut at the pane's foot).
+            ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, HitTestVisible = false,
+            Enter = BleedFade, Exit = BleedFade, Transition = MotionTok.StandardEnter,
+            Children =
+            [
+                new BoxEl { Grow = 1f, Fill = ground },
+                np.BleedVideo(width),
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(B.BleedFadeFull, ground)),
+                },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, Height = B.BleedHeadScrimH,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = B.BleedHeadScrimA }), new GradientStop(1f, ground with { A = 0f })),
+                },
+            ],
+        });
+    }
+
     /// <summary>The Now playing tab: the pinned slot (the hero, or the docked video in its place), the sheet's transport, then "Next up".</summary>
     private static Element NowPlaying(PanelProps props, PanelView view, bool sheet)
     {
@@ -235,31 +266,20 @@ internal static class WinUiPanel
         return ScrollView(new BoxEl { Direction = 1, Children = kids.ToArray() }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
-    /// <summary>The docked video card with its splitter: the height cell the splitter writes and the card binds (a stable bind).</summary>
+    /// <summary>The docked video card over its resize handle: the card binds the height cell the handle writes (a stable bind) and the column hugs
+    /// both, so the content under them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card
+    /// takes every press on it), its grip the sheet grabber's pill.</summary>
     internal static Element DockedCap(PanelProps props, bool docked, float width)
     {
         Element video = props.DockedCard();
         if (!docked) return video;                                         // the card's own gate: zero size, no reflow
         return new BoxEl
         {
-            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
-            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Direction = 1, Shrink = 0f,
             Children =
             [
                 video,
-                new BoxEl
-                {
-                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
-                        {
-                            Min = props.DockedVideoMin(width),
-                            Max = props.DockedVideoMax(),
-                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
-                        }),
-                    ],
-                },
+                props.DockedVideoHandle(new DockedVideoGrip(F.GrabberW, F.GrabberH, F.GrabberH / 2f, Tok.FillControlStrong, F.DockedGripRest), width),
             ],
         };
     }
@@ -319,6 +339,7 @@ internal sealed class WinUiPanelFrame : Component
     Action? _close;
     bool _escapes;
     static readonly Action s_absorb = static () => { };
+    static readonly Element s_noBleed = new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
 
     public override Element Render()
     {
@@ -403,7 +424,9 @@ internal sealed class WinUiPanelFrame : Component
         var surface = new BoxEl
         {
             Key = F.SurfaceKey,
-            Direction = 1, Grow = sheet ? F.SheetShare : 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+            // Shrink (and the wrapper's below): the edge-to-edge canvas under the column is taller than the pane at a wide width, and must not
+            // stretch the pane, its body and its scroll past the host's clip.
+            Direction = 1, Grow = sheet ? F.SheetShare : 1f, Shrink = 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
             Corners = corners, HitTestVisible = open,                       // a closed pane is laid out off-canvas and unhittable
             // A docked pane beside the primary that is closed (its tier docks none, or it slid out and let its body go) leaves the tree: its head
             // was a second tab strip laid out under the primary's, clipped by its host, that `find` listed as shown.
@@ -436,6 +459,8 @@ internal sealed class WinUiPanelFrame : Component
                         },
                     ],
                 },
+                // The Canvas style at rest: the canvas fills the pane from its very top, under the tabs and the body.
+                body == PanelMode.NowPlaying && view.Pinned != PanelPinned.DockedVideo ? WinUiPanel.Bleed(props.NowPlaying, width) : s_noBleed,
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
         };
@@ -444,7 +469,7 @@ internal sealed class WinUiPanelFrame : Component
         // bottom, the room above it letting taps through to the frame's scrim; docked or floating, no room.
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, HitTestPassThrough = true,
+            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, HitTestPassThrough = true,
             Children = [new BoxEl { Grow = 1f - F.SheetShare, Basis = 0f, HitTestVisible = false, Visible = sheet }, surface],
         };
     }

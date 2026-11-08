@@ -7,7 +7,8 @@
 // bundle was already written for this run. Everything it does is logged to its OWN file, `handler.log`
 // (`<logFolder>\crash\handler.log`, append, one line per event) — never the app log, which this process never opens.
 //
-// Role: SHELL (Win32 P/Invoke; engine-free — no D3D, no window of its own, no FluentGpu type anywhere in this file)
+// Role: SHELL (Win32 P/Invoke; engine-free — no D3D, no window of its own; the one FluentGpu type here is the plain-data
+//       crash-trail decoder, FluentGpu.Foundation.CrashTrail, which reads the parent's trail file)
 // Owner: WP-B
 // Wave: crash-diagnostics
 // Spec: docs/plans/wavee/crash-diagnostics-implementation.md §B.0 (arm dispatch), §B.1 (capture table), §B.7 (hang
@@ -53,6 +54,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using FluentGpu.Foundation;
 using Microsoft.Win32.SafeHandles;
 
 namespace Wavee;
@@ -88,6 +90,11 @@ public static partial class Crash
         static nint s_parentHandle;
 
         static long s_lastBeatUnbiased;          // QueryUnbiasedInterruptTime at the last 'B'
+        static long s_lastLineUnbiased;          // ...at the last line of ANY kind: how long the parent was silent before it died
+        static FileStream? s_fatalText;          // the parent's stderr file (Crash.FatalText), held open so it outlives the parent
+        static FileStream? s_trailFile;          // the parent's crash trail (Crash.Trail), held open for the same reason
+        static string[]? s_parentModules;        // the parent's third-party module names, refreshed while it lives
+        static long s_modulesAtMs;
         static int s_suspendEpochAtLastBeat;      // the suspend epoch AS OF the last beat — a stale beat across sleep must not read as a hang
         static int s_suspendEpoch;
         static int s_firstFrameSeen;              // 0/1
@@ -113,6 +120,7 @@ public static partial class Crash
             s_logFolder = logFolder;
             s_logBasePath = logBasePath;
             s_lastBeatUnbiased = UnbiasedNow();
+            s_lastLineUnbiased = s_lastBeatUnbiased;
 
             try { Directory.CreateDirectory(Files.Root(logFolder)); } catch { }
             HandlerLog("handler.start");
@@ -124,8 +132,13 @@ public static partial class Crash
                 return 0;
             }
 
+            // The parent created its stderr file before spawning this process; holding it open keeps the delete-on-close
+            // file alive past the parent's exit, so OnParentExited can still read what the runtime wrote on its way out.
+            s_fatalText = FatalText.OpenForParent(logFolder, parentPid);
+            s_trailFile = Trail.OpenForParent(logFolder, parentPid);
+
             // Ready: the parent handle is open. Written BEFORE the reader thread starts so nothing else can interleave on stdout.
-            HandlerLog("handler.ready");
+            HandlerLog("handler.ready" + (s_fatalText is null ? "" : " stderr=held") + (s_trailFile is null ? "" : " trail=held"));
             WriteReply("R");
 
             var reader = new Thread(ReaderLoop) { IsBackground = true, Name = "crash-handler-stdin" };
@@ -194,6 +207,7 @@ public static partial class Crash
         static void HandleLine(string line)
         {
             if (line.Length == 0) return;
+            Interlocked.Exchange(ref s_lastLineUnbiased, UnbiasedNow());
             switch (line[0])
             {
                 case 'C':
@@ -289,15 +303,16 @@ public static partial class Crash
             if (DumpKinds.LatchesBundle(kind)) Interlocked.Exchange(ref s_bundleWrittenThisProcess, 1);
             // The order is the contract (header, "THE CHILD FINALIZES THE BUNDLE"): the fault is read FIRST, while the
             // parent is parked and its EXCEPTION_POINTERS is still a live frame; then the dump; then the one summary
-            // rewrite and the report trailer; only then the reply that lets the parent go.
-            FaultInfo fault = ptrs != 0 ? TryReadFault(ptrs) : default;
+            // rewrite and the report trailer; only then the reply that lets the parent go. A managed request's pointers
+            // are the parent's synthetic record over its own context (the dump's exception stream), not a fault to resolve.
+            FaultInfo fault = ptrs != 0 && kind == DumpKind.Native ? TryReadFault(ptrs) : default;
             bool ok = WriteMiniDump(dir, tid, ptrs, ptrs != 0);
             long bytes = ok ? DumpBytes(dir) : 0;
             try
             {
                 if (!Bundles.UpdateSummary(dir, s => fault.Resolved
-                        ? s with { HasDump = ok, DumpBytes = ok ? bytes : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false, FaultModule = fault.Module, FaultOffset = fault.Offset }
-                        : s with { HasDump = ok, DumpBytes = ok ? bytes : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false }))
+                        ? s with { HasDump = ok, DumpBytes = ok ? bytes : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false, FaultModule = fault.Module, FaultOffset = fault.Offset, DumpFlags = ok ? DumpFlags : null }
+                        : s with { HasDump = ok, DumpBytes = ok ? bytes : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false, DumpFlags = ok ? DumpFlags : null }))
                     HandlerLog("summary.update.failed kind=" + kindToken);
                 if (fault.Resolved && fault.Module.Length > 0)
                     Bundles.AppendReportLine(dir, "fault=" + fault.Module + "+0x" + fault.Offset.ToString("x", CultureInfo.InvariantCulture));
@@ -404,9 +419,13 @@ public static partial class Crash
             try { Console.Out.WriteLine(line); Console.Out.Flush(); } catch (Exception ex) { HandlerLog("handler.reply.failed " + ex.Message); }
         }
 
-        /// <summary>flags = MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules (§B.3 default: stacks
-        /// + modules, no heap — the heap holds the DPAPI-unprotected credential and live tokens).</summary>
-        const uint DumpFlags = 0x0000_0000 /* MiniDumpNormal */ | 0x0000_1000 /* MiniDumpWithThreadInfo */ | 0x0000_0020 /* MiniDumpWithUnloadedModules */;
+        /// <summary>flags = MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules |
+        /// MiniDumpWithIndirectlyReferencedMemory: stacks + modules, plus the small blocks of memory the threads' stacks
+        /// point at (what an object or a buffer on the crashing stack held), still no full heap — the heap holds the
+        /// DPAPI-unprotected credential and live tokens. The dump stays on this machine unless the user's crash-report
+        /// consent lets it go (<see cref="ConsentPolicy.DumpAllowed"/>, unchanged).</summary>
+        public const uint DumpFlags = 0x0000_0000 /* MiniDumpNormal */ | 0x0000_1000 /* MiniDumpWithThreadInfo */
+            | 0x0000_0020 /* MiniDumpWithUnloadedModules */ | 0x0000_0040 /* MiniDumpWithIndirectlyReferencedMemory */;
 
         static unsafe bool WriteMiniDump(string dir, uint threadId, nint exceptionPointers, bool hasExceptionInfo)
         {
@@ -474,8 +493,49 @@ public static partial class Crash
 
         static void Tick()
         {
+            if (Environment.TickCount64 - s_modulesAtMs >= 15_000) RefreshParentModules();
             if (Interlocked.CompareExchange(ref s_hangReported, 0, 0) != 0) { CheckHangRecovery(); return; }
             CheckHang();
+        }
+
+        /// <summary>The parent's third-party module names (<see cref="Machine.ThirdParty"/>), read out of process every 15 s
+        /// while it lives: an exit-code report has no other way to name the overlay that was hooked in when it died.</summary>
+        static unsafe void RefreshParentModules()
+        {
+            s_modulesAtMs = Environment.TickCount64;
+            try
+            {
+                if (!TryListModules(out nint[] handles, out int count)) return;
+                const int PathChars = 1024;
+                char* buffer = stackalloc char[PathChars];
+                var paths = new List<string>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    uint len = K32GetModuleFileNameExW(s_parentHandle, handles[i], buffer, PathChars);
+                    if (len > 0) paths.Add(new string(buffer, 0, (int)Math.Min(len, (uint)PathChars)));
+                }
+                Volatile.Write(ref s_parentModules, Machine.ThirdParty(paths, AppContext.BaseDirectory,
+                    Environment.GetFolderPath(Environment.SpecialFolder.Windows)));
+            }
+            catch (Exception ex) { HandlerLog("modules.read.failed " + ex.Message); }
+        }
+
+        /// <summary>The trail, the regions and the machine, for a report this CHILD writes (hang, exit code). Returns the
+        /// summary with the machine fields filled from the freshest facts the child holds.</summary>
+        static Summary AppendParentContext(StringBuilder sb, Summary summary, out CrashTrail.Snapshot? snap)
+        {
+            snap = null;
+            try
+            {
+                if (Volatile.Read(ref s_parentModules) is { } mods) summary = summary with { ThirdPartyModules = mods };
+                snap = Trail.ReadForParent(s_trailFile);
+                Trail.AppendSections(sb, snap, Environment.TickCount64, 0);
+                summary = summary with { TrailEvents = snap?.Entries.Length };
+                Machine.AppendSection(sb, summary);
+                if (snap is null) sb.Append("\nEvent trail: unavailable (").Append(s_trailFile is null ? "no trail file" : "unreadable").Append(")\n");
+            }
+            catch (Exception ex) { HandlerLog("context.append.failed " + ex.Message); }
+            return summary;
         }
 
         static void CheckHang()
@@ -536,13 +596,15 @@ public static partial class Crash
                 var context = Volatile.Read(ref s_parentContext);
                 var summary = ContextProtocol.BuildSummary(context, s_parentPid, Environment.ProcessId, Kind.Hang, 0,
                     message, !FirstFrameSeen, Environment.TickCount64, DateTimeOffset.UtcNow) with { InstallId = s_installId };
-                Bundles.WriteSummary(dir, summary);
-                var sb = new StringBuilder(1024);
+                RefreshParentModules();
+                var sb = new StringBuilder(8 * 1024);
                 Report.DescribeParent(message, sb, summary, context);
+                summary = AppendParentContext(sb, summary, out _);
+                Bundles.WriteSummary(dir, summary);
                 Bundles.WriteReport(dir, sb.ToString());
                 Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None, parentPid: s_parentPid, sessionId: context?.Metadata.SessionId);
                 bool ok = WriteMiniDump(dir, 0, 0, false);
-                Bundles.UpdateSummary(dir, s => s with { HasDump = ok, DumpBytes = ok ? DumpBytes(dir) : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false });
+                Bundles.UpdateSummary(dir, s => s with { HasDump = ok, DumpBytes = ok ? DumpBytes(dir) : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false, DumpFlags = ok ? DumpFlags : null });
                 Interlocked.Exchange(ref s_bundleWrittenThisProcess, 1);
                 HandlerLog("hang.dump.written ok=" + (ok ? "true" : "false"));
                 Bundles.PruneNow(s_logFolder);
@@ -568,11 +630,34 @@ public static partial class Crash
                     string dir = Bundles.Create(s_logFolder, kind, DateTimeOffset.Now);
                     string message = "process exited with code 0x" + code.ToString("x", CultureInfo.InvariantCulture);
                     var context = Volatile.Read(ref s_parentContext);
+                    // A fail-fast runs no hook in the parent; what it printed on stderr is the only account of WHY
+                    // (Crash.FatalText), and a managed fail-fast's text carries its frames.
+                    string fatal = FatalText.ReadForParent(s_fatalText, out bool truncated);
+                    long[] rvas = FatalText.Rvas(fatal);
+                    HandlerLog("fatal.text chars=" + fatal.Length.ToString(CultureInfo.InvariantCulture)
+                        + " rvas=" + rvas.Length.ToString(CultureInfo.InvariantCulture));
                     var summary = ContextProtocol.BuildSummary(context, s_parentPid, Environment.ProcessId, kind, unchecked((int)code),
                         message, !FirstFrameSeen, Environment.TickCount64, DateTimeOffset.UtcNow) with { InstallId = s_installId };
-                    Bundles.WriteSummary(dir, summary);
-                    var sb = new StringBuilder(1024);
+                    if (rvas.Length > 0) summary = summary with { Rvas = rvas };
+                    var sb = new StringBuilder(8 * 1024);
                     Report.DescribeParent(message, sb, summary, context);
+                    AppendParentQuiet(sb);
+                    FatalText.AppendSection(sb, fatal, truncated);
+                    Report.AppendRvaSection(sb, rvas);
+                    summary = AppendParentContext(sb, summary, out var snap);
+                    // A crash code while a thread was inside the private key path counts toward the next launch's breaker:
+                    // a fault there that ended as a fail-fast ran no in-process hook at all.
+                    if (kind == Kind.ExitCode && snap is not null && KeyPathBreaker.IsCrashExit(code))
+                        foreach (var r in snap.Regions)
+                            if (AppRegion.IsKeyPath(r.Kind))
+                            {
+                                summary = summary with { NativeRegion = Trail.RegionName(r.Kind) };
+                                KeyPathBreaker.RecordFault(s_logFolder, summary.Version, "exitcode");
+                                sb.Append("keypath.breaker fault recorded (a thread was inside the key path at exit)\n");
+                                HandlerLog("keypath.fault recorded exit=0x" + code.ToString("x", CultureInfo.InvariantCulture));
+                                break;
+                            }
+                    Bundles.WriteSummary(dir, summary);
                     Bundles.WriteReport(dir, sb.ToString());
                     Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None, parentPid: s_parentPid, sessionId: context?.Metadata.SessionId);
                     Bundles.PruneNow(s_logFolder);
@@ -580,6 +665,20 @@ public static partial class Crash
                 catch (Exception ex) { HandlerLog("parent.exit.bundle.failed " + ex.Message); }
             }
             return 0;
+        }
+
+        /// <summary>How long the parent had been silent on the pipe when it died, and whether it had said it was exiting.
+        /// A parent that beat every 2 s up to its death died abruptly; one silent for seconds WITHOUT <c>X</c> was frozen
+        /// first (a hang, or Windows Error Reporting holding a fail-fasting process while it collects its report).</summary>
+        static void AppendParentQuiet(StringBuilder sb)
+        {
+            long now = UnbiasedNow();
+            long quietMs = (now - Interlocked.Read(ref s_lastLineUnbiased)) / 10_000L;
+            long beatMs = (now - Interlocked.Read(ref s_lastBeatUnbiased)) / 10_000L;
+            bool exiting = Interlocked.CompareExchange(ref s_exiting, 0, 0) != 0;
+            sb.Append("parentQuietMs=").Append(quietMs.ToString(CultureInfo.InvariantCulture))
+              .Append(" parentLastBeatMs=").Append(beatMs.ToString(CultureInfo.InvariantCulture))
+              .Append(" parentExiting=").Append(exiting ? '1' : '0').Append('\n');
         }
 
         // ── 7. handler.log — this process's ENTIRE log; never the app log, which it never opens ─────────────────────
@@ -709,6 +808,9 @@ public static partial class Crash
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         private static unsafe partial uint K32GetModuleBaseNameW(nint hProcess, nint hModule, char* lpBaseName, uint nSize);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        private static unsafe partial uint K32GetModuleFileNameExW(nint hProcess, nint hModule, char* lpFilename, uint nSize);
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         private static partial nint OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);

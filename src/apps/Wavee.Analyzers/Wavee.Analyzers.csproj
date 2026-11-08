@@ -13,7 +13,7 @@
   -->
 
   <PropertyGroup>
-    <!-- Analyzers MUST target netstandard2.0 (override the net10.0 repo baseline). -->
+    <!-- Analyzers MUST target netstandard2.0 (override the net11.0 repo baseline). -->
     <TargetFramework>netstandard2.0</TargetFramework>
     <!-- Loads into whatever compiler host runs the build (an arm64 csc for an x64 cross-pack): stay AnyCPU. -->
     <PlatformTarget>AnyCPU</PlatformTarget>

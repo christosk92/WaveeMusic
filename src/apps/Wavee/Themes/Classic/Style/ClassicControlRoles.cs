@@ -6,6 +6,7 @@
 // with the 3 x 16 selection pill (`ClassicTrackRowLayout`, `RowMetrics.RowInset`), and a command is its glyph and its label.
 
 using FluentGpu.Controls;
+using FluentGpu.Dsl;
 using Wavee.Theming.Roles;
 
 namespace Wavee.Themes.Classic;
@@ -30,4 +31,14 @@ public static class ClassicControlRoles
 
     /// <summary>The PersonPicture: the stock avatar, its initials never under <see cref="InitialsFloor"/> (where that fits in half the circle).</summary>
     public static PersonPicture.Style Avatar() => s_avatar;
+
+    /// <summary>The menu: the stock WinUI MenuFlyout, its choice marked as Classic's boards draw it (C-Flyouts' sort and row-size menus, C-Video's
+    /// "where to play"): the chosen radio row carries a 7 disc in the selection accent and rests on the subtle plate (the ComboBox item's selected
+    /// ramp: secondary at rest, tertiary under the pointer); a checked toggle's check takes the same accent. Unchosen rows draw nothing (WinUI).</summary>
+    public static MenuFlyout.Style Menu() => MenuFlyout.FluentStyle() with
+    {
+        RadioMark = MenuRadioMark.Dot, DotSize = 7f,
+        MarkColor = R.Ink.AccentSelection, MarkHoverColor = R.Ink.AccentSelection, MarkPressedColor = R.Ink.AccentSelection,
+        SelectedFill = Tok.FillSubtleSecondary, SelectedHoverFill = Tok.FillSubtleTertiary, SelectedPressedFill = Tok.FillSubtleSecondary,
+    };
 }

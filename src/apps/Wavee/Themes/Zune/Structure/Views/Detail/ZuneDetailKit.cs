@@ -161,8 +161,11 @@ internal static class ZuneDetailKit
     /// <param name="pending">While it answers true (a header not read yet, no title known) the title shimmers in the reserved band as a bar
     /// <paramref name="shimmerW"/> wide, and cross-dissolves into the title when it lands; the band itself stays and hugs the title (audit B7 r2: the hero
     /// list's loading band drew that bar; the hero now loads in place). Null: the title alone.</param>
+    /// <param name="past">How far the band's hang reaches past the column it stands in where that column's container clipped there before (the hero
+    /// list's viewport, the album's scroller: they now leave the room, DetailTierPolicy.LeadBleed): only the title's own glyphs may draw there, so the
+    /// loading bar and the editor's lines and ring stand back in by as much (<see cref="TitlePast"/>; audit FU2d). 0: nothing stands back.</param>
     public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, EnterExit? enter = null,
-        LayoutTransition? motion = null, Func<bool>? pending = null, float shimmerW = 0f)
+        LayoutTransition? motion = null, Func<bool>? pending = null, float shimmerW = 0f, float past = 0f)
     {
         float lead = gutter + lay.PanoramaNudgeX;
         bool editor = slots.Title is not null && lay.PanoramaH > 0f;
@@ -172,7 +175,8 @@ internal static class ZuneDetailKit
         if (slots.Title is { } edit && editor)
         {
             var voice = Panorama("", lay);
-            title = TitleHost("panorama:editor", edit(voice.Size, voice.LineHeight), enter);
+            // Provided whatever its value, so a crossing that changes it never re-parents the editor.
+            title = TitleHost("panorama:editor", Ctx.Provide(TitlePast, past, edit(voice.Size, voice.LineHeight)), enter);
         }
         else
             title = TitleHost("panorama:title", Panorama(id.Title, lay), enter);
@@ -184,7 +188,11 @@ internal static class ZuneDetailKit
             title = new SkelRegionEl(
                 Pending: pending, Failed: s_false,
                 Content: () => real,
-                ShimmerSource: () => new BoxEl { Direction = 0, MinWidth = 0f, Children = [Bar(shimmerW, lay.ArtistLine)] },
+                // The bar stands back to the column where the hang reaches past it (its right end stays): only the title draws in that room.
+                ShimmerSource: () => new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, Padding = new Edges4(past, 0f, 0f, 0f), Children = [Bar(MathF.Max(0f, shimmerW - past), lay.ArtistLine)],
+                },
                 OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         }
         return new BoxEl
@@ -208,6 +216,10 @@ internal static class ZuneDetailKit
             ],
         };
     }
+
+    /// <summary>The panorama editor's <c>past</c> (<see cref="PanoramaBand"/>): how far its hang reaches past the column's old clip, where its lines and its
+    /// ring stand back (ZunePlaylist's editor reads it). 0 outside a panorama.</summary>
+    internal static readonly Context<float> TitlePast = new(0f);
 
     /// <summary>One of the panorama's two title trees under its keyed host, cross-faded when the other replaces it.</summary>
     static BoxEl TitleHost(string key, Element title, EnterExit? enter) => new()
@@ -399,7 +411,17 @@ internal static class ZuneDetailKit
             if (spring) kids.Add(Swap(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f }, swapEnter));
             if (lay.ShareRing && ShareActionFor(id) is { } share)
                 kids.Add(Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), false, null, share, lay));
-            if (lay.MoreRing && acts.More is { } more) kids.Add(MoreRing(more, lay));
+            if (lay.MoreRing && acts.More is { } more)
+            {
+                // The owner asked for save in the "..." as well (2026-11-08: the band's pill was not found): the save ring's own target and gate
+                // (none on your own playlist, a local file's or Liked Songs'), so menu and pill are one verb over one saved set.
+                if (cfg.Heart != HeartMode.None)
+                {
+                    var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
+                    more = WithSaveRow(more, target.Text, id.Title);
+                }
+                kids.Add(MoreRing(more, lay));
+            }
         }
         return new BoxEl
         {
@@ -407,6 +429,24 @@ internal static class ZuneDetailKit
             Layout = Shove, Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The page menu with the save verb leading it (its own group): "save to your library" or "remove from your library" as the saved set
+    /// reads at open, running the library seam's toggle (optimistic, rolled back on a failed write) that the band's save pill and the save ring run.
+    /// The page's menu unchanged where no library seam is connected; nothing where the page has no menu.</summary>
+    static Func<ContextMenuModel?> WithSaveRow(Func<ContextMenuModel?> menu, string uri, string name) => () =>
+    {
+        var model = menu();
+        if (model is not { } m || Controls.Library is not { } lib || uri.Length == 0) return model;
+        bool saved = lib.IsSaved(uri);
+        var rows = new List<MenuFlyoutItem>(m.Rows.Count + 2)
+        {
+            new(Loc.Get(saved ? Strings.Menu.RemoveFromLibrary : Strings.Menu.SaveToLibrary), saved ? Icons.HeartFill : Icons.Heart, true,
+                () => lib.ToggleSaved(uri, name)),
+        };
+        if (m.Rows.Count > 0) Actions.Menu.OpenGroup(rows);
+        for (int i = 0; i < m.Rows.Count; i++) rows.Add(m.Rows[i]);
+        return m with { Rows = rows };
+    };
 
     /// <summary>A ring only one arrangement of a re-arranging row draws: it enters on <paramref name="enter"/> (the swap's fade once the view has rendered)
     /// and leaves on the swap's fade. Unchanged where the row never re-arranges (<paramref name="enter"/> null and never rendered before).</summary>

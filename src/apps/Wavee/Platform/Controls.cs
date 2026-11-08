@@ -73,10 +73,15 @@ public static partial class Controls
     /// <inheritdoc cref="LibrarySeam"/>
     public static LibrarySeam? Library { get; set; }
 
-    /// <summary>An entity uri → the app's route key ("pl:…", "album:…", "artist:…", "liked", "module:…"). Owner I's
-    /// route table installs it; null leaves every rich-text anchor STYLED but inert, which is the honest degradation —
-    /// a link to a route nothing renders is worse than a link that does not click.</summary>
+    /// <summary>A link (a <c>spotify:</c> uri, an <c>open.spotify.com</c> link, a <c>wavee://open</c> verb) → the app's route
+    /// key ("pl:…", "album:…", "artist:…", "liked", "module:…"), handed to the anchor's own <c>onNavRoute</c>. The shell's
+    /// link door installs it (<c>Shell.RouteKeyOfLink</c>, App.cs).</summary>
     public static Func<string, string?>? RouteForUri { get; set; }
+
+    /// <summary>A link with no route the anchor's <c>onNavRoute</c> can take → its click (a track plays, an external page
+    /// opens in the browser), or null when the link door refuses it. The shell's link door installs it (App.cs). Null, or a
+    /// refused link, leaves the anchor STYLED but inert, which is the honest degradation.</summary>
+    public static Func<string, Action?>? LinkOpener { get; set; }
 
     /// <summary>The album → prerelease hop (extension kind 138). The collection write only accepts the
     /// <c>spotify:prerelease:</c> entity and a card usually only knows the album, so <see cref="PreSaveButton"/> costs
@@ -478,8 +483,12 @@ public static partial class Controls
     /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) to where the caller's copy column
     /// ends, and the 0.35 shoulder keeps its distance after it (tuned Classic D18): the copy stays on the plate at every width.
     /// NaN (or a hold left of the default) keeps the default stops. On the VERTICAL arm a finite <paramref name="hold"/> is where the copy
-    /// starts (a fraction of the height): the veil reaches its peak there and holds it to the foot.</para></summary>
-    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN)
+    /// starts (a fraction of the height): the veil reaches its peak there and holds it to the foot.</para>
+    /// <para><paramref name="ramp"/> (vertical and held only; NaN = the whole height) confines that ramp to the top <paramref name="ramp"/> DIP of a veil that
+    /// covers more than the photograph's band (the Classic daylist's Compact stack, whose art is the whole card's backdrop): <paramref name="hold"/> is then a
+    /// fraction of the ramp, the veil climbs from its peak to the copy plate (<see cref="HeroVeilPlate"/>) by the ramp's foot and holds the plate to the
+    /// veil's foot, so the copy under the band sits on a real surface with no seam where the band used to end.</para></summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN, float ramp = float.NaN)
     {
         ColorF layer = Tok.FillLayerDefault;
         var wash = R.Wash;
@@ -490,6 +499,12 @@ public static partial class Controls
             // A held vertical veil (the copy over the photograph's lower part): it eases in above the copy and holds its peak from the copy's top
             // to the foot, so the copy's first line (a Verified tick, an eyebrow) never sits on the veil's thin upper ramp.
             float at = Math.Clamp(hold, HeroVeilShoulder, 1f);
+            if (ramp > 0f)
+                return GradientDown(
+                    new GradientStop(0f, veil with { A = 0f }),
+                    new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
+                    new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
+                    new GradientStop(1f, veil with { A = HeroVeilPlate })) with { AxisLengthPx = ramp };
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
@@ -508,7 +523,7 @@ public static partial class Controls
         float h = float.IsNaN(hold) ? HeroVeilHold : Math.Clamp(hold, HeroVeilHold, 1f - HeroVeilShoulder - HeroVeilTail);
         return GradientRight(
             new GradientStop(0f, veil with { A = 0.96f }),
-            new GradientStop(h, veil with { A = 0.92f }),
+            new GradientStop(h, veil with { A = HeroVeilPlate }),
             new GradientStop(h + HeroVeilShoulder, veil with { A = 0.35f }),
             new GradientStop(1f, veil with { A = 0f }));
     }
@@ -516,6 +531,9 @@ public static partial class Controls
     /// <summary>The horizontal veil's default hold stop, the distance from the hold to the 0.35 shoulder, and the least room the
     /// shoulder keeps before the veil's clear edge.</summary>
     const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.32f, HeroVeilTail = 0.04f;
+
+    /// <summary>The copy plate's alpha: the horizontal veil's hold, and a ramped vertical veil's foot.</summary>
+    const float HeroVeilPlate = 0.92f;
 
     /// <summary>Where a held vertical veil's 0.35 rung sits, as a share of the way to its hold.</summary>
     const float HeroVeilRampShare = 0.55f;

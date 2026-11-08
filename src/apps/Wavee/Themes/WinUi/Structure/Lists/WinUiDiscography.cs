@@ -7,7 +7,7 @@
 // demands, the verdicts, the memos, the selection and every verb (see `Theming\Contracts\DiscographyStyle.cs`).
 //
 // MOTION IS UNCHANGED: one click, one motion. The expander's content resize is off (a drawer opening inside the grid must not replay the disclosure
-// tween, ch 08 W17, parity 55), the drawer's slot reveals with `Design.Reveal.Drawer`, the grid's cut under the pinned header feathers exactly while
+// tween, ch 08 W17, parity 55), the drawer's slot opens, closes and moves with its row on the grid's own reveal spring (`LazyGrid`), the grid's cut under the pinned header feathers exactly while
 // its clip is engaged (`EdgeFadeSpec.WhileStuck`), and the check lane slides the cells over on the track table's own tween.
 //
 // Numbers are `Rules\WinUiDiscographyRules.cs` (WVTH003 allows no literal look here).
@@ -95,15 +95,15 @@ internal static class WinUiDiscography
     /// <summary>The card's data off its row. The PINNED height is what keeps the card OUT of the grid's folded row gap (its shell would otherwise grow
     /// into it), and the menu rides along so the surface's host attaches it to the shell.</summary>
     static Controls.CardData Card(DiscoCardArgs a)
-        => new(a.Uri, a.Title, SubtitleOf(a.Meta, Icons.ChevronDown), a.Cover, a.Click, OnPlay: a.Play, Drag: a.Drag)
+        => new(a.Uri, a.Title, SubtitleOf(a.Meta, expanded: false, a.Toggle), a.Cover, a.Click, OnPlay: a.Play, Drag: a.Drag)
         {
             Height = a.Height, Menu = a.Menu,
         };
 
     /// <summary>The opened card wears the accent border + the brighter fill; with the caret it answers "where did it open" (ch 08 §9
     /// must-not-simplify 4). The accent is read inside the surface's render, so a palette landing repaints the one opened card.</summary>
-    static Controls.CardData Opened(Controls.CardData plain, string meta, Func<ColorF> accent)
-        => plain with { Selected = true, SelectedAccent = accent, Subtitle = SubtitleOf(meta, Icons.ChevronUp) };
+    static Controls.CardData Opened(Controls.CardData plain, DiscoCardArgs a, Func<ColorF> accent)
+        => plain with { Selected = true, SelectedAccent = accent, Subtitle = SubtitleOf(a.Meta, expanded: true, a.Toggle) };
 
     /// <summary>The seed (no row yet) at the card's pinned height: the grid's folded row gap must not stretch it.</summary>
     static Controls.CardData Seed(float height) => Controls.CardData.Seed with { Height = height };
@@ -112,16 +112,17 @@ internal static class WinUiDiscography
     /// hydrating is a props re-push, never a remount.</summary>
     static Element Cell(Controls.CardData data) => Controls.Surface(data, Shape.Grid) with { Key = "album" };
 
-    /// <summary>The meta line with a small tertiary disclosure chevron after it: pointing down while the card can open
-    /// its drawer, up while it is the open one (<see cref="Controls.CardData.Selected"/> carries the accent skin; the
-    /// glyph is the quiet "this expands" cue the plain card never had).</summary>
-    static Element SubtitleOf(string meta, string glyph) => new BoxEl
+    /// <summary>The meta line with the disclosure button after it (<see cref="Controls.Disclosure"/>): the card opens the album, the button
+    /// opens and closes the card's drawer, its chevron turning up while open. WinUI's subtle button (the Expander's chevron button): no plate at rest, the subtle fills on hover and press, the control corner; its plate bleeds out of
+    /// the meta line, so the line keeps its height.</summary>
+    static Element SubtitleOf(string meta, bool expanded, Action toggle) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Rules.SubtitleGap, MinWidth = 0f,
         Children =
         [
             R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-            Icon(glyph, Rules.SubtitleGlyph, Tok.TextTertiary),
+            Controls.Disclosure(expanded, toggle, new DisclosureSkin(Rules.DisclosurePlate, Rules.DisclosureGlyph, Rules.DisclosureSlop,
+                Radii.Control, Rules.DisclosureBleed, static () => Tok.TextSecondary, static () => Tok.FillSubtleSecondary, static () => Tok.FillSubtleTertiary)),
         ],
     };
 
@@ -149,7 +150,7 @@ internal static class WinUiDiscography
         float caretY = DrawerVerdict.TopGap - Rules.CaretH + Rules.CaretOverlap;   // sinks 1 DIP to hide the panel's top stroke
         return new BoxEl
         {
-            Key = "disco-drawer", Direction = 1, Height = a.SlotHeight, ClipToBounds = true, Animate = Design.Reveal.Drawer,
+            Key = "disco-drawer", Direction = 1, Height = a.SlotHeight, ClipToBounds = true,
             Children =
             [
                 new BoxEl

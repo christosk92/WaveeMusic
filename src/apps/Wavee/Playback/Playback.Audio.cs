@@ -624,6 +624,7 @@ public static partial class Playback
             // A fake playable has no bytes and plays through the silent voice: it needs the DSP seed, never a device. A real
             // one boots the backend as the load's own first step, on the chain (G-124).
             SeedOnce();
+            Crash.Trail.Note(Crash.AppTrail.TrackStart, (long)kind, fromMs);   // the crash trail: no ids, no titles
             Interlocked.Exchange(ref s_loadStartedTicks, System.Diagnostics.Stopwatch.GetTimestamp());
             s_clockStale = true;
             // Play intent is the CALLER's, decided here and synchronously: a `Load` followed by `Pause` in the same Execute

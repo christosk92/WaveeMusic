@@ -1,5 +1,5 @@
 // ── Shell/Deck.Faces.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the eight non-record faces (turntable, Zune, cassette, reel, CD, MD, iPod, VU, Winamp, WMP, canvas)
+// the seven non-record deck faces (Cassette, Reel-to-reel, CD, Pocket, Hi-fi, Skin, Visualizer)
 //
 // Role: UI
 // Owner: K
@@ -8,18 +8,19 @@
 // Spec: ch 23 §9 (2,300-2,500)
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// THE OTHER FACES. The record family (Record / Turntable / Zune / Picture) is `Deck.UI.cs`'s; this file holds the
-// cassette, the reel-to-reel, the CD/MiniDisc, the iPod, the hi-fi VU, Winamp, the WMP visualizer and Canvas drift.
+// THE OTHER FACES. The record family (Vinyl, Metro) is `Deck.UI.cs`'s; this file holds the cassette, the reel-to-reel, the
+// CD, Pocket's click-wheel player (the iPod face), the hi-fi's VU, the skinned desktop player (the Winamp face) and the
+// visualizer (the WMP face). Phase 1 of the 2026-11-08 redesign maps each style onto these faces as they were (the old per-preset
+// options are gone: each face draws its first look; Pocket's finish picks its body); phase 3 redraws them.
 //
 // THE FACE CONTRACT (the same for all of them): a static builder, not a component, run once per host render —
-//   static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig[, Host host])
-// Options are read into plain locals before the first thunk exists (an `in` parameter cannot be captured). Every
-// dimension is a fraction of `side`. Everything that moves is a bound Transform/Opacity/Text over the slab; the few
+//   static Element Build(float side, Slab sig[, Host host][, int finish])
+// Every dimension is a fraction of `side`. Everything that moves is a bound Transform/Opacity/Text over the slab; the few
 // things that change SHAPE (a label's lettering, a disc's art, the iPod's screen) are tiny keyed components at the
 // leaves, and the live item is read INSIDE thunks and leaves, never in a face body.
 //
-// The palettes are literal hex — a deck is a physical object, identical in light and dark (ch 23 §4.1). The only
-// localised string a face renders is the WMP preset caption; every other string is part of the device's own look.
+// The palettes are literal hex — a deck is a physical object, identical in light and dark (ch 23 §4.1). A face renders no
+// localised string: every string is part of the device's own look.
 
 using System.Globalization;
 using System.Text;
@@ -42,12 +43,8 @@ public static partial class Deck
     /// re-loads on a new album. Six bound channels: the eject slide, the two pack radii, the two hub angles.</summary>
     static class CassetteFace
     {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(float side, Slab sig)
         {
-            string shell = Rail.PlayerPrefs.ChoiceSlug(in preset, "shell");
-            string labelStyle = Rail.PlayerPrefs.ChoiceSlug(in preset, "label");
-            string sideSlug = Rail.PlayerPrefs.ChoiceSlug(in preset, "side");
-
             float s = side;
             float shellW = 0.86f * s, shellH = 0.56f * s, shellX = 0.07f * s, shellY = 0.21f * s;
             float labelW = 0.90f * shellW, labelH = 0.30f * shellH, labelX = 0.05f * shellW, labelY = 0.06f * shellH;
@@ -58,12 +55,9 @@ public static partial class Deck
 
             var labelSurface = new BoxEl
             {
-                Width = labelW, Height = labelH, Shrink = 0f, Corners = CornerRadius4.All(3f),
-                Fill = labelStyle switch { "chrome" => ColorF.Transparent, "hand" => Hex(0xFFFDF5), _ => Hex(0xF2E9D8) },
-                Gradient = labelStyle == "chrome" ? GradientSpec.Vertical(Hex(0xE8E8EC), Hex(0xB9BCC4)) : null,
-                // The size and the style are re-pushed: a rail quantum redraws the label in place; the key names the style's option.
-                Children = [Embed.Comp(new CassetteLabelProps(sig, labelStyle, labelW, labelH, badgeD), static () => new CassetteLabel())
-                    with { Key = "cassette-label:" + labelStyle }],
+                Width = labelW, Height = labelH, Shrink = 0f, Corners = CornerRadius4.All(3f), Fill = Hex(0xF2E9D8),
+                // The size is re-pushed: a column quantum redraws the label in place.
+                Children = [Embed.Comp(new CassetteLabelProps(sig, labelW, labelH, badgeD), static () => new CassetteLabel()) with { Key = "cassette-label" }],
             };
 
             // The window is the cutout the tape shows through, so it CLIPS: a full pack is wider than the slot.
@@ -84,25 +78,14 @@ public static partial class Deck
             float screw = 0.012f * s;
             var shellBody = new BoxEl
             {
-                Width = shellW, Height = shellH, Shrink = 0f, Corners = CornerRadius4.All(6f),
-                Fill = shell switch
-                {
-                    "clear" => Hex(0xBECDE6, 0.28f),
-                    "cream" => Hex(0xE9E2D0),
-                    "smoke" => Hex(0x464854, 0.85f),
-                    _ => Hex(0x1D1F24),
-                },
-                // The clear shell is the one that genuinely reads THROUGH to the ground; the others are plates.
-                Acrylic = shell == "clear" ? new AcrylicSpec(Hex(0xBECDE6), 0.28f, 18f, 0.02f, 0.92f, Hex(0xBECDE6, 0.28f)) : null,
-                BorderWidth = shell == "clear" ? 1f : 0f,
-                BorderColor = shell == "clear" ? Hex(0xFFFFFF, 0.35f) : ColorF.Transparent,
+                Width = shellW, Height = shellH, Shrink = 0f, Corners = CornerRadius4.All(6f), Fill = Hex(0x1D1F24),
                 Shadow = new ShadowSpec(30f, 14f, 0f, Black(0.5f)),
                 Children =
                 [
                     Canvas.Create(shellW, shellH,
                     [
                         new CanvasChild(labelX, labelY, labelSurface),
-                        new CanvasChild(labelX + labelW - badgeD - 0.02f * shellW, labelY + (labelH - badgeD) * 0.5f, SideBadge(sideSlug, badgeD)),
+                        new CanvasChild(labelX + labelW - badgeD - 0.02f * shellW, labelY + (labelH - badgeD) * 0.5f, SideBadge(badgeD)),
                         new CanvasChild(winX, winY, window),
                         new CanvasChild(0.20f * shellW, 0.81f * shellH, new BoxEl { Width = 0.60f * shellW, Height = 0.025f * shellH, Shrink = 0f, Fill = brown }),
                         new CanvasChild(0.26f * shellW, shellH - 0.16f * shellH, Foot(0.48f * shellW, 0.16f * shellH)),
@@ -113,7 +96,7 @@ public static partial class Deck
                         new CanvasChild(0.02f * shellW, 0.86f * shellH, new TextEl("wavee · c-60 · type i")
                         {
                             Width = 0.17f * s, Height = 0.030f * s, Size = 0.018f * s, Weight = 500,
-                            Color = shell == "cream" ? Black(0.40f) : White(0.35f), MaxLines = 1, Trim = TextTrim.Clip,
+                            Color = White(0.35f), MaxLines = 1, Trim = TextTrim.Clip,
                         }),
                     ]),
                 ],
@@ -196,49 +179,45 @@ public static partial class Deck
             };
         }
 
-        static Element SideBadge(string sideSlug, float d) => new BoxEl
+        static Element SideBadge(float d) => new BoxEl
         {
             Width = d, Height = d, Shrink = 0f, Corners = Radii.Circle(d), Fill = Hex(0x23262B, 0.10f),
             BorderWidth = 1f, BorderColor = Hex(0x23262B, 0.45f),
             // TextEl has no horizontal alignment: the badge centres its glyph the flex way.
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = [new TextEl(sideSlug == "b" ? "B" : "A") { Height = d * 0.62f, Size = d * 0.52f, Weight = 700, Color = Hex(0x23262B), MaxLines = 1, Shrink = 0f }],
+            Children = [new TextEl("A") { Height = d * 0.62f, Size = d * 0.52f, Weight = 700, Color = Hex(0x23262B), MaxLines = 1, Shrink = 0f }],
         };
 
         /// <summary>The two lines of ink on the label — the only part of the cassette that re-renders. Latched: a new
         /// album re-letters at the top of the eject, a same-album advance re-letters in place, an unknown row never
         /// blanks the label.</summary>
-        sealed record CassetteLabelProps(Slab Sig, string Style, float W, float H, float BadgeD);
+        sealed record CassetteLabelProps(Slab Sig, float W, float H, float BadgeD);
 
         sealed class CassetteLabel : Component
         {
+            const string Family = "Courier New";
+
             Slab Sig = null!;
-            string Style = "";
             float W, H, BadgeD;
             Latch _latch;
 
             public override Element Render()
             {
-                (Sig, Style, W, H, BadgeD) = UseProps<CassetteLabelProps>();
+                (Sig, W, H, BadgeD) = UseProps<CassetteLabelProps>();
                 _latch.Update(Sig, image: false);
                 string title = TitleOf(_latch.Shown), artist = ArtistsOf(_latch.Shown), album = AlbumNameOf(_latch.Shown);
                 string second = album.Length > 0 && artist.Length > 0 ? artist + " · " + album : artist.Length > 0 ? artist : album;
-                if (Style == "chrome") { title = title.ToUpperInvariant(); second = second.ToUpperInvariant(); }
-                string family = Style switch { "type1" => "Courier New", "hand" => "Segoe Print", _ => "Segoe UI" };
                 float pad = W * 0.045f, textW = W - pad * 2f - BadgeD;
 
-                var children = new List<CanvasChild>(6);
-                if (Style == "hand")
-                    for (int i = 0; i < 3; i++)   // three ruled hairlines, under the ink
-                        children.Add(new CanvasChild(pad, H * (0.30f + 0.25f * i), new BoxEl { Width = W - pad * 2f, Height = 1f, Shrink = 0f, Fill = Hex(0x9FC0E8) }));
+                var children = new List<CanvasChild>(2);
                 children.Add(new CanvasChild(pad, H * 0.16f, new TextEl(title)
                 {
-                    Width = textW, Height = H * 0.34f, Size = H * 0.26f, Weight = 700, FontFamily = family,
+                    Width = textW, Height = H * 0.34f, Size = H * 0.26f, Weight = 700, FontFamily = Family,
                     Color = Hex(0x23262B), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 }));
                 children.Add(new CanvasChild(pad, H * 0.56f, new TextEl(second)
                 {
-                    Width = textW, Height = H * 0.30f, Size = H * 0.20f, Weight = 400, FontFamily = family,
+                    Width = textW, Height = H * 0.30f, Size = H * 0.20f, Weight = 400, FontFamily = Family,
                     Color = Hex(0x23262B, 0.72f), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 }));
                 return Canvas.Create(W, H, children);
@@ -260,11 +239,10 @@ public static partial class Deck
         /// <summary>One string per whole second, wrapping at 10 000 s like the real counter.</summary>
         static readonly FormatCache<int> CounterCache = FormatCache.Create<int>();
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(float side, Slab sig)
         {
-            string reelStyle = Rail.PlayerPrefs.ChoiceSlug(in preset, "reel");
             float s = side, reel = 0.40f * s, reelY = 0.07f * s;
-            var flangeTint = reelStyle switch { "black" => Hex(0x2A2C33), "clear" => Hex(0xC8D7F0, 0.45f), _ => Hex(0xC9CDD4) };
+            var flangeTint = Hex(0xC9CDD4);
             float guide = 0.05f * s, guideY = s - 0.24f * s - guide * 0.5f;
             float headW = 0.36f * s, headH = 0.18f * s, counterW = 0.20f * s, counterH = 0.072f * s;
 
@@ -371,24 +349,22 @@ public static partial class Deck
     // ══ 3. CD / MINIDISC ═════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A CLV spindle (<see cref="DiscModel"/>), a laser sled that walks outward with the playhead and a tray
-    /// that ejects on a new album. The <c>format</c> option swaps the housing: a bare disc, or a MiniDisc cartridge whose
-    /// window shows a slice of the same disc.</summary>
+    /// that ejects on a new album.</summary>
     static class CdFace
     {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(float side, Slab sig)
         {
-            bool md = Rail.PlayerPrefs.ChoiceSlug(in preset, "format") == "md";
             float s = side;
             var kids = new List<CanvasChild>(5)
             {
                 new(0f, 0f, new BoxEl { Width = s, Height = s, Shrink = 0f, Gradient = GradientSpec.Vertical(Hex(0x22252C), Hex(0x14161B)) }),
-                new(0.06f * s, 0.05f * s, new TextEl(md ? "MD · ATRAC" : "COMPACT DISC · DIGITAL AUDIO")
+                new(0.06f * s, 0.05f * s, new TextEl("COMPACT DISC · DIGITAL AUDIO")
                 {
                     Width = 0.80f * s, Height = 0.034f * s, Size = 0.021f * s, Weight = 600, CharSpacing = 180f,
                     Color = White(0.45f), MaxLines = 1, Trim = TextTrim.Clip, Shrink = 0f,
                 }),
             };
-            if (md) MiniDisc(kids, sig, s); else CompactDisc(kids, sig, s);
+            CompactDisc(kids, sig, s);
             return Canvas.Create(s, s, kids);
         }
 
@@ -411,56 +387,6 @@ public static partial class Deck
                 Width = sled, Height = sled, Shrink = 0f, Corners = Radii.Circle(sled), Fill = Hex(0xFF3B30),
                 Shadow = new ShadowSpec(8f, 0f, 0f, Hex(0xFF3B30, 0.85f)),
                 Transform = Prop.Of(() => Affine2D.Translation(0f, aux.Value * d)),
-            }));
-        }
-
-        static void MiniDisc(List<CanvasChild> kids, Slab sig, float s)
-        {
-            float shellW = 0.62f * s, shellH = shellW * 72f / 68f;
-            float winW = 0.50f * shellW, winH = 0.56f * shellH, discD = winW * 1.12f;
-            float stripW = 0.84f * shellW, stripH = 0.14f * shellH;
-            var slide = sig.Slide;
-            // The window is a rectangular CUTOUT onto a disc bigger than the slot.
-            var window = new BoxEl
-            {
-                Width = winW, Height = winH, Shrink = 0f, Corners = CornerRadius4.All(3f), Fill = Hex(0x0A0F20), ClipToBounds = true,
-                Children =
-                [
-                    Canvas.Create(winW, winH,
-                    [
-                        new CanvasChild((winW - discD) * 0.5f, (winH - discD) * 0.5f, new BoxEl
-                        {
-                            Width = discD, Height = discD, Shrink = 0f, Corners = Radii.Circle(discD),
-                            Transform = Prop.Of(() => Affine2D.Translation(0f, 0.3f * s * (1f - slide.Value))),
-                            Opacity = slide,
-                            Children = [Disc(sig, discD)],
-                        }),
-                    ]),
-                ],
-            };
-            kids.Add(new CanvasChild((s - shellW) * 0.5f, (s - shellH) * 0.5f, new BoxEl
-            {
-                Width = shellW, Height = shellH, Shrink = 0f, Corners = CornerRadius4.All(5f),
-                Gradient = new GradientSpec(GradientShape.Linear, 160f, [new GradientStop(0f, Hex(0x283C78, 0.85f)), new GradientStop(1f, Hex(0x141E46, 0.90f))]),
-                Shadow = new ShadowSpec(30f, 14f, 0f, Black(0.45f)),
-                Children =
-                [
-                    Canvas.Create(shellW, shellH,
-                    [
-                        new CanvasChild(0.14f * shellW, 0.12f * shellH, window),
-                        new CanvasChild(0.64f * shellW, 0.08f * shellH, new BoxEl
-                        {
-                            Width = 0.30f * shellW, Height = 0.64f * shellH, Shrink = 0f, Corners = CornerRadius4.All(3f),
-                            Gradient = GradientSpec.Vertical(Hex(0xC9CCD3), Hex(0x8A8F99)), BorderWidth = 1f, BorderColor = Black(0.25f),
-                        }),
-                        new CanvasChild((shellW - stripW) * 0.5f, shellH - stripH - 0.04f * shellH, new BoxEl
-                        {
-                            Width = stripW, Height = stripH, Shrink = 0f, Corners = CornerRadius4.All(2f), Fill = Hex(0xF4EFE6),
-                            Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-                            Children = [Embed.Comp(new MdLabelProps(sig, stripW * 0.94f, stripH), static () => new MdLabel()) with { Key = "md-label" }],
-                        }),
-                    ]),
-                ],
             }));
         }
 
@@ -488,7 +414,7 @@ public static partial class Deck
                         new CanvasChild(0f, 0f, new BoxEl
                         {
                             Width = d, Height = d, Shrink = 0f, Opacity = 0.75f,
-                            Children = [Texture("cd-rainbow-512.png", d, d, Radii.Circle(d), ColorF.Transparent)],
+                            Children = [OwnTexture("cd-rainbow-512.png", d, d, Radii.Circle(d))],
                         }),
                         new CanvasChild((d - innerD) * 0.5f, (d - innerD) * 0.5f, Ring(innerD, 0.008f * d, White(0.18f))),
                         new CanvasChild((d - holeD) * 0.5f, (d - holeD) * 0.5f, new BoxEl
@@ -500,29 +426,6 @@ public static partial class Deck
                 ],
             };
         }
-
-        /// <summary>The cartridge's paper strip: TITLE · ARTIST, uppercase, one line, latched like the cassette label.</summary>
-        sealed record MdLabelProps(Slab Sig, float W, float H);
-
-        sealed class MdLabel : Component
-        {
-            Slab Sig = null!;
-            float W, H;
-            Latch _latch;
-
-            public override Element Render()
-            {
-                (Sig, W, H) = UseProps<MdLabelProps>();
-                _latch.Update(Sig, image: false);
-                string title = TitleOf(_latch.Shown), artist = ArtistsOf(_latch.Shown);
-                string text = title.Length > 0 && artist.Length > 0 ? title + " · " + artist : title.Length > 0 ? title : artist;
-                return new TextEl(text.ToUpperInvariant())
-                {
-                    Width = W, Height = H * 0.66f, Size = H * 0.44f, Weight = 600, CharSpacing = 60f, Color = Hex(0x23262B),
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 0f,
-                };
-            }
-        }
     }
 
     // ══ 4. iPOD CLASSIC ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -531,12 +434,11 @@ public static partial class Deck
     /// the bar's fill is one bound scale, the thumb one bound translation, the clocks 1 Hz bound text in FIXED slots.</summary>
     static class IpodFace
     {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig, Host host)
+        /// <param name="finish">Pocket's finish: graphite, silver or white (<see cref="Rail.PlayerCatalog.PocketGraphite"/> …).</param>
+        public static Element Build(float side, Slab sig, Host host, int finish)
         {
-            string body = Rail.PlayerPrefs.ChoiceSlug(in preset, "body");
-            bool green = Rail.PlayerPrefs.ChoiceSlug(in preset, "lcd") == "green";
-            bool dark = body != "silver";
-            ColorF lcdFill = green ? Hex(0xD6E6C4) : Hex(0xDFE6EA), ink = green ? Hex(0x1C2A14) : Hex(0x1C2230);
+            bool dark = finish == Rail.PlayerCatalog.PocketGraphite, white = finish == Rail.PlayerCatalog.PocketWhite;
+            ColorF lcdFill = Hex(0xDFE6EA), ink = Hex(0x1C2230);
 
             float bodyX = 0.21f * side, bodyY = 0.02f * side, bodyW = 0.58f * side, bodyH = 0.96f * side;
             float lcdW = 0.84f * bodyW, lcdH = 0.43f * bodyH, wheelD = 0.74f * bodyW;
@@ -552,13 +454,14 @@ public static partial class Deck
                 new CanvasChild(bodyX, bodyY, new BoxEl
                 {
                     Width = bodyW, Height = bodyH, Shrink = 0f, Corners = CornerRadius4.All(side * 0.055f),
-                    Gradient = dark ? GradientSpec.Vertical(Hex(0x2A2C31), Hex(0x0F1013)) : GradientSpec.Vertical(Hex(0xF7F7F9), Hex(0xCFD2D8)),
+                    Gradient = dark ? GradientSpec.Vertical(Hex(0x3A3B40), Hex(0x1D1E22))
+                        : white ? GradientSpec.Vertical(Hex(0xFFFFFF), Hex(0xE4E4E8))
+                        : GradientSpec.Vertical(Hex(0xE6E8EC), Hex(0xB9BCC3)),
                     Shadow = new ShadowSpec(34f, 16f, 0f, Black(0.5f)),
                 }),
                 new CanvasChild(bodyX + 0.08f * bodyW, bodyY + 0.05f * bodyH, Lcd(lcdW, lcdH, lcdFill, ink, sig, frac)),
                 new CanvasChild(bodyX + (bodyW - wheelD) * 0.5f, bodyY + bodyH * 0.955f - wheelD,
-                    Embed.Comp(new IpodWheelProps(gesture, frac, wheelD, body), static () => new IpodWheel())
-                        with { Key = "ipod-wheel:" + body }),
+                    Embed.Comp(new IpodWheelProps(gesture, frac, wheelD, dark), static () => new IpodWheel()) with { Key = "ipod-wheel" }),
             ]) with { Gradient = GradientSpec.Vertical(Hex(0x3A3F4A), Hex(0x22252C)) };
         }
 
@@ -671,30 +574,28 @@ public static partial class Deck
         /// one full turn moves the playhead a quarter of the track — through the host's shared gesture. The drag state is
         /// instance fields (the wheel is keyed on the body and nothing re-pushes into it, ch 23 §6.4(2)). The centre button
         /// and the three glyph captions are their own hit nodes, so pressing them never arms the scrub.</summary>
-        sealed record IpodWheelProps(Gesture Gesture, Func<float> Frac, float Diameter, string Body);
+        sealed record IpodWheelProps(Gesture Gesture, Func<float> Frac, float Diameter, bool Dark);
 
         sealed class IpodWheel : Component
         {
             Gesture Gesture = null!;
             Func<float> Frac = null!;
             float Diameter;
-            string Body = "";
+            bool Dark;
 
             float _lastAngle, _dragFrac;
             bool _active, _moved;
 
             public override Element Render()
             {
-                (Gesture, Frac, Diameter, Body) = UseProps<IpodWheelProps>();
+                (Gesture, Frac, Diameter, Dark) = UseProps<IpodWheelProps>();
                 float d = Diameter, centre = 0.36f * d;
-                bool dark = Body != "silver", u2 = Body == "u2";
+                bool dark = Dark;
                 float cap = MathF.Max(6f, d * 0.058f), capH = MathF.Ceiling(cap * 1.5f), glyph = MathF.Max(7f, d * 0.075f);
                 ColorF capInk = dark ? Hex(0xC9CED8, 0.75f) : Hex(0x8D939D);
-                var wheelStops = u2
-                    ? new[] { new GradientStop(0f, Hex(0xD8262B)), new GradientStop(1f, Hex(0x8F1418)) }
-                    : dark
-                        ? new[] { new GradientStop(0f, Hex(0x2F3239)), new GradientStop(1f, Hex(0x1A1C21)) }
-                        : new[] { new GradientStop(0f, Hex(0xF3F3F5)), new GradientStop(1f, Hex(0xDCDEE3)) };
+                var wheelStops = dark
+                    ? new[] { new GradientStop(0f, Hex(0x2F3239)), new GradientStop(1f, Hex(0x1A1C21)) }
+                    : new[] { new GradientStop(0f, Hex(0xF3F3F5)), new GradientStop(1f, Hex(0xDCDEE3)) };
                 var centreStops = dark
                     ? new[] { new GradientStop(0f, Hex(0x3A3D45)), new GradientStop(1f, Hex(0x1F2126)) }
                     : new[] { new GradientStop(0f, Hex(0xFFFFFF)), new GradientStop(1f, Hex(0xE6E8EC)) };
@@ -795,18 +696,10 @@ public static partial class Deck
         static readonly PathData RedArc = Intern("M68 32 A40 40 0 0 1 86 62");
         static readonly PathData RedTicks = Intern(BuildScale(red: true));
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(float side, Slab sig)
         {
-            string face = Rail.PlayerPrefs.ChoiceSlug(in preset, "face");
-            ColorF plate = face switch { "blue" => Hex(0x0A2A5A), "black" => Hex(0x141519), _ => Hex(0xEFE6CF) };
-            ColorF ink = face switch { "blue" => Hex(0x9FD6FF), "black" => Hex(0xF0F0F0), _ => Hex(0x222222) };
-            ColorF red = face switch { "blue" => Hex(0xFF6A4A), "black" => Hex(0xFF4A3A), _ => Hex(0xC8321E) };
-            ColorF glow = face switch
-            {
-                "blue" => new ColorF(120f / 255f, 200f / 255f, 1f, 0.25f),
-                "black" => new ColorF(1f, 1f, 1f, 0.12f),
-                _ => new ColorF(1f, 200f / 255f, 120f / 255f, 0.25f),
-            };
+            ColorF plate = Hex(0xEFE6CF), ink = Hex(0x222222), red = Hex(0xC8321E);
+            var glow = new ColorF(1f, 200f / 255f, 120f / 255f, 0.25f);
             float mw = 0.43f * side, mh = mw * 0.82f, top = 0.12f * side, lcdW = 0.90f * side, lcdH = 0.20f * side, knob = 0.09f * side;
 
             return Canvas.Create(side, side,
@@ -990,13 +883,9 @@ public static partial class Deck
     {
         const int SpectrumBands = 19;
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
+        public static Element Build(float side, Slab sig)
         {
-            string skin = Rail.PlayerPrefs.ChoiceSlug(in preset, "skin");
-            ColorF wa1 = skin switch { "modern" => Hex(0x4A4F57), "dark" => Hex(0x1A1C22), _ => Hex(0x3B4459) };
-            ColorF wa2 = skin switch { "modern" => Hex(0x2B2E34), "dark" => Hex(0x0E0F13), _ => Hex(0x222A3A) };
-            ColorF wa3 = skin switch { "modern" => Hex(0x8C9199), "dark" => Hex(0x5B5F6B), _ => Hex(0x6E7A97) };
-            ColorF lcd = skin switch { "modern" => Hex(0xE5F3FF), "dark" => Hex(0xFF8A00), _ => Hex(0x00FF00) };
+            ColorF wa1 = Hex(0x3B4459), wa2 = Hex(0x222A3A), wa3 = Hex(0x6E7A97), lcd = Hex(0x00FF00);
             float w = 0.92f * side, h = w * 116f / 275f, mainY = 0.10f * side;
             return Canvas.Create(side, side,
             [
@@ -1194,46 +1083,29 @@ public static partial class Deck
         }
     }
 
-    // ══ 7. WMP VISUALIZER ════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 7. VISUALIZER ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A black plate, three presets over the same 24 real analyser bands, a corner cover and a hairline progress line.
-    /// The colour is a bound channel (theme accent, or the live cover accent), so a theme or album change repaints
-    /// without a rebuild.</summary>
+    /// <summary>A black plate, 24 real analyser bands as bars and waves, a corner cover and a hairline progress line. The colour is a
+    /// bound channel (the theme accent), so a theme change repaints without a rebuild.</summary>
     static class WmpFace
     {
         const int Bands = 24, WaveDots = 32;
 
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
-        {
-            var option = Rail.PlayerCatalog.Option(in preset, "preset");
-            int index = Rail.PlayerPrefs.Choice(in preset, in option);
-            string style = option.Choices[index].Slug, caption = option.Choices[index].LabelKey;
-            bool fromCover = Rail.PlayerPrefs.ChoiceSlug(in preset, "colour") == "cover";
-            Func<ColorF> colour;
-            if (fromCover) colour = static () => LiveCoverAccent(Tok.AccentDefault);
-            else colour = static () => Tok.AccentDefault;
+        static readonly Func<ColorF> Accent = static () => Tok.AccentDefault;
 
-            float cover = 0.22f * side, capSize = MathF.Max(8f, side * 0.034f);
+        public static Element Build(float side, Slab sig)
+        {
+            float cover = 0.22f * side;
             var frac = sig.Frac;
-            var kids = new List<CanvasChild>(6)
+            var kids = new List<CanvasChild>(4)
             {
-                new(0f, 0f, style switch
-                {
-                    "alchemy" => Alchemy(side, sig, colour),
-                    "battery" => Battery(side, sig, colour),
-                    _ => BarsAndWaves(side, sig, colour),
-                }),
+                new(0f, 0f, BarsAndWaves(side, sig, Accent)),
                 new(0.05f * side, side * 0.92f - cover, new BoxEl
                 {
                     Width = cover, Height = cover, Shrink = 0f, Corners = CornerRadius4.All(3f), Shadow = new ShadowSpec(20f, 8f, 0f, Black(0.6f)),
                     // A bound Source: the corner cover follows the item without the face ever being rebuilt. It opts out of
                     // the wash (a flat plate), the one deck slot that does.
                     Children = [new ImageEl { Source = CornerCover, Width = cover, Height = cover, Fit = ImageFit.Cover, DecodePx = 128f, Corners = CornerRadius4.All(3f), Placeholder = Hex(0x14171F) }],
-                }),
-                new(side - 0.05f * side - side * 0.42f, side * 0.92f - capSize * 1.4f, new BoxEl
-                {
-                    Width = side * 0.42f, Height = MathF.Ceiling(capSize * 1.4f), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                    Children = [new TextEl(Loc.Bind(caption)) { Size = capSize * 0.72f, Color = White(0.45f), CharSpacing = 140f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
                 }),
                 new(0f, side - 2f, new BoxEl
                 {
@@ -1242,7 +1114,7 @@ public static partial class Deck
                     [
                         new BoxEl
                         {
-                            Width = side, Height = 2f, Shrink = 0f, Fill = Prop.Of(colour), TransformOriginX = 0f, TransformOriginY = 0.5f,
+                            Width = side, Height = 2f, Shrink = 0f, Fill = Prop.Of(Accent), TransformOriginX = 0f, TransformOriginY = 0.5f,
                             Transform = Prop.Of(() => Affine2D.Scale(Clamp01(frac.Value), 1f)),
                         },
                     ],
@@ -1292,182 +1164,6 @@ public static partial class Deck
                 }));
             }
             return Canvas.Create(side, side, kids) with { HitTestVisible = false };
-        }
-
-        /// <summary>Three rings × three trails. Rotation follows PROGRESS (6 / 12 / 18 turns a track — scrubbing turns them,
-        /// pausing freezes them); ellipticity follows a band. Hollow-SDF ring boxes, so the stroke colour can be bound.</summary>
-        static Element Alchemy(float side, Slab sig, Func<ColorF> colour)
-        {
-            var stroke = Prop.Of(colour);
-            var frac = sig.Frac;
-            var kids = new List<CanvasChild>(9);
-            for (int r = 0; r < 3; r++)
-            {
-                float d = 2f * side * (0.18f + 0.10f * r), turns = 6f * (r + 1);
-                for (int trail = 0; trail < 3; trail++)
-                {
-                    var band = sig.Bands[(r * 7 + trail) % Slab.BandCount];
-                    float lag = trail * 0.15f, opacity = trail == 0 ? 0.9f : trail == 1 ? 0.35f : 0.15f;
-                    kids.Add(new CanvasChild((side - d) * 0.5f, (side - d) * 0.5f, new BoxEl
-                    {
-                        Width = d, Height = d, Shrink = 0f, Corners = Radii.Circle(d), BorderWidth = 2f, BorderColor = stroke, Opacity = opacity,
-                        TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                        Transform = Prop.Of(() =>
-                        {
-                            float sc = 1f + 0.25f * Clamp01(band.Value);
-                            return Affine2D.Rotation(Clamp01(frac.Value) * MathF.Tau * turns - lag).Multiply(Affine2D.Scale(sc, 0.8f * sc));
-                        }),
-                    }));
-                }
-            }
-            return Canvas.Create(side, side, kids) with { HitTestVisible = false };
-        }
-
-        /// <summary>A 6×6 grid pulsing in diagonals (<c>band (i·3 + j) mod 24</c>).</summary>
-        static Element Battery(float side, Slab sig, Func<ColorF> colour)
-        {
-            const int Cols = 6, Rows = 6;
-            var fill = Prop.Of(colour);
-            float cw = side / Cols, ch = side / Rows, cell = MathF.Min(cw, ch);
-            var kids = new List<CanvasChild>(Cols * Rows);
-            for (int i = 0; i < Cols; i++)
-                for (int j = 0; j < Rows; j++)
-                {
-                    var band = sig.Bands[(i * 3 + j) % Bands];
-                    kids.Add(new CanvasChild(i * cw + (cw - cell) * 0.5f, j * ch + (ch - cell) * 0.5f, new BoxEl
-                    {
-                        Width = cell, Height = cell, Shrink = 0f, Fill = fill, Opacity = 0.7f, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                        Transform = Prop.Of(() => { float sc = 0.15f + 0.7f * Clamp01(band.Value); return Affine2D.Scale(sc, sc); }),
-                    }));
-                }
-            return Canvas.Create(side, side, kids) with { HitTestVisible = false };
-        }
-    }
-
-    // ══ 8. CANVAS DRIFT ══════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The cover blown out and blurred behind itself, with a slow Ken Burns drift over a framed copy. The drift is
-    /// not a tick: it is four looping keyframe tracks the animation slab runs, CANCELLED in place (frozen where it stands)
-    /// whenever the deck may not loop (<see cref="Slab.LoopsRun"/>).</summary>
-    static class CanvasFace
-    {
-        public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
-        {
-            bool fast = Rail.PlayerPrefs.ChoiceSlug(in preset, "drift") == "fast";
-            bool strong = Rail.PlayerPrefs.ChoiceSlug(in preset, "bleed") == "strong";
-            float seekW = side * 0.78f;
-            var frac = sig.Frac;
-            return Canvas.Create(side, side,
-            [
-                new CanvasChild(0f, 0f, Embed.Comp(new CanvasArtworkProps(sig, side, fast, strong ? 1f : 0.6f), static () => new CanvasArtwork())
-                    with { Key = "cv:" + (fast ? "fast" : "slow") + ":" + (strong ? "strong" : "soft") }),
-                // Built OUTSIDE the artwork component, so its bind survives every album change above it.
-                new CanvasChild(side * 0.11f, side * 0.95f - 2f, new BoxEl
-                {
-                    Width = seekW, Height = 2f, Shrink = 0f, Fill = White(0.35f), ClipToBounds = true,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Width = seekW, Height = 2f, Shrink = 0f, Fill = White(1f), TransformOriginX = 0f, TransformOriginY = 0.5f,
-                            Transform = Prop.Of(() => Affine2D.Scale(Clamp01(frac.Value), 1f)),
-                        },
-                    ],
-                }),
-            ]) with { Fill = Hex(0x05070C) };
-        }
-
-        /// <summary>The bleed and the drifting frame: re-renders on the latched generation (a new album remounts the canvas,
-        /// which is its 300 ms cross-fade) and on the loop gate, and owns the drift's layout effect.</summary>
-        sealed record CanvasArtworkProps(Slab Sig, float Side, bool Fast, float BleedOpacity);
-
-        sealed class CanvasArtwork : Component
-        {
-            Slab Sig = null!;
-            float Side;
-            bool Fast;
-            float BleedOpacity;
-
-            NodeHandle _drift;
-            Keyframe[]? _tx, _ty, _sx, _sy;
-            float _keyedFor = float.NaN;
-            Latch _latch;
-
-            public override Element Render()
-            {
-                (Sig, Side, Fast, BleedOpacity) = UseProps<CanvasArtworkProps>();
-                _latch.Update(Sig, image: true);
-                bool run = Sig.LoopsRun.Value;                 // playing ∧ active ∧ rail open ∧ ¬reduced — a value, not a branch
-                int gen = _latch.Gen;
-                float s = Side, frame = 0.78f * s, inner = 1.18f * frame, bleed = 1.5f * s;
-                string url = CoverUrlOf(_latch.Shown) ?? "";
-                var wash = WatchedWash(url.Length > 0 ? url : null);
-
-                UseLayoutEffect(() =>
-                {
-                    var anim = Context.Anim;
-                    var scene = Context.Scene;
-                    var node = _drift;
-                    if (anim is null || scene is null || node.IsNull || !scene.IsLive(node)) return;
-                    if (!run)
-                    {
-                        // Cancel, never "seed a flat track": a cancelled channel holds its value — the paused freeze.
-                        anim.Cancel(node, AnimChannel.TranslateX);
-                        anim.Cancel(node, AnimChannel.TranslateY);
-                        anim.Cancel(node, AnimChannel.ScaleX);
-                        anim.Cancel(node, AnimChannel.ScaleY);
-                        return;
-                    }
-                    EnsureKeys(frame);
-                    float ms = (Fast ? DriftPath.FastSeconds : DriftPath.SlowSeconds) * 1000f;
-                    anim.Keyframes(node, AnimChannel.TranslateX, _tx!, ms, loop: true);
-                    anim.Keyframes(node, AnimChannel.TranslateY, _ty!, ms, loop: true);
-                    anim.Keyframes(node, AnimChannel.ScaleX, _sx!, ms, loop: true);
-                    anim.Keyframes(node, AnimChannel.ScaleY, _sy!, ms, loop: true);
-                }, DepKey.From(gen, run ? 1 : 0, Fast ? 1 : 0, (int)frame));
-
-                return Canvas.Create(s, s,
-                [
-                    // ONE oversized pre-blurred draw: BakedBlur derives a persistent bitmap once.
-                    new CanvasChild(-0.25f * s, -0.25f * s, new BoxEl
-                    {
-                        Width = bleed, Height = bleed, Shrink = 0f, HitTestVisible = false, Opacity = BleedOpacity,
-                        Children = [new ImageEl { Source = url, Width = bleed, Height = bleed, Fit = ImageFit.Cover, DecodePx = 256f, Placeholder = wash, BakedBlur = new BakedBlurSpec(44f, 0.25f), Saturation = 1.5f }],
-                    }),
-                    // The −9 % inset rides the frame canvas's positioning wrapper, so the 118 % box owns no static transform
-                    // (a node owns ONE transform, and this one's belongs to the animation slab).
-                    new CanvasChild(0.11f * s, 0.11f * s, Canvas.Create(frame, frame,
-                    [
-                        new CanvasChild(-0.09f * frame, -0.09f * frame, new BoxEl
-                        {
-                            Width = inner, Height = inner, Shrink = 0f, OnRealized = h => _drift = h,
-                            Children = [new ImageEl { Source = url, Width = inner, Height = inner, Fit = ImageFit.Cover, DecodePx = 512f, Placeholder = wash }],
-                        }),
-                    ]) with { Corners = CornerRadius4.All(6f), Shadow = new ShadowSpec(60f, 24f, 0f, Black(0.45f)) }),
-                ]) with { Animate = CoverFade, HitTestVisible = false, Key = "cv:" + FormatCache.Int(gen) };
-            }
-
-            /// <summary>The four looping tracks from <see cref="DriftPath"/>, MIRRORED (0 → ½ → 1 → ½ → 0) so the loop has
-            /// no seam. Built once per frame size, so a gate flip re-seeds without allocating.</summary>
-            void EnsureKeys(float frame)
-            {
-                if (_tx is not null && _keyedFor == frame) return;
-                var keys = DriftPath.Keys;
-                _tx = Mirror(keys.Length, i => keys[i].Tx * frame);
-                _ty = Mirror(keys.Length, i => keys[i].Ty * frame);
-                _sx = Mirror(keys.Length, i => keys[i].Scale);
-                _sy = Mirror(keys.Length, i => keys[i].Scale);
-                _keyedFor = frame;
-            }
-
-            static Keyframe[] Mirror(int count, Func<int, float> value)
-            {
-                int total = count * 2 - 1;
-                var frames = new Keyframe[total];
-                for (int i = 0; i < total; i++)
-                    frames[i] = new Keyframe(i / (float)(total - 1), value(i < count ? i : total - 1 - i), Easing.EaseInOut);
-                return frames;
-            }
         }
     }
 }

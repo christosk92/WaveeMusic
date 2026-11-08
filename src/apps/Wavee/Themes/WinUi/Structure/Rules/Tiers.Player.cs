@@ -65,7 +65,9 @@ public enum WinUiBarLevel : byte
 /// <param name="VolumeW">The inline volume slider: 96, 128 at Huge.</param>
 /// <param name="DeviceLabel">The device button carries its name ("This PC") at Huge.</param>
 /// <param name="Speed">An episode's speed button is in the right cluster (Medium up).</param>
-public sealed record WinUiBarLook(WinUiBarLevel Level, float SeekW, float ColumnGap, float Art, float VolumeW, bool DeviceLabel, bool Speed)
+/// <param name="MetaW">The full bar's title and artists slot: the lines trim or scroll inside it (narrower only where the window leaves less),
+/// so the heart beside it never moves with the text. 0 for the Mini bar (its door takes the row).</param>
+public sealed record WinUiBarLook(WinUiBarLevel Level, float SeekW, float ColumnGap, float Art, float VolumeW, bool DeviceLabel, bool Speed, float MetaW)
 {
     /// <summary>The Mini bar.</summary>
     public bool Mini => Level == WinUiBarLevel.Mini;
@@ -87,12 +89,12 @@ public static class WinUiPlayerTiers
 
     private static readonly WinUiBarLook[] s_looks =
     [
-        new(WinUiBarLevel.Mini, SeekW: 0f, ColumnGap: 4f, Art: 40f, VolumeW: 96f, DeviceLabel: false, Speed: false),
-        new(WinUiBarLevel.Compact, SeekW: 300f, ColumnGap: 16f, Art: 48f, VolumeW: 96f, DeviceLabel: false, Speed: false),
-        new(WinUiBarLevel.Medium, SeekW: 420f, ColumnGap: 0f, Art: 48f, VolumeW: 96f, DeviceLabel: false, Speed: true),
-        new(WinUiBarLevel.Full, SeekW: 520f, ColumnGap: 0f, Art: 48f, VolumeW: 96f, DeviceLabel: false, Speed: true),
-        new(WinUiBarLevel.Huge, SeekW: 720f, ColumnGap: 0f, Art: 48f, VolumeW: 128f, DeviceLabel: true, Speed: true),
-        new(WinUiBarLevel.Huge4K, SeekW: 720.5f, ColumnGap: 0f, Art: 48f, VolumeW: 128f, DeviceLabel: true, Speed: true),
+        new(WinUiBarLevel.Mini, SeekW: 0f, ColumnGap: 4f, Art: 40f, VolumeW: 96f, DeviceLabel: false, Speed: false, MetaW: 0f),
+        new(WinUiBarLevel.Compact, SeekW: 300f, ColumnGap: 16f, Art: 48f, VolumeW: 96f, DeviceLabel: false, Speed: false, MetaW: 200f),
+        new(WinUiBarLevel.Medium, SeekW: 420f, ColumnGap: 0f, Art: 48f, VolumeW: 96f, DeviceLabel: false, Speed: true, MetaW: 240f),
+        new(WinUiBarLevel.Full, SeekW: 520f, ColumnGap: 0f, Art: 48f, VolumeW: 96f, DeviceLabel: false, Speed: true, MetaW: 240f),
+        new(WinUiBarLevel.Huge, SeekW: 720f, ColumnGap: 0f, Art: 48f, VolumeW: 128f, DeviceLabel: true, Speed: true, MetaW: 320f),
+        new(WinUiBarLevel.Huge4K, SeekW: 720.5f, ColumnGap: 0f, Art: 48f, VolumeW: 128f, DeviceLabel: true, Speed: true, MetaW: 320f),
     ];
 
     /// <summary>The look of <paramref name="level"/>.</summary>
