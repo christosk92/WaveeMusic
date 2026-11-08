@@ -192,7 +192,13 @@ public static partial class Deck
                     Animate = Design.Reduced ? null : HeightMotion,
                     Children =
                     [
-                        new BoxEl { Width = side, Shrink = 0f, Direction = 1, AlignSelf = FlexAlign.Start, Children = [_props.Cover()] },
+                        // Under a presented canvas the cover is not drawn at all: the hole erases whole device pixels, and a cover laid out at a
+                        // fractional pixel would leave its anti-aliased edge as a light line beside the video.
+                        new BoxEl
+                        {
+                            Width = side, Shrink = 0f, Direction = 1, AlignSelf = FlexAlign.Start, Children = [_props.Cover()],
+                            Visible = center ? s_coverUncovered : true,
+                        },
                         CanvasVideo.Layer(CanvasVideo.Surface.Deck, _props.Corners, default, on: center),
                     ],
                 },
@@ -231,6 +237,9 @@ public static partial class Deck
         }
 
         static readonly EnterExit CellFade = new(Opacity: 0f, Active: true);
+
+        /// <summary>The Canvas cell's cover shows until the deck's canvas has presented a frame over it.</summary>
+        static readonly Prop<bool> s_coverUncovered = Prop.Of(static () => CanvasVideo.Presented.Value != CanvasVideo.Surface.Deck);
 
         Affine2D TransformOf(int id, float side)
         {
