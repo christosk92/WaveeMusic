@@ -261,6 +261,27 @@ public static class ZunePanelBodies
     /// <summary>The hero cover's decode size.</summary>
     public const int HeroDecodePx = 640;
 
+    // ── the edge-to-edge canvas (canvas-design/project/BleedZune.dc.html) ──────────────────────────────────────────
+
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the ground (fully by 92 %), and a 150
+    /// band of the ground (70 % at the top) keeps the pivots readable. The meta's top sits 196 above the canvas's foot (or the panel's).</summary>
+    public const float BleedAspect = 16f / 9f, BleedFadeShare = 0.5f, BleedFadeFull = 0.92f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.7f,
+        BleedMetaLift = 196f;
+
+    /// <summary>The stage's top below the panel's: the pivot head (its padding included), the hero's top inset, its head row and the gap under it.</summary>
+    public static float BleedStageTop => ZuneFrameRules.PanelHeadPadding.Top + ZuneFrameRules.PanelHeadH + ZuneFrameRules.PanelHeadPadding.Bottom
+        + HeroPadding.Top + HeadH + HeroGap;
+
+    /// <summary>The artist's name over the canvas in giant light type (84/84, white at 92 %, 16 in, 4 under the chip's row), drifting 160 left
+    /// and back over 24 s; never shrunk: it runs off the panel's edge.</summary>
+    public const float BleedNameSize = 84f, BleedNameA = 0.92f, BleedNameInset = 16f, BleedNameDrop = 4f, BleedNameDrift = 160f, BleedNameDriftMs = 24000f;
+
+    public const ushort BleedNameWeight = 300;
+
+    /// <summary>The meta over the canvas's fade: the 88 square cover, 14 to the title (Zune's now-playing title) over the album in the accent
+    /// (15/20), the heart's 40 ring (a 2 stroke) at the end, all on the cover's foot.</summary>
+    public const float BleedCover = 88f, BleedMetaGap = 14f, BleedAlbumSize = 15f, BleedAlbumLine = 20f, BleedHeartRing = 2f;
+
     // ── the device picker (Z-PlayBar-Huge: "play on") ─────────────────────────────────────────────────────────────
 
     /// <summary>The picker: 340 wide, 8 above and below; the "play on" head and an information row (32, 12/16); a device row (52, the 8 dot,
@@ -281,10 +302,11 @@ public static class ZunePanelBodies
     public const float HeadH = 36f, HeadLabelSize = 14f, HeadLabelLine = 20f, ChipH = 32f, ChipGap = 4f, ChipTextSize = 15f, ChipTextLine = 20f,
         ChipGlyph = 12f, WordGap = 16f, WordPad = 4f;
 
-    /// <summary>The strip under the art: 16 between its rows; the 40 square arrows (a 16 chevron, no plate) either side of the style's name
-    /// (26/32 light, Zune's large type: it wraps, never shrinks) over its line (15/20, the tertiary ink, two lines reserved), 2 apart; the finish
-    /// swatches (28 squares, a 2 accent stroke on the chosen one, 12 apart: their 40 hit boxes side by side) in a 40 row there for every style; the dots (6 squares, 18 wide on the
-    /// focused style, 24 apart in ONE 40-tall target whose click picks the dot under it); a swatch's hit box is 40 (the Compact floor).</summary>
+    /// <summary>The strip under the art: 16 between its rows; the style's name (26/32 light, Zune's large type: it wraps, never shrinks) over its
+    /// line (15/20, the tertiary ink, three lines reserved), 2 apart; the finish swatches (28 squares, a 2 accent stroke on the chosen one: their
+    /// 40 hit boxes side by side) in a 40 row that eases shut for a style without finishes; the 40 square arrows (a 16 chevron, no plate) either
+    /// side of the dots (6 squares, 18 wide on the focused style, up to 24 apart in ONE 40-tall target whose click picks the dot under it); a
+    /// swatch's hit box is 40 (the Compact floor).</summary>
     public const float StripGap = 16f, ArrowBox = 40f, ArrowGlyph = 16f, RowGap = 8f, NameSize = 26f, NameLine = 32f, NameGap = 2f, LineSize = 15f,
         LineLine = 20f, SwatchRowH = 40f, Swatch = 28f, SwatchRing = 2f, SwatchGap = 0f, DotBox = 24f, DotHitH = 40f, DotH = 6f, DotW = 6f, DotOnW = 18f, SwatchHit = 40f;
 
@@ -297,9 +319,9 @@ public static class ZunePanelBodies
     /// <summary>The description's line budget.</summary>
     public const int LineMaxLines = 3;
 
-    /// <summary>The meta ↔ strip swap and a dot's width: eased, never a snap.</summary>
-    public static readonly LayoutTransition SwapMotion = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
+    /// <summary>The meta ↔ strip swap (and the swatch row): the stage's own height motion, so the stage and the block under it ease on one
+    /// curve and the lyrics under both never dip while the picker opens or closes.</summary>
+    public static LayoutTransition SwapMotion => FluentGpu.Hooks.MotionRecipes.CardResizeHeight;
 
     public static readonly LayoutTransition DotMotion = new(TransitionChannels.Size,
         TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Width);

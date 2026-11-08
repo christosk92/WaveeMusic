@@ -71,8 +71,9 @@ internal static class WinUiNowPlayingHero
         Enter = Fade, Exit = Fade, Transition = MotionTok.ControlFast, Children = [body],
     };
 
-    /// <summary>The head: "Now playing" and the chip at rest; "Player style", Cancel and Done while picking. A fixed 36 row.</summary>
-    internal static Element Head(IPlayerStyleVerbs verbs, bool open, int shown)
+    /// <summary>The head: "Now playing" and the chip at rest (the frosted chip alone over the edge-to-edge canvas: the tabs already say "Now
+    /// playing"); "Player style", Cancel and Done while picking. A fixed 36 row.</summary>
+    internal static Element Head(IPlayerStyleVerbs verbs, bool open, int shown, bool bleeds)
     {
         Element body = open
             ? new BoxEl
@@ -85,15 +86,21 @@ internal static class WinUiNowPlayingHero
                     Button.Accent(Loc.Get(Strings.Player.Picker.Done), verbs.Done) with { Key = P.DoneKey, Shrink = 0f },
                 ],
             }
+            : bleeds
+            ? new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Height = P.HeadH,
+                Children = [Chip(verbs, shown, frosted: true)],
+            }
             : new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = P.HeadGap, Height = P.HeadH,
-                Children = [Heading(Loc.Get(Strings.Player.NowPlaying)), Chip(verbs, shown)],
+                Children = [Heading(Loc.Get(Strings.Player.NowPlaying)), Chip(verbs, shown, frosted: false)],
             };
         return new BoxEl
         {
             Key = P.HeadKey, Height = P.HeadH, Shrink = 0f, ZStack = true,
-            Children = [Layer(open ? "head:pick" : "head:rest", body)],
+            Children = [Layer(open ? "head:pick" : bleeds ? "head:bleed" : "head:rest", body)],
         };
     }
 
@@ -103,12 +110,17 @@ internal static class WinUiNowPlayingHero
         Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
 
-    /// <summary>The style chip: the style's name and a chevron in a hairline pill.</summary>
-    static Element Chip(IPlayerStyleVerbs verbs, int shown) => ToolTip.Wrap(new BoxEl
+    /// <summary>The style chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, the ground at
+    /// 55 % under a light hairline).</summary>
+    static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted) => ToolTip.Wrap(new BoxEl
     {
         Key = P.ChipKey, Height = P.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.ChipGap, Padding = P.ChipPadding,
-        Corners = Radii.Circle(P.ChipH), Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
-        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, BrushTransitionMs = Design.Motion.Faster,
+        Corners = Radii.Circle(P.ChipH),
+        Fill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlDefault,
+        HoverFill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlSecondary,
+        PressedFill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlTertiary,
+        BorderWidth = 1f, BorderColor = frosted ? Tok.TextPrimary with { A = P.BleedChipStrokeA } : Tok.StrokeControlDefault,
+        BrushTransitionMs = Design.Motion.Faster,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
         Children =
         [
@@ -267,6 +279,7 @@ internal sealed class WinUiHeroTile : Component
     Func<string>? _source;
     Func<ColorF>? _placeholder;
     Func<Element>? _cover;
+    Func<float, float>? _bleedRoom;
 
     public override Element Render()
     {
@@ -289,23 +302,32 @@ internal sealed class WinUiHeroTile : Component
             Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
         };
 
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta's top 196 above the canvas's foot (or the panel's).
+        _bleedRoom ??= panelW =>
+        {
+            float vh = MathF.Round(panelW * P.BleedAspect), ph = props.RailHeight.Value;
+            return MathF.Min(vh, ph > 0f ? ph : vh) - P.BleedMetaLift - P.BleedStageTop - P.HeroGap;
+        };
+        bool bleeds = props.Bleeds();
+
         var verbs = props.Style;
         Element slot = new BoxEl
         {
             Key = WinUiNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f,
-            Children = [props.Stage(P.HeroPadding.Left + P.HeroPadding.Right, _cover, R.Shape.All(ShapeRole.Cover))],
+            Children = [props.Stage(P.HeroPadding.Left + P.HeroPadding.Right, _cover, R.Shape.All(ShapeRole.Cover), _bleedRoom)],
         };
 
         string uri = track.Uri.Text, title = track.Title;
         Element swap = open ? WinUiNowPlayingHero.Layer("npv-strip", WinUiNowPlayingHero.Strip(verbs, shown, props.NowArtUrl))
-                            : WinUiNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title));
+                     : bleeds ? WinUiNowPlayingHero.Layer("npv-meta:bleed", Meta(props, track, uri, title, BleedCover()))
+                     : WinUiNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title, null));
 
         return new BoxEl
         {
             Direction = 1, Shrink = 0f, Gap = P.HeroGap, Padding = P.HeroPadding,
             Children =
             [
-                WinUiNowPlayingHero.Head(verbs, open, shown),
+                WinUiNowPlayingHero.Head(verbs, open, shown, bleeds),
                 slot,
                 new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
                 props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
@@ -313,7 +335,27 @@ internal sealed class WinUiHeroTile : Component
         };
     }
 
-    static Element Meta(NowPlayingHeroProps props, Track track, string uri, string title)
+    /// <summary>The meta's 56 cover over the edge-to-edge canvas: the art under a light hairline.</summary>
+    Element BleedCover() => new BoxEl
+    {
+        Width = P.BleedCover, Height = P.BleedCover, Shrink = 0f, ZStack = true, Corners = CornerRadius4.All(P.BleedCoverRadius), ClipToBounds = true,
+        Children =
+        [
+            new ImageEl
+            {
+                Source = Prop.Of(_source!), Fit = ImageFit.Cover, DecodePx = P.HeroDecodePx, Corners = CornerRadius4.All(P.BleedCoverRadius),
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder!),
+            },
+            new BoxEl
+            {
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Corners = CornerRadius4.All(P.BleedCoverRadius), HitTestVisible = false,
+                BorderWidth = 1f, BorderColor = Tok.TextPrimary with { A = P.BleedCoverStrokeA },
+            },
+        ],
+    };
+
+    /// <summary>The title, the artists and "from" the album beside the heart; <paramref name="lead"/> (the 56 cover over the canvas) before them.</summary>
+    static Element Meta(NowPlayingHeroProps props, Track track, string uri, string title, Element? lead)
     {
         var lines = new List<Element>(3)
         {
@@ -342,14 +384,13 @@ internal sealed class WinUiHeroTile : Component
                 ],
             });
         }
+        var text = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.HeroMetaGap, Children = lines.ToArray() };
+        var heart = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri };
         return new BoxEl
         {
-            Key = WinUiNowPlayingHero.MetaKey, Direction = 0, AlignItems = FlexAlign.Start, Gap = P.HeroMetaGap,
-            Children =
-            [
-                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.HeroMetaGap, Children = lines.ToArray() },
-                Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri },
-            ],
+            Key = WinUiNowPlayingHero.MetaKey, Direction = 0, AlignItems = lead is null ? FlexAlign.Start : FlexAlign.Center,
+            Gap = lead is null ? P.HeroMetaGap : P.BleedMetaGap,
+            Children = lead is null ? [text, heart] : [lead, text, heart],
         };
     }
 }

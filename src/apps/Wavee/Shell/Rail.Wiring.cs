@@ -129,10 +129,14 @@ internal static class RailWiring
         NowTrack = static () => Rail.NowTrack(),
         NowArtUrl = static () => Rail.NowArtUrl(),
         RailWidth = Shell.Ui.RailWidth,
-        Stage = static (chrome, cover, corners) => Deck.Stage(chrome, cover, corners),
+        RailHeight = Shell.Ui.RailBodyHeight,
+        Stage = static (chrome, cover, corners, bleed) => Deck.Stage(chrome, cover, corners, bleed),
         Style = s_styleVerbs,
         Picking = static () => Shell.StylePicker.Open.Value,
         ShownStyle = static () => Shell.StylePicker.Shown(),
+        Bleeds = static () => Deck.Bleeds(),
+        BleedVideo = static width => Deck.BleedVideo(width),
+        Source = ReadSheetSource,
         SubscribeEntities = static () =>
         {
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below

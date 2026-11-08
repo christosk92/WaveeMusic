@@ -53,6 +53,45 @@ internal static class ClassicPanelLayout
 /// <summary>The constants of Classic's now-playing hero and body.</summary>
 internal static class ClassicHeroLayout
 {
+    // ── the edge-to-edge canvas, "Tideline" (canvas-design/project/BleedClassic.dc.html) ───────────────────────────────
+
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It ends in a slowly moving wave whose crest sits at
+    /// min(canvas foot - 110, panel height - 300): a 220 band darkens the canvas toward it (the ground at 35 %), three swells (H 140, centred
+    /// on the crest) drift at 33, 21 and 14 s a panel's width: a violet one (30 %), a warm one tinted from the art (34 %) and the front one in the
+    /// ground with a 1.5 light crest line (55 %). Under the crest the ground deepens toward the panel's foot; a 150 band of the ground (75 %)
+    /// keeps the header readable. The meta's top sits 24 under the crest. Reduced motion: the swells stand still.</summary>
+    public const float BleedAspect = 16f / 9f, BleedCrestLift = 110f, BleedCrestRoom = 300f, BleedDarkBand = 220f, BleedDarkA = 0.35f,
+        BleedWaveH = 140f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f, BleedCrestLine = 1.5f, BleedCrestA = 0.55f;
+
+    /// <summary>The swells, back to front: amplitude, baseline (inside the 140 band), periods per panel width, and the drift (a panel's width
+    /// per period, ms); their tints (the violet and the warm swell's alpha).</summary>
+    public const float WaveBackAmp = 16f, WaveBackBase = 46f, WaveBackPeriods = 1f, WaveBackMs = 33000f,
+        WaveMidAmp = 12f, WaveMidBase = 58f, WaveMidPeriods = 2f, WaveMidMs = 21000f,
+        WaveFrontAmp = 10f, WaveFrontBase = 70f, WaveFrontPeriods = 2f, WaveFrontMs = 14000f,
+        WaveBackA = 0.30f, WaveMidA = 0.34f;
+
+    /// <summary>The violet of the back swell (the design's #6a4cff); everything else is taken from the art, never the brand green.</summary>
+    public static readonly ColorF WaveViolet = ColorF.FromRgba(0x6A, 0x4C, 0xFF);
+
+    /// <summary>What the ground deepens toward under the crest.</summary>
+    public static readonly ColorF GroundFloor = ColorF.FromRgba(0x00, 0x00, 0x00);
+
+    /// <summary>The ground: the panel's base tinted 14 % toward the art's accent; under the crest it deepens 35 % toward black.</summary>
+    public const float GroundMix = 0.14f, GroundDeepen = 0.35f;
+
+    /// <summary>The header over the canvas: "Playing from album" (11/14, 14 % tracking, white at 72 %) over the album (15/20 semibold); the chip
+    /// a white 10 % plate under a 22 % hairline (no blur: a frost cannot sample the video, a separate DirectComposition surface).</summary>
+    public const float BleedEyebrowSize = 11f, BleedEyebrowLine = 14f, BleedEyebrowA = 0.72f, BleedSourceSize = 15f, BleedSourceLine = 20f,
+        BleedChipFillA = 0.10f, BleedChipStrokeA = 0.22f;
+
+    public const ushort BleedSourceWeight = 600, BleedTitleWeight = 600;
+
+    /// <summary>The meta under the crest: the 64 cover (r10) with a soft glow in the art's warm accent (28 blur, 10 down, 35 %), 14 to the title
+    /// (22/26 semibold) over the artist in the warm accent (14/20) and "album · year" (12/16, white at 70 %), 3 apart; the saved heart in the
+    /// warm accent on a 40 circle of it at 14 %.</summary>
+    public const float BleedCover = 64f, BleedCoverRadius = 10f, BleedGlowBlur = 28f, BleedGlowY = 10f, BleedGlowA = 0.35f, BleedMetaGap = 14f,
+        BleedTitleSize = 22f, BleedTitleLine = 26f, BleedLinesGap = 3f, BleedYearA = 0.70f, BleedHeart = 40f, BleedHeartA = 0.14f;
+
     // ── the track meta ───────────────────────────────────────────────────────────────────────────────────────────────
     public const float ArtistSize = 14f, ArtistLine = 20f, AlbumSize = 12f, AlbumLine = 16f;
     public const float TitleColumnGap = 4f, MetaLinesGap = 2f;

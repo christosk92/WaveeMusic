@@ -204,10 +204,11 @@ public static class WinUiPanelBodies
 
     public static readonly Edges4 ChipPadding = new(12f, 0f, 8f, 0f);
 
-    /// <summary>The picker's strip under the stage: 16 between its rows; the 40 round arrows (a 14 chevron) either side of the style's name
-    /// (Subtitle 20/28 semibold) over its line (13/18, two lines at most: the block reserves both, so a one-line style never moves the rows
-    /// under it), 4 apart; the finish swatches (28, a 2 ring) 12 apart (their 40 hit boxes side by side) in a 40 row that is there for every style; the dots (6 tall, 18 wide on
-    /// the focused style, 24 apart in ONE 40-tall target whose click picks the dot under it: eleven 40-wide targets do not fit the column); a swatch's hit box is 40 (the Compact floor).</summary>
+    /// <summary>The picker's strip under the stage: 16 between its rows; the style's name (Subtitle 20/28 semibold) over its line (13/18, two
+    /// lines at most: the block reserves both, so a one-line style never moves the rows under it), 4 apart; the finish swatches (28, a 2 ring;
+    /// their 40 hit boxes side by side) in a 40 row that eases shut for a style without finishes; the 40 round arrows (a 14 chevron) either side
+    /// of the dots (6 tall, 18 wide on the focused style, up to 24 apart in ONE 40-tall target whose click picks the dot under it: eleven 40-wide
+    /// targets do not fit the column); a swatch's hit box is 40 (the Compact floor).</summary>
     public const float StripGap = 16f, ArrowBox = 40f, ArrowGlyph = 14f, NameGap = 4f, LineSize = 13f, LineLine = 18f, SwatchRowH = 40f,
         Swatch = 28f, SwatchRing = 2f, SwatchGap = 0f, DotBox = 24f, DotHitH = 40f, DotH = 6f, DotW = 6f, DotOnW = 18f, SwatchHit = 40f;
 
@@ -216,6 +217,22 @@ public static class WinUiPanelBodies
 
     /// <summary>The meta ↔ strip swap: the block's height eases (Reflow) as one cross-fades into the other.</summary>
     public static LayoutTransition SwapMotion => MotionRecipes.CardResizeHeight;
+
+    // ── the edge-to-edge canvas (canvas-design/project/BleedWinUI.dc.html) ────────────────────────────────────────
+
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the panel's ground (fully by 92 %), and a
+    /// 150 band of the ground (85 % at the top) keeps the tabs readable over it. The meta's top sits 196 above the canvas's foot (or the panel's,
+    /// when the panel is shorter), so the meta and the lyrics card show without scrolling.</summary>
+    public const float BleedAspect = 16f / 9f, BleedFadeShare = 0.5f, BleedFadeFull = 0.92f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.85f,
+        BleedMetaLift = 196f;
+
+    /// <summary>The stage's top below the panel's: the tab row, the hero's top inset, its head row and the gap under it.</summary>
+    public static float BleedStageTop => WinUiPanelLayout.TabRowH + HeroPadding.Top + HeadH + HeroGap;
+
+    /// <summary>The frosted chip over the canvas (the ground at 55 %, a 14 % white hairline; no blur: a frost cannot sample the video, which is
+    /// a separate DirectComposition surface under the UI), and the meta's 56 cover (r4, a 18 % hairline) beside the title, 12 apart.</summary>
+    public const float BleedChipFillA = 0.55f, BleedChipStrokeA = 0.14f, BleedCover = 56f, BleedCoverRadius = 4f, BleedCoverStrokeA = 0.18f,
+        BleedMetaGap = 12f;
 
     /// <summary>A dot's width easing to the focused one's.</summary>
     public static readonly LayoutTransition DotMotion = new(TransitionChannels.Size,

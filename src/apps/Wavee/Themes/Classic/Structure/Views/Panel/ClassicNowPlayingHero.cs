@@ -63,6 +63,7 @@ internal static class ClassicNowPlayingHero
 
     internal static Element HeroMeta(NowPlayingHeroProps props, Track track)
     {
+        if (props.Bleeds()) return BleedMeta(props, track);
         string uri = track.Uri.Text;
         string title = track.Title;
         var meta = new List<Element>(2);
@@ -99,6 +100,77 @@ internal static class ClassicNowPlayingHero
                             ],
                         },
                         Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ClassicHeroLayout.SaveGlyph, Box = ClassicHeroLayout.SaveBox }) with { Key = "save:" + uri },
+                    ],
+                },
+                props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
+            ],
+        };
+    }
+
+    /// <summary>The meta under the canvas's crest (Tideline): the glowing 64 cover, the title, the artist in the art's warm accent and "album ·
+    /// year", the saved heart in that accent on a soft circle of it; the lyrics peek under them.</summary>
+    static Element BleedMeta(NowPlayingHeroProps props, Track track)
+    {
+        string uri = track.Uri.Text, title = track.Title;
+        var ink = ClassicBleedInk.Of(props.NowArtUrl());
+        var lines = new List<Element>(3)
+        {
+            new TextEl(title)
+            {
+                Size = ClassicHeroLayout.BleedTitleSize, LineHeight = ClassicHeroLayout.BleedTitleLine, Weight = ClassicHeroLayout.BleedTitleWeight,
+                Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            },
+        };
+        if (ArtistLinks(props, track, ClassicHeroLayout.ArtistSize, ClassicHeroLayout.ArtistLine) is SpanTextEl artists) lines.Add(artists with { Color = ink.Warm });
+        var album = track.Album;
+        if (album.IsValid && album.Title.Length > 0)
+        {
+            string albumTitle = album.Title;
+            var albumUri = album.Uri;
+            string line = album.Year > 0 ? albumTitle + " · " + album.Year.ToString(System.Globalization.CultureInfo.InvariantCulture) : albumTitle;
+            lines.Add(new SpanTextEl([new TextSpan(line, OnClick: () => props.GoTo(albumUri, albumTitle))])
+            {
+                Size = ClassicHeroLayout.AlbumSize, LineHeight = ClassicHeroLayout.AlbumLine, Color = Tok.TextPrimary with { A = ClassicHeroLayout.BleedYearA },
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        }
+        ColorF warm = ink.Warm;
+        return new BoxEl
+        {
+            Direction = 1, Gap = Spacing.M,
+            Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.L),
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "npv-meta", Direction = 0, Gap = ClassicHeroLayout.BleedMetaGap, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Width = ClassicHeroLayout.BleedCover, Height = ClassicHeroLayout.BleedCover, Shrink = 0f,
+                            Corners = CornerRadius4.All(ClassicHeroLayout.BleedCoverRadius),
+                            Shadow = new ShadowSpec(ClassicHeroLayout.BleedGlowBlur, ClassicHeroLayout.BleedGlowY, 0f, warm with { A = ClassicHeroLayout.BleedGlowA }),
+                            Children =
+                            [
+                                new ImageEl
+                                {
+                                    Source = props.NowArtUrl() ?? "", Fit = ImageFit.Cover, DecodePx = ClassicHeroLayout.CoverDecodePx,
+                                    Width = ClassicHeroLayout.BleedCover, Height = ClassicHeroLayout.BleedCover, Corners = CornerRadius4.All(ClassicHeroLayout.BleedCoverRadius),
+                                },
+                            ],
+                        },
+                        new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ClassicHeroLayout.BleedLinesGap, Children = lines.ToArray() },
+                        new BoxEl
+                        {
+                            Width = ClassicHeroLayout.BleedHeart, Height = ClassicHeroLayout.BleedHeart, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                            Justify = FlexJustify.Center, Corners = Radii.Circle(ClassicHeroLayout.BleedHeart), Fill = warm with { A = ClassicHeroLayout.BleedHeartA },
+                            Children =
+                            [
+                                Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ClassicHeroLayout.SaveGlyph, Box = ClassicHeroLayout.BleedHeart, Accent = () => warm })
+                                    with { Key = "save:" + uri },
+                            ],
+                        },
                     ],
                 },
                 props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
@@ -207,6 +279,7 @@ internal sealed class ClassicHeroTile : Component
     Func<string>? _source;
     Func<ColorF>? _placeholder;
     Func<Element>? _cover;
+    Func<float, float>? _bleedRoom;
 
     public override Element Render()
     {
@@ -233,7 +306,14 @@ internal sealed class ClassicHeroTile : Component
             : null;
         if (sheetSide is not null) return SheetTile(props, sheetSide, strip);
 
-        var stage = new BoxEl { Direction = 1, Shrink = 0f, Children = [props.Stage(2f * Rail.Hero.Inset, _cover, Radii.CardAll)] };
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta (in the body under this pinned hero) 24 under the wave's crest.
+        _bleedRoom ??= panelW =>
+        {
+            float vh = MathF.Round(panelW * ClassicHeroLayout.BleedAspect), ph = props.RailHeight.Value;
+            float crest = MathF.Min(vh - ClassicHeroLayout.BleedCrestLift, (ph > 0f ? ph : vh) - ClassicHeroLayout.BleedCrestRoom);
+            return crest + ClassicHeroLayout.BleedMetaDrop - Rail.Hero.ArtTop - Spacing.M;
+        };
+        var stage = new BoxEl { Direction = 1, Shrink = 0f, Children = [props.Stage(2f * Rail.Hero.Inset, _cover, Radii.CardAll, _bleedRoom)] };
         return new BoxEl
         {
             Direction = 1, Shrink = 0f, Gap = Rail.Hero.Inset,
@@ -273,6 +353,7 @@ internal sealed class ClassicHeroHeaderRow : Component
         var props = UseProps<NowPlayingHeroProps>();
         bool open = props.Picking();
         int shown = props.ShownStyle();
+        bool bleeds = !open && props.Bleeds();
         var verbs = props.Style;
         Element body = open
             ? new BoxEl
@@ -280,6 +361,7 @@ internal sealed class ClassicHeroHeaderRow : Component
                 Direction = 0, Height = Rail.Hero.HeaderRowH, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
                 Children = [Eyebrow(Loc.Get(Strings.Player.PlayerStyle)), .. ClassicStylePicker.Commit(verbs)],
             }
+            : bleeds ? BleedFace(props.Source(), verbs, shown)
             : new BoxEl
             {
                 Direction = 0, Height = Rail.Hero.HeaderRowH, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
@@ -288,7 +370,35 @@ internal sealed class ClassicHeroHeaderRow : Component
         return new BoxEl
         {
             Height = Rail.Hero.HeaderRowH, Shrink = 0f, ZStack = true,
-            Children = [ClassicStylePicker.Layer(open ? "head:pick" : "head:rest", body)],
+            Children = [ClassicStylePicker.Layer(open ? "head:pick" : bleeds ? "head:bleed" : "head:rest", body)],
+        };
+    }
+
+    /// <summary>The header over the canvas (Tideline): "Playing from album" over the album's name, and the chip on a light plate.</summary>
+    static Element BleedFace(PanelSourceFacts source, IPlayerStyleVerbs verbs, int shown)
+    {
+        var words = new List<Element>(2);
+        if (source.HasSource)
+        {
+            words.Add(R.Type.Eyebrow(source.PlayingFrom) with
+            {
+                Size = ClassicHeroLayout.BleedEyebrowSize, LineHeight = ClassicHeroLayout.BleedEyebrowLine, Color = Tok.TextPrimary with { A = ClassicHeroLayout.BleedEyebrowA },
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+            words.Add(new TextEl(source.Name)
+            {
+                Size = ClassicHeroLayout.BleedSourceSize, LineHeight = ClassicHeroLayout.BleedSourceLine, Weight = ClassicHeroLayout.BleedSourceWeight,
+                Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        }
+        return new BoxEl
+        {
+            Direction = 0, Height = Rail.Hero.HeaderRowH, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+            Children =
+            [
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = words.ToArray() },
+                ClassicStylePicker.Chip(verbs, shown, frosted: true),
+            ],
         };
     }
 
@@ -319,13 +429,17 @@ internal static class ClassicStylePicker
         Button.Accent(Loc.Get(Strings.Player.Picker.Done), verbs.Done) with { Key = ClassicStylePickerLayout.DoneKey, Shrink = 0f },
     ];
 
-    /// <summary>The chip: the style's name and a chevron in a hairline pill.</summary>
-    internal static Element Chip(IPlayerStyleVerbs verbs, int shown) => ToolTip.Wrap(new BoxEl
+    /// <summary>The chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, a light plate under a
+    /// light hairline).</summary>
+    internal static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted = false) => ToolTip.Wrap(new BoxEl
     {
         Key = ClassicStylePickerLayout.ChipKey, Height = ClassicStylePickerLayout.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
         Gap = ClassicStylePickerLayout.ChipGap, Padding = ClassicStylePickerLayout.ChipPadding, Corners = Radii.Circle(ClassicStylePickerLayout.ChipH),
-        Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
-        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, BrushTransitionMs = Design.Motion.Faster,
+        Fill = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipFillA } : Tok.FillControlDefault,
+        HoverFill = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipFillA } : Tok.FillControlSecondary,
+        PressedFill = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipFillA } : Tok.FillControlTertiary,
+        BorderWidth = 1f, BorderColor = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipStrokeA } : Tok.StrokeControlDefault,
+        BrushTransitionMs = Design.Motion.Faster,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
         Children =
         [

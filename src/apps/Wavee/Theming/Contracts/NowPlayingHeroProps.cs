@@ -45,8 +45,10 @@ public interface IPlayerStyleVerbs
 
 /// <summary>Builds the now-playing stage for a hero whose stage column sits inside <paramref name="chrome"/> DIP of horizontal padding (both
 /// sides together: the carousel's neighbours peek into it). <paramref name="cover"/> builds the theme's cover image (a cached delegate);
-/// <paramref name="corners"/> rounds the canvas as the cover is rounded.</summary>
-public delegate Element StageView(float chrome, Func<Element> cover, CornerRadius4 corners);
+/// <paramref name="corners"/> rounds the canvas as the cover is rounded. <paramref name="bleed"/> (a hero in a panel whose frame draws the
+/// edge-to-edge canvas) is the stage's height, given the panel's width, while the canvas fills the panel behind it: the stage then draws
+/// nothing and holds the room that puts the meta over the canvas's lower part (reactive: it may read the panel's height).</summary>
+public delegate Element StageView(float chrome, Func<Element> cover, CornerRadius4 corners, Func<float, float>? bleed = null);
 
 /// <summary>The props of <see cref="ViewKeys.NowPlayingHero"/> (and of the now-playing body the panel draws under it).</summary>
 public sealed record NowPlayingHeroProps
@@ -62,6 +64,9 @@ public sealed record NowPlayingHeroProps
 
     /// <summary>The panel's committed width (the hero's side is derived from it, quantised).</summary>
     public required IReadSignal<float> RailWidth { get; init; }
+
+    /// <summary>The panel's height, head included (what the edge-to-edge canvas's meta is placed against).</summary>
+    public required IReadSignal<float> RailHeight { get; init; }
 
     // ── the hero ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -79,6 +84,19 @@ public sealed record NowPlayingHeroProps
     /// <summary>The style the chip names and the strip shows: the focused one while picking, the stored one otherwise (`Rail.PlayerCatalog`
     /// id). Reactive.</summary>
     public required Func<int> ShownStyle { get; init; }
+
+    // ── the edge-to-edge canvas (the Canvas style at rest) ───────────────────────────────────────────────────────────
+
+    /// <summary>Does the canvas fill the panel now: the Canvas style, not picking, a canvas to play? Reactive. The panel's frame then draws
+    /// <see cref="BleedVideo"/> from its very top, behind the head, and the hero draws its rest face over it.</summary>
+    public required Func<bool> Bleeds { get; init; }
+
+    /// <summary>The edge-to-edge canvas for a panel this wide: the full width, width × 16/9 tall, its height easing as the width changes.
+    /// A layer the frame places at the top of the panel, under its head and body.</summary>
+    public required Func<float, Element> BleedVideo { get; init; }
+
+    /// <summary>Where playback comes from ("Playing from album" over the album's name), for a hero that names it.</summary>
+    public required Func<PanelSourceFacts> Source { get; init; }
 
     // ── the body under the hero ──────────────────────────────────────────────────────────────────────────────────────
 

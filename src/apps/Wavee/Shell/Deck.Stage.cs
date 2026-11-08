@@ -4,8 +4,10 @@
 //
 // Role: UI (core: the themes host it through `NowPlayingHeroProps.Stage` and draw only the chip, the header and the strip under it)
 //
-// AT REST it is the stored style, one cell the column's width: Cover (the theme's own cover image), Canvas (the track's looping video over the
-// cover, 9:16, or the square cover when the track has none) or a deck (`Deck.Face`: Vinyl, CD, Cassette, ...).
+// AT REST it is the stored style, one cell the column's width: Cover (the theme's own cover image), Canvas or a deck (`Deck.Face`: Vinyl, CD,
+// Cassette, ...). Canvas with a canvas to play fills the PANEL edge to edge (`Deck.Bleed`, drawn by the panel's frame behind its head): the
+// stage then draws nothing and holds the room the hero's `bleed` height asks for, which puts the meta over the canvas's lower part. Without a
+// frame that bleeds (the Compact sheet), or while picking, the Canvas cell is the square cover with the canvas cropped over it.
 //
 // PICKING (`Shell.StylePicker.Open`) the same cell shrinks to 0.84 and its ring neighbours fade in at the sides at 0.66 and half opacity, so
 // opening and closing the picker REMOUNTS NOTHING: the stored style's cell is the focused one. A neighbour sits a clear gap beside the focused
@@ -15,13 +17,13 @@
 //
 // MOTION. The ring is three scalars, each eased toward a target by one per-frame ticker that runs only while one of them is moving: the
 // position, the focused scale (1 or 0.84) and the peek (0 at rest, 1 picking: the neighbours' presence). The cells bind their transform and
-// opacity to them (paint only, never a layout write per frame). The stage's HEIGHT is the focused art's at the focused scale (the Canvas cell
-// is 9:16 when it has a canvas to play), a plain value per render under a Reflow height transition: the engine eases it and the hero's meta
-// under it rides every change instead of jumping (owner rule: no layout jumps). Reduced motion is a VALUE: the ring lands in one step and the
+// opacity to them (paint only, never a layout write per frame). The stage's HEIGHT is the focused art's at the focused scale (or the bleed's
+// room), a plain value per render under a Reflow height transition: the engine eases it and the hero's meta under it rides every change
+// instead of jumping (owner rule: no layout jumps). Reduced motion is a VALUE: the ring lands in one step and the
 // height takes no transition.
 //
-// NOTHING DECODES unless the style is Canvas: the canvas layer claims the one canvas player only on the Canvas cell while it is the stage's
-// centre (the stored style at rest, the focused one while picking).
+// NOTHING DECODES unless the style is Canvas: the canvas claims the one player from the panel's edge-to-edge layer at rest, or from the Canvas
+// cell while it is the stage's centre and the canvas is not bleeding (picking, or a host without a bleed).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -38,7 +40,7 @@ public static partial class Deck
     /// <summary>The focused cell's scale while picking and a neighbour's.</summary>
     public const float PickScale = 0.84f, PeekScale = 0.66f;
 
-    /// <summary>A canvas is 9:16: the Canvas cell's height over its width when the track has one.</summary>
+    /// <summary>A canvas is 9:16: the edge-to-edge canvas's height over the panel's width.</summary>
     public const float CanvasAspect = 16f / 9f;
 
     /// <summary>The stage's node keys: its root, a style's cell ("npv-cell:vinyl") and a peeking neighbour's hit plate ("npv-peek:cd").</summary>
@@ -47,10 +49,10 @@ public static partial class Deck
     /// <summary>The now-playing stage. <paramref name="chrome"/> is the hero's horizontal padding around the stage's column (both sides
     /// together): the carousel's neighbours peek into it, up to the tile's edge. <paramref name="cover"/> builds the theme's cover image (one
     /// cached delegate: the props compare it by reference); <paramref name="corners"/> rounds the canvas the way the cover is rounded.</summary>
-    public static Element Stage(float chrome, Func<Element> cover, CornerRadius4 corners)
-        => Embed.Comp(new StageProps(chrome, cover, corners), static () => new StageHost()) with { Key = StageKey };
+    public static Element Stage(float chrome, Func<Element> cover, CornerRadius4 corners, Func<float, float>? bleed = null)
+        => Embed.Comp(new StageProps(chrome, cover, corners, bleed), static () => new StageHost()) with { Key = StageKey };
 
-    sealed record StageProps(float Chrome, Func<Element> Cover, CornerRadius4 Corners);
+    sealed record StageProps(float Chrome, Func<Element> Cover, CornerRadius4 Corners, Func<float, float>? Bleed);
 
     sealed class StageHost : Component
     {
@@ -69,7 +71,7 @@ public static partial class Deck
 
         StageProps _props = null!;
         int _center;
-        bool _tall;
+        bool _bleed;
 
         // the swipe
         bool _dragging, _dragMoved;
@@ -89,7 +91,9 @@ public static partial class Deck
             int stored = Rail.PlayerPrefs.Style();
             int center = open ? Shell.StylePicker.Focus.Value : stored;
             _center = center;
-            bool canvasShows = CanvasVideo.Current.Value.Shows && CanvasVideo.Enabled();
+            // At rest with a canvas, a hero in a bleeding frame holds the room the canvas behind it leaves for the meta.
+            bool bleed = _props.Bleed is not null && Bleeds();
+            _bleed = bleed;
             float fallbackSide = MathF.Max(1f, Shell.Ui.RailWidth.Value - _props.Chrome);
 
             _tick ??= Tick;
@@ -101,8 +105,6 @@ public static partial class Deck
             };
 
             // The ring's targets follow the picker; the ticker eases toward them. Deps-gated: never a write in render.
-            bool wantsTall = center == Rail.PlayerCatalog.Canvas && canvasShows;
-            _tall = wantsTall;
             UseEffect(() => Retarget(center, open), DepKey.From(center, open ? 1 : 0));
             UseEffect(() => InstallEscape(open), DepKey.From(open ? 1 : 0));
             // Unmounted while picking (the panel closed, the theme switched): the picker cancels, and the Escape preview goes back.
@@ -128,8 +130,9 @@ public static partial class Deck
             float w = _width.Value;
             float side = float.IsFinite(w) && w > 0f ? MathF.Floor(w) : MathF.Floor(fallbackSide);
             float deckSide = ClockRules.SideWithin(side);
-            // The focused art's height at the focused scale: the engine eases a change (a style, the picker, a canvas that lands).
-            float height = MathF.Round(side * (wantsTall ? CanvasAspect : 1f) * (open ? PickScale : 1f));
+            // The focused art's height at the focused scale, or the bleed's room: the engine eases a change (a style, the picker, a canvas that
+            // lands, the panel's width or height).
+            float height = bleed ? MathF.Max(0f, MathF.Round(_props.Bleed!(side + _props.Chrome))) : MathF.Round(side * (open ? PickScale : 1f));
 
             // The cells in ring order from the position's left: the centre alone at rest; picking, every style less than two places away
             // (the focused one and its two neighbours on a place, four while the ring moves between two).
@@ -179,7 +182,7 @@ public static partial class Deck
         }
 
         /// <summary>The stage's and the Canvas cell's height changes: Reflow, so the hero's blocks under the stage re-solve every frame.</summary>
-        static LayoutTransition HeightMotion => MotionRecipes.CardResizeHeight;
+        internal static LayoutTransition HeightMotion => MotionRecipes.CardResizeHeight;
 
         Element Cell(int id, float side, float deckSide, bool open)
         {
@@ -188,10 +191,10 @@ public static partial class Deck
             Element art = id switch
             {
                 Rail.PlayerCatalog.Cover => new BoxEl { Width = side, Shrink = 0f, Direction = 1, Children = [_props.Cover()] },
+                // The square cover with the canvas cropped over it; nothing while the canvas fills the panel behind the stage.
                 Rail.PlayerCatalog.Canvas => new BoxEl
                 {
-                    Width = side, Height = MathF.Round(side * (_tall && center ? CanvasAspect : 1f)), Shrink = 0f, ZStack = true,
-                    Animate = Design.Reduced ? null : HeightMotion,
+                    Width = side, Height = side, Shrink = 0f, ZStack = true,
                     Children =
                     [
                         // Under a presented canvas the cover is not drawn at all: the hole erases whole device pixels, and a cover laid out at a
@@ -199,9 +202,9 @@ public static partial class Deck
                         new BoxEl
                         {
                             Width = side, Shrink = 0f, Direction = 1, AlignSelf = FlexAlign.Start, Children = [_props.Cover()],
-                            Visible = center ? s_coverUncovered : true,
+                            Visible = center && _bleed ? false : center ? s_coverUncovered : true,
                         },
-                        CanvasVideo.Layer(CanvasVideo.Surface.Deck, _props.Corners, default, on: center),
+                        CanvasVideo.Layer(CanvasVideo.Surface.Deck, _props.Corners, default, on: center && !_bleed),
                     ],
                 },
                 _ => new BoxEl { Width = side, Shrink = 0f, Direction = 0, Justify = FlexJustify.Center, Children = [Face(id, deckSide)] },
@@ -246,13 +249,8 @@ public static partial class Deck
         /// <summary>How far a neighbour's centre sits from the focused cell's: half of each plus the gap, so the two never overlap.</summary>
         float Spread(float side) => 0.5f * (_zoom.Value + PeekScale) * side + Spacing.M;
 
-        /// <summary>The art height of style <paramref name="id"/>'s cell (the Canvas cell is tall only while it is the centre with a canvas).</summary>
-        float ArtHeight(int id, float side, float deckSide) => id switch
-        {
-            Rail.PlayerCatalog.Canvas => _tall && id == _center ? MathF.Round(side * CanvasAspect) : side,
-            Rail.PlayerCatalog.Cover => side,
-            _ => deckSide,
-        };
+        /// <summary>The art height of style <paramref name="id"/>'s cell.</summary>
+        static float ArtHeight(int id, float side, float deckSide) => id is Rail.PlayerCatalog.Canvas or Rail.PlayerCatalog.Cover ? side : deckSide;
 
         Affine2D TransformOf(int id, float side, float deckSide)
         {

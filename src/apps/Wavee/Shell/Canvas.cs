@@ -48,8 +48,9 @@ public static partial class CanvasVideo
     }
 
     /// <summary>Where a canvas can show, by priority: the higher value owns the one player when several are mounted. The now-playing
-    /// cover is not one: "Cover" is the album art alone, and a canvas in the panel is the Canvas player style's (the Deck).</summary>
-    public enum Surface : byte { None = 0, Deck = 2, Stage = 3 }
+    /// cover is not one: "Cover" is the album art alone, and a canvas in the panel is the Canvas player style's: edge to edge behind the panel
+    /// at rest (Bleed), in the picker's Canvas cell while picking (Deck).</summary>
+    public enum Surface : byte { None = 0, Bleed = 1, Deck = 2, Stage = 3 }
 
     /// <summary>The playing track's canvas as the surfaces draw it. <see cref="Shows"/> false: draw nothing (the surface is exactly what it
     /// is without Canvas). <see cref="File"/> is empty until the mp4 is on disk (the poster shows meanwhile).</summary>

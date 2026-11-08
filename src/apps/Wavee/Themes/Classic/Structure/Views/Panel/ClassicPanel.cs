@@ -253,6 +253,16 @@ internal static class ClassicPanel
         }) with { Key = ClassicPanelTiers.SheetScrollKey, Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
+    /// <summary>The panel's surface with the edge-to-edge canvas over it (Tideline) while the Canvas style rests with a canvas to play; the docked
+    /// video pinned in the hero's place keeps the plain surface.</summary>
+    internal static Element WithBleed(Element surface, PanelProps props, PanelView view) => view.Pinned == PanelPinned.DockedVideo
+        ? surface
+        : new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, HitTestPassThrough = true,
+            Children = [surface, Embed.Comp(new ClassicBleedProps(props.NowPlaying, view.Width), static () => new ClassicBleed())],
+        };
+
     /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both.</summary>
     internal static Element PinnedHero(PanelProps props, PanelView view)
     {
@@ -491,7 +501,7 @@ internal sealed class ClassicPanelFrame : Component
                         Direction = 1, Children = [Embed.Comp(props, static () => new ClassicSheetHeader())],
                     }),
                     ClassicPanel.NowPlayingSheet(props, view, vp, _ask))
-                : ClassicPanel.Arm(open, placement, surface, edge, null,
+                : ClassicPanel.Arm(open, placement, ClassicPanel.WithBleed(surface, props, view), edge, null,
                     ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
         else
         {

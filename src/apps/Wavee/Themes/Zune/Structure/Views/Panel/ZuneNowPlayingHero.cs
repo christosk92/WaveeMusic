@@ -73,7 +73,7 @@ internal static class ZuneNowPlayingHero
     };
 
     /// <summary>The head: "now playing" and the chip at rest; "player style", cancel and done while picking. A fixed 36 row.</summary>
-    internal static Element Head(IPlayerStyleVerbs verbs, bool open, int shown)
+    internal static Element Head(IPlayerStyleVerbs verbs, bool open, int shown, bool bleeds)
     {
         Element body = open
             ? new BoxEl
@@ -86,6 +86,13 @@ internal static class ZuneNowPlayingHero
                     Word(P.DoneKey, Loc.Get(Strings.Player.Picker.Done), Tok.AccentTextPrimary, verbs.Done),
                 ],
             }
+            : bleeds
+            ? new BoxEl
+            {
+                // Over the canvas the pivot already says "now playing": the chip alone, at the end.
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Height = P.HeadH,
+                Children = [Chip(verbs, shown)],
+            }
             : new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = P.WordGap, Height = P.HeadH,
@@ -94,7 +101,7 @@ internal static class ZuneNowPlayingHero
         return new BoxEl
         {
             Key = P.HeadKey, Height = P.HeadH, Shrink = 0f, ZStack = true,
-            Children = [Layer(open ? "head:pick" : "head:rest", body)],
+            Children = [Layer(open ? "head:pick" : bleeds ? "head:bleed" : "head:rest", body)],
         };
     }
 
@@ -284,6 +291,7 @@ internal sealed class ZuneHeroTile : Component
     Func<string>? _source;
     Func<ColorF>? _placeholder;
     Func<Element>? _cover;
+    Func<float, float>? _bleedRoom;
 
     public override Element Render()
     {
@@ -306,26 +314,75 @@ internal sealed class ZuneHeroTile : Component
             Corners = R.Shape.All(ShapeRole.Cover), AlignSelf = FlexAlign.Stretch, Placeholder = Prop.Of(_placeholder),
         };
 
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta's top 196 above the canvas's foot (or the panel's).
+        _bleedRoom ??= panelW =>
+        {
+            float vh = MathF.Round(panelW * P.BleedAspect), ph = props.RailHeight.Value;
+            return MathF.Min(vh, ph > 0f ? ph : vh) - P.BleedMetaLift - P.BleedStageTop - P.HeroGap;
+        };
+        bool bleeds = props.Bleeds();
+
         var verbs = props.Style;
         Element slot = new BoxEl
         {
             Key = ZuneNowPlayingHero.SlotKey, Direction = 1, Shrink = 0f,
-            Children = [props.Stage(P.HeroPadding.Left + P.HeroPadding.Right, _cover, R.Shape.All(ShapeRole.Cover))],
+            Children = [props.Stage(P.HeroPadding.Left + P.HeroPadding.Right, _cover, R.Shape.All(ShapeRole.Cover), _bleedRoom)],
         };
 
         string uri = track.Uri.Text, title = track.Title;
         Element swap = open ? ZuneNowPlayingHero.Layer("npv-strip", ZuneNowPlayingHero.Strip(verbs, shown, props.NowArtUrl))
-                            : ZuneNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title));
+                     : bleeds ? ZuneNowPlayingHero.Layer("npv-meta:bleed", BleedMeta(props, track, uri, title))
+                     : ZuneNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title));
 
         return new BoxEl
         {
             Direction = 1, Shrink = 0f, Gap = P.HeroGap, Padding = P.HeroPadding,
             Children =
             [
-                ZuneNowPlayingHero.Head(verbs, open, shown),
+                ZuneNowPlayingHero.Head(verbs, open, shown, bleeds),
                 slot,
                 new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
                 props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
+            ],
+        };
+    }
+
+    /// <summary>The meta over the canvas's fade (BleedZune): the 88 square cover, the title over the album in the accent, the heart in its ring, all
+    /// on the cover's foot. The artist is the giant name drifting over the canvas.</summary>
+    Element BleedMeta(NowPlayingHeroProps props, Track track, string uri, string title)
+    {
+        var lines = new List<Element>(2)
+        {
+            R.Type.NowPlayingTitle(title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        };
+        var album = track.Album;
+        if (album.IsValid && album.Title.Length > 0)
+        {
+            string albumTitle = album.Title;
+            var albumUri = album.Uri;
+            lines.Add(new SpanTextEl([new TextSpan(albumTitle, OnClick: () => props.GoTo(albumUri, albumTitle))])
+            {
+                Size = P.BleedAlbumSize, LineHeight = P.BleedAlbumLine, Color = Tok.AccentTextPrimary,
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        }
+        return new BoxEl
+        {
+            Key = ZuneNowPlayingHero.MetaKey, Direction = 0, AlignItems = FlexAlign.End, Gap = P.BleedMetaGap,
+            Children =
+            [
+                new ImageEl
+                {
+                    Source = Prop.Of(_source!), Fit = ImageFit.Cover, DecodePx = P.HeroDecodePx, Width = P.BleedCover, Height = P.BleedCover,
+                    Corners = R.Shape.All(ShapeRole.Cover), Placeholder = Prop.Of(_placeholder!),
+                },
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.HeroMetaGap, Children = lines.ToArray() },
+                new BoxEl
+                {
+                    Width = P.HeroHeart, Height = P.HeroHeart, Shrink = 0f, ZStack = true, Corners = Radii.Circle(P.HeroHeart),
+                    BorderWidth = P.BleedHeartRing, BorderColor = Tok.TextPrimary,
+                    Children = [Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri }],
+                },
             ],
         };
     }
