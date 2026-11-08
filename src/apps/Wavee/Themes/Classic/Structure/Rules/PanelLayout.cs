@@ -144,6 +144,10 @@ internal static class ClassicStylePickerLayout
     /// <summary>A dot's width easing to the focused one's.</summary>
     public static readonly LayoutTransition DotMotion = new(TransitionChannels.Size,
         TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Width);
+
+    /// <summary>The swatch row opening to a style with finishes and closing to one without.</summary>
+    public static readonly LayoutTransition SwatchRowMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
 }
 
 /// <summary>The constants of Classic's on-media strip.</summary>

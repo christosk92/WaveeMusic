@@ -157,10 +157,9 @@ internal static class ZuneNowPlayingHero
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = P.RowGap,
+                    Direction = 0, AlignItems = FlexAlign.Center,
                     Children =
                     [
-                        Arrow(P.PrevKey, Icons.ChevronLeft, Strings.Player.Picker.Previous, () => verbs.Step(-1)),
                         new BoxEl
                         {
                             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.NameGap, MinHeight = P.NameBlockMinH, Justify = FlexJustify.Center,
@@ -178,11 +177,25 @@ internal static class ZuneNowPlayingHero
                                 },
                             ],
                         },
+                    ],
+                },
+                // Only a style with finishes has swatches: the row opens to their height and closes to nothing, eased (no jump).
+                new BoxEl
+                {
+                    Height = style.HasFinish ? P.SwatchRowH : 0f, ClipToBounds = true, Direction = 0, AlignItems = FlexAlign.Center,
+                    Justify = FlexJustify.Center, Gap = P.SwatchGap, Animate = Design.Reduced ? null : P.SwapMotion, Children = swatches,
+                },
+                // The arrows flank the dots, clear of the name and line above.
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = P.RowGap,
+                    Children =
+                    [
+                        Arrow(P.PrevKey, Icons.ChevronLeft, Strings.Player.Picker.Previous, () => verbs.Step(-1)),
+                        Dots(verbs, dots),
                         Arrow(P.NextKey, Icons.ChevronRight, Strings.Player.Picker.Next, () => verbs.Step(+1)),
                     ],
                 },
-                new BoxEl { Height = P.SwatchRowH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = P.SwatchGap, Children = swatches },
-                new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Dots(verbs, dots)] },
             ],
         };
     }
@@ -217,19 +230,29 @@ internal static class ZuneNowPlayingHero
         }, Loc.Get(finish.LabelKey));
     }
 
-    /// <summary>The dots: ONE target (40 tall, a dot's 24 each) whose click picks the dot under the pointer.</summary>
-    static Element Dots(IPlayerStyleVerbs verbs, Element[] dots) => new BoxEl
+    /// <summary>The dots' laid-out width (one strip shows at a time), noted by its bounds callback: a re-render keeps the node and its bounds,
+    /// so the width outlives the element that first reported it.</summary>
+    static float s_dotsWidth;
+    static readonly Action<RectF> s_noteDotsWidth = static r => s_dotsWidth = r.W;
+
+    /// <summary>The dots: ONE target (40 tall, up to a dot's 24 each, narrower where the arrows beside it leave less) whose click picks the dot
+    /// under the pointer.</summary>
+    static Element Dots(IPlayerStyleVerbs verbs, Element[] dots)
     {
-        Key = P.DotsKey, Width = P.DotBox * dots.Length, Height = P.DotHitH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-        Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
-        Role = AutomationRole.Slider, Focusable = true, Cursor = CursorId.Hand,
-        OnPointerDown = p => verbs.FocusOn(Math.Clamp((int)(p.X / P.DotBox), 0, dots.Length - 1)),
-        Children = dots,
-    };
+        return new BoxEl
+        {
+            Key = P.DotsKey, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = P.DotBox * dots.Length, Height = P.DotHitH, Direction = 0,
+            AlignItems = FlexAlign.Center, Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
+            Role = AutomationRole.Slider, Focusable = true, Cursor = CursorId.Hand,
+            OnBoundsChanged = s_noteDotsWidth,
+            OnPointerDown = p => verbs.FocusOn(Math.Clamp((int)(p.X * dots.Length / MathF.Max(1f, s_dotsWidth)), 0, dots.Length - 1)),
+            Children = dots,
+        };
+    }
 
     static Element Dot(int id, bool on) => new BoxEl
     {
-        Key = P.DotPrefix + Rail.PlayerCatalog.ById(id).Slug, Width = P.DotBox, Height = P.DotHitH, Shrink = 0f,
+        Key = P.DotPrefix + Rail.PlayerCatalog.ById(id).Slug, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = P.DotHitH,
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
         Children =
         [

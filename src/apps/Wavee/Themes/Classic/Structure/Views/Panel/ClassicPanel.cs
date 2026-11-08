@@ -265,12 +265,14 @@ internal static class ClassicPanel
         };
     }
 
-    /// <summary>The 2-state Art|Video toggle over the ART's top-right corner. Its offset is DERIVED from
+    /// <summary>The 2-state Art|Video toggle over the ART's top-right corner (hidden while the style picker is open). Its offset is DERIVED from
     /// <see cref="Rail.Hero.ArtTop"/> (in the sheet, from the art's own top: the head carries the header row); each half's tooltip names the
     /// action IT performs.</summary>
     static Element ArtVideoToggle(PanelProps props, bool sheet) => new BoxEl
     {
         Height = ClassicPanelLayout.ToggleH, Shrink = 0f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End,
+        // Picking a player style, the art is the carousel: the toggle would sit over a neighbour's corner, so it steps aside until the picker closes.
+        Visible = Prop.Of(() => !props.NowPlaying.Picking()),
         Margin = sheet
             ? new Edges4(0f, ClassicPanelTiers.SheetArtTop + Spacing.XS, Spacing.XS, 0f)
             : new Edges4(0f, Rail.Hero.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),

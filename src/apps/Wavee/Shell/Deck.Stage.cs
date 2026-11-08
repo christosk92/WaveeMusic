@@ -8,7 +8,8 @@
 // cover, 9:16, or the square cover when the track has none) or a deck (`Deck.Face`: Vinyl, CD, Cassette, ...).
 //
 // PICKING (`Shell.StylePicker.Open`) the same cell shrinks to 0.84 and its ring neighbours fade in at the sides at 0.66 and half opacity, so
-// opening and closing the picker REMOUNTS NOTHING: the stored style's cell is the focused one. A neighbour takes a click (it focuses that
+// opening and closing the picker REMOUNTS NOTHING: the stored style's cell is the focused one. A neighbour sits a clear gap beside the focused
+// cell (never under it), centred on its height, and peeks in from the tile's edge, where the window fades it out. A neighbour takes a click (it focuses that
 // style); a horizontal swipe drags the ring. The ring is circular (after Metro comes Cover), and only the cells within two places of the
 // position are mounted, so a move mounts the next style as it enters, at opacity 0.
 //
@@ -34,9 +35,8 @@ namespace Wavee;
 
 public static partial class Deck
 {
-    /// <summary>The focused cell's scale while picking, a neighbour's, and a neighbour's offset as a fraction of the column (the design's
-    /// 214 of 328).</summary>
-    public const float PickScale = 0.84f, PeekScale = 0.66f, PeekSpread = 214f / 328f;
+    /// <summary>The focused cell's scale while picking and a neighbour's.</summary>
+    public const float PickScale = 0.84f, PeekScale = 0.66f;
 
     /// <summary>A canvas is 9:16: the Canvas cell's height over its width when the track has one.</summary>
     public const float CanvasAspect = 16f / 9f;
@@ -153,6 +153,8 @@ public static partial class Deck
             return new BoxEl
             {
                 Shrink = 0f, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(-half, 0f, -half, 0f), Height = height, ZStack = true, ClipToBounds = true,
+                // Picking, the neighbours peek in from the tile's edges and dissolve there instead of being cut.
+                EdgeFade = neighbours && half > 0f ? new EdgeFadeSpec(EdgeMask.Left | EdgeMask.Right, half, 0f, half, 0f) : null,
                 OnBoundsChanged = _onBounds, Animate = Design.Reduced ? null : HeightMotion,
                 OnPointerDown = open ? p => { _dragging = true; _dragMoved = false; _dragX0 = p.X; _dragPos0 = _pos.Peek(); } : null,
                 OnDrag = open ? p => Drag(p.X, side) : null,
@@ -228,7 +230,7 @@ public static partial class Deck
                     {
                         Width = side, Shrink = 0f, ZStack = true,
                         TransformOriginX = 0.5f, TransformOriginY = 0f,
-                        Transform = Prop.Of(() => TransformOf(id, side)),
+                        Transform = Prop.Of(() => TransformOf(id, side, deckSide)),
                         Opacity = Prop.Of(() => OpacityOf(id)),
                         Children = kids,
                     },
@@ -241,11 +243,31 @@ public static partial class Deck
         /// <summary>The Canvas cell's cover shows until the deck's canvas has presented a frame over it.</summary>
         static readonly Prop<bool> s_coverUncovered = Prop.Of(static () => CanvasVideo.Presented.Value != CanvasVideo.Surface.Deck);
 
-        Affine2D TransformOf(int id, float side)
+        /// <summary>How far a neighbour's centre sits from the focused cell's: half of each plus the gap, so the two never overlap.</summary>
+        float Spread(float side) => 0.5f * (_zoom.Value + PeekScale) * side + Spacing.M;
+
+        /// <summary>The art height of style <paramref name="id"/>'s cell (the Canvas cell is tall only while it is the centre with a canvas).</summary>
+        float ArtHeight(int id, float side, float deckSide) => id switch
+        {
+            Rail.PlayerCatalog.Canvas => _tall && id == _center ? MathF.Round(side * CanvasAspect) : side,
+            Rail.PlayerCatalog.Cover => side,
+            _ => deckSide,
+        };
+
+        Affine2D TransformOf(int id, float side, float deckSide)
         {
             float d = Offset(id), ad = MathF.Abs(d);
-            float s = ad < 1f ? _zoom.Value + (PeekScale - _zoom.Value) * ad : PeekScale;
-            return Affine2D.Translation(d * PeekSpread * side, 0f).Multiply(Affine2D.Scale(s, s));
+            float zoom = _zoom.Value;
+            float s = ad < 1f ? zoom + (PeekScale - zoom) * ad : PeekScale;
+            // Out to the first neighbour the cell slides the spread; past it, each further place one neighbour and a gap more.
+            float spread = Spread(side);
+            float x = ad <= 1f ? d * spread : MathF.Sign(d) * (spread + (ad - 1f) * (PeekScale * side + Spacing.M));
+            // Centred on the focused art: the centre line is half the focused height at its scale, eased between two places as the ring moves.
+            int n = Rail.PlayerCatalog.Count;
+            float p = _pos.Value, f = MathF.Floor(p), t = p - f;
+            float hc = ArtHeight(Mod((int)f, n), side, deckSide) * (1f - t) + ArtHeight(Mod((int)f + 1, n), side, deckSide) * t;
+            float y = 0.5f * (zoom * hc - s * ArtHeight(id, side, deckSide));
+            return Affine2D.Translation(x, y).Multiply(Affine2D.Scale(s, s));
         }
 
         float OpacityOf(int id)
@@ -329,7 +351,7 @@ public static partial class Deck
             float dx = x - _dragX0;
             if (!_dragMoved && MathF.Abs(dx) < DragSlop) return;
             _dragMoved = true;
-            _pos.Value = _dragPos0 - dx / MathF.Max(1f, PeekSpread * side);
+            _pos.Value = _dragPos0 - dx / MathF.Max(1f, Spread(side));
             if (!_moving.Peek()) _moving.Value = true;   // the cells follow the drag through their bound thunks
         }
 
