@@ -224,13 +224,13 @@ public static class WinUiPanelBodies
 
     // ── the edge-to-edge canvas (canvas-design/project/BleedWinUI.dc.html) ────────────────────────────────────────
 
-    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the media scope's shade (`Deck.BleedShade`:
-    /// the pane's ground in the dark kind, the media stage in the light kind; fully by 92 %), and a 150 band of that shade (85 % at the top) keeps
-    /// the tabs readable over it. Under the canvas's foot a 24 ramp (eased: 30 % left at 40 %) returns from the shade to the pane's ground (nothing to see in the dark kind,
-    /// where the two are one colour). The meta's top sits 196 above the canvas's foot (or the panel's, when the panel is shorter), so the meta and
-    /// the lyrics card show without scrolling.</summary>
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top, and a 150 band of the media scope's shade (`Deck.BleedShade`: the
+    /// pane's ground in the dark kind, the media stage in the light kind; 85 % at the top) keeps the tabs readable over it. In the dark kind its
+    /// lower half fades into the pane's ground (fully by 92 %); in the light kind its foot dissolves into the light ground under a veil behind the
+    /// copy (`Deck.LightScope`). The meta's top sits 196 above where the copy ends (`Deck.CopyFoot`: the canvas's foot in the dark kind,
+    /// `Deck.LightFoot` above it in the light kind, never below the panel's foot), so the meta and the lyrics card show without scrolling.</summary>
     public const float BleedAspect = 16f / 9f, BleedFadeShare = 0.5f, BleedFadeFull = 0.92f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.85f,
-        BleedMetaLift = 196f, BleedFootRamp = 24f, BleedFootEase = 0.4f, BleedFootEaseA = 0.3f;
+        BleedMetaLift = 196f;
 
     /// <summary>The stage's top below the panel's: the tab row, the hero's top inset, its head row and the gap under it.</summary>
     public static float BleedStageTop => WinUiPanelLayout.TabRowH + HeroPadding.Top + HeadH + HeroGap;

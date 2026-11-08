@@ -226,9 +226,9 @@ internal static class WinUiPanel
 
     static readonly EnterExit BleedFade = new(Opacity: 0f, Active: true);
 
-    /// <summary>The edge-to-edge canvas (BleedWinUI): the panel's ground, the canvas over it from the top, its lower half fading into the media
-    /// scope's shade (<see cref="Deck.BleedShade"/>), the ramp back to the ground under its foot, and the head's scrim. Shown while the Canvas
-    /// style rests with a canvas to play; it fades in and out.</summary>
+    /// <summary>The edge-to-edge canvas (BleedWinUI): the panel's ground, the canvas over it from the top, its lower half fading into the ground
+    /// in the dark kind (in the light kind the veil behind the copy and the foot's dissolve into the light ground, <see cref="Deck.LightScope"/>),
+    /// and the head's scrim. Shown while the Canvas style rests with a canvas to play; it fades in and out.</summary>
     internal static Element Bleed(NowPlayingHeroProps np, float width)
     {
         float vh = MathF.Round(width * B.BleedAspect), fade = MathF.Round(vh * B.BleedFadeShare);
@@ -242,17 +242,13 @@ internal static class WinUiPanel
             [
                 new BoxEl { Grow = 1f, Fill = ground },
                 np.BleedVideo(width),
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
-                    Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = 0f }), new GradientStop(B.BleedFadeFull, shade)),
-                },
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh, 0f, 0f), Height = B.BleedFootRamp,
-                    Gradient = Ui.GradientDown(new GradientStop(0f, shade), new GradientStop(B.BleedFootEase, shade with { A = B.BleedFootEaseA }),
-                        new GradientStop(1f, shade with { A = 0f })),
-                },
+                R.IsLight
+                    ? Deck.LightScope(np, width, B.BleedMetaLift, ground)
+                    : new BoxEl
+                    {
+                        AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
+                        Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(B.BleedFadeFull, ground)),
+                    },
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = B.BleedHeadScrimH,

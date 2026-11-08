@@ -1,10 +1,12 @@
 // ── Themes/Classic/Structure/Views/Panel/ClassicBleed.cs — "Tideline": Classic's edge-to-edge canvas ───────────────────────────────────
 //
 // The Canvas player style at rest fills the panel from its very top (`NowPlayingHeroProps.BleedVideo`, core) and ends, instead of a straight
-// fade, in a slowly moving wave: three swells drift at different speeds over the canvas's lower part (a violet one, a warm one tinted from the
-// art, and the front one in the panel's ground with a light crest line), the ground under the crest deepening toward the panel's foot. The
-// ground is a deep tint taken from the art: no brand green anywhere. Board: canvas-design/project/BleedClassic.dc.html (its generator's
-// `wave()` is the geometry below). Reduced motion: the swells stand still (`Deck.Drift`).
+// fade, in a slowly moving wave: three swells drift at different speeds over the canvas's lower part (two in the art's colours, the cover's
+// dominant hue behind its second one, and the front one in the panel's own ground with a crest line in the art's hue). Under the crest the
+// panel is PLAIN, the same ground it shows with the canvas off (the owner, 2026-11-08: "theres too much color. it should just be plain and
+// also the waves are not colored from the album art"): the art lives in the waves, the meta's accents and the cover's glow, never in a wash.
+// No brand green anywhere. Board: canvas-design/project/BleedClassic.dc.html (its generator's `wave()` is the geometry below). Reduced
+// motion: the swells stand still (`Deck.Drift`).
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -16,18 +18,60 @@ using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
-/// <summary>The colours the canvas's ending and its meta take from the playing track's art.</summary>
-internal readonly record struct ClassicBleedInk(ColorF Ground, ColorF Deep, ColorF Warm)
+/// <summary>The colours of the canvas's ending and its meta: the plain panel <paramref name="Ground"/>, the back and middle swells in the art's
+/// two colours (<paramref name="Back"/>, <paramref name="Mid"/>), the crest line (<paramref name="Crest"/>) and the meta's accent text
+/// (<paramref name="Text"/>: the artist, the heart).</summary>
+internal readonly record struct ClassicBleedInk(ColorF Ground, ColorF Back, ColorF Mid, ColorF Crest, ColorF Text)
 {
-    /// <summary>The ground (the panel's base tinted toward the art's accent), its deeper foot and the warm accent (the art's accent, lifted).
-    /// The palette watch is read inside, so a late grading re-renders the reader.</summary>
+    /// <summary>The colours for the cover at <paramref name="url"/>. The ground is the panel's own (the content layer over the shell's ground,
+    /// flattened: what the panel shows with the canvas off). The art's two colours come from the cover's grading (the house palette): its
+    /// dominant hue (<see cref="ColorScience.Accent(in Scheme)"/>) and its second one (the most saturated other role a hue apart, else the
+    /// dominant again), each at its own saturation (capped) and at the kind's swell lightness, so the waves sit on the plain panel in both kinds;
+    /// the crest line and the accent text are the dominant hue solved against the ground. A cover with no grading yet paints the waves in the
+    /// neutral ink. The palette watch is read inside, so a late grading re-renders the reader.</summary>
     public static ClassicBleedInk Of(string? url)
     {
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
-        ColorF accent = Design.SchemeFor(url) is { } s ? ColorScience.Accent(s) : Tok.TextSecondary;
-        ColorF ground = ColorF.Lerp(Tok.FillSolidBase, accent, ClassicHeroLayout.GroundMix) with { A = 1f };
-        ColorF deep = ColorF.Lerp(ground, ClassicHeroLayout.GroundFloor, ClassicHeroLayout.GroundDeepen) with { A = 1f };
-        return new ClassicBleedInk(ground, deep, ColorScience.Lift(accent));
+        bool light = R.IsLight;
+        ColorF ground = ColorContrast.Flatten(R.Layer.FileArea, R.Layer.ShellGround);
+        ColorF dominant = ColorContrast.Flatten(Tok.TextSecondary, ground), second = dominant;   // the neutral ink, opaque (the solves keep its alpha)
+        if (url is { Length: > 0 } && (Palette.TryScheme(url, light, out Scheme s) || Palette.TryScheme(url, !light, out s)))
+            (dominant, second) = ArtPair(s);
+        ThemeKind kind = light ? ThemeKind.Light : ThemeKind.Dark;
+        ColorF back = Swell(dominant, light ? ClassicHeroLayout.WaveBackLightL : ClassicHeroLayout.WaveBackDarkL);
+        ColorF mid = Swell(second, light ? ClassicHeroLayout.WaveMidLightL : ClassicHeroLayout.WaveMidDarkL);
+        // The accent text: the dominant hue solved as text on the ground, a step past AA (the rendered glyphs blend a little under the solve).
+        ColorF text = ColorScience.Hairline(dominant, kind, ground, ClassicHeroLayout.ArtTextContrast);
+        if (!ColorContrast.MeetsAaText(text, ground)) text = ColorContrast.PickContrast(ground);
+        return new ClassicBleedInk(ground, back, mid, ColorScience.Hairline(dominant, kind, ground), text);
+    }
+
+    /// <summary>The cover's dominant hue and its second one: of the grading's other roles, the most saturated whose hue stands at least
+    /// <see cref="ClassicHeroLayout.WaveHueApart"/> degrees from the dominant one; the dominant again when none does (a one-hue cover).</summary>
+    static (ColorF Dominant, ColorF Second) ArtPair(in Scheme s)
+    {
+        ColorF dominant = ColorScience.Accent(s), second = dominant;
+        var (dh, ds, _) = dominant.ToHsv();
+        if (ds <= ColorScience.NeutralS) return (dominant, second);   // a hueless cover has no second hue either
+        float best = ColorScience.NeutralS;
+        Span<uint> roles = [s.BackgroundTintedBase, s.BackgroundBase, s.TextSubdued, s.TextBrightAccent];
+        foreach (uint role in roles)
+        {
+            ColorF c = ColorScience.ToColor(role);
+            var (h, sat, _) = c.ToHsv();
+            float apart = MathF.Abs(h - dh);
+            apart = MathF.Min(apart, 360f - apart);
+            if (sat > best && apart >= ClassicHeroLayout.WaveHueApart) { best = sat; second = c; }
+        }
+        return (dominant, second);
+    }
+
+    /// <summary>A swell's colour: <paramref name="art"/>'s hue at its own saturation (capped at <see cref="ClassicHeroLayout.WaveSatMax"/>) and
+    /// the lightness <paramref name="l"/>.</summary>
+    static ColorF Swell(ColorF art, float l)
+    {
+        var (h, sat, _) = ColorScience.ToHsl(art);
+        return ColorScience.FromHsl(h, MathF.Min(sat, ClassicHeroLayout.WaveSatMax), l);
     }
 }
 
@@ -51,7 +95,7 @@ internal sealed class ClassicBleed : Component
         float crest = MathF.Min(vh - ClassicHeroLayout.BleedCrestLift, (ph > 0f ? ph : vh) - ClassicHeroLayout.BleedCrestRoom);
         float band = ClassicHeroLayout.BleedWaveH, top = crest - 0.5f * band;
         var ink = ClassicBleedInk.Of(np.NowArtUrl());
-        // Over the canvas the scrims darken toward the media scope's shade (Deck.Bleed.cs); the front swell still ends it in the ground.
+        // Over the canvas the scrims darken toward the media scope's shade (Deck.Bleed.cs); the front swell ends it in the plain ground.
         ColorF shade = Deck.BleedShade(ink.Ground);
         if (w != _builtFor)
         {
@@ -77,9 +121,9 @@ internal sealed class ClassicBleed : Component
                     Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = 0f }), new GradientStop(1f, shade with { A = ClassicHeroLayout.BleedDarkA })),
                 },
                 Layer(w, top, ClassicHeroLayout.WaveBackPeriods, ClassicHeroLayout.WaveBackMs,
-                    new PathEl { Geometry = _back, Fill = ClassicHeroLayout.WaveViolet with { A = ClassicHeroLayout.WaveBackA }, Width = SwellWidth(w, ClassicHeroLayout.WaveBackPeriods), Height = band }),
+                    new PathEl { Geometry = _back, Fill = ink.Back with { A = ClassicHeroLayout.WaveBackA }, Width = SwellWidth(w, ClassicHeroLayout.WaveBackPeriods), Height = band }),
                 Layer(w, top, ClassicHeroLayout.WaveMidPeriods, ClassicHeroLayout.WaveMidMs,
-                    new PathEl { Geometry = _mid, Fill = ink.Warm with { A = ClassicHeroLayout.WaveMidA }, Width = SwellWidth(w, ClassicHeroLayout.WaveMidPeriods), Height = band }),
+                    new PathEl { Geometry = _mid, Fill = ink.Mid with { A = ClassicHeroLayout.WaveMidA }, Width = SwellWidth(w, ClassicHeroLayout.WaveMidPeriods), Height = band }),
                 Layer(w, top, ClassicHeroLayout.WaveFrontPeriods, ClassicHeroLayout.WaveFrontMs, new BoxEl
                 {
                     ZStack = true, Width = SwellWidth(w, ClassicHeroLayout.WaveFrontPeriods), Height = band,
@@ -88,16 +132,13 @@ internal sealed class ClassicBleed : Component
                         new PathEl { Geometry = _front, Fill = ink.Ground, Width = SwellWidth(w, ClassicHeroLayout.WaveFrontPeriods), Height = band },
                         new PathEl
                         {
-                            Geometry = _crest, StrokeColor = ink.Warm with { A = ClassicHeroLayout.BleedCrestA }, Stroke = new StrokeStyle(ClassicHeroLayout.BleedCrestLine),
+                            Geometry = _crest, StrokeColor = ink.Crest with { A = ClassicHeroLayout.BleedCrestA }, Stroke = new StrokeStyle(ClassicHeroLayout.BleedCrestLine),
                             Width = SwellWidth(w, ClassicHeroLayout.WaveFrontPeriods), Height = band,
                         },
                     ],
                 }),
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, top + band - 1f, 0f, 0f),
-                    Gradient = Ui.GradientDown(new GradientStop(0f, ink.Ground), new GradientStop(1f, ink.Deep)),
-                },
+                // Under the swells the plain ground covers the canvas's last stretch (and the panel below it), as the panel is with the canvas off.
+                new BoxEl { AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, top + band - 1f, 0f, 0f), Fill = ink.Ground },
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = ClassicHeroLayout.BleedHeadScrimH,
