@@ -41,7 +41,7 @@
 //
 //   static class Audio { Load(row, id, kind, epoch, fromMs, seekGen); Stop(); Pause(); Resume(); Seek(ms, epoch, gen);
 //                        SetVolume(linear01); Prepare(row, id); }
-//   static class Video { Load(source, epoch, fromMs, paused, seekGen, muted, songDurMs); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
+//   static class Video { Load(source, epoch, fromMs, paused, seekGen, muted, rowDurMs); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
 //                        SetVolume(amplitude); }
 //   static class Os    { Publish(in State s); }
 //   partial void PumpAdopt(uint from, uint to);  PumpPrefetch(row, id);  PumpCancelPrepared();   ← owner H implements
@@ -922,9 +922,9 @@ public static partial class Playback
         if (!queued) Post(Input.Audio(AudioSignal.VideoUnavailable, epoch, FrameNowMs()));
     }
 
-    /// <summary>The row's own duration, which a video load reports on (<see cref="Video.SongTimeline"/>): the deck's for the row
-    /// on deck when it has one (a reload onto the video carries the audio's), else the catalogue's (the track's, or the
-    /// episode's). 0 = unknown, and the video is its own timeline. UI thread.</summary>
+    /// <summary>The row's own duration, a video load's placeholder when its source carries no length (<see cref="Video.DeckTimeline"/>):
+    /// the deck's for the row on deck when it has one (a reload onto the video carries the audio's), else the catalogue's (the
+    /// track's, or the episode's). 0 = unknown, and the deck waits for the video session's own. UI thread.</summary>
     static int RowDurationMs(EntityRef row, EntityId id)
     {
         if (id.Equals(s_state.CurrentId) && s_state.DurationMs > 0) return s_state.DurationMs;

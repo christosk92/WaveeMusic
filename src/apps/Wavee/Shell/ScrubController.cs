@@ -216,6 +216,16 @@ public static partial class Shell
         // the generation runs later), so the hold ends on the first landing past it: the commit's own seek or a newer one's.
         uint _committedGen;
 
+        // The re-scale (SeekRail.RescaleOffset): the row and the duration the rail last drew, and the offset easing out.
+        EntityId _drawnRow;
+        long _drawnDurMs;
+        float _rescaleFrom;
+        long _rescaleAtMs;
+
+        /// <summary>A duration change on the same row is easing the fill to its new fraction: the rail runs its frame stepper
+        /// while this holds (<see cref="SeekRail.RescaleStepMs"/>).</summary>
+        public Signal<bool> Rescaling { get; } = new(false);
+
         /// <summary>A pointer gesture is live (the finger is down). While it is, the drawn fraction IGNORES the model.</summary>
         public Signal<bool> Scrubbing { get; } = new(false);
 
@@ -393,6 +403,10 @@ public static partial class Shell
             var mode = SeekRail.ModeOf(live);
             long now = _src.NowMs();
             bool holding = SeekRail.HoldsDrop(_committedAtMs, now);
+            long duration = _src.DurationMs(false);
+            EntityId row = _src.CurrentId();
+            bool sameRow = row.Equals(_drawnRow);
+            float offset = sameRow ? SeekRail.RescaleOffset(_rescaleFrom, now - _rescaleAtMs, Design.Reduced ? 0f : SeekRail.RescaleMs) : 0f;
             float model = 0f;
             if (!Scrubbing.Peek() && !holding)
             {
@@ -403,8 +417,24 @@ public static partial class Shell
                 long position = key >= 0L ? key
                     : advancing ? _src.PlayheadMs(now)
                     : mode == SeekRailMode.Dvr ? live.PositionMs : _src.ReportedPositionMs();
-                model = SeekRail.ModelFraction(mode, position, _src.DurationMs(false), live, _src.IsBehindLive());
+                bool behind = _src.IsBehindLive();
+                model = SeekRail.ModelFraction(mode, position, duration, live, behind);
+                // The row's length moved under the playhead (a music video's own length replacing the song's, the song's coming
+                // back): the fill stood at the old length's fraction, plus what is left of an ease already running, and eases to
+                // the new one from there instead of snapping.
+                if (SeekRail.Rescales(mode, sameRow, _drawnDurMs, duration))
+                {
+                    _rescaleFrom = SeekRail.ModelFraction(mode, position, _drawnDurMs, live, behind) + offset - model;
+                    _rescaleAtMs = now;
+                    offset = _rescaleFrom;
+                }
+                model = Math.Clamp(model + offset, 0f, 1f);
             }
+            else offset = 0f;                    // the finger or the drop point owns the fill: nothing eases under it
+            if (offset == 0f) _rescaleFrom = 0f;
+            _drawnRow = row;
+            _drawnDurMs = duration;
+            Rescaling.SetIfChanged(offset != 0f);
             float shown = SeekRail.Displayed(Scrubbing.Peek() || holding, Fraction.Peek(), model);
             Display.SetIfChanged(SeekRail.Quantize(shown, RailPx.Peek()));   // an unmoved pixel writes nothing
         }
