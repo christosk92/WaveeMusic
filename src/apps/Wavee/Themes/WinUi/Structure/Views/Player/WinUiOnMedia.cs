@@ -152,9 +152,9 @@ internal sealed class WinUiOverlayChrome : Component
                 },
                 FlyoutPlacement.TopCenter,
                 // A slider card, not a menu: PopupChrome.Popup is the right chrome (WinUI FlyoutPresenter), which
-                // means it stays in-app and over the video hole has nothing to blur. Declaring OpaqueSurface says
-                // so from frame one instead of letting the geometric hole query discover it a frame later and flip
-                // the fill under the user.
+                // means it stays in-app and over the video hole has nothing to blur. Declaring OpaqueSurface is what
+                // says so: the engine never infers it from the hole's rect (a plate over UI painted on the hole keeps
+                // its acrylic).
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
                     { ConstrainToRootBounds = false, OpaqueSurface = true });
             if (volHandle.Value is { } h) h.ClosedAction = () => volHandle.Value = null;
