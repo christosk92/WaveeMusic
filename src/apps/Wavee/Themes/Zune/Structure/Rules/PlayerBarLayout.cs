@@ -263,17 +263,19 @@ public static class ZunePanelBodies
 
     // ── the edge-to-edge canvas (canvas-design/project/BleedZune.dc.html) ──────────────────────────────────────────
 
-    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the ground (fully by 92 %), and a 150
-    /// band of the ground (70 % at the top) keeps the pivots readable. The meta's top sits 196 above the canvas's foot (or the panel's).</summary>
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the media scope's shade (`Deck.BleedShade`:
+    /// the ground in the dark kind, the media stage in the light kind; fully by 92 %), and a 150 band of that shade (70 % at the top) keeps the
+    /// pivots readable. Under the canvas's foot a 24 ramp (eased: 30 % left at 40 %) returns from the shade to the ground (nothing to see in the
+    /// dark kind, where the two are one colour). The meta's top sits 196 above the canvas's foot (or the panel's).</summary>
     public const float BleedAspect = 16f / 9f, BleedFadeShare = 0.5f, BleedFadeFull = 0.92f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.7f,
-        BleedMetaLift = 196f;
+        BleedMetaLift = 196f, BleedFootRamp = 24f, BleedFootEase = 0.4f, BleedFootEaseA = 0.3f;
 
     /// <summary>The stage's top below the panel's: the pivot head (its padding included), the hero's top inset, its head row and the gap under it.</summary>
     public static float BleedStageTop => ZuneFrameRules.PanelHeadPadding.Top + ZuneFrameRules.PanelHeadH + ZuneFrameRules.PanelHeadPadding.Bottom
         + HeroPadding.Top + HeadH + HeroGap;
 
-    /// <summary>The artist's name over the canvas in giant light type (84/84, white at 92 %, 16 in, 4 under the chip's row), drifting 160 left
-    /// and back over 24 s; never shrunk: it runs off the panel's edge.</summary>
+    /// <summary>The artist's name over the canvas in giant light type (84/84, the media scope's ink at 92 %: white over the canvas in both kinds,
+    /// 16 in, 4 under the chip's row), drifting 160 left and back over 24 s; never shrunk: it runs off the panel's edge.</summary>
     public const float BleedNameSize = 84f, BleedNameA = 0.92f, BleedNameInset = 16f, BleedNameDrop = 4f, BleedNameDrift = 160f, BleedNameDriftMs = 24000f;
 
     public const ushort BleedNameWeight = 300;

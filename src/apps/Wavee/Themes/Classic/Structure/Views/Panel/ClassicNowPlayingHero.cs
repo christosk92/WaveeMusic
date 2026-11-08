@@ -374,21 +374,23 @@ internal sealed class ClassicHeroHeaderRow : Component
         };
     }
 
-    /// <summary>The header over the canvas (Tideline): "Playing from album" over the album's name, and the chip on a light plate.</summary>
+    /// <summary>The header over the canvas (Tideline): "Playing from album" over the album's name, and the chip on a light plate, in the media
+    /// scope's ink (Deck.Bleed.cs).</summary>
     static Element BleedFace(PanelSourceFacts source, IPlayerStyleVerbs verbs, int shown)
     {
+        var ink = new CanvasInk(true);
         var words = new List<Element>(2);
         if (source.HasSource)
         {
             words.Add(R.Type.Eyebrow(source.PlayingFrom) with
             {
-                Size = ClassicHeroLayout.BleedEyebrowSize, LineHeight = ClassicHeroLayout.BleedEyebrowLine, Color = Tok.TextPrimary with { A = ClassicHeroLayout.BleedEyebrowA },
+                Size = ClassicHeroLayout.BleedEyebrowSize, LineHeight = ClassicHeroLayout.BleedEyebrowLine, Color = ink.Primary with { A = ClassicHeroLayout.BleedEyebrowA },
                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
             words.Add(new TextEl(source.Name)
             {
                 Size = ClassicHeroLayout.BleedSourceSize, LineHeight = ClassicHeroLayout.BleedSourceLine, Weight = ClassicHeroLayout.BleedSourceWeight,
-                Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Color = ink.Primary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
         }
         return new BoxEl
@@ -431,26 +433,32 @@ internal static class ClassicStylePicker
 
     /// <summary>The chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, a light plate under a
     /// light hairline).</summary>
-    internal static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted = false) => ToolTip.Wrap(new BoxEl
+    internal static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted = false)
     {
-        Key = ClassicStylePickerLayout.ChipKey, Height = ClassicStylePickerLayout.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-        Gap = ClassicStylePickerLayout.ChipGap, Padding = ClassicStylePickerLayout.ChipPadding, Corners = Radii.Circle(ClassicStylePickerLayout.ChipH),
-        Fill = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipFillA } : Tok.FillControlDefault,
-        HoverFill = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipFillA } : Tok.FillControlSecondary,
-        PressedFill = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipFillA } : Tok.FillControlTertiary,
-        BorderWidth = 1f, BorderColor = frosted ? Tok.TextPrimary with { A = ClassicHeroLayout.BleedChipStrokeA } : Tok.StrokeControlDefault,
-        BrushTransitionMs = Design.Motion.Faster,
-        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
-        Children =
-        [
-            new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
-            {
-                Size = ClassicStylePickerLayout.ChipTextSize, LineHeight = ClassicStylePickerLayout.ChipTextLine, Color = Tok.TextPrimary,
-                MaxLines = 1, Wrap = TextWrap.NoWrap,
-            },
-            Icon(Icons.ChevronDown, ClassicStylePickerLayout.ChipGlyph, Tok.TextSecondary),
-        ],
-    }, Loc.Get(Strings.Player.PlayerStyle));
+        // Frosted: over the canvas, a light plate of the media scope's ink (Deck.Bleed.cs), the label in that ink.
+        var ink = new CanvasInk(frosted);
+        ColorF frost = ink.Primary with { A = ClassicHeroLayout.BleedChipFillA };
+        return ToolTip.Wrap(new BoxEl
+        {
+            Key = ClassicStylePickerLayout.ChipKey, Height = ClassicStylePickerLayout.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Gap = ClassicStylePickerLayout.ChipGap, Padding = ClassicStylePickerLayout.ChipPadding, Corners = Radii.Circle(ClassicStylePickerLayout.ChipH),
+            Fill = frosted ? frost : Tok.FillControlDefault,
+            HoverFill = frosted ? frost : Tok.FillControlSecondary,
+            PressedFill = frosted ? frost : Tok.FillControlTertiary,
+            BorderWidth = 1f, BorderColor = frosted ? ink.Primary with { A = ClassicHeroLayout.BleedChipStrokeA } : Tok.StrokeControlDefault,
+            BrushTransitionMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
+            Children =
+            [
+                new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
+                {
+                    Size = ClassicStylePickerLayout.ChipTextSize, LineHeight = ClassicStylePickerLayout.ChipTextLine, Color = ink.Primary,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap,
+                },
+                Icon(Icons.ChevronDown, ClassicStylePickerLayout.ChipGlyph, ink.Secondary),
+            ],
+        }, Loc.Get(Strings.Player.PlayerStyle));
+    }
 
     /// <summary>The strip: the arrows either side of the focused style's name and line, the finish swatches, the dots.</summary>
     internal static Element Strip(IPlayerStyleVerbs verbs, int focus, Func<string?> artUrl)

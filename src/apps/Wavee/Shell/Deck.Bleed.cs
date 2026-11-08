@@ -10,6 +10,13 @@
 //
 // WHO PRESENTS. It is the canvas surface `Bleed`, the lowest priority: the picker's Canvas cell (`Deck`) and the full-screen stage take the
 // one player from it and hand it back when they let go (Canvas.cs's owner hand-off), so opening the picker never mounts two presenters.
+//
+// THE MEDIA SCOPE (the owner, 2026-11-08: "in light mode the canvas looks a bit ugly"). Over the canvas the panel is a dark media surface in
+// BOTH kinds, as over a photograph (`MediaScrim`'s rule: light on-media ink over a darkening veil). The scrims over the canvas darken toward
+// `BleedShade` (the panel's ground in the dark kind; the media stage in the light kind, so a light ground never fades over a dark video into
+// a grey haze), what is drawn over the canvas paints with `CanvasInk` (the on-media ladder in the light kind; the theme's own ink in the dark
+// kind, which is already light), and the light ground returns only below the canvas's foot, through a short ramp (each theme's rule). A view
+// the core mounts over the canvas (the lyrics peek) reads `OverCanvas`.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -20,10 +27,47 @@ using FluentGpu.Signals;
 
 namespace Wavee;
 
+/// <summary>The ink of what is drawn over the edge-to-edge canvas (<paramref name="Over"/>) or on the panel's ground: a MODE, like
+/// <see cref="Lyrics.Ink"/>, resolved where the element is built, so a theme switch re-reads it. Over the canvas in the light kind it is the
+/// on-media ladder (light ink; the accent solved as light text on the media stage); everywhere else, and in the dark kind, the theme's own.</summary>
+public readonly record struct CanvasInk(bool Over)
+{
+    bool Media => Over && R.IsLight;
+
+    /// <summary>Titles, the selected tab, glyphs.</summary>
+    public ColorF Primary => Media ? R.OnMedia.Ink : Tok.TextPrimary;
+    /// <summary>Subtitles, the other tabs, a chevron.</summary>
+    public ColorF Secondary => Media ? R.OnMedia.InkSecondary : Tok.TextSecondary;
+    /// <summary>Captions.</summary>
+    public ColorF Tertiary => Media ? R.OnMedia.InkTertiary : Tok.TextTertiary;
+    /// <summary>Accent TEXT (a link, the album): over the media stage, the first light rung of the accent's own ramp that reads on it
+    /// (<see cref="ColorScience.AccentFloor"/>, as the dark kind's accent text is a light rung).</summary>
+    public ColorF Accent => Media ? ColorScience.AccentFloor(Tok.AccentTextPrimary, ThemeKind.Dark, Tok.MediaStage, R.OnMedia.Ink) : Tok.AccentTextPrimary;
+    /// <summary>An accent FILL that marks (a selection pill): over the media stage the accent text's colour, where the light kind's deep fill
+    /// would not show.</summary>
+    public ColorF AccentFill => Media ? Accent : Tok.AccentDefault;
+    /// <summary>The hairline that rings a plate or an image.</summary>
+    public ColorF Stroke => Media ? R.OnMedia.Stroke : Tok.StrokeCardDefault;
+    /// <summary>A card's rest fill (over the canvas a breath of the on-media ink, as the dark kind's card is).</summary>
+    public ColorF Plate => Media ? R.OnMedia.GlassPlate : Tok.FillCardDefault;
+    /// <summary>A glyph button's subtle hover fill.</summary>
+    public ColorF Hover => Media ? R.OnMedia.GlassHover : Tok.FillSubtleSecondary;
+    /// <summary>A glyph button's subtle press fill.</summary>
+    public ColorF Pressed => Media ? R.OnMedia.GlassPressed : Tok.FillSubtleTertiary;
+}
+
 public static partial class Deck
 {
     /// <summary>The edge-to-edge canvas's node key.</summary>
     public const string BleedKey = "npv-bleed";
+
+    /// <summary>Under this, a view is drawn over the edge-to-edge canvas (the hero's lyrics peek while the canvas fills the panel): it paints
+    /// with <c>new CanvasInk(true)</c>.</summary>
+    public static readonly Context<bool> OverCanvas = new(false);
+
+    /// <summary>The colour the scrims over the canvas darken toward: the panel's <paramref name="ground"/> in the dark kind, the media stage in
+    /// the light kind (a light ground fading over a dark video reads as a grey haze).</summary>
+    public static ColorF BleedShade(ColorF ground) => R.IsLight ? Tok.MediaStage : ground;
 
     /// <summary>Does the canvas fill the panel now: the Canvas style stored, the picker shut, a canvas to play and the setting on? Reactive.</summary>
     public static bool Bleeds()

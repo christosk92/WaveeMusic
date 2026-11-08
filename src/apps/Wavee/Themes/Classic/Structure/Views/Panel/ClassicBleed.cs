@@ -51,6 +51,8 @@ internal sealed class ClassicBleed : Component
         float crest = MathF.Min(vh - ClassicHeroLayout.BleedCrestLift, (ph > 0f ? ph : vh) - ClassicHeroLayout.BleedCrestRoom);
         float band = ClassicHeroLayout.BleedWaveH, top = crest - 0.5f * band;
         var ink = ClassicBleedInk.Of(np.NowArtUrl());
+        // Over the canvas the scrims darken toward the media scope's shade (Deck.Bleed.cs); the front swell still ends it in the ground.
+        ColorF shade = Deck.BleedShade(ink.Ground);
         if (w != _builtFor)
         {
             _builtFor = w;
@@ -72,7 +74,7 @@ internal sealed class ClassicBleed : Component
                 {
                     AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, MathF.Max(0f, crest - ClassicHeroLayout.BleedDarkBand), 0f, 0f),
                     Height = MathF.Min(crest, ClassicHeroLayout.BleedDarkBand),
-                    Gradient = Ui.GradientDown(new GradientStop(0f, ink.Ground with { A = 0f }), new GradientStop(1f, ink.Ground with { A = ClassicHeroLayout.BleedDarkA })),
+                    Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = 0f }), new GradientStop(1f, shade with { A = ClassicHeroLayout.BleedDarkA })),
                 },
                 Layer(w, top, ClassicHeroLayout.WaveBackPeriods, ClassicHeroLayout.WaveBackMs,
                     new PathEl { Geometry = _back, Fill = ClassicHeroLayout.WaveViolet with { A = ClassicHeroLayout.WaveBackA }, Width = SwellWidth(w, ClassicHeroLayout.WaveBackPeriods), Height = band }),
@@ -99,7 +101,7 @@ internal sealed class ClassicBleed : Component
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = ClassicHeroLayout.BleedHeadScrimH,
-                    Gradient = Ui.GradientDown(new GradientStop(0f, ink.Ground with { A = ClassicHeroLayout.BleedHeadScrimA }), new GradientStop(1f, ink.Ground with { A = 0f })),
+                    Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = ClassicHeroLayout.BleedHeadScrimA }), new GradientStop(1f, shade with { A = 0f })),
                 },
             ],
         });

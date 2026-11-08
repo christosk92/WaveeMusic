@@ -43,22 +43,23 @@ internal static partial class WinUiPlayerBar
     // ── the buttons ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A subtle button: the glyph in the primary ink (the accent ink while <paramref name="latched"/>), transparent at rest, the subtle
-    /// fill on hover and press; <paramref name="plated"/> keeps the subtle fill (a pane on show).</summary>
+    /// fill on hover and press; <paramref name="plated"/> keeps the subtle fill (a pane on show). <paramref name="ink"/>: the pane head's ink (over
+    /// the edge-to-edge canvas, the media scope's glyph and fills).</summary>
     internal static BoxEl Button(string glyph, Action onClick, bool enabled, bool latched, float width, float height, float size,
-        Action<NodeHandle>? realized = null, string? font = null, bool plated = false)
+        Action<NodeHandle>? realized = null, string? font = null, bool plated = false, CanvasInk ink = default)
     {
-        ColorF ink = !enabled ? Tok.TextDisabled : latched && !plated ? Tok.AccentTextPrimary : Tok.TextPrimary;
+        ColorF glyphInk = !enabled ? Tok.TextDisabled : latched && !plated ? Tok.AccentTextPrimary : ink.Primary;
         return new BoxEl
         {
             Width = width, Height = height, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = CornerRadius4.All(PL.ButtonCorner),
-            Fill = plated && enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
-            HoverFill = enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
-            PressedFill = enabled ? Tok.FillSubtleTertiary : ColorF.Transparent,
+            Fill = plated && enabled ? ink.Hover : ColorF.Transparent,
+            HoverFill = enabled ? ink.Hover : ColorF.Transparent,
+            PressedFill = enabled ? ink.Pressed : ColorF.Transparent,
             BrushTransitionMs = Design.Motion.Faster,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
             OnClick = enabled ? onClick : null, Cursor = enabled ? CursorId.Hand : null, OnRealized = realized,
-            Children = [new TextEl(glyph) { Size = size, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = ink }],
+            Children = [new TextEl(glyph) { Size = size, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = glyphInk }],
         };
     }
 

@@ -224,17 +224,19 @@ public static class WinUiPanelBodies
 
     // ── the edge-to-edge canvas (canvas-design/project/BleedWinUI.dc.html) ────────────────────────────────────────
 
-    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the panel's ground (fully by 92 %), and a
-    /// 150 band of the ground (85 % at the top) keeps the tabs readable over it. The meta's top sits 196 above the canvas's foot (or the panel's,
-    /// when the panel is shorter), so the meta and the lyrics card show without scrolling.</summary>
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top; its lower half fades into the media scope's shade (`Deck.BleedShade`:
+    /// the pane's ground in the dark kind, the media stage in the light kind; fully by 92 %), and a 150 band of that shade (85 % at the top) keeps
+    /// the tabs readable over it. Under the canvas's foot a 24 ramp (eased: 30 % left at 40 %) returns from the shade to the pane's ground (nothing to see in the dark kind,
+    /// where the two are one colour). The meta's top sits 196 above the canvas's foot (or the panel's, when the panel is shorter), so the meta and
+    /// the lyrics card show without scrolling.</summary>
     public const float BleedAspect = 16f / 9f, BleedFadeShare = 0.5f, BleedFadeFull = 0.92f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.85f,
-        BleedMetaLift = 196f;
+        BleedMetaLift = 196f, BleedFootRamp = 24f, BleedFootEase = 0.4f, BleedFootEaseA = 0.3f;
 
     /// <summary>The stage's top below the panel's: the tab row, the hero's top inset, its head row and the gap under it.</summary>
     public static float BleedStageTop => WinUiPanelLayout.TabRowH + HeroPadding.Top + HeadH + HeroGap;
 
-    /// <summary>The frosted chip over the canvas (the ground at 55 %, a 14 % white hairline; no blur: a frost cannot sample the video, which is
-    /// a separate DirectComposition surface under the UI), and the meta's 56 cover (r4, a 18 % hairline) beside the title, 12 apart.</summary>
+    /// <summary>The frosted chip over the canvas (the media scope's shade at 55 %, a 14 % hairline of its ink; no blur: a frost cannot sample the
+    /// video, which is a separate DirectComposition surface under the UI), and the meta's 56 cover (r4, a 18 % hairline) beside the title, 12 apart.</summary>
     public const float BleedChipFillA = 0.55f, BleedChipStrokeA = 0.14f, BleedCover = 56f, BleedCoverRadius = 4f, BleedCoverStrokeA = 0.18f,
         BleedMetaGap = 12f;
 

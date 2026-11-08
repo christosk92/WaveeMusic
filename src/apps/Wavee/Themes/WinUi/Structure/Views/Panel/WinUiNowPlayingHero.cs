@@ -42,7 +42,7 @@ internal static class WinUiNowPlayingHero
     public static Element Template(NowPlayingHeroProps props, in ViewContext ctx) => Embed.Comp(props, static () => new WinUiHeroTile());
 
     /// <summary>The playing track's artists as links (each opens its artist), or null with no credited artist.</summary>
-    internal static Element? ArtistLinks(NowPlayingHeroProps props, Track track)
+    internal static Element? ArtistLinks(NowPlayingHeroProps props, Track track, CanvasInk ink = default)
     {
         var artists = track.ArtistSlots;
         if (artists.Length == 0) return null;
@@ -57,7 +57,7 @@ internal static class WinUiNowPlayingHero
         }
         return new SpanTextEl(spans)
         {
-            Size = P.HeroArtistSize, LineHeight = P.HeroArtistLine, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1,
+            Size = P.HeroArtistSize, LineHeight = P.HeroArtistLine, Color = ink.Accent, Wrap = TextWrap.NoWrap, MaxLines = 1,
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
     }
@@ -110,27 +110,32 @@ internal static class WinUiNowPlayingHero
         Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
 
-    /// <summary>The style chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, the ground at
-    /// 55 % under a light hairline).</summary>
-    static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted) => ToolTip.Wrap(new BoxEl
+    /// <summary>The style chip: the style's name and a chevron in a hairline pill (<paramref name="frosted"/>: over the canvas, the media scope's
+    /// shade at 55 % under a hairline of its ink, the label in that ink).</summary>
+    static Element Chip(IPlayerStyleVerbs verbs, int shown, bool frosted)
     {
-        Key = P.ChipKey, Height = P.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.ChipGap, Padding = P.ChipPadding,
-        Corners = Radii.Circle(P.ChipH),
-        Fill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlDefault,
-        HoverFill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlSecondary,
-        PressedFill = frosted ? Tok.FillSolidBase with { A = P.BleedChipFillA } : Tok.FillControlTertiary,
-        BorderWidth = 1f, BorderColor = frosted ? Tok.TextPrimary with { A = P.BleedChipStrokeA } : Tok.StrokeControlDefault,
-        BrushTransitionMs = Design.Motion.Faster,
-        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
-        Children =
-        [
-            new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
-            {
-                Size = P.ChipTextSize, LineHeight = P.ChipTextLine, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-            },
-            Ui.Icon(Icons.ChevronDown, P.ChipGlyph, Tok.TextSecondary),
-        ],
-    }, Loc.Get(Strings.Player.PlayerStyle));
+        var ink = new CanvasInk(frosted);
+        ColorF frost = Deck.BleedShade(Tok.FillSolidBase) with { A = P.BleedChipFillA };
+        return ToolTip.Wrap(new BoxEl
+        {
+            Key = P.ChipKey, Height = P.ChipH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.ChipGap, Padding = P.ChipPadding,
+            Corners = Radii.Circle(P.ChipH),
+            Fill = frosted ? frost : Tok.FillControlDefault,
+            HoverFill = frosted ? frost : Tok.FillControlSecondary,
+            PressedFill = frosted ? frost : Tok.FillControlTertiary,
+            BorderWidth = 1f, BorderColor = frosted ? ink.Primary with { A = P.BleedChipStrokeA } : Tok.StrokeControlDefault,
+            BrushTransitionMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = verbs.OpenPicker,
+            Children =
+            [
+                new TextEl(Loc.Get(Rail.PlayerCatalog.ById(shown).NameKey))
+                {
+                    Size = P.ChipTextSize, LineHeight = P.ChipTextLine, Color = ink.Primary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                },
+                Ui.Icon(Icons.ChevronDown, P.ChipGlyph, ink.Secondary),
+            ],
+        }, Loc.Get(Strings.Player.PlayerStyle));
+    }
 
     /// <summary>The picker's strip: the arrows and the focused style's name and line, the finish swatches, the dots.</summary>
     internal static Element Strip(IPlayerStyleVerbs verbs, int focus, Func<string?> artUrl)
@@ -318,9 +323,11 @@ internal sealed class WinUiHeroTile : Component
         };
 
         string uri = track.Uri.Text, title = track.Title;
+        // Over the canvas the meta and the lyrics card are drawn in the media scope (Deck.Bleed.cs): its ink, and OverCanvas for the card.
+        var ink = new CanvasInk(bleeds);
         Element swap = open ? WinUiNowPlayingHero.Layer("npv-strip", WinUiNowPlayingHero.Strip(verbs, shown, props.NowArtUrl))
-                     : bleeds ? WinUiNowPlayingHero.Layer("npv-meta:bleed", Meta(props, track, uri, title, BleedCover()))
-                     : WinUiNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title, null));
+                     : bleeds ? WinUiNowPlayingHero.Layer("npv-meta:bleed", Meta(props, track, uri, title, BleedCover(ink), ink))
+                     : WinUiNowPlayingHero.Layer("npv-meta", Meta(props, track, uri, title, null, ink));
 
         return new BoxEl
         {
@@ -329,14 +336,24 @@ internal sealed class WinUiHeroTile : Component
             [
                 WinUiNowPlayingHero.Head(verbs, open, shown, bleeds),
                 slot,
-                new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
-                props.LyricsPeek() with { Key = "npv-lyrics:" + uri },
+                // The meta and the lyrics: over the canvas in the light kind they reach down to the canvas's foot and its ramp (the meta's top
+                // sits BleedMetaLift above the foot), so what follows ("Next up", on the light ground) never starts over the dark media scope.
+                new BoxEl
+                {
+                    Direction = 1, Shrink = 0f, Gap = P.HeroGap, MinHeight = bleeds && R.IsLight ? P.BleedMetaLift + P.BleedFootRamp : 0f,
+                    Animate = Design.Reduced ? null : P.SwapMotion,
+                    Children =
+                    [
+                        new BoxEl { Shrink = 0f, ZStack = true, Animate = Design.Reduced ? null : P.SwapMotion, Children = [swap] },
+                        Ctx.Provide(Deck.OverCanvas, bleeds, props.LyricsPeek()) with { Key = "npv-lyrics:" + uri },
+                    ],
+                },
             ],
         };
     }
 
-    /// <summary>The meta's 56 cover over the edge-to-edge canvas: the art under a light hairline.</summary>
-    Element BleedCover() => new BoxEl
+    /// <summary>The meta's 56 cover over the edge-to-edge canvas: the art under a hairline of the media scope's ink.</summary>
+    Element BleedCover(CanvasInk ink) => new BoxEl
     {
         Width = P.BleedCover, Height = P.BleedCover, Shrink = 0f, ZStack = true, Corners = CornerRadius4.All(P.BleedCoverRadius), ClipToBounds = true,
         Children =
@@ -349,23 +366,24 @@ internal sealed class WinUiHeroTile : Component
             new BoxEl
             {
                 AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Corners = CornerRadius4.All(P.BleedCoverRadius), HitTestVisible = false,
-                BorderWidth = 1f, BorderColor = Tok.TextPrimary with { A = P.BleedCoverStrokeA },
+                BorderWidth = 1f, BorderColor = ink.Primary with { A = P.BleedCoverStrokeA },
             },
         ],
     };
 
-    /// <summary>The title, the artists and "from" the album beside the heart; <paramref name="lead"/> (the 56 cover over the canvas) before them.</summary>
-    static Element Meta(NowPlayingHeroProps props, Track track, string uri, string title, Element? lead)
+    /// <summary>The title, the artists and "from" the album beside the heart; <paramref name="lead"/> (the 56 cover over the canvas) before them;
+    /// in <paramref name="ink"/> (over the canvas, the media scope's).</summary>
+    static Element Meta(NowPlayingHeroProps props, Track track, string uri, string title, Element? lead, CanvasInk ink)
     {
         var lines = new List<Element>(3)
         {
             new TextEl(title)
             {
-                Size = P.HeroTitleSize, LineHeight = P.HeroTitleLine, Weight = P.HeroTitleWeight, Color = Tok.TextPrimary,
+                Size = P.HeroTitleSize, LineHeight = P.HeroTitleLine, Weight = P.HeroTitleWeight, Color = ink.Primary,
                 Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
         };
-        if (WinUiNowPlayingHero.ArtistLinks(props, track) is { } artists) lines.Add(artists);
+        if (WinUiNowPlayingHero.ArtistLinks(props, track, ink) is { } artists) lines.Add(artists);
         var album = track.Album;
         if (album.IsValid && album.Title.Length > 0)
         {
@@ -376,16 +394,18 @@ internal sealed class WinUiHeroTile : Component
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = P.HeroFromGap, MinWidth = 0f,
                 Children =
                 [
-                    new TextEl(Loc.Get(Strings.Theme.Winui.Player.From)) { Size = P.HeroAlbumSize, LineHeight = P.HeroAlbumLine, Color = Tok.TextSecondary, Shrink = 0f },
+                    new TextEl(Loc.Get(Strings.Theme.Winui.Player.From)) { Size = P.HeroAlbumSize, LineHeight = P.HeroAlbumLine, Color = ink.Secondary, Shrink = 0f },
                     new SpanTextEl([new TextSpan(albumTitle, OnClick: () => props.GoTo(albumUri, albumTitle))])
                     {
-                        Size = P.HeroAlbumSize, LineHeight = P.HeroAlbumLine, Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        Size = P.HeroAlbumSize, LineHeight = P.HeroAlbumLine, Color = ink.Accent, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                 ],
             });
         }
         var text = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = P.HeroMetaGap, Children = lines.ToArray() };
-        var heart = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart }) with { Key = "save:" + uri };
+        Func<ColorF>? accent = ink.Over ? () => ink.Accent : null, rest = ink.Over ? () => ink.Secondary : null;
+        var heart = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = P.HeroHeartGlyph, Box = P.HeroHeart, Accent = accent, Rest = rest })
+            with { Key = "save:" + uri };
         return new BoxEl
         {
             Key = WinUiNowPlayingHero.MetaKey, Direction = 0, AlignItems = lead is null ? FlexAlign.Start : FlexAlign.Center,
