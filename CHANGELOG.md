@@ -10,6 +10,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.8] - unreleased
 
+### Added
+
+- **Scroll over the volume slider to change the volume.** Each notch of the mouse wheel moves it 5%, the same as the
+  arrow keys, on the player bar, the volume popups and the full screen player.
+
 ### Fixed
 
 - **Status bars stack when they do not fit.** A title and message that would not fit on one line now sit one above the

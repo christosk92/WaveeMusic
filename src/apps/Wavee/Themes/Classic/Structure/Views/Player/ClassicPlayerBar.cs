@@ -428,7 +428,7 @@ internal static partial class ClassicPlayerBar
                 case RightSlot.VolumeSlider:
                     // The STOCK slider style — a 22-DIP ring, not 0.2.9's old 12-DIP grab; thickness clears the ring.
                     return Slot("volume-slider", w, box, lit,
-                        Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
+                        VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                             length: huge ? ClassicPlayerTiers.HugeVolumeW : m.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
                 case RightSlot.Lyrics:
                     return Slot("lyrics", w, box, lit,
@@ -793,7 +793,7 @@ internal static partial class ClassicPlayerBar
                         Padding = ClassicPlayerBarLayout.VolumePopupPadding,
                         Children =
                         [
-                            Slider.Create(props.Volume, props.SetVolume,
+                            VolumeSlider.Create(props.Volume, props.SetVolume,
                                 new Slider.SliderOptions { Vertical = true, IsThumbToolTipEnabled = false },
                                 length: ClassicPlayerBarLayout.VolumePopupRailLength, thickness: ClassicPlayerBarLayout.VolumePopupRailThickness),
                         ],

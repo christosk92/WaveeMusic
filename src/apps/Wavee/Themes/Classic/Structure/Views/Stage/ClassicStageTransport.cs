@@ -209,7 +209,7 @@ internal static class ClassicStageTransport
                 ThumbRing = Tok.FillControlSolid, ThumbFill = p.Set.Fill, ThumbFillPointerOver = p.Set.FillSecondary, ThumbFillPressed = p.Set.FillTertiary, ThumbFillDisabled = p.Set.Fill with { A = ClassicStageGeometry.ThumbDisabledAlpha },
                 ThumbBorder = GradientSpec.Solid(Ink.Stroke),
             };
-            return Slider.Create(_level, t.SetVolume, Options, length: p.Length, thickness: ClassicStageGeometry.VolumeThickness, style: style);
+            return VolumeSlider.Create(_level, t.SetVolume, Options, length: p.Length, thickness: ClassicStageGeometry.VolumeThickness, style: style);
         }
     }
 
