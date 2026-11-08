@@ -348,84 +348,114 @@ public static partial class Deck
 
     // ══ 3. CD / MINIDISC ═════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A CLV spindle (<see cref="DiscModel"/>), a laser sled that walks outward with the playhead and a tray
-    /// that ejects on a new album.</summary>
+    /// <summary>The disc slid out of its jewel case (the 2026-11-08 board): the case on the left showing the cover, the disc over it on
+    /// the right, printed with the cover and turning on a CLV spindle geared down for the screen (<see cref="DiscModel"/>). On a new album
+    /// the disc slides back into the case and out again. The case, the iridescence, the clamp and the glare are physical constants in
+    /// light and dark; the face draws no ground of its own, so it sits on the theme's panel.</summary>
     static class CdFace
     {
+        /// <summary>The case and the disc share one size; the disc sits this far right of the case (the board's 84 of 328).</summary>
+        const float PartFrac = 0.64f, CaseX = 0.061f, DiscX = 0.317f;
+        /// <summary>The disc's bands as fractions of its diameter: the printed area's edge (the bare rim outside it), where the print
+        /// stops inside (the mirror band shows within it), the clear stacking ring and the player's clamp.</summary>
+        const float PrintFrac = 0.943f, PrintInnerFrac = 0.32f, StackRingFrac = 0.21f, ClampFrac = 0.152f;
+
         public static Element Build(float side, Slab sig)
         {
-            float s = side;
-            var kids = new List<CanvasChild>(5)
-            {
-                new(0f, 0f, new BoxEl { Width = s, Height = s, Shrink = 0f, Gradient = GradientSpec.Vertical(Hex(0x22252C), Hex(0x14161B)) }),
-                new(0.06f * s, 0.05f * s, new TextEl("COMPACT DISC · DIGITAL AUDIO")
-                {
-                    Width = 0.80f * s, Height = 0.034f * s, Size = 0.021f * s, Weight = 600, CharSpacing = 180f,
-                    Color = White(0.45f), MaxLines = 1, Trim = TextTrim.Clip, Shrink = 0f,
-                }),
-            };
-            CompactDisc(kids, sig, s);
-            return Canvas.Create(s, s, kids);
-        }
-
-        static void CompactDisc(List<CanvasChild> kids, Slab sig, float s)
-        {
-            float d = 0.72f * s, dx = 0.14f * s, dy = 0.12f * s, cx = dx + d * 0.5f, cy = dy + d * 0.5f, sled = 0.03f * d;
+            float s = side, part = PartFrac * s, y = (s - part) * 0.5f;
             var slide = sig.Slide;
-            var aux = sig.Aux0;
-            kids.Add(new CanvasChild(dx, dy, new BoxEl
-            {
-                Width = d, Height = d, Shrink = 0f, Corners = Radii.Circle(d),
-                Transform = Prop.Of(() => Affine2D.Translation(0f, 0.3f * s * (1f - slide.Value))),
-                Opacity = slide,
-                Children = [Disc(sig, d)],
-            }));
-            kids.Add(new CanvasChild(cx - 0.5f, cy, new BoxEl { Width = 1f, Height = 0.47f * d, Shrink = 0f, Fill = White(0.25f) }));
-            // Aux0 is already a FRACTION OF D, so the sled's walk is one multiply.
-            kids.Add(new CanvasChild(cx - sled * 0.5f, cy - sled * 0.5f, new BoxEl
-            {
-                Width = sled, Height = sled, Shrink = 0f, Corners = Radii.Circle(sled), Fill = Hex(0xFF3B30),
-                Shadow = new ShadowSpec(8f, 0f, 0f, Hex(0xFF3B30, 0.85f)),
-                Transform = Prop.Of(() => Affine2D.Translation(0f, aux.Value * d)),
-            }));
+            float travel = (DiscX - CaseX) * s;
+            return Canvas.Create(s, s,
+            [
+                new CanvasChild(CaseX * s, y, JewelCase(sig, part)),
+                // The disc slides back over the case and fades into it on a new album (CoverGen bumps at the bottom of the travel).
+                new CanvasChild(DiscX * s, y, new BoxEl
+                {
+                    Width = part, Height = part, Shrink = 0f, ZStack = true,
+                    Transform = Prop.Of(() => Affine2D.Translation(-travel * (1f - Ease.SlideOut(slide.Value)), 0f)),
+                    Opacity = Prop.Of(() => Clamp01(slide.Value * 1.6f)),
+                    Children = [Disc(sig, part)],
+                }),
+            ]);
         }
 
-        /// <summary>The spinning disc: a plate (the shadow caster and the undecoded ground), the art cut round, the
-        /// rainbow at 75 %, the inner ring and the clamp hole — ONE rotating node.</summary>
-        static Element Disc(Slab sig, float d)
+        /// <summary>The jewel case: the cover under a clear lid, the hinge's darker spine on the left and a fixed glare across it.</summary>
+        static Element JewelCase(Slab sig, float w)
         {
-            float holeD = 0.17f * d, innerD = 0.23f * d;
-            var angle = sig.Angle0;
+            float spine = 0.076f * w;
             return new BoxEl
             {
-                Width = d, Height = d, Shrink = 0f, Corners = Radii.Circle(d), TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                Transform = Prop.Of(() => Affine2D.Rotation(angle.Value * Deg2Rad)),
+                Width = w, Height = w, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(0.014f * w),
+                Fill = Hex(0x1A1C21),                         // a case with no art is still a case
+                Shadow = new ShadowSpec(0.11f * w, 0.05f * w, 0f, Black(0.45f)),
+                BorderWidth = 1f, BorderColor = White(0.22f),
                 Children =
                 [
-                    Canvas.Create(d, d,
-                    [
-                        new CanvasChild(0f, 0f, new BoxEl
-                        {
-                            Width = d, Height = d, Shrink = 0f, Corners = Radii.Circle(d), Fill = Hex(0x101216),
-                            Shadow = new ShadowSpec(30f, 14f, 0f, Black(0.4f)),
-                        }),
-                        new CanvasChild(0f, 0f, CoverLeaf(sig, d, round: true, key: "disc-art")),
-                        // ImageEl carries no opacity of its own: the rainbow rides in a box that does.
-                        new CanvasChild(0f, 0f, new BoxEl
-                        {
-                            Width = d, Height = d, Shrink = 0f, Opacity = 0.75f,
-                            Children = [OwnTexture("cd-rainbow-512.png", d, d, Radii.Circle(d))],
-                        }),
-                        new CanvasChild((d - innerD) * 0.5f, (d - innerD) * 0.5f, Ring(innerD, 0.008f * d, White(0.18f))),
-                        new CanvasChild((d - holeD) * 0.5f, (d - holeD) * 0.5f, new BoxEl
-                        {
-                            Width = holeD, Height = holeD, Shrink = 0f, Corners = Radii.Circle(holeD),
-                            Fill = Prop.Of(static () => Tok.FillCardSecondary), BorderWidth = 0.012f * d, BorderColor = White(0.55f),
-                        }),
-                    ]),
+                    CoverLeaf(sig, w, round: false, key: "case-art"),
+                    new BoxEl { Width = spine, Height = w, Shrink = 0f, JustifySelf = FlexAlign.Start, Fill = Black(0.35f) },
+                    new BoxEl { Width = 1f, Height = w, Shrink = 0f, JustifySelf = FlexAlign.Start, Margin = new Edges4(spine - 1f, 0f, 0f, 0f), Fill = White(0.25f) },
+                    new BoxEl
+                    {
+                        Width = w, Height = w, Shrink = 0f, HitTestVisible = false,
+                        Gradient = Ui.LinearGradient(35f, new GradientStop(0f, White(0.26f)), new GradientStop(0.38f, White(0f)),
+                            new GradientStop(0.70f, White(0f)), new GradientStop(1f, White(0.10f))),
+                    },
                 ],
             };
         }
+
+        /// <summary>The disc. Only the PRINT turns (one rotating node, the cover cut round); everything around it is rotationally
+        /// symmetric or tied to the room's light and stays put: the bare rim and the mirror band inside the print, where a pale
+        /// iridescence shows; the clear stacking ring; the player's clamp; the glare. The iridescence and the glare do not turn with the
+        /// disc, because a real disc's reflections stay with the light.</summary>
+        static Element Disc(Slab sig, float d)
+        {
+            var angle = sig.Angle0;
+            float print = PrintFrac * d, inner = PrintInnerFrac * d, ring = StackRingFrac * d, clamp = ClampFrac * d;
+            return new BoxEl
+            {
+                Width = d, Height = d, Shrink = 0f, ZStack = true, Corners = Radii.Circle(d),
+                Children =
+                [
+                    // The metal under the lacquer: silver with a pale rainbow over it. It shows only at the rim and in the mirror band.
+                    Iridescent(d, Shadow: new ShadowSpec(0.11f * d, 0.05f * d, 0f, Black(0.45f))),
+                    new BoxEl
+                    {
+                        Width = print, Height = print, Shrink = 0f, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
+                        Corners = Radii.Circle(print), TransformOriginX = 0.5f, TransformOriginY = 0.5f,
+                        Transform = Prop.Of(() => Affine2D.Rotation(angle.Value * Deg2Rad)),
+                        Children = [CoverLeaf(sig, print, round: true, key: "disc-art")],
+                    },
+                    // The print stops short of the centre: the mirror band again, then the clear stacking ring and the clamp over the hole.
+                    Centered(Iridescent(inner, Shadow: null)),
+                    Centered(Ring(inner, 1f, Black(0.18f))),
+                    Centered(new BoxEl { Width = ring, Height = ring, Shrink = 0f, Corners = Radii.Circle(ring), Fill = White(0.30f), BorderWidth = 1f, BorderColor = White(0.45f) }),
+                    Centered(new BoxEl
+                    {
+                        Width = clamp, Height = clamp, Shrink = 0f, Corners = Radii.Circle(clamp),
+                        Gradient = Ui.RadialGradient(new Point2(0.38f, 0.32f), new Point2(0.9f, 0.9f), new GradientStop(0f, Hex(0x3A3B40)), new GradientStop(1f, Hex(0x18191C))),
+                        BorderWidth = 1f, BorderColor = Black(0.5f),
+                    }),
+                    // The glare: one soft band across the disc, fixed to the light.
+                    new BoxEl
+                    {
+                        Width = d, Height = d, Shrink = 0f, Corners = Radii.Circle(d), HitTestVisible = false,
+                        Gradient = Ui.LinearGradient(35f, new GradientStop(0.18f, White(0f)), new GradientStop(0.46f, White(0.16f)),
+                            new GradientStop(0.56f, White(0.04f)), new GradientStop(0.82f, White(0f))),
+                    },
+                ],
+            };
+        }
+
+        /// <summary>Silver with the pastel rainbow at half strength over it: the bare metal of a disc.</summary>
+        static Element Iridescent(float d, ShadowSpec? Shadow) => new BoxEl
+        {
+            Width = d, Height = d, Shrink = 0f, ZStack = true, Corners = Radii.Circle(d), Fill = Hex(0xD9DDE4),
+            Shadow = Shadow,
+            Children = [OwnTexture("cd-rainbow-512.png", d, d, Radii.Circle(d), 0.5f)],
+        };
+
+        static Element Centered(Element child) => new BoxEl { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, Children = [child] };
     }
 
     // ══ 4. iPOD CLASSIC ══════════════════════════════════════════════════════════════════════════════════════════════
