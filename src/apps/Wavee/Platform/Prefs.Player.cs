@@ -1,5 +1,5 @@
 // ── Platform/Prefs.Player.cs ───────────────────────────────────────────────────────────────────────────────────────
-// the now-playing presentation / player-style epoch (NpvPlayerPrefs) and the player bar's elapsed/remaining epoch — a
+// the now-playing player-style epoch (the style and its finish) and the player bar's elapsed/remaining epoch — a
 // named partial of `Prefs.cs`, split on the plan's 30 %-over rule (§5)
 //
 // Role: CORE
@@ -19,13 +19,13 @@ public static partial class Prefs
 {
     // ══ 4. THE NOW-PLAYING VIEW'S PLAYER ═════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The cross-surface NOW-PLAYING-PRESENTATION epoch. Five surfaces write it — the rail header row, the
-    /// style flyout, the artwork context menu, Settings ▸ Theme and the command palette — and the deck faces read it for
-    /// their own options, so every writer clamps, persists and bumps ONCE.
+    /// <summary>The cross-surface PLAYER-STYLE epoch. Three surfaces write it (the style chip's picker, Settings ▸ Now playing and the
+    /// command palette) and the hero and the deck faces read it, so every writer clamps, persists and bumps ONCE.
     ///
-    /// <para>The CATALOG (which presets exist, which options each carries, what a choice means) is owner K's
-    /// `Shell/Deck.cs`. This section holds only the persisted CHOICE and the clamps, so the preference plumbing does not
-    /// depend on the catalog and the catalog does not depend on the settings store.</para></summary>
+    /// <para>The CATALOG (which styles exist, which carry a finish) is owner K's `Shell/Rail.cs` (`Rail.PlayerCatalog`). This section
+    /// holds only the persisted CHOICES and the clamps, so the preference plumbing does not depend on the catalog and the catalog does not
+    /// depend on the settings store. The style is a normal user setting: no developer gate (the old Cover/‹Player› switch is gone; Cover
+    /// is a style, the default).</para></summary>
     public static class NpvPlayer
     {
         /// <inheritdoc cref="NpvPlayer"/>
@@ -33,89 +33,38 @@ public static partial class Prefs
         /// <inheritdoc cref="Appearance.Bump"/>
         public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
 
-        /// <summary>The style flyout's CONTROLLED open state — shared so the artwork context menu opens the SAME popup
-        /// the gear owns, rather than a second one stacked on it.</summary>
-        public static readonly Signal<bool> StyleFlyoutOpen = new(false);
-
-        /// <summary>The two presentations the hero can take.</summary>
-        public const int Cover = 0, Player = 1;
-
-        /// <summary>Anything that is not <see cref="Player"/> is the cover — the safe reading of an unknown value.</summary>
-        public static int ClampPresentation(int v) => v == Player ? Player : Cover;
-
-        /// <summary>PURE: which face the hero actually SHOWS. The Cover/‹Player› switch is a DEVELOPER surface — it is
-        /// composed only in developer mode — so a normal build shows the <see cref="Cover"/> whatever is stored, and a
-        /// value persisted while developer mode was on cannot bring the deck back when it is off. The stored preference
-        /// is untouched: turning developer mode back on returns the face the user last chose.</summary>
-        public static int ResolvePresentation(int stored, bool developerMode)
-            => developerMode ? ClampPresentation(stored) : Cover;
-
-        /// <summary>Reactive read of the STORED hero presentation — what the switch and every writer see. Surfaces that
-        /// PAINT the hero read <see cref="ResolvedPresentation"/> instead.</summary>
-        public static int Presentation()
+        /// <summary>Reactive read of the stored style id (unclamped: owner K clamps against its catalog).</summary>
+        public static int Style()
         {
             _ = Epoch.Value;
-            return ClampPresentation(Platform.Settings.Get(Platform.Keys.NpvPresentation));
+            return Platform.Settings.Get(Platform.Keys.NpvStyle);
         }
 
-        /// <summary>Reactive read of the face the hero paints — <see cref="Presentation"/> resolved against the live
-        /// developer-mode signal, so a flip of that switch re-renders every reader without a relaunch.</summary>
-        public static int ResolvedPresentation()
-            => ResolvePresentation(Presentation(), Platform.Developer.Enabled.Value);
+        /// <summary>The stored style id, peeked.</summary>
+        public static int StylePeek() => Platform.Settings.Get(Platform.Keys.NpvStyle);
 
-        /// <summary>Reactive read of the chosen player-style id, clamped against the catalog's preset count (owner K
-        /// passes it; a downgrade or a hand-edited value then reads as preset 0 rather than as nothing).</summary>
-        public static int Style(int presetCount)
+        /// <summary>Reactive read of one style's finish index, clamped against its finish count.</summary>
+        public static int Finish(string styleSlug, int finishCount)
         {
             _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.NpvPlayerStyle), presetCount);
+            return FinishPeek(styleSlug, finishCount);
         }
 
-        /// <summary>Reactive read of one preset OPTION's chosen index, clamped against that option's choice count.</summary>
-        public static int Choice(string presetSlug, string optionSlug, int choiceCount)
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.NpvOption(presetSlug, optionSlug)), choiceCount);
-        }
+        /// <summary>One style's finish index, peeked and clamped.</summary>
+        public static int FinishPeek(string styleSlug, int finishCount)
+            => Clamp(Platform.Settings.Get(Platform.Keys.NpvFinish(styleSlug)), finishCount);
 
-        /// <summary>Persist a presentation and bump.</summary>
-        public static void SetPresentation(int v)
+        /// <summary>Persist a style and bump.</summary>
+        public static void SetStyle(int id)
         {
-            Platform.Settings.Set(Platform.Keys.NpvPresentation, ClampPresentation(v));
+            Platform.Settings.Set(Platform.Keys.NpvStyle, id);
             Bump();
         }
 
-        /// <summary>Flip cover ↔ player.</summary>
-        public static void TogglePresentation()
-            => SetPresentation(Presentation() == Cover ? Player : Cover);
-
-        /// <summary>Persist a style — and SHOW it. A style chosen while the cover was up flips the presentation to
-        /// <see cref="Player"/> in the same write, because picking a player and then not seeing it is the report this
-        /// answers.</summary>
-        public static void SetStyle(int id, int presetCount)
+        /// <summary>Persist one style's finish and bump.</summary>
+        public static void SetFinish(string styleSlug, int index)
         {
-            Platform.Settings.Set(Platform.Keys.NpvPlayerStyle, Clamp(id, presetCount));
-            if (ClampPresentation(Platform.Settings.Get(Platform.Keys.NpvPresentation)) != Player)
-                Platform.Settings.Set(Platform.Keys.NpvPresentation, Player);
-            Bump();
-        }
-
-        /// <summary>Step to the next style in catalog order, wrapping.</summary>
-        public static void NextStyle(int presetCount)
-            => SetStyle(presetCount <= 0 ? 0 : (Style(presetCount) + 1) % presetCount, presetCount);
-
-        /// <summary>Put the listed options of one preset back on their defaults (choice 0, always the first listed) and bump ONCE: the
-        /// flyout's "Reset options". The same keys <see cref="SetChoice"/> writes, so a reset is exactly N option picks.</summary>
-        public static void ResetChoices(string presetSlug, ReadOnlySpan<string> optionSlugs)
-        {
-            foreach (string o in optionSlugs) Platform.Settings.Set(Platform.Keys.NpvOption(presetSlug, o), 0);
-            Bump();
-        }
-
-        /// <summary>Persist one preset option's choice and bump.</summary>
-        public static void SetChoice(string presetSlug, string optionSlug, int index, int choiceCount)
-        {
-            Platform.Settings.Set(Platform.Keys.NpvOption(presetSlug, optionSlug), Clamp(index, choiceCount));
+            Platform.Settings.Set(Platform.Keys.NpvFinish(styleSlug), index);
             Bump();
         }
     }

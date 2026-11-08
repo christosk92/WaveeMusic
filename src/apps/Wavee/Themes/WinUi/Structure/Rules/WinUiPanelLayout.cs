@@ -19,6 +19,7 @@
 
 using FluentGpu.Animation;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -111,8 +112,7 @@ public static class WinUiPanelLayout
 public static class WinUiPanelBodies
 {
     /// <summary>The lyrics header's row, the hero's slot and its meta (the mounted tests find them).</summary>
-    public const string LyricsMetaKey = "winui-lyrics-header", HeroSlotKey = "winui-hero-slot", HeroMetaKey = "winui-hero-meta",
-        HeroGearKey = "winui-hero-gear";
+    public const string LyricsMetaKey = "winui-lyrics-header", HeroSlotKey = "winui-hero-slot", HeroMetaKey = "winui-hero-meta";
 
     /// <summary>The bodies' inset: 16 either side (the tabs' first letter, W-Queue).</summary>
     public static readonly Edges4 Inset = new(16f, 0f, 16f, 0f);
@@ -181,8 +181,8 @@ public static class WinUiPanelBodies
 
     // ── the now-playing hero (W-PaneNowPlaying) ───────────────────────────────────────────────────────────────────
 
-    /// <summary>The hero's inset (16; 12 above, its blocks' own gap, under the tab row: no head row since 2026-11-07), 12 between its blocks; the title (Subtitle 20/28 semibold), the artists (Body 14/20, accent
-    /// links), "from" and the album (Caption 12/16), 4 after "from"; the heart (40, 16).</summary>
+    /// <summary>The hero's inset (16; 12 above, under the tab row), 12 between its blocks; the title (Subtitle 20/28 semibold), the artists (Body
+    /// 14/20, accent links), "from" and the album (Caption 12/16), 4 after "from"; the heart (40, 16).</summary>
     public static readonly Edges4 HeroPadding = new(16f, 12f, 16f, 16f);
 
     public const float HeroGap = 12f, HeroMetaGap = 2f, HeroTitleSize = 20f, HeroTitleLine = 28f, HeroArtistSize = 14f, HeroArtistLine = 20f,
@@ -193,29 +193,33 @@ public static class WinUiPanelBodies
     /// <summary>The hero cover's decode size.</summary>
     public const int HeroDecodePx = 640;
 
-    // ── the deck style flyout (no WinUI board) ────────────────────────────────────────────────────────────────────
+    // ── the style chip and its in-place picker (canvas-design Main.dc.html, Styles.dc.html) ───────────────────────
 
-    /// <summary>The flyout: 320 wide, 16 in, 12 between rows; the heading (Body Strong 14/20); each row a group's or an option's label (Caption
-    /// 12/16) in a 64 column beside its preset or choice words (Body 14/20, 12 apart, 4 between wrapped lines) or its swatches (a 30 ring of 2
-    /// around a 22 dot with a hairline).</summary>
-    public const float DeckLabelW = 64f;
+    /// <summary>The hero's head row (36): "Now playing" (Subtitle 20/28 semibold) and the style chip; picking, "Player style" with Cancel and
+    /// Done. The chip: a 32 pill (r16), 12 in before the name and 8 after the chevron, 6 between them; the name 13/20, the chevron 12.</summary>
+    public const string HeadKey = "winui-npv-head", ChipKey = "winui-npv-chip", CancelKey = "winui-npv-cancel", DoneKey = "winui-npv-done",
+        StripKey = "winui-npv-strip", PrevKey = "winui-npv-prev", NextKey = "winui-npv-next", SwatchPrefix = "winui-npv-finish:", DotPrefix = "winui-npv-dot:", DotsKey = "winui-npv-dots";
 
-    public const float DeckW = 320f, DeckPad = 16f, DeckGap = 12f, DeckTitleSize = 14f, DeckTitleLine = 20f, DeckLabelSize = 12f, DeckLabelLine = 16f,
-        DeckWordSize = 14f, DeckWordLine = 20f, DeckWordGap = 12f, DeckWordRowGap = 4f, DeckSwatchRing = 30f, DeckSwatchDot = 22f, DeckSwatchStroke = 2f,
-        DeckSwatchHairline = 1f;
+    public const float HeadH = 36f, HeadGap = 8f, ChipH = 32f, ChipGap = 6f, ChipTextSize = 13f, ChipTextLine = 20f, ChipGlyph = 12f;
 
-    public const ushort DeckTitleWeight = 600;
+    public static readonly Edges4 ChipPadding = new(12f, 0f, 8f, 0f);
 
-    /// <summary>A preset or choice word's (and a swatch's) hit row: 32 tall (40 at Compact, <see cref="TouchButton"/>); "Reset options" at the
-    /// end of the "Options" label is a subtle command of the same height (r4, 8 in), Caption 12/16 in the accent ink.</summary>
-    public const float DeckChoiceH = 32f, DeckResetCorner = 4f;
+    /// <summary>The picker's strip under the stage: 16 between its rows; the 40 round arrows (a 14 chevron) either side of the style's name
+    /// (Subtitle 20/28 semibold) over its line (13/18, two lines at most: the block reserves both, so a one-line style never moves the rows
+    /// under it), 4 apart; the finish swatches (28, a 2 ring) 12 apart (their 40 hit boxes side by side) in a 40 row that is there for every style; the dots (6 tall, 18 wide on
+    /// the focused style, 24 apart in ONE 40-tall target whose click picks the dot under it: eleven 40-wide targets do not fit the column); a swatch's hit box is 40 (the Compact floor).</summary>
+    public const float StripGap = 16f, ArrowBox = 40f, ArrowGlyph = 14f, NameGap = 4f, LineSize = 13f, LineLine = 18f, SwatchRowH = 40f,
+        Swatch = 28f, SwatchRing = 2f, SwatchGap = 0f, DotBox = 24f, DotHitH = 40f, DotH = 6f, DotW = 6f, DotOnW = 18f, SwatchHit = 40f;
 
-    public static readonly Edges4 DeckResetPadding = new(8f, 0f, 8f, 0f);
+    /// <summary>The style's name block: the name's line, the gap and two lines of description.</summary>
+    public const float NameBlockH = HeroTitleLine + NameGap + 2f * LineLine;
 
-    /// <summary>The options block between styles with more or fewer options: its height eases in and out (and the flyout's edge with it) over
-    /// 250 ms, never a snap: a front-loaded curve carried most of a four-row change in its first frame.</summary>
-    public static readonly LayoutTransition DeckOptionsMotion = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
+    /// <summary>The meta ↔ strip swap: the block's height eases (Reflow) as one cross-fades into the other.</summary>
+    public static LayoutTransition SwapMotion => MotionRecipes.CardResizeHeight;
+
+    /// <summary>A dot's width easing to the focused one's.</summary>
+    public static readonly LayoutTransition DotMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Width);
 }
 
 /// <summary>The constants of the queue body (W-Queue).</summary>

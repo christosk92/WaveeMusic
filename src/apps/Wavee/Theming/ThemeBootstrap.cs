@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M12 panel sizes, M13 library columns, M2 track row style, M7b sidebar pane and Library view). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M12 panel sizes, M13 library columns, M2 track row style, M7b sidebar pane and Library view, the now-playing player style). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -134,6 +134,71 @@ public static class ThemeBootstrap
         if (ReadLegacyLibraryView(profileDir) is { } view) s.Set(LibraryViewKey, view);
     }
 
+    /// <summary>The now-playing player style (2026-11-08): the Cover/‹Player› presentation switch, the twelve-preset player style and the
+    /// per-preset options are retired; ONE style key (`npv.style`, `Rail.PlayerCatalog`'s eleven ids, 0 = Cover) and Vinyl's finish replace
+    /// them. A stored Cover presentation stays Cover (the default: nothing is written). A stored Player presentation maps its preset:
+    /// Record and Turntable to Vinyl, Picture to Vinyl with the picture-disc finish, iPod to Pocket, Winamp to Skin, Zune to Metro, VU to
+    /// Hi-fi, WMP to Visualizer, Cassette, Reel, CD and Canvas to themselves; a preset whose background option was the canvas becomes Canvas;
+    /// anything else stays Cover. A clear record finish becomes smoke; the other old finishes start at black.</summary>
+    private static readonly SettingKey<int> LegacyNpvPresentation = new("npv.presentation", 0);
+    private static readonly SettingKey<int> LegacyNpvPlayerStyle = new("npv.player.style", 0);
+    private static readonly SettingKey<int> NpvStyleKey = new("npv.style", 0);
+    private static readonly SettingKey<int> NpvVinylFinishKey = new("npv.style.vinyl.finish", 0);
+
+    /// <summary>The retired preset slugs by their persisted id (Record 0 … Picture 11).</summary>
+    private static readonly string[] LegacyNpvPresets = ["record", "cassette", "reel", "cd", "turntable", "ipod", "winamp", "vu", "zune", "wmp", "canvas", "picture"];
+
+    /// <summary>The retired presets that listed the background option (its choice 1 played the Spotify Canvas behind the device).</summary>
+    private static readonly string[] LegacyNpvBackdropPresets = ["record", "cassette", "reel", "cd", "ipod", "vu", "zune", "wmp", "picture"];
+
+    private static string[] NpvLegacyKeys()
+    {
+        var keys = new List<string> { "npv.presentation", "npv.player.style", "npv.player.record.finish", "npv.player.turntable.finish" };
+        foreach (string preset in LegacyNpvBackdropPresets) keys.Add("npv.player." + preset + ".background");
+        return keys.ToArray();
+    }
+
+    /// <summary>The new style id for a retired preset id (−1: none, Cover applies). Ids: Cover 0, Canvas 1, Visualizer 2, Vinyl 3, CD 4,
+    /// Cassette 5, Reel 6, Pocket 7, Hi-fi 8, Skin 9, Metro 10.</summary>
+    public static int NpvStyleOfLegacyPreset(int preset) => preset switch
+    {
+        0 or 4 or 11 => 3,          // record, turntable, picture -> Vinyl
+        1 => 5,                     // cassette
+        2 => 6,                     // reel
+        3 => 4,                     // cd
+        5 => 7,                     // ipod -> Pocket
+        6 => 9,                     // winamp -> Skin
+        7 => 8,                     // vu -> Hi-fi
+        8 => 10,                    // zune -> Metro
+        9 => 2,                     // wmp -> Visualizer
+        10 => 1,                    // canvas -> Canvas
+        _ => -1,
+    };
+
+    /// <summary>Copies the retired presentation, preset, background and finish into the style and Vinyl's finish (see the keys' doc).</summary>
+    public static void CopyNpvStyle(IAppSettings s)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        if (s.Has(NpvStyleKey.Name)) return;
+        if (!s.TryGet(LegacyNpvPresentation, out int presentation) || presentation != 1) return;   // the cover was showing: Cover, the default
+        int preset = s.Get(LegacyNpvPlayerStyle);
+        if ((uint)preset >= (uint)LegacyNpvPresets.Length) return;
+        string slug = LegacyNpvPresets[preset];
+        if (Array.IndexOf(LegacyNpvBackdropPresets, slug) >= 0 && s.Get(new SettingKey<int>("npv.player." + slug + ".background", 0)) == 1)
+        {
+            s.Set(NpvStyleKey, 1);   // the canvas played behind the device: Canvas
+            return;
+        }
+        int style = NpvStyleOfLegacyPreset(preset);
+        if (style < 0) return;
+        s.Set(NpvStyleKey, style);
+        if (style != 3 || s.Has(NpvVinylFinishKey.Name)) return;
+        int finish = slug == "picture" ? 3
+            : slug is "record" or "turntable" && s.Get(new SettingKey<int>("npv.player." + slug + ".finish", 0)) == 1 ? 1   // clear -> smoke
+            : 0;
+        if (finish != 0) s.Set(NpvVinylFinishKey, finish);
+    }
+
     /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
@@ -197,6 +262,10 @@ public static class ThemeBootstrap
         new ThemeBootstrapStep("SidebarLibraryView",
             ReadsLegacyKeys: [], WritesKeys: ["theme.classic.state.libraryView"],
             Run: static s => CopyLibraryView(s, SidebarFolder)),
+        // The now-playing player style (2026-11-08): the presentation, the preset and its options become one style and Vinyl's finish.
+        new ThemeBootstrapStep("NowPlayingStyle",
+            ReadsLegacyKeys: NpvLegacyKeys(), WritesKeys: ["npv.style", "npv.style.vinyl.finish"],
+            Run: static s => CopyNpvStyle(s)),
     ];
 
     /// <summary>The setting name of a step's done marker.</summary>

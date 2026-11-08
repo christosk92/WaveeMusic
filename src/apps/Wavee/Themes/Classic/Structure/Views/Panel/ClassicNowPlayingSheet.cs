@@ -176,8 +176,9 @@ internal sealed class ClassicSheetTransport : Component
 
 /// <summary>The now-playing sheet's own header (C-NowPlaying-Compact): the close chevron, "Playing from album" over the source's name (a link to its
 /// page, which closes the sheet first: the page must not change behind a modal surface), and the "⋯" that opens the now-playing track's menu (as a
-/// context sheet at Compact, the window band the sheet exists in). A fixed 48-tall row: the source's two lines, its one-line fallback and the
-/// developer-only gear change no height. Reads the source in its own render, so a context change re-renders only this.</summary>
+/// context sheet at Compact, the window band the sheet exists in), with the style chip before it. While the style picker is open the source gives
+/// way to "Player style" and the chip and the "⋯" to Cancel and Done. A fixed 48-tall row: the source's two lines, its one-line fallback and the
+/// picker's face change no height. Reads the source in its own render, so a context change re-renders only this.</summary>
 internal sealed class ClassicSheetHeader : Component
 {
     public override Element Render()
@@ -187,16 +188,28 @@ internal sealed class ClassicSheetHeader : Component
         var transport = props.Transport;
         var source = transport?.Source is { } readSource ? readSource() : new PanelSourceFacts("", "", null);
         bool hasTrack = props.NowPlaying.NowTrack().IsValid;
-        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();     // the style gear is developer-only (#199)
+        bool picking = hasTrack && props.NowPlaying.Picking();
+        int shown = props.NowPlaying.ShownStyle();
         var close = props.Close;
+        var styleVerbs = props.NowPlaying.Style;
 
-        var kids = new List<Element>(4)
+        var kids = new List<Element>(5)
         {
             ToolTip.Wrap(ClassicPanel.SheetGlyphButton(Icons.ChevronDown, close, enabled: true) with { Key = ClassicPanelTiers.SheetCloseKey },
                 Loc.Get(Strings.Common.Close)),
-            Source(source, close),
         };
-        if (styleVisible && hasTrack) kids.Add(ClassicHeroHeaderRow.StyleGear(props.NowPlaying));
+        if (picking)
+        {
+            kids.Add(new BoxEl
+            {
+                Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.Center,
+                Children = [ClassicPanel.CentredLine(Line(Loc.Get(Strings.Player.PlayerStyle), 700, Tok.TextPrimary))],
+            });
+            kids.AddRange(ClassicStylePicker.Commit(styleVerbs));
+            return Row(kids);
+        }
+        kids.Add(Source(source, close));
+        if (hasTrack) kids.Add(ClassicStylePicker.Chip(styleVerbs, shown));
         if (transport is { } t)
         {
             // The ONE now-playing menu seam the bar's right-click and the stage open (`IPlayerVerbs.NowPlayingMenu`); the click re-enters the
@@ -209,15 +222,16 @@ internal sealed class ClassicSheetHeader : Component
             kids.Add(ToolTip.Wrap(hasTrack ? more.WithContextMenu(overlay, () => verbs.NowPlayingMenu()) : more, Loc.Get(Strings.Common.More)));
         }
         else kids.Add(new BoxEl { Width = ClassicPanelTiers.SheetHeaderButton, Height = ClassicPanelTiers.SheetHeaderButton, Shrink = 0f });   // keeps the source centred
-
-        return new BoxEl
-        {
-            Key = ClassicPanelTiers.SheetHeaderKey,
-            Direction = 0, Height = ClassicPanelTiers.SheetHeaderH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = ClassicPanelTiers.SheetHeaderGap,
-            Padding = new Edges4(ClassicPanelTiers.SheetHeaderInset, 0f, ClassicPanelTiers.SheetHeaderInset, 0f),
-            Children = kids.ToArray(),
-        };
+        return Row(kids);
     }
+
+    static Element Row(List<Element> kids) => new BoxEl
+    {
+        Key = ClassicPanelTiers.SheetHeaderKey,
+        Direction = 0, Height = ClassicPanelTiers.SheetHeaderH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = ClassicPanelTiers.SheetHeaderGap,
+        Padding = new Edges4(ClassicPanelTiers.SheetHeaderInset, 0f, ClassicPanelTiers.SheetHeaderInset, 0f),
+        Children = kids.ToArray(),
+    };
 
     /// <summary>"Playing from album" over the source's name, centred and ellipsised; "Now playing" alone where playback names no source. A link to the
     /// source's page where it has one.</summary>

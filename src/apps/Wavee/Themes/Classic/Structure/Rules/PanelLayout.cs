@@ -115,28 +115,35 @@ internal static class ClassicFriendsLayout
     public const float SkeletonNameW = 120f, SkeletonDetailW = 160f, SkeletonBarH = 12f;
 }
 
-/// <summary>The constants of Classic's deck style flyout.</summary>
-internal static class ClassicDeckFlyoutLayout
+/// <summary>The constants of Classic's style chip and its in-place picker (canvas-design `Classic.dc.html`, `Styles.dc.html`): pills.</summary>
+internal static class ClassicStylePickerLayout
 {
-    /// <summary>The flyout's content width (four 74.5-DIP cards, three gaps, the padding) and the gap between cards.</summary>
-    public const float Width = 340f, CardGap = 6f;
+    /// <summary>The node keys `find` reads.</summary>
+    public const string ChipKey = "classic-npv-chip", CancelKey = "classic-npv-cancel", DoneKey = "classic-npv-done", StripKey = "classic-npv-strip",
+        PrevKey = "classic-npv-prev", NextKey = "classic-npv-next", SwatchPrefix = "classic-npv-finish:", DotPrefix = "classic-npv-dot:", DotsKey = "classic-npv-dots";
 
-    /// <summary>A card's padding and corner radius, and the selection ring.</summary>
-    public const float CardPad = 4f, CardRadius = 6f, SelectedRing = 2f;
+    /// <summary>The chip: a 32 pill with a hairline, 12 in before the name and 8 after the chevron, 6 between them; the name 13/20, the chevron 12.</summary>
+    public const float ChipH = 32f, ChipGap = 6f, ChipTextSize = 13f, ChipTextLine = 20f, ChipGlyph = 12f;
 
-    public const float TitleSize = 14f, TitleLine = 20f, LabelSize = 12f, LabelLine = 16f;
+    public static readonly Edges4 ChipPadding = new(12f, 0f, 8f, 0f);
 
-    /// <summary>An option row's gap and its label's floor.</summary>
-    public const float OptionGap = 10f, OptionLabelW = 60f;
+    /// <summary>The strip under the art (12 above it): 12 between its rows; the 40 round arrows either side of the style's name (16/22 bold) over
+    /// its line (13/18, two lines reserved), 2 apart; the finish swatches (28, a 2 ring) 12 apart (their 40 hit boxes side by side) in a 40 row there for every style; the dots
+    /// (6 tall, 18 wide on the focused style, 24 apart in ONE 40-tall target whose click picks the dot under it); a swatch's hit box is 40 (the Compact floor).</summary>
+    public const float StripGap = 12f, StripTop = 12f, ArrowBox = 40f, ArrowGlyph = 14f, RowGap = 8f, NameSize = 16f, NameLine = 22f, NameGap = 2f,
+        LineSize = 13f, LineLine = 18f, SwatchRowH = 40f, Swatch = 28f, SwatchRing = 2f, SwatchGap = 0f, SwatchHit = 40f, DotBox = 24f, DotHitH = 40f, DotH = 6f, DotW = 6f,
+        DotOnW = 18f;
 
-    /// <summary>A swatch's ring and dot.</summary>
-    public const float SwatchRing = 30f, SwatchDot = 22f;
+    public const ushort NameWeight = 700;
 
-    /// <summary>The compact Segmented of the option rows: 28 tall, 12 pt, items ≥ 56 — four choices share ~240 DIP.</summary>
-    public static Segmented.Style CompactSeg => Segmented.DefaultStyle with
-    {
-        Height = 28f, FontSize = 12f, ItemMinWidth = 56f, CornerRadius = 5f, ItemCornerRadius = 4f,
-    };
+    /// <summary>The name block: the name's line, the gap and two lines of description.</summary>
+    public const float NameBlockH = NameLine + NameGap + 2f * LineLine;
+
+    public static readonly Edges4 StripPadding = new(0f, StripTop, 0f, 0f);
+
+    /// <summary>A dot's width easing to the focused one's.</summary>
+    public static readonly LayoutTransition DotMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Width);
 }
 
 /// <summary>The constants of Classic's on-media strip.</summary>

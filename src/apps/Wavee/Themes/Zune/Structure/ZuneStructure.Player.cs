@@ -2,7 +2,7 @@
 //
 // The play bar (`Player.Bar`) and the transport pieces it shares with the stage's plate and the strip over a video (the 2-px seek line, the
 // chapter ticks and tip, the scrub readout, the time labels), the device picker, the on-media strip, and the bodies the panel's frame (Z2a)
-// places under its pivots: the now-playing hero and its style flyout, the lyrics header (no title, no close: the pivot head has them), the
+// places under its pivots: the now-playing hero, the lyrics header (no title, no close: the pivot head has them), the
 // lyrics peek, "next up", the friends and the queue. Each replaces the stand-in's (Classic's) key by key.
 
 using FluentGpu.Theming;
@@ -23,7 +23,6 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.DevicePicker, ZuneDevicePicker.Template, "zune.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, ZuneOnMedia.Template, "zune.player.on-media-transport");
         views.Add(ViewKeys.NowPlayingHero, ZuneNowPlayingHero.Template, "zune.player.now-playing-hero");
-        views.Add(ViewKeys.DeckStyleFlyout, ZuneNowPlayingHero.FlyoutTemplate, "zune.player.deck-style-flyout");
         views.Add(ViewKeys.LyricsPeek, ZuneLyricsPeek.Template, "zune.player.lyrics-peek");
         views.Add(ViewKeys.PanelFriends, ZuneFriends.Template, "zune.panel.friends");
         views.Add(ViewKeys.PanelLyricsHeader, ZuneLyricsHeader.Template, "zune.panel.lyrics-header");

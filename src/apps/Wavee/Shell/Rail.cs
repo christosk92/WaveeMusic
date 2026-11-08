@@ -1,5 +1,5 @@
 // ── Shell/Rail.cs ──────────────────────────────────────────────────────────────────────────────────────────────────
-// RailVideoCoupling, NpvPlayerCatalog, NpvPlayerPrefs, NpvDiagnostics
+// RailVideoCoupling, PlayerCatalog, PlayerPrefs, NpvDiagnostics
 //
 // Role: CORE
 // Owner: K
@@ -8,17 +8,16 @@
 // Spec: ch 21 §9.5
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// The right rail's four engine-free decisions. `Rail.UI.cs` and Classic's panel views (`ClassicPanel.cs`,
-// `ClassicDeckFlyout.cs`) render what these decide.
+// The right rail's four engine-free decisions. `Rail.UI.cs` and the themes' panel views render what these decide.
 //
 //   • `Rail.VideoCoupling` — the two-way coupling between the rail's own open/closed + mode and the
 //     video surface's placement (`Shell/Video.cs`). Four rules that are each an edge case, collected here so they are
 //     asserted once over plain values instead of re-derived — and re-broken — at each of the four call sites.
-//   • `Rail.PlayerCatalog` — the ONE table behind the style flyout, the Settings rows, the art context menu and the
-//     tests. Ids and slugs are PERSISTED: never renumber, never rename (`NpvPlayerCatalog.cs:8-9`).
+//   • `Rail.PlayerCatalog` — the ONE table of the eleven player styles behind the style chip's picker, the Settings row and
+//     the palette. Ids and slugs are PERSISTED: never renumber, never rename.
 //   • `Rail.PlayerPrefs` — a catalog-aware ADAPTER over owner L's `Prefs.NpvPlayer` (the ONE epoch); it clamps on READ
-//     as well as write, so a hand-edited value can never crash a render: it degrades to Record / Cover / choice 0.
-//   • `Rail.NpvDiagnostics` — the always-on `npv` log category. A preference written from FIVE surfaces is only
+//     as well as write, so a hand-edited value can never crash a render: it degrades to Cover / the first finish.
+//   • `Rail.NpvDiagnostics` — the always-on `npv` log category. A preference written from several surfaces is only
 //     attributable if each write says which one it came from (CLAUDE.md: always-on logs, no env switches).
 //   • `Rail.Hero` / `Rail.Friends` (stage B) — the pinned hero's derived geometry (the W7b width ladder) and the friends
 //     feed's surface / live-window / relative-time / route rules plus its two host seams.
@@ -115,287 +114,162 @@ public static partial class Rail
 
     // ── 2. the player-style catalog (ids and slugs are PERSISTED) ───────────────────────────────────────────────────
 
-    /// <summary>Which shelf of the style picker a preset sits on.</summary>
-    public enum PlayerGroup : byte { Media, Devices, Software }
-
-    /// <summary>How one option row is drawn: a segmented control, or a row of colour swatches.</summary>
-    public enum OptionKind : byte { Segmented, Swatch }
-
-    /// <summary>The ONE table behind the flyout, the Settings rows, the art context menu and the tests. Ids and slugs
-    /// are PERSISTED — never renumber, never rename. Labels are Loc KEYS. The DEFAULT choice is always listed FIRST,
-    /// so a stored default of 0 is always valid.</summary>
+    /// <summary>The ONE table behind the style chip's picker, the Settings row, the palette's "next style" and the deck's dispatch: eleven
+    /// styles, and the one finish row that exactly two of them carry (Vinyl, Pocket). Nothing else is a choice: a vinyl's speed follows the
+    /// release (an album spins at 33⅓, a single at 45), and no style has a size, a sleeve or a background. Ids and slugs are PERSISTED (the
+    /// store keeps the id; the finish keys carry the slug): never renumber, never rename. Names and lines are Loc KEYS. The DEFAULT finish is
+    /// always listed FIRST, so a stored 0 is always valid.</summary>
     public static class PlayerCatalog
     {
-        /// <param name="Swatch">Packed ARGB, or <see cref="FromCover"/> to derive it from the cover grading.</param>
-        public readonly record struct Choice(string Slug, string LabelKey, uint Swatch = 0);
-        public readonly record struct OptionDef(string Slug, string LabelKey, OptionKind Kind, Choice[] Choices);
-        public readonly record struct Preset(int Id, string Slug, string LabelKey, string ShortLabelKey,
-                                             PlayerGroup Group, OptionDef[] Options);
+        /// <param name="Swatch">Packed ARGB, or <see cref="FromCover"/> to paint the playing cover (the picture disc).</param>
+        public readonly record struct Finish(string Slug, string LabelKey, uint Swatch);
+        public readonly record struct Style(int Id, string Slug, string NameKey, string LineKey, Finish[] Finishes)
+        {
+            /// <summary>Does this style offer a finish (Vinyl, Pocket)?</summary>
+            public bool HasFinish => Finishes.Length > 0;
+        }
 
-        public const int Record = 0, Cassette = 1, Reel = 2, Cd = 3, Turntable = 4, Ipod = 5, Winamp = 6, Vu = 7,
-                         Zune = 8, Wmp = 9, Canvas = 10, Picture = 11;
-        public const int DefaultPresetId = Record;
-        /// <summary>Presets per group — the picker's shelves are exactly this wide.</summary>
-        public const int PerGroup = 4;
-        /// <summary>Swatch 0 = derive from the cover (the album-colour vinyl).</summary>
+        public const int Cover = 0, Canvas = 1, Visualizer = 2, Vinyl = 3, Cd = 4, Cassette = 5, Reel = 6, Pocket = 7, Hifi = 8,
+                         Skin = 9, Metro = 10;
+        public const int DefaultStyleId = Cover;
+        /// <summary>Swatch 0 = paint the playing cover (the picture disc's swatch is the cover itself).</summary>
         public const uint FromCover = 0;
 
-        static readonly OptionDef Finish = new("finish", "player.opt.finish", OptionKind.Swatch,
-        [
-            new("black", "player.choice.black", 0xFF15171C), new("clear", "player.choice.clear", 0xFF8A93A6),
-            new("album", "player.choice.albumColour", FromCover), new("splatter", "player.choice.splatter", 0xFFF5F1EA),
-            new("marble", "player.choice.marble", 0xFF6B4FA8),
-        ]);
-        static readonly OptionDef Size = Seg("size", "player.opt.size", ("12", "player.choice.lp12"), ("7", "player.choice.single7"));
-        static readonly OptionDef Rpm = Seg("rpm", "player.opt.speed", ("33", "player.choice.rpm33"), ("45", "player.choice.rpm45"));
-        static readonly OptionDef Sleeve = Seg("sleeve", "player.opt.sleeve", ("on", "player.choice.shown"), ("off", "player.choice.hidden"));
-        /// <summary>The style's ground, or the playing track's Spotify Canvas looping behind the device (the deck surface of the one canvas
-        /// player, <see cref="CanvasVideo"/>). Listed on every style whose ground can show it: not Turntable (its plinth fills the square),
-        /// Winamp (its window does) or Canvas (the frame already plays it). Default first: the style as designed.</summary>
-        static readonly OptionDef Backdrop = Seg(BackdropSlug, "player.opt.background", ("plain", "player.choice.plainGround"), (BackdropCanvas, "player.choice.canvasGround"));
+        /// <summary>Vinyl's finishes; the picture disc prints the cover on the record (the indices are persisted).</summary>
+        public const int VinylBlack = 0, VinylSmoke = 1, VinylRuby = 2, VinylPicture = 3;
+        /// <summary>Pocket's finishes.</summary>
+        public const int PocketGraphite = 0, PocketSilver = 1, PocketWhite = 2;
 
-        /// <summary>The background option's slug and its canvas choice's (persisted: never rename).</summary>
-        public const string BackdropSlug = "background", BackdropCanvas = "canvas";
-
-        public static readonly Preset[] Presets =
+        static readonly Finish[] None = [];
+        static readonly Finish[] VinylFinishes =
         [
-            new(Record, "record", "player.style.record", "player.style.record", PlayerGroup.Media, [Finish, Size, Rpm, Sleeve, Backdrop]),
-            new(Cassette, "cassette", "player.style.cassette", "player.style.cassette", PlayerGroup.Media,
-            [
-                Seg("shell", "player.opt.shell", ("black", "player.choice.black"), ("clear", "player.choice.clear"), ("cream", "player.choice.cream"), ("smoke", "player.choice.smoke")),
-                Seg("label", "player.opt.label", ("type1", "player.choice.typeI"), ("chrome", "player.choice.chrome"), ("hand", "player.choice.handwritten")),
-                Seg("side", "player.opt.side", ("a", "player.choice.sideA"), ("b", "player.choice.sideB")),
-                Backdrop,
-            ]),
-            new(Reel, "reel", "player.style.reel", "player.style.reelShort", PlayerGroup.Media,
-                [Seg("reel", "player.opt.reels", ("alu", "player.choice.aluminium"), ("black", "player.choice.black"), ("clear", "player.choice.clear")), Backdrop]),
-            new(Cd, "cd", "player.style.cd", "player.style.cdShort", PlayerGroup.Media,
-                [Seg("format", "player.opt.format", ("cd", "player.choice.cd"), ("md", "player.choice.minidisc")), Backdrop]),
-            new(Turntable, "turntable", "player.style.turntable", "player.style.turntable", PlayerGroup.Devices, [Finish, Size, Rpm, Sleeve]),
-            new(Ipod, "ipod", "player.style.ipod", "player.style.ipodShort", PlayerGroup.Devices,
-            [
-                Seg("body", "player.opt.body", ("silver", "player.choice.silver"), ("black", "player.choice.black"), ("u2", "player.choice.u2")),
-                Seg("lcd", "player.opt.lcd", ("white", "player.choice.white"), ("green", "player.choice.green")),
-                Backdrop,
-            ]),
-            new(Winamp, "winamp", "player.style.winamp", "player.style.winamp", PlayerGroup.Devices,
-            [
-                Seg("skin", "player.opt.skin", ("base", "player.choice.base"), ("modern", "player.choice.modern"), ("dark", "player.choice.dark")),
-            ]),
-            new(Vu, "vu", "player.style.vu", "player.style.vuShort", PlayerGroup.Devices,
-            [
-                Seg("face", "player.opt.face", ("ivory", "player.choice.ivory"), ("blue", "player.choice.blue"), ("black", "player.choice.black")),
-                Seg("ballistics", "player.opt.needles", ("vu", "player.choice.vu"), ("ppm", "player.choice.ppm")),
-                Backdrop,
-            ]),
-            new(Zune, "zune", "player.style.zune", "player.style.zune", PlayerGroup.Software,
-            [
-                new("accent", "player.opt.accent", OptionKind.Swatch,
-                [
-                    new("pink", "player.choice.pink", 0xFFF0568C), new("orange", "player.choice.orange", 0xFFFF7A1A),
-                    new("green", "player.choice.green", 0xFF8CBF26), new("blue", "player.choice.blue", 0xFF1BA1E2),
-                ]),
-                Rpm,
-                Backdrop,
-            ]),
-            new(Wmp, "wmp", "player.style.wmp", "player.style.wmpShort", PlayerGroup.Software,
-            [
-                Seg("preset", "player.opt.preset", ("bars", "player.choice.barsWaves"), ("alchemy", "player.choice.alchemy"), ("battery", "player.choice.battery")),
-                Seg("colour", "player.opt.colour", ("accent", "player.choice.accent"), ("cover", "player.choice.fromCover")),
-                Backdrop,
-            ]),
-            new(Canvas, "canvas", "player.style.canvas", "player.style.canvasShort", PlayerGroup.Software,
-            [
-                Seg("drift", "player.opt.drift", ("slow", "player.choice.slow"), ("fast", "player.choice.fast")),
-                Seg("bleed", "player.opt.bleed", ("soft", "player.choice.soft"), ("strong", "player.choice.strong")),
-            ]),
-            new(Picture, "picture", "player.style.picture", "player.style.pictureShort", PlayerGroup.Software, [Size, Rpm, Sleeve, Backdrop]),
+            new("black", "player.finish.black", 0xFF151515), new("smoke", "player.finish.smoke", 0xFF5A5A64),
+            new("ruby", "player.finish.ruby", 0xFF8A1C30), new("picture", "player.finish.picture", FromCover),
+        ];
+        static readonly Finish[] PocketFinishes =
+        [
+            new("graphite", "player.finish.graphite", 0xFF2C2D32), new("silver", "player.finish.silver", 0xFFC9CCD2),
+            new("white", "player.finish.white", 0xFFF4F4F6),
         ];
 
-        public static bool IsPresetId(int id) => (uint)id < (uint)Presets.Length && Presets[id].Id == id;
+        public static readonly Style[] Styles =
+        [
+            new(Cover, "cover", "player.style.cover", "player.style.coverLine", None),
+            new(Canvas, "canvas", "player.style.canvas", "player.style.canvasLine", None),
+            new(Visualizer, "visualizer", "player.style.visualizer", "player.style.visualizerLine", None),
+            new(Vinyl, "vinyl", "player.style.vinyl", "player.style.vinylLine", VinylFinishes),
+            new(Cd, "cd", "player.style.cd", "player.style.cdLine", None),
+            new(Cassette, "cassette", "player.style.cassette", "player.style.cassetteLine", None),
+            new(Reel, "reel", "player.style.reel", "player.style.reelLine", None),
+            new(Pocket, "pocket", "player.style.pocket", "player.style.pocketLine", PocketFinishes),
+            new(Hifi, "hifi", "player.style.hifi", "player.style.hifiLine", None),
+            new(Skin, "skin", "player.style.skin", "player.style.skinLine", None),
+            new(Metro, "metro", "player.style.metro", "player.style.metroLine", None),
+        ];
 
-        /// <summary>The preset for an id, falling back to <see cref="DefaultPresetId"/> — a stored id this build no
-        /// longer defines degrades rather than throwing inside a render.</summary>
-        public static Preset ById(int id) => Presets[IsPresetId(id) ? id : DefaultPresetId];
+        /// <summary>How many styles there are (the picker's dots, the carousel's ring).</summary>
+        public static int Count => Styles.Length;
 
-        /// <summary>Fill <paramref name="dest"/> with one group's presets, in table order; returns how many.</summary>
-        public static int Group(PlayerGroup g, Span<Preset> dest)
+        public static bool IsStyleId(int id) => (uint)id < (uint)Styles.Length && Styles[id].Id == id;
+
+        /// <summary>The style for an id, falling back to <see cref="DefaultStyleId"/>: a stored id this build no longer defines degrades
+        /// rather than throwing inside a render.</summary>
+        public static Style ById(int id) => Styles[IsStyleId(id) ? id : DefaultStyleId];
+
+        /// <summary>Is <paramref name="id"/> drawn by the deck (a device with a clock), rather than the cover or the canvas?</summary>
+        public static bool IsDeck(int id) => id is not (Cover or Canvas) && IsStyleId(id);
+
+        /// <summary>The ring distance from <paramref name="from"/> to <paramref name="to"/>: the shorter way round, in (−n/2, n/2].</summary>
+        public static int RingDelta(int from, int to)
         {
-            int n = 0;
-            for (int i = 0; i < Presets.Length; i++) if (Presets[i].Group == g) dest[n++] = Presets[i];
-            return n;
-        }
-
-        /// <summary>Does <paramref name="p"/> list an option row named <paramref name="slug"/>?</summary>
-        public static bool Has(in Preset p, string slug)
-        {
-            for (int i = 0; i < p.Options.Length; i++) if (p.Options[i].Slug == slug) return true;
-            return false;
-        }
-
-        /// <summary>The option row named <paramref name="slug"/>, or the preset's first (the faces' helper: every read
-        /// must be reachable for that preset, or guarded by the variant flag — there is no "absent" answer).</summary>
-        public static OptionDef Option(in Preset p, string slug)
-        {
-            for (int i = 0; i < p.Options.Length; i++) if (p.Options[i].Slug == slug) return p.Options[i];
-            return p.Options[0];
-        }
-
-        static OptionDef Seg(string slug, string labelKey, params (string Slug, string LabelKey)[] choices)
-        {
-            var c = new Choice[choices.Length];
-            for (int i = 0; i < c.Length; i++) c[i] = new(choices[i].Slug, choices[i].LabelKey);
-            return new(slug, labelKey, OptionKind.Segmented, c);
+            int n = Styles.Length, d = ((to - from) % n + n) % n;
+            return d > n / 2 ? d - n : d;
         }
     }
 
     // ── 3. the player prefs — an ADAPTER over `Prefs.NpvPlayer` (owner L), never a second epoch ─────────────────────
 
-    /// <summary>The hero's presentation + style preferences, as the RAIL speaks them: catalog-aware, and with the
-    /// always-on <c>source</c> attribution every write carries.
+    /// <summary>The style and finish preferences as the RAIL speaks them: catalog-aware, and with the always-on <c>source</c> attribution
+    /// every write carries.
     ///
-    /// <para><b>No state lives here.</b> The epoch, the flyout's open state and the persisted choice are owner L's
-    /// `Platform/Prefs.cs` (`Prefs.NpvPlayer`) — the one cross-surface epoch every writer bumps once. A second
-    /// `Signal&lt;int&gt;` here would be a second authority: a Settings write that bumped one and not the other is exactly
-    /// the "the flyout shows the old style" drift the epoch exists to prevent. So every member below forwards, and the
-    /// only thing this class adds is what `Prefs.cs` deliberately does not know — the CATALOG (preset count, option
-    /// slugs, choice counts) and the diagnostic line.</para>
-    ///
-    /// <para>It still clamps on READ as well as write (through `Prefs.NpvPlayer`'s clamps, fed the catalog's counts), so
-    /// a hand-edited registry value or a preset a future build renamed can never crash a render: it degrades to Record
-    /// / Cover / choice 0.</para></summary>
+    /// <para><b>No state lives here.</b> The epoch and the persisted choices are owner L's `Platform/Prefs.Player.cs` (`Prefs.NpvPlayer`),
+    /// the one cross-surface epoch every writer bumps once. Every member forwards; the only thing this class adds is what `Prefs` deliberately
+    /// does not know: the CATALOG (the style count, the finish counts and slugs) and the diagnostic line. It clamps on READ as well as write,
+    /// so a hand-edited value can never crash a render: it degrades to Cover / the first finish.</para></summary>
     public static class PlayerPrefs
     {
         /// <summary>The ONE epoch — `Prefs.NpvPlayer.Epoch`, the same instance.</summary>
         public static Signal<int> Epoch => Prefs.NpvPlayer.Epoch;
 
-        /// <summary>The style flyout's controlled open state — shared so the art context menu opens the SAME popup the
-        /// gear owns. The same instance as `Prefs.NpvPlayer.StyleFlyoutOpen`.</summary>
-        public static Signal<bool> StyleFlyoutOpen => Prefs.NpvPlayer.StyleFlyoutOpen;
+        public static int ClampStyle(int id) => PlayerCatalog.IsStyleId(id) ? id : PlayerCatalog.DefaultStyleId;
 
-        public const int Cover = Prefs.NpvPlayer.Cover, Player = Prefs.NpvPlayer.Player;
+        /// <summary>Reactive read (subscribes the epoch) of the chosen style id, clamped against the catalog.</summary>
+        public static int Style() => ClampStyle(Prefs.NpvPlayer.Style());
 
-        public static int ClampPresentation(int v) => Prefs.NpvPlayer.ClampPresentation(v);
-        public static int ClampStyle(int id) => PlayerCatalog.IsPresetId(id) ? id : PlayerCatalog.DefaultPresetId;
-        public static int ClampChoice(in PlayerCatalog.OptionDef o, int i) => (uint)i < (uint)o.Choices.Length ? i : 0;
+        /// <summary>The chosen style id, peeked (a click handler).</summary>
+        public static int StylePeek() => ClampStyle(Prefs.NpvPlayer.StylePeek());
 
-        /// <summary>Reactive read (subscribes the epoch) of the STORED hero presentation — what the Cover/‹Player› switch
-        /// shows and every writer round-trips.</summary>
-        public static int Presentation() => Prefs.NpvPlayer.Presentation();
+        /// <summary>Reactive read of the chosen style's catalog row.</summary>
+        public static PlayerCatalog.Style CurrentStyle() => PlayerCatalog.ById(Style());
 
-        /// <summary>Reactive read of the face the hero actually PAINTS: the stored presentation while developer mode is
-        /// on, the cover otherwise (the switch itself is developer-only). Subscribes the epoch AND the developer
-        /// signal.</summary>
-        public static int ResolvedPresentation() => Prefs.NpvPlayer.ResolvedPresentation();
-
-        /// <summary>Is the Cover/‹Player› switch offered at all? Reactive — a developer-mode flip composes or removes it
-        /// live, and so does the Store shot's presentation mode, which hides it.</summary>
-        public static bool PresentationSwitchVisible() => Platform.Developer.Enabled.Value && !Diagnostics.StoreShot.Presenting.Value;
-
-        /// <summary>Are the player-style entries offered (the gear, the art menu, the Settings row, the palette rows)? Only where a style
-        /// can change Now playing: the presets drive the hero only through the Cover/‹Player› switch, which is developer-only, so outside
-        /// it the entries are hidden rather than inert (#199). The presets themselves stay. Reactive, like the switch.</summary>
-        public static bool StyleChoiceVisible() => PresentationSwitchVisible();
-
-        /// <summary>Reactive read of the chosen preset id, clamped against the catalog.</summary>
-        public static int Style() => ClampStyle(Prefs.NpvPlayer.Style(PlayerCatalog.Presets.Length));
-
-        /// <summary>Reactive read of the chosen preset's catalog row.</summary>
-        public static PlayerCatalog.Preset CurrentPreset() => PlayerCatalog.ById(Style());
-
-        public static int Choice(in PlayerCatalog.Preset p, in PlayerCatalog.OptionDef o)
-            => Prefs.NpvPlayer.Choice(p.Slug, o.Slug, o.Choices.Length);
-
-        public static int Choice(in PlayerCatalog.Preset p, string optionSlug)
-            => Choice(p, PlayerCatalog.Option(p, optionSlug));
-
-        /// <summary>The current choice's SLUG — what a face branches on (<c>ChoiceSlug(preset, "rpm") == "45"</c>).</summary>
-        public static string ChoiceSlug(in PlayerCatalog.Preset p, string optionSlug)
-        { var o = PlayerCatalog.Option(p, optionSlug); return o.Choices[Choice(p, o)].Slug; }
-
-        public static void SetPresentation(int v, string source)
+        /// <summary>Reactive read of a style's finish index (0 for a style without a finish row).</summary>
+        public static int Finish(int styleId)
         {
-            int from = ClampPresentation(Platform.Settings.Get(Platform.Keys.NpvPresentation)), to = ClampPresentation(v);
-            Prefs.NpvPlayer.SetPresentation(to);                    // persists + bumps ONCE
-            NpvDiagnostics.PresentationSet(from, to, source);
+            var s = PlayerCatalog.ById(styleId);
+            return s.HasFinish ? Prefs.NpvPlayer.Finish(s.Slug, s.Finishes.Length) : 0;
         }
 
-        public static void TogglePresentation(string source)
-            => SetPresentation(ClampPresentation(Platform.Settings.Get(Platform.Keys.NpvPresentation)) == Cover ? Player : Cover, source);
+        /// <summary>A style's finish index, peeked.</summary>
+        public static int FinishPeek(int styleId)
+        {
+            var s = PlayerCatalog.ById(styleId);
+            return s.HasFinish ? Prefs.NpvPlayer.FinishPeek(s.Slug, s.Finishes.Length) : 0;
+        }
 
-        /// <summary>Picking a player ALSO shows it: a style chosen while the cover was up flips to Player (in the same
-        /// write — `Prefs.NpvPlayer.SetStyle` owns that rule).</summary>
+        /// <summary>Persist a style and bump once.</summary>
         public static void SetStyle(int id, string source)
         {
-            int from = ClampStyle(Platform.Settings.Get(Platform.Keys.NpvPlayerStyle)), to = ClampStyle(id);
-            Prefs.NpvPlayer.SetStyle(to, PlayerCatalog.Presets.Length);
+            int from = StylePeek(), to = ClampStyle(id);
+            if (from == to) return;
+            Prefs.NpvPlayer.SetStyle(to);
             NpvDiagnostics.StyleSet(PlayerCatalog.ById(from).Slug, PlayerCatalog.ById(to).Slug, source);
         }
 
-        /// <summary>The art menu's "next style" — wraps at the end of the table.</summary>
-        public static void NextStyle(string source)
-            => SetStyle((ClampStyle(Platform.Settings.Get(Platform.Keys.NpvPlayerStyle)) + 1) % PlayerCatalog.Presets.Length, source);
+        /// <summary>The palette's "next style": wraps at the end of the table.</summary>
+        public static void NextStyle(string source) => SetStyle((StylePeek() + 1) % PlayerCatalog.Count, source);
 
-        /// <summary>Reactive: is every option of <paramref name="p"/> on its default (choice 0)? The flyout's "Reset options" is disabled
-        /// while it is.</summary>
-        public static bool AtDefaults(in PlayerCatalog.Preset p)
+        /// <summary>Persist one style's finish and bump once (a style without a finish row ignores it).</summary>
+        public static void SetFinish(int styleId, int index, string source)
         {
-            for (int i = 0; i < p.Options.Length; i++) if (Choice(p, p.Options[i]) != 0) return false;
-            return true;
-        }
-
-        /// <summary>Put every option of <paramref name="p"/> back on its default, in one write (one epoch bump: the deck restyles once).</summary>
-        public static void ResetChoices(in PlayerCatalog.Preset p, string source)
-        {
-            if (p.Options.Length == 0) return;
-            var slugs = new string[p.Options.Length];                 // a click, never a frame
-            for (int i = 0; i < slugs.Length; i++) slugs[i] = p.Options[i].Slug;
-            Prefs.NpvPlayer.ResetChoices(p.Slug, slugs);
-            NpvDiagnostics.OptionsReset(p.Slug, source);
-        }
-
-        public static void SetChoice(in PlayerCatalog.Preset p, in PlayerCatalog.OptionDef o, int i, string source)
-        {
-            int to = ClampChoice(o, i);
-            Prefs.NpvPlayer.SetChoice(p.Slug, o.Slug, to, o.Choices.Length);
-            NpvDiagnostics.OptionSet(p.Slug, o.Slug, o.Choices[to].Slug, source);
+            var s = PlayerCatalog.ById(styleId);
+            if (!s.HasFinish) return;
+            int to = (uint)index < (uint)s.Finishes.Length ? index : 0;
+            if (to == FinishPeek(styleId)) return;
+            Prefs.NpvPlayer.SetFinish(s.Slug, to);
+            NpvDiagnostics.FinishSet(s.Slug, s.Finishes[to].Slug, source);
         }
     }
 
     // ── 4. the always-on `npv` log category ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>How a preference written from five surfaces is attributed. Always on: CLAUDE.md bans env-var switches
-    /// for behaviour AND verification, and without the <c>source</c> field "the style changed" is unattributable.</summary>
+    /// <summary>How a preference written from several surfaces is attributed. Always on: CLAUDE.md bans env-var switches for behaviour AND
+    /// verification, and without the <c>source</c> field "the style changed" is unattributable.</summary>
     public static class NpvDiagnostics
     {
         public const string Category = "npv";
-        public const string SourceHeader = "header", SourceFlyout = "flyout", SourceArtMenu = "artMenu",
-                            SourceSettings = "settings", SourcePalette = "palette";
-
-        public static void PresentationSet(int from, int to, string source) => Log.Event(
-            WaveeLogLevel.Info, Category, "presentation.set",
-            "now-playing hero " + Name(from) + " -> " + Name(to) + " via " + source,
-            fields: [WaveeLogField.Of("from", Name(from)), WaveeLogField.Of("to", Name(to)), WaveeLogField.Of("source", source)]);
+        public const string SourcePicker = "picker", SourceSettings = "settings", SourcePalette = "palette";
 
         public static void StyleSet(string from, string to, string source) => Log.Event(
             WaveeLogLevel.Info, Category, "style.set",
             "player style " + from + " -> " + to + " via " + source,
             fields: [WaveeLogField.Of("from", from), WaveeLogField.Of("to", to), WaveeLogField.Of("source", source)]);
 
-        public static void OptionSet(string style, string option, string choice, string source) => Log.Event(
-            WaveeLogLevel.Info, Category, "option.set",
-            "player option " + style + "." + option + "=" + choice + " via " + source,
-            fields: [WaveeLogField.Of("style", style), WaveeLogField.Of("option", option),
-                     WaveeLogField.Of("choice", choice), WaveeLogField.Of("source", source)]);
+        public static void FinishSet(string style, string finish, string source) => Log.Event(
+            WaveeLogLevel.Info, Category, "finish.set",
+            "player finish " + style + "=" + finish + " via " + source,
+            fields: [WaveeLogField.Of("style", style), WaveeLogField.Of("finish", finish), WaveeLogField.Of("source", source)]);
 
-        public static void OptionsReset(string style, string source) => Log.Event(
-            WaveeLogLevel.Info, Category, "options.reset",
-            "player options " + style + " reset to defaults via " + source,
-            fields: [WaveeLogField.Of("style", style), WaveeLogField.Of("source", source)]);
-
-        public static void FlyoutClosed() => Log.Debug(Category, "player style flyout dismissed");
-
-        static string Name(int p) => p == PlayerPrefs.Player ? "player" : "cover";
+        public static void PickerClosed(bool committed) => Log.Debug(Category, committed ? "player style picker: done" : "player style picker: cancelled");
     }
 
     // ── 5. the now-playing hero's geometry (stage B; NowPlayingPanel.cs:512, :541-542) ──────────────────────────────
@@ -405,7 +279,7 @@ public static partial class Rail
     /// share.</summary>
     public static class Hero
     {
-        /// <summary>The header strip's fixed height (eyebrow · Cover|Player · gear).</summary>
+        /// <summary>The header strip's fixed height (the "Now playing" eyebrow and the style chip; while picking, "Player style", Cancel, Done).</summary>
         public const float HeaderRowH = 36f;
         /// <summary>The tile's own inset on its left, top and right (the app's Spacing.S, restated engine-free).</summary>
         public const float Inset = 8f;

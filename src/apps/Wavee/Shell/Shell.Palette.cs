@@ -38,7 +38,7 @@ public static partial class Shell
 
     public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
+    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -96,7 +96,7 @@ public static partial class Shell
             SetRow("settings.zoomIn", Loc.Get(Strings.Settings.Appearance.ZoomIn), Icons.Add, PaletteSettingsVerb.ZoomIn),
             SetRow("settings.zoomOut", Loc.Get(Strings.Settings.Appearance.ZoomOut), Icons.Remove, PaletteSettingsVerb.ZoomOut),
             SetRow("settings.zoomReset", Loc.Get(Strings.Settings.Appearance.ZoomReset), Icons.Undo, PaletteSettingsVerb.ZoomReset),
-            SetRow("settings.npvPresentation", Loc.Get(Strings.Player.PresentationToggle), Icons.Picture, PaletteSettingsVerb.NpvTogglePresentation),
+
             SetRow("settings.npvNextStyle", Loc.Get(Strings.Player.PlayerStyleNext), Icons.Album, PaletteSettingsVerb.NpvNextStyle),
             SetRow("sidebar.edit", Loc.Get("sidebar.menu.edit"), Icons.Edit, PaletteSettingsVerb.EditSidebar),
             LibRow("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, PaletteLibraryVerb.NewPlaylist),
@@ -115,16 +115,14 @@ public static partial class Shell
         /// <summary>A fresh index for one open: the builtins, then the active theme's option commands
         /// (<paramref name="themeCommands"/>: the options that asked for a palette row), then every registry action that
         /// accepts a target the palette can supply (now playing, the active page, or none). <paramref name="glyphOf"/>
-        /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.
-        /// <paramref name="playerStyleRows"/> false drops the two now-playing style rows (<see cref="IsPlayerStyleRow"/>): they are
-        /// offered only where a style can change Now playing (<c>Rail.PlayerPrefs.StyleChoiceVisible</c>, #199).</summary>
+        /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.</summary>
         /// <param name="caps">The active shell capabilities (P5 ZK); null = every capability on. A row whose feature the structure does
         /// not offer is left out (<see cref="HiddenBy"/>).</param>
         public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf,
-            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null, bool playerStyleRows = true, Theming.ShellCapabilities? caps = null)
+            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null, Theming.ShellCapabilities? caps = null)
         {
             var builtins = Builtins();
-            if (!playerStyleRows) builtins = Array.FindAll(builtins, static r => !IsPlayerStyleRow(r.Id));
+
             if (caps is { } c && (!c.NavTree || !c.Tabs)) builtins = Array.FindAll(builtins, r => !HiddenBy(r.Id, c));
             int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
@@ -160,8 +158,6 @@ public static partial class Shell
             return all;
         }
 
-        /// <summary>The builtin rows that pick the hero's presentation or player style (the Cover/Player toggle, the next style).</summary>
-        public static bool IsPlayerStyleRow(string id) => id is "settings.npvPresentation" or "settings.npvNextStyle";
 
         /// <summary>The builtin rows that act on the navigation tree (Edit the sidebar, New folder): a structure without one has nowhere for
         /// them to land (P5 ZK).</summary>
@@ -333,9 +329,7 @@ public static partial class Shell
                     case PaletteSettingsVerb.ZoomIn: ZoomStep(+1); break;
                     case PaletteSettingsVerb.ZoomOut: ZoomStep(-1); break;
                     case PaletteSettingsVerb.ZoomReset: ZoomStep(0); break;
-                    case PaletteSettingsVerb.NpvTogglePresentation:
-                        DeckPrefs.TogglePresentation(DeckPrefSource.Palette);
-                        break;
+
                     case PaletteSettingsVerb.NpvNextStyle:
                         DeckPrefs.NextStyle(DeckPrefSource.Palette);
                         break;
@@ -415,8 +409,7 @@ public static partial class Shell
     sealed class PaletteSession : IPaletteSession
     {
         readonly PaletteEntry[] _index = CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
-            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), playerStyleRows: Platform.Developer.Enabled.Peek() && !Diagnostics.StoreShot.Presenting.Peek(),   // Rail.PlayerPrefs.StyleChoiceVisible, peeked
-            caps: ShellCaps.Now);
+            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), caps: ShellCaps.Now);
         readonly PaletteEntry[] _hits = new PaletteEntry[CommandTable.MaxResults];
         readonly PaletteEntry _scratch = CommandTable.NewCatalogScratch();
         int _count;
