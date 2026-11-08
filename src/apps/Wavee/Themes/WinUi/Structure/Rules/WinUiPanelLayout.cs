@@ -98,6 +98,10 @@ public static class WinUiPanelLayout
     /// 4 under it: its 40-tall hit row closes the sheet).</summary>
     public const float SheetShare = 0.85f, GrabberW = 32f, GrabberH = 4f, GrabberRowH = 20f, GrabberTouchH = 40f;
 
+    /// <summary>The docked video's resize handle under the card: the sheet grabber's pill (32 x 4, r2, FillControlStrong) at this opacity at rest,
+    /// full while the band is hovered or dragged.</summary>
+    public const float DockedGripRest = 0.55f;
+
     /// <summary>The open / close slide: 250 ms on the decelerate curve (X docked and as an overlay, Y as a sheet).</summary>
     public const float SlideMs = 250f;
 

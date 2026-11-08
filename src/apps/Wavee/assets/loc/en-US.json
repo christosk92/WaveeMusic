@@ -2094,6 +2094,7 @@
     "videoMiniPlayer": "Play in a mini player",
     "videoFullScreen": "Full screen",
     "videoExitFullScreen": "Exit full screen",
+    "videoHeight": "Video height {height}",
     "fullscreen": "Full screen",
     "noVideoForThisSong": "No video for this song",
     "videoNeedsWiderWindow": "Needs a wider window",

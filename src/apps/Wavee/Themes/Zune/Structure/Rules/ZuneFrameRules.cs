@@ -404,6 +404,10 @@ public static class ZuneFrameRules
 
     /// <summary>The panel column's docked video card and its body slot (the column reorders the card and the head; the keys keep their nodes).</summary>
     public const string PanelCardKey = "zune-panel-card", PanelBodyKey = "zune-panel-body";
+
+    /// <summary>The docked video's resize handle under the card: a flat, square rule (48 x 2, Zune draws no rounded parts) in the tertiary ink at
+    /// this opacity at rest, full while the band is hovered or dragged.</summary>
+    public const float PanelGripW = 48f, PanelGripH = 2f, PanelGripRest = 0.7f;
     public const float PanelEdgeFade = 24f;
 
     /// <summary>A pivot word that moved less than this did not move (half a DIP); the radix that folds the words' order into one key.</summary>

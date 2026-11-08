@@ -2,8 +2,8 @@
 //
 // From `Shell/Video.UI.cs` (`DockedSurface`'s card and `VideoArea`, and `WatchStage`'s frame): the docked music-video surface, video that
 // simply LIVES in the app at zero commitment. Two faces, one card: the rail's Cap (its height follows the content's own aspect at the rail's
-// width and the splitter overrides it; the panel places it, the card has NO transition, NO shadow, NO corners of its own) and the watch
-// page's PageStage (the page owns the envelope, so the card grows into it).
+// width and the handle under it overrides it; the panel places it, the card has NO shadow, NO corners of its own and no transition but its
+// height's reflow) and the watch page's PageStage (the page owns the envelope, so the card grows into it).
 //
 // THE CARD IS A HOLLOW RESERVATION. The picture is not in it: the stay-mounted presenter (`Video.Pip`) FOLLOWS this box through the
 // engine's `FollowRect` (resolved after layout and the animation tick, so the picture lands on the reservation's painted rect in the same
@@ -40,7 +40,8 @@ internal static class ClassicVideoDocked
         BoxEl card = new BoxEl
         {
             ZStack = true, ClipToBounds = true,
-            // NO Shadow, NO Layout/Enter/Exit: a content-layer rung, and any transition here erases the hole.
+            // NO Shadow, NO Enter/Exit, no FLIP or offscreen transition: a content-layer rung, and those erase the hole. The Cap's height
+            // reflow (below) is real layout, which the presenter follows in the same frame.
             OnPointerExit = static () => { },
             OnKeyDown = e =>
             {
@@ -54,7 +55,9 @@ internal static class ClassicVideoDocked
 
         return props.Face == Video.DockedFace.PageStage
             ? card with { Grow = 1f, MinHeight = 0f, Fill = Tok.MediaLetterbox }
-            : card with { Shrink = 0f, MinWidth = 0f, Height = props.Height, Fill = Tok.MediaLetterbox };
+            // The Cap's height eases through real layout (the reservation, so the picture following it, and the panel under it ride every frame):
+            // a reset, a key step or a new track's fit. A drag on the handle holds layout transitions, so its writes land 1:1.
+            : card with { Shrink = 0f, MinWidth = 0f, Height = props.Height, Fill = Tok.MediaLetterbox, Animate = ClassicTierMotion.HeightReflow };
     }
 
     /// <summary>The hollow reservation: nothing is drawn in it and nothing hits it.</summary>

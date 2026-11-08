@@ -206,32 +206,21 @@ internal static class ClassicPanel
 
     // ── the docked cap (the card is the video lane's; this is the height, the letterbox and the splitter) ─────────────
 
-    /// <summary>The rail's ONE docked card, reached from both arms. Its Height is the SAME FloatSignal the splitter
-    /// writes — a stable bind, never a fresh thunk (that left the height NaN and collapsed the ZStack to the strip).</summary>
+    /// <summary>The rail's ONE docked card over its resize handle, reached from both arms. The card's Height is the SAME FloatSignal the handle
+    /// writes — a stable bind, never a fresh thunk (that left the height NaN and collapsed the card) — and the column hugs both, so the body under
+    /// them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card takes every press on it).</summary>
     internal static Element DockedCap(PanelProps props, bool docked, float railWidth)
     {
         Element video = props.DockedCard();
         if (!docked) return video;                                         // the card's own gate: zero size, no reflow
         return new BoxEl
         {
-            Direction = 1, ZStack = true, Shrink = 0f, ClipToBounds = true,
-            Height = props.DockedVideoHeight, Fill = Tok.MediaLetterbox,
+            Direction = 1, Shrink = 0f,
             Children =
             [
                 video,
-                new BoxEl
-                {
-                    Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        Splitter.Create(props.DockedVideoHeight, props.CommitDockedVideo, new Splitter.SplitterOptions
-                        {
-                            Min = props.DockedVideoMin(railWidth),
-                            Max = props.DockedVideoMax(),
-                            Axis = SplitterAxis.Vertical, ShowIndicator = false,
-                        }),
-                    ],
-                },
+                props.DockedVideoHandle(new DockedVideoGrip(ClassicPanelLayout.DockedGripW, ClassicPanelLayout.DockedGripH,
+                    ClassicPanelLayout.DockedGripRadius, Tok.FillControlStrong, ClassicPanelLayout.DockedGripRest), railWidth),
             ],
         };
     }
