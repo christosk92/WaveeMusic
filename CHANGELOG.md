@@ -121,6 +121,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The artist photo shows again behind its name.** In the Classic theme the light or dark veil under an artist's name,
+  bio and buttons covered most of the photo since 0.3.6, so the picture was barely visible, worst in light mode. The
+  veil is back to 0.2's: strong at the left edge and fading out behind the copy, so the photo shows across the hero.
+  It now reads each photo and stays stronger only as far as that photo needs for the text to stay readable (a bright
+  photo in dark mode, a dark one in light mode).
 - **Pages no longer guess whether they are stuck.** Artist, album, playlist and search pages know whether their data
   is loading, there, missing or failed, show exactly that, and recover by themselves when the connection comes back,
   instead of waiting on a 10-second timer.
