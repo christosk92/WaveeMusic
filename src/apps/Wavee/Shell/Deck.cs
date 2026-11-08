@@ -61,8 +61,8 @@ public static partial class Deck
     /// <param name="Angle0">Record: platter degrees · Tape: LEFT reel · CD: disc · VU: LEFT needle.</param>
     /// <param name="Angle1">Record: ARM degrees · Tape: RIGHT reel · VU: RIGHT needle.</param>
     /// <param name="Lift">Record: 0 = stylus down .. 1 = lifted (the buffering bob overshoots above 1).</param>
-    /// <param name="Slide">Record: 0 = in the sleeve .. 1 = on the platter · Cassette: eject · CD: tray.</param>
-    /// <param name="Aux0">Per-model spare: tape LEFT pack scale, CD sled offset, …</param>
+    /// <param name="Slide">Record: 0 = in the sleeve .. 1 = on the platter · Cassette: eject · CD: 0 = in its case .. 1 = out.</param>
+    /// <param name="Aux0">Per-model spare: tape LEFT pack scale, …</param>
     /// <param name="Aux1">Per-model spare: tape RIGHT pack scale, …</param>
     /// <param name="CoverGen">Monotonic: bumps at the exact instant the artwork should CHANGE (mid-sleeve,
     /// mid-eject).</param>
@@ -462,14 +462,16 @@ public static partial class Deck
     /// brakes 500 ms after the lift. "Stop the platter when the swing ends" is a different, worse deck.</para></summary>
     public static class TonearmMachine
     {
-        /// <summary>Arm on its rest.</summary>
-        public const float RestDeg = -34f;
-        /// <summary>Arm over the lead-in groove (position 0).</summary>
-        public const float LeadInDeg = -20f;
-        /// <summary>Lead-in → run-out sweep.</summary>
-        public const float SpanDeg = 17f;
+        /// <summary>Arm on its rest: hanging nearly straight down from the pivot, the stylus well clear of the record (in the face's
+        /// convention, 0° is straight down and a positive angle swings the headshell clockwise, in over the record).</summary>
+        public const float RestDeg = -3f;
+        /// <summary>Arm over the lead-in groove (position 0): the angle at which the stylus sits on the lead-in radius
+        /// (<see cref="TonearmGeometry.ArmDegFor"/>), so the face's stylus lands ON the record.</summary>
+        public static readonly float LeadInDeg = TonearmGeometry.ArmDegFor(TonearmGeometry.LeadInRadiusFrac);
         /// <summary>Arm over the run-out groove (position 1).</summary>
-        public const float RunOutDeg = LeadInDeg + SpanDeg;
+        public static readonly float RunOutDeg = TonearmGeometry.ArmDegFor(TonearmGeometry.RunOutRadiusFrac);
+        /// <summary>Lead-in → run-out sweep.</summary>
+        public static readonly float SpanDeg = RunOutDeg - LeadInDeg;
 
         public const float SlideMs = 600, CueHoldMs = 300, SwingLeadMs = 1200, LowerMs = 900, LiftMs = 450, SpinUpMs = 700,
             SeekLiftMs = 400, SeekSwingBaseMs = 300, SeekSwingPerSpanMs = 600, SeekLowerMs = 700, RecueSwingMs = 900,
@@ -483,8 +485,10 @@ public static partial class Deck
         /// <summary>A seek shorter than this many degrees is below one rendered quantum — the arm does not move.</summary>
         public const float SeekDeadZoneDeg = 0.15f;
 
-        /// <summary>Where the arm sits for a normalized position.</summary>
-        public static float AngleOf(float frac) => LeadInDeg + SpanDeg * Ease.Clamp01(frac);
+        /// <summary>Where the arm sits for a normalized position: the stylus on the groove at that point of the side. A groove of
+        /// constant pitch turning at a constant speed walks the stylus inward at a constant RADIAL rate, so the radius is linear in the
+        /// position and the arm angle follows from the arm's geometry (it is not linear in the position).</summary>
+        public static float AngleOf(float frac) => TonearmGeometry.ArmDegFor(TonearmGeometry.RadiusOf(frac));
 
         /// <summary>Reduced motion collapses every leg to a snap.</summary>
         static float Dur(float ms, in Input i) => i.ReducedMotion ? MathF.Min(ms, ReducedMs) : ms;
@@ -627,7 +631,12 @@ public static partial class Deck
             // 9. idle / stopped → play
             if ((s.Phase is TonearmPhase.Idle or TonearmPhase.Stopped) && i.PlayWhenReady) return CueFrom(s, in i);
 
-            // 10. the current leg's timer
+            // 10. riding the groove, the state remembers where the stylus is (see Sample's Tracking arm); else the current leg's timer
+            if (s.Phase == TonearmPhase.Tracking)
+            {
+                float at = i.DurationMs > 0 ? AngleOf(i.Frac) : s.ToDeg;
+                return s.ToDeg == at ? s : s with { ToDeg = at };
+            }
             return Timers(s, in i);
         }
 
@@ -736,7 +745,10 @@ public static partial class Deck
             float arm, lift, slide = s.RecordOut ? 1f : 0f;
             switch (s.Phase)
             {
-                case TonearmPhase.Tracking: arm = AngleOf(i.Frac); lift = 0f; break;
+                // While the duration is unknown the stylus stays where it was: at a skip the transport publishes the next track
+                // before its duration, and reading that as position 0 threw the arm out to the lead-in for the frame the lift
+                // starts from. A deck seeded over an unknown duration starts at the lead-in (Seed's ToDeg).
+                case TonearmPhase.Tracking: arm = i.DurationMs > 0 ? AngleOf(i.Frac) : s.ToDeg; lift = 0f; break;
                 case TonearmPhase.Dragging: arm = AngleOf(i.FracOf(i.ScrubTargetMs ?? i.PositionMs)); lift = 1f; break;
                 case TonearmPhase.RunOut: arm = s.FromDeg + (s.ToDeg - s.FromDeg) * t; lift = 0f; break;   // linear: a groove, not a swing
                 case TonearmPhase.LockedGroove: arm = RunOutDeg; lift = 0f; break;
@@ -806,32 +818,63 @@ public static partial class Deck
         };
     }
 
-    /// <summary>The headshell drag's arithmetic: deck-space point → normalized position, and arm-local point → deck
-    /// space. Pure geometry, shared by the record family's faces and unit-tested without a pointer.</summary>
+    /// <summary>The turntable's geometry, in fractions of the deck's side, and the arithmetic both the machine and the face share: where
+    /// the record and the arm's pivot sit, how long the arm is, which radius each point of the side plays at, the arm angle that puts the
+    /// stylus on a radius, and the headshell drag's mapping back. ONE table, so the arm the face draws lands on the groove the machine
+    /// says it is in (before 2026-11-08 the face's arm swung the other way and never reached the record).
+    /// <para>Angle convention: 0° hangs the arm straight down from its pivot; a positive angle swings the headshell clockwise (the
+    /// screen's y points down), in over the record.</para></summary>
     public static class TonearmGeometry
     {
         /// <summary>Inner edge of the label as a fraction of the record's radius — the groove band starts here.</summary>
         public const float LabelRadiusFrac = 0.34f;
-        /// <summary>Width of the groove band as a fraction of the radius (label edge → rim).</summary>
-        public const float GrooveBandFrac = 1f - LabelRadiusFrac;
+        /// <summary>The lead-in groove (position 0) as a fraction of the record's radius: just inside the smooth rim.</summary>
+        public const float LeadInRadiusFrac = 0.94f;
+        /// <summary>The run-out groove (position 1): the dead wax between the last groove and the label.</summary>
+        public const float RunOutRadiusFrac = 0.40f;
 
-        /// <summary>Where a deck-space point falls in the track: the RIM is position 0 (the lead-in) and the LABEL
-        /// edge is position 1 (the run-out), because that is the direction a stylus actually travels.</summary>
+        /// <summary>The record's centre (the spindle) and its diameter on the turntable face.</summary>
+        public const float CenterX = 0.451f, CenterY = 0.476f, RecordDFrac = 0.683f;
+        /// <summary>The arm's pivot (the bearing) at the plinth's top right.</summary>
+        public const float PivotX = 0.863f, PivotY = 0.205f;
+        /// <summary>Pivot → stylus (the effective length): a little longer than pivot → spindle, the overhang that lets a real arm track
+        /// close to tangent across the side.</summary>
+        public const float ArmLengthFrac = 0.52f;
+
+        /// <summary>The radius (a fraction of the record's) the stylus plays at for a normalized position: linear, lead-in → run-out.</summary>
+        public static float RadiusOf(float frac) => LeadInRadiusFrac - (LeadInRadiusFrac - RunOutRadiusFrac) * Ease.Clamp01(frac);
+
+        /// <summary>The inverse of <see cref="RadiusOf"/>, clamped: outside the lead-in reads 0, inside the run-out reads 1.</summary>
+        public static float FracOfRadius(float radiusFrac) => Ease.Clamp01((LeadInRadiusFrac - radiusFrac) / (LeadInRadiusFrac - RunOutRadiusFrac));
+
+        /// <summary>The arm angle that puts the stylus on <paramref name="radiusFrac"/> (a fraction of the record's radius): the triangle
+        /// pivot, spindle, stylus solved for the angle at the pivot (law of cosines), on the branch that comes in from the right.</summary>
+        public static float ArmDegFor(float radiusFrac)
+        {
+            float dx = CenterX - PivotX, dy = CenterY - PivotY;
+            float pc = MathF.Sqrt(dx * dx + dy * dy);
+            float r = radiusFrac * RecordDFrac * 0.5f, l = ArmLengthFrac;
+            // The arm's direction at angle a is (-sin a, cos a): the spindle's own bearing from the pivot, then back off by the triangle's angle.
+            float toCenter = MathF.Atan2(-dx, dy);
+            float cos = Math.Clamp((l * l + pc * pc - r * r) / (2f * l * pc), -1f, 1f);
+            return (toCenter - MathF.Acos(cos)) * (180f / MathF.PI);
+        }
+
+        /// <summary>Where a deck-space point falls in the track, by its radius from the spindle: the lead-in (rim side) is position 0 and
+        /// the run-out (label side) position 1, the direction a stylus travels — the inverse of the arm's own mapping.</summary>
         public static float FracFromDeckPoint(float x, float y, float platterCx, float platterCy, float recordD)
         {
             float dx = x - platterCx, dy = y - platterCy;
-            float d = MathF.Sqrt(dx * dx + dy * dy) / (recordD * 0.5f);
-            return Ease.Clamp01(1f - (d - LabelRadiusFrac) / GrooveBandFrac);
+            return FracOfRadius(MathF.Sqrt(dx * dx + dy * dy) / (recordD * 0.5f));
         }
 
-        /// <summary>Map a point inside the arm's own box to deck space, honouring the arm's rotation about its pivot
-        /// (the face's transform origin at (.5, .08)).</summary>
-        public static (float X, float Y) ArmLocalToDeck(float lx, float ly, float armDeg, float armX, float armY, float armW, float armH)
+        /// <summary>Map a point inside the arm's own box to deck space, honouring the arm's rotation about its pivot, which sits at
+        /// (<paramref name="pivotX"/>, <paramref name="pivotY"/>) inside the box (the face's transform origin).</summary>
+        public static (float X, float Y) ArmLocalToDeck(float lx, float ly, float armDeg, float armX, float armY, float pivotX, float pivotY)
         {
-            float px = armW * 0.5f, py = armH * 0.08f;
             float r = armDeg * (MathF.PI / 180f), c = MathF.Cos(r), s = MathF.Sin(r);
-            float dx = lx - px, dy = ly - py;
-            return (armX + px + c * dx - s * dy, armY + py + s * dx + c * dy);
+            float dx = lx - pivotX, dy = ly - pivotY;
+            return (armX + pivotX + c * dx - s * dy, armY + pivotY + s * dx + c * dy);
         }
     }
 
@@ -1059,8 +1102,9 @@ public static partial class Deck
 
     // ── 9. DiscModel — CD and MiniDisc ─────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Engine-free physics for the CD/MiniDisc deck: a constant-linear-velocity spindle (angular speed falls
-    /// as the virtual read head moves outward) plus the sled travel and the tray-eject sequence on a new album.</summary>
+    /// <summary>Engine-free physics for the CD deck: a constant-linear-velocity spindle (angular speed falls as the virtual read head
+    /// moves outward), geared down for the screen (<see cref="VisualGear"/>), and the disc sliding back into its case and out again on a
+    /// new album.</summary>
     public sealed class DiscModel : IModel
     {
         enum EjectPhase : byte { None, Out, In }
@@ -1082,7 +1126,8 @@ public static partial class Deck
             float p = input.Frac;
             bool playing = input.Advancing || (input.PlayWhenReady && !input.Buffering);
 
-            _disc.Step(ClvTargetDegPerSec(p, playing), dtSec);
+            // Reduced motion is a value: the spindle's target is zero, so the disc coasts to rest instead of jumping a step per report.
+            _disc.Step(ClvTargetDegPerSec(p, playing && !input.ReducedMotion), dtSec);
 
             float slide = 1f;
             if (input.Boundary is Boundary.NaturalNewAlbum or Boundary.SkipNewAlbum && _eject == EjectPhase.None)
@@ -1116,16 +1161,26 @@ public static partial class Deck
                 }
             }
 
-            float aux0 = (20f + 26f * p) / 100f;   // sled travel, fraction of the disc diameter
             var phase = input.Buffering ? PhaseName.Buffering : playing ? PhaseName.Playing : PhaseName.Paused;
             _settled = _disc.AtRest && _eject == EjectPhase.None;
 
-            return new Frame(p, _disc.Angle, 0f, 0f, slide, aux0, 0f, _coverGen, false, phase);
+            return new Frame(p, _disc.Angle, 0f, 0f, slide, 0f, 0f, _coverGen, false, phase);
         }
 
-        /// <summary>Pure physics: CLV spindle target — fastest at the inner edge (p=0), slowest at the outer rim
-        /// (p=1).</summary>
-        public static float ClvTargetDegPerSec(float p, bool playing) => playing ? 3000f - 1800f * p : 0f;
+        /// <summary>A real CD's constant-linear-velocity spindle: ~500 rpm reading the inner edge, ~200 rpm at the rim.</summary>
+        public const float SpindleRpmInner = 500f, SpindleRpmOuter = 200f;
+
+        /// <summary>The face draws the spindle geared down by this much. A real disc at 440 rpm turns 44° per 60 Hz frame (18° at
+        /// 144 Hz): the printed art then lands at unrelated angles frame to frame and reads as a strobing, uncontrolled blur — the eye
+        /// gets motion blur from a real disc, a screen gives it none. Geared 30:1 the disc turns 100°/s → 40°/s (1.7° → 0.7° a
+        /// 60 Hz frame), below a turntable's 200°/s, so the label reads as a calm, steady spin at any refresh rate, and the CLV
+        /// shape (2.5× faster at the start of the disc than at its end) survives.</summary>
+        public const float VisualGear = 1f / 30f;
+
+        /// <summary>Pure physics: CLV spindle target in the face's degrees per second — fastest at the inner edge (p=0), slowest at
+        /// the outer rim (p=1).</summary>
+        public static float ClvTargetDegPerSec(float p, bool playing)
+            => playing ? (SpindleRpmInner - (SpindleRpmInner - SpindleRpmOuter) * Clamp01(p)) * 6f * VisualGear : 0f;
 
         static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
     }

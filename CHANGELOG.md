@@ -124,6 +124,19 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The CD player style spins calmly.** The disc turned at a real CD's 200 to 500 rpm, about 44 degrees from one frame to
+  the next, so its printed cover strobed and blurred instead of turning. It now turns at a steady, readable speed that still
+  slows a little as the disc plays, spins up and coasts down like a motor, stops when you pause and holds still with
+  Animation effects off. The disc now sits half out of its jewel case with the cover printed on it. The rainbow sheen shows
+  only at its rim and centre, around a clear ring and the player's clamp.
+- **The Vinyl player style plays like a turntable.** The tonearm swung the wrong way, so the stylus never reached the
+  record. Now it drops onto the first groove when you press play, moves inward as the song plays, lifts when you pause,
+  crosses to where you seek and goes back to its rest. When you skip, it lifts from where it is instead of first jumping
+  out to the edge of the record. When the queue ends, the arm rides the run-out groove and returns,
+  because the deck no longer mistakes the stopped player's position for a jump back to the start. The record has a paper
+  label, smooth gaps between songs and a sheen that stays with the light as it turns. It sits on a graphite turntable
+  with a machined platter, a straight arm with a counterweight and headshell, an arm rest and a power lamp that is lit
+  while the motor runs.
 - **The artist photo shows again behind its name.** In the Classic theme the light or dark veil under an artist's name,
   bio and buttons covered most of the photo since 0.3.6, so the picture was barely visible, worst in light mode. The
   veil is back to 0.2's: strong at the left edge and fading out behind the copy, so the photo shows across the hero.
