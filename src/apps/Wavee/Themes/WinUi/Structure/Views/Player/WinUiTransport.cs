@@ -54,7 +54,7 @@ internal static class WinUiTransport
                     new BoxEl
                     {
                         Grow = 1f, Fill = drawn ? Tok.AccentDefault : Tok.FillControlStrong, HitTestVisible = false,
-                        TransformOriginX = 0f, Transform = host.FillTransform,
+                        TransformOriginX = 0f, Transform = host.FillTransform, OnRealized = host.FillRealized,
                     },
                 ],
             };
@@ -65,7 +65,7 @@ internal static class WinUiTransport
             Fill = drawn ? Tok.AccentDefault : Tok.AccentDisabled,
             // Square: a scaled rounded rect shows cap slivers at the value edge.
             Corners = CornerRadius4.All(0f), HitTestVisible = false,
-            TransformOriginX = 0f, Transform = host.FillTransform,
+            TransformOriginX = 0f, Transform = host.FillTransform, OnRealized = host.FillRealized,
         };
         // The DVR rail's right end IS the live edge, so it is marked.
         Element[] railKids = props.Dvr

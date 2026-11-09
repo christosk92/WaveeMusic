@@ -447,6 +447,25 @@ public static partial class Shell
 
         readonly bool _hairline;   // the mini bar's progress line (TC2): no thumb, no hit test, never a scrub
 
+        // ── COMPOSITOR PROGRESS ──
+        // While the playhead advances on its own and nothing holds the rail (no gesture, no drop-point hold, no key ladder, no re-scale
+        // ease, the window shown), the fill and the thumb run as RENDER-THREAD rows from where the playhead is to the end of the track,
+        // at the rate it moves: the fill a linear x-scale posed in whole device pixels and re-sampled once per pixel's dwell, the thumb
+        // its piecewise-linear x. The UI thread then draws no frame for the progress at all; only a seek, a pause, a rate, track or
+        // width change, a theme remount or a drift past half a pixel re-seeds (one UI frame each). The binds hold the pose the rows
+        // departed from (_rowFrom), so the authored pose under a row is always its start. The pixel-due stepper runs only when rows
+        // cannot (a live window, a DVR rail, a gesture, a hidden window). Mini player power pass, 2026-11-09: the mini window's rail
+        // stepped the UI loop at its pixel dwell, a few frames a second for the whole of a track.
+        NodeHandle _fillNode;
+        readonly Action<NodeHandle> _onFillRealized;
+        readonly Signal<bool> _rowsLive = new(false);
+        readonly FloatSignal _rowFrom = new(0f);
+        long _rowAtMs;
+        double _rowPerMs;
+        float _rowRail, _deviceScale = 1f;
+        bool _rowGate, _rowReseed;
+        readonly Action _syncRows;
+
         public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false)
         {
             _hairline = hairline;
@@ -454,11 +473,13 @@ public static partial class Shell
             _onScrubbing = onScrubbing;
             _reveal = reveal;
             _scrub = ScrubController.ForPlayback(OnGesture);
-            _onThumbRealized = node => _thumbNode = node;
+            _onThumbRealized = node => { if (node != _thumbNode) { _thumbNode = node; _rowReseed = true; SyncRows(); } };
+            _onFillRealized = node => { if (node != _fillNode) { _fillNode = node; _rowReseed = true; SyncRows(); } };
+            _syncRows = SyncRows;
             _readoutAnchor = () => _thumbNode;
             var readout = new SeekReadoutProps { Text = ReadoutLabel };
             _readoutContent = () => ViewSlots.View(ViewKeys.SeekReadout, readout);
-            _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_scrub.Display.Value, 0f, 1f), 1e-4f), 1f));
+            _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_rowsLive.Value ? _rowFrom.Value : _scrub.Display.Value, 0f, 1f), 1e-4f), 1f));
             _recompute = _scrub.Recompute;
             _modeNow = _scrub.Mode;
             _dwellNow = _scrub.DwellMs;
@@ -489,7 +510,13 @@ public static partial class Shell
             // UseInterval also pauses under a parked / minimised window.
             bool concealed = _reveal is { } reveal && !reveal.Value;   // subscribe — the reveal re-renders and re-arms
             bool windowHidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;
-            UseInterval(_recompute, dwell, enabled: SeekRail.Ticks(advances, mode, concealed, windowHidden));
+            // Rows when they can (COMPOSITOR PROGRESS above), the stepper otherwise. The layout effect re-seeds on the gate, the rail's
+            // width and the display scale; the report effect re-seeds on a drift, a seek, a rate or a track change.
+            _rowGate = advances && mode == SeekRailMode.Track && !concealed && !windowHidden;
+            _deviceScale = UseContext(Viewport.Scale) is > 0f and var scale ? scale : 1f;
+            bool rows = _rowsLive.Value;
+            UseLayoutEffect(_syncRows, DepKey.From(_rowGate ? 1 : 0, (int)MathF.Round(_scrub.RailPx.Value), (int)MathF.Round(_deviceScale * 100f), 0));
+            UseInterval(_recompute, dwell, enabled: SeekRail.Ticks(advances, mode, concealed, windowHidden) && !rows);
             // The re-scale stepper: a duration change on the same row eases the fill for SeekRail.RescaleMs at frame pace, then
             // disarms (the controller's Rescaling edge re-renders this twice per change, never per frame).
             bool rescaling = _scrub.Rescaling.Value;
@@ -529,7 +556,7 @@ public static partial class Shell
             if (ringDiameter != _thumbRing)
             {
                 _thumbRing = ringDiameter;
-                _thumbBind = Prop.Of(() => Affine2D.Translation(SeekRail.ThumbX(_scrub.RailPx.Value, _scrub.Display.Value, ringDiameter), 0f));
+                _thumbBind = Prop.Of(() => Affine2D.Translation(SeekRail.ThumbX(_scrub.RailPx.Value, _rowsLive.Value ? _rowFrom.Value : _scrub.Display.Value, ringDiameter), 0f));
             }
             return _thumbBind;
         }
@@ -542,6 +569,7 @@ public static partial class Shell
         Action ISeekRailHost.PointerExit => _onExit;
         Action<RectF> ISeekRailHost.BoundsChanged => _onBounds;
         Action<NodeHandle> ISeekRailHost.ThumbRealized => _onThumbRealized;
+        Action<NodeHandle>? ISeekRailHost.FillRealized => _onFillRealized;
         IReadSignal<bool> ISeekRailHost.Playing => Playback.IsPlaying;
 
         // The keyboard ladder's commit clock (zero-size; the rail never re-renders for it): mounted wherever a rail is, so the bar,
@@ -564,6 +592,63 @@ public static partial class Shell
             // fraction (`ScrubController.OnModelReport`): the same hold covers the bar, the flagship stage and the video
             // overlay (all host this rail). No landing (a foreign owner, a parked deck) -> SeekRail.CommitHoldMs ends it.
             _scrub.OnModelReport();
+            SyncRows();
+        }
+
+        /// <summary>Seed, keep or drop the progress rows (COMPOSITOR PROGRESS). Peeks only: it runs from the report effect, the gate's
+        /// layout effect, a gesture's edges and a fill or thumb node being realized.</summary>
+        void SyncRows()
+        {
+            var anim = Context.Anim;
+            long now = _scrub.NowMs();
+            float frac = 0f;
+            double perMs = 0d;
+            bool want = _rowGate && anim is not null && !_fillNode.IsNull && _scrub.Resting && _scrub.RailPx.Peek() > 1f
+                && _scrub.TrackClock(now, out frac, out perMs) && perMs > 0d && frac < 1f;
+            if (!want)
+            {
+                if (!_rowsLive.Peek()) return;
+                _scrub.Recompute();   // the stepper's fraction is current before the binds read it again
+                if (anim is not null)
+                {
+                    if (!_fillNode.IsNull) anim.Cancel(_fillNode, AnimChannel.ScaleX);
+                    if (!_thumbNode.IsNull) anim.Cancel(_thumbNode, AnimChannel.TranslateX);
+                }
+                _rowsLive.Value = false;
+                return;
+            }
+            float rail = _scrub.RailPx.Peek();
+            float devicePx = rail * _deviceScale;
+            // On course: same rail, same rate, and the row within half a device pixel of the model.
+            if (_rowsLive.Peek() && !_rowReseed && rail == _rowRail && Math.Abs(perMs - _rowPerMs) <= _rowPerMs * 0.005d
+                && Math.Abs(_rowFrom.Peek() + (now - _rowAtMs) * _rowPerMs - frac) * devicePx < 0.5d) return;
+            _rowReseed = false;
+            float remainingMs = (float)((1d - frac) / perMs);
+            // One sample per device pixel's dwell (a whole pixel is all the fill can show), 1 to 60 a second.
+            float hz = Math.Clamp((float)(perMs * devicePx * 1000d), 1f, 60f);
+            var cadence = Cadence.At(hz);
+            Keyframe[] fill = [new Keyframe(0f, MathF.Max(frac, 1e-4f), Easing.Linear), new Keyframe(1f, 1f, Easing.Linear)];
+            anim!.Keyframes(_fillNode, AnimChannel.ScaleX, fill, remainingMs, cadence: cadence, snapToDevicePixels: true);
+            if (!_thumbNode.IsNull && !float.IsNaN(_thumbRing))
+                anim.Keyframes(_thumbNode, AnimChannel.TranslateX, ThumbKeys(rail, _thumbRing, frac), remainingMs, cadence: cadence);
+            _rowAtMs = now;
+            _rowPerMs = perMs;
+            _rowRail = rail;
+            _rowFrom.Value = frac;
+            _rowsLive.Value = true;
+        }
+
+        /// <summary>The thumb's x over the rest of the track as linear segments: <see cref="SeekRail.ThumbX"/> is the playhead's x less half
+        /// the ring, held inside the rail, so it is flat until the ring clears the start and again once it reaches the end.</summary>
+        static Keyframe[] ThumbKeys(float rail, float ring, float from)
+        {
+            float lo = Math.Clamp(ring * 0.5f / rail, 0f, 1f), hi = Math.Clamp((rail - ring * 0.5f) / rail, 0f, 1f);
+            float span = MathF.Max(1e-6f, 1f - from);
+            var keys = new List<Keyframe>(4) { new(0f, SeekRail.ThumbX(rail, from, ring), Easing.Linear) };
+            if (lo > from && lo < 1f) keys.Add(new((lo - from) / span, SeekRail.ThumbX(rail, lo, ring), Easing.Linear));
+            if (hi > from && hi < 1f && hi > lo) keys.Add(new((hi - from) / span, SeekRail.ThumbX(rail, hi, ring), Easing.Linear));
+            keys.Add(new(1f, SeekRail.ThumbX(rail, 1f, ring), Easing.Linear));
+            return keys.ToArray();
         }
 
         /// <summary>The gesture's edges, fanned out to the chrome-activity seams: <c>true</c> on press, <c>false</c> on commit or
@@ -577,6 +662,7 @@ public static partial class Shell
         void OnDown(Point2 local)
         {
             if (!_scrub.Begin(_scrub.FractionAt(local.X))) return;   // jump to the press point; the reducer decides grains or a visual-only scrub
+            SyncRows();   // the finger owns the fill now: the rows stop and the binds follow the gesture
             OpenReadout();
         }
 
@@ -593,6 +679,7 @@ public static partial class Shell
         void OnCancel()
         {
             _scrub.Cancel();
+            SyncRows();
             CloseReadout();
         }
 

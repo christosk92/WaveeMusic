@@ -49,8 +49,12 @@ public interface ISeekRailHost
     Action PointerExit { get; }
     /// <summary>The hit box's bounds: the rail's width in pixels.</summary>
     Action<RectF> BoundsChanged { get; }
-    /// <summary>The thumb ring's node: the readout bubble's anchor.</summary>
+    /// <summary>The thumb ring's node: the readout bubble's anchor, and the node the progress row moves.</summary>
     Action<NodeHandle> ThumbRealized { get; }
+
+    /// <summary>The value fill's node (the box bound to <see cref="FillTransform"/>): the progress runs on it as a render-thread row while
+    /// the playhead advances on its own. A template that does not report it keeps the UI-stepped fill.</summary>
+    Action<NodeHandle>? FillRealized => null;
 
     /// <summary>Is the deck playing (the live line breathes only while it is).</summary>
     IReadSignal<bool> Playing { get; }

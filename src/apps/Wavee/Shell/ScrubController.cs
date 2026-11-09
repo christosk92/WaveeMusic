@@ -386,6 +386,28 @@ public static partial class Shell
             Recompute();
         }
 
+        /// <summary>Nothing holds the fill but the clock: no gesture, no drop-point hold, no keyboard ladder, no re-scale ease. Only then may
+        /// the fill run as a render-thread row over the rest of the track (BarSeekRail's compositor progress). Peeks only.</summary>
+        public bool Resting => !Scrubbing.Peek() && !Rescaling.Peek() && _keys.PreviewMs.Peek() < 0L
+            && !SeekRail.HoldsDrop(_committedAtMs, _src.NowMs());
+
+        /// <summary>The model's playhead as a fraction of the track at <paramref name="nowMs"/> (the clock the stepper reads) and the
+        /// fraction it gains per millisecond at the current rate; false without a duration. Peeks only.</summary>
+        public bool TrackClock(long nowMs, out float fraction, out double perMs)
+        {
+            long duration = _src.DurationMs(false);
+            fraction = 0f;
+            perMs = 0d;
+            if (duration <= 0L) return false;
+            long position = _src.PlayheadMs(nowMs);
+            fraction = Math.Clamp(position / (float)duration, 0f, 1f);
+            perMs = Math.Max(0L, _src.PlayheadMs(nowMs + 1000L) - position) / (1000d * duration);
+            return true;
+        }
+
+        /// <summary>The model clock's now (the stepper's).</summary>
+        public long NowMs() => _src.NowMs();
+
         /// <summary>The measured rail width changed (a change under half a pixel is noise).</summary>
         public void SetRailWidth(float widthPx)
         {

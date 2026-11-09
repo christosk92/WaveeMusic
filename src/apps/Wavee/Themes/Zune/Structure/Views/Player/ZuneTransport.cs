@@ -56,12 +56,12 @@ internal static class ZuneTransport
             {
                 Height = T.LineH, Grow = 1f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
                 Fill = rail, OnBoundsChanged = host.BoundsChanged,
-                Children = [new BoxEl { Grow = 1f, Fill = value, HitTestVisible = false, TransformOriginX = 0f, Transform = host.FillTransform }],
+                Children = [new BoxEl { Grow = 1f, Fill = value, HitTestVisible = false, TransformOriginX = 0f, Transform = host.FillTransform, OnRealized = host.FillRealized }],
             };
 
         var lineKids = new List<Element>(2)
         {
-            new BoxEl { Grow = 1f, Height = T.LineH, Fill = value, HitTestVisible = false, TransformOriginX = 0f, Transform = host.FillTransform },
+            new BoxEl { Grow = 1f, Height = T.LineH, Fill = value, HitTestVisible = false, TransformOriginX = 0f, Transform = host.FillTransform, OnRealized = host.FillRealized },
         };
         if (props.Dvr)
             lineKids.Add(new BoxEl
