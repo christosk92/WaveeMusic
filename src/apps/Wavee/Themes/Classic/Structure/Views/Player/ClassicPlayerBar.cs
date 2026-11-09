@@ -321,8 +321,8 @@ internal static partial class ClassicPlayerBar
         {
             float content = 0f;
             int count = 0;
-            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
-                if ((v.Slots & (RightSlot)bit) != 0) { content += v.SlotWidth((RightSlot)bit); count++; }
+            foreach (var slotBit in RightSlotOrder.All)
+                if ((v.Slots & slotBit) != 0) { content += v.SlotWidth(slotBit); count++; }
             slack = MathF.Max(0f, v.RightWidth - content - m.RightGap * MathF.Max(0, count - 1));
         }
         Element? shuffleSlot = shuffle ? RightSlotOf(RightSlot.Shuffle) : null;
@@ -465,6 +465,10 @@ internal static partial class ClassicPlayerBar
                         BarButton(Icons.Queue, props.OpenQueue, true, v.QueueOpen, box, glyph));
                 case RightSlot.Devices:
                     return Slot("devices", w, box, lit, Embed.Comp(() => new DevicesButton(props, box, glyph)));
+                case RightSlot.Mini:
+                    return Slot("mini", w, box, lit,
+                        ToolTip.Wrap(BarButton(Icons.BackToWindow, props.OpenMiniPlayer ?? (static () => { }), props.OpenMiniPlayer is not null, false, box, glyph),
+                            Loc.Get(Strings.Mini.Title)));
                 case RightSlot.Expand:
                     // The bar's door to the fullscreen stage. The now-playing RAIL toggle moved to the "⋯" overflow
                     // (OverflowCommand.NowPlaying), so the rail keeps a door; this button never latches.
@@ -479,9 +483,9 @@ internal static partial class ClassicPlayerBar
         }
 
         var rightKids = new List<Element>(10);
-        for (int bit = 1; !mini && bit <= (int)RightSlot.More; bit <<= 1)
+        foreach (var slot in RightSlotOrder.All)
         {
-            var slot = (RightSlot)bit;
+            if (mini) break;
             if (slot is RightSlot.Shuffle or RightSlot.Repeat) continue;   // the centre column carries them (above)
             if ((v.Slots & slot) != 0) rightKids.Add(RightSlotOf(slot));
         }

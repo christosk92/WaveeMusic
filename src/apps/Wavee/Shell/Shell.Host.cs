@@ -887,6 +887,9 @@ public static partial class Shell
             case DeepLinkKind.Quit:
                 Tray.Host.Quit();   // the latch first: a quit is never turned into a hide by close-to-tray
                 break;
+            case DeepLinkKind.Mini:
+                MiniPlayer.Toggle("jumplist");   // the mini player opens (or closes back to the full window); the main window is its business
+                break;
             case DeepLinkKind.Diag:
                 Diagnostics.Evidence.Apply(verb.Diag);   // the evidence harness (EvidenceBundle.cs); replies are files
                 break;

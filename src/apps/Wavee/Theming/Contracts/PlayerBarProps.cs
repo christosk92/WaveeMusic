@@ -273,4 +273,6 @@ public sealed record PlayerBarProps
 
     /// <summary>The mini player bar's identity door (contract 1.15, TC2): open the now-playing panel (a sheet at Compact). Null: no door.</summary>
     public Action? OpenNowPlaying { get; init; }
+    /// <summary>Open the mini player (#197): the right cluster's <see cref="RightSlot.Mini"/> button. Null: the button is disabled.</summary>
+    public Action? OpenMiniPlayer { get; init; }
 }

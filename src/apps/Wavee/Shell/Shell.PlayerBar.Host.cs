@@ -104,6 +104,7 @@ public static partial class Shell
             VideoPlacementMenu = static () => Video.PlacementMenu(includeFullscreen: true),
             ProgressLine = static () => ProgressLine(),
             OpenNowPlaying = static () => PanelHost.Shared.SetMode(RailMode.NowPlaying),
+            OpenMiniPlayer = static () => MiniPlayer.Toggle("bar"),
         };
 
         /// <inheritdoc />
@@ -247,9 +248,8 @@ public static partial class Shell
 
             var slots = PlayerBarRules.RightSlots(in L);
             var lit = RightSlot.None;
-            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            foreach (var slot in RightSlotOrder.All)
             {
-                var slot = (RightSlot)bit;
                 if ((slots & slot) != 0 && PlayerBarRules.SlotFaceVisible(slot, facts.State)) lit |= slot;
             }
             var widths = L;   // a copy the width function closes over (an `in` parameter cannot be captured)

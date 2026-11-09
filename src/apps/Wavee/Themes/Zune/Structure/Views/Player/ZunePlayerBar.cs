@@ -202,9 +202,8 @@ internal static partial class ZunePlayerBar
         {
 
             var tools = new List<Element>(10);
-            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            foreach (var slot in RightSlotOrder.All)
             {
-                var slot = (RightSlot)bit;
                 if ((v.Slots & slot) != 0) tools.Add(Tool(props, v, look, slot, begin, overlay, videoAnchor, videoMenu));
             }
             var right = new BoxEl

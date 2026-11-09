@@ -373,7 +373,7 @@ internal static partial class WinUiPlayerBar
     /// <summary>The tools in the board's order (the core's slot bits are the presence; shuffle and repeat ride the transport).</summary>
     private static readonly RightSlot[] s_toolOrder =
     [
-        RightSlot.Lyrics, RightSlot.Queue, RightSlot.Devices, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Video, RightSlot.Expand, RightSlot.More,
+        RightSlot.Lyrics, RightSlot.Queue, RightSlot.Devices, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Video, RightSlot.Mini, RightSlot.Expand, RightSlot.More,
     ];
 
     /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).

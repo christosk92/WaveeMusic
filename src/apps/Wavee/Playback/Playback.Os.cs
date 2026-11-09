@@ -759,6 +759,7 @@ public static partial class Playback
                     Loc.Get(playing ? Strings.Jumplist.PausePlayback : Strings.Jumplist.ResumePlayback)),
                 new JumpTask(Loc.Get(Strings.Jumplist.Search), exe, "wavee://open?route=search", appIcon,
                     Loc.Get(Strings.Jumplist.Search)),
+                new JumpTask(Loc.Get(Strings.Mini.Title), exe, "wavee://mini", appIcon, Loc.Get(Strings.Mini.Title)),   // #197
             ];
 
             /// <summary>Up to six rows: the play log first, then the nav history, deduped on the composed route. An

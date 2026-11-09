@@ -28,6 +28,19 @@ public enum RightSlot : ushort
     Devices = 1 << 7,
     Expand = 1 << 8,
     More = 1 << 9,
+    /// <summary>The mini player (#197): between the queue / devices and full screen, wherever full screen is.</summary>
+    Mini = 1 << 10,
+}
+
+/// <summary>The right cluster's ROW order (the bits are presence, not order: <see cref="RightSlot.Mini"/> is the newest bit and sits
+/// before full screen).</summary>
+public static class RightSlotOrder
+{
+    public static readonly RightSlot[] All =
+    [
+        RightSlot.Shuffle, RightSlot.Repeat, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Lyrics, RightSlot.Video, RightSlot.Queue,
+        RightSlot.Devices, RightSlot.Mini, RightSlot.Expand, RightSlot.More,
+    ];
 }
 
 /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>

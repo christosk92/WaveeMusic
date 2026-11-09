@@ -258,7 +258,7 @@ public static partial class Shell
             if (VideoSlotReserved(layout)) slots |= RightSlot.Video;
             if (layout.ShowQueue) slots |= RightSlot.Queue;
             if (layout.ShowDevices) slots |= RightSlot.Devices;
-            if (layout.ShowExpand) slots |= RightSlot.Expand;
+            if (layout.ShowExpand) slots |= RightSlot.Mini | RightSlot.Expand;   // the mini player rides full screen's tiers (#197)
             if (OverflowSlotReserved(layout)) slots |= RightSlot.More;
             return slots;
         }
@@ -279,9 +279,8 @@ public static partial class Shell
             var slots = RightSlots(layout);
             float w = 0f;
             int n = 0;
-            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            foreach (var slot in RightSlotOrder.All)
             {
-                var slot = (RightSlot)bit;
                 if ((slots & slot) == 0) continue;
                 w += SlotWidth(slot, layout);
                 n++;

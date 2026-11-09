@@ -599,7 +599,7 @@ public static partial class Shell
     /// hides it to the notification area (tray plan §4.7); it never raises the window (<c>Tray.WakeFor</c>).
     /// <see cref="Diag"/> (<c>wavee://diag?cmd=…</c>, the evidence harness — evidence-diagnostics §B) is developer-only,
     /// refused unless developer mode, and never raises the window either.</summary>
-    public enum DeepLinkKind : byte { None, Open, Play, Resume, Pause, Report, Quit, Diag }
+    public enum DeepLinkKind : byte { None, Open, Play, Resume, Pause, Report, Quit, Diag, Mini }
 
     /// <summary>A parsed verb. Unknown or garbage input yields <see cref="DeepLinkKind.None"/>; the parser never
     /// throws. Exactly one of <see cref="Context"/> (a Spotify context uri) and <see cref="Link"/> (a pasted module
@@ -662,6 +662,7 @@ public static partial class Shell
         if (name.Equals("resume", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Resume, default);
         if (name.Equals("pause", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Pause, default);
         if (name.Equals("quit", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Quit, default);
+        if (name.Equals("mini", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Mini, default);   // #197: the jump list's task
         return default;
     }
 

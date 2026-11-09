@@ -31,7 +31,7 @@ public static class WinUiPlayerLayout
 
     /// <summary>The tools' keys (a stable key per control: a level change fades it in or out in place).</summary>
     public const string LyricsKey = "winui-bar-lyrics", QueueKey = "winui-bar-queue", DevicesKey = "winui-bar-devices", VolumeKey = "winui-bar-volume",
-        VolumeSliderKey = "winui-bar-volume-slider", VideoKey = "winui-bar-video", ExpandKey = "winui-bar-expand", MoreKey = "winui-bar-more",
+        VolumeSliderKey = "winui-bar-volume-slider", VideoKey = "winui-bar-video", ExpandKey = "winui-bar-expand", MiniKey = "winui-bar-mini", MoreKey = "winui-bar-more",
         LikeKey = "winui-bar-like", ShuffleKey = "winui-bar-shuffle", RepeatKey = "winui-bar-repeat", PrevKey = "winui-bar-prev",
         NextKey = "winui-bar-next", SpeedKey = "winui-bar-speed";
 
