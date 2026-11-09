@@ -6,11 +6,13 @@
 //
 //   Strip  6:1   thumb + badge, title and artist (or the lyric ticker), the saved heart, the edge line; on hover a right-anchored plate
 //                fades in over the row (save · prev · play · next · device · options) and the edge line thickens into a seek bar.
-//   Wide   12:5  the face box, title / artist / detail (or the lyric window), seek with times, save · prev · play · next · device; on hover
-//                the ‹ › flip on the art and the options / back pill.
+//   Wide   12:5  the face box, title / artist / detail, seek with times, save · prev · play · next · device; on hover the ‹ › flip on
+//                the art and the options / back pill. The Lyrics face fills the card instead (the square's layout at the card's size:
+//                the lines over the blurred cover, title and artist at the foot, the transport on hover).
 //   Square 1:1   the face fills; title, artist, heart and badge at the foot, the edge line; on hover the whole transport over a veil, in
 //                on-dark ink in every mode. Object faces and Classic's cover sit above a band of the window's own ground (no wave).
 //   Tall   9:16  the face above (Canvas / Visualizer / Lyrics: behind) title, seek, transport and device; volume when there is room.
+//                The rows are the same for every face, so a flip never moves them.
 //
 // The accent is the theme's (WinUI's, Zune's pink), or the album's with "Colour from album art" (Classic's default). State never hides
 // (filled heart, play badge, "Playing on"); controls hide only where the window is smaller than them (Strip, Square). Every transport and
@@ -93,12 +95,14 @@ internal static partial class CommonMiniPlayer
         bool roomy = p.Roomy.Value;
 
         var m = new Ctx(p, bar, v, st, shape, face, kind, size, hovering, flipDir, overlay, anchors, accent, OnAccent(accent), roomy);
+        // The wide card's Lyrics face fills the window (a one-line window beside the art read as a crumb): the square's layout and type.
+        bool wideFill = shape == MiniShape.Wide && kind == MiniFaceKind.Lyrics;
         Element body = shape switch
         {
             MiniShape.Strip => Strip(m),
-            MiniShape.Square => Square(m),
+            MiniShape.Square => Square(m, wide: false),
             MiniShape.Tall => Tall(m),
-            _ => Wide(m),
+            _ => wideFill ? Square(m with { Shape = MiniShape.Square }, wide: true) : Wide(m),
         };
         var glow = st.Glow(accent);
         var children = new List<Element>(3);
@@ -110,7 +114,7 @@ internal static partial class CommonMiniPlayer
             });
         children.Add(new BoxEl
         {
-            Key = H.ShapeKey + ":" + shape, Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 1, Enter = s_shapeSwap, Exit = s_shapeSwap, Children = [body],
+            Key = H.ShapeKey + ":" + shape + (wideFill ? ":fill" : ""), Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 1, Enter = s_shapeSwap, Exit = s_shapeSwap, Children = [body],
         });
         if (hud.Value) children.Add(Hud(bar));
         return new BoxEl
@@ -165,7 +169,6 @@ internal static partial class CommonMiniPlayer
                 Children = [m.P.FaceView(new MiniFaceRequest(m.Face, m.Size.Width, m.Size.Height, m.V.ArtUrl, 0f, MiniFaceUse.Fill, VizPaint(m, H.VizBarsStrip)))],
             });
         children.Add(row);
-        children.Add(Edge(m));
         float w = H.StripFadeLead + 6f * st.ButtonBox + H.StripOverlayEnd;
         if (m.Hot && H.StripHoldsPlate(m.Size.Width, w))
         {
@@ -173,12 +176,13 @@ internal static partial class CommonMiniPlayer
             children.Add(new BoxEl
             {
                 Key = H.HoverKey, Width = w, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.End, Direction = 0, AlignItems = FlexAlign.Center,
-                Margin = new Edges4(0f, 0f, 0f, H.StripOverlayFoot), Padding = new Edges4(H.StripFadeLead, 0f, H.StripOverlayEnd, 0f),
+                Padding = new Edges4(H.StripFadeLead, 0f, H.StripOverlayEnd, 0f),
                 Enter = s_fade, Exit = s_fade,
                 Gradient = new GradientSpec(GradientShape.Linear, 0f, [new GradientStop(0f, solid with { A = 0f }), new GradientStop(H.StripFade / w, solid), new GradientStop(1f, solid)]),
                 Children = [SaveButton(m), Prev(m), Play(m, st.ButtonBox), Next(m), Device(m), OptionsButton(m, st.ButtonBox)],
             });
         }
+        children.Add(Edge(m));   // over the plate: the plate covers the row to the window's foot (no text shows under it)
         return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
     }
 
@@ -186,23 +190,8 @@ internal static partial class CommonMiniPlayer
     {
         var st = m.St;
         float box = MathF.Max(0f, m.Size.Height - 2f * st.Pad);
-        bool lyrics = m.Kind == MiniFaceKind.Lyrics;
         float chromeW = 2f * st.ChromeBox + 2f * H.ChromePad + H.ChromeGap + H.ChromeInset;
-        Element top = lyrics
-            ? new BoxEl
-            {
-                Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = H.LineGap,
-                Children =
-                [
-                    LyricMeta(m, reserve: m.Hot ? chromeW : 0f),
-                    new BoxEl
-                    {
-                        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
-                        Children = [LyricWindow(m, WideLyricHeight(st, box), 0f, H.LyricTopRoom, 0f, H.WideLyricFoot, onDark: false)],
-                    },
-                ],
-            }
-            : Meta(m, detail: box >= st.WideDetailFrom, reserve: m.Hot ? chromeW : 0f, column: true);
+        Element top = Meta(m, detail: box >= st.WideDetailFrom, reserve: m.Hot ? chromeW : 0f, column: true);
         var col = new BoxEl
         {
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.SpaceBetween, Gap = H.WideColGap,
@@ -213,7 +202,7 @@ internal static partial class CommonMiniPlayer
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
-                    Margin = new Edges4(-H.CtrlBleedX, 0f, -H.CtrlBleedX, -H.CtrlBleedBottom),
+                    Margin = new Edges4(-H.HeartBleed(st.Heart, H.CtrlBleedX), 0f, -H.CtrlBleedX, -H.CtrlBleedBottom),
                     Children = [SaveButton(m), Transport(m, st.PlayBox, 0f), Device(m)],
                 },
             ],
@@ -226,18 +215,9 @@ internal static partial class CommonMiniPlayer
         return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
     }
 
-    /// <summary>The wide card's lyric window: what the column leaves under the title line, the seek row and the transport, less some air for
-    /// the time labels (never under WideLyricAir: their reach), the rest of it going first when a wrapped active line needs the room.</summary>
-    static float WideLyricHeight(MiniPlayerStyle st, float box)
-    {
-        // The transport row is as tall as its tallest button (the play disc is bigger than the others in Classic): counting the 40-DIP box left
-        // the column 4 DIP short, and the lyric host's clip then cut the window's foot (and the line fading out there) with a hard edge.
-        float row = MathF.Max(st.ButtonBox, st.PlayBox) - H.CtrlBleedBottom;
-        float room = MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - row - 2f * H.WideColGap);
-        return room - MathF.Max(H.WideLyricAir, Math.Clamp(room - H.WideLyricMin, 0f, H.WideLyricSlack));
-    }
-
-    static Element Square(Ctx m)
+    /// <summary>The filling layout: the square, and (<paramref name="wide"/>) the wide card's Lyrics face. A wide window is short, so its hover
+    /// layer puts the save heart beside the transport instead of on a row of its own.</summary>
+    static Element Square(Ctx m, bool wide)
     {
         var st = m.St;
         bool lyrics = m.Kind == MiniFaceKind.Lyrics;
@@ -247,11 +227,17 @@ internal static partial class CommonMiniPlayer
         float w = m.Size.Width, h = m.Size.Height;
         var children = new List<Element>(8);
         if (obj)
-            children.Add(Glow(m, w, h - H.SquareObjectFoot, FaceLayer(m, w, h - H.SquareObjectFoot, MiniFaceUse.Box, corner: 0f)));
+        {
+            // The record, the disc, the cassette and the reels are the full player's own tiles: inset like the tall column's art (never
+            // against the window's top edge, never under the title).
+            float side = MathF.Max(0f, MathF.Min(w - 2f * st.Pad, h - H.SquareObjectFoot - st.Pad - H.SquareObjectGap));
+            children.Add(Glow(m, w, h - H.SquareObjectFoot,
+                FaceLayer(m, side, side, MiniFaceUse.Box, corner: 0f) with { JustifySelf = FlexAlign.Center, Margin = new Edges4(0f, st.Pad, 0f, 0f) }));
+        }
         else if (groundCover)
             children.Add(FaceLayer(m, w, h - H.SquareCoverFoot, MiniFaceUse.Fill));
         else
-            children.Add(FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsSquare)));
+            children.Add(FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsSquare, H.SquareLyricFoot)));
         if (st.CoverBleed is { } bleed && m.Kind == MiniFaceKind.Cover)
             children.Add(new BoxEl
             {
@@ -265,7 +251,7 @@ internal static partial class CommonMiniPlayer
             {
                 Key = H.LyricsKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
                 Margin = new Edges4(0f, H.SquareLyricTop, 0f, H.SquareLyricFoot),
-                Children = [LyricWindow(m with { Media = true }, lh, H.LyricAnchorSquare, -1f, H.SquareRestInset, lh * H.LyricFadeFoot, onDark: true)],
+                Children = [LyricWindow(m with { Media = true }, lh, H.LyricAnchorSquare, H.SquareRestInset, lh * H.LyricFadeFoot, onDark: true)],
             });
         }
         if (dark) children.Add(Shade(m.St));
@@ -282,9 +268,26 @@ internal static partial class CommonMiniPlayer
             children.Add(Edge(m));
         }
         else
+        {
+            // Over lyrics the veil is near opaque: the transport must not sit in the middle of readable lines.
+            var veil = lyrics ? st.Veil() with { A = H.LyricHoverVeil } : st.Veil();
+            Element mid = wide
+                ? new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
+                    Children = [SaveButton(hm), Transport(hm, st.PlayBigBox, H.SquareMidGap, H.SquareMidGlyph), new BoxEl { Width = st.ButtonBox, HitTestVisible = false }],
+                }
+                : new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Transport(hm, st.PlayBigBox, H.SquareMidGap, H.SquareMidGlyph)] };
+            Element foot = wide
+                ? SeekRow(hm)
+                : new BoxEl
+                {
+                    Direction = 1,
+                    Children = [SeekRow(hm), new BoxEl { Direction = 0, Margin = new Edges4(-H.HeartBleed(st.Heart, H.CtrlBleedBottom), 0f, -H.CtrlBleedBottom, -H.CtrlBleedBottom), Children = [SaveButton(hm)] }],
+                };
             children.Add(new BoxEl
             {
-                Key = H.HoverKey, Grow = 1f, Direction = 1, Justify = FlexJustify.SpaceBetween, Fill = st.Veil(),
+                Key = H.HoverKey, Grow = 1f, Direction = 1, Justify = FlexJustify.SpaceBetween, Fill = veil,
                 Padding = new Edges4(H.SquareHoverPadX, H.SquareHoverTop, H.SquareHoverPadX, H.SquareHoverFoot), Enter = s_fade, Exit = s_fade,
                 Children =
                 [
@@ -294,14 +297,11 @@ internal static partial class CommonMiniPlayer
                         Children = [FlipPair(hm, withName: H.SquareNamesFace(w)), new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SquareTopGap,
                             Children = [Device(hm, H.SquareTopButton), OptionsButton(hm, H.SquareTopButton), BackButton(hm, H.SquareTopButton)] }],
                     },
-                    new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Transport(hm, st.PlayBigBox, H.SquareMidGap, H.SquareMidGlyph)] },
-                    new BoxEl
-                    {
-                        Direction = 1,
-                        Children = [SeekRow(hm), new BoxEl { Direction = 0, Margin = new Edges4(-H.CtrlBleedBottom, 0f, -H.CtrlBleedBottom, -H.CtrlBleedBottom), Children = [SaveButton(hm)] }],
-                    },
+                    mid,
+                    foot,
                 ],
             });
+        }
         return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
     }
 
@@ -314,9 +314,12 @@ internal static partial class CommonMiniPlayer
         {
             var m = ctx with { Media = true };
             bool lyrics = m.Kind == MiniFaceKind.Lyrics;
+            // The panel holds the column's own rows (title block with its detail line, seek, transport, volume when roomy) at the column's
+            // own gaps: a flip between a boxed face and a filling one moves nothing.
+            float panel = (m.Roomy ? H.TallFixedRoomy : H.TallFixed) - H.TallPadTop;
             var children = new List<Element>(6)
             {
-                FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsTall)),
+                FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsTall, panel)),
                 Scrim(),
             };
             if (!m.Hot)
@@ -329,14 +332,16 @@ internal static partial class CommonMiniPlayer
                 children.Add(new BoxEl
                 {
                     Key = H.LyricsKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
-                    Margin = new Edges4(0f, H.TallLyricTop, 0f, H.TallLyricFoot),
-                    Children = [LyricWindow(m, h - H.TallLyricTop - H.TallLyricFoot, H.LyricAnchorTall, -1f, st.Pad,
-                        (h - H.TallLyricTop - H.TallLyricFoot) * H.LyricFadeFoot, onDark: true)],
+                    Margin = new Edges4(0f, H.TallLyricTop, 0f, panel),
+                    Children = [LyricWindow(m, MathF.Max(0f, h - H.TallLyricTop - panel), H.LyricAnchorTall, st.Pad,
+                        MathF.Max(0f, h - H.TallLyricTop - panel) * H.LyricFadeFoot, onDark: true)],
                 });
+            var panelRows = new List<Element>(4) { Meta(m, detail: true, column: true), SeekRow(m), TallTransport(m) };
+            if (m.Roomy) panelRows.Add(VolumeRow(m));
             children.Add(new BoxEl
             {
-                AlignSelf = FlexAlign.End, Direction = 1, Gap = H.TallPanelGap, Padding = new Edges4(st.Pad, 0f, st.Pad, H.TallPadFoot),
-                Children = [Meta(m, detail: false, column: true), SeekRow(m), TallTransport(m)],
+                AlignSelf = FlexAlign.End, Direction = 1, Gap = H.TallGap, Padding = new Edges4(st.Pad, 0f, st.Pad, H.TallPadFoot),
+                Children = panelRows.ToArray(),
             });
             if (m.Hot) children.Add(Chrome(m, withPick: true));
             return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
@@ -361,7 +366,7 @@ internal static partial class CommonMiniPlayer
     static Element TallTransport(Ctx m) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
-        Margin = new Edges4(-H.CtrlBleedBottom, 0f, -H.CtrlBleedBottom, -H.CtrlBleedBottom),
+        Margin = new Edges4(-H.HeartBleed(m.St.Heart, H.CtrlBleedBottom), 0f, -H.CtrlBleedBottom, -H.CtrlBleedBottom),
         Children = [SaveButton(m), Transport(m, m.St.PlayBigBox, H.TallTransportGap), Device(m)],
     };
 }

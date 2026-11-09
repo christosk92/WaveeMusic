@@ -55,23 +55,6 @@ internal static partial class CommonMiniPlayer
         };
     }
 
-    /// <summary>The wide lyrics face's one-line head: the title in bold, then the artist (or "Playing on …" in the accent).</summary>
-    static Element LyricMeta(Ctx m, float reserve)
-    {
-        var st = m.St;
-        bool remote = m.Bar.DeviceIsRemote() && m.P.DetailText().Length > 0;   // "Playing on …" takes the artist's place, as in Meta
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SeekGap, MinWidth = 0f, Margin = new Edges4(0f, 0f, reserve, 0f),
-            Children =
-            [
-                st.Label(m.Bar.TitleText()) with { Color = m.Ink, MaxLines = 1, Shrink = 0f },
-                (remote ? st.Artist(m.P.DetailText(), m.Accent, false) with { Color = m.Accent } : st.Artist(m.P.ArtistText(), m.Accent, false))
-                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
-            ],
-        };
-    }
-
     // ══ FACES ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     static Element Thumb(Ctx m)
@@ -127,8 +110,9 @@ internal static partial class CommonMiniPlayer
         };
     }
 
-    /// <summary>The theme's visualizer for this window (null for every other face, which keep the full player's picture).</summary>
-    static Func<MiniVisualizerFrame, Element>? VizPaint(Ctx m, int bars)
+    /// <summary>The theme's visualizer for this window (null for every other face, which keep the full player's picture). Its ground fills the
+    /// box; its bars stand above <paramref name="foot"/>, where a filling layout writes its title and controls.</summary>
+    static Func<MiniVisualizerFrame, Element>? VizPaint(Ctx m, int bars, float foot = 0f)
     {
         if (m.Kind != MiniFaceKind.Visualizer) return null;
         var st = m.St;
@@ -143,7 +127,11 @@ internal static partial class CommonMiniPlayer
                     Grow = 1f, AlignSelf = FlexAlign.Stretch, HitTestVisible = false,
                     Gradient = new GradientSpec(GradientShape.Linear, H.ShadeAngle, [new GradientStop(H.VizGlowFrom, accent with { A = 0f }), new GradientStop(1f, st.Tint2(accent))]),
                 },
-                st.Visualizer(f with { Bands = Pick(f.Bands, bars), Peaks = Pick(f.Peaks, bars) }, accent),
+                new BoxEl
+                {
+                    Width = f.Width, Height = MathF.Max(0f, f.Height - foot), AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                    Children = [st.Visualizer(f with { Height = MathF.Max(0f, f.Height - foot), Bands = Pick(f.Bands, bars), Peaks = Pick(f.Peaks, bars) }, accent)],
+                },
             ],
         };
     }
@@ -479,14 +467,12 @@ internal static partial class CommonMiniPlayer
 
     /// <summary>The lyrics face's window: the app's own lyrics view (the side pane's rows, ink, word wipe and follow, in the theme's style) at
     /// the theme's mini type, in a box of <paramref name="height"/> that clips it and fades its edges (the view sets none of its own here).
-    /// <paramref name="topRoom"/> of 0 or more holds the active line's top that far down (the wide card: nothing earlier shows under its
-    /// title, and a wrapped line shows whole); otherwise its centre sits at <paramref name="band"/>. Not a target: the wheel stays the
-    /// window's volume.</summary>
-    static Element LyricWindow(Ctx m, float height, float band, float topRoom, float gutter, float fadeFoot, bool onDark) => new BoxEl
+    /// The active line's centre sits at <paramref name="band"/>. Not a target: the wheel stays the window's volume.</summary>
+    static Element LyricWindow(Ctx m, float height, float band, float gutter, float fadeFoot, bool onDark) => new BoxEl
     {
         Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, HitTestVisible = false,
-        EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, topRoom >= 0f ? topRoom : height * H.LyricFadeTop, 0f, MathF.Max(H.LyricFadeMin, fadeFoot)),
-        Children = [m.P.LyricsView(new MiniLyricsView(onDark, m.St.LyricScale(m.Shape), band, gutter, topRoom,
+        EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, height * H.LyricFadeTop, 0f, MathF.Max(H.LyricFadeMin, fadeFoot)),
+        Children = [m.P.LyricsView(new MiniLyricsView(onDark, m.St.LyricScale(m.Shape), band, gutter,
             onDark ? ColorF.Lerp(m.Accent, H.OnMediaInk, H.OnDarkLift) : default))],
     };
 

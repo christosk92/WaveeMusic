@@ -417,7 +417,7 @@ public static partial class MiniPlayer
         AlbumAccent = AlbumAccent,
         SeekRail = static draw => Shell.SeekBarDrawn(draw),
         Lyrics = static draw => Lyrics.Mini(draw, s_lyricsVisible),
-        LyricsView = static v => Lyrics.MiniView(v.OnMedia, v.TypeScale, v.Band, v.Gutter, v.TopRoom, v.Accent, s_lyricsVisible),
+        LyricsView = static v => Lyrics.MiniView(v.OnMedia, v.TypeScale, v.Band, v.Gutter, v.Accent, s_lyricsVisible),
         ToggleDevicePicker = static (overlay, anchor, handle) => Shell.EscapedToggleDevicePicker(overlay, anchor, handle, ScreenRoomDip()),
         VolumeHud = s_volumeHud,
         CanSave = static () => Playback.Current.Value is { IsNone: false } c && c.Kind is EntityKind.Track or EntityKind.Episode,

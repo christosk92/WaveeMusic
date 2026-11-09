@@ -163,10 +163,9 @@ public readonly record struct MiniSeekRequest(SeekRailProps Rail, ColorF Accent,
 public enum MiniLyricUse : byte { TickerNow, TickerNext }
 
 /// <summary>One mount of the app's lyrics view in the mini window: over imagery (the stage's ink) or on the window's ground, its type as a
-/// share of the side pane's, where the active line is held (its centre at <paramref name="Band"/> of the box, or, with
-/// <paramref name="TopRoom"/> of 0 or more, its top that far below the box's top, so no earlier line shows above it) and the gutter. Over
+/// share of the side pane's, where the active line is held (its centre at <paramref name="Band"/> of the box) and the gutter. Over
 /// imagery a style that sings in the accent (Zune) sings in <paramref name="Accent"/> (the mini's own, lifted for the dark ground).</summary>
-public readonly record struct MiniLyricsView(bool OnMedia, float TypeScale, float Band, float Gutter, float TopRoom = -1f, ColorF Accent = default);
+public readonly record struct MiniLyricsView(bool OnMedia, float TypeScale, float Band, float Gutter, ColorF Accent = default);
 
 /// <summary>One lyric line for a theme to draw.</summary>
 public readonly record struct MiniLyricLine(string Text, bool Active, MiniLyricUse Use, MiniShape Shape, ColorF Accent, bool OnDark);

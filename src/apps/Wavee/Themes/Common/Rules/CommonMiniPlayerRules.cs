@@ -5,6 +5,7 @@
 // slide, the strip overlay's fade run, the square's and the tall column's insets, the lyric windows, the options panel.
 
 using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Common;
 
@@ -36,9 +37,8 @@ internal static class CommonMiniPlayerRules
     public const float PlayHoverMix = 0.08f, PlayPressMix = 0.12f;
 
     // ── strip ──
-    /// <summary>The strip's hover controls: the fade run into the solid plate (DIP), the plate's lead, the inset that leaves the edge line,
-    /// the plate's end padding.</summary>
-    public const float StripFade = 44f, StripFadeLead = 48f, StripOverlayFoot = 8f, StripOverlayEnd = 8f;
+    /// <summary>The strip's hover controls: the fade run into the solid plate (DIP), the plate's lead, the plate's end padding.</summary>
+    public const float StripFade = 44f, StripFadeLead = 48f, StripOverlayEnd = 8f;
     /// <summary>The strip shows its hover plate only where the whole plate fits the window (a drag passes through narrower strips before
     /// the window settles on the shape's range): never a plate cut by the window's edge.</summary>
     public static bool StripHoldsPlate(float width, float plate) => width >= plate;
@@ -57,6 +57,14 @@ internal static class CommonMiniPlayerRules
     // ── wide ──
     /// <summary>The wide card's column gap, the transport row's bleed into the padding, the chrome's inset from the corner.</summary>
     public const float WideColGap = 4f, CtrlBleedX = 6f, CtrlBleedBottom = 4f, ChromeInset = 6f, ChromePad = 2f, ChromeSep = 18f, ChromeSepW = 1f;
+    /// <summary>How far a control row's leading heart bleeds into the padding: a plain glyph by the row's bleed (its box is empty air), a
+    /// ringed one until its ring meets the text's edge, a plated one not at all (a plate left of the title's edge reads as misaligned).</summary>
+    public static float HeartBleed(MiniHeart heart, float bleed) => heart switch
+    {
+        MiniHeart.Plate => 0f,
+        MiniHeart.Ring => MathF.Min(bleed, BadgeRing),
+        _ => bleed,
+    };
     /// <summary>The 32-DIP window buttons stand this far apart, so each keeps a 40-DIP reach with its slop.</summary>
     public const float ChromeGap = 8f;
     /// <summary>The flip pill on the wide art: its inset from the art's foot, its corner, its plate.</summary>
@@ -70,6 +78,10 @@ internal static class CommonMiniPlayerRules
     // ── square ──
     /// <summary>The square's resting row (inset, foot inset), the object faces' and Classic cover's foot band, the hover layer's padding.</summary>
     public const float SquareRestInset = 14f, SquareRestFoot = 13f, SquareObjectFoot = 62f, SquareCoverFoot = 66f;
+    /// <summary>The air between an object face's tile and the band its title stands on.</summary>
+    public const float SquareObjectGap = 8f;
+    /// <summary>The hover veil over a filling Lyrics face: near opaque, so the transport never sits among readable lines.</summary>
+    public const float LyricHoverVeil = 0.84f;
     /// <summary>The square's hover bar names the face between its arrows from this width: narrower, the arrows, the device, options and back
     /// keep their 40-DIP reach instead.</summary>
     public static bool SquareNamesFace(float width) => width >= 300f;
@@ -88,7 +100,7 @@ internal static class CommonMiniPlayerRules
     /// art takes the rest.</summary>
     public const float TallFixed = 196f, TallFixedRoomy = 222f;
     /// <summary>The immersive scrim's stops: dark at the top, clear through the middle, dark under the panel.</summary>
-    public const float ScrimTopAlpha = 0.38f, ScrimTopEnd = 0.18f, ScrimClearEnd = 0.46f, ScrimFootFrom = 0.78f, ScrimFootAlpha = 0.82f;
+    public const float ScrimTopAlpha = 0.38f, ScrimTopEnd = 0.18f, ScrimClearEnd = 0.36f, ScrimFootFrom = 0.62f, ScrimFootAlpha = 0.82f;
     /// <summary>Classic's tinted band behind the column's top (a share of the height).</summary>
     public const float WaveBandShare = 0.62f;
     /// <summary>The volume row: its height, the percent's width.</summary>
@@ -97,21 +109,12 @@ internal static class CommonMiniPlayerRules
     // ── lyrics ──
     /// <summary>Where the active line is held in each window (a share of its height) and the window's top and foot fades (shares).</summary>
     public const float LyricAnchorSquare = 0.42f, LyricAnchorTall = 0.4f, LyricFadeTop = 0.22f, LyricFadeFoot = 0.28f;
-    /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's (top, foot).</summary>
-    public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 16f, TallLyricFoot = 186f;
-    /// <summary>The wide lyrics face's one-line head (title · artist) above its window.</summary>
-    public const float WideLyricHead = 18f;
-    /// <summary>Air the wide lyric window leaves to the column, so the time labels keep their reach clear of the transport row; the air goes
-    /// first when the window would drop below WideLyricMin (a wrapped, two-line active line on its plate and its top room).</summary>
-    public const float WideLyricSlack = 10f, WideLyricMin = 46f;
-    /// <summary>The air the wide lyric window always leaves: the time labels' 40-DIP reach clear of the transport row (at the smallest
-    /// wide card a wrapped active line then shows its first line whole and fades out its second).</summary>
-    public const float WideLyricAir = 6f;
+    /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's top (under the face's name and the hover pill; its
+    /// foot is the column's own rows).</summary>
+    public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 44f;
     /// <summary>A lyric window's least soft foot (within a marked line's own padding): what shows of the next line, or of a line taller
     /// than the window, fades out and is never cut.</summary>
     public const float LyricFadeMin = 4f;
-    /// <summary>The wide window holds its active line's top this far down (nothing earlier shows under the title), and its foot fade.</summary>
-    public const float LyricTopRoom = 3f, WideLyricFoot = 10f;
     /// <summary>The ticker's start bar gap.</summary>
     public const float TickerBarGap = 9f;
 

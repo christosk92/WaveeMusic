@@ -114,14 +114,13 @@ public static partial class Lyrics
     // MOUNT POINT (#197)
     /// <summary>The mini player's lyrics face: THE reading surface (the side pane's, the same rows, ink, wipe and follow) in a box of the
     /// mini window, its type at <paramref name="typeScale"/> of the pane's, the active line held at <paramref name="band"/> of the box,
-    /// <paramref name="gutter"/> either side, on the stage's ink over imagery (<paramref name="onMedia"/>). With <paramref name="topRoom"/> of 0
-    /// or more the active line's TOP is held that far below the box's top instead (a short box under a title: a wrapped line shows whole and
-    /// no earlier line shows above it). It ticks while <paramref name="visible"/> reads true.</summary>
-    public static Element MiniView(bool onMedia, float typeScale, float band, float gutter, float topRoom, ColorF accent, Func<bool> visible)
-        => Embed.Comp(new MiniViewProps(onMedia, typeScale, band, gutter, topRoom, accent, visible), static () => new MiniViewHost())
+    /// <paramref name="gutter"/> either side, on the stage's ink over imagery (<paramref name="onMedia"/>). It ticks while
+    /// <paramref name="visible"/> reads true.</summary>
+    public static Element MiniView(bool onMedia, float typeScale, float band, float gutter, ColorF accent, Func<bool> visible)
+        => Embed.Comp(new MiniViewProps(onMedia, typeScale, band, gutter, accent, visible), static () => new MiniViewHost())
             with { Key = onMedia ? "lyrics:mini:media" : "lyrics:mini" };
 
-    sealed record MiniViewProps(bool OnMedia, float TypeScale, float Band, float Gutter, float TopRoom, ColorF Accent, Func<bool> Visible);
+    sealed record MiniViewProps(bool OnMedia, float TypeScale, float Band, float Gutter, ColorF Accent, Func<bool> Visible);
 
     /// <summary>Holds the type scale as a value-gated signal (the stage column's way: a size step re-renders the rows in place, never a
     /// remount) and mounts the view once per ink.</summary>
@@ -138,7 +137,7 @@ public static partial class Lyrics
             var typeScale = _typeScale;
             var accent = p.OnMedia && p.Accent.A > 0f ? _accent : null;
             return Embed.Comp(() => new ViewCore(large: false, onMedia: p.OnMedia, visible: p.Visible, accent: accent, typeScale: typeScale,
-                band: p.TopRoom >= 0f ? 0f : p.Band, gutter: p.Gutter, topRoom: p.TopRoom, darkArm: p.OnMedia));
+                band: p.Band, gutter: p.Gutter, darkArm: p.OnMedia));
         }
     }
 
@@ -240,8 +239,8 @@ public static partial class Lyrics
         internal RowMetrics Metrics => StageRows is { } rows ? rows.Metrics(TypeScale)
             : _gutter >= 0f ? Surface.Timed(Large, IsPodcast).Scaled(TypeScale) with { SidePad = _gutter }
             : Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
-        /// <summary>A mount's own focal band, side gutter and top-held room (the mini player's), or -1 for the surface's.</summary>
-        readonly float _bandOverride, _gutter, _topRoom;
+        /// <summary>A mount's own focal band and side gutter (the mini player's), or -1 for the surface's.</summary>
+        readonly float _bandOverride, _gutter;
         /// <summary>The structure's own stage rows (<c>LyricsLinesStyle.StageRows</c>): the stage's music rows only; null everywhere else and for a
         /// style that leaves it unset (the core's metrics, band and ladder).</summary>
         Wavee.Theming.Contracts.LyricsStageRows? StageRows => OnStage && !IsPodcast ? _linesStyle?.StageRows : null;
@@ -278,11 +277,10 @@ public static partial class Lyrics
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
             IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
-            float topRoom = -1f, bool darkArm = false)
+            bool darkArm = false)
         {
             _bandOverride = band;
             _gutter = gutter;
-            _topRoom = topRoom;
             _readerEpisode = readerEpisode;
             Large = large;
             _typeScale = typeScale;
@@ -1342,14 +1340,7 @@ public static partial class Lyrics
             // This target runs outside layout: feed the newest published viewport first.
             layout.SetViewport(sc.ViewportH, sc.ViewportW);
             RectF item = layout.ItemRect(active, sc.ViewportW);
-            float band = Band;
-            if (_topRoom >= 0f)
-            {
-                // A top-held mount: the band that puts this row's line (after its interlude reserve) at the top room, whatever its height.
-                float r = Math.Clamp(ReserveOf(active), 0f, item.H);
-                band = (_topRoom + (item.H - r) * 0.5f) / sc.ViewportH;
-            }
-            float target = Follow.Target(item.Y, item.H, ReserveOf(active), sc.ViewportH, sc.ContentH, band);
+            float target = Follow.Target(item.Y, item.H, ReserveOf(active), sc.ViewportH, sc.ContentH, Band);
 
             if (!_scrollSnapped && intent == FollowIntent.Normal)
             {
