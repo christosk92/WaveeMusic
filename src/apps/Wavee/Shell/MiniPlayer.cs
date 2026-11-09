@@ -58,6 +58,18 @@ public static partial class MiniPlayer
         public const int HotKeyId = 0x4D50;
         public const uint HotKeyMods = 0x0002 | 0x0001, HotKeyVk = 0x4D;
 
+        /// <summary>The mini window's motion ceiling per face (fps; 0 = the display's rate). Measured 2026-11-09 at mini sizes: a spinning
+        /// style ran its per-frame clock at the panel's 120 Hz, though what moves visibly is the label or the reels (the grooves and the
+        /// rim are rotationally even): a 33⅓ rpm label at a mini side moves about 120 px/s, so 60 steps of 2 px keep it smooth at half
+        /// the frames. The lyrics view's line sweep reads the same at 30. Cover, Canvas (the clip's own rate) and the analyser (its band
+        /// clock, ~25/s) need no cap.</summary>
+        public static int FrameCap(MiniFaceKind kind) => kind switch
+        {
+            MiniFaceKind.Object => 60,
+            MiniFaceKind.Lyrics => 30,
+            _ => 0,
+        };
+
         public static float Ratio(MiniShape s) => s switch { MiniShape.Strip => 6f, MiniShape.Wide => 2.4f, MiniShape.Square => 1f, _ => 9f / 16f };
 
         public static (float Min, float Max) WidthRange(MiniShape s) => s switch
@@ -156,7 +168,20 @@ public static partial class MiniPlayer
         switch (f.Kind)
         {
             case MiniFaceKind.Lyrics:
-                return r.Use == MiniFaceUse.Line ? Lyrics.NpvPeek() : Lyrics.MiniView(s_lyricsVisible, onMedia: r.Use == MiniFaceUse.Fill);
+                // A reading window, never a seek surface: in a window you drag by any inert pixel the lines take no clicks (#197).
+                if (r.Use == MiniFaceUse.Box) return Cover();   // the wide card keeps the cover in its box; the lyrics take the text column
+                var reading = new BoxEl
+                {
+                    Grow = 1f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, HitTestVisible = false,
+                    Children = [Lyrics.MiniView(s_lyricsVisible, onMedia: r.Use == MiniFaceUse.Fill)],
+                };
+                if (r.Use != MiniFaceUse.Fill) return reading;
+                // Filling the window: the lyrics read on media ink over the cover under a dark veil, in light and dark alike.
+                return new BoxEl
+                {
+                    Width = r.Width, Height = r.Height, ZStack = true, ClipToBounds = true,
+                    Children = [Cover(), new BoxEl { Grow = 1f, Fill = Tok.Theme == ThemeKind.Light ? LyricsVeilLight : LyricsVeil, HitTestVisible = false }, reading],
+                };
             case MiniFaceKind.Canvas:
                 return new BoxEl
                 {
@@ -184,6 +209,8 @@ public static partial class MiniPlayer
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
     static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
+    /// <summary>The veil a filling lyrics face reads over (the prototype's dark ground under the column).</summary>
+    static readonly ColorF LyricsVeil = new(0.047f, 0.039f, 0.063f, 0.78f), LyricsVeilLight = new(1f, 1f, 1f, 0.86f);
     static readonly Signal<int> s_face = new(-1);
     static readonly Signal<bool> s_onTop = new(true);
     static readonly Signal<MiniShape> s_shape = new(MiniShape.Wide);
@@ -393,6 +420,11 @@ public static partial class MiniPlayer
             });
             UseSignalEffect(() =>
             {
+                int face = s_face.Value;
+                if (_window is { IsOpen: true } w) w.PowerCapFps = Rules.FrameCap(s_faces[ClampFace(face)].Kind);
+            });
+            UseSignalEffect(() =>
+            {
                 _ = Playback.Current.Value;
                 if (_window is { IsOpen: true } w) w.SetTitle(Title());
             });
@@ -431,6 +463,7 @@ public static partial class MiniPlayer
                 return;
             }
             _window = window;
+            window.PowerCapFps = Rules.FrameCap(s_faces[ClampFace(s_face.Peek())].Kind);
             window.SetTitle(Title());
             window.OnClosed = () =>
             {

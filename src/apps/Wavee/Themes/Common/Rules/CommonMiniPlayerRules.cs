@@ -33,4 +33,6 @@ internal static class CommonMiniPlayerRules
     public const float DisabledAlpha = 0.4f;
     /// <summary>The tall immersive layout keeps this much (DIP) at the bottom for its panel.</summary>
     public const float TallPanel = 186f;
+    /// <summary>The square keeps this much (DIP) under its lyrics window for the resting title row.</summary>
+    public const float SquareRest = 64f;
 }

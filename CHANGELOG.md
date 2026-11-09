@@ -12,6 +12,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
+- **Mini player.** A small window that stays on top while you work, in any shape you drag it to: a strip, a card, a square
+  or a tall 9:16 column; on release it settles on the nearest shape and snaps into a screen corner. Pick what fills it:
+  the cover, lyrics, the Canvas, the visualizer or a player style (vinyl, CD, cassette, reel). It follows your theme and
+  light or dark mode. Open it from the new button in the player bar, with Ctrl+Alt+M, or from the taskbar's right-click
+  menu; the full window hides while it is open and comes back from the art or the back button, and the music never stops
+  (#197).
+
 - **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.

@@ -95,11 +95,8 @@ internal static class CommonMiniPlayer
     {
         var st = m.St;
         float thumb = st.StripThumb;
-        bool lyrics = m.Kind == MiniFaceKind.Lyrics;
-        Element meta = lyrics
-            ? new BoxEl { Key = H.MetaKey, Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.Center, ClipToBounds = true,
-                Children = [m.P.FaceView(new MiniFaceRequest(m.Face, 0f, 0f, null, 0f, MiniFaceUse.Line))] }
-            : Meta(in m, detail: false);
+        // The strip keeps the title and artist for every face (its lyric ticker is not built yet: the lyrics view needs more height).
+        Element meta = Meta(in m, detail: false);
         var row = new BoxEl
         {
             Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Gap = st.StripGap, Padding = new Edges4(st.StripPadStart, 0f, st.Pad, 0f),
@@ -150,10 +147,12 @@ internal static class CommonMiniPlayer
     static Element Square(in Ctx m)
     {
         var st = m.St;
+        bool lyrics = m.Kind == MiniFaceKind.Lyrics;
         var children = new List<Element>
         {
-            FaceLayer(in m, m.Size.Width, m.Size.Height, MiniFaceUse.Fill),
-            Shade(st),
+            lyrics ? FaceLayer(in m, m.Size.Width, MathF.Max(0f, m.Size.Height - H.SquareRest), MiniFaceUse.Fill) with { AlignSelf = FlexAlign.Start }
+                   : FaceLayer(in m, m.Size.Width, m.Size.Height, MiniFaceUse.Fill),
+            lyrics ? Spacer() : Shade(st),
         };
         var hm = m with { Media = true };
         if (!m.Hot)
@@ -162,7 +161,7 @@ internal static class CommonMiniPlayer
             {
                 Key = H.RestKey, AlignSelf = FlexAlign.End, Direction = 0, AlignItems = FlexAlign.End, Gap = st.Gap,
                 Padding = Edges4.All(st.Pad), Enter = s_fade, Exit = s_fade, HitTestVisible = false,
-                Children = [Meta(in m, detail: false, onMedia: true), m.V.Liked ? Saved(st, onMedia: true) : Spacer(), Badge(in m)],
+                Children = [Meta(in m, detail: false, onMedia: !lyrics), m.V.Liked ? Saved(st, onMedia: !lyrics) : Spacer(), Badge(in m)],
             });
             children.Add(Hairline(in m));
         }
@@ -187,13 +186,14 @@ internal static class CommonMiniPlayer
     {
         var st = ctx.St;
         bool immersive = ctx.Kind is MiniFaceKind.Canvas or MiniFaceKind.Visualizer or MiniFaceKind.Lyrics;
-        var m = immersive ? ctx with { Media = true } : ctx;
+        // Over the canvas and the analyser the panel reads on media ink; the lyrics face keeps the theme's ink over its own veil.
+        var m = immersive && ctx.Kind != MiniFaceKind.Lyrics ? ctx with { Media = true } : ctx;
         var panel = new BoxEl
         {
             Direction = 1, Gap = st.Gap,
             Children =
             [
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = st.Gap, Children = [Meta(in m, detail: false, onMedia: immersive), SaveButton(in m)] },
+                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = st.Gap, Children = [Meta(in m, detail: false, onMedia: m.Media), SaveButton(in m)] },
                 SeekRow(in m),
                 new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
                     Children = [Spacer(st.ButtonBox), Transport(in m, st.PlayBox), Device(in m)] },
@@ -201,10 +201,12 @@ internal static class CommonMiniPlayer
         };
         if (immersive)
         {
+            bool lyrics = m.Kind == MiniFaceKind.Lyrics;
             var children = new List<Element>
             {
-                FaceLayer(in m, m.Size.Width, m.Size.Height, MiniFaceUse.Fill),
-                Shade(st),
+                lyrics ? FaceLayer(in m, m.Size.Width, MathF.Max(0f, m.Size.Height - H.TallPanel), MiniFaceUse.Fill) with { AlignSelf = FlexAlign.Start }
+                       : FaceLayer(in m, m.Size.Width, m.Size.Height, MiniFaceUse.Fill),
+                lyrics ? Spacer() : Shade(st),
                 new BoxEl { AlignSelf = FlexAlign.End, Padding = new Edges4(st.Pad, 0f, st.Pad, st.Pad), Children = [panel] },
             };
             if (m.Hot) children.Add(Chrome(in m));
@@ -257,7 +259,7 @@ internal static class CommonMiniPlayer
     }
 
     /// <summary>The face, keyed by its index so a flip slides the new one in (from the side the flip went).</summary>
-    static Element FaceLayer(in Ctx m, float w, float h, MiniFaceUse use)
+    static BoxEl FaceLayer(in Ctx m, float w, float h, MiniFaceUse use)
     {
         float corner = use == MiniFaceUse.Fill ? 0f : m.St.ArtCorner;
         var enter = m.FlipDir == 0 ? (EnterExit?)null : new EnterExit(Dx: m.FlipDir * w * H.FlipSlide, Opacity: 0f, Active: true);
