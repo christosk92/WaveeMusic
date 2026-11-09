@@ -85,7 +85,7 @@ public static partial class Shell
     public static class PlayerBarRules
     {
         /// <summary>The overflow can hold every <see cref="OverflowCommand"/> at once.</summary>
-        public const int MaxOverflow = 10;
+        public const int MaxOverflow = 11;
 
         /// <summary>The play-next drop's batch cap (G-211, ch 19 #87): a dropped playlist/album inserts at most this
         /// many tracks before the front of the queue; the rest are silently NOT the drop's problem — the toast says
@@ -333,6 +333,8 @@ public static partial class Shell
             if (!layout.ShowQueue) dest[n++] = OverflowCommand.Queue;
             dest[n++] = OverflowCommand.NowPlaying;
             if (!layout.ShowExpand) dest[n++] = OverflowCommand.FullScreen;
+            // The mini player rides full screen's tiers in the row (#197); where the row drops them, the menu carries both doors.
+            if (!layout.ShowExpand) dest[n++] = OverflowCommand.Mini;
             // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
             if (!layout.ShowVideoSplit && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;

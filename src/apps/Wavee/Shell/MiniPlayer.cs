@@ -70,6 +70,12 @@ public static partial class MiniPlayer
             _ => 0,
         };
 
+        /// <summary>A wheel notch over the player moves the volume this much (the prototype's ±4 %).</summary>
+        public const float WheelStep = 0.04f;
+
+        /// <summary>The tall column shows its volume row when there is room: 470 DIP tall or 270 wide (the prototype's rule).</summary>
+        public static bool Roomy(float w, float h) => h >= 470f || w >= 270f;
+
         public static float Ratio(MiniShape s) => s switch { MiniShape.Strip => 6f, MiniShape.Wide => 2.4f, MiniShape.Square => 1f, _ => 9f / 16f };
 
         public static (float Min, float Max) WidthRange(MiniShape s) => s switch
@@ -168,19 +174,22 @@ public static partial class MiniPlayer
         switch (f.Kind)
         {
             case MiniFaceKind.Lyrics:
-                // A reading window, never a seek surface: in a window you drag by any inert pixel the lines take no clicks (#197).
-                if (r.Use == MiniFaceUse.Box) return Cover();   // the wide card keeps the cover in its box; the lyrics take the text column
-                var reading = new BoxEl
-                {
-                    Grow = 1f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, HitTestVisible = false,
-                    Children = [Lyrics.MiniView(s_lyricsVisible, onMedia: r.Use == MiniFaceUse.Fill)],
-                };
-                if (r.Use != MiniFaceUse.Fill) return reading;
-                // Filling the window: the lyrics read on media ink over the cover under a dark veil, in light and dark alike.
+                // The lines are the template's (MiniPlayerProps.Lyrics); the face is what they read over: the cover in a box, and filling the
+                // window the cover blurred and darkened, so the lines read on-dark in light and dark alike (the prototype's fc-blur).
+                if (r.Use != MiniFaceUse.Fill) return Cover();
                 return new BoxEl
                 {
-                    Width = r.Width, Height = r.Height, ZStack = true, ClipToBounds = true,
-                    Children = [Cover(), new BoxEl { Grow = 1f, Fill = Tok.Theme == ThemeKind.Light ? LyricsVeilLight : LyricsVeil, HitTestVisible = false }, reading],
+                    Width = r.Width, Height = r.Height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new ImageEl
+                        {
+                            Source = r.ArtUrl ?? "", Width = r.Width * LyricsBlurScale, Height = r.Height * LyricsBlurScale, Fit = ImageFit.Cover,
+                            AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, BakedBlur = new BakedBlurSpec(LyricsBlurSigma, 0.5f),
+                            KeepWhileHidden = true, Placeholder = LyricsVeil,
+                        },
+                        new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = LyricsVeil, HitTestVisible = false },
+                    ],
                 };
             case MiniFaceKind.Canvas:
                 return new BoxEl
@@ -188,6 +197,14 @@ public static partial class MiniPlayer
                     Width = r.Width, Height = r.Height, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(r.Corner),
                     Children = [Cover(), CanvasVideo.Layer(CanvasVideo.Surface.Mini, CornerRadius4.All(r.Corner))],
                 };
+            case MiniFaceKind.Visualizer when r.Paint is { } paint:
+            {
+                // The theme draws the analyser (WinUI's bars, Zune's waveform, Classic's sines) over the full player's own bands: the same
+                // deck host, model, clock and spectrum lease, another picture.
+                float w = MathF.Floor(r.Width), h = MathF.Floor(r.Height);
+                return Ctx.Provide(Deck.SurfaceOpen, IsOpen,
+                    Deck.Painted(f.StyleId, w, h, sig => paint(new MiniVisualizerFrame(w, h, sig.Bands, sig.Peaks, sig.LoopsRun))));
+            }
             case MiniFaceKind.Visualizer:
             case MiniFaceKind.Object:
             {
@@ -209,8 +226,15 @@ public static partial class MiniPlayer
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
     static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
-    /// <summary>The veil a filling lyrics face reads over (the prototype's dark ground under the column).</summary>
-    static readonly ColorF LyricsVeil = new(0.047f, 0.039f, 0.063f, 0.78f), LyricsVeilLight = new(1f, 1f, 1f, 0.86f);
+    /// <summary>The veil a filling lyrics face reads over (the prototype's blurred cover at half brightness), the blur and its overscan.</summary>
+    static readonly ColorF LyricsVeil = new(0f, 0f, 0f, 0.5f);
+    const float LyricsBlurSigma = 22f, LyricsBlurScale = 1.3f;
+    /// <summary>The per-theme "Colour from album art" choices (<see cref="Platform.Keys.MiniPlayerArtColour"/>).</summary>
+    static readonly Signal<int> s_artColour = new(-1);
+    /// <summary>Bumps on every wheel step (the template's volume HUD).</summary>
+    static readonly Signal<int> s_volumeHud = new(0);
+    /// <summary>The tall column has room for its volume row.</summary>
+    static readonly Signal<bool> s_roomy = new(false);
     static readonly Signal<int> s_face = new(-1);
     static readonly Signal<bool> s_onTop = new(true);
     static readonly Signal<MiniShape> s_shape = new(MiniShape.Wide);
@@ -225,6 +249,45 @@ public static partial class MiniPlayer
         if (s_face.Peek() >= 0) return;
         s_face.Value = ClampFace(Platform.Settings.Get(Platform.Keys.MiniPlayerFace));
         s_onTop.Value = Platform.Settings.Get(Platform.Keys.MiniPlayerOnTop);
+        s_artColour.Value = Platform.Settings.Get(Platform.Keys.MiniPlayerArtColour);
+    }
+
+    /// <summary>"Colour from album art" for a theme slot: its explicit choice, else the theme's default.</summary>
+    static bool ArtColour(int slot, bool fallback)
+    {
+        int mask = s_artColour.Value;
+        if (mask < 0 || (uint)slot > 7u) return fallback;
+        return (mask & (1 << slot)) != 0 || ((mask & (1 << (slot + 8))) == 0 && fallback);
+    }
+
+    static void SetArtColour(int slot, bool on)
+    {
+        if ((uint)slot > 7u) return;
+        int mask = Math.Max(0, s_artColour.Peek());
+        mask &= ~((1 << slot) | (1 << (slot + 8)));
+        mask |= on ? 1 << slot : 1 << (slot + 8);
+        s_artColour.Value = mask;
+        Platform.Settings.Set(Platform.Keys.MiniPlayerArtColour, mask);
+    }
+
+    /// <summary>A cover's accent, floored for text against the theme (the detail pages' ladder without its payload and hold): tracked on the
+    /// palette's grading of that url, so a late grading repaints.</summary>
+    static ColorF? AlbumAccent(string? url)
+    {
+        if (url is not { Length: > 0 }) return null;
+        _ = Palette.Watch(url).Value;
+        return Design.ChromeSchemeFor(url) is { } scheme ? Design.Palette.Floor(Design.Palette.ChromeAccent(scheme)) : null;
+    }
+
+    /// <summary>A wheel over the player: volume, <see cref="Rules.WheelStep"/> per notch (unmuting), with the HUD. The engine's steps are
+    /// signed toward the content's end (a notch DOWN is positive), so a notch up is louder.</summary>
+    static void WheelVolume(float steps)
+    {
+        if (steps == 0f) return;
+        if (Playback.Muted.Peek()) Playback.ToggleMute();
+        float v = Math.Clamp(Playback.Volume.Peek() - steps * Rules.WheelStep, 0f, 1f);
+        Playback.SetVolume(MathF.Round(v * 100f) / 100f);
+        s_volumeHud.Value = s_volumeHud.Peek() + 1;
     }
 
     /// <summary>Open or close the mini player (the button, the hot key, the jump list, the palette).</summary>
@@ -301,12 +364,18 @@ public static partial class MiniPlayer
         OnTop = s_onTop,
         ToggleOnTop = ToggleOnTop,
         SetShape = static shape => s_shapeRequest.Value = (shape, s_shapeRequest.Peek().Seq + 1),
-        WheelVolume = static steps =>
-        {
-            float v = Math.Clamp(Playback.Volume.Peek() + steps * 0.05f, 0f, 1f);
-            Playback.SetVolume(v);
-        },
+        WheelVolume = WheelVolume,
         UseMaterial = static (m, dark) => s_material.Value = (m, dark),
+        ArtColour = ArtColour,
+        SetArtColour = SetArtColour,
+        AlbumAccent = AlbumAccent,
+        SeekRail = static draw => Shell.SeekBarDrawn(draw),
+        Lyrics = static draw => Lyrics.Mini(draw, s_lyricsVisible),
+        DevicePicker = static close => RailWiring.DevicePicker(close),
+        DevicePickerOpened = static () => PlayerVerbs.Default.OpenDevicePicker(),
+        VolumeHud = s_volumeHud,
+        CanSave = static () => Playback.Current.Value is { IsNone: false } c && c.Kind is EntityKind.Track or EntityKind.Episode,
+        Roomy = s_roomy,
     };
 
     /// <summary>The inspector's `mount mini=1 face=N`: the window's content alone (its overlay host; the headless root adds the theme
@@ -356,6 +425,8 @@ public static partial class MiniPlayer
         s_scale = scale > 0f ? scale : 1f;
         var shape = Rules.Classify(viewport.Width, viewport.Height);
         if (s_shape.Peek() != shape) s_shape.Value = shape;
+        bool roomy = Rules.Roomy(viewport.Width, viewport.Height);
+        if (s_roomy.Peek() != roomy) s_roomy.Value = roomy;
     }
 
     // ══ 5. THE WINDOW'S OWNER ════════════════════════════════════════════════════════════════════════════════════════════
@@ -371,6 +442,8 @@ public static partial class MiniPlayer
         float _settleT = 1f;
         long _deepWas = -1;
         Action<int>? _onHotKey;
+        Action<WindowStateChange>? _onMainState;
+        bool _mainHidden;
 
         public override Element Render()
         {
@@ -378,6 +451,19 @@ public static partial class MiniPlayer
             var post = UsePost();
             var settling = UseSignal(false);
             UseInterval(() => SettleStep(settling), Rules.SettleStepMs, enabled: settling.Value);
+
+            UseEffect(() =>
+            {
+                // The full window coming back by ANY route (the tray, a relaunch, a wavee:// link, a jump-list task, a toast) closes the mini
+                // player: the two never show at once. Our own hide and show pass through here too, harmlessly (closed already, or not shown).
+                _onMainState = change =>
+                {
+                    if (!_mainHidden || !IsOpen.Peek() || !(change.Shown || change.Unparked) || change.Current.Parked) return;
+                    Close("main-shown");
+                };
+                FluentApp.WindowStateChanged += _onMainState;
+                return () => FluentApp.WindowStateChanged -= _onMainState;
+            }, DepKey.Empty);
 
             UseEffect(() =>
             {
@@ -556,12 +642,14 @@ public static partial class MiniPlayer
         {
             if (_deepWas < 0) { _deepWas = HiddenMemoryBudget.DeepDelayMs; HiddenMemoryBudget.DeepDelayMs = Rules.DeepAfterMs; }
             FluentApp.SetWindowVisible(false);
+            _mainHidden = true;
             Log.Info(LogCategory, "main window hidden");
         }
 
         void ShowMain()
         {
             if (_deepWas >= 0) { HiddenMemoryBudget.DeepDelayMs = _deepWas; _deepWas = -1; }
+            _mainHidden = false;
             Tray.Host.ShowWindow();   // un-hide, restore and bring to the front through the engine seam (the tray's door)
             Log.Info(LogCategory, "main window shown");
         }

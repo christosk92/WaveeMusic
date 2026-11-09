@@ -1,17 +1,21 @@
 // ── Themes/Common/CommonMiniPlayer.cs — the mini player's picture (#197) ────────────────────────────────────────────────
 //
-// One picture for the three themes, drawn with each theme's MiniPlayerStyle (StyleKeys.MiniPlayer: its numbers, its type, its
-// grounds) and its own player parts (the seek rail and time labels are the theme's `Player.SeekRail` / `Player.TimeLabel` through the
-// bar's builders), so WinUI, Zune and Classic each look like themselves while the four shapes stay one layout (the approved prototype):
+// One layout for the three themes, drawn with each theme's MiniPlayerStyle (StyleKeys.MiniPlayer: its numbers, its type, its grounds and
+// its own seek line, visualizer and lyric line), so WinUI, Zune and Classic each look like themselves while the four shapes stay one layout
+// (the approved prototype, scratchpad miniplayer/index.html, 2026-11-09):
 //
-//   Strip  6:1   thumb + badge, title and artist (or the lyric pair), the saved heart, a hairline; on hover the transport slides in.
-//   Wide   12:5  the face box, title / artist / detail, seek with times, save · prev · play · next · device; on hover face flip + chrome.
-//   Square 1:1   the face fills; title, artist, heart and badge at the foot, a hairline; on hover the whole transport over a veil.
-//   Tall   9:16  the face above (or, for Canvas / Visualizer / Lyrics, behind) title, seek, transport and device.
+//   Strip  6:1   thumb + badge, title and artist (or the lyric ticker), the saved heart, the edge line; on hover a right-anchored plate
+//                fades in over the row (save · prev · play · next · device · options) and the edge line thickens into a seek bar.
+//   Wide   12:5  the face box, title / artist / detail (or the lyric window), seek with times, save · prev · play · next · device; on hover
+//                the ‹ › flip on the art and the options / back pill.
+//   Square 1:1   the face fills; title, artist, heart and badge at the foot, the edge line; on hover the whole transport over a veil, in
+//                on-dark ink in every mode. Object faces and Classic's wave-edged cover sit above a band of the window's own ground.
+//   Tall   9:16  the face above (Canvas / Visualizer / Lyrics: behind) title, seek, transport and device; volume when there is room.
 //
-// State never hides (filled heart, play badge, "Playing on"); controls hide only where the window is smaller than them (Strip,
-// Square). Every transport and save target is the style's ButtonBox (40 DIP or more); the hover window buttons are ChromeBox (32).
-// Hover is a signal with a delayed fall (in at once, out after HoverOutDelayMs); the hover layers mount and unmount with a fade.
+// The accent is the theme's (WinUI's, Zune's pink), or the album's with "Colour from album art" (Classic's default). State never hides
+// (filled heart, play badge, "Playing on"); controls hide only where the window is smaller than them (Strip, Square). Every transport and
+// save target is the style's ButtonBox (40 DIP or more); the hover window buttons are ChromeBox (32). Hover is a signal with a delayed
+// fall (in at once, out after HoverOutDelayMs); the hover layers mount and unmount with a fade.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -19,7 +23,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Pal;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
@@ -27,7 +30,7 @@ using H = Wavee.Themes.Common.CommonMiniPlayerRules;
 
 namespace Wavee.Themes.Common;
 
-internal static class CommonMiniPlayer
+internal static partial class CommonMiniPlayer
 {
     public static void Register(ViewRegistryBuilder views, string templateId, MiniPlayerStyle style)
     {
@@ -36,6 +39,16 @@ internal static class CommonMiniPlayer
     }
 
     static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+    /// <summary>A shape change cross-fades the old layout out and the new one in (the prototype's swap); a face flip cross-fades the face while
+    /// it slides in. Declared swap families: the parts under them are rebuilt on purpose.</summary>
+    static readonly EnterExit s_shapeSwap = SwapFamilies.Declare("mini.shape", s_fade), s_faceSwap = SwapFamilies.Declare("mini.face", s_fade);
+
+    /// <summary>The flyouts' anchors and handles (one set per window).</summary>
+    sealed class Anchors
+    {
+        public readonly Ref<NodeHandle> Device = new(default), Options = new(default);
+        public readonly Ref<OverlayHandle?> DeviceMenu = new(null), OptionsMenu = new(null);
+    }
 
     public static Element Template(MiniPlayerProps p, in ViewContext ctx)
     {
@@ -50,439 +63,295 @@ internal static class CommonMiniPlayer
         var overlay = rc.UseContext(Overlay.Service);
         var hot = rc.UseSignal(false);
         var hotFall = rc.UseTimeout(() => { if (hot.Peek()) hot.Value = false; }, st.HoverOutDelayMs, DepKey.Empty);
-        var deviceAnchor = rc.UseRef<NodeHandle>(default);
-        var deviceMenu = rc.UseRef<OverlayHandle?>(null);
-        var optionsAnchor = rc.UseRef<NodeHandle>(default);
-        var optionsMenu = rc.UseRef<OverlayHandle?>(null);
+        var anchors = rc.UseMemo(static () => new Anchors(), DepKey.Empty);
         var flipFrom = rc.UseRef(face);
         bool light = R.IsLight;
         rc.UseLayoutEffect(() => p.UseMaterial(light ? st.MaterialLight : st.MaterialDark, !light),
             DepKey.From(light ? 1 : 0, (int)st.MaterialLight, (int)st.MaterialDark, 0));
-        bool hovering = hot.Value;
+        bool hovering = hot.Value || anchors.OptionsMenu.Value is { IsOpen: true } || anchors.DeviceMenu.Value is { IsOpen: true };
         int flipDir = face == flipFrom.Value ? 0 : (face > flipFrom.Value ? 1 : -1);
         rc.UseLayoutEffect(() => flipFrom.Value = face, face);
 
-        var m = new Ctx(p, bar, v, st, shape, face, kind, size, hovering, flipDir, overlay, deviceAnchor, deviceMenu, optionsAnchor, optionsMenu);
+        // THE VOLUME HUD: a wheel step shows it, HudMs after the last one it goes.
+        var hud = rc.UseSignal(false);
+        var hudSeen = rc.UseRef(-1);
+        var hudOff = rc.UseTimeout(() => { if (hud.Peek()) hud.Value = false; }, H.HudMs, DepKey.Empty);
+        rc.UseSignalEffect(() =>
+        {
+            int n = p.VolumeHud.Value;
+            if (hudSeen.Value < 0) { hudSeen.Value = n; return; }   // the mount seeds: a wheel before this window opened shows nothing
+            if (n == hudSeen.Value) return;
+            hudSeen.Value = n;
+            hud.Value = true;
+            hudOff.RestartIn(H.HudMs);
+        });
+
+        // THE ACCENT: the theme's, or the playing cover's with "Colour from album art".
+        bool fromArt = p.ArtColour(st.ArtColourSlot, st.ArtColourDefault);
+        ColorF accent = fromArt && p.AlbumAccent(v.ArtUrl) is { } album ? album : Tok.AccentDefault;
+        bool roomy = p.Roomy.Value;
+
+        var m = new Ctx(p, bar, v, st, shape, face, kind, size, hovering, flipDir, overlay, anchors, accent, OnAccent(accent), roomy);
         Element body = shape switch
         {
-            MiniShape.Strip => Strip(in m),
-            MiniShape.Square => Square(in m),
-            MiniShape.Tall => Tall(in m),
-            _ => Wide(in m),
+            MiniShape.Strip => Strip(m),
+            MiniShape.Square => Square(m),
+            MiniShape.Tall => Tall(m),
+            _ => Wide(m),
         };
+        var glow = st.Glow(accent);
+        var children = new List<Element>(3);
+        if (glow.A > 0f)
+            children.Add(new BoxEl
+            {
+                Grow = 1f, AlignSelf = FlexAlign.Stretch, HitTestVisible = false,
+                Gradient = new GradientSpec(GradientShape.Linear, H.GlowAngle, [new GradientStop(0f, glow), new GradientStop(H.GlowEnd, glow with { A = 0f })]),
+            });
+        children.Add(new BoxEl
+        {
+            Key = H.ShapeKey + ":" + shape, Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 1, Enter = s_shapeSwap, Exit = s_shapeSwap, Children = [body],
+        });
+        if (hud.Value) children.Add(Hud(bar));
         return new BoxEl
         {
-            Key = H.RootKey, Grow = 1f, AlignSelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true, Fill = st.Ground(),
+            Key = H.RootKey, Grow = 1f, AlignSelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true, Fill = st.Ground(accent),
             OnPointerMoveWithin = _ => { hotFall.Cancel(); if (!hot.Peek()) hot.Value = true; },
             OnPointerExit = () => hotFall.RestartIn(st.HoverOutDelayMs),
             OnPointerWheel = e => p.WheelVolume(e.Steps),
-            Children = [body],
+            Children = children.ToArray(),
         };
     }
 
-    /// <summary>Everything one render reads, passed by reference to the shape builders.</summary>
-    readonly record struct Ctx(MiniPlayerProps P, PlayerBarProps Bar, PlayerBarView V, MiniPlayerStyle St, MiniShape Shape, int Face,
-        MiniFaceKind Kind, Size2 Size, bool Hot, int FlipDir, IOverlayService Overlay, Ref<NodeHandle> DeviceAnchor,
-        Ref<OverlayHandle?> DeviceMenu, Ref<NodeHandle> OptionsAnchor, Ref<OverlayHandle?> OptionsMenu, bool Media = false)
+    /// <summary>Everything one render reads, passed to the shape builders.</summary>
+    sealed record Ctx(MiniPlayerProps P, PlayerBarProps Bar, PlayerBarView V, MiniPlayerStyle St, MiniShape Shape, int Face,
+        MiniFaceKind Kind, Size2 Size, bool Hot, int FlipDir, IOverlayService Overlay, Anchors A, ColorF Accent, ColorF OnAccent, bool Roomy,
+        bool Media = false)
     {
-        /// <summary>The ink a control draws in: on-media white over a filling face, else the theme's.</summary>
-        public ColorF Ink => Media ? H.OnMediaInk : Tok.T.TextPrimary;
+        /// <summary>The ink a control draws in: on-media white over imagery (every mode), else the theme's.</summary>
+        public ColorF Ink => Media ? H.OnMediaInk : Tok.TextPrimary;
+        public ColorF Ink2 => Media ? H.OnMediaInk with { A = H.OnMediaSecondaryAlpha } : Tok.TextSecondary;
+        public ColorF Ink3 => Media ? H.OnMediaInk with { A = H.OnMediaTertiaryAlpha } : Tok.TextTertiary;
+        public bool Playing => V.PauseGlyph;
+    }
+
+    /// <summary>The accent's own ink (the play glyph, the badge): dark on a light accent, white otherwise.</summary>
+    static ColorF OnAccent(ColorF a)
+    {
+        static float Lin(float c) => c <= 0.03928f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
+        float l = 0.2126f * Lin(a.R) + 0.7152f * Lin(a.G) + 0.0722f * Lin(a.B);
+        return l > H.OnAccentLuma ? H.OnAccentDark : H.OnMediaInk;
     }
 
     // ══ SHAPES ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Strip(in Ctx m)
-    {
-        var st = m.St;
-        float thumb = st.StripThumb;
-        // The strip keeps the title and artist for every face (its lyric ticker is not built yet: the lyrics view needs more height).
-        Element meta = Meta(in m, detail: false);
-        var row = new BoxEl
-        {
-            Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Gap = st.StripGap, Padding = new Edges4(st.StripPadStart, 0f, st.Pad, 0f),
-            Children = [Thumb(in m, thumb), meta, m.V.Liked ? Saved(st) : Spacer()],
-        };
-        var children = new List<Element> { row, Hairline(in m) };
-        if (m.Hot)
-            children.Add(new BoxEl
-            {
-                Key = H.HoverKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.End, Direction = 0, AlignItems = FlexAlign.Center,
-                Padding = new Edges4(H.StripFade, 0f, st.Pad, 0f), Enter = s_fade, Exit = s_fade,
-                Fill = st.Ground(),
-                Children = [SaveButton(in m), Prev(in m), Play(in m, st.ButtonBox), Next(in m), Device(in m), Options(in m)],
-            });
-        return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
-    }
-
-    static Element Wide(in Ctx m)
-    {
-        var st = m.St;
-        float box = MathF.Max(0f, m.Size.Height - 2f * st.Pad);
-        var faceBox = FaceBox(in m, box, box, withFlip: true);
-        var col = new BoxEl
-        {
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.SpaceBetween,
-            Children =
-            [
-                m.Kind == MiniFaceKind.Lyrics
-                    ? new BoxEl { Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
-                        Children = [m.P.FaceView(new MiniFaceRequest(m.Face, 0f, 0f, null, 0f, MiniFaceUse.Line))] }
-                    : Meta(in m, detail: true),
-                SeekRow(in m),
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
-                    Children = [SaveButton(in m), Transport(in m, st.ButtonBox), Device(in m)],
-                },
-            ],
-        };
-        var children = new List<Element>
-        {
-            new BoxEl { Grow = 1f, Direction = 0, Gap = st.Gap, Padding = Edges4.All(st.Pad), Children = [faceBox, col] },
-        };
-        if (m.Hot) children.Add(Chrome(in m));
-        return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
-    }
-
-    static Element Square(in Ctx m)
+    static Element Strip(Ctx m)
     {
         var st = m.St;
         bool lyrics = m.Kind == MiniFaceKind.Lyrics;
-        var children = new List<Element>
+        Element meta = lyrics ? m.P.Lyrics(frame => Embed.Comp(new TickerProps(frame, m, Meta(m, detail: false)), static () => new Ticker()))
+                              : Meta(m, detail: false);
+        var row = new BoxEl
         {
-            lyrics ? FaceLayer(in m, m.Size.Width, MathF.Max(0f, m.Size.Height - H.SquareRest), MiniFaceUse.Fill) with { AlignSelf = FlexAlign.Start }
-                   : FaceLayer(in m, m.Size.Width, m.Size.Height, MiniFaceUse.Fill),
-            lyrics ? Spacer() : Shade(st),
+            Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Gap = st.StripGap, Padding = new Edges4(st.StripPadStart, 0f, st.Pad, 0f),
+            Children = [Thumb(m), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Children = [meta] }, Saved(m)],
         };
+        var children = new List<Element>(4);
+        if (m.Kind == MiniFaceKind.Visualizer)
+            children.Add(new BoxEl
+            {
+                Key = H.FaceKey + ":strip", Grow = 1f, AlignSelf = FlexAlign.Stretch, Opacity = H.StripVizAlpha, HitTestVisible = false,
+                Children = [m.P.FaceView(new MiniFaceRequest(m.Face, m.Size.Width, m.Size.Height, m.V.ArtUrl, 0f, MiniFaceUse.Fill, VizPaint(m, H.VizBarsStrip)))],
+            });
+        children.Add(row);
+        children.Add(Edge(m));
+        if (m.Hot)
+        {
+            var solid = st.Solid(m.Accent);
+            float w = H.StripFadeLead + 6f * st.ButtonBox + H.StripOverlayEnd;
+            children.Add(new BoxEl
+            {
+                Key = H.HoverKey, Width = w, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.End, Direction = 0, AlignItems = FlexAlign.Center,
+                Margin = new Edges4(0f, 0f, 0f, H.StripOverlayFoot), Padding = new Edges4(H.StripFadeLead, 0f, H.StripOverlayEnd, 0f),
+                Enter = s_fade, Exit = s_fade,
+                Gradient = new GradientSpec(GradientShape.Linear, 0f, [new GradientStop(0f, solid with { A = 0f }), new GradientStop(H.StripFade / w, solid), new GradientStop(1f, solid)]),
+                Children = [SaveButton(m), Prev(m), Play(m, st.ButtonBox), Next(m), Device(m), OptionsButton(m, st.ButtonBox)],
+            });
+        }
+        return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
+    }
+
+    static Element Wide(Ctx m)
+    {
+        var st = m.St;
+        float box = MathF.Max(0f, m.Size.Height - 2f * st.Pad);
+        bool lyrics = m.Kind == MiniFaceKind.Lyrics;
+        float chromeW = 2f * st.ChromeBox + 2f * H.ChromePad + H.ChromeGap + H.ChromeInset;
+        Element top = lyrics
+            ? new BoxEl
+            {
+                Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = H.LineGap,
+                Children =
+                [
+                    LyricMeta(m, reserve: m.Hot ? chromeW : 0f),
+                    new BoxEl
+                    {
+                        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Margin = new Edges4(-LyricBleed(st), 0f, 0f, 0f),
+                        Children = [LyricWindow(m, MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - (st.ButtonBox - H.CtrlBleedBottom) - 2f * H.WideColGap - H.WideLyricSlack), H.LyricAnchorWide, onDark: false)],
+                    },
+                ],
+            }
+            : Meta(m, detail: true, reserve: m.Hot ? chromeW : 0f, column: true);
+        var col = new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.SpaceBetween, Gap = H.WideColGap,
+            Children =
+            [
+                top,
+                SeekRow(m),
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
+                    Margin = new Edges4(-H.CtrlBleedX, 0f, -H.CtrlBleedX, -H.CtrlBleedBottom),
+                    Children = [SaveButton(m), Transport(m, st.PlayBox, 0f), Device(m)],
+                },
+            ],
+        };
+        var children = new List<Element>(2)
+        {
+            new BoxEl { Grow = 1f, Direction = 0, Gap = st.Gap, Padding = Edges4.All(st.Pad), Children = [FaceBox(m, box, box, flip: true), col] },
+        };
+        if (m.Hot) children.Add(Chrome(m, withPick: false));
+        return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
+    }
+
+    static Element Square(Ctx m)
+    {
+        var st = m.St;
+        bool lyrics = m.Kind == MiniFaceKind.Lyrics;
+        bool obj = m.Kind == MiniFaceKind.Object;
+        bool waveCover = st.WaveEdge && m.Kind == MiniFaceKind.Cover;
+        bool dark = !obj && !waveCover;   // the face fills the window: the text and controls read on-dark
+        float w = m.Size.Width, h = m.Size.Height;
+        var children = new List<Element>(8);
+        if (obj)
+            children.Add(Glow(m, w, h - H.SquareObjectFoot, FaceLayer(m, w, h - H.SquareObjectFoot, MiniFaceUse.Box, corner: 0f)));
+        else if (waveCover)
+            children.Add(new BoxEl
+            {
+                Width = w, Height = h - H.SquareWaveFoot, AlignSelf = FlexAlign.Start, ZStack = true, HitTestVisible = false,
+                Children = [FaceLayer(m, w, h - H.SquareWaveFoot, MiniFaceUse.Fill), WaveFoot(m, w, h - H.SquareWaveFoot)],
+            });
+        else
+            children.Add(FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsSquare)));
+        if (st.CoverBleed is { } bleed && m.Kind == MiniFaceKind.Cover)
+            children.Add(new BoxEl
+            {
+                Key = H.BleedKey, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Margin = new Edges4(H.BleedX, H.BleedY, 0f, 0f),
+                Opacity = H.BleedAlpha, HitTestVisible = false, Children = [bleed(m.P.ArtistText(), w)],
+            });
+        if (lyrics)
+        {
+            float inset = MarkedInset(st);
+            children.Add(new BoxEl
+            {
+                Key = H.LyricsKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
+                Margin = new Edges4(inset, H.SquareLyricTop, H.SquareRestInset, H.SquareLyricFoot),
+                Children = [LyricWindow(m with { Media = true }, h - H.SquareLyricTop - H.SquareLyricFoot, H.LyricAnchorSquare, onDark: true)],
+            });
+        }
+        if (dark) children.Add(Shade(m.St));
         var hm = m with { Media = true };
         if (!m.Hot)
         {
+            var rm = dark ? hm : m;
             children.Add(new BoxEl
             {
                 Key = H.RestKey, AlignSelf = FlexAlign.End, Direction = 0, AlignItems = FlexAlign.End, Gap = st.Gap,
-                Padding = Edges4.All(st.Pad), Enter = s_fade, Exit = s_fade, HitTestVisible = false,
-                Children = [Meta(in m, detail: false, onMedia: !lyrics), m.V.Liked ? Saved(st, onMedia: !lyrics) : Spacer(), Badge(in m)],
+                Padding = new Edges4(H.SquareRestInset, 0f, H.SquareRestInset, H.SquareRestFoot), Enter = s_fade, Exit = s_fade, HitTestVisible = false,
+                Children = [Meta(rm, detail: false), Saved(rm), Badge(rm, inline: true)],
             });
-            children.Add(Hairline(in m));
+            children.Add(Edge(m));
         }
         else
             children.Add(new BoxEl
             {
-                Key = H.HoverKey, Grow = 1f, Direction = 1, Justify = FlexJustify.SpaceBetween, Padding = Edges4.All(st.Pad), Fill = st.Veil(),
-                Enter = s_fade, Exit = s_fade,
+                Key = H.HoverKey, Grow = 1f, Direction = 1, Justify = FlexJustify.SpaceBetween, Fill = st.Veil(),
+                Padding = new Edges4(H.SquareHoverPadX, H.SquareHoverTop, H.SquareHoverPadX, H.SquareHoverFoot), Enter = s_fade, Exit = s_fade,
                 Children =
                 [
-                    new BoxEl { Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
-                        Children = [FlipPair(in hm), ChromeButtons(in hm)] },
-                    new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Transport(in hm, st.PlayBox)] },
-                    new BoxEl { Direction = 1, Children = [SeekRow(in hm),
-                        new BoxEl { Direction = 0, Justify = FlexJustify.SpaceBetween, Children = [SaveButton(in hm), Device(in hm)] }] },
+                    new BoxEl
+                    {
+                        Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
+                        Children = [FlipPair(hm, withName: true), new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SquareTopGap,
+                            Children = [Device(hm, H.SquareTopButton), OptionsButton(hm, H.SquareTopButton), BackButton(hm, H.SquareTopButton)] }],
+                    },
+                    new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Transport(hm, st.PlayBigBox, H.SquareMidGap, H.SquareMidGlyph)] },
+                    new BoxEl
+                    {
+                        Direction = 1,
+                        Children = [SeekRow(hm), new BoxEl { Direction = 0, Margin = new Edges4(-H.CtrlBleedBottom, 0f, -H.CtrlBleedBottom, -H.CtrlBleedBottom), Children = [SaveButton(hm)] }],
+                    },
                 ],
             });
         return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
     }
 
-    static Element Tall(in Ctx ctx)
+    static Element Tall(Ctx ctx)
     {
         var st = ctx.St;
         bool immersive = ctx.Kind is MiniFaceKind.Canvas or MiniFaceKind.Visualizer or MiniFaceKind.Lyrics;
-        // Over the canvas and the analyser the panel reads on media ink; the lyrics face keeps the theme's ink over its own veil.
-        var m = immersive && ctx.Kind != MiniFaceKind.Lyrics ? ctx with { Media = true } : ctx;
-        var panel = new BoxEl
-        {
-            Direction = 1, Gap = st.Gap,
-            Children =
-            [
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = st.Gap, Children = [Meta(in m, detail: false, onMedia: m.Media), SaveButton(in m)] },
-                SeekRow(in m),
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
-                    Children = [Spacer(st.ButtonBox), Transport(in m, st.PlayBox), Device(in m)] },
-            ],
-        };
+        float w = ctx.Size.Width, h = ctx.Size.Height;
         if (immersive)
         {
+            var m = ctx with { Media = true };
             bool lyrics = m.Kind == MiniFaceKind.Lyrics;
-            var children = new List<Element>
+            var children = new List<Element>(6)
             {
-                lyrics ? FaceLayer(in m, m.Size.Width, MathF.Max(0f, m.Size.Height - H.TallPanel), MiniFaceUse.Fill) with { AlignSelf = FlexAlign.Start }
-                       : FaceLayer(in m, m.Size.Width, m.Size.Height, MiniFaceUse.Fill),
-                lyrics ? Spacer() : Shade(st),
-                new BoxEl { AlignSelf = FlexAlign.End, Padding = new Edges4(st.Pad, 0f, st.Pad, st.Pad), Children = [panel] },
+                FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsTall)),
+                Scrim(),
             };
-            if (m.Hot) children.Add(Chrome(in m));
+            if (!m.Hot)
+                children.Add(new BoxEl
+                {
+                    Key = H.LabelKey, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Margin = new Edges4(H.TallLabelX, H.TallLabelY, 0f, 0f),
+                    Enter = s_fade, Exit = s_fade, HitTestVisible = false, Children = [st.Label(m.P.FaceName(m.Face)) with { Color = m.Ink2 }],
+                });
+            if (lyrics)
+                children.Add(new BoxEl
+                {
+                    Key = H.LyricsKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
+                    Margin = new Edges4(MarkedInset(st), H.TallLyricTop, st.Pad, H.TallLyricFoot),
+                    Children = [LyricWindow(m, h - H.TallLyricTop - H.TallLyricFoot, H.LyricAnchorTall, onDark: true)],
+                });
+            children.Add(new BoxEl
+            {
+                AlignSelf = FlexAlign.End, Direction = 1, Gap = H.TallPanelGap, Padding = new Edges4(st.Pad, 0f, st.Pad, H.TallPadFoot),
+                Children = [Meta(m, detail: false, column: true), SeekRow(m), TallTransport(m)],
+            });
+            if (m.Hot) children.Add(Chrome(m, withPick: true));
             return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
         }
-        float art = MathF.Max(0f, MathF.Min(m.Size.Width - 2f * st.Pad, m.Size.Height * H.TallArtShare));
-        var column = new BoxEl
+        var c = ctx;
+        float art = MathF.Max(0f, MathF.Min(w - 2f * st.Pad, h - (c.Roomy ? H.TallFixedRoomy : H.TallFixed)));
+        var rows = new List<Element>(5)
         {
-            Grow = 1f, Direction = 1, Gap = st.Gap, Padding = Edges4.All(st.Pad),
-            Children = [new BoxEl { Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [FaceBox(in m, art, art, withFlip: false)] }, panel],
+            new BoxEl { Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [FaceBox(c, art, art, flip: false)] },
+            Meta(c, detail: true, column: true),
+            SeekRow(c),
+            TallTransport(c),
         };
-        var all = new List<Element> { column };
-        if (m.Hot) all.Add(Chrome(in m));
+        if (c.Roomy) rows.Add(VolumeRow(c));
+        var all = new List<Element>(3);
+        if (st.WaveEdge) all.Add(WaveBand(c, w, h * H.WaveBandShare));
+        all.Add(new BoxEl { Grow = 1f, Direction = 1, Gap = H.TallGap, Padding = new Edges4(st.Pad, H.TallPadTop, st.Pad, H.TallPadFoot), Children = rows.ToArray() });
+        if (c.Hot) all.Add(Chrome(c, withPick: true));
         return new BoxEl { Grow = 1f, ZStack = true, Children = all.ToArray() };
     }
 
-    // ══ PARTS ════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    static Element Meta(in Ctx m, bool detail, bool onMedia = false)
+    static Element TallTransport(Ctx m) => new BoxEl
     {
-        var st = m.St;
-        string title = m.Bar.TitleText();
-        string artist = m.P.ArtistText();
-        TextEl t = st.Title(title, m.Shape), a = st.Artist(artist);
-        if (onMedia) { t = t with { Color = H.OnMediaInk }; a = a with { Color = H.OnMediaInk with { A = H.OnMediaSecondaryAlpha } }; }
-        var lines = new List<Element> { t, a };
-        if (detail && m.P.DetailText() is { Length: > 0 } d) lines.Add(st.Detail(d));
-        return new BoxEl { Key = H.MetaKey, Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Gap = H.LineGap, Children = lines.ToArray() };
-    }
-
-    static Element Thumb(in Ctx m, float side) => new BoxEl
-    {
-        Width = side, Height = side, Shrink = 0f, ZStack = true, Cursor = CursorId.Hand, OnClick = m.P.BackToWavee,
-        Role = AutomationRole.Button,
-        Children = [m.P.FaceView(new MiniFaceRequest(m.Face, side, side, m.V.ArtUrl, m.St.ArtCorner, MiniFaceUse.Thumb)), Badge(in m)],
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
+        Margin = new Edges4(-H.CtrlBleedBottom, 0f, -H.CtrlBleedBottom, -H.CtrlBleedBottom),
+        Children = [SaveButton(m), Transport(m, m.St.PlayBigBox, H.TallTransportGap), Device(m)],
     };
-
-    static Element FaceBox(in Ctx m, float w, float h, bool withFlip)
-    {
-        var children = new List<Element> { FaceLayer(in m, w, h, MiniFaceUse.Box) };
-        if (withFlip && m.Hot) children.Add(new BoxEl { AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Center, Enter = s_fade, Exit = s_fade,
-            Fill = m.St.ChromePlate(), Corners = CornerRadius4.All(m.St.ChromeBox * 0.5f), Children = [FlipPair(in m)] });
-        return new BoxEl
-        {
-            Width = w, Height = h, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(m.St.ArtCorner),
-            Cursor = CursorId.Hand, OnClick = m.P.BackToWavee, Role = AutomationRole.Button,
-            Children = children.ToArray(),
-        };
-    }
-
-    /// <summary>The face, keyed by its index so a flip slides the new one in (from the side the flip went).</summary>
-    static BoxEl FaceLayer(in Ctx m, float w, float h, MiniFaceUse use)
-    {
-        float corner = use == MiniFaceUse.Fill ? 0f : m.St.ArtCorner;
-        var enter = m.FlipDir == 0 ? (EnterExit?)null : new EnterExit(Dx: m.FlipDir * w * H.FlipSlide, Opacity: 0f, Active: true);
-        return new BoxEl
-        {
-            Key = H.FaceKey + ":" + m.Face, Width = w, Height = h, ClipToBounds = true, Enter = enter, Exit = s_fade, HitTestVisible = false,
-            Children = [m.P.FaceView(new MiniFaceRequest(m.Face, w, h, m.V.ArtUrl, corner, use))],
-        };
-    }
-
-    static Element SeekRow(in Ctx m) => new BoxEl
-    {
-        Key = H.SeekKey, Height = m.St.ButtonBox, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SeekGap,
-        Children =
-        [
-            new BoxEl { MinWidth = H.TimeMinW, Children = [m.P.TimeLabel(false, m.Media ? H.OnMediaInk : null)] },
-            new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [m.Bar.SeekBar()] },
-            new BoxEl { MinWidth = H.TimeMinW, AlignItems = FlexAlign.End, Children = [m.P.TimeLabel(true, m.Media ? H.OnMediaInk : null)] },
-        ],
-    };
-
-    static Element Hairline(in Ctx m) => m.Bar.ProgressLine is { } line
-        ? new BoxEl { AlignSelf = FlexAlign.End, HitTestVisible = false, Children = [line()] }
-        : Spacer();
-
-    static Element Transport(in Ctx m, float playBox) => new BoxEl
-    {
-        Key = H.TransportKey, Direction = 0, AlignItems = FlexAlign.Center, Children = [Prev(in m), Play(in m, playBox), Next(in m)],
-    };
-
-    static Element Prev(in Ctx m)
-    {
-        var verbs = m.Bar.Verbs;
-        return Btn(m.St, Icons.Previous, () => verbs.Previous(), m.V.PrevEnabled && m.V.CanTransport, "", ink: m.Ink);
-    }
-
-    static Element Next(in Ctx m)
-    {
-        var verbs = m.Bar.Verbs;
-        return Btn(m.St, Icons.Next, () => verbs.Next(), m.V.NextEnabled && m.V.CanTransport, "", ink: m.Ink);
-    }
-
-    static Element Play(in Ctx m, float box)
-    {
-        var st = m.St;
-        var verbs = m.Bar.Verbs;
-        var primary = m.V.Primary;
-        Action? click = primary switch
-        {
-            PrimaryVerb.TogglePlay => () => verbs.TogglePlay("mini"),
-            PrimaryVerb.Retry => () => verbs.Retry(),
-            _ => null,
-        };
-        return new BoxEl
-        {
-            Key = H.PlayKey, Width = box, Height = box, Shrink = 0f, Corners = CornerRadius4.All(st.PlayCorner),
-            Fill = Tok.T.AccentDefault, HoverFill = Tok.T.AccentSecondary, PressedFill = Tok.T.AccentTertiary,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = CursorId.Hand, OnClick = click,
-            Role = AutomationRole.Button, Focusable = click is not null,
-            Children = [Glyph(m.V.PauseGlyph ? Icons.Pause : Icons.Play, st.PlayGlyph, Tok.T.TextOnAccentPrimary)],
-        };
-    }
-
-    static Element SaveButton(in Ctx m)
-    {
-        var verbs = m.Bar.Verbs;
-        var icon = m.V.FaceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, m.V.Liked) : ActionIcons.Resolve(ActionIcons.Heart, m.V.Liked);
-        return Btn(m.St, icon.Glyph ?? Icons.Heart, () => verbs.ToggleLike(), m.V.LikeEnabled, "", lit: m.V.Liked && !m.Media, ink: m.Ink) with { Key = H.SaveKey };
-    }
-
-    static Element Saved(MiniPlayerStyle st, bool onMedia = false) => new BoxEl
-    {
-        Width = st.ButtonGlyph, Height = st.ButtonGlyph, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Children = [Glyph(Icons.HeartFill, st.ChromeGlyph, onMedia ? H.OnMediaInk : Tok.T.AccentTextPrimary)],
-    };
-
-    static Element Device(in Ctx m)
-    {
-        var bar = m.Bar;
-        var overlay = m.Overlay;
-        var anchor = m.DeviceAnchor;
-        var menu = m.DeviceMenu;
-        bool remote = bar.DeviceIsRemote();
-        return Btn(m.St, Icons.Devices, () => bar.ToggleDevicePicker(overlay, anchor, menu), true, "", lit: remote && !m.Media,
-            onRealized: h => anchor.Value = h, ink: m.Ink) with { Key = H.DeviceKey };
-    }
-
-    static Element Options(in Ctx m)
-    {
-        var p = m.P;
-        var overlay = m.Overlay;
-        var anchor = m.OptionsAnchor;
-        var menu = m.OptionsMenu;
-        var st = m.St;
-        return ChromeBtn(st, Icons.More, () => OpenOptions(p, st, overlay, anchor, menu), Loc.Get(Strings.Mini.Options), m.Ink, h => anchor.Value = h)
-            with { Key = H.OptionsKey };
-    }
-
-    static Element Chrome(in Ctx m) => new BoxEl
-    {
-        Key = H.ChromeKey, Height = m.St.ChromeBox, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = Edges4.All(m.St.Gap * 0.5f),
-        Fill = m.St.ChromePlate(), Corners = CornerRadius4.All(m.St.ButtonCorner), Enter = s_fade, Exit = s_fade,
-        Children = [ChromeButtons(in m)],
-    };
-
-    static Element ChromeButtons(in Ctx m) => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center,
-        Children = [Options(in m), ChromeBtn(m.St, Icons.BackToWindow, m.P.BackToWavee, Loc.Get(Strings.Mini.Back), m.Ink) with { Key = H.BackKey }],
-    };
-
-    static Element FlipPair(in Ctx m)
-    {
-        var p = m.P;
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center,
-            Children =
-            [
-                ChromeBtn(m.St, Icons.ChevronLeft, () => p.StepFace(-1), Loc.Get(Strings.Mini.PrevFace), m.Ink),
-                ChromeBtn(m.St, Icons.ChevronRight, () => p.StepFace(1), Loc.Get(Strings.Mini.NextFace), m.Ink),
-            ],
-        };
-    }
-
-    static Element Badge(in Ctx m)
-    {
-        var st = m.St;
-        return new BoxEl
-        {
-            Width = st.Badge, Height = st.Badge, Shrink = 0f, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End,
-            Corners = CornerRadius4.All(st.PlayCorner), Fill = Tok.T.AccentDefault, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            HitTestVisible = false,
-            Children = [Glyph(m.V.PauseGlyph ? Icons.Pause : Icons.Play, st.Badge * H.BadgeGlyph, Tok.T.TextOnAccentPrimary)],
-        };
-    }
-
-    static Element Shade(MiniPlayerStyle st) => new BoxEl
-    {
-        Grow = 1f, HitTestVisible = false,
-        Gradient = new GradientSpec(GradientShape.Linear, H.ShadeAngle, [new GradientStop(H.ShadeFrom, st.Shade() with { A = 0f }), new GradientStop(1f, st.Shade())]),
-    };
-
-    static Element Spacer(float w = 0f) => new BoxEl { Width = w, Height = 0f, Shrink = 0f, HitTestVisible = false };
-
-    static Element Glyph(string glyph, float size, ColorF ink)
-        => new TextEl(glyph) { Size = size, FontFamily = Tok.Definition.Fonts.Icon, Color = ink };
-
-    static Element Btn(MiniPlayerStyle st, string glyph, Action? onClick, bool enabled, string tip, bool lit = false, Action<NodeHandle>? onRealized = null,
-        ColorF? ink = null)
-    {
-        ColorF baseInk = ink ?? Tok.T.TextPrimary;
-        ColorF glyphInk = !enabled ? baseInk with { A = baseInk.A * H.DisabledAlpha } : lit ? Tok.T.AccentTextPrimary : baseInk;
-        var b = new BoxEl
-        {
-            Width = st.ButtonBox, Height = st.ButtonBox, Shrink = 0f, Corners = CornerRadius4.All(st.ButtonCorner),
-            Fill = ColorF.Transparent, HoverFill = Tok.T.FillSubtleSecondary, PressedFill = Tok.T.FillSubtleTertiary,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = enabled ? CursorId.Hand : null,
-            OnClick = enabled ? onClick : null, Role = AutomationRole.Button, Focusable = enabled, OnRealized = onRealized,
-            Children = [Glyph(glyph, st.ButtonGlyph, glyphInk)],
-        };
-        return tip.Length > 0 ? ToolTip.Wrap(b, tip) : b;
-    }
-
-    static Element ChromeBtn(MiniPlayerStyle st, string glyph, Action onClick, string tip, ColorF ink, Action<NodeHandle>? onRealized = null)
-    {
-        var b = new BoxEl
-        {
-            Width = st.ChromeBox, Height = st.ChromeBox, Shrink = 0f, Corners = CornerRadius4.All(st.ButtonCorner),
-            Fill = ColorF.Transparent, HoverFill = Tok.T.FillSubtleSecondary, PressedFill = Tok.T.FillSubtleTertiary,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = CursorId.Hand, OnClick = onClick,
-            Role = AutomationRole.Button, Focusable = true, OnRealized = onRealized,
-            Children = [Glyph(glyph, st.ChromeGlyph, ink)],
-        };
-        return ToolTip.Wrap(b, tip);
-    }
-
-    // ══ OPTIONS ══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    static readonly MiniShape[] s_shapes = [MiniShape.Strip, MiniShape.Wide, MiniShape.Square, MiniShape.Tall];
-
-    static string ShapeName(MiniShape s) => s switch
-    {
-        MiniShape.Strip => Loc.Get(Strings.Mini.Strip),
-        MiniShape.Square => Loc.Get(Strings.Mini.Square),
-        MiniShape.Tall => Loc.Get(Strings.Mini.Tall),
-        _ => Loc.Get(Strings.Mini.Wide),
-    };
-
-    static void OpenOptions(MiniPlayerProps p, MiniPlayerStyle st, IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> menu)
-    {
-        if (menu.Value is { IsOpen: true } open) { open.Close(); return; }
-        menu.Value = overlay.Open(() => anchor.Value, () => OptionsBody(p, st, menu), FlyoutPlacement.BottomEdgeAlignedRight,
-            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-        menu.Value.ClosedAction = () => menu.Value = null;
-    }
-
-    static Element OptionsBody(MiniPlayerProps p, MiniPlayerStyle st, Ref<OverlayHandle?> menu)
-    {
-        var rows = new List<Element> { Head(Loc.Get(Strings.Mini.Shape)) };
-        foreach (var s in s_shapes)
-        {
-            var shape = s;
-            rows.Add(Row(ShapeName(shape), p.Shape.Peek() == shape, () => { p.SetShape(shape); menu.Value?.Close(); }));
-        }
-        rows.Add(Head(Loc.Get(Strings.Mini.Face)));
-        for (int i = 0; i < p.FaceCount; i++)
-        {
-            int f = i;
-            rows.Add(Row(p.FaceName(f), Math.Max(0, p.Face.Peek()) == f, () => p.SetFace(f)));
-        }
-        rows.Add(Row(Loc.Get(Strings.Mini.OnTop), p.OnTop.Peek(), () => { p.ToggleOnTop(); menu.Value?.Close(); }));
-        return new BoxEl { Width = H.OptionsW, Direction = 1, Padding = Edges4.All(H.OptionsPad), Children = rows.ToArray() };
-
-        Element Head(string text) => new BoxEl { Padding = Edges4.All(H.OptionsPad), Children = [st.Detail(text)] };
-
-        Element Row(string text, bool on, Action act) => new BoxEl
-        {
-            Height = H.OptionsRow, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SeekGap, Padding = new Edges4(H.OptionsPad, 0f, H.OptionsPad, 0f),
-            Corners = CornerRadius4.All(st.ButtonCorner), Fill = ColorF.Transparent, HoverFill = Tok.T.FillSubtleSecondary,
-            Cursor = CursorId.Hand, OnClick = act, Role = AutomationRole.MenuItem, Focusable = true,
-            Children = [new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [st.Artist(text) with { Color = on ? Tok.T.AccentTextPrimary : Tok.T.TextPrimary }] },
-                on ? Glyph(Icons.Accept, st.ChromeGlyph, Tok.T.AccentTextPrimary) : Spacer()],
-        };
-    }
 }

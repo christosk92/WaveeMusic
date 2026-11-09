@@ -189,6 +189,9 @@ public static partial class Platform
         public static readonly SettingKey<string> MiniPlayerRect = new("mini.window.rect", "");
         public static readonly SettingKey<int> MiniPlayerFace = new("mini.face", 0);
         public static readonly SettingKey<bool> MiniPlayerOnTop = new("mini.window.ontop", true);
+        /// <summary>The mini player's "Colour from album art" per theme slot (#197): bit <c>slot</c> set = chosen on, bit <c>slot + 8</c> set =
+        /// chosen off, neither = the theme's default (Classic on, WinUI and Zune off).</summary>
+        public static readonly SettingKey<int> MiniPlayerArtColour = new("mini.artcolour", 0);
 
         // ── local playback runtime (the provisioning card; RuntimePhase below). Path, pack and catalog are read and written by the
         // private PlayPlay module's provisioner, which is not in this repository. ──

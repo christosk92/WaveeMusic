@@ -75,6 +75,14 @@ public static partial class Shell
     /// <summary>The mini player bar's progress hairline (TC2): the same rail host, drawn as a line with no thumb and no hit test.</summary>
     public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true));
 
+    /// <summary>The same rail host drawn by its caller instead of the theme's `Player.SeekRail` (the mini player draws its own rail and edge
+    /// line, #197). The drawing is RE-PUSHED (the caller's ink, accent and hover change it); the scrub machinery is the bar's.</summary>
+    public static Element SeekBarDrawn(Func<SeekRailProps, Element> draw)
+        => Embed.Comp(new SeekRailDraw(draw), static () => new BarSeekRail(drawn: true));
+
+    /// <summary>The caller's drawing of a <see cref="SeekBarDrawn"/> rail.</summary>
+    sealed record SeekRailDraw(Func<SeekRailProps, Element> Draw);
+
     /// <summary>A transport time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>). <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
     /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
@@ -323,6 +331,9 @@ public static partial class Shell
             case OverflowCommand.FullScreen:
                 // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
                 return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
+            case OverflowCommand.Mini:
+                // The mini player's door at the tiers without the row's button (PlayerBarRules.Overflow, #197).
+                return new MenuFlyoutItem(Loc.Get(Strings.Mini.Title), Icons.BackToWindow, true, static () => MiniPlayer.Toggle("bar-overflow"));
             case OverflowCommand.Video:
             {
                 bool live = Video.PlacementCore.IsActive(Video.State.Surface.Peek());
@@ -466,9 +477,13 @@ public static partial class Shell
         bool _rowGate, _rowReseed;
         readonly Action _syncRows;
 
-        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false)
+        readonly bool _drawn;   // the caller draws (SeekBarDrawn): the props carry its drawing
+
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false,
+            bool drawn = false)
         {
             _hairline = hairline;
+            _drawn = drawn;
             _chromeFeed = chromeFeed;
             _onScrubbing = onScrubbing;
             _reveal = reveal;
@@ -495,6 +510,7 @@ public static partial class Shell
 
         public override Element Render()
         {
+            var draw = _drawn ? UseProps<SeekRailDraw>().Draw : null;
             var gate = _scrub.Gate();
             bool enabled = gate.Enabled;
             bool pending = gate.Pending;
@@ -528,6 +544,8 @@ public static partial class Shell
 
             // NOTHING TO REWIND: the rail stops pretending to be one (the view draws the live line). After every hook, so the hook
             // order never varies.
+            if (draw is not null)
+                return draw(new SeekRailProps { Host = this, Enabled = enabled, Pending = pending, Line = mode == SeekRailMode.Line, Dvr = mode == SeekRailMode.Dvr });
             if (mode == SeekRailMode.Line)
                 return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Line = true });
             if (_hairline)

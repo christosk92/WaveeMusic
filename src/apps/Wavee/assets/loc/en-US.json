@@ -2050,7 +2050,17 @@
     "wide": "Wide",
     "square": "Square",
     "tall": "Tall",
-    "lyrics": "Lyrics"
+    "lyrics": "Lyrics",
+    "artColour": "Colour from album art",
+    "dragHint": "Or drag any edge to any shape.",
+    "faceNote": "The full player's styles, plus Lyrics.",
+    "shortcut": "Ctrl+Alt+M switches between this and the full app",
+    "playOn": "Play on",
+    "thisComputer": "This computer",
+    "otherDevices": "Other devices",
+    "volume": "Volume",
+    "instrumental": "Instrumental · no lyrics",
+    "noLyrics": "No synced lyrics for this song"
   },
   "player": {
     "seekBack10": "Back 10 seconds",

@@ -106,12 +106,6 @@ public static partial class Lyrics
         }
     }
 
-    // MOUNT POINT (#197)
-    /// <summary>The mini player's Lyrics face: the SAME reading view, ticking only while <paramref name="visible"/> (the mini window
-    /// shows the face), on media ink when it fills the window over a backdrop. A strip uses <see cref="NpvPeek"/> instead.</summary>
-    public static Element MiniView(Func<bool> visible, bool onMedia)
-        => Embed.Comp(() => new ViewCore(large: false, onMedia: onMedia, visible: visible)) with { Key = onMedia ? "lyrics:mini:media" : "lyrics:mini" };
-
     // MOUNT POINT (stage B contract)
     /// <summary>The now-playing panel's two-row lyrics reel. Absent — a bare zero-size box, no spine, no gap — unless
     /// the playing track has a timed document.</summary>
