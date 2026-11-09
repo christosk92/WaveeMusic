@@ -69,6 +69,7 @@ internal static class WinUiMiniPlayer
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
         HoverInMs = M.HoverInMs,
         HoverOutDelayMs = M.HoverOutDelayMs,
+        WideDetailFrom = M.WideDetailFrom,
     };
 
     /// <summary>Rounded accent bars rising from the foot, lit toward white at their tops, one per band (a bound scale: no re-render).</summary>

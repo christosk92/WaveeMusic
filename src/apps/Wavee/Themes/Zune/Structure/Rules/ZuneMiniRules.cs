@@ -19,6 +19,9 @@ internal static class ZuneMiniRules
     public const float Pad = 14f, Gap = 14f, StripPadStart = 10f, StripThumb = 40f, StripGap = 11f, Badge = 18f;
     public const float TintAlpha = 0.15f, Tint2Alpha = 0.28f, VeilAlpha = 0.52f, ShadeAlpha = 0.72f;
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
+    /// <summary>The wide card shows its third line (album, or "Playing on") from this art-box height: below it the title, the artist, the seek
+    /// row and the transport fill the column.</summary>
+    public const float WideDetailFrom = 142f;
 
     /// <summary>The title's display size per shape (strip 23, wide 27, square 28, tall 30): large and light, never shrunk to fit; it bleeds
     /// past the column to the window's edge under a fade instead (owner rule). The fade's run.</summary>

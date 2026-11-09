@@ -150,9 +150,11 @@ public static partial class CanvasVideo
         {
             var p = UseProps<VideoProps>();
             var surface = p.Surface;
+            var occluded = UseContext(InputHooks.Current).WindowOccluded;   // THIS element's window (the mini player's is not the main one)
             UseEffect(() =>
             {
                 BindSurface(surface);
+                BindWindow(occluded);
                 return () => UnbindSurface(surface);
             }, DepKey.Empty);
             float radius = p.Radius;

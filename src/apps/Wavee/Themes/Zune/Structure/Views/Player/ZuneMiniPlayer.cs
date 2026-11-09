@@ -81,6 +81,7 @@ internal static class ZuneMiniPlayer
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
         HoverInMs = M.HoverInMs,
         HoverOutDelayMs = M.HoverOutDelayMs,
+        WideDetailFrom = M.WideDetailFrom,
     };
 
     /// <summary>A thin centred waveform: 2-DIP bars spread edge to edge, growing both ways from the middle line, pink with every third white.</summary>

@@ -16,8 +16,8 @@ versions separately under `v*` and is not tracked in this file.)
   or a tall 9:16 column; on release it settles on the nearest shape and snaps into a screen corner. Pick what fills it:
   the cover, lyrics (a karaoke ticker in the strip), the Canvas, the visualizer or a player style (vinyl, CD, cassette,
   reel). It looks like your theme: WinUI's acrylic card, Zune's big type and pink, Classic's album-coloured wash with its
-  wave edge and rippling seek line; "Colour from album art" in its options tints it from the cover. Scroll over it to
-  change the volume. Open it from the new button in the player bar (or its ⋯ menu when the bar is narrow), with
+  wave edge and rippling seek line. Its ⋯ menu is your theme's own menu (shape, face, keep on top, "Colour from album
+  art", back to Wavee), and its device button opens the player bar's own device picker. Scroll over it to change the volume. Open it from the new button in the player bar (or its ⋯ menu when the bar is narrow), with
   Ctrl+Alt+M, or from the taskbar's right-click menu; the full window hides while it is open and comes back from the art,
   the back button or any way you bring Wavee back, and the music never stops (#197).
 

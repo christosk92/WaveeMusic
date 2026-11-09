@@ -132,13 +132,20 @@ public static partial class CanvasVideo
     internal static void BindSurface(Surface s) => Bound.Value = s;
     internal static void UnbindSurface(Surface s)
     {
-        if (Bound.Peek() == s) Bound.Value = Surface.None;
+        if (Bound.Peek() == s) { Bound.Value = Surface.None; s_presenterOccluded.Value = null; }
         if (Presented.Peek() == s) Presented.Value = Surface.None;
         if (Owner.Peek() == s || Owner.Peek() == Surface.None) InView.Value = false;
     }
 
     /// <summary>The owner element's in-view report.</summary>
     internal static void NoteInView(bool inView) => InView.Value = inView;
+
+    /// <summary>The occlusion of the WINDOW the presenting element is in (its host's <c>InputHooks.WindowOccluded</c>), or null while none
+    /// presents. The mini player (#197) presents in its own window while the main one is hidden, and a hidden window reads as occluded: gating
+    /// the player on the main window's occlusion held the mini's Canvas paused on its first frame.</summary>
+    static readonly Signal<Signal<bool>?> s_presenterOccluded = new(null);
+
+    internal static void BindWindow(Signal<bool>? occluded) => s_presenterOccluded.Value = occluded;
 
     /// <summary>Does this surface mount the element now: it owns the player and the previous presenter has let go.</summary>
     public static bool Presents(Surface s)
@@ -174,7 +181,7 @@ public static partial class CanvasVideo
             UseSignalEffect(Publish);
 
             // 3. THE PLAYER: open / play / pause / stop.
-            UseSignalEffect(() => Drive(hooks.WindowOccluded?.Value ?? false));
+            UseSignalEffect(() => Drive((s_presenterOccluded.Value ?? hooks.WindowOccluded)?.Value ?? false));
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }

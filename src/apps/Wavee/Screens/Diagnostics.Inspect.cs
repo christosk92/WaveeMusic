@@ -842,9 +842,14 @@ public static partial class Diagnostics
             if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
             // `mini=1` (#197): the mini player window's content ALONE at w x h (its shape follows the size), `face=<0..7>` its face. The
             // mini player reads as open, so its animated faces run as they do in the window.
+            // `deskW`/`deskH`: the window sits at the bottom-right corner of a screen that size, so its menus (which escape the window into
+            // popups over the screen) render where they open.
             bool mini = a.Has("mini") && a.Str("mini") != "false";
             MiniPlayer.InspectMount(mini, a.Has("face") ? (int)a.Float("face", 0f) : -1);
-            _shell = MountOn(w0, h0, scale, gpu, images == "real", dt, mini ? MiniPlayer.InspectContent : null);
+            float deskW = a.Float("deskW", 0f), deskH = a.Float("deskH", 0f);
+            bool desk = mini && deskW >= w0 && deskH >= h0 && deskW > 0f;
+            _shell = MountOn(desk ? deskW : w0, desk ? deskH : h0, scale, gpu, images == "real", dt,
+                mini ? (desk ? MiniPlayer.InspectDesk(new Size2(w0, h0)) : MiniPlayer.InspectContent) : null);
             _frames++;
             _mounts++;
             mounted = true;

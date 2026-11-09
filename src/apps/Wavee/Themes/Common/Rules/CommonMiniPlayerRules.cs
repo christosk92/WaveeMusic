@@ -2,7 +2,7 @@
 //
 // Theme numbers (button boxes, radii, paddings, type) live in each theme's MiniPlayerStyle; these are the shape-independent
 // constants of the Common template, read off the approved prototype (scratchpad miniplayer/index.html): node keys, the face-flip
-// slide, the strip overlay's fade run, the square's and the tall column's insets, the lyric windows, the flyouts.
+// slide, the strip overlay's fade run, the square's and the tall column's insets, the lyric windows, the menus.
 
 using FluentGpu.Foundation;
 
@@ -14,7 +14,7 @@ internal static class CommonMiniPlayerRules
         SeekKey = "mini.seek", HoverKey = "mini.hover", RestKey = "mini.rest", MetaKey = "mini.meta", PlayKey = "mini.play",
         SaveKey = "mini.save", DeviceKey = "mini.device", OptionsKey = "mini.options", BackKey = "mini.back", FlipKey = "mini.flip",
         EdgeKey = "mini.edge", HudKey = "mini.hud", LyricsKey = "mini.lyrics", TickerKey = "mini.ticker", BleedKey = "mini.bleed",
-        LabelKey = "mini.label", VolumeKey = "mini.volume", ShapeKey = "mini.shape", OptionsBodyKey = "mini.options.body", DevicesBodyKey = "mini.devices.body";
+        LabelKey = "mini.label", VolumeKey = "mini.volume", ShapeKey = "mini.shape";
 
     /// <summary>The face flip slides the new face in from this fraction of its box.</summary>
     public const float FlipSlide = 0.18f;
@@ -67,6 +67,9 @@ internal static class CommonMiniPlayerRules
     // ── square ──
     /// <summary>The square's resting row (inset, foot inset), the object faces' and Classic cover's foot band, the hover layer's padding.</summary>
     public const float SquareRestInset = 14f, SquareRestFoot = 13f, SquareObjectFoot = 62f, SquareWaveFoot = 66f;
+    /// <summary>The square's hover bar names the face between its arrows from this width: narrower, the arrows, the device, options and back
+    /// keep their 40-DIP reach instead.</summary>
+    public static bool SquareNamesFace(float width) => width >= 300f;
     public const float SquareHoverPadX = 10f, SquareHoverTop = 8f, SquareHoverFoot = 10f, SquareTopButton = 36f, SquareTopGap = 4f, SquareMidGap = 14f, SquareMidGlyph = 22f;
     /// <summary>The resting shade starts at this fraction of the height (its angle: top to bottom).</summary>
     public const float ShadeFrom = 0.45f, ShadeAngle = 90f;
@@ -96,8 +99,11 @@ internal static class CommonMiniPlayerRules
     public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 16f, TallLyricFoot = 186f, LyricInsetMarked = 4f;
     /// <summary>The wide lyrics face's one-line head (title · artist) above its window.</summary>
     public const float WideLyricHead = 18f;
-    /// <summary>Air the wide lyric window leaves to the column, so the time labels keep their reach clear of the transport row.</summary>
-    public const float WideLyricSlack = 10f;
+    /// <summary>Air the wide lyric window leaves to the column, so the time labels keep their reach clear of the transport row; the air goes
+    /// first when the window would drop below WideLyricMin (one active line and its top room).</summary>
+    public const float WideLyricSlack = 10f, WideLyricMin = 30f;
+    /// <summary>The least room above a lyric window's active line (its mark never touches what is above the window).</summary>
+    public const float LyricTopRoom = 3f;
     /// <summary>The ticker's start bar gap.</summary>
     public const float TickerBarGap = 9f;
 
@@ -113,12 +119,10 @@ internal static class CommonMiniPlayerRules
     public const float HudMs = 900f, HudPadX = 12f, HudPadY = 6f, HudGap = 8f, HudCorner = 16f, HudGlyph = 16f;
     public static readonly ColorF HudPlate = new(0f, 0f, 0f, 0.72f);
 
-    // ── flyouts ──
-    /// <summary>The flyouts' width, padding, row height (a 44-DIP target), tile gap, the shape tile's picture box and stroke.</summary>
-    public const float FlyoutW = 284f, FlyoutPad = 6f, RowH = 44f, RowPadX = 8f, RowGap = 10f, TileGap = 4f, TileMinH = 44f, FaceTileMinH = 40f;
-    public const float ShapePicW = 40f, ShapePicH = 34f, ShapeStroke = 1.5f, ShapeCorner = 2f, ShapeMinH = 5f, ShapeDivW = 12f, ShapeDivH = 16f;
-    public const float TileRing = 1.5f, HeadPadX = 8f, HeadPadTop = 6f, HeadPadFoot = 4f, GroupPadTop = 8f, GroupPadFoot = 2f, NotePadFoot = 6f;
-    public const float RuleW = 1f, FootPadTop = 8f, FootPadFoot = 4f, CheckW = 18f, TilePadY = 5f, TileTextGap = 3f;
-    /// <summary>The shape tiles draw each shape at its default size (the prototype's 360, 392, 288, 288 widths).</summary>
-    public const float StripTileW = 360f, WideTileW = 392f, SquareTileW = 288f, TallTileW = 288f, StripRatio = 6f, WideRatio = 2.4f, TallRatio = 0.5625f;
+    // ── menus ──
+    /// <summary>The Options menu's shape icons (vector icons, `MiniShapeIcons`) and the shortcut its "Back to Wavee" row shows.</summary>
+    public const string ShapeIconStrip = "mini.shape.strip", ShapeIconWide = "mini.shape.wide", ShapeIconSquare = "mini.shape.square",
+        ShapeIconTall = "mini.shape.tall", BackAccelerator = "Ctrl+Alt+M";
+    /// <summary>The chrome pill's hairline.</summary>
+    public const float RuleW = 1f;
 }

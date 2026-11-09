@@ -362,18 +362,28 @@ public static partial class Shell
     /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window. The body re-renders WHILE OPEN
     /// (a transfer landing swaps the checks in place, parity 79).</summary>
     internal static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
+        => ToggleDevicePicker(overlay, anchor, handle, escapeRoomDip: 0f);
+
+    /// <summary>The same picker from a window too small to hold it (the mini player, #197): it escapes into a popup window over the screen,
+    /// its roster capped by <paramref name="screenRoomDip"/> (the work area's height at that window, DIP) instead of its own window's.</summary>
+    internal static void EscapedToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle, float screenRoomDip)
+        => ToggleDevicePicker(overlay, anchor, handle, MathF.Max(1f, screenRoomDip));
+
+    static void ToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle, float escapeRoomDip)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
         PlayerVerbs.Default.OpenDevicePicker();                                // the cluster hears it, as the official client's picker does
         var props = RailWiring.DevicePicker(() => handle.Value?.Close());      // built once per open: the content builder may run again
+        bool escape = escapeRoomDip > 0f;
+        if (escape) props = props with { MaxHeight = _ => DeviceRoster.PickerMaxHeight(escapeRoomDip) };
         handle.Value = overlay.Open(
             () => anchor.Value,
             () => ViewSlots.View(ViewKeys.DevicePicker, props),
             FlyoutPlacement.TopEdgeAlignedRight,
-            // The roster already caps itself to the window (PickerMaxHeight = height - 96), so it never needs to
+            // The roster already caps itself to the window (PickerMaxHeight = height - 96), so in the main window it never needs to
             // escape the root bounds -- and NOT escaping is what keeps it on the engine's in-window acrylic path
-            // instead of leasing a popup window, whose flat plate the owner rejected.
-            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
+            // instead of leasing a popup window, whose flat plate the owner rejected. A window smaller than the roster escapes.
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = !escape });
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 

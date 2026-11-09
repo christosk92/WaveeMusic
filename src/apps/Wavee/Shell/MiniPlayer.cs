@@ -81,7 +81,7 @@ public static partial class MiniPlayer
         public static (float Min, float Max) WidthRange(MiniShape s) => s switch
         {
             MiniShape.Strip => (300f, 520f),
-            MiniShape.Wide => (340f, 560f),
+            MiniShape.Wide => (380f, 560f),   // 340 (the prototype's) left a Zune title, the seek and the transport no room at 142 tall
             MiniShape.Square => (260f, 400f),
             _ => (232f, 330f),
         };
@@ -242,6 +242,7 @@ public static partial class MiniPlayer
     /// <summary>A shape the Options asked for (the owner resizes to it), with a sequence so the same shape twice still acts.</summary>
     static readonly Signal<(MiniShape Shape, int Seq)> s_shapeRequest = new((MiniShape.Wide, 0));
     static Size2 s_clientDip;   // the mini window's last viewport (DIP), for the settle's chrome arithmetic
+    static IDetachedVideoWindow? s_live;   // the open mini window (its work area caps an escaping menu)
     static float s_scale = 1f;
 
     static void EnsurePrefs()
@@ -345,6 +346,14 @@ public static partial class MiniPlayer
         return track.IsValid && track.Album.IsValid ? track.Album.Title : "";
     }
 
+    /// <summary>The height of the work area the mini window sits on (DIP): what a menu escaping the window can use.</summary>
+    static float ScreenRoomDip()
+    {
+        var at = s_live is { IsOpen: true } w ? new Point2(w.BoundsPx.X + w.BoundsPx.W * 0.5f, w.BoundsPx.Y + w.BoundsPx.H * 0.5f) : default;
+        var work = Win32App.WorkAreaAt(at);
+        return work.IsInfinite || work.H <= 0f ? 0f : work.H / s_scale;
+    }
+
     /// <summary>The ONE props record (every member stable).</summary>
     static readonly MiniPlayerProps s_props = new()
     {
@@ -371,8 +380,7 @@ public static partial class MiniPlayer
         AlbumAccent = AlbumAccent,
         SeekRail = static draw => Shell.SeekBarDrawn(draw),
         Lyrics = static draw => Lyrics.Mini(draw, s_lyricsVisible),
-        DevicePicker = static close => RailWiring.DevicePicker(close),
-        DevicePickerOpened = static () => PlayerVerbs.Default.OpenDevicePicker(),
+        ToggleDevicePicker = static (overlay, anchor, handle) => Shell.EscapedToggleDevicePicker(overlay, anchor, handle, ScreenRoomDip()),
         VolumeHud = s_volumeHud,
         CanSave = static () => Playback.Current.Value is { IsNone: false } c && c.Kind is EntityKind.Track or EntityKind.Episode,
         Roomy = s_roomy,
@@ -382,6 +390,36 @@ public static partial class MiniPlayer
     /// providers), with the mini player reading as open so its faces run.</summary>
     internal static readonly Func<Element> InspectContent = static () =>
         OverlayHost.Create(Embed.Comp(static () => new Body()), isPrimaryToastHost: false);
+
+    /// <summary>The inspector's `mount mini=1 deskW= deskH=`: the window's content at <paramref name="window"/> in the bottom-right corner of a
+    /// stand-in screen, under ONE overlay host spanning the screen, so a menu that escapes the real window draws where it would open.</summary>
+    internal static Func<Element> InspectDesk(Size2 window) => () =>
+        OverlayHost.Create(Embed.Comp(new DeskProps(window), static () => new Desk()), isPrimaryToastHost: false);
+
+    sealed record DeskProps(Size2 Window);
+
+    sealed class Desk : Component
+    {
+        static readonly ColorF Screen = new(0.5f, 0.5f, 0.52f, 1f);
+
+        public override Element Render()
+        {
+            var w = UseProps<DeskProps>().Window;
+            return new BoxEl
+            {
+                Grow = 1f, AlignSelf = FlexAlign.Stretch, ZStack = true, Fill = Screen,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Width = w.Width, Height = w.Height, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Direction = 1, ClipToBounds = true,
+                        Margin = new Edges4(0f, 0f, Rules.EdgeDip, Rules.EdgeDip),
+                        Children = [Ctx.Provide(Viewport.Size, w, Embed.Comp(static () => new Body()))],
+                    },
+                ],
+            };
+        }
+    }
 
     internal static void InspectMount(bool mini, int face)
     {
@@ -436,6 +474,7 @@ public static partial class MiniPlayer
     /// and the theme's material, settles and snaps the window when a gesture ends, and holds the global hot key.</summary>
     public sealed class Owner : Component
     {
+        static readonly Action<FrameStats> s_shellTick = Shell.FrameTick;
         IDetachedVideoWindow? _window;
         bool _openQueued, _unmounted, _ownBounds;
         RectF _settleFrom, _settleTo;
@@ -549,12 +588,14 @@ public static partial class MiniPlayer
                 return;
             }
             _window = window;
+            s_live = window;
             window.PowerCapFps = Rules.FrameCap(s_faces[ClampFace(s_face.Peek())].Kind);
             window.SetTitle(Title());
             window.OnClosed = () =>
             {
                 // The OS closed it (Alt+F4, the taskbar): the full window comes back, exactly as "back to Wavee".
                 _window = null;
+                s_live = null;
                 if (IsOpen.Peek()) IsOpen.Value = false;
                 ShowMain();
             };
@@ -628,9 +669,11 @@ public static partial class MiniPlayer
         {
             var w = _window;
             _window = null;
+            s_live = null;
             if (w is not null)
             {
                 Persist(w.BoundsPx);
+                w.FrameCompleted = null;
                 w.OnClosed = null;
                 w.BoundsChanged = null;
                 w.Close();
@@ -643,12 +686,18 @@ public static partial class MiniPlayer
             if (_deepWas < 0) { _deepWas = HiddenMemoryBudget.DeepDelayMs; HiddenMemoryBudget.DeepDelayMs = Rules.DeepAfterMs; }
             FluentApp.SetWindowVisible(false);
             _mainHidden = true;
+            // The shell's frame tick (the fetch drain, the palette's grading debounce, the publish cadence) rides the MAIN window's
+            // rendered frames, and a hidden main window renders none: a cover first played while the mini player is the only surface
+            // was never graded, so "Colour from album art" fell back to the system accent. While the main window is hidden, this
+            // window's frames are the clock.
+            if (_window is { IsOpen: true } w) w.FrameCompleted = s_shellTick;
             Log.Info(LogCategory, "main window hidden");
         }
 
         void ShowMain()
         {
             if (_deepWas >= 0) { HiddenMemoryBudget.DeepDelayMs = _deepWas; _deepWas = -1; }
+            if (_window is { } w) w.FrameCompleted = null;
             _mainHidden = false;
             Tray.Host.ShowWindow();   // un-hide, restore and bring to the front through the engine seam (the tray's door)
             Log.Info(LogCategory, "main window shown");

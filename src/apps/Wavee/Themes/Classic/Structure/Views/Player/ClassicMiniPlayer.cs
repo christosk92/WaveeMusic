@@ -75,6 +75,7 @@ internal static class ClassicMiniPlayer
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
         HoverInMs = M.HoverInMs,
         HoverOutDelayMs = M.HoverOutDelayMs,
+        WideDetailFrom = M.WideDetailFrom,
     };
 
     // ══ THE WAVE SEEK RAIL ═══════════════════════════════════════════════════════════════════════════════════════════════

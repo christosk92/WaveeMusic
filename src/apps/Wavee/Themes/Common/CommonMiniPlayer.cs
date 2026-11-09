@@ -43,10 +43,11 @@ internal static partial class CommonMiniPlayer
     /// it slides in. Declared swap families: the parts under them are rebuilt on purpose.</summary>
     static readonly EnterExit s_shapeSwap = SwapFamilies.Declare("mini.shape", s_fade), s_faceSwap = SwapFamilies.Declare("mini.face", s_fade);
 
-    /// <summary>The flyouts' anchors and handles (one set per window).</summary>
+    /// <summary>The menus' anchor (the window itself: they open above it, or below it, never over its controls) and handles (one set
+    /// per window).</summary>
     sealed class Anchors
     {
-        public readonly Ref<NodeHandle> Device = new(default), Options = new(default);
+        public readonly Ref<NodeHandle> Window = new(default);
         public readonly Ref<OverlayHandle?> DeviceMenu = new(null), OptionsMenu = new(null);
     }
 
@@ -115,6 +116,7 @@ internal static partial class CommonMiniPlayer
         return new BoxEl
         {
             Key = H.RootKey, Grow = 1f, AlignSelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true, Fill = st.Ground(accent),
+            OnRealized = h => anchors.Window.Value = h,
             OnPointerMoveWithin = _ => { hotFall.Cancel(); if (!hot.Peek()) hot.Value = true; },
             OnPointerExit = () => hotFall.RestartIn(st.HoverOutDelayMs),
             OnPointerWheel = e => p.WheelVolume(e.Steps),
@@ -196,11 +198,11 @@ internal static partial class CommonMiniPlayer
                     new BoxEl
                     {
                         Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Margin = new Edges4(-LyricBleed(st), 0f, 0f, 0f),
-                        Children = [LyricWindow(m, MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - (st.ButtonBox - H.CtrlBleedBottom) - 2f * H.WideColGap - H.WideLyricSlack), H.LyricAnchorWide, onDark: false)],
+                        Children = [LyricWindow(m, WideLyricHeight(st, box), H.LyricAnchorWide, onDark: false)],
                     },
                 ],
             }
-            : Meta(m, detail: true, reserve: m.Hot ? chromeW : 0f, column: true);
+            : Meta(m, detail: box >= st.WideDetailFrom, reserve: m.Hot ? chromeW : 0f, column: true);
         var col = new BoxEl
         {
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.SpaceBetween, Gap = H.WideColGap,
@@ -222,6 +224,14 @@ internal static partial class CommonMiniPlayer
         };
         if (m.Hot) children.Add(Chrome(m, withPick: false));
         return new BoxEl { Grow = 1f, ZStack = true, Children = children.ToArray() };
+    }
+
+    /// <summary>The wide card's lyric window: what the column leaves under the title line, the seek row and the transport, less some air for
+    /// the time labels, but never so little that the active line no longer fits (the air goes first).</summary>
+    static float WideLyricHeight(MiniPlayerStyle st, float box)
+    {
+        float room = MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - (st.ButtonBox - H.CtrlBleedBottom) - 2f * H.WideColGap);
+        return room - Math.Clamp(room - H.WideLyricMin, 0f, H.WideLyricSlack);
     }
 
     static Element Square(Ctx m)
@@ -282,7 +292,7 @@ internal static partial class CommonMiniPlayer
                     new BoxEl
                     {
                         Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
-                        Children = [FlipPair(hm, withName: true), new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SquareTopGap,
+                        Children = [FlipPair(hm, withName: H.SquareNamesFace(w)), new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SquareTopGap,
                             Children = [Device(hm, H.SquareTopButton), OptionsButton(hm, H.SquareTopButton), BackButton(hm, H.SquareTopButton)] }],
                     },
                     new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Transport(hm, st.PlayBigBox, H.SquareMidGap, H.SquareMidGlyph)] },

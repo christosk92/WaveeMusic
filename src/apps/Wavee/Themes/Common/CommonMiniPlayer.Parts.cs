@@ -298,13 +298,10 @@ internal static partial class CommonMiniPlayer
     static Element Device(Ctx m, float box = 0f)
     {
         var p = m.P;
-        var st = m.St;
         var overlay = m.Overlay;
         var a = m.A;
         bool remote = m.Bar.DeviceIsRemote();
-        var accent = m.Accent;
-        return Btn(m, Icons.Devices, () => OpenDevices(p, st, accent, overlay, a), true, Loc.Get(Strings.Mini.PlayOn), lit: remote,
-            onRealized: h => a.Device.Value = h, box: box) with { Key = H.DeviceKey };
+        return Btn(m, Icons.Devices, () => OpenDevices(p, overlay, a), true, Loc.Get(Strings.Mini.PlayOn), lit: remote, box: box) with { Key = H.DeviceKey };
     }
 
     static Element OptionsButton(Ctx m, float box)
@@ -313,8 +310,7 @@ internal static partial class CommonMiniPlayer
         var st = m.St;
         var overlay = m.Overlay;
         var a = m.A;
-        var accent = m.Accent;
-        return Btn(m, Icons.More, () => OpenOptions(p, st, accent, overlay, a), true, Loc.Get(Strings.Mini.Options), onRealized: h => a.Options.Value = h,
+        return Btn(m, Icons.More, () => OpenOptions(p, st, overlay, a), true, Loc.Get(Strings.Mini.Options),
             box: box, glyph: box < st.ButtonBox ? st.ChromeGlyph : 0f) with { Key = H.OptionsKey };
     }
 
@@ -464,8 +460,7 @@ internal static partial class CommonMiniPlayer
     static Element Glyph(string glyph, float size, ColorF ink)
         => new TextEl(glyph) { Size = size, FontFamily = Tok.Definition.Fonts.Icon, Color = ink };
 
-    static BoxEl Btn(Ctx m, string icon, Action? onClick, bool enabled, string tip, bool lit = false, Action<NodeHandle>? onRealized = null,
-        float box = 0f, float glyph = 0f)
+    static BoxEl Btn(Ctx m, string icon, Action? onClick, bool enabled, string tip, bool lit = false, float box = 0f, float glyph = 0f)
     {
         var st = m.St;
         float b = box > 0f ? box : st.ButtonBox;
@@ -476,7 +471,7 @@ internal static partial class CommonMiniPlayer
             Width = b, Height = b, Shrink = 0f, Corners = CornerRadius4.All(st.ButtonCorner),
             Fill = ColorF.Transparent, HoverFill = HoverPlate(m), PressedFill = HoverPlate(m),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = enabled ? CursorId.Hand : null,
-            OnClick = enabled ? onClick : null, Role = AutomationRole.Button, Focusable = enabled, OnRealized = onRealized,
+            OnClick = enabled ? onClick : null, Role = AutomationRole.Button, Focusable = enabled,
             Children = [Glyph(icon, g, ink)],
         };
     }
@@ -542,13 +537,18 @@ internal static partial class CommonMiniPlayer
             }
             float height = p.Height;
             bool measured = _h[active] > 0f;
-            float offset = measured ? height * p.Anchor - (_top[active] + _h[active] * 0.5f) : 0f;
+            // The active line sits at the window's anchor, but never closer to its top than LyricTopRoom (a short window, the wide card's
+            // under its title, would otherwise push the line's mark against the title row), and the top fade covers only the room above it:
+            // the line the music is on is never faded.
+            float lineTop = measured ? MathF.Max(H.LyricTopRoom, height * p.Anchor - _h[active] * 0.5f) : H.LyricTopRoom;
+            float offset = measured ? lineTop - _top[active] : 0f;
+            float fadeTop = MathF.Min(height * H.LyricFadeTop, lineTop);
             bool glide = _placed;
             if (measured) _placed = true;
             return new BoxEl
             {
                 Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, IsolateLayout = true, HitTestVisible = false,
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, height * H.LyricFadeTop, 0f, height * H.LyricFadeFoot),
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, fadeTop, 0f, height * H.LyricFadeFoot),
                 Children =
                 [
                     new BoxEl

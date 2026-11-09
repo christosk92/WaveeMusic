@@ -18,6 +18,9 @@ internal static class WinUiMiniRules
     public const float GroundAlpha = 0.8f, TintAlpha = 0.15f, Tint2Alpha = 0.28f;
     public const float VeilAlpha = 0.52f, ShadeAlpha = 0.72f;
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
+    /// <summary>The wide card shows its third line (album, or "Playing on") from this art-box height: below it the title, the artist, the seek
+    /// row and the transport fill the column.</summary>
+    public const float WideDetailFrom = 132f;
 
     /// <summary>The title per shape (14 strip, 15 wide, 16 square and tall), the lines under it, a label and the flyout heading.</summary>
     public static float TitleSize(MiniShape shape) => shape switch { MiniShape.Strip => 14f, MiniShape.Wide => 15f, _ => 16f };

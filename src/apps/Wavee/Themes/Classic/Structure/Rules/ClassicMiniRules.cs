@@ -19,6 +19,9 @@ internal static class ClassicMiniRules
     public const float WashLight = 0.09f, WashDark = 0.11f, TintAlpha = 0.15f, Tint2Alpha = 0.28f;
     public const float VeilAlpha = 0.52f, ShadeAlpha = 0.72f, OnDarkArtistAlpha = 0.85f;
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
+    /// <summary>The wide card shows its third line (album, or "Playing on") from this art-box height: below it the title, the artist, the seek
+    /// row and the transport fill the column.</summary>
+    public const float WideDetailFrom = 132f;
 
     public static float TitleSize(MiniShape shape) => shape switch { MiniShape.Strip => 14f, MiniShape.Wide => 15f, _ => 16f };
     public const float TitleLeading = 1.35f, MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, SmallSize = 11.5f, SmallLeading = 15f, HeadingSize = 14f;

@@ -128,10 +128,9 @@ public sealed record MiniPlayerProps
     /// <summary>The lyrics face's core host: it reads the one lyrics document, ticks the active line while the mini player shows, and
     /// draws through the template's callback.</summary>
     public required Func<Func<MiniLyricsFrame, Element>, Element> Lyrics { get; init; }
-    /// <summary>The device rows for one open of the "Play on" flyout (the bar picker's entries), with that open's close verb.</summary>
-    public required Func<Action, DevicePickerProps> DevicePicker { get; init; }
-    /// <summary>The flyout opened (the cluster hears it, as it does for the bar's picker).</summary>
-    public required Action DevicePickerOpened { get; init; }
+    /// <summary>Open the player bar's own device picker over an anchor, or close it when it is open: the bar's toggle, escaping this small
+    /// window into a popup over the screen.</summary>
+    public required Action<IOverlayService, Ref<NodeHandle>, Ref<OverlayHandle?>> ToggleDevicePicker { get; init; }
     /// <summary>The save heart can act: something is playing that can be saved (the bar's own gate also folds in its tier's slot, which is the
     /// main window's, not this one's).</summary>
     public required Func<bool> CanSave { get; init; }
@@ -247,5 +246,8 @@ public sealed record MiniPlayerStyle
     public required Func<ColorF> Shade { get; init; }
     /// <summary>The hover in / out timing (120 ms in, 600 ms out in the prototype).</summary>
     public required float HoverInMs { get; init; }
+    /// <summary>The wide card's art-box height from which its column has room for the third line (album, or "Playing on") above the seek and
+    /// transport rows: the theme's type decides (Zune's large title takes more).</summary>
+    public required float WideDetailFrom { get; init; }
     public required float HoverOutDelayMs { get; init; }
 }
