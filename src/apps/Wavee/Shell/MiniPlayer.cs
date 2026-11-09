@@ -186,9 +186,9 @@ public static partial class MiniPlayer
                         {
                             Source = r.ArtUrl ?? "", Width = r.Width * LyricsBlurScale, Height = r.Height * LyricsBlurScale, Fit = ImageFit.Cover,
                             AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, BakedBlur = new BakedBlurSpec(LyricsBlurSigma, 0.5f),
-                            KeepWhileHidden = true, Placeholder = LyricsVeil,
+                            KeepWhileHidden = true, Placeholder = LyricsVeil(),
                         },
-                        new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = LyricsVeil, HitTestVisible = false },
+                        new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = LyricsVeil(), HitTestVisible = false },
                     ],
                 };
             case MiniFaceKind.Canvas:
@@ -226,8 +226,9 @@ public static partial class MiniPlayer
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
     static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
-    /// <summary>The veil a filling lyrics face reads over (the prototype's blurred cover at half brightness), the blur and its overscan.</summary>
-    static readonly ColorF LyricsVeil = new(0f, 0f, 0f, 0.5f);
+    /// <summary>The veil a filling lyrics face reads over: the full-screen lyrics' own (its dark arm: the mini's lyrics read on-dark in either
+    /// mode, as its other controls over imagery do), the blur and its overscan.</summary>
+    static ColorF LyricsVeil() => Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark).Veil;
     const float LyricsBlurSigma = 22f, LyricsBlurScale = 1.3f;
     /// <summary>The per-theme "Colour from album art" choices (<see cref="Platform.Keys.MiniPlayerArtColour"/>).</summary>
     static readonly Signal<int> s_artColour = new(-1);
@@ -384,6 +385,7 @@ public static partial class MiniPlayer
         AlbumAccent = AlbumAccent,
         SeekRail = static draw => Shell.SeekBarDrawn(draw),
         Lyrics = static draw => Lyrics.Mini(draw, s_lyricsVisible),
+        LyricsView = static v => Lyrics.MiniView(v.OnMedia, v.TypeScale, v.Band, v.Gutter, v.TopRoom, v.Accent, s_lyricsVisible),
         ToggleDevicePicker = static (overlay, anchor, handle) => Shell.EscapedToggleDevicePicker(overlay, anchor, handle, ScreenRoomDip()),
         VolumeHud = s_volumeHud,
         CanSave = static () => Playback.Current.Value is { IsNone: false } c && c.Kind is EntityKind.Track or EntityKind.Episode,

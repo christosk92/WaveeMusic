@@ -4,7 +4,7 @@
 // accent (the album's with "Colour from album art", on by default as in the app), soft 14-DIP corners, the artist in the accent, the heart
 // on an album-tinted plate, the wave edge on the square's cover and behind the tall column (the Common template draws it from WaveEdge),
 // and Classic's own motion: the seek fill ripples like water while the music moves and lies flat while it rests; the visualizer is three
-// slow sine waves; the active lyric line rests on a tinted plate.
+// slow sine waves. The lyrics windows are the app's own lyrics view; the strip's ticker reads in the display face.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -69,7 +69,7 @@ internal static class ClassicMiniPlayer
         SeekRail = static r => r.Rail.Line ? CommonMiniRail.Draw(r, s_rail) : r.Edge ? Edge(r) : Embed.Comp(new WaveRailProps(r), static () => new WaveRail()),
         Visualizer = static (f, accent) => Embed.Comp(new SinesProps(f, accent), static () => new Sines()),
         TickerBar = M.TickerBar,
-        LyricPad = M.LyricPad,
+        LyricScale = M.LyricScale,
         LyricLine = LyricLine,
         Veil = static () => Tok.FillSmoke with { A = M.VeilAlpha },
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
@@ -353,30 +353,11 @@ internal static class ClassicMiniPlayer
 
     // ══ LYRICS ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A lyric line in the display face: the ticker's sung line over its next; a column line on a soft plate, the active one tinted
-    /// with the album's colour (on imagery, a white veil).</summary>
+    /// <summary>The strip ticker's lines in the display face: the sung line over its next. (The lyric windows are the app's own lyrics view.)</summary>
     static Element LyricLine(MiniLyricLine l)
     {
         if (l.Use == MiniLyricUse.TickerNow)
             return Line(R.Type.TrackMeta(l.Text)) with { Size = M.TickerNow, LineHeight = M.TickerNowLeading, Color = Tok.TextPrimary, FontFamily = R.Type.DisplayFace };
-        if (l.Use == MiniLyricUse.TickerNext)
-            return Line(R.Type.TrackMeta(l.Text)) with { Size = M.TickerNext, LineHeight = M.TickerNextLeading, Color = Tok.TextTertiary };
-        float size = M.LyricSize(l.Shape);
-        ColorF ink = l.Active ? (l.OnDark ? H.OnMediaInk : Tok.TextPrimary) : (l.OnDark ? H.OnMediaInk with { A = M.InactiveOnDarkAlpha } : Tok.TextTertiary);
-        ColorF plate = !l.Active ? ColorF.Transparent : l.OnDark ? H.OnMediaInk with { A = M.ActiveOnDarkPlate } : l.Accent with { A = M.Tint2Alpha };
-        float space = size * M.LyricSpace;
-        return new BoxEl
-        {
-            Direction = 1, Padding = new Edges4(M.LyricPad, space, M.LyricPad, space), Margin = new Edges4(0f, 0f, 0f, M.LyricGap),
-            Corners = CornerRadius4.All(M.LyricCorner), Fill = plate, BrushTransitionMs = M.HoverInMs, HitTestVisible = false,
-            Children =
-            [
-                R.Type.TrackMeta(l.Text) with
-                {
-                    Size = size, LineHeight = size * M.LyricLeading, Color = ink, FontFamily = R.Type.DisplayFace, Wrap = TextWrap.Wrap, MaxLines = 0,
-                    Trim = TextTrim.None, Shrink = 1f, MinWidth = 0f,
-                },
-            ],
-        };
+        return Line(R.Type.TrackMeta(l.Text)) with { Size = M.TickerNext, LineHeight = M.TickerNextLeading, Color = Tok.TextTertiary };
     }
 }

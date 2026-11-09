@@ -93,10 +93,9 @@ internal static class CommonMiniPlayerRules
 
     // ── lyrics ──
     /// <summary>Where the active line is held in each window (a share of its height) and the window's top and foot fades (shares).</summary>
-    public const float LyricAnchorWide = 0.38f, LyricAnchorSquare = 0.42f, LyricAnchorTall = 0.4f, LyricFadeTop = 0.22f, LyricFadeFoot = 0.28f;
-    /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's (top, foot), the start inset when the theme marks
-    /// lines with a bar or plate.</summary>
-    public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 16f, TallLyricFoot = 186f, LyricInsetMarked = 4f;
+    public const float LyricAnchorSquare = 0.42f, LyricAnchorTall = 0.4f, LyricFadeTop = 0.22f, LyricFadeFoot = 0.28f;
+    /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's (top, foot).</summary>
+    public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 16f, TallLyricFoot = 186f;
     /// <summary>The wide lyrics face's one-line head (title · artist) above its window.</summary>
     public const float WideLyricHead = 18f;
     /// <summary>Air the wide lyric window leaves to the column, so the time labels keep their reach clear of the transport row; the air goes
@@ -108,8 +107,8 @@ internal static class CommonMiniPlayerRules
     /// <summary>A lyric window's least soft foot (within a marked line's own padding): what shows of the next line, or of a line taller
     /// than the window, fades out and is never cut.</summary>
     public const float LyricFadeMin = 4f;
-    /// <summary>The least room above a lyric window's active line (its mark never touches what is above the window).</summary>
-    public const float LyricTopRoom = 3f;
+    /// <summary>The wide window holds its active line's top this far down (nothing earlier shows under the title), and its foot fade.</summary>
+    public const float LyricTopRoom = 3f, WideLyricFoot = 10f;
     /// <summary>The ticker's start bar gap.</summary>
     public const float TickerBarGap = 9f;
 

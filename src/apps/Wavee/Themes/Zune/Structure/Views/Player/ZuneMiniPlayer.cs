@@ -75,7 +75,7 @@ internal static class ZuneMiniPlayer
         SeekRail = static r => CommonMiniRail.Draw(r, R.IsLight && !r.OnDark ? s_railLight : s_rail),
         Visualizer = Waveform,
         TickerBar = 0f,
-        LyricPad = 0f,
+        LyricScale = M.LyricScale,
         LyricLine = LyricLine,
         Veil = static () => Tok.FillSmoke with { A = M.VeilAlpha },
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
@@ -107,8 +107,8 @@ internal static class ZuneMiniPlayer
         };
     }
 
-    /// <summary>A lyric line in the light display face: the ticker's sung line big and pink, running off the edge under a fade (never shrunk,
-    /// never cut), the next line under it; a column line, the active one pink.</summary>
+    /// <summary>The strip ticker's lines in the light display face: the sung line big and pink, running off the edge under a fade (never shrunk,
+    /// never cut), the next line under it. (The lyric windows are the app's own lyrics view.)</summary>
     static Element LyricLine(MiniLyricLine l)
     {
         if (l.Use == MiniLyricUse.TickerNow)
@@ -118,21 +118,6 @@ internal static class ZuneMiniPlayer
                 EdgeFade = new EdgeFadeSpec(EdgeMask.Right, M.TitleFade),
                 Children = [Display(l.Text, M.TickerNow, M.TickerNowLeading) with { Color = l.Accent, Case = TextCase.AsWritten, Shrink = 0f }],
             };
-        if (l.Use == MiniLyricUse.TickerNext)
-            return Line(Display(l.Text, M.TickerNext, M.TickerNextLeading)) with { Color = Tok.TextTertiary, Case = TextCase.AsWritten };
-        float size = M.LyricSize(l.Shape);
-        ColorF ink = l.Active ? (l.OnDark ? Lift(l.Accent) : l.Accent) : (l.OnDark ? H.OnMediaInk with { A = M.InactiveOnDarkAlpha } : Tok.TextTertiary);
-        float space = size * M.LyricSpace;
-        return new BoxEl
-        {
-            Direction = 1, Padding = new Edges4(0f, space, 0f, space), HitTestVisible = false,
-            Children =
-            [
-                R.Type.SurfaceDisplay(l.Text) with
-                {
-                    Size = size, LineHeight = size * M.LyricLeading, Color = ink, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, Shrink = 1f, MinWidth = 0f,
-                },
-            ],
-        };
+        return Line(Display(l.Text, M.TickerNext, M.TickerNextLeading)) with { Color = Tok.TextTertiary, Case = TextCase.AsWritten };
     }
 }

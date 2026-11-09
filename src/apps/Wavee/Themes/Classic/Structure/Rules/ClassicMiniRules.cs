@@ -46,9 +46,11 @@ internal static class ClassicMiniRules
     /// <summary>A wave's swing follows its third of the bands, never below this share.</summary>
     public const float VizMin = 0.35f;
 
-    // ── lyrics: the ticker's 3-DIP accent bar; a column line on a 10-DIP rounded plate, the active plate tinted ──
-    public const float TickerBar = 3f, LyricPad = 10f, LyricCorner = 10f, LyricLeading = 1.28f, LyricSpace = 0.28f, LyricGap = 2f;
+    // ── lyrics: the strip ticker's 3-DIP accent bar and its two lines; the windows' type (the app's own lyrics view) per shape ──
+    public const float TickerBar = 3f;
     public const float TickerNow = 15f, TickerNowLeading = 20f, TickerNext = 12f, TickerNextLeading = 17f;
     public static float LyricSize(MiniShape shape) => shape switch { MiniShape.Square => 19f, MiniShape.Tall => 21f, _ => 13.5f };
-    public const float InactiveOnDarkAlpha = 0.62f, ActiveOnDarkPlate = 0.16f;
+    /// <summary>The lyrics view's type in the mini window: the sizes above over the side pane's own (the view scales its rows, its
+    /// rhythm and its wipe by it).</summary>
+    public static float LyricScale(MiniShape shape) => LyricSize(shape) / Wavee.Lyrics.Surface.Timed(false).FontSize;
 }

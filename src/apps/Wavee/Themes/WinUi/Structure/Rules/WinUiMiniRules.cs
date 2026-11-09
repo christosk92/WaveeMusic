@@ -34,9 +34,11 @@ internal static class WinUiMiniRules
     public const float VizInsetX = 0.09f, VizInsetY = 0.16f, VizGap = 0.035f, VizMin = 0.1f, VizTopCorner = 3f, VizFootCorner = 1f;
     public const float VizTopAlpha = 0.85f, VizAlpha = 0.95f;
 
-    // ── lyrics: the ticker and the column (the active line semibold behind a 2-DIP accent bar) ──
-    public const float TickerBar = 2f, LyricPad = 12f, LyricMark = 2f, LyricLeading = 1.28f, LyricSpace = 0.22f;
+    // ── lyrics: the strip ticker (its 2-DIP accent bar and two lines); the windows' type (the app's own lyrics view) per shape ──
+    public const float TickerBar = 2f;
     public const float TickerNow = 13.5f, TickerNowLeading = 19f, TickerNext = 12f, TickerNextLeading = 17f;
     public static float LyricSize(MiniShape shape) => shape switch { MiniShape.Square => 19f, MiniShape.Tall => 21f, _ => 13.5f };
-    public const float InactiveOnDarkAlpha = 0.62f;
+    /// <summary>The lyrics view's type in the mini window: the sizes above over the side pane's own (the view scales its rows, its
+    /// rhythm and its wipe by it).</summary>
+    public static float LyricScale(MiniShape shape) => LyricSize(shape) / WinUiPaneLyricsRules.LineSize;
 }

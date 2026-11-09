@@ -197,8 +197,8 @@ internal static partial class CommonMiniPlayer
                     LyricMeta(m, reserve: m.Hot ? chromeW : 0f),
                     new BoxEl
                     {
-                        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Margin = new Edges4(-LyricBleed(st), 0f, 0f, 0f),
-                        Children = [LyricWindow(m, WideLyricHeight(st, box), H.LyricAnchorWide, onDark: false)],
+                        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
+                        Children = [LyricWindow(m, WideLyricHeight(st, box), 0f, H.LyricTopRoom, 0f, H.WideLyricFoot, onDark: false)],
                     },
                 ],
             }
@@ -264,12 +264,12 @@ internal static partial class CommonMiniPlayer
             });
         if (lyrics)
         {
-            float inset = MarkedInset(st);
+            float lh = h - H.SquareLyricTop - H.SquareLyricFoot;
             children.Add(new BoxEl
             {
                 Key = H.LyricsKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
-                Margin = new Edges4(inset, H.SquareLyricTop, H.SquareRestInset, H.SquareLyricFoot),
-                Children = [LyricWindow(m with { Media = true }, h - H.SquareLyricTop - H.SquareLyricFoot, H.LyricAnchorSquare, onDark: true)],
+                Margin = new Edges4(0f, H.SquareLyricTop, 0f, H.SquareLyricFoot),
+                Children = [LyricWindow(m with { Media = true }, lh, H.LyricAnchorSquare, -1f, H.SquareRestInset, lh * H.LyricFadeFoot, onDark: true)],
             });
         }
         if (dark) children.Add(Shade(m.St));
@@ -333,8 +333,9 @@ internal static partial class CommonMiniPlayer
                 children.Add(new BoxEl
                 {
                     Key = H.LyricsKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false,
-                    Margin = new Edges4(MarkedInset(st), H.TallLyricTop, st.Pad, H.TallLyricFoot),
-                    Children = [LyricWindow(m, h - H.TallLyricTop - H.TallLyricFoot, H.LyricAnchorTall, onDark: true)],
+                    Margin = new Edges4(0f, H.TallLyricTop, 0f, H.TallLyricFoot),
+                    Children = [LyricWindow(m, h - H.TallLyricTop - H.TallLyricFoot, H.LyricAnchorTall, -1f, st.Pad,
+                        (h - H.TallLyricTop - H.TallLyricFoot) * H.LyricFadeFoot, onDark: true)],
                 });
             children.Add(new BoxEl
             {

@@ -63,7 +63,7 @@ internal static class WinUiMiniPlayer
         SeekRail = static r => CommonMiniRail.Draw(r, s_rail),
         Visualizer = Bars,
         TickerBar = M.TickerBar,
-        LyricPad = M.LyricPad,
+        LyricScale = M.LyricScale,
         LyricLine = LyricLine,
         Veil = static () => Tok.FillSmoke with { A = M.VeilAlpha },
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
@@ -97,29 +97,12 @@ internal static class WinUiMiniPlayer
         };
     }
 
-    /// <summary>A lyric line: the ticker's current line semibold and its next line in the tertiary ink; a column line in the tertiary ink, the
-    /// active one in the primary ink, semibold, behind the 2-DIP accent bar.</summary>
+    /// <summary>The strip ticker's lines: the current line semibold, its next line in the tertiary ink. (The lyric windows are the app's own
+    /// lyrics view.)</summary>
     static Element LyricLine(MiniLyricLine l)
     {
         if (l.Use == MiniLyricUse.TickerNow)
             return Line(R.Type.TrackTitle(l.Text)) with { Size = M.TickerNow, LineHeight = M.TickerNowLeading, Color = Tok.TextPrimary };
-        if (l.Use == MiniLyricUse.TickerNext)
-            return Line(R.Type.TrackMeta(l.Text)) with { Size = M.TickerNext, LineHeight = M.TickerNextLeading, Color = Tok.TextTertiary };
-        float size = M.LyricSize(l.Shape);
-        ColorF ink = l.Active ? (l.OnDark ? H.OnMediaInk : Tok.TextPrimary) : (l.OnDark ? H.OnMediaInk with { A = M.InactiveOnDarkAlpha } : Tok.TextTertiary);
-        var text = (l.Active ? R.Type.TrackTitle(l.Text) : R.Type.TrackMeta(l.Text)) with
-        {
-            Size = size, LineHeight = size * M.LyricLeading, Color = ink, Wrap = TextWrap.Wrap, MaxLines = 0, Shrink = 1f, MinWidth = 0f,
-        };
-        float space = size * M.LyricSpace;
-        return new BoxEl
-        {
-            Direction = 0, HitTestVisible = false, BrushTransitionMs = M.HoverInMs,
-            Children =
-            [
-                new BoxEl { Width = M.LyricMark, AlignSelf = FlexAlign.Stretch, Fill = l.Active ? l.Accent : ColorF.Transparent, HitTestVisible = false },
-                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Padding = new Edges4(M.LyricPad - M.LyricMark, space, 0f, space), HitTestVisible = false, Children = [text] },
-            ],
-        };
+        return Line(R.Type.TrackMeta(l.Text)) with { Size = M.TickerNext, LineHeight = M.TickerNextLeading, Color = Tok.TextTertiary };
     }
 }

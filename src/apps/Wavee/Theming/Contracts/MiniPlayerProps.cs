@@ -125,9 +125,12 @@ public sealed record MiniPlayerProps
     public required Func<string?, ColorF?> AlbumAccent { get; init; }
     /// <summary>The seek rail's core host (the scrub, the pixel dwell, the commit) drawn by the template instead of the theme's player rail.</summary>
     public required Func<Func<SeekRailProps, Element>, Element> SeekRail { get; init; }
-    /// <summary>The lyrics face's core host: it reads the one lyrics document, ticks the active line while the mini player shows, and
+    /// <summary>The strip's lyric ticker's core host: it reads the one lyrics document, ticks the active line while the mini player shows, and
     /// draws through the template's callback.</summary>
     public required Func<Func<MiniLyricsFrame, Element>, Element> Lyrics { get; init; }
+    /// <summary>The lyrics face's window (wide, square, tall): the app's own lyrics view (the side pane's rows, ink, wipe and follow, in the
+    /// theme's style), ticking while the mini player shows.</summary>
+    public required Func<MiniLyricsView, Element> LyricsView { get; init; }
     /// <summary>Open the player bar's own device picker over an anchor, or close it when it is open: the bar's toggle, escaping this small
     /// window into a popup over the screen.</summary>
     public required Action<IOverlayService, Ref<NodeHandle>, Ref<OverlayHandle?>> ToggleDevicePicker { get; init; }
@@ -156,8 +159,14 @@ public enum MiniHeart : byte
 /// thickens into a seek bar while the controls show) and whether the controls show.</summary>
 public readonly record struct MiniSeekRequest(SeekRailProps Rail, ColorF Accent, bool OnDark, bool Playing, bool Edge, bool Hot);
 
-/// <summary>Where a lyric line is drawn: the strip's ticker (the current line and the next), or a scrolling column.</summary>
-public enum MiniLyricUse : byte { TickerNow, TickerNext, Column }
+/// <summary>Which of the strip ticker's two lines is drawn: the current line or the next.</summary>
+public enum MiniLyricUse : byte { TickerNow, TickerNext }
+
+/// <summary>One mount of the app's lyrics view in the mini window: over imagery (the stage's ink) or on the window's ground, its type as a
+/// share of the side pane's, where the active line is held (its centre at <paramref name="Band"/> of the box, or, with
+/// <paramref name="TopRoom"/> of 0 or more, its top that far below the box's top, so no earlier line shows above it) and the gutter. Over
+/// imagery a style that sings in the accent (Zune) sings in <paramref name="Accent"/> (the mini's own, lifted for the dark ground).</summary>
+public readonly record struct MiniLyricsView(bool OnMedia, float TypeScale, float Band, float Gutter, float TopRoom = -1f, ColorF Accent = default);
 
 /// <summary>One lyric line for a theme to draw.</summary>
 public readonly record struct MiniLyricLine(string Text, bool Active, MiniLyricUse Use, MiniShape Shape, ColorF Accent, bool OnDark);
@@ -236,11 +245,11 @@ public sealed record MiniPlayerStyle
     public required Func<MiniSeekRequest, Element> SeekRail { get; init; }
     /// <summary>The theme's visualizer over the full player's bands, in an accent.</summary>
     public required Func<MiniVisualizerFrame, ColorF, Element> Visualizer { get; init; }
-    /// <summary>The strip ticker's start bar (WinUI 2, Classic 3, Zune none) and a column line's start padding (the room its mark takes).</summary>
+    /// <summary>The strip ticker's start bar (WinUI 2, Classic 3, Zune none) and its two lines in the theme's type.</summary>
     public required float TickerBar { get; init; }
-    public required float LyricPad { get; init; }
-    /// <summary>The theme's lyric line (its active-line mark: WinUI's accent bar, Zune's big pink, Classic's tinted plate).</summary>
     public required Func<MiniLyricLine, Element> LyricLine { get; init; }
+    /// <summary>The lyric windows' type per shape, as a share of the app's own lyrics view's (the view scales its rows by it).</summary>
+    public required Func<MiniShape, float> LyricScale { get; init; }
     /// <summary>The fade under the text over a filling face, and the hover veil over it.</summary>
     public required Func<ColorF> Veil { get; init; }
     public required Func<ColorF> Shade { get; init; }

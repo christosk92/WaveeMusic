@@ -2,7 +2,8 @@
 //
 // The pieces the four shapes share: the title block (a Zune title bleeds past its column under a fade, never shrunk or cut), the faces
 // and their boxes, the seek row and the edge line (drawn by the theme over the bar's own scrub host), the transport, the heart in the
-// theme's way (plain, Zune's ring, Classic's plate), the badge, the chrome pill, the lyric ticker and window, the volume HUD.
+// theme's way (plain, Zune's ring, Classic's plate), the badge, the chrome pill, the lyric ticker, the lyrics window (the app's own
+// lyrics view), the volume HUD.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -483,103 +484,18 @@ internal static partial class CommonMiniPlayer
 
     // ══ LYRICS ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Lines marked with a start bar or plate start a little inside the window (the mark has room); Zune's start flush.</summary>
-    static float MarkedInset(MiniPlayerStyle st) => st.TickerBar > 0f ? H.LyricInsetMarked : st.Pad;
-
-    /// <summary>A wide window's lines bleed left by the mark's padding, so the text aligns with the title above.</summary>
-    static float LyricBleed(MiniPlayerStyle st) => st.TickerBar > 0f ? st.LyricPad : 0f;
-
-    static Element LyricWindow(Ctx m, float height, float anchor, bool onDark)
+    /// <summary>The lyrics face's window: the app's own lyrics view (the side pane's rows, ink, word wipe and follow, in the theme's style) at
+    /// the theme's mini type, in a box of <paramref name="height"/> that clips it and fades its edges (the view sets none of its own here).
+    /// <paramref name="topRoom"/> of 0 or more holds the active line's top that far down (the wide card: nothing earlier shows under its
+    /// title, and a wrapped line shows whole); otherwise its centre sits at <paramref name="band"/>. Not a target: the wheel stays the
+    /// window's volume.</summary>
+    static Element LyricWindow(Ctx m, float height, float band, float topRoom, float gutter, float fadeFoot, bool onDark) => new BoxEl
     {
-        var shape = m.Shape;
-        var accent = m.Accent;
-        var st = m.St;
-        return m.P.Lyrics(frame => Embed.Comp(new ColumnProps(frame, st, shape, accent, onDark, height, anchor), static () => new LyricColumn()));
-    }
-
-    sealed record ColumnProps(MiniLyricsFrame Frame, MiniPlayerStyle St, MiniShape Shape, ColorF Accent, bool OnDark, float Height, float Anchor);
-
-    /// <summary>The lyric window: every line, the active one held at the window's anchor (a share of its height), the column gliding to the
-    /// next line (a position transition on its offset, measured from the lines' own bounds), faded at the top and the foot.</summary>
-    sealed class LyricColumn : Component
-    {
-        float[] _top = [], _h = [];
-        int _count;
-        bool _placed;
-        readonly Signal<int> _measured = new(0);
-
-        public override Element Render()
-        {
-            var p = UseProps<ColumnProps>();
-            var frame = p.Frame;
-            var st = p.St;
-            if (frame.State != MiniLyricsState.Lines || frame.Lines.Count == 0)
-            {
-                string note = frame.State switch
-                {
-                    MiniLyricsState.Instrumental => Loc.Get(Strings.Mini.Instrumental),
-                    MiniLyricsState.Unsynced => Loc.Get(Strings.Mini.NoLyrics),
-                    _ => "",
-                };
-                ColorF ink = p.OnDark ? H.OnMediaInk with { A = H.OnMediaTertiaryAlpha } : Tok.TextTertiary;
-                return new BoxEl { Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-                    Children = [st.Detail(note) with { Color = ink }] };
-            }
-            var lines = frame.Lines;
-            int n = lines.Count;
-            if (_count != n) { _top = new float[n]; _h = new float[n]; _count = n; _placed = false; }
-            int active = Math.Clamp(frame.Active.Value, 0, n - 1);
-            _ = _measured.Value;
-            var kids = new Element[n];
-            for (int i = 0; i < n; i++)
-            {
-                int index = i;
-                kids[i] = new BoxEl
-                {
-                    Key = "l" + i, Direction = 1, HitTestVisible = false, OnBoundsChanged = b => Measure(index, b),
-                    Children = [st.LyricLine(new MiniLyricLine(lines[i], i == active, MiniLyricUse.Column, p.Shape, p.Accent, p.OnDark))],
-                };
-            }
-            float height = p.Height;
-            bool measured = _h[active] > 0f;
-            // The active line sits at the window's anchor, but never closer to its top than LyricTopRoom (a short window, the wide card's
-            // under its title, would otherwise push the line's mark against the title row) and never past its foot: a wrapped line moves up
-            // until it shows whole. The fades cover only the room above and below it, so the line the music is on is never faded; a line
-            // taller than the whole window starts at the top and fades out at the foot. The foot always fades (at least LyricFadeMin, inside
-            // the plate's own padding), so the next line's top never shows as a sliver cut by a hard edge.
-            float lineH = measured ? _h[active] : 0f;
-            float lineTop = measured
-                ? MathF.Max(0f, MathF.Min(MathF.Max(H.LyricTopRoom, height * p.Anchor - lineH * 0.5f), height - lineH))
-                : H.LyricTopRoom;
-            float offset = measured ? lineTop - _top[active] : 0f;
-            float fadeTop = MathF.Min(height * H.LyricFadeTop, lineTop);
-            float below = height - lineTop - lineH;
-            float fadeFoot = MathF.Max(H.LyricFadeMin, MathF.Min(height * H.LyricFadeFoot, below));   // the foot is always soft
-            bool glide = _placed;
-            if (measured) _placed = true;
-            return new BoxEl
-            {
-                Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, IsolateLayout = true, HitTestVisible = false,
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, fadeTop, 0f, fadeFoot),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = H.LyricsKey + ":column", Direction = 1, Margin = new Edges4(0f, offset, 0f, 0f), Opacity = measured ? 1f : 0f,
-                        Layout = glide ? LayoutTransition.Slide : null, HitTestVisible = false, Children = kids,
-                    },
-                ],
-            };
-        }
-
-        void Measure(int i, RectF b)
-        {
-            if ((uint)i >= (uint)_count || (_top[i] == b.Y && _h[i] == b.H)) return;
-            _top[i] = b.Y;
-            _h[i] = b.H;
-            _measured.Value = _measured.Peek() + 1;
-        }
-    }
+        Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, HitTestVisible = false,
+        EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, topRoom >= 0f ? topRoom : height * H.LyricFadeTop, 0f, MathF.Max(H.LyricFadeMin, fadeFoot)),
+        Children = [m.P.LyricsView(new MiniLyricsView(onDark, m.St.LyricScale(m.Shape), band, gutter, topRoom,
+            onDark ? ColorF.Lerp(m.Accent, H.OnMediaInk, H.OnDarkLift) : default))],
+    };
 
     sealed record TickerProps(MiniLyricsFrame Frame, Ctx M, Element Fallback);
 

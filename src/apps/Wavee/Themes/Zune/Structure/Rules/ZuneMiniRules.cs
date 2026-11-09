@@ -44,5 +44,8 @@ internal static class ZuneMiniRules
     // ── lyrics ──
     public const float TickerNow = 20f, TickerNowLeading = 25f, TickerNext = 13f, TickerNextLeading = 17f, TickerBleed = 12f;
     public static float LyricSize(MiniShape shape) => shape switch { MiniShape.Square => 22.4f, MiniShape.Tall => 24.8f, _ => 16f };
-    public const float LyricLeading = 1.28f, LyricSpace = 0.22f, InactiveOnDarkAlpha = 0.62f, OnDarkLift = 0.45f;
+    /// <summary>The lyrics view's type in the mini window: the sizes above over the side pane's own (the view scales its rows, its
+    /// rhythm and its wipe by it).</summary>
+    public static float LyricScale(MiniShape shape) => LyricSize(shape) / Wavee.Lyrics.Surface.Timed(false).FontSize;
+    public const float OnDarkLift = 0.45f;
 }

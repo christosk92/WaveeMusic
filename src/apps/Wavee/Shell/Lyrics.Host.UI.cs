@@ -54,6 +54,8 @@ public static partial class Lyrics
         IReadSignal<ColorF>? LyricsContracts.ILyricsHost.Accent => Accent;
         float LyricsContracts.ILyricsHost.Band => Band;
         bool LyricsContracts.ILyricsHost.OnRail => OnRail;
+        float? LyricsContracts.ILyricsHost.Gutter => _gutter >= 0f ? _gutter : null;
+        bool LyricsContracts.ILyricsHost.BoxFades => _gutter >= 0f;
 
         // ── what is on screen ───────────────────────────────────────────────────────────────────────────────────────
 

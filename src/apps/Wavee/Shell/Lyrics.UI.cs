@@ -111,35 +111,70 @@ public static partial class Lyrics
     /// the playing track has a timed document.</summary>
     public static Element NpvPeek() => Embed.Comp(static () => new PeekHost());
 
+    // MOUNT POINT (#197)
+    /// <summary>The mini player's lyrics face: THE reading surface (the side pane's, the same rows, ink, wipe and follow) in a box of the
+    /// mini window, its type at <paramref name="typeScale"/> of the pane's, the active line held at <paramref name="band"/> of the box,
+    /// <paramref name="gutter"/> either side, on the stage's ink over imagery (<paramref name="onMedia"/>). With <paramref name="topRoom"/> of 0
+    /// or more the active line's TOP is held that far below the box's top instead (a short box under a title: a wrapped line shows whole and
+    /// no earlier line shows above it). It ticks while <paramref name="visible"/> reads true.</summary>
+    public static Element MiniView(bool onMedia, float typeScale, float band, float gutter, float topRoom, ColorF accent, Func<bool> visible)
+        => Embed.Comp(new MiniViewProps(onMedia, typeScale, band, gutter, topRoom, accent, visible), static () => new MiniViewHost())
+            with { Key = onMedia ? "lyrics:mini:media" : "lyrics:mini" };
+
+    sealed record MiniViewProps(bool OnMedia, float TypeScale, float Band, float Gutter, float TopRoom, ColorF Accent, Func<bool> Visible);
+
+    /// <summary>Holds the type scale as a value-gated signal (the stage column's way: a size step re-renders the rows in place, never a
+    /// remount) and mounts the view once per ink.</summary>
+    sealed class MiniViewHost : Component
+    {
+        readonly Signal<float> _typeScale = new(1f);
+        readonly Signal<ColorF> _accent = new(default);
+
+        public override Element Render()
+        {
+            var p = UseProps<MiniViewProps>();
+            _typeScale.SetIfChanged(p.TypeScale > 0f && float.IsFinite(p.TypeScale) ? p.TypeScale : 1f);
+            _accent.SetIfChanged(p.Accent);
+            var typeScale = _typeScale;
+            var accent = p.OnMedia && p.Accent.A > 0f ? _accent : null;
+            return Embed.Comp(() => new ViewCore(large: false, onMedia: p.OnMedia, visible: p.Visible, accent: accent, typeScale: typeScale,
+                band: p.TopRoom >= 0f ? 0f : p.Band, gutter: p.Gutter, topRoom: p.TopRoom, darkArm: p.OnMedia));
+        }
+    }
+
     // ══ 1. THE INK SEAM ══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>WHICH ink a view paints with — the one seam between the two surfaces that mount the same view. A MODE,
     /// not a captured colour: every rung resolves its token at the point of consumption, so a live theme flip re-reads
     /// correctly on either surface (a <c>ColorF</c> frozen into a component would not).</summary>
-    public readonly record struct Ink(bool OnMedia)
+    public readonly record struct Ink(bool OnMedia, bool DarkArm = false)
     {
+        /// <summary>The stage arm the on-media rungs resolve on: the active theme's, or always the dark one (<see cref="DarkArm"/>: the mini player
+        /// draws its lyrics over a darkened cover in either mode, #197).</summary>
+        StageArmView Arm => StageInk.Arm(DarkArm ? ThemeKind.Dark : Tok.Theme);
+
         /// <summary>A sung glyph, the active line, a lit interlude dot.</summary>
-        public ColorF Primary => OnMedia ? StageInk.Ink : Tok.TextPrimary;
+        public ColorF Primary => OnMedia ? Arm.Ink : Tok.TextPrimary;
         /// <summary>An inactive line-synced line and the secondary layer.</summary>
-        public ColorF Secondary => OnMedia ? StageInk.InkSecondary : Tok.TextSecondary;
+        public ColorF Secondary => OnMedia ? Arm.InkSecondary : Tok.TextSecondary;
         /// <summary>Meta captions that are not lyric text.</summary>
-        public ColorF Tertiary => OnMedia ? StageInk.InkTertiary : Tok.TextTertiary;
+        public ColorF Tertiary => OnMedia ? Arm.InkTertiary : Tok.TextTertiary;
 
         /// <summary>The one plate the reading surface owns (the resync pill, the video note).</summary>
-        public ColorF Plate => OnMedia ? StageInk.ScrimRest : Tok.FillSolidBase with { A = R.Lyrics.ThemePlateAlpha };
-        public ColorF PlateHover => OnMedia ? StageInk.ScrimHover : Tok.FillSubtleSecondary;
-        public ColorF PlatePressed => OnMedia ? StageInk.ScrimPressed : Tok.FillSubtleTertiary;
-        public ColorF PlateStroke => OnMedia ? StageInk.Stroke : Tok.StrokeCardDefault;
+        public ColorF Plate => OnMedia ? Arm.ScrimRest : Tok.FillSolidBase with { A = R.Lyrics.ThemePlateAlpha };
+        public ColorF PlateHover => OnMedia ? Arm.ScrimHover : Tok.FillSubtleSecondary;
+        public ColorF PlatePressed => OnMedia ? Arm.ScrimPressed : Tok.FillSubtleTertiary;
+        public ColorF PlateStroke => OnMedia ? Arm.Stroke : Tok.StrokeCardDefault;
 
         /// <summary>The resync ring: the accent on a theme plate, plain ink on media.</summary>
-        public ColorF RingFill => OnMedia ? StageInk.Ink : Tok.AccentDefault;
+        public ColorF RingFill => OnMedia ? Arm.Ink : Tok.AccentDefault;
         /// <summary>The active transcript line's SUNG glyph — the one place the wipe shows a highlight instead of
         /// plain ink (<see cref="TranscriptPresentation.InkRung.Accent"/>). Same rung as <see cref="RingFill"/>.</summary>
         public ColorF Accent => RingFill;
-        public ColorF RingTrack => OnMedia ? StageInk.Ink with { A = R.Lyrics.RingTrackOnMediaAlpha } : Tok.StrokeControlDefault with { A = R.Lyrics.RingTrackThemeAlpha };
+        public ColorF RingTrack => OnMedia ? Arm.Ink with { A = R.Lyrics.RingTrackOnMediaAlpha } : Tok.StrokeControlDefault with { A = R.Lyrics.RingTrackThemeAlpha };
 
         /// <summary>The loading bars.</summary>
-        public ColorF Skeleton => OnMedia ? StageInk.SkeletonBar : Tok.FillSubtleSecondary;
+        public ColorF Skeleton => OnMedia ? Arm.SkeletonBar : Tok.FillSubtleSecondary;
 
         /// <summary>The held-note BLOOM: on a dark stage the ink (a halo adds luminance), on a light stage the VEIL —
         /// blurred near-black under near-black subtracts and reads as a smudge.</summary>
@@ -202,7 +237,11 @@ public static partial class Lyrics
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
-        internal RowMetrics Metrics => StageRows is { } rows ? rows.Metrics(TypeScale) : Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        internal RowMetrics Metrics => StageRows is { } rows ? rows.Metrics(TypeScale)
+            : _gutter >= 0f ? Surface.Timed(Large, IsPodcast).Scaled(TypeScale) with { SidePad = _gutter }
+            : Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        /// <summary>A mount's own focal band, side gutter and top-held room (the mini player's), or -1 for the surface's.</summary>
+        readonly float _bandOverride, _gutter, _topRoom;
         /// <summary>The structure's own stage rows (<c>LyricsLinesStyle.StageRows</c>): the stage's music rows only; null everywhere else and for a
         /// style that leaves it unset (the core's metrics, band and ladder).</summary>
         Wavee.Theming.Contracts.LyricsStageRows? StageRows => OnStage && !IsPodcast ? _linesStyle?.StageRows : null;
@@ -238,12 +277,16 @@ public static partial class Lyrics
         // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
-            IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null)
+            IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
+            float topRoom = -1f, bool darkArm = false)
         {
+            _bandOverride = band;
+            _gutter = gutter;
+            _topRoom = topRoom;
             _readerEpisode = readerEpisode;
             Large = large;
             _typeScale = typeScale;
-            InkMode = new Ink(onMedia);
+            InkMode = new Ink(onMedia, darkArm);
             Accent = accent;
             OnStage = onStage;
             _visible = visible;
@@ -437,8 +480,10 @@ public static partial class Lyrics
                 if (railForm.Crisp) strength = 0;
             }
             else if (OnRail) _band = Surface.FocalBand(Large);
+            if (_bandOverride >= 0f) _band = Math.Clamp(_bandOverride, 0.05f, 0.95f);   // the layout's own clamp: a different band re-made it every read
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
+            if (_gutter >= 0f) newScale *= TypeScale;   // a mini mount (#197): the depth blur and the halo scale with its type, as its rows do
             if (newScale != _dofScale)
             {
                 _dofScale = newScale;
@@ -1296,7 +1341,14 @@ public static partial class Lyrics
             // This target runs outside layout: feed the newest published viewport first.
             layout.SetViewport(sc.ViewportH, sc.ViewportW);
             RectF item = layout.ItemRect(active, sc.ViewportW);
-            float target = Follow.Target(item.Y, item.H, ReserveOf(active), sc.ViewportH, sc.ContentH, Band);
+            float band = Band;
+            if (_topRoom >= 0f)
+            {
+                // A top-held mount: the band that puts this row's line (after its interlude reserve) at the top room, whatever its height.
+                float r = Math.Clamp(ReserveOf(active), 0f, item.H);
+                band = (_topRoom + (item.H - r) * 0.5f) / sc.ViewportH;
+            }
+            float target = Follow.Target(item.Y, item.H, ReserveOf(active), sc.ViewportH, sc.ContentH, band);
 
             if (!_scrollSnapped && intent == FollowIntent.Normal)
             {

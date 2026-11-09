@@ -74,6 +74,14 @@ public interface ILyricsHost
     /// <see cref="LyricsLinesStyle.Rail"/> form draws the pane's rows here. Default false.</summary>
     bool OnRail => false;
 
+    /// <summary>The side gutter of a mount in a box narrower than the rail (the mini player's lyrics face, #197), or null for the surface's
+    /// own. A frame, not type: a style that lays its rows on its own gutter takes this one when it is set.</summary>
+    float? Gutter => null;
+
+    /// <summary>The mount's box draws the edge fades itself (the mini player's, sized to its short window): a style's list then sets no edge
+    /// feather of its own (the standard 40-DIP band would fade the active line of a 50-DIP window). Default false.</summary>
+    bool BoxFades => false;
+
     // ── what is on screen (live: reads subscribe the caller) ───────────────────────────────────────────────────────
 
     /// <summary>The row type and rhythm of the document on screen (the timed surface's, at the stage's scale).</summary>
