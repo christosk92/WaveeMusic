@@ -22,7 +22,7 @@ internal static class WinUiMiniRules
     /// <summary>The title per shape (14 strip, 15 wide, 16 square and tall), the lines under it, a label and the flyout heading.</summary>
     public static float TitleSize(MiniShape shape) => shape switch { MiniShape.Strip => 14f, MiniShape.Wide => 15f, _ => 16f };
     public const ushort TitleWeight = 600;
-    public const float TitleLeading = 1.35f, MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, HeadingSize = 14f;
+    public const float TitleLeading = 1.35f, MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, SmallSize = 11.5f, SmallLeading = 15f, HeadingSize = 14f;
 
     // ── the seek rail ──
     public const float Track = 4f, TrackCorner = 2f, TrackAlpha = 0.24f, Thumb = 14f, ThumbDot = 7f;

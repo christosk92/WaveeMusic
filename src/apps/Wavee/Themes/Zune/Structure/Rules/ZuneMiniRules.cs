@@ -24,7 +24,7 @@ internal static class ZuneMiniRules
     /// past the column to the window's edge under a fade instead (owner rule). The fade's run.</summary>
     public static float TitleSize(MiniShape shape) => shape switch { MiniShape.Strip => 23f, MiniShape.Square => 28f, MiniShape.Tall => 30f, _ => 27f };
     public const float TitleLeading = 1.15f, TitleFade = 44f;
-    public const float MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, HeadingSize = 24f, HeadingLeading = 30f;
+    public const float MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, SmallSize = 11.5f, SmallLeading = 15f, HeadingSize = 24f, HeadingLeading = 30f;
     public const ushort ArtistWeight = 600;
 
     /// <summary>The artist across the square's cover: 28 % of the window, between 56 and 110 DIP.</summary>

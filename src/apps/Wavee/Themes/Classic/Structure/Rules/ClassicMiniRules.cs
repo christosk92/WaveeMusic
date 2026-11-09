@@ -21,7 +21,7 @@ internal static class ClassicMiniRules
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
 
     public static float TitleSize(MiniShape shape) => shape switch { MiniShape.Strip => 14f, MiniShape.Wide => 15f, _ => 16f };
-    public const float TitleLeading = 1.35f, MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, HeadingSize = 14f;
+    public const float TitleLeading = 1.35f, MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, SmallSize = 11.5f, SmallLeading = 15f, HeadingSize = 14f;
 
     // ── the seek rail: a 3-DIP track, the fill a rippling line while playing (period 18, 10 tall, 2.2 stroke), a 3-DIP bar while resting ──
     public const float Track = 3f, TrackCorner = 1.5f, TrackAlpha = 0.18f, Thumb = 12f;

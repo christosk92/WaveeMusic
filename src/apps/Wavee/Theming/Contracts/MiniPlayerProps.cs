@@ -229,6 +229,8 @@ public sealed record MiniPlayerStyle
     public required bool WaveEdge { get; init; }
     /// <summary>A label (flyout rows, the face name, section heads).</summary>
     public required Func<string, TextEl> Label { get; init; }
+    /// <summary>A small caption in the theme's voice (the flyouts' section heads and tile names: lowercase in Zune).</summary>
+    public required Func<string, TextEl> Small { get; init; }
     /// <summary>The flyout's heading ("Mini player", "Play on").</summary>
     public required Func<string, TextEl> Heading { get; init; }
     /// <summary>The theme's seek rail and edge line.</summary>

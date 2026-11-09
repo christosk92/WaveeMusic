@@ -70,6 +70,7 @@ internal static class ZuneMiniPlayer
         },
         WaveEdge = false,
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary, Case = TextCase.Lower },
+        Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary, Case = TextCase.Lower },
         Heading = static text => Display(text, M.HeadingSize, M.HeadingLeading) with { Color = Tok.TextPrimary },
         SeekRail = static r => CommonMiniRail.Draw(r, R.IsLight && !r.OnDark ? s_railLight : s_rail),
         Visualizer = Waveform,

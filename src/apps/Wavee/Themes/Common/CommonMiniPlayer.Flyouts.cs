@@ -74,7 +74,7 @@ internal static partial class CommonMiniPlayer
 
     static Element Group(MiniPlayerStyle st, string text) => new BoxEl
     {
-        Padding = new Edges4(H.HeadPadX, H.GroupPadTop, H.HeadPadX, H.GroupPadFoot), Children = [st.Detail(text) with { Color = Tok.TextSecondary }],
+        Padding = new Edges4(H.HeadPadX, H.GroupPadTop, H.HeadPadX, H.GroupPadFoot), Children = [st.Small(text) with { Color = Tok.TextSecondary }],
     };
 
     static Element Note(MiniPlayerStyle st, string text) => new BoxEl
@@ -96,8 +96,8 @@ internal static partial class CommonMiniPlayer
         BorderWidth = on ? H.TileRing : 0f, BorderColor = on ? accent : ColorF.Transparent,
         Cursor = CursorId.Hand, OnClick = act, Role = AutomationRole.RadioButton, Focusable = true,
         Children = picture is null
-            ? [st.Detail(label) with { Color = on ? accent : Tok.TextSecondary }]
-            : [picture, st.Detail(label) with { Color = on ? accent : Tok.TextSecondary }],
+            ? [st.Small(label) with { Color = on ? accent : Tok.TextSecondary }]
+            : [picture, st.Small(label) with { Color = on ? accent : Tok.TextSecondary }],
     };
 
     static Element TileRow(Element[] tiles) => new BoxEl { Direction = 0, Gap = H.TileGap, Padding = Edges4.All(H.ChromePad), Children = tiles };

@@ -62,6 +62,7 @@ internal static class ClassicMiniPlayer
         CoverBleed = null,
         WaveEdge = true,
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary },
+        Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary },
         Heading = static text => Line(R.Type.TrackTitle(text)) with { Size = M.HeadingSize, Color = Tok.TextPrimary, FontFamily = R.Type.DisplayFace },
         SeekRail = static r => CommonMiniRail.Draw(r, s_rail),
         Visualizer = static (f, accent) => Embed.Comp(new SinesProps(f, accent), static () => new Sines()),
