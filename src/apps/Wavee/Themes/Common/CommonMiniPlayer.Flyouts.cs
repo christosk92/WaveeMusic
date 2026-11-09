@@ -5,7 +5,7 @@
 // the preview. It closes on a click anywhere else, on Esc, or on ⋯ again. Nothing cascades and nothing closes on a pick (a menu did
 // both, and its Face sub-menu covered the very face being chosen).
 //
-// It is the theme's own popup card (`PopupChrome.Popup`: WinUI's acrylic flyout, Zune's flat square, Classic's) holding the theme's own
+// It is the theme's own menu card (WinUI's acrylic flyout, Zune's flat square, Classic's) holding the theme's own
 // controls and type: the ToggleSwitch from its control table, the section heads and tile names in its small voice. Play on (the device
 // button) is the player bar's own device picker (`Player.DevicePicker`, toggled by the shell), not a copy.
 //
@@ -48,7 +48,9 @@ internal static partial class CommonMiniPlayer
         var props = new PanelProps(p, st, () => handle.Value?.Close());
         handle.Value = overlay.Open(() => a.Window.Value, () => Embed.Comp(props, static () => new OptionsPanel()),
             FlyoutPlacement.TopEdgeAlignedRight,
-            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+            // The menu chrome (the default) on purpose: it is the one flyout chrome the overlay host gives its own window, and this
+            // panel is taller than every shape of the mini window. Any other chrome stays inside the window and is clipped away.
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss)
             {
                 ConstrainToRootBounds = false, PassThrough = () => a.Window.Value, PreserveFocusOnOpen = true,
             });
