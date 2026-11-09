@@ -28,8 +28,11 @@ internal static partial class CommonMiniPlayer
         var st = m.St;
         string title = m.Bar.TitleText();
         bool remote = m.Bar.DeviceIsRemote();
-        string artist = m.P.ArtistText();
-        TextEl a = st.Artist(artist, m.Accent, m.Media);
+        // Without a detail line (the strip, the square, a short wide card) "Playing on …" takes the artist's line, in the accent: the title stays.
+        bool onLine = remote && !detail && m.P.DetailText() is { Length: > 0 };
+        TextEl a = onLine
+            ? st.Artist(m.P.DetailText(), m.Accent, m.Media) with { Color = m.Media ? m.Ink : m.Accent }
+            : st.Artist(m.P.ArtistText(), m.Accent, m.Media);
         var lines = new List<Element>(3) { Title(m, title, reserve), a };
         if (detail && m.P.DetailText() is { Length: > 0 } d)
             lines.Add(st.Detail(d) with { Color = remote ? (m.Media ? m.Ink : m.Accent) : m.Ink3 });
@@ -51,17 +54,19 @@ internal static partial class CommonMiniPlayer
         };
     }
 
-    /// <summary>The wide lyrics face's one-line head: the title in bold, then the artist.</summary>
+    /// <summary>The wide lyrics face's one-line head: the title in bold, then the artist (or "Playing on …" in the accent).</summary>
     static Element LyricMeta(Ctx m, float reserve)
     {
         var st = m.St;
+        bool remote = m.Bar.DeviceIsRemote() && m.P.DetailText().Length > 0;   // "Playing on …" takes the artist's place, as in Meta
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SeekGap, MinWidth = 0f, Margin = new Edges4(0f, 0f, reserve, 0f),
             Children =
             [
                 st.Label(m.Bar.TitleText()) with { Color = m.Ink, MaxLines = 1, Shrink = 0f },
-                st.Artist(m.P.ArtistText(), m.Accent, false) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
+                (remote ? st.Artist(m.P.DetailText(), m.Accent, false) with { Color = m.Accent } : st.Artist(m.P.ArtistText(), m.Accent, false))
+                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
             ],
         };
     }
