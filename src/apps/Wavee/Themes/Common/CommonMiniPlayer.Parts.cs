@@ -166,19 +166,12 @@ internal static partial class CommonMiniPlayer
 
     // ══ CLASSIC'S WAVE ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The wave edge under a cover: the window's ground rises over the cover's foot in one slow swell (the prototype's mask).</summary>
-    static Element WaveFoot(Ctx m, float w, float h) => new BoxEl
-    {
-        Width = w, Height = h, AlignSelf = FlexAlign.Start, HitTestVisible = false,
-        Children = [new PathEl { Geometry = MiniWave.Foot(w, h, MiniWave.CoverTop), Fill = m.St.Solid(m.Accent), Width = w, Height = h }],
-    };
-
-    /// <summary>The tall column's tinted band behind its top, closing on the same swell.</summary>
+    /// <summary>The tall column's tinted band behind its object faces, closing on one slow swell (never behind a cover).</summary>
     static Element WaveBand(Ctx m, float w, float h) => new BoxEl
     {
         Width = w, Height = h, AlignSelf = FlexAlign.Start, ZStack = true, HitTestVisible = false,
         Gradient = new GradientSpec(GradientShape.Linear, H.ShadeAngle, [new GradientStop(0f, m.St.Tint2(m.Accent)), new GradientStop(1f, m.St.Tint(m.Accent))]),
-        Children = [new PathEl { Geometry = MiniWave.Foot(w, h, MiniWave.BandTop), Fill = m.St.Solid(m.Accent), Width = w, Height = h }],
+        Children = [new PathEl { Geometry = MiniWave.Foot(w, h), Fill = m.St.Solid(m.Accent), Width = w, Height = h }],
     };
 
     // ══ SEEK ═════════════════════════════════════════════════════════════════════════════════════════════════════════════

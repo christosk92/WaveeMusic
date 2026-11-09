@@ -56,7 +56,7 @@ internal static class WinUiMiniPlayer
         },
         Detail = static text => Line(R.Type.TrackMeta(text)) with { Size = M.MetaSize, LineHeight = M.MetaLeading, Color = Tok.TextTertiary },
         CoverBleed = null,
-        WaveEdge = false,
+        GroundBand = false,
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary },
         Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary },
         Heading = static text => Line(R.Type.TrackTitle(text)) with { Size = M.HeadingSize, Color = Tok.TextPrimary },

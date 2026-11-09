@@ -233,8 +233,9 @@ public sealed record MiniPlayerStyle
     public required Func<string, TextEl> Detail { get; init; }
     /// <summary>The artist written big across the square's cover at a window width (Zune), or null.</summary>
     public required Func<string, float, TextEl>? CoverBleed { get; init; }
-    /// <summary>Classic's wave edge under the square's cover and behind the tall column's object faces.</summary>
-    public required bool WaveEdge { get; init; }
+    /// <summary>Classic's ground band: the square's cover stands on a band of the window's ground (a straight join, never a wave), and a
+    /// tinted band closing on a slow swell stands behind the tall column's object faces.</summary>
+    public required bool GroundBand { get; init; }
     /// <summary>A label (flyout rows, the face name, section heads).</summary>
     public required Func<string, TextEl> Label { get; init; }
     /// <summary>A small caption in the theme's voice (the flyouts' section heads and tile names: lowercase in Zune).</summary>

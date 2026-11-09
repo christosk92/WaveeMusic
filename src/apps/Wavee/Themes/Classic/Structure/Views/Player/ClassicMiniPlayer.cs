@@ -2,9 +2,9 @@
 //
 // The layout is the Common template's (Themes/Common/CommonMiniPlayer.cs); this is Classic's MiniPlayerStyle: a warm wash tinted from the
 // accent (the album's with "Colour from album art", on by default as in the app), soft 14-DIP corners, the artist in the accent, the heart
-// on an album-tinted plate, the wave edge on the square's cover and behind the tall column (the Common template draws it from WaveEdge),
-// and Classic's own motion: the seek fill ripples like water while the music moves and lies flat while it rests; the visualizer is three
-// slow sine waves. The lyrics windows are the app's own lyrics view; the strip's ticker reads in the display face.
+// on an album-tinted plate, the square's cover on a band of the ground (a straight join) and a swell behind the tall column's object faces
+// (the Common template draws both from GroundBand), and Classic's own motion: the seek fill ripples like water while the music moves and
+// lies flat while it rests; the visualizer is three slow sine waves. The lyrics windows are the app's own lyrics view; the strip's ticker reads in the display face.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -62,7 +62,7 @@ internal static class ClassicMiniPlayer
         },
         Detail = static text => Line(R.Type.TrackMeta(text)) with { Size = M.MetaSize, LineHeight = M.MetaLeading, Color = Tok.TextTertiary },
         CoverBleed = null,
-        WaveEdge = true,
+        GroundBand = true,
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary },
         Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary },
         Heading = static text => Line(R.Type.TrackTitle(text)) with { Size = M.HeadingSize, Color = Tok.TextPrimary, FontFamily = R.Type.DisplayFace },

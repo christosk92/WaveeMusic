@@ -66,7 +66,7 @@ internal static class CommonMiniPlayerRules
 
     // ── square ──
     /// <summary>The square's resting row (inset, foot inset), the object faces' and Classic cover's foot band, the hover layer's padding.</summary>
-    public const float SquareRestInset = 14f, SquareRestFoot = 13f, SquareObjectFoot = 62f, SquareWaveFoot = 66f;
+    public const float SquareRestInset = 14f, SquareRestFoot = 13f, SquareObjectFoot = 62f, SquareCoverFoot = 66f;
     /// <summary>The square's hover bar names the face between its arrows from this width: narrower, the arrows, the device, options and back
     /// keep their 40-DIP reach instead.</summary>
     public static bool SquareNamesFace(float width) => width >= 300f;

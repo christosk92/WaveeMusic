@@ -68,7 +68,7 @@ internal static class ZuneMiniPlayer
         {
             Color = H.OnMediaInk, CharSpacing = M.BleedTracking, Shrink = 0f,
         },
-        WaveEdge = false,
+        GroundBand = false,
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary, Case = TextCase.Lower },
         Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary, Case = TextCase.Lower },
         Heading = static text => Display(text, M.HeadingSize, M.HeadingLeading) with { Color = Tok.TextPrimary },

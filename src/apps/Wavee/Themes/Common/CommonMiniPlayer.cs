@@ -9,7 +9,7 @@
 //   Wide   12:5  the face box, title / artist / detail (or the lyric window), seek with times, save · prev · play · next · device; on hover
 //                the ‹ › flip on the art and the options / back pill.
 //   Square 1:1   the face fills; title, artist, heart and badge at the foot, the edge line; on hover the whole transport over a veil, in
-//                on-dark ink in every mode. Object faces and Classic's wave-edged cover sit above a band of the window's own ground.
+//                on-dark ink in every mode. Object faces and Classic's cover sit above a band of the window's own ground (no wave).
 //   Tall   9:16  the face above (Canvas / Visualizer / Lyrics: behind) title, seek, transport and device; volume when there is room.
 //
 // The accent is the theme's (WinUI's, Zune's pink), or the album's with "Colour from album art" (Classic's default). State never hides
@@ -242,18 +242,14 @@ internal static partial class CommonMiniPlayer
         var st = m.St;
         bool lyrics = m.Kind == MiniFaceKind.Lyrics;
         bool obj = m.Kind == MiniFaceKind.Object;
-        bool waveCover = st.WaveEdge && m.Kind == MiniFaceKind.Cover;
-        bool dark = !obj && !waveCover;   // the face fills the window: the text and controls read on-dark
+        bool groundCover = st.GroundBand && m.Kind == MiniFaceKind.Cover;
+        bool dark = !obj && !groundCover;   // the face fills the window: the text and controls read on-dark
         float w = m.Size.Width, h = m.Size.Height;
         var children = new List<Element>(8);
         if (obj)
             children.Add(Glow(m, w, h - H.SquareObjectFoot, FaceLayer(m, w, h - H.SquareObjectFoot, MiniFaceUse.Box, corner: 0f)));
-        else if (waveCover)
-            children.Add(new BoxEl
-            {
-                Width = w, Height = h - H.SquareWaveFoot, AlignSelf = FlexAlign.Start, ZStack = true, HitTestVisible = false,
-                Children = [FaceLayer(m, w, h - H.SquareWaveFoot, MiniFaceUse.Fill), WaveFoot(m, w, h - H.SquareWaveFoot)],
-            });
+        else if (groundCover)
+            children.Add(FaceLayer(m, w, h - H.SquareCoverFoot, MiniFaceUse.Fill));
         else
             children.Add(FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsSquare)));
         if (st.CoverBleed is { } bleed && m.Kind == MiniFaceKind.Cover)
@@ -356,7 +352,7 @@ internal static partial class CommonMiniPlayer
         };
         if (c.Roomy) rows.Add(VolumeRow(c));
         var all = new List<Element>(3);
-        if (st.WaveEdge) all.Add(WaveBand(c, w, h * H.WaveBandShare));
+        if (st.GroundBand && c.Kind == MiniFaceKind.Object) all.Add(WaveBand(c, w, h * H.WaveBandShare));
         all.Add(new BoxEl { Grow = 1f, Direction = 1, Gap = H.TallGap, Padding = new Edges4(st.Pad, H.TallPadTop, st.Pad, H.TallPadFoot), Children = rows.ToArray() });
         if (c.Hot) all.Add(Chrome(c, withPick: true));
         return new BoxEl { Grow = 1f, ZStack = true, Children = all.ToArray() };
