@@ -15,6 +15,7 @@ public sealed partial class ZuneStructure
     static partial void RegisterPlayer(ViewRegistryBuilder views)
     {
         views.Add(ViewKeys.PlayerBar, ZunePlayerBar.Template, "zune.player.bar");
+        ZuneMiniPlayer.Register(views);   // Player.Mini (#197)
         views.Add(ViewKeys.SeekRail, ZuneTransport.SeekRail, "zune.player.seek-rail");
         views.Add(ViewKeys.SeekChapters, ZuneTransport.SeekChapters, "zune.player.seek-chapters");
         views.Add(ViewKeys.ChapterTip, ZuneTransport.ChapterTip, "zune.player.chapter-tip");

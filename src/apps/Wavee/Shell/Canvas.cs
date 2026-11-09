@@ -49,8 +49,9 @@ public static partial class CanvasVideo
 
     /// <summary>Where a canvas can show, by priority: the higher value owns the one player when several are mounted. The now-playing
     /// cover is not one: "Cover" is the album art alone, and a canvas in the panel is the Canvas player style's: edge to edge behind the panel
-    /// at rest (Bleed), in the picker's Canvas cell while picking (Deck).</summary>
-    public enum Surface : byte { None = 0, Bleed = 1, Deck = 2, Stage = 3 }
+    /// at rest (Bleed), in the picker's Canvas cell while picking (Deck). The mini player's Canvas face (Mini, #197) outranks them all: while it
+    /// shows, the main window is hidden.</summary>
+    public enum Surface : byte { None = 0, Bleed = 1, Deck = 2, Stage = 3, Mini = 4 }
 
     /// <summary>The playing track's canvas as the surfaces draw it. <see cref="Shows"/> false: draw nothing (the surface is exactly what it
     /// is without Canvas). <see cref="File"/> is empty until the mp4 is on disk (the poster shows meanwhile).</summary>
@@ -80,7 +81,7 @@ public static partial class CanvasVideo
     public static MediaPlayer Player => s_player ??= Build();
 
     static MediaPlayer? s_player;
-    static readonly int[] s_claims = new int[4];
+    static readonly int[] s_claims = new int[5];   // one per Surface (None unused)
 
     /// <summary>The observer asked the player to play (true) or holds it paused / stopped (false). Diagnostics.</summary>
     public static bool Running { get; private set; }

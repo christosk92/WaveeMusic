@@ -185,6 +185,10 @@ public static partial class Platform
         public static readonly SettingKey<string> VideoAspectMode = new("video.aspect.mode", "fit");
         public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", 16.0 / 9.0);
         public static readonly SettingKey<bool> VideoWindowAlwaysOnTop = new("video.window.ontop", true);
+        /// <summary>The mini player window (#197): where it was (screen-px "x,y,w,h", outer rect), its face, and whether it stays on top.</summary>
+        public static readonly SettingKey<string> MiniPlayerRect = new("mini.window.rect", "");
+        public static readonly SettingKey<int> MiniPlayerFace = new("mini.face", 0);
+        public static readonly SettingKey<bool> MiniPlayerOnTop = new("mini.window.ontop", true);
 
         // ── local playback runtime (the provisioning card; RuntimePhase below). Path, pack and catalog are read and written by the
         // private PlayPlay module's provisioner, which is not in this repository. ──

@@ -85,6 +85,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNavEdit, ClassicNavEdit.Template, "classic.shell.nav-edit");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
+        ClassicMiniPlayer.Register(views);   // Player.Mini (#197)
         // Leftovers P3: the transport pieces the bar, the stage's transport card and the on-media strip share (`Views\Player\ClassicTransport.cs`).
         views.Add(ViewKeys.SeekRail, ClassicTransport.SeekRail, "classic.player.seek-rail");
         views.Add(ViewKeys.SeekChapters, ClassicTransport.SeekChapters, "classic.player.seek-chapters");

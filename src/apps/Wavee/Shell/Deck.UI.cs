@@ -61,6 +61,12 @@ public static partial class Deck
         return Embed.Comp(new HostSide(side), () => new Host { Style = style }) with { Key = "deck:" + style.Slug };
     }
 
+    /// <summary>Whether the surface a deck is mounted on can be seen: the gate its clock, its loops and its audio lease run on. Unset
+    /// (null), a deck answers to the right panel (<c>Shell.Ui.RailOpen</c>), where the now-playing stage mounts it; a surface of
+    /// its own (the mini player's window) provides its own signal, so a deck there runs while the panel is closed or the main
+    /// window is hidden, and stops when the mini player is.</summary>
+    public static readonly Context<IReadSignal<bool>?> SurfaceOpen = new(null);
+
     // ══ 2. THE SLAB ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The ONE channel between the physics and the pixels: a fixed slab the faces bind at build and the clock
@@ -284,6 +290,8 @@ public static partial class Deck
         /// <summary>The user's band gain (<c>Visualizer.Bands.Gain(Prefs.Stage.Sensitivity(), calm: false)</c>), cached ONCE per
         /// prefs epoch by <see cref="ReadGain"/> — the tick never reads the prefs registry (O8, V-U18).</summary>
         float _gain = 1f;
+        /// <summary>The surface gate (<see cref="SurfaceOpen"/>, else the panel's), read at render and by every effect.</summary>
+        IReadSignal<bool> _open = Shell.Ui.RailOpen;
 
         public Clock()
         {
@@ -304,7 +312,8 @@ public static partial class Deck
             bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
             bool buffering = Playback.Buffering.Value || loading;
             bool settled = _settled.Value;
-            bool railOpen = Shell.Ui.RailOpen.Value;
+            _open = UseContext(SurfaceOpen) ?? Shell.Ui.RailOpen;
+            bool railOpen = _open.Value;
             bool run = ClockRules.ShouldTick(Design.Reduced, railOpen, playing, playing || loading, buffering, settled);
             _active = UseIsActive();
             UseEffect(_transport);
@@ -341,7 +350,7 @@ public static partial class Deck
             var sig = Host.Sig;
             bool seekPending = sig.SeekTargetMs.Value is not null;
             _ = sig.ScrubTargetMs.Value;                   // a drag starting on a still deck must wake it
-            bool railOpen = Shell.Ui.RailOpen.Value;
+            bool railOpen = _open.Value;
             bool settled = _settled.Value;
             bool active = _active?.Value ?? true;
             long now = FrameTime.NowMs;
@@ -441,14 +450,14 @@ public static partial class Deck
         void PublishLoops()
         {
             bool active = _active?.Value ?? true;
-            Host.Sig.LoopsRun.Value = ClockRules.LoopsMayRun(Design.Reduced, Shell.Ui.RailOpen.Value, active, Playback.IsPlaying.Value);
+            Host.Sig.LoopsRun.Value = ClockRules.LoopsMayRun(Design.Reduced, _open.Value, active, Playback.IsPlaying.Value);
         }
 
         /// <summary>The audio taps do no work until somebody holds a lease — only a visible, moving analyser deck does: the VU
         /// holds the level tier, Winamp and WMP the spectrum tier (which implies the level tap).</summary>
         Action? LeaseLevels()
         {
-            bool needs = (Host.UsesLevels || Host.UsesSpectrum) && (_active?.Value ?? true) && !Design.Reduced && Shell.Ui.RailOpen.Value
+            bool needs = (Host.UsesLevels || Host.UsesSpectrum) && (_active?.Value ?? true) && !Design.Reduced && _open.Value
                          && (Playback.IsPlaying.Value || Playback.Buffering.Value || !_settled.Value)
                          && Playback.Audio.Supported.Value && Playback.OwnerSignal.Value == Playback.Owner.Us;
             if (!needs) return null;

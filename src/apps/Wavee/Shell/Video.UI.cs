@@ -153,6 +153,8 @@ public static partial class Video
                 Embed.Comp(static () => new JoinWatch()),
                 // Spotify Canvas: the demand, the record and the one looping player (Shell/Canvas.cs) — mounted once, here.
                 Embed.Comp(static () => new CanvasVideo.Observer()),
+                // The mini player window's lifecycle owner (#197, Shell/MiniPlayer.cs): mounted once, here, beside the pop-out's.
+                Embed.Comp(static () => new MiniPlayer.Owner()),
             ]);
     }
 

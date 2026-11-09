@@ -250,6 +250,8 @@ public static partial class Diagnostics
             Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
             Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
             Arg("materials", ArgType.Enum, "off: no acrylic runs, every frosted surface draws its fallback plate (what Energy saver and Transparency effects off show)", "on", "on|off"),
+            Arg("mini", ArgType.Bool, "mount the mini player window's content alone (#197): its shape follows w x h (Strip 6:1, Wide 12:5, Square, Tall 9:16)", null, "true|false"),
+            Arg("face", ArgType.Int, "with mini: the face (0 Cover, 1 Lyrics, 2 Canvas, 3 Visualizer, 4 Vinyl, 5 CD, 6 Cassette, 7 Reel)", "0", "0..7"),
             Arg("motion", ArgType.Enum, "reduced: Windows' Animation effects off for this mount (page swaps fade, nothing slides, zooms or staggers)", "full", "full|reduced"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),

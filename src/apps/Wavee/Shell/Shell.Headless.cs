@@ -173,12 +173,12 @@ public static partial class Shell
         /// <summary>Mount the frame on <paramref name="devices"/> (an offscreen D3D12 surface with DirectWrite, or a headless
         /// window with DirectWrite) instead of the test devices. The window in <paramref name="devices"/> already carries its
         /// size and scale. Dispose the handle before the next mount; it releases the devices after the host.</summary>
-        public static HeadlessShell Mount(HeadlessDevices devices, IFrameTimeSource? frameTime = null)
+        public static HeadlessShell Mount(HeadlessDevices devices, IFrameTimeSource? frameTime = null, Func<Element>? content = null)
         {
             ArgumentNullException.ThrowIfNull(devices);
             RequireUiThread();
             if (s_mounted is not null) throw new InvalidOperationException("A headless shell is already mounted; dispose it first.");
-            var shell = new HeadlessShell(devices, frameTime ?? new FixedFrameTimeSource(16f));
+            var shell = new HeadlessShell(devices, frameTime ?? new FixedFrameTimeSource(16f), content);
             s_mounted = shell;
             return shell;
         }

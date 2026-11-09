@@ -2036,6 +2036,22 @@
     "genericError": "Something went wrong signing in.",
     "browserFailed": "Browser sign-in failed: {error}"
   },
+  "mini": {
+    "$comment": "The mini player window (#197): the always-on-top player in four shapes.",
+    "title": "Mini player",
+    "back": "Back to Wavee",
+    "options": "Options",
+    "onTop": "Keep on top",
+    "prevFace": "Previous face",
+    "nextFace": "Next face",
+    "shape": "Shape",
+    "face": "Face",
+    "strip": "Strip",
+    "wide": "Wide",
+    "square": "Square",
+    "tall": "Tall",
+    "lyrics": "Lyrics"
+  },
   "player": {
     "seekBack10": "Back 10 seconds",
     "seekForward10": "Forward 10 seconds",

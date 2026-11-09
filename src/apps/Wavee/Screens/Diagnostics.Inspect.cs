@@ -297,7 +297,8 @@ public static partial class Diagnostics
         /// <summary>Mount the frame on the best devices this machine has (see the file header): the offscreen surface (real
         /// pixels and text), else the recording device with DirectWrite (true text, no pixels), else (`--text headless`) the
         /// shell tests' devices.</summary>
-        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false, float dtMs = 16f)
+        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false, float dtMs = 16f,
+            Func<Element>? content = null)
         {
             var frameTime = new FluentGpu.Hosting.FixedFrameTimeSource(dtMs);
             // Without `images=real` the engine's fake decoder paints every image: the palette's luminance maps measure what it paints.
@@ -305,7 +306,7 @@ public static partial class Diagnostics
             if (!_realText)
             {
                 _devices = "headless";
-                return Wavee.Shell.Headless.Mount(widthDip, heightDip, scale, frameTime);
+                return Wavee.Shell.Headless.Mount(content, widthDip, heightDip, scale, frameTime);
             }
             StringTable strings = Entities.Strings;
             string why = "gpu=none";
@@ -334,7 +335,7 @@ public static partial class Diagnostics
                     };
                     _surface = surface;
                     _devices = "offscreen (" + surface.BackendName + ")";
-                    return Wavee.Shell.Headless.Mount(devices, frameTime);
+                    return Wavee.Shell.Headless.Mount(devices, frameTime, content);
                 }
                 why = reason ?? "the offscreen surface could not be created";
             }
@@ -343,7 +344,7 @@ public static partial class Diagnostics
             var fallback = new Wavee.Shell.HeadlessDevices(window, window, new FluentGpu.Rhi.Headless.HeadlessGpuDevice(), dwrite,
                 Release: dwrite.Dispose);
             _devices = "headless-gpu+dwrite (" + why + ")";
-            return Wavee.Shell.Headless.Mount(fallback, frameTime);
+            return Wavee.Shell.Headless.Mount(fallback, frameTime, content);
         }
 
         // ── the dispatcher ──────────────────────────────────────────────────────────────────────────────────────────
@@ -839,7 +840,11 @@ public static partial class Diagnostics
             FluentGpu.Dsl.Materials.EnergySaver = materials == "off";
             float dt = a.Float("dt", 16f);
             if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
-            _shell = MountOn(w0, h0, scale, gpu, images == "real", dt);
+            // `mini=1` (#197): the mini player window's content ALONE at w x h (its shape follows the size), `face=<0..7>` its face. The
+            // mini player reads as open, so its animated faces run as they do in the window.
+            bool mini = a.Has("mini") && a.Str("mini") != "false";
+            MiniPlayer.InspectMount(mini, a.Has("face") ? (int)a.Float("face", 0f) : -1);
+            _shell = MountOn(w0, h0, scale, gpu, images == "real", dt, mini ? MiniPlayer.InspectContent : null);
             _frames++;
             _mounts++;
             mounted = true;
