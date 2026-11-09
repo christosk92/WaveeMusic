@@ -116,7 +116,8 @@ internal static class ClassicMiniPlayer
         Action<RectF>? _bounds;
         Action? _drift, _ease;
         Prop<SeriesSamples> _samples;
-        Prop<float> _waveW, _trackW;
+        Prop<float> _waveW, _trackW, _capShown;
+        Prop<Affine2D> _capStart, _capEnd;
         bool _wired;
 
         public override Element Render()
@@ -170,6 +171,8 @@ internal static class ClassicMiniPlayer
                         },
                     ],
                 },
+                // Round caps: a series ends square, so a dot of the stroke's width sits on each end (riding the wave's height at the start).
+                Cap(accent, _capStart), Cap(accent, _capEnd),
             };
             if (drawn)
                 kids.Add(new BoxEl
@@ -206,6 +209,16 @@ internal static class ClassicMiniPlayer
                 float w = WaveWidth(width.Value, fill.Current().M11);
                 return Sample(w);
             });
+            _capShown = Prop.Of(() => WaveWidth(width.Value, fill.Current().M11) >= 1f ? 1f : 0f);
+            _capStart = Prop.Of(() =>
+            {
+                _ = frame.Value;
+                float w = WaveWidth(width.Value, fill.Current().M11);
+                float t = Math.Clamp(w / (0.5f * M.WavePeriod), 0f, 1f);
+                float d = _amp * t * t * (3f - 2f * t) * MathF.Sin(2f * MathF.PI / M.WavePeriod * _phase);
+                return Affine2D.Translation(-0.5f * M.Track, -d);
+            });
+            _capEnd = Prop.Of(() => Affine2D.Translation(WaveWidth(width.Value, fill.Current().M11) - 0.5f * M.Track, 0f));
             _drift = () =>
             {
                 float next = _phase + M.WaveStep;
@@ -222,6 +235,12 @@ internal static class ClassicMiniPlayer
                 if (_easeT >= 1f) _easing.Value = false;
             };
         }
+
+        Element Cap(ColorF accent, Prop<Affine2D> at) => new BoxEl
+        {
+            Width = M.Track, Height = M.Track, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Corners = CornerRadius4.All(0.5f * M.Track),
+            Fill = accent, Opacity = _capShown, Transform = at, HitTestVisible = false,
+        };
 
         /// <summary>The head's centre: the played fraction of the rail, kept a half head inside either end (as the bar's thumb placement).</summary>
         static float HeadX(float w, float fraction) => Math.Clamp(w * fraction, 0.5f * M.HeadW, MathF.Max(0.5f * M.HeadW, w - 0.5f * M.HeadW));

@@ -25,8 +25,8 @@ internal static class ClassicMiniRules
 
     // ── the seek rail: the played part a calm wave alone, the unplayed part the plain 3-DIP track after a gap, a rounded pill head between ──
     public const float Track = 3f, TrackCorner = 1.5f, TrackAlpha = 0.18f, Thumb = 12f;
-    /// <summary>The wave: its box, its peak (3 DIP peak to peak), its wavelength, one sample a DIP; the gaps before and after the head.</summary>
-    public const float WaveH = 10f, WaveAmp = 1.5f, WavePeriod = 18f, SampleStep = 1f, WaveGap = 2f, TrackGap = 3f;
+    /// <summary>The wave: its box, its peak (3 DIP peak to peak), its wavelength, two samples a DIP (one a DIP stair-stepped the slopes at 100 %); the gaps before and after the head.</summary>
+    public const float WaveH = 10f, WaveAmp = 1.5f, WavePeriod = 18f, SampleStep = 0.5f, WaveGap = 3.5f, TrackGap = 3f;
     /// <summary>The drift: one wavelength per WaveMs, in WaveTickMs steps (about 15 a second); the play / pause ease and its frame-pace step.</summary>
     public const float WaveMs = 1100f, WaveTickMs = 66f, WaveStep = WavePeriod * WaveTickMs / WaveMs, EaseMs = 250f, EaseTickMs = 16f;
     /// <summary>The head: a 4 x 12 rounded pill, a quarter taller while the controls show, eased over HeadMs.</summary>
