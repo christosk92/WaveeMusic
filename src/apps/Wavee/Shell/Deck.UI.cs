@@ -61,6 +61,15 @@ public static partial class Deck
         return Embed.Comp(new HostSide(side), () => new Host { Style = style }) with { Key = "deck:" + style.Slug };
     }
 
+    /// <summary>One style's deck DRAWN BY ITS CALLER in a <paramref name="width"/> × <paramref name="height"/> box: the same host, model, clock
+    /// and audio lease (the analyser bands reach <paramref name="paint"/> through the slab), another picture (the mini player's per-theme
+    /// visualizer, #197). The painter is re-pushed with the box.</summary>
+    internal static Element Painted(int styleId, float width, float height, Func<Slab, Element> paint)
+    {
+        var style = Rail.PlayerCatalog.ById(styleId);
+        return Embed.Comp(new HostSide(width, height, paint), () => new Host { Style = style }) with { Key = "deck-painted:" + style.Slug };
+    }
+
     /// <summary>Whether the surface a deck is mounted on can be seen: the gate its clock, its loops and its audio lease run on. Unset
     /// (null), a deck answers to the right panel (<c>Shell.Ui.RailOpen</c>), where the now-playing stage mounts it; a surface of
     /// its own (the mini player's window) provides its own signal, so a deck there runs while the panel is closed or the main
@@ -107,7 +116,8 @@ public static partial class Deck
     // ══ 3. THE HOST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The deck's edge, re-pushed by the stage on a column quantum (the deck keeps its node, its model and its clock).</summary>
-    sealed record HostSide(float Side);
+    /// <summary>A painted deck (<see cref="Painted"/>) adds its box height and its painter.</summary>
+    sealed record HostSide(float Side, float Height = 0f, Func<Slab, Element>? Paint = null);
 
     /// <summary>The square that IS a deck. Re-renders on the prefs epoch (a finish pick restyles the face IN PLACE) and
     /// never on the transport. The model is created from the CURRENT transport (<see cref="Seed"/>), so a deck mounted
@@ -171,7 +181,8 @@ public static partial class Deck
         public override Element Render()
         {
             _ = Rail.PlayerPrefs.Epoch.Value;
-            Side = UseProps<HostSide>().Side;
+            var hs = UseProps<HostSide>();
+            Side = hs.Side;
             float side = SideDip;
             if (!_built)
             {
@@ -181,6 +192,15 @@ public static partial class Deck
             }
 
             var host = this;
+            if (hs.Paint is { } paint)
+            {
+                float h = hs.Height > 0f ? hs.Height : side;
+                return new BoxEl
+                {
+                    Width = side, Height = h, Shrink = 0f, ClipToBounds = true, IsolateLayout = true, ZStack = true, Animate = Entrance,
+                    Children = [paint(Sig), Embed.Comp(() => new Clock { Host = host }) with { Key = "deck-clock" }],
+                };
+            }
             return new BoxEl
             {
                 Width = side, Height = side, Shrink = 0f,

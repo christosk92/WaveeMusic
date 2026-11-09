@@ -44,7 +44,9 @@ public static class RightSlotOrder
 }
 
 /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>
-public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute }
+/// <remarks><see cref="Mini"/> (#197) is appended: it is BUILT right after <see cref="FullScreen"/>, at the tiers that drop the row's mini
+/// player and full screen buttons.</remarks>
+public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute, Mini }
 
 /// <summary>What the primary transport button does when clicked.</summary>
 public enum PrimaryVerb : byte { None, TogglePlay, Retry }
