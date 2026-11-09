@@ -47,7 +47,11 @@ public static partial class MiniPlayer
         /// <summary>The prototype's default: Wide at 392 × 163 DIP.</summary>
         public const float DefaultW = 392f, DefaultH = 163f;
         /// <summary>The smallest client the window allows while dragging (a strip's height, a tall column's width).</summary>
-        public const float MinW = 200f, MinH = 48f;
+        public const float MinW = 232f, MinH = 48f;
+        /// <summary>What the wide card needs to lay out: its text column (the save, transport and device row) and its height (title,
+        /// artist, seek, transport). A window nearest Wide by ratio but smaller than this (mid-drag, before it settles) draws as a
+        /// Square where it is tall enough for the square's hover rows, else as a Strip.</summary>
+        public const float WideColumnFloor = 214f, WideHeightFloor = 142f, SquareHeightFloor = 170f;
         /// <summary>Within this distance (DIP) of a work-area corner a released window snaps to it, inset by <see cref="EdgeDip"/>.</summary>
         public const float SnapDip = 56f, EdgeDip = 12f;
         /// <summary>The settle animation (window bounds) and its step.</summary>
@@ -95,6 +99,15 @@ public static partial class MiniPlayer
             if (r >= MathF.Sqrt(2.4f)) return MiniShape.Wide;
             if (r >= MathF.Sqrt(9f / 16f)) return MiniShape.Square;
             return MiniShape.Tall;
+        }
+
+        /// <summary>The shape the content draws at a size: the nearest by ratio, or, where the window is too small for the wide card (a
+        /// drag passes through every size before it settles), the shape that fits. Never a layout cut by its own window.</summary>
+        public static MiniShape Live(float w, float h)
+        {
+            var shape = Classify(w, h);
+            if (shape != MiniShape.Wide || (w - h >= WideColumnFloor && h >= WideHeightFloor)) return shape;
+            return h >= SquareHeightFloor ? MiniShape.Square : MiniShape.Strip;
         }
 
         /// <summary>The settled client size for a dragged one: the nearest shape at roughly the same area, inside the shape's range.</summary>
@@ -489,7 +502,7 @@ public static partial class MiniPlayer
         if (viewport.Width <= 0f || viewport.Height <= 0f) return;
         s_clientDip = viewport;
         s_scale = scale > 0f ? scale : 1f;
-        var shape = Rules.Classify(viewport.Width, viewport.Height);
+        var shape = Rules.Live(viewport.Width, viewport.Height);
         if (s_shape.Peek() != shape) s_shape.Value = shape;
         bool roomy = Rules.Roomy(viewport.Width, viewport.Height);
         if (s_roomy.Peek() != roomy) s_roomy.Value = roomy;
@@ -504,7 +517,7 @@ public static partial class MiniPlayer
     {
         static readonly Action<FrameStats> s_shellTick = Shell.FrameTick;
         IDetachedVideoWindow? _window;
-        bool _openQueued, _unmounted, _ownBounds;
+        bool _openQueued, _unmounted;
         RectF _settleFrom, _settleTo;
         float _settleT = 1f;
         long _deepWas = -1;
@@ -637,23 +650,32 @@ public static partial class MiniPlayer
                 Log.Info(LogCategory, "revealed firstPresentMs=" + timing.FirstPresentMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
                 // Only now hide the main window: the mini player is on screen first, so there is never a moment with no Wavee window.
                 if (IsOpen.Peek()) HideMain();
+                // A restored rect is whatever was saved: by an older build mid-drag, or at another display scale. Settle it as a drag's end.
+                if (_window is { IsOpen: true } live) OnBoundsSettled(live.BoundsPx, settling);
             };
         }
 
+        /// <summary>The window's rect came to rest. Our own settle's steps and landing are not gestures (the landing is recognised by
+        /// where it is, never by a flag a missed report would leave set): anything else settles on the nearest shape.</summary>
         void OnBoundsSettled(RectF outer, Signal<bool> settling)
         {
-            if (_window is not { IsOpen: true } w) return;
-            if (_ownBounds) { _ownBounds = settling.Peek(); Persist(outer); return; }   // our own settle step landed
+            if (_window is not { IsOpen: true } || s_clientDip.Width <= 0f) return;
+            if (settling.Peek()) return;
+            if (_settleT >= 1f && Near(outer, _settleTo)) { Persist(outer); return; }
+            var target = Settled(outer);
+            if (Near(outer, target)) { Persist(outer); return; }
+            Begin(outer, target, settling);
+        }
+
+        static bool Near(RectF a, RectF b)
+            => MathF.Abs(a.X - b.X) < 1f && MathF.Abs(a.Y - b.Y) < 1f && MathF.Abs(a.W - b.W) < 1f && MathF.Abs(a.H - b.H) < 1f;
+
+        /// <summary>Where a window at <paramref name="outer"/> settles: the nearest shape at its area, snapped to a near corner.</summary>
+        RectF Settled(RectF outer)
+        {
             float chromeW = MathF.Max(0f, outer.W - s_clientDip.Width * s_scale), chromeH = MathF.Max(0f, outer.H - s_clientDip.Height * s_scale);
             float cw = (outer.W - chromeW) / s_scale, ch = (outer.H - chromeH) / s_scale;
-            var size = Rules.Settle(cw, ch);
-            var target = Target(outer, size, chromeW, chromeH);
-            if (MathF.Abs(target.X - outer.X) < 1f && MathF.Abs(target.Y - outer.Y) < 1f && MathF.Abs(target.W - outer.W) < 1f && MathF.Abs(target.H - outer.H) < 1f)
-            {
-                Persist(outer);
-                return;
-            }
-            Begin(outer, target, settling);
+            return Target(outer, Rules.Settle(cw, ch), chromeW, chromeH);
         }
 
         void StartSettle(IDetachedVideoWindow w, Size2 sizeDip, Signal<bool> settling)
@@ -675,7 +697,6 @@ public static partial class MiniPlayer
             _settleFrom = from;
             _settleTo = to;
             _settleT = 0f;
-            _ownBounds = true;
             if (Motion.ReducedMotion) _settleT = 1f;
             SettleStepCore();
             settling.Value = _settleT < 1f;
@@ -704,7 +725,8 @@ public static partial class MiniPlayer
             s_live = null;
             if (w is not null)
             {
-                Persist(w.BoundsPx);
+                // Saved settled: a close mid-drag or mid-settle must not reopen at a size no shape lays out.
+                Persist(_settleT < 1f ? _settleTo : s_clientDip.Width > 0f ? Settled(w.BoundsPx) : w.BoundsPx);
                 w.FrameCompleted = null;
                 w.OnClosed = null;
                 w.BoundsChanged = null;

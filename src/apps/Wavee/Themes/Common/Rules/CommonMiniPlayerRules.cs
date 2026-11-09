@@ -39,6 +39,9 @@ internal static class CommonMiniPlayerRules
     /// <summary>The strip's hover controls: the fade run into the solid plate (DIP), the plate's lead, the inset that leaves the edge line,
     /// the plate's end padding.</summary>
     public const float StripFade = 44f, StripFadeLead = 48f, StripOverlayFoot = 8f, StripOverlayEnd = 8f;
+    /// <summary>The strip shows its hover plate only where the whole plate fits the window (a drag passes through narrower strips before
+    /// the window settles on the shape's range): never a plate cut by the window's edge.</summary>
+    public static bool StripHoldsPlate(float width, float plate) => width >= plate;
     /// <summary>The window's edge line: a hairline at rest, thicker while the controls show, inside a taller hit box.</summary>
     public const float EdgeRest = 2f, EdgeHot = 5f, EdgeHit = 10f;
     /// <summary>The resting saved heart's glyph.</summary>

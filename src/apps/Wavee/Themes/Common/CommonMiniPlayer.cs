@@ -166,10 +166,10 @@ internal static partial class CommonMiniPlayer
             });
         children.Add(row);
         children.Add(Edge(m));
-        if (m.Hot)
+        float w = H.StripFadeLead + 6f * st.ButtonBox + H.StripOverlayEnd;
+        if (m.Hot && H.StripHoldsPlate(m.Size.Width, w))
         {
             var solid = st.Solid(m.Accent);
-            float w = H.StripFadeLead + 6f * st.ButtonBox + H.StripOverlayEnd;
             children.Add(new BoxEl
             {
                 Key = H.HoverKey, Width = w, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.End, Direction = 0, AlignItems = FlexAlign.Center,
