@@ -56,6 +56,7 @@ public static partial class Lyrics
         bool LyricsContracts.ILyricsHost.OnRail => OnRail;
         float? LyricsContracts.ILyricsHost.Gutter => _gutter >= 0f ? _gutter : null;
         bool LyricsContracts.ILyricsHost.BoxFades => _gutter >= 0f;
+        bool LyricsContracts.ILyricsHost.Inert => _gutter >= 0f;
 
         // ── what is on screen ───────────────────────────────────────────────────────────────────────────────────────
 

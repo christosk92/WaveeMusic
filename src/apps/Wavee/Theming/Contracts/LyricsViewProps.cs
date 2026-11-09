@@ -82,6 +82,10 @@ public interface ILyricsHost
     /// feather of its own (the standard 40-DIP band would fade the active line of a 50-DIP window). Default false.</summary>
     bool BoxFades => false;
 
+    /// <summary>The lines are a picture, not targets (the mini player's: a click there goes back to Wavee, the wheel is the volume): a
+    /// style's rows take no click, focus or button role. Default false.</summary>
+    bool Inert => false;
+
     // ── what is on screen (live: reads subscribe the caller) ───────────────────────────────────────────────────────
 
     /// <summary>The row type and rhythm of the document on screen (the timed surface's, at the stage's scale).</summary>

@@ -492,10 +492,11 @@ internal sealed class WinUiLyricsRow : Component
             AlignItems = FlexAlign.Stretch,
             TransformOriginX = 0f,
             TransformOriginY = 0.5f,
-            Cursor = CursorId.Hand,
-            OnClick = _onClick,
-            Role = AutomationRole.Button,
-            Focusable = true,
+            // A mount whose lines are a picture (the mini player's, ILyricsHost.Inert) takes no click: the window's click and wheel are its own.
+            Cursor = _host.Inert ? null : CursorId.Hand,
+            OnClick = _host.Inert ? null : _onClick,
+            Role = _host.Inert ? AutomationRole.None : AutomationRole.Button,
+            Focusable = !_host.Inert,
             AllowFocusOnInteraction = false,
             Children = [dofContent],
         };

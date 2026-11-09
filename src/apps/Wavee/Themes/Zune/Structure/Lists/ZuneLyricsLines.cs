@@ -373,10 +373,11 @@ internal sealed class ZuneLyricsRow : Component
             Padding = new Edges4(m.SidePad, m.RowPad + reserve, m.SidePad, m.RowPad),
             Justify = FlexJustify.Center,
             AlignItems = FlexAlign.Stretch,
-            Cursor = CursorId.Hand,
-            OnClick = _onClick,
-            Role = AutomationRole.Button,
-            Focusable = true,
+            // A mount whose lines are a picture (the mini player's, ILyricsHost.Inert) takes no click: the window's click and wheel are its own.
+            Cursor = _host.Inert ? null : CursorId.Hand,
+            OnClick = _host.Inert ? null : _onClick,
+            Role = _host.Inert ? AutomationRole.None : AutomationRole.Button,
+            Focusable = !_host.Inert,
             AllowFocusOnInteraction = false,
             Children = [new BoxEl { Direction = 1, Blur = blur, OnRealized = _onDof, Children = column }],
         };
