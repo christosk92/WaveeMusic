@@ -26,9 +26,15 @@ internal static class ClassicMiniRules
     // ── the seek rail: a 3-DIP track, the fill a rippling line while playing (period 18, 10 tall, 2.2 stroke), a 3-DIP bar while resting ──
     public const float Track = 3f, TrackCorner = 1.5f, TrackAlpha = 0.18f, Thumb = 12f;
     public const float WaveH = 10f, WavePeriod = 18f, WaveAmp = 2.4f, WaveStroke = 2.2f, WaveMs = 1100f;
+    /// <summary>The ripple's step rate: it drifts 16 DIP a second (24 device px at 150 %), so 25 steps move it about a pixel each, where a
+    /// step per display frame (120 Hz) moved it a fifth of one (mini player power pass, 2026-11-09).</summary>
+    public const float WaveHz = 25f;
 
     // ── the visualizer: three slow sine waves (accent, white, accent faint) drifting at 2.6, 3.7 and 5.1 s per period ──
     public const float VizPeriod = 140f, VizStroke = 2.5f, VizAmp = 0.45f;
+    /// <summary>The three waves' common step rate: their band swell follows the analyser's ~25 Hz clock, and one shared cadence keeps the
+    /// three drifts on the same turns instead of three interleaved ones (mini player power pass, 2026-11-09).</summary>
+    public const float VizHz = 30f;
     public const float Viz0Top = 0.29f, Viz0H = 0.42f, Viz0Ms = 2600f;
     public const float Viz1Top = 0.33f, Viz1H = 0.34f, Viz1Ms = 3700f, Viz1Alpha = 0.55f;
     public const float Viz2Top = 0.24f, Viz2H = 0.52f, Viz2Ms = 5100f, Viz2Alpha = 0.35f;

@@ -457,6 +457,8 @@ public static partial class Shell
         readonly Action<RectF> _onBounds;
 
         readonly bool _hairline;   // the mini bar's progress line (TC2): no thumb, no hit test, never a scrub
+        internal static readonly List<WeakReference<BarSeekRail>> ProbeRails = new();   // THROWAWAY probe
+        internal (NodeHandle Fill, bool Live, float From, AnimEngine? Anim) ProbeState => (_fillNode, _rowsLive.Peek(), _rowFrom.Peek(), Context.Anim);   // THROWAWAY probe
 
         // ── COMPOSITOR PROGRESS ──
         // While the playhead advances on its own and nothing holds the rail (no gesture, no drop-point hold, no key ladder, no re-scale
@@ -467,8 +469,9 @@ public static partial class Shell
         // departed from (_rowFrom), so the authored pose under a row is always its start. The pixel-due stepper runs only when rows
         // cannot (a live window, a DVR rail, a gesture, a hidden window). Mini player power pass, 2026-11-09: the mini window's rail
         // stepped the UI loop at its pixel dwell, a few frames a second for the whole of a track.
-        NodeHandle _fillNode;
-        readonly Action<NodeHandle> _onFillRealized;
+        NodeHandle _fillNode, _clipNode;   // the scaled fill, or a picture clipped at the playhead (ISeekRailHost.FillClipRealized)
+        readonly Action<NodeHandle> _onFillRealized, _onClipRealized;
+        readonly Action _clipFollow;
         readonly Signal<bool> _rowsLive = new(false);
         readonly FloatSignal _rowFrom = new(0f);
         long _rowAtMs;
@@ -483,13 +486,20 @@ public static partial class Shell
             bool drawn = false)
         {
             _hairline = hairline;
+            ProbeRails.Add(new WeakReference<BarSeekRail>(this));   // THROWAWAY probe
             _drawn = drawn;
             _chromeFeed = chromeFeed;
             _onScrubbing = onScrubbing;
             _reveal = reveal;
             _scrub = ScrubController.ForPlayback(OnGesture);
             _onThumbRealized = node => { if (node != _thumbNode) { _thumbNode = node; _rowReseed = true; SyncRows(); } };
-            _onFillRealized = node => { if (node != _fillNode) { _fillNode = node; _rowReseed = true; SyncRows(); } };
+            // A rail draws ONE of the two fills at a time (a plain bar, or a clipped picture while it plays): the one realized replaces the
+            // other, whose node is going away in the same pass (a row seeded on it could land on whatever node reuses its slot).
+            // The departing node's row outlives it on its reused slot (measured: the old bar's x-scale landed on the clipped picture), so
+            // the newcomer cancels it through the departing handle first.
+            _onFillRealized = node => { if (node != _fillNode) { DropRow(_clipNode, AnimChannel.ClipR); _fillNode = node; _clipNode = default; _rowReseed = true; SyncRows(); } };
+            _onClipRealized = node => { if (node != _clipNode) { DropRow(_fillNode, AnimChannel.ScaleX); _clipNode = node; _fillNode = default; _rowReseed = true; SyncRows(); ClipFollow(); } };
+            _clipFollow = ClipFollow;
             _syncRows = SyncRows;
             _readoutAnchor = () => _thumbNode;
             var readout = new SeekReadoutProps { Text = ReadoutLabel };
@@ -531,6 +541,7 @@ public static partial class Shell
             _rowGate = advances && mode == SeekRailMode.Track && !concealed && !windowHidden;
             _deviceScale = UseContext(Viewport.Scale) is > 0f and var scale ? scale : 1f;
             bool rows = _rowsLive.Value;
+            UseSignalEffect(_clipFollow);
             UseLayoutEffect(_syncRows, DepKey.From(_rowGate ? 1 : 0, (int)MathF.Round(_scrub.RailPx.Value), (int)MathF.Round(_deviceScale * 100f), 0));
             UseInterval(_recompute, dwell, enabled: SeekRail.Ticks(advances, mode, concealed, windowHidden) && !rows);
             // The re-scale stepper: a duration change on the same row eases the fill for SeekRail.RescaleMs at frame pace, then
@@ -588,6 +599,7 @@ public static partial class Shell
         Action<RectF> ISeekRailHost.BoundsChanged => _onBounds;
         Action<NodeHandle> ISeekRailHost.ThumbRealized => _onThumbRealized;
         Action<NodeHandle>? ISeekRailHost.FillRealized => _onFillRealized;
+        Action<NodeHandle>? ISeekRailHost.FillClipRealized => _onClipRealized;
         IReadSignal<bool> ISeekRailHost.Playing => Playback.IsPlaying;
 
         // The keyboard ladder's commit clock (zero-size; the rail never re-renders for it): mounted wherever a rail is, so the bar,
@@ -618,10 +630,11 @@ public static partial class Shell
         void SyncRows()
         {
             var anim = Context.Anim;
+            bool fillLive = Live(_fillNode), clipLive = Live(_clipNode);
             long now = _scrub.NowMs();
             float frac = 0f;
             double perMs = 0d;
-            bool want = _rowGate && anim is not null && !_fillNode.IsNull && _scrub.Resting && _scrub.RailPx.Peek() > 1f
+            bool want = _rowGate && anim is not null && (fillLive || clipLive) && _scrub.Resting && _scrub.RailPx.Peek() > 1f
                 && _scrub.TrackClock(now, out frac, out perMs) && perMs > 0d && frac < 1f;
             if (!want)
             {
@@ -629,10 +642,11 @@ public static partial class Shell
                 _scrub.Recompute();   // the stepper's fraction is current before the binds read it again
                 if (anim is not null)
                 {
-                    if (!_fillNode.IsNull) anim.Cancel(_fillNode, AnimChannel.ScaleX);
-                    if (!_thumbNode.IsNull) anim.Cancel(_thumbNode, AnimChannel.TranslateX);
+                    if (fillLive) anim.Cancel(_fillNode, AnimChannel.ScaleX);
+                    if (clipLive) anim.Cancel(_clipNode, AnimChannel.ClipR);
+                    if (Live(_thumbNode)) anim.Cancel(_thumbNode, AnimChannel.TranslateX);
                 }
-                _rowsLive.Value = false;
+                _rowsLive.Value = false;   // the clip follow effect re-poses a clipped fill from the stepper's fraction
                 return;
             }
             float rail = _scrub.RailPx.Peek();
@@ -646,14 +660,31 @@ public static partial class Shell
             float hz = Math.Clamp((float)(perMs * devicePx * 1000d), 1f, 60f);
             var cadence = Cadence.At(hz);
             Keyframe[] fill = [new Keyframe(0f, MathF.Max(frac, 1e-4f), Easing.Linear), new Keyframe(1f, 1f, Easing.Linear)];
-            anim!.Keyframes(_fillNode, AnimChannel.ScaleX, fill, remainingMs, cadence: cadence, snapToDevicePixels: true);
-            if (!_thumbNode.IsNull && !float.IsNaN(_thumbRing))
-                anim.Keyframes(_thumbNode, AnimChannel.TranslateX, ThumbKeys(rail, _thumbRing, frac), remainingMs, cadence: cadence);
+            if (fillLive) anim!.Keyframes(_fillNode, AnimChannel.ScaleX, fill, remainingMs, cadence: cadence, snapToDevicePixels: true);
+            if (clipLive)
+                anim!.Keyframes(_clipNode, AnimChannel.ClipR, [new Keyframe(0f, frac * rail, Easing.Linear), new Keyframe(1f, rail, Easing.Linear)],
+                    remainingMs, cadence: cadence);
+            if (Live(_thumbNode) && !float.IsNaN(_thumbRing))
+                anim!.Keyframes(_thumbNode, AnimChannel.TranslateX, ThumbKeys(rail, _thumbRing, frac), remainingMs, cadence: cadence);
             _rowAtMs = now;
             _rowPerMs = perMs;
             _rowRail = rail;
             _rowFrom.Value = frac;
             _rowsLive.Value = true;
+        }
+
+        bool Live(NodeHandle node) => !node.IsNull && Context.Scene is { } scene && scene.IsLive(node);
+
+        void DropRow(NodeHandle node, AnimChannel channel) { if (!node.IsNull) Context.Anim?.Cancel(node, channel); }
+
+        /// <summary>A clipped fill (FillClipRealized) while no rows run: its clip follows the stepper's fraction, one settled clip per pixel
+        /// step. An effect: it re-runs on the displayed fraction, the rail's width and the rows' edge.</summary>
+        void ClipFollow()
+        {
+            float shown = _scrub.Display.Value, rail = _scrub.RailPx.Value;
+            if (_rowsLive.Value || Context.Anim is not { } anim || !Live(_clipNode)) return;
+            float x = Math.Clamp(shown, 0f, 1f) * rail;
+            anim.Animate(_clipNode, AnimChannel.ClipR, x, x, 1f, Easing.Linear);
         }
 
         /// <summary>The thumb's x over the rest of the track as linear segments: <see cref="SeekRail.ThumbX"/> is the playhead's x less half

@@ -218,11 +218,14 @@ public static partial class Deck
     /// <summary>A slow horizontal drift for the ambient layers over the edge-to-edge canvas (Zune's giant artist name, Classic's waves): the
     /// child moves <paramref name="travel"/> DIP left over <paramref name="periodMs"/>, then back (<paramref name="pingPong"/>) or on round a
     /// seamless loop (a child that repeats every <paramref name="travel"/> DIP). The motion is one engine track per leg (render-thread motion: no
-    /// UI frame and no allocation while it runs), re-armed each period while the layer is active; reduced motion holds it still.</summary>
-    public static Element Drift(Element child, float travel, float periodMs, bool pingPong)
-        => Embed.Comp(new DriftProps(child, travel, periodMs, pingPong), static () => new DriftView());
+    /// UI frame and no allocation while it runs), re-armed each period while the layer is active; reduced motion holds it still.
+    /// <paramref name="hz"/> &gt; 0 states the rate the motion needs (a slow drift moves a device pixel or two per step at a few dozen a second,
+    /// never one per display frame): the drift is then ONE looping row at that cadence, seeded while the layer is active and dropped when it
+    /// is not, so it costs no UI frame per period either (the mini player's waves, 2026-11-09).</summary>
+    public static Element Drift(Element child, float travel, float periodMs, bool pingPong, float hz = 0f)
+        => Embed.Comp(new DriftProps(child, travel, periodMs, pingPong, hz), static () => new DriftView());
 
-    sealed record DriftProps(Element Child, float Travel, float PeriodMs, bool PingPong);
+    sealed record DriftProps(Element Child, float Travel, float PeriodMs, bool PingPong, float Hz);
 
     sealed class DriftView : Component
     {
@@ -232,15 +235,41 @@ public static partial class Deck
         Action<NodeHandle>? _realized;
         Action? _leg;
 
+        bool _moves, _looping;
+        Action? _loop;
+
         public override Element Render()
         {
             _p = UseProps<DriftProps>();
             var active = UseIsActive();
             bool moves = active.Value && !Design.Reduced && _p.Travel > 0f && _p.PeriodMs > 0f;
+            _moves = moves;
             _leg ??= Leg;
-            _realized ??= h => { _node = h; _leg(); };
-            UseInterval(_leg, _p.PeriodMs, enabled: moves);
+            _loop ??= SyncLoop;
+            bool paced = _p.Hz > 0f;
+            _realized ??= h => { _node = h; if (_p.Hz > 0f) { _looping = false; SyncLoop(); } else _leg(); };
+            UseInterval(_leg, _p.PeriodMs, enabled: moves && !paced);
+            UseLayoutEffect(_loop, DepKey.From(moves ? 1f : 0f, paced ? 1f : 0f, _p.Travel, _p.PeriodMs));
             return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Start, OnRealized = _realized, HitTestVisible = false, Children = [_p.Child] };
+        }
+
+        /// <summary>The paced drift (<see cref="DriftProps.Hz"/>): one looping row at its cadence while the layer moves, none while it does not
+        /// (the child then holds where it stands).</summary>
+        void SyncLoop()
+        {
+            if (_p.Hz <= 0f || Context.Anim is not { } anim || _node.IsNull) return;
+            if (!_moves)
+            {
+                if (_looping) { anim.Cancel(_node, AnimChannel.TranslateX); _looping = false; }
+                return;
+            }
+            if (_looping) return;
+            float t = _p.Travel;
+            Keyframe[] keys = _p.PingPong
+                ? [new Keyframe(0f, 0f, Easing.Sine), new Keyframe(0.5f, -t, Easing.Sine), new Keyframe(1f, 0f, Easing.Sine)]
+                : [new Keyframe(0f, 0f, Easing.Linear), new Keyframe(1f, -t, Easing.Linear)];
+            anim.Keyframes(_node, AnimChannel.TranslateX, keys, _p.PingPong ? 2f * _p.PeriodMs : _p.PeriodMs, loop: true, cadence: Cadence.At(_p.Hz));
+            _looping = true;
         }
 
         /// <summary>One leg from where the child is drawn: the loop restarts a whole travel back (the same picture), the ping-pong turns.</summary>

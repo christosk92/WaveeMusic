@@ -491,6 +491,21 @@ public static partial class Diagnostics
                     SettleQuiet(host, w, 10);
                     return NavGc(name, host, w, t);
                 }
+                case var mp when mp.StartsWith("mp-", StringComparison.Ordinal):
+                    return MiniReal(name, host, w, (n, x) => Measure(null, n, extra: x), p => Base(p), Settle);
+                case "main-playing":
+                    Base(playing: true);
+                    return CensusOf(name, host, (n, x) => Measure(null, n, extra: x), "main visible playing");
+                case "hidden-playing":
+                {
+                    Base(playing: true);
+                    ShowWindow(w.Handle.Value, 0);
+                    Settle(1.0);
+                    var r = CensusOf(name, host, (n, x) => Measure(null, n, extra: x), "main hidden playing, no mini");
+                    ShowWindow(w.Handle.Value, 5);
+                    Settle(1.0);
+                    return r;
+                }
                 case FrameBenchScenarios.HideRestore:
                     Base(playing: false);
                     SettleQuiet(host, w, 20);
@@ -913,12 +928,14 @@ public static partial class Diagnostics
                 n++;
                 var wait = host.WaitRequestWithDetached();
                 int asked = wait.TimeoutMs;
+                NoteLoopWait(host, asked);
                 double untilSec = seconds - Elapsed();
                 if (d is not null) untilSec = Math.Min(untilSec, d.Next - d.Now);
                 int cap = Math.Max(0, (int)Math.Ceiling(untilSec * 1000.0));
                 wait = wait with { TimeoutMs = asked < 0 ? cap : Math.Min(cap, asked) };
                 long ws = Stopwatch.GetTimestamp();
                 w.WaitForWork(in wait);
+                NoteLoopWake(wait.TimeoutMs, (Stopwatch.GetTimestamp() - ws) * 1000.0 / Stopwatch.Frequency);
                 host.NoteLoopWait(ws, Stopwatch.GetTimestamp(), asked);   // the loop's own request, not the bench's cap
             }
             runFrameWallUs = frameTicks * 1_000_000.0 / Stopwatch.Frequency;

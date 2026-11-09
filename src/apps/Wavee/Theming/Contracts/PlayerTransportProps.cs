@@ -56,6 +56,10 @@ public interface ISeekRailHost
     /// the playhead advances on its own. A template that does not report it keeps the UI-stepped fill.</summary>
     Action<NodeHandle>? FillRealized => null;
 
+    /// <summary>A fill drawn as a picture clipped to the played part instead of scaled (Classic's mini rippling line): its node, a box as wide as
+    /// the rail. The host clips it at the playhead (a ClipR row while the playhead runs on its own, a settled clip otherwise).</summary>
+    Action<NodeHandle>? FillClipRealized => null;
+
     /// <summary>Is the deck playing (the live line breathes only while it is).</summary>
     IReadSignal<bool> Playing { get; }
 

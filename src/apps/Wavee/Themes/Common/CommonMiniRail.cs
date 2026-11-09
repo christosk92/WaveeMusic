@@ -82,7 +82,7 @@ internal static class CommonMiniRail
                         {
                             Height = t, ZStack = true, ClipToBounds = true, Fill = track, HitTestVisible = false,
                             Animate = LayoutTransition.BoundsT(SizeMode.ScaleCorrect),
-                            Children = [new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, Fill = accent, TransformOriginX = 0f, Transform = host.FillTransform, HitTestVisible = false }],
+                            Children = [new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, Fill = accent, TransformOriginX = 0f, Transform = host.FillTransform, OnRealized = host.FillRealized, HitTestVisible = false }],
                         },
                         host.KeyLadderTick(),
                     ],
@@ -99,21 +99,21 @@ internal static class CommonMiniRail
             Element fill;
             if (look.Wave is { } wave && r.Playing && drawn)
             {
+                // As wide as the rail and clipped at the playhead by the host (a render-thread ClipR row while the music runs on its own),
+                // so the played part grows with no UI frame. Keyed apart from the bar: the host's rows belong to one node each, and a bar
+                // node reused as the picture would carry the bar's x-scale.
                 float w = _width.Value;
-                var fraction = host.FillTransform;
-                var width = _width;
                 fill = new BoxEl
                 {
-                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Height = look.WaveH, ClipToBounds = true, HitTestVisible = false,
-                    Width = Prop.Of(() => MathF.Max(0f, width.Value * fraction.Current().M11)), IsolateLayout = true,
-                    Children = [wave(w, accent)],
+                    Key = H.SeekKey + ":wave", AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Width = w, Height = look.WaveH, ClipToBounds = true,
+                    HitTestVisible = false, IsolateLayout = true, OnRealized = host.FillClipRealized, Children = [wave(w, accent)],
                 };
             }
             else
                 fill = new BoxEl
                 {
-                    Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Fill, Corners = CornerRadius4.All(look.Corner), Fill = accent,
-                    TransformOriginX = 0f, Transform = host.FillTransform, HitTestVisible = false,
+                    Key = H.SeekKey + ":fill", Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Fill, Corners = CornerRadius4.All(look.Corner), Fill = accent,
+                    TransformOriginX = 0f, Transform = host.FillTransform, OnRealized = host.FillRealized, HitTestVisible = false,
                 };
             var kids = new List<Element>(4)
             {

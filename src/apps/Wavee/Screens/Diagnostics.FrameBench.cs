@@ -62,7 +62,7 @@ public static partial class Diagnostics
         /// window for tens of seconds per cycle, so a default run never does it. <see cref="SidebarDisclosure"/> (the Classic sidebar's
         /// Playlists section collapsing and expanding every 0.6 s) and <see cref="DrawerToggle"/> (a playlist row's drawer opening and
         /// closing every 0.6 s) measure the reveal motion; with `--bench-shots` they also capture every frame of two toggles as PNGs.</summary>
-        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc, PlaylistPlaying, PlaylistLyrics, PlaylistMinimized, MotionFlow, ContextSwitch];
+        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc, PlaylistPlaying, PlaylistLyrics, PlaylistMinimized, MotionFlow, ContextSwitch, "hidden-playing", "main-playing", "mp-1-paused", "mp-0-playing-noshrink", "mp-0-playing", "mp-0-paused", "mp-1-playing", "mp-2-playing", "mp-3-playing", "mp-4-playing"];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the

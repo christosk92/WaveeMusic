@@ -61,12 +61,13 @@ public static partial class MiniPlayer
         /// <summary>The mini window's motion ceiling per face (fps; 0 = the display's rate). Measured 2026-11-09 at mini sizes: a spinning
         /// style ran its per-frame clock at the panel's 120 Hz, though what moves visibly is the label or the reels (the grooves and the
         /// rim are rotationally even): a 33⅓ rpm label at a mini side moves about 120 px/s, so 60 steps of 2 px keep it smooth at half
-        /// the frames. The lyrics view's line sweep reads the same at 30. Cover, Canvas (the clip's own rate) and the analyser (its band
-        /// clock, ~25/s) need no cap.</summary>
+        /// the frames. The lyrics view's line sweep reads the same at 30. The analyser reads the FFT the audio clock publishes every 15 ms:
+        /// on real music its bands move every frame, so it is held to 30 like its slow sines (power pass, 2026-11-09). Cover and Canvas
+        /// (the clip's own rate) need no cap.</summary>
         public static int FrameCap(MiniFaceKind kind) => kind switch
         {
             MiniFaceKind.Object => 60,
-            MiniFaceKind.Lyrics => 30,
+            MiniFaceKind.Lyrics or MiniFaceKind.Visualizer => 30,
             _ => 0,
         };
 
@@ -225,6 +226,7 @@ public static partial class MiniPlayer
 
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
+    internal static bool ProbeOffscreen;   // THROWAWAY probe
     static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
     /// <summary>The veil a filling lyrics face reads over (the prototype's blurred cover at half brightness), the blur and its overscan.</summary>
     static readonly ColorF LyricsVeil = new(0f, 0f, 0f, 0.5f);
@@ -549,6 +551,7 @@ public static partial class MiniPlayer
                 return;
             }
             _window = window;
+            if (ProbeOffscreen) window.SetBounds(new RectF(-6000f, 200f, window.BoundsPx.W, window.BoundsPx.H));   // THROWAWAY probe
             window.PowerCapFps = Rules.FrameCap(s_faces[ClampFace(s_face.Peek())].Kind);
             window.SetTitle(Title());
             window.OnClosed = () =>

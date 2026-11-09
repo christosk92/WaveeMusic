@@ -85,7 +85,7 @@ internal static class ClassicMiniPlayer
         {
             Geometry = Sine(w, M.WaveH, M.WavePeriod, M.WaveAmp), Width = w, Height = M.WaveH, StrokeColor = accent,
             Stroke = new StrokeStyle(M.WaveStroke, LineCap.Round, LineJoin.Round),
-        }, M.WavePeriod, M.WaveMs, pingPong: false);
+        }, M.WavePeriod, M.WaveMs, pingPong: false, hz: M.WaveHz);
     }
 
     /// <summary>A sine-like line (a cubic rise and fall per period) across <paramref name="w"/>, centred in <paramref name="h"/>.</summary>
@@ -148,7 +148,7 @@ internal static class ClassicMiniPlayer
                     float level = to > from ? sum / (to - from) : 0f;
                     return Affine2D.Scale(1f, M.VizMin + (1f - M.VizMin) * Math.Clamp(level, 0f, 1f));
                 }),
-                Children = [run ? Deck.Drift(line, M.VizPeriod, ms, pingPong: false) : line],
+                Children = [run ? Deck.Drift(line, M.VizPeriod, ms, pingPong: false, hz: M.VizHz) : line],
             };
         }
     }
