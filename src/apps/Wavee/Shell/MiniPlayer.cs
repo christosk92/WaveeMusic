@@ -174,23 +174,11 @@ public static partial class MiniPlayer
         switch (f.Kind)
         {
             case MiniFaceKind.Lyrics:
-                // The lines are the template's (MiniPlayerProps.Lyrics); the face is what they read over: the cover in a box, and filling the
-                // window the cover blurred and darkened, so the lines read on-dark in light and dark alike (the prototype's fc-blur).
+                // The lines are the template's (the app's own lyrics view); the face is what they read over: the cover in a box, and filling the
+                // window the full-screen lyrics' ground: the cover baked blurred once per track (the previous one kept under the new until it has
+                // faded in), under the stage's dark-arm veil at the lyrics scrim, so the lines read on-dark in light and dark alike.
                 if (r.Use != MiniFaceUse.Fill) return Cover();
-                return new BoxEl
-                {
-                    Width = r.Width, Height = r.Height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
-                    Children =
-                    [
-                        new ImageEl
-                        {
-                            Source = r.ArtUrl ?? "", Width = r.Width * LyricsBlurScale, Height = r.Height * LyricsBlurScale, Fit = ImageFit.Cover,
-                            AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, BakedBlur = new BakedBlurSpec(LyricsBlurSigma, 0.5f),
-                            KeepWhileHidden = true, Placeholder = LyricsVeil(),
-                        },
-                        new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = LyricsVeil(), HitTestVisible = false },
-                    ],
-                };
+                return Embed.Comp(new LyricsGroundProps(r.ArtUrl ?? "", r.Width, r.Height), static () => new LyricsGround());
             case MiniFaceKind.Canvas:
                 return new BoxEl
                 {
@@ -226,9 +214,40 @@ public static partial class MiniPlayer
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
     static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
-    /// <summary>The veil a filling lyrics face reads over: the full-screen lyrics' own (its dark arm: the mini's lyrics read on-dark in either
-    /// mode, as its other controls over imagery do), the blur and its overscan.</summary>
-    static ColorF LyricsVeil() => Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark).Veil;
+    /// <summary>The veil a filling lyrics face reads over: the full-screen lyrics' own (its dark arm at the lyrics scrim: the mini's lyrics read
+    /// on-dark in either mode, as its other controls over imagery do), the blur and its overscan.</summary>
+    static ColorF LyricsVeil() => Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark).Veil with { A = Stage.Tone.ScrimA };
+
+    sealed record LyricsGroundProps(string Url, float Width, float Height);
+
+    /// <summary>The lyrics face's ground: the cover under a baked blur (once per cover, a cached bitmap: nothing per frame at rest), the previous
+    /// cover kept under the new one so a track change fades blur to blur (the stage backdrop's way), the veil over both.</summary>
+    sealed class LyricsGround : Component
+    {
+        string _shown = "", _previous = "";
+
+        public override Element Render()
+        {
+            var p = UseProps<LyricsGroundProps>();
+            if (p.Url != _shown) { _previous = _shown; _shown = p.Url; }
+            var kids = new List<Element>(3);
+            if (_previous.Length > 0) kids.Add(Art(_previous, p) with { Key = "lg:" + _previous });
+            if (_shown.Length > 0) kids.Add(Art(_shown, p) with { Key = "lg:" + _shown });
+            kids.Add(new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = LyricsVeil(), HitTestVisible = false });
+            return new BoxEl
+            {
+                Width = p.Width, Height = p.Height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                Fill = Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark).Floor, Children = kids.ToArray(),
+            };
+        }
+
+        static ImageEl Art(string url, LyricsGroundProps p) => new()
+        {
+            Source = url, Width = p.Width * LyricsBlurScale, Height = p.Height * LyricsBlurScale, Fit = ImageFit.Cover,
+            AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, BakedBlur = new BakedBlurSpec(LyricsBlurSigma, 0.5f),
+            KeepWhileHidden = true, Placeholder = Wavee.Theming.Roles.StageInk.ArtStandIn(url), RevealTransition = ImageTransition.Fade(Stage.Tone.CrossFadeMs),
+        };
+    }
     const float LyricsBlurSigma = 22f, LyricsBlurScale = 1.3f;
     /// <summary>The per-theme "Colour from album art" choices (<see cref="Platform.Keys.MiniPlayerArtColour"/>).</summary>
     static readonly Signal<int> s_artColour = new(-1);

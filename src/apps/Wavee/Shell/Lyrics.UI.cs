@@ -566,7 +566,8 @@ public static partial class Lyrics
             // …and the frame stepper stays UNMOUNTED while the gate is up: OnFrame returns immediately for a
             // non-owning podcast, so a subscription to panel-rate frames would buy nothing but battery.
             Element? ticker = open && owns ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;
-            Element debug = Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
+            // The developer pill never rides a mount whose lines are a picture (the mini player's): it is the main window's affordance.
+            Element? debug = _gutter >= 0f ? null : Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
 
             // The layers, the overlays and the AI disclosure are the structure's (`Lyrics.View`). The podcast reader never carries the
             // on-device AI disclosure (episodes are never timed): mount config, so the root's shape never flips for a mounted instance.
