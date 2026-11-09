@@ -3,7 +3,7 @@
 // The rail the three themes draw over the player bar's own scrub host (`MiniPlayerProps.SeekRail`: the gesture, the pixel dwell, the one
 // commit per drag): a track, the played fill (a compositor scale, never a re-render), the theme's thumb, and the keyboard ladder's clock.
 // A theme passes its look (`MiniRailLook`): WinUI's 4-DIP track with the ringed accent dot, Zune's 2-DIP line with a small square-cut
-// thumb in the ink, Classic's 3-DIP track under a fill that ripples while the music moves (`Wave`) and lies flat while it rests.
+// thumb in the ink. (Classic draws its own wave rail, `ClassicMiniPlayer.WaveRail`; it uses this one for the edge line and a live stream.)
 // The EDGE form is the window's foot line (strip, square): a hairline at rest that thickens into a seek bar while the controls show.
 
 using FluentGpu.Dsl;
@@ -35,9 +35,6 @@ internal sealed record MiniRailLook
     public bool ThumbOnHot { get; init; }
     /// <summary>The thumb's ring (WinUI: the control stroke), 0 for none.</summary>
     public float ThumbRing { get; init; }
-    /// <summary>The rippling fill while playing (Classic): the picture for a width, and its height.</summary>
-    public Func<float, ColorF, Element>? Wave { get; init; }
-    public float WaveH { get; init; }
 }
 
 internal static class CommonMiniRail
@@ -49,7 +46,6 @@ internal static class CommonMiniRail
 
     sealed class Rail : Component
     {
-        readonly FloatSignal _width = new(0f);
         Action<RectF>? _bounds;
         ISeekRailHost? _host;
 
@@ -61,7 +57,7 @@ internal static class CommonMiniRail
             var rail = r.Rail;
             var host = rail.Host;
             _host = host;
-            _bounds ??= b => { _host?.BoundsChanged(b); _width.Value = b.W; };
+            _bounds ??= b => _host?.BoundsChanged(b);
             bool enabled = rail.Enabled;
             bool drawn = enabled || rail.Pending;
             ColorF track = r.OnDark ? H.OnMediaInk with { A = H.OnMediaTrackAlpha } : Tok.TextPrimary with { A = look.TrackAlpha };
@@ -96,27 +92,11 @@ internal static class CommonMiniRail
                     Children = [new BoxEl { Grow = 1f, Height = look.Track, Corners = CornerRadius4.All(look.Corner), Fill = accent, HitTestVisible = false }],
                 };
 
-            Element fill;
-            if (look.Wave is { } wave && r.Playing && drawn)
+            var fill = new BoxEl
             {
-                float w = _width.Value;
-                var fraction = host.FillTransform;
-                var width = _width;
-                // KEYED apart from the flat fill: the two would otherwise share one unkeyed slot, and the flat fill's bound x-scale (the
-                // played fraction) stayed on the reused node when this identity-transform box took it over, squashing the wave.
-                fill = new BoxEl
-                {
-                    Key = H.SeekKey + ":wave", AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Height = look.WaveH, ClipToBounds = true, HitTestVisible = false,
-                    Width = Prop.Of(() => MathF.Max(0f, width.Value * fraction.Current().M11)), IsolateLayout = true,
-                    Children = [wave(w, accent)],
-                };
-            }
-            else
-                fill = new BoxEl
-                {
-                    Key = H.SeekKey + ":fill", Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Fill, Corners = CornerRadius4.All(look.Corner), Fill = accent,
-                    TransformOriginX = 0f, Transform = host.FillTransform, HitTestVisible = false,
-                };
+                Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Fill, Corners = CornerRadius4.All(look.Corner), Fill = accent,
+                TransformOriginX = 0f, Transform = host.FillTransform, HitTestVisible = false,
+            };
             var kids = new List<Element>(4)
             {
                 new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Track, Corners = CornerRadius4.All(look.Corner), Fill = track, HitTestVisible = false },

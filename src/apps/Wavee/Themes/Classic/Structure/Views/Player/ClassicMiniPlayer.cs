@@ -8,7 +8,9 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Animation;
 using FluentGpu.Hooks;
+using FluentGpu.Input;
 using FluentGpu.Pal;
 using FluentGpu.Render;
 using FluentGpu.Signals;
@@ -32,7 +34,7 @@ internal static class ClassicMiniPlayer
     static readonly MiniRailLook s_rail = new()
     {
         Track = M.Track, Fill = M.Track, Corner = M.TrackCorner, TrackAlpha = M.TrackAlpha, Thumb = M.Thumb, ThumbCorner = M.Thumb * 0.5f, ThumbDot = 0f,
-        ThumbFill = static (accent, _) => accent, ThumbOnHot = true, Wave = Ripple, WaveH = M.WaveH,
+        ThumbFill = static (accent, _) => accent, ThumbOnHot = true,
     };
 
     public static readonly MiniPlayerStyle Style = new()
@@ -64,7 +66,7 @@ internal static class ClassicMiniPlayer
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary },
         Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary },
         Heading = static text => Line(R.Type.TrackTitle(text)) with { Size = M.HeadingSize, Color = Tok.TextPrimary, FontFamily = R.Type.DisplayFace },
-        SeekRail = static r => CommonMiniRail.Draw(r, s_rail),
+        SeekRail = static r => r.Rail.Line ? CommonMiniRail.Draw(r, s_rail) : r.Edge ? Edge(r) : Embed.Comp(new WaveRailProps(r), static () => new WaveRail()),
         Visualizer = static (f, accent) => Embed.Comp(new SinesProps(f, accent), static () => new Sines()),
         TickerBar = M.TickerBar,
         LyricPad = M.LyricPad,
@@ -75,65 +77,193 @@ internal static class ClassicMiniPlayer
         HoverOutDelayMs = M.HoverOutDelayMs,
     };
 
-    // ══ THE RIPPLING SEEK FILL ═══════════════════════════════════════════════════════════════════════════════════════════
+    // ══ THE WAVE SEEK RAIL ═══════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // The played part is the wave ALONE; the unplayed part is the plain track, starting a few DIP after the playhead; the playhead is a short
+    // rounded pill in the accent where they meet (shown at rest, a little taller while the controls show). The wave is calm (3 DIP peak to
+    // peak, an 18-DIP wavelength, the track's own 3-DIP weight) and its swing tapers to nothing over the last half wavelength, so it runs
+    // into the head flat. Pausing eases the swing to a straight line over 250 ms; playing eases it back. It is a series (a sampled stroke
+    // with an analytic edge), resampled from a reused buffer: the drift steps about 15 times a second while playing, the ease steps at
+    // frame pace only for its 250 ms, and a resting rail asks for nothing.
 
-    /// <summary>The played fill while the music moves: one even sine across the rail (and a period more, so the drift never shows an end),
-    /// clipped to the played part by the rail.</summary>
-    static Element Ripple(float width, ColorF accent) => Embed.Comp(new RippleProps(width, accent), static () => new RippleLine());
+    sealed record WaveRailProps(MiniSeekRequest R);
 
-    sealed record RippleProps(float Width, ColorF Accent);
+    static readonly EnterExit s_edgeFade = new(Opacity: 0f, Active: true);
 
-    /// <summary>The ripple drifts left one wavelength per WaveMs, in WaveTickMs steps of a bound translation: a repaint of the line a dozen
-    /// times a second, never a frame per display refresh. The path is built once per rail width; parked or reduced motion, it holds still.</summary>
-    sealed class RippleLine : Component
+    /// <summary>The window's edge line (strip, square): flat at rest as before; while the controls show it cross-fades into the wave rail (the
+    /// hover plate fades in over the same 120 ms, so the two read as one reveal).</summary>
+    static Element Edge(MiniSeekRequest r) => new BoxEl
     {
-        readonly FloatSignal _phase = new(0f);
-        PathData? _path;
-        float _builtFor = -1f;
-        Action? _step;
+        Grow = 1f, Height = H.EdgeHit, ZStack = true,
+        Children = r.Hot
+            ? [new BoxEl { Key = "edge:wave", Grow = 1f, Direction = 1, Justify = FlexJustify.End, Enter = s_edgeFade, Exit = s_edgeFade,
+                Children = [Embed.Comp(new WaveRailProps(r), static () => new WaveRail())] }]
+            : [new BoxEl { Key = "edge:flat", Grow = 1f, ZStack = true, Enter = s_edgeFade, Exit = s_edgeFade, Children = [CommonMiniRail.Draw(r, s_rail)] }],
+    };
+
+    sealed record HeadProps(ColorF Accent, bool Hot, float Height);
+
+    sealed class WaveRail : Component
+    {
+        readonly FloatSignal _width = new(0f);
+        readonly Signal<int> _frame = new(0);
+        readonly Signal<bool> _easing = new(false);
+        readonly float[] _buf = new float[SeriesSpec.MaxSamples];
+        uint _version;
+        float _amp = -1f, _full, _phase, _easeFrom, _easeTo, _easeT;
+        bool _playing;
+        ISeekRailHost? _host;
+        Action<RectF>? _bounds;
+        Action? _drift, _ease;
+        Prop<SeriesSamples> _samples;
+        Prop<float> _waveW, _trackW;
+        bool _wired;
 
         public override Element Render()
         {
-            var p = UseProps<RippleProps>();
-            float w = MathF.Ceiling(p.Width) + M.WavePeriod;
-            if (w != _builtFor || _path is null) { _builtFor = w; _path = Ripples(w); }
-            bool moves = UseIsActive().Value && !Motion.ReducedMotion;
-            _step ??= () =>
+            var r = UseProps<WaveRailProps>().R;
+            var rail = r.Rail;
+            var host = rail.Host;
+            _host = host;
+            bool enabled = rail.Enabled;
+            bool drawn = enabled || rail.Pending;
+            bool playing = r.Playing && drawn;
+            float full = r.Edge ? M.EdgeWaveAmp : M.WaveAmp;   // the strip's edge swings less: it runs under the thumb's badge
+            _full = full;
+            if (_amp < 0f) { _amp = playing ? full : 0f; _playing = playing; }   // the first frame shows the state as it is
+            if (!_wired) Wire(host);
+
+            // Play / pause: ease the swing toward its new size (at once under reduced motion).
+            UseLayoutEffect(() =>
             {
-                float next = _phase.Peek() + M.WaveStep;
-                _phase.Value = next >= M.WavePeriod ? next - M.WavePeriod : next;
+                if (playing == _playing) return;
+                _playing = playing;
+                _easeFrom = _amp;
+                _easeTo = playing ? _full : 0f;
+                _easeT = 0f;
+                if (Motion.ReducedMotion) { _amp = _easeTo; _frame.Value = _frame.Peek() + 1; return; }
+                _easing.Value = true;
+            }, DepKey.From(playing));
+            bool easing = _easing.Value;
+            bool moves = UseIsActive().Value && !Motion.ReducedMotion;
+            UseInterval(_ease!, M.EaseTickMs, enabled: easing);
+            UseInterval(_drift!, M.WaveTickMs, enabled: moves && playing && !easing);
+
+            ColorF track = r.OnDark ? H.OnMediaInk with { A = H.OnMediaTrackAlpha } : Tok.TextPrimary with { A = M.TrackAlpha };
+            ColorF accent = drawn ? r.Accent : r.Accent with { A = r.Accent.A * H.DisabledAlpha };
+            var kids = new List<Element>(4)
+            {
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.End, Height = M.Track, Width = _trackW, Corners = CornerRadius4.All(M.TrackCorner),
+                    Fill = track, HitTestVisible = false,
+                },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Height = M.WaveH, Width = _waveW, Direction = 0, HitTestVisible = false,
+                    Children =
+                    [
+                        new SeriesEl
+                        {
+                            Samples = _samples, Shape = SeriesShape.Stroke, Thickness = M.Track, Baseline = 1f, Amplitude = 1f, Color = accent,
+                            AntiAlias = true, Grow = 1f, Height = M.WaveH,
+                        },
+                    ],
+                },
             };
-            UseInterval(_step, M.WaveTickMs, enabled: moves);
-            var phase = _phase;
+            if (drawn)
+                kids.Add(new BoxEl
+                {
+                    Width = M.HeadW, Height = (r.Edge ? M.EdgeHeadH : M.HeadH) * M.HeadHotScale, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                    Transform = host.ThumbTransform(M.HeadW), OnRealized = host.ThumbRealized,
+                    Children = [Embed.Comp(new HeadProps(accent, r.Hot && !r.Edge, r.Edge ? M.EdgeHeadH : M.HeadH), static () => new Head())],   // the edge's head keeps its size
+                });
+            kids.Add(host.KeyLadderTick());
             return new BoxEl
             {
-                Width = w, Height = M.WaveH, Shrink = 0f, HitTestVisible = false,
-                Transform = Prop.Of(() => Affine2D.Translation(-phase.Value, 0f)),
-                Children =
-                [
-                    new PathEl
-                    {
-                        Geometry = _path, Width = w, Height = M.WaveH, StrokeColor = p.Accent,
-                        Stroke = new StrokeStyle(M.WaveStroke, LineCap.Round, LineJoin.Round),
-                    },
-                ],
+                Key = (r.Edge ? H.EdgeKey : H.SeekKey) + ":rail", Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = r.Edge ? M.EdgeH : H.SeekRowH,
+                ZStack = true, Role = AutomationRole.Slider, IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null, OnBoundsChanged = _bounds,
+                OnPointerDown = enabled ? host.PointerDown : null, OnDrag = enabled ? host.DragMove : null,
+                OnClick = enabled ? host.Commit : null, OnDragCanceled = enabled ? host.Cancel : null,
+                Children = kids.ToArray(),
             };
+        }
+
+        /// <summary>The binds and ticks, built once: the head's x (the bar's own thumb placement), the wave's and the track's widths, the samples.</summary>
+        void Wire(ISeekRailHost host)
+        {
+            _wired = true;
+            var width = _width;
+            var frame = _frame;
+            var fill = host.FillTransform;
+            _bounds = b => { _host?.BoundsChanged(b); width.Value = b.W; };
+            _waveW = Prop.Of(() => WaveWidth(width.Value, fill.Current().M11));
+            _trackW = Prop.Of(() => MathF.Max(0f, width.Value - HeadX(width.Value, fill.Current().M11) - 0.5f * M.HeadW - M.TrackGap));
+            _samples = Prop.Of(() =>
+            {
+                _ = frame.Value;
+                float w = WaveWidth(width.Value, fill.Current().M11);
+                return Sample(w);
+            });
+            _drift = () =>
+            {
+                float next = _phase + M.WaveStep;
+                _phase = next >= M.WavePeriod ? next - M.WavePeriod : next;
+                _frame.Value = _frame.Peek() + 1;
+            };
+            _ease = () =>
+            {
+                _easeT = MathF.Min(1f, _easeT + M.EaseTickMs / M.EaseMs);
+                float e = 1f - (1f - _easeT) * (1f - _easeT) * (1f - _easeT);
+                _amp = _easeFrom + (_easeTo - _easeFrom) * e;
+                if (_playing) { float next = _phase + M.WaveStep * M.EaseTickMs / M.WaveTickMs; _phase = next >= M.WavePeriod ? next - M.WavePeriod : next; }
+                _frame.Value = _frame.Peek() + 1;
+                if (_easeT >= 1f) _easing.Value = false;
+            };
+        }
+
+        /// <summary>The head's centre: the played fraction of the rail, kept a half head inside either end (as the bar's thumb placement).</summary>
+        static float HeadX(float w, float fraction) => Math.Clamp(w * fraction, 0.5f * M.HeadW, MathF.Max(0.5f * M.HeadW, w - 0.5f * M.HeadW));
+
+        static float WaveWidth(float w, float fraction) => MathF.Max(0f, HeadX(w, fraction) - 0.5f * M.HeadW - M.WaveGap);
+
+        /// <summary>The wave across <paramref name="w"/> DIP into the reused buffer: one sample a DIP, the swing tapering (smoothstep) to nothing
+        /// over the last half wavelength. A sample is a 0..1 height in the box (0.5 the middle line).</summary>
+        SeriesSamples Sample(float w)
+        {
+            int n = w < 1f ? 0 : Math.Min(_buf.Length, (int)MathF.Ceiling(w / M.SampleStep) + 1);
+            float step = n > 1 ? w / (n - 1) : 0f, half = 0.5f * M.WavePeriod, k = 2f * MathF.PI / M.WavePeriod, amp = _amp, phase = _phase;
+            for (int i = 0; i < n; i++)
+            {
+                float x = i * step;
+                float t = Math.Clamp((w - x) / half, 0f, 1f);
+                float taper = t * t * (3f - 2f * t);
+                float d = amp * taper * MathF.Sin(k * (x + phase));
+                _buf[i] = Math.Clamp(0.5f + d / M.WaveH, 0f, 1f);
+            }
+            return new SeriesSamples(_buf, n, ++_version);
         }
     }
 
-    /// <summary>The prototype's ripple exactly (M0 5 Q4.5 1 9 5 T18 5, repeated): a quadratic crest and trough per wavelength, the peak
-    /// WaveAmp off the middle line, across <paramref name="w"/>.</summary>
-    static PathData Ripples(float w)
+    /// <summary>The playhead: a short rounded pill in the accent, a little taller while the controls show (eased, never snapped).</summary>
+    sealed class Head : Component
     {
-        float mid = M.WaveH * 0.5f, p = M.WavePeriod, c = 2f * M.WaveAmp;   // a quadratic's control sits at twice its peak
-        var b = new PathBuilder();
-        b.MoveTo(0f, mid);
-        for (float x = 0f; x < w - 0.5f; x += p)
+        bool _seen;
+
+        public override Element Render()
         {
-            b.QuadTo(x + 0.25f * p, mid - c, x + 0.5f * p, mid);
-            b.QuadTo(x + 0.75f * p, mid + c, x + p, mid);
+            var p = UseProps<HeadProps>();
+            float to = p.Hot ? M.HeadHotScale : 1f;
+            float from = _seen ? (p.Hot ? 1f : M.HeadHotScale) : to;
+            _seen = true;
+            UseTransition(AnimChannel.ScaleY, from, to, M.HeadMs, Easing.FluentDecelerate, DepKey.From(p.Hot));
+            return new BoxEl
+            {
+                Width = M.HeadW, Height = p.Height, Corners = CornerRadius4.All(0.5f * M.HeadW), Fill = p.Accent, HitTestVisible = false,
+                TransformOriginX = 0.5f, TransformOriginY = 0.5f,
+            };
         }
-        return b.Finish(PathContentEpoch.Mint(), FillRule.NonZero);
     }
 
     /// <summary>A sine-like line (a cubic rise and fall per period) across <paramref name="w"/>, centred in <paramref name="h"/>.</summary>

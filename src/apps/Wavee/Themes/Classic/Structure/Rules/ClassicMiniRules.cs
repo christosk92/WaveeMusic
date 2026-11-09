@@ -23,11 +23,17 @@ internal static class ClassicMiniRules
     public static float TitleSize(MiniShape shape) => shape switch { MiniShape.Strip => 14f, MiniShape.Wide => 15f, _ => 16f };
     public const float TitleLeading = 1.35f, MetaSize = 12f, MetaLeading = 17f, LabelSize = 13f, SmallSize = 11.5f, SmallLeading = 15f, HeadingSize = 14f;
 
-    // ── the seek rail: a 3-DIP track, the fill a rippling line while playing (period 18, 10 tall, 2.2 stroke), a 3-DIP bar while resting ──
+    // ── the seek rail: the played part a calm wave alone, the unplayed part the plain 3-DIP track after a gap, a rounded pill head between ──
     public const float Track = 3f, TrackCorner = 1.5f, TrackAlpha = 0.18f, Thumb = 12f;
-    public const float WaveH = 10f, WavePeriod = 18f, WaveAmp = 2f, WaveStroke = 2.2f, WaveMs = 1100f;
-    /// <summary>The ripple's drift steps: about 15 a second, each a sliver over a pixel (one wavelength per WaveMs).</summary>
-    public const float WaveTickMs = 66f, WaveStep = WavePeriod * WaveTickMs / WaveMs;
+    /// <summary>The wave: its box, its peak (3 DIP peak to peak), its wavelength, one sample a DIP; the gaps before and after the head.</summary>
+    public const float WaveH = 10f, WaveAmp = 1.5f, WavePeriod = 18f, SampleStep = 1f, WaveGap = 2f, TrackGap = 3f;
+    /// <summary>The drift: one wavelength per WaveMs, in WaveTickMs steps (about 15 a second); the play / pause ease and its frame-pace step.</summary>
+    public const float WaveMs = 1100f, WaveTickMs = 66f, WaveStep = WavePeriod * WaveTickMs / WaveMs, EaseMs = 250f, EaseTickMs = 16f;
+    /// <summary>The head: a 4 x 12 rounded pill, a quarter taller while the controls show, eased over HeadMs.</summary>
+    public const float HeadW = 4f, HeadH = 12f, HeadHotScale = 1.25f, HeadMs = 150f;
+    /// <summary>The strip's edge while the controls show: an 8-DIP rail at the window's foot, a 2-DIP peak to peak swing and an 8-DIP head, clear of
+    /// the thumb's badge and the hover plate.</summary>
+    public const float EdgeH = 8f, EdgeWaveAmp = 1f, EdgeHeadH = 8f;
 
     // ── the visualizer: three slow sine waves (accent, white, accent faint) drifting at 2.6, 3.7 and 5.1 s per period ──
     public const float VizPeriod = 140f, VizStroke = 2.5f, VizAmp = 0.45f;
