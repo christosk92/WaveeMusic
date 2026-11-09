@@ -102,9 +102,11 @@ internal static class CommonMiniRail
                 float w = _width.Value;
                 var fraction = host.FillTransform;
                 var width = _width;
+                // KEYED apart from the flat fill: the two would otherwise share one unkeyed slot, and the flat fill's bound x-scale (the
+                // played fraction) stayed on the reused node when this identity-transform box took it over, squashing the wave.
                 fill = new BoxEl
                 {
-                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Height = look.WaveH, ClipToBounds = true, HitTestVisible = false,
+                    Key = H.SeekKey + ":wave", AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Height = look.WaveH, ClipToBounds = true, HitTestVisible = false,
                     Width = Prop.Of(() => MathF.Max(0f, width.Value * fraction.Current().M11)), IsolateLayout = true,
                     Children = [wave(w, accent)],
                 };
@@ -112,7 +114,7 @@ internal static class CommonMiniRail
             else
                 fill = new BoxEl
                 {
-                    Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Fill, Corners = CornerRadius4.All(look.Corner), Fill = accent,
+                    Key = H.SeekKey + ":fill", Grow = 1f, AlignSelf = FlexAlign.Center, Height = look.Fill, Corners = CornerRadius4.All(look.Corner), Fill = accent,
                     TransformOriginX = 0f, Transform = host.FillTransform, HitTestVisible = false,
                 };
             var kids = new List<Element>(4)

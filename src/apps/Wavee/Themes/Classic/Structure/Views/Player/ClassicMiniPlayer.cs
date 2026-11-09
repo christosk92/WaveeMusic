@@ -77,15 +77,63 @@ internal static class ClassicMiniPlayer
 
     // ══ THE RIPPLING SEEK FILL ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The played fill while the music moves: a line of small waves drifting one period per WaveMs (a seamless render-thread loop).</summary>
-    static Element Ripple(float width, ColorF accent)
+    /// <summary>The played fill while the music moves: one even sine across the rail (and a period more, so the drift never shows an end),
+    /// clipped to the played part by the rail.</summary>
+    static Element Ripple(float width, ColorF accent) => Embed.Comp(new RippleProps(width, accent), static () => new RippleLine());
+
+    sealed record RippleProps(float Width, ColorF Accent);
+
+    /// <summary>The ripple drifts left one wavelength per WaveMs, in WaveTickMs steps of a bound translation: a repaint of the line a dozen
+    /// times a second, never a frame per display refresh. The path is built once per rail width; parked or reduced motion, it holds still.</summary>
+    sealed class RippleLine : Component
     {
-        float w = width + M.WavePeriod;
-        return Deck.Drift(new PathEl
+        readonly FloatSignal _phase = new(0f);
+        PathData? _path;
+        float _builtFor = -1f;
+        Action? _step;
+
+        public override Element Render()
         {
-            Geometry = Sine(w, M.WaveH, M.WavePeriod, M.WaveAmp), Width = w, Height = M.WaveH, StrokeColor = accent,
-            Stroke = new StrokeStyle(M.WaveStroke, LineCap.Round, LineJoin.Round),
-        }, M.WavePeriod, M.WaveMs, pingPong: false);
+            var p = UseProps<RippleProps>();
+            float w = MathF.Ceiling(p.Width) + M.WavePeriod;
+            if (w != _builtFor || _path is null) { _builtFor = w; _path = Ripples(w); }
+            bool moves = UseIsActive().Value && !Motion.ReducedMotion;
+            _step ??= () =>
+            {
+                float next = _phase.Peek() + M.WaveStep;
+                _phase.Value = next >= M.WavePeriod ? next - M.WavePeriod : next;
+            };
+            UseInterval(_step, M.WaveTickMs, enabled: moves);
+            var phase = _phase;
+            return new BoxEl
+            {
+                Width = w, Height = M.WaveH, Shrink = 0f, HitTestVisible = false,
+                Transform = Prop.Of(() => Affine2D.Translation(-phase.Value, 0f)),
+                Children =
+                [
+                    new PathEl
+                    {
+                        Geometry = _path, Width = w, Height = M.WaveH, StrokeColor = p.Accent,
+                        Stroke = new StrokeStyle(M.WaveStroke, LineCap.Round, LineJoin.Round),
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>The prototype's ripple exactly (M0 5 Q4.5 1 9 5 T18 5, repeated): a quadratic crest and trough per wavelength, the peak
+    /// WaveAmp off the middle line, across <paramref name="w"/>.</summary>
+    static PathData Ripples(float w)
+    {
+        float mid = M.WaveH * 0.5f, p = M.WavePeriod, c = 2f * M.WaveAmp;   // a quadratic's control sits at twice its peak
+        var b = new PathBuilder();
+        b.MoveTo(0f, mid);
+        for (float x = 0f; x < w - 0.5f; x += p)
+        {
+            b.QuadTo(x + 0.25f * p, mid - c, x + 0.5f * p, mid);
+            b.QuadTo(x + 0.75f * p, mid + c, x + p, mid);
+        }
+        return b.Finish(PathContentEpoch.Mint(), FillRule.NonZero);
     }
 
     /// <summary>A sine-like line (a cubic rise and fall per period) across <paramref name="w"/>, centred in <paramref name="h"/>.</summary>
