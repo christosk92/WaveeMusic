@@ -43,6 +43,7 @@ internal static class ClassicMiniPlayer
         ArtColourDefault = true,
         Ground = Wash,
         Solid = Wash,
+        Glow = static _ => ColorF.Transparent,
         Tint = static a => a with { A = M.TintAlpha },
         Tint2 = static a => a with { A = M.Tint2Alpha },
         Radius = M.Radius, ArtCorner = M.ArtCorner, ThumbCorner = M.ThumbCorner,

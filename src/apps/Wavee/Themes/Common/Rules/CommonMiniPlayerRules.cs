@@ -14,7 +14,7 @@ internal static class CommonMiniPlayerRules
         SeekKey = "mini.seek", HoverKey = "mini.hover", RestKey = "mini.rest", MetaKey = "mini.meta", PlayKey = "mini.play",
         SaveKey = "mini.save", DeviceKey = "mini.device", OptionsKey = "mini.options", BackKey = "mini.back", FlipKey = "mini.flip",
         EdgeKey = "mini.edge", HudKey = "mini.hud", LyricsKey = "mini.lyrics", TickerKey = "mini.ticker", BleedKey = "mini.bleed",
-        LabelKey = "mini.label", VolumeKey = "mini.volume", OptionsBodyKey = "mini.options.body", DevicesBodyKey = "mini.devices.body";
+        LabelKey = "mini.label", VolumeKey = "mini.volume", ShapeKey = "mini.shape", OptionsBodyKey = "mini.options.body", DevicesBodyKey = "mini.devices.body";
 
     /// <summary>The face flip slides the new face in from this fraction of its box.</summary>
     public const float FlipSlide = 0.18f;
@@ -24,6 +24,8 @@ internal static class CommonMiniPlayerRules
     public const float LineGap = 1f, SeekGap = 8f, SeekRowH = 22f, TimeMinW = 32f;
     /// <summary>On-media ink: white, the secondary line, the tertiary line, a hover plate and the track behind a rail.</summary>
     public static readonly ColorF OnMediaInk = new(1f, 1f, 1f, 1f);
+    /// <summary>An accent mark over imagery is the accent lifted this far toward white.</summary>
+    public const float OnDarkLift = 0.45f;
     public const float OnMediaSecondaryAlpha = 0.8f, OnMediaTertiaryAlpha = 0.5f, OnMediaPlateAlpha = 0.16f, OnMediaTrackAlpha = 0.32f;
     /// <summary>A disabled control is its ink at this alpha.</summary>
     public const float DisabledAlpha = 0.4f;
@@ -57,6 +59,8 @@ internal static class CommonMiniPlayerRules
     /// <summary>The flip pill on the wide art: its inset from the art's foot, its corner, its plate.</summary>
     public const float FlipFoot = 6f, FlipCorner = 16f;
     public static readonly ColorF FlipPlate = new(0f, 0f, 0f, 0.6f);
+    /// <summary>The chrome pill over imagery: a dark glass.</summary>
+    public static readonly ColorF ChromeOnDark = new(0f, 0f, 0f, 0.55f);
     /// <summary>The face name in the flip pill: its minimum width.</summary>
     public const float FaceNameMinW = 62f;
 
@@ -66,6 +70,8 @@ internal static class CommonMiniPlayerRules
     public const float SquareHoverPadX = 10f, SquareHoverTop = 8f, SquareHoverFoot = 10f, SquareTopButton = 36f, SquareTopGap = 4f, SquareMidGap = 14f, SquareMidGlyph = 22f;
     /// <summary>The resting shade starts at this fraction of the height (its angle: top to bottom).</summary>
     public const float ShadeFrom = 0.45f, ShadeAngle = 90f;
+    /// <summary>The ground's corner glow runs from the top right toward the bottom left and is gone this far along.</summary>
+    public const float GlowAngle = 135f, GlowEnd = 0.62f;
     /// <summary>The Zune cover bleed's inset (it starts left of the window).</summary>
     public const float BleedX = -16f, BleedY = 4f, BleedAlpha = 0.92f;
 
@@ -88,6 +94,10 @@ internal static class CommonMiniPlayerRules
     /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's (top, foot), the start inset when the theme marks
     /// lines with a bar or plate.</summary>
     public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 16f, TallLyricFoot = 186f, LyricInsetMarked = 4f;
+    /// <summary>The wide lyrics face's one-line head (title · artist) above its window.</summary>
+    public const float WideLyricHead = 18f;
+    /// <summary>Air the wide lyric window leaves to the column, so the time labels keep their reach clear of the transport row.</summary>
+    public const float WideLyricSlack = 10f;
     /// <summary>The ticker's start bar gap.</summary>
     public const float TickerBarGap = 9f;
 

@@ -176,6 +176,8 @@ public sealed record MiniPlayerStyle
     public required bool ArtColourDefault { get; init; }
     /// <summary>The window's ground for an accent (translucent over a backdrop, opaque otherwise; Classic: the album wash).</summary>
     public required Func<ColorF, ColorF> Ground { get; init; }
+    /// <summary>A glow of the accent from the window's top-right corner over the ground (Zune's dark card), or transparent for none.</summary>
+    public required Func<ColorF, ColorF> Glow { get; init; }
     /// <summary>The same ground, opaque: under the hover overlays and fades, and the flyouts' plate.</summary>
     public required Func<ColorF, ColorF> Solid { get; init; }
     /// <summary>A soft accent plate (Classic: the heart's plate) and a stronger one (the active lyric line, the faces' glow).</summary>

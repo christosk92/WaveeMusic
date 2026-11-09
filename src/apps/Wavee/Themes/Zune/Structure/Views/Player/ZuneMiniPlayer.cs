@@ -48,6 +48,7 @@ internal static class ZuneMiniPlayer
         ArtColourDefault = false,
         Ground = static _ => Tok.WindowBackground,
         Solid = static _ => Tok.WindowBackground,
+        Glow = static a => R.IsLight ? ColorF.Transparent : a with { A = M.TintAlpha },
         Tint = static a => a with { A = M.TintAlpha },
         Tint2 = static a => a with { A = M.Tint2Alpha },
         Radius = M.Radius, ArtCorner = M.ArtCorner, ThumbCorner = M.ThumbCorner,

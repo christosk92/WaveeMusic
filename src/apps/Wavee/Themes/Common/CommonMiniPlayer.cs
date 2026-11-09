@@ -39,6 +39,9 @@ internal static partial class CommonMiniPlayer
     }
 
     static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+    /// <summary>A shape change cross-fades the old layout out and the new one in (the prototype's swap); a face flip cross-fades the face while
+    /// it slides in. Declared swap families: the parts under them are rebuilt on purpose.</summary>
+    static readonly EnterExit s_shapeSwap = SwapFamilies.Declare("mini.shape", s_fade), s_faceSwap = SwapFamilies.Declare("mini.face", s_fade);
 
     /// <summary>The flyouts' anchors and handles (one set per window).</summary>
     sealed class Anchors
@@ -96,7 +99,18 @@ internal static partial class CommonMiniPlayer
             MiniShape.Tall => Tall(m),
             _ => Wide(m),
         };
-        var children = new List<Element>(2) { body };
+        var glow = st.Glow(accent);
+        var children = new List<Element>(3);
+        if (glow.A > 0f)
+            children.Add(new BoxEl
+            {
+                Grow = 1f, AlignSelf = FlexAlign.Stretch, HitTestVisible = false,
+                Gradient = new GradientSpec(GradientShape.Linear, H.GlowAngle, [new GradientStop(0f, glow), new GradientStop(H.GlowEnd, glow with { A = 0f })]),
+            });
+        children.Add(new BoxEl
+        {
+            Key = H.ShapeKey + ":" + shape, Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 1, Enter = s_shapeSwap, Exit = s_shapeSwap, Children = [body],
+        });
         if (hud.Value) children.Add(Hud(bar));
         return new BoxEl
         {
@@ -175,14 +189,14 @@ internal static partial class CommonMiniPlayer
         Element top = lyrics
             ? new BoxEl
             {
-                Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = H.LineGap,
+                Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = H.LineGap,
                 Children =
                 [
                     LyricMeta(m, reserve: m.Hot ? chromeW : 0f),
                     new BoxEl
                     {
                         Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Margin = new Edges4(-LyricBleed(st), 0f, 0f, 0f),
-                        Children = [LyricWindow(m, MathF.Max(0f, box - H.SeekRowH - st.ButtonBox), H.LyricAnchorWide, onDark: false)],
+                        Children = [LyricWindow(m, MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - (st.ButtonBox - H.CtrlBleedBottom) - 2f * H.WideColGap - H.WideLyricSlack), H.LyricAnchorWide, onDark: false)],
                     },
                 ],
             }

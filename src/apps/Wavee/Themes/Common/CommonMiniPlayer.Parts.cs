@@ -105,12 +105,19 @@ internal static partial class CommonMiniPlayer
     static BoxEl FaceLayer(Ctx m, float w, float h, MiniFaceUse use, Func<MiniVisualizerFrame, Element>? paint = null, float corner = -1f)
     {
         float c = corner >= 0f ? corner : use == MiniFaceUse.Fill ? 0f : m.St.ArtCorner;
-        var enter = m.FlipDir == 0 ? (EnterExit?)null : new EnterExit(Dx: m.FlipDir * w * H.FlipSlide, Opacity: 0f, Active: true);
+        var slide = m.FlipDir == 0 ? (EnterExit?)null : new EnterExit(Dx: m.FlipDir * w * H.FlipSlide, Active: true);
         return new BoxEl
         {
-            Key = H.FaceKey + ":" + m.Face, Width = w, Height = h, ClipToBounds = true, Enter = enter, Exit = s_fade, HitTestVisible = false,
+            Key = H.FaceKey + ":" + m.Face, Width = w, Height = h, ClipToBounds = true, Enter = s_faceSwap, Exit = s_faceSwap, HitTestVisible = false,
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-            Children = [m.P.FaceView(new MiniFaceRequest(m.Face, w, h, m.V.ArtUrl, c, use, paint))],
+            Children =
+            [
+                new BoxEl
+                {
+                    Width = w, Height = h, Enter = slide, HitTestVisible = false,
+                    Children = [m.P.FaceView(new MiniFaceRequest(m.Face, w, h, m.V.ArtUrl, c, use, paint))],
+                },
+            ],
         };
     }
 
@@ -253,7 +260,8 @@ internal static partial class CommonMiniPlayer
         bool canSave = m.P.CanSave();
         var icon = m.V.FaceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
         ColorF ink = !canSave ? m.Ink with { A = m.Ink.A * H.DisabledAlpha } : liked || st.Heart == MiniHeart.Plate ? m.Accent : m.Ink;
-        if (m.Media && st.Heart == MiniHeart.Plate && !liked) ink = m.Ink;
+        // Over imagery the accent reads lifted toward white (a light-mode accent is dark, and the scrim under it is too).
+        if (m.Media) ink = liked ? ColorF.Lerp(m.Accent, H.OnMediaInk, H.OnDarkLift) : m.Ink;
         var plate = st.Heart switch
         {
             MiniHeart.Ring => ColorF.Transparent,
@@ -317,20 +325,21 @@ internal static partial class CommonMiniPlayer
     static Element Chrome(Ctx m, bool withPick)
     {
         var st = m.St;
-        var cm = m with { Media = false };
+        var cm = m;   // over imagery (the tall immersive faces) the pill is a dark glass in on-dark ink, as the prototype's .ondark .chrome
         var kids = new List<Element>(4);
         if (withPick)
         {
             kids.Add(FlipPair(cm, withName: true));
-            kids.Add(new BoxEl { Width = H.ChromeSepW, Height = H.ChromeSep, Fill = Tok.StrokeCardDefault, HitTestVisible = false });
+            kids.Add(new BoxEl { Width = H.ChromeSepW, Height = H.ChromeSep, Fill = m.Media ? H.OnMediaInk with { A = H.OnMediaPlateAlpha } : Tok.StrokeCardDefault, HitTestVisible = false });
         }
         kids.Add(OptionsButton(cm, st.ChromeBox));
         kids.Add(BackButton(cm, st.ChromeBox));
         return new BoxEl
         {
             Key = H.ChromeKey, Height = st.ChromeBox + 2f * H.ChromePad, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, H.ChromeInset, H.ChromeInset, 0f),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChromeGap, Padding = Edges4.All(H.ChromePad), Fill = st.Solid(m.Accent),
-            BorderWidth = H.RuleW, BorderColor = Tok.StrokeCardDefault, Corners = CornerRadius4.All(st.ChromeCorner), Enter = s_fade, Exit = s_fade,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChromeGap, Padding = Edges4.All(H.ChromePad),
+            Fill = m.Media ? H.ChromeOnDark : st.Solid(m.Accent),
+            BorderWidth = H.RuleW, BorderColor = m.Media ? H.OnMediaInk with { A = H.OnMediaPlateAlpha } : Tok.StrokeCardDefault, Corners = CornerRadius4.All(st.ChromeCorner), Enter = s_fade, Exit = s_fade,
             Children = kids.ToArray(),
         };
     }
@@ -339,11 +348,11 @@ internal static partial class CommonMiniPlayer
     {
         var p = m.P;
         var st = m.St;
-        var kids = new List<Element>(3) { Btn(m, Icons.ChevronLeft, () => p.StepFace(-1), true, Loc.Get(Strings.Mini.PrevFace), box: st.ChromeBox, glyph: st.ChromeGlyph) };
+        var kids = new List<Element>(3) { Btn(m, Icons.ChevronLeft, () => p.StepFace(-1), true, Loc.Get(Strings.Mini.PrevFace), box: st.ChromeBox, glyph: st.ChromeGlyph) with { Key = H.FlipKey + ".prev" } };
         if (withName)
             kids.Add(new BoxEl { MinWidth = H.FaceNameMinW, Justify = FlexJustify.Center, Direction = 0, HitTestVisible = false,
                 Children = [st.Label(p.FaceName(m.Face)) with { Color = m.Ink }] });
-        kids.Add(Btn(m, Icons.ChevronRight, () => p.StepFace(1), true, Loc.Get(Strings.Mini.NextFace), box: st.ChromeBox, glyph: st.ChromeGlyph));
+        kids.Add(Btn(m, Icons.ChevronRight, () => p.StepFace(1), true, Loc.Get(Strings.Mini.NextFace), box: st.ChromeBox, glyph: st.ChromeGlyph) with { Key = H.FlipKey + ".next" });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChromeGap, Children = kids.ToArray() };
     }
 
@@ -497,9 +506,7 @@ internal static partial class CommonMiniPlayer
         float[] _top = [], _h = [];
         int _count;
         bool _placed;
-        float _windowH;
         readonly Signal<int> _measured = new(0);
-        Action<RectF>? _window;
 
         public override Element Render()
         {
@@ -533,16 +540,15 @@ internal static partial class CommonMiniPlayer
                     Children = [st.LyricLine(new MiniLyricLine(lines[i], i == active, MiniLyricUse.Column, p.Shape, p.Accent, p.OnDark))],
                 };
             }
-            _window ??= b => { if (b.H != _windowH) { _windowH = b.H; _measured.Value = _measured.Peek() + 1; } };
-            float height = _windowH > 0f ? _windowH : p.Height;
-            bool measured = _h[active] > 0f && _windowH > 0f;
+            float height = p.Height;
+            bool measured = _h[active] > 0f;
             float offset = measured ? height * p.Anchor - (_top[active] + _h[active] * 0.5f) : 0f;
             bool glide = _placed;
             if (measured) _placed = true;
             return new BoxEl
             {
-                Key = H.LyricsKey + ":window", Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, ClipToBounds = true, HitTestVisible = false,
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, height * H.LyricFadeTop, 0f, height * H.LyricFadeFoot), OnBoundsChanged = _window,
+                Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, IsolateLayout = true, HitTestVisible = false,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, height * H.LyricFadeTop, 0f, height * H.LyricFadeFoot),
                 Children =
                 [
                     new BoxEl

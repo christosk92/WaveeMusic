@@ -36,6 +36,7 @@ internal static class WinUiMiniPlayer
         ArtColourDefault = false,
         Ground = static _ => Tok.FillSolidBase with { A = M.GroundAlpha },
         Solid = static _ => Tok.FillSolidBase,
+        Glow = static _ => ColorF.Transparent,
         Tint = static a => a with { A = M.TintAlpha },
         Tint2 = static a => a with { A = M.Tint2Alpha },
         Radius = M.Radius, ArtCorner = M.ArtCorner, ThumbCorner = M.ThumbCorner,
