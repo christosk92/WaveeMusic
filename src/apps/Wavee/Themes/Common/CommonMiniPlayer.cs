@@ -227,11 +227,14 @@ internal static partial class CommonMiniPlayer
     }
 
     /// <summary>The wide card's lyric window: what the column leaves under the title line, the seek row and the transport, less some air for
-    /// the time labels, but never so little that the active line no longer fits (the air goes first).</summary>
+    /// the time labels (never under WideLyricAir: their reach), the rest of it going first when a wrapped active line needs the room.</summary>
     static float WideLyricHeight(MiniPlayerStyle st, float box)
     {
-        float room = MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - (st.ButtonBox - H.CtrlBleedBottom) - 2f * H.WideColGap);
-        return room - Math.Clamp(room - H.WideLyricMin, 0f, H.WideLyricSlack);
+        // The transport row is as tall as its tallest button (the play disc is bigger than the others in Classic): counting the 40-DIP box left
+        // the column 4 DIP short, and the lyric host's clip then cut the window's foot (and the line fading out there) with a hard edge.
+        float row = MathF.Max(st.ButtonBox, st.PlayBox) - H.CtrlBleedBottom;
+        float room = MathF.Max(0f, box - H.WideLyricHead - H.LineGap - H.SeekRowH - row - 2f * H.WideColGap);
+        return room - MathF.Max(H.WideLyricAir, Math.Clamp(room - H.WideLyricMin, 0f, H.WideLyricSlack));
     }
 
     static Element Square(Ctx m)

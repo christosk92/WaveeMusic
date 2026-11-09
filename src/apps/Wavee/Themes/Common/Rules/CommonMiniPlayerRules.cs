@@ -100,8 +100,14 @@ internal static class CommonMiniPlayerRules
     /// <summary>The wide lyrics face's one-line head (title · artist) above its window.</summary>
     public const float WideLyricHead = 18f;
     /// <summary>Air the wide lyric window leaves to the column, so the time labels keep their reach clear of the transport row; the air goes
-    /// first when the window would drop below WideLyricMin (one active line and its top room).</summary>
-    public const float WideLyricSlack = 10f, WideLyricMin = 30f;
+    /// first when the window would drop below WideLyricMin (a wrapped, two-line active line on its plate and its top room).</summary>
+    public const float WideLyricSlack = 10f, WideLyricMin = 46f;
+    /// <summary>The air the wide lyric window always leaves: the time labels' 40-DIP reach clear of the transport row (at the smallest
+    /// wide card a wrapped active line then shows its first line whole and fades out its second).</summary>
+    public const float WideLyricAir = 6f;
+    /// <summary>A lyric window's least soft foot (within a marked line's own padding): what shows of the next line, or of a line taller
+    /// than the window, fades out and is never cut.</summary>
+    public const float LyricFadeMin = 4f;
     /// <summary>The least room above a lyric window's active line (its mark never touches what is above the window).</summary>
     public const float LyricTopRoom = 3f;
     /// <summary>The ticker's start bar gap.</summary>

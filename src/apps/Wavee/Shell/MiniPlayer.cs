@@ -243,6 +243,10 @@ public static partial class MiniPlayer
     static readonly Signal<(MiniShape Shape, int Seq)> s_shapeRequest = new((MiniShape.Wide, 0));
     static Size2 s_clientDip;   // the mini window's last viewport (DIP), for the settle's chrome arithmetic
     static IDetachedVideoWindow? s_live;   // the open mini window (its work area caps an escaping menu)
+    /// <summary>The window's settle animation is running, and its step (the owner's): ticked by the mini window's own <see cref="Body"/>.</summary>
+    static readonly Signal<bool> s_settling = new(false);
+    static Action? s_settleStep;
+    static readonly Action s_settleTick = static () => s_settleStep?.Invoke();
     static float s_scale = 1f;
 
     static void EnsurePrefs()
@@ -451,6 +455,9 @@ public static partial class MiniPlayer
             var vp = UseContextSignal(Viewport.Size);
             float scale = UseContext(Viewport.Scale);
             UseSignalEffect(() => Track(vp.Value, scale));
+            // The settle animation's clock: THIS window's (the owner's own interval sits in the main window's tree, which is hidden while
+            // the mini player shows, and a hidden tree's intervals pause: a shape picked from the menu moved the window one step and stopped).
+            UseInterval(s_settleTick, Rules.SettleStepMs, enabled: s_settling.Value);
             return ViewSlots.View(ViewKeys.MiniPlayer, Props);
         }
     }
@@ -488,8 +495,12 @@ public static partial class MiniPlayer
         {
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
-            var settling = UseSignal(false);
-            UseInterval(() => SettleStep(settling), Rules.SettleStepMs, enabled: settling.Value);
+            var settling = s_settling;
+            UseEffect(() =>
+            {
+                s_settleStep = () => SettleStep(settling);
+                return () => s_settleStep = null;
+            }, DepKey.Empty);
 
             UseEffect(() =>
             {

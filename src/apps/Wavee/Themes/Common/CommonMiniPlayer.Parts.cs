@@ -543,17 +543,24 @@ internal static partial class CommonMiniPlayer
             float height = p.Height;
             bool measured = _h[active] > 0f;
             // The active line sits at the window's anchor, but never closer to its top than LyricTopRoom (a short window, the wide card's
-            // under its title, would otherwise push the line's mark against the title row), and the top fade covers only the room above it:
-            // the line the music is on is never faded.
-            float lineTop = measured ? MathF.Max(H.LyricTopRoom, height * p.Anchor - _h[active] * 0.5f) : H.LyricTopRoom;
+            // under its title, would otherwise push the line's mark against the title row) and never past its foot: a wrapped line moves up
+            // until it shows whole. The fades cover only the room above and below it, so the line the music is on is never faded; a line
+            // taller than the whole window starts at the top and fades out at the foot. The foot always fades (at least LyricFadeMin, inside
+            // the plate's own padding), so the next line's top never shows as a sliver cut by a hard edge.
+            float lineH = measured ? _h[active] : 0f;
+            float lineTop = measured
+                ? MathF.Max(0f, MathF.Min(MathF.Max(H.LyricTopRoom, height * p.Anchor - lineH * 0.5f), height - lineH))
+                : H.LyricTopRoom;
             float offset = measured ? lineTop - _top[active] : 0f;
             float fadeTop = MathF.Min(height * H.LyricFadeTop, lineTop);
+            float below = height - lineTop - lineH;
+            float fadeFoot = MathF.Max(H.LyricFadeMin, MathF.Min(height * H.LyricFadeFoot, below));   // the foot is always soft
             bool glide = _placed;
             if (measured) _placed = true;
             return new BoxEl
             {
                 Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, IsolateLayout = true, HitTestVisible = false,
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, fadeTop, 0f, height * H.LyricFadeFoot),
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, fadeTop, 0f, fadeFoot),
                 Children =
                 [
                     new BoxEl
