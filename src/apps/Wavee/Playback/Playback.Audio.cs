@@ -3708,12 +3708,18 @@ public static partial class Playback
                 long content = sess.ContentPositionFrames * 1000L / Math.Max(1, sess.Format.SampleRate);
                 return SeekGate.ReportedPositionMs(Volatile.Read(ref s_pendingSeekMs), Math.Max(0, content));
             }
-            long raw = !silent && p is not null ? (long)p.Position.Peek().TotalMilliseconds
+            long raw = !silent && p is not null ? PlayerPositionMs(p)
                      : sess is not null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                      : 0;
             int pending = Volatile.Read(ref s_pendingSeekMs);
             return SeekGate.ReportedPositionMs(pending, Math.Max(0, raw - s_activeStartMs));
         }
+
+        /// <summary>The engine's playhead NOW: its clock thread's latest stamped sample advanced to this instant (the thread publishes
+        /// every 100 ms in steady playback, every 15 ms around a start, a fade, a stall or the end), else the published position.</summary>
+        static long PlayerPositionMs(MediaPlayer p)
+            => p.TryReadClock(out var sample) ? (long)sample.At(System.Diagnostics.Stopwatch.GetTimestamp()).TotalMilliseconds
+                                              : (long)p.Position.Peek().TotalMilliseconds;
 
         /// <summary>The timer's callback: ONE tick at a time (H-11). A tick that overruns the 200 ms period makes the next
         /// timer callback skip instead of running on top of it.</summary>
@@ -3741,7 +3747,7 @@ public static partial class Playback
             PlaybackState state = silent || p is null ? sess.CurrentState : p.State.Peek();
             long rawPos = s_clockStale ? 0
                 : silent || p is null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
-                : (long)p.Position.Peek().TotalMilliseconds;
+                : PlayerPositionMs(p);
             long pos = ActivePositionMs();
             int fadeMs = EffectiveFadeMs;
 
