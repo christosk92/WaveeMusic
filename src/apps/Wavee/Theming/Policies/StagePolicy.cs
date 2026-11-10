@@ -152,6 +152,14 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
     /// (<c>Stage.LayoutRules.Effective</c>). The stage's own Compact class draws Card whatever this says. Default: every layout. Appended (P6 WK).</summary>
     public StageLayouts Layouts { get; init; } = StageLayouts.All;
 
+    /// <summary>Video mode's Theatre (the picture with a panel beside it) docks its panel at this width on the right; 0: this tier has no
+    /// Theatre (the Lyrics and Up next tabs then leave the picture, and the Theatre button is not offered). Appended (contract 1.96).</summary>
+    public float TheatrePaneW { get; init; }
+
+    /// <summary>The lyrics' type size in Theatre's panel (the stage's reading column at the panel's measure; 0: the stage's own size).
+    /// Appended (contract 1.96).</summary>
+    public float TheatreLyricsType { get; init; }
+
     /// <summary>Everything wrong with the metrics of <paramref name="tier"/>.</summary>
     public IReadOnlyList<string> Validate(string tier)
     {
@@ -162,6 +170,8 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
         if (!float.IsFinite(LyricsTypeMax) || LyricsTypeMax < LyricsTypeMin) problems.Add($"Stage.{tier}.LyricsTypeMax must not be below LyricsTypeMin");
         if (!float.IsFinite(UpNextW) || UpNextW < 0f) problems.Add($"Stage.{tier}.UpNextW must be zero or more (was {UpNextW})");
         if (!float.IsFinite(ArtBarsH) || ArtBarsH < 0f) problems.Add($"Stage.{tier}.ArtBarsH must be zero or more (was {ArtBarsH})");
+        if (!float.IsFinite(TheatrePaneW) || TheatrePaneW < 0f) problems.Add($"Stage.{tier}.TheatrePaneW must be zero or more (was {TheatrePaneW})");
+        if (!float.IsFinite(TheatreLyricsType) || TheatreLyricsType < 0f) problems.Add($"Stage.{tier}.TheatreLyricsType must be zero or more (was {TheatreLyricsType})");
         if ((Layouts & StageLayouts.Card) == 0) problems.Add($"Stage.{tier}.Layouts must allow Card (every layout's fallback)");
         return problems;
     }

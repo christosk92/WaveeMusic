@@ -14,6 +14,8 @@ using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
 
+using Ink = Wavee.Theming.Roles.StageInk;
+
 namespace Wavee.Themes.Classic;
 
 /// <summary>Wavee Classic's stage pane region (<see cref="ViewKeys.StagePane"/>).</summary>
@@ -31,6 +33,7 @@ internal static class ClassicStagePane
     {
         var sc = props.Stage;
         var L = sc.Layout.Value;
+        if (props.Theatre) return Theatre(props, L);
         var k = sc.Look.Value;
         var pane = L.PaneRect(in k);
         return new BoxEl
@@ -38,6 +41,22 @@ internal static class ClassicStagePane
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, ClipToBounds = true,
             Margin = new Edges4(pane.X, pane.Y, 0f, 0f), Layout = s_move,   // the pane slides to its new rect with the cover (Lyrics ⇄ Large art), its width with it
             Visible = Prop.Of(() => sc.Layout.Value.ShowPane && sc.Pane.Value != Stage.PaneKind.None),
+            Children = [props.Panes(s_frame, s_empty)],
+        };
+    }
+
+    /// <summary>Video mode's Theatre panel (the board "Classic · Theatre"): a card at the panel's rect on the right of the picture, the Huge 4K Up
+    /// next column's look (the stage's card acrylic, its stroke, the card corners), shown for as long as the root keeps it mounted (its slide
+    /// in and out is the root's); a tier crossing moves it with the pane region's move.</summary>
+    static Element Theatre(StagePaneProps props, Stage.Layout L)
+    {
+        var pane = ClassicStageTheatreGeometry.Of(L).Pane;
+        return new BoxEl
+        {
+            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, Margin = new Edges4(pane.X, pane.Y, 0f, 0f),
+            Direction = 1, Padding = Edges4.All(ClassicStageTheatreGeometry.PanePad), Corners = Radii.CardAll, ClipToBounds = true,
+            Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Layout = s_move,
             Children = [props.Panes(s_frame, s_empty)],
         };
     }

@@ -21,6 +21,7 @@
 //   Standard  the tuned stage: the 112 card at 24, lyrics 36 grown up to 64
 //   Huge      the 112 card at 24, lyrics capped at 48 (C-Lyrics-Huge, C-Stage-Huge4K: 48/60); the docked gallery runs to the foot and
 //             the card yields its width beside it (C-Stage-Huge)
+//   Theatre   Video mode's panel beside the picture: Small 320, Standard 380, Huge 440 wide (none on a Compact window)
 //   Huge 4K   from the detail family's Huge 4K mark (`ClassicDetailTiers.HugeWideRung`, 3200 wide): Huge's, plus the 520 Up next column
 //             beside the lyrics and the 140 bars under the cover's title column in Lyrics mode (C-Stage-Huge4K)
 // A Compact window draws the identity as the now-playing CARD (C-Stage-Compact, C-Lyrics-Compact: the 56 cover and one title line in a 72
@@ -74,6 +75,13 @@ public static class ClassicStageTiers
 
     // ── the tier metrics the core allocator budgets from ─────────────────────────────────────────────────────────────────
 
+    /// <summary>Video mode's Theatre panel beside the picture (the board "Classic · Theatre": 380 at its 1440 stage) and the lyrics' type in it,
+    /// per window tier: Small 320 at 22, Standard 380 at 24, Huge (and Huge 4K) 440 at 26. A Compact window has no Theatre (the picture keeps
+    /// the whole stage). Declared before the records that read them: static initializers run in textual order.</summary>
+    public const float SmallTheatrePaneW = 320f, StandardTheatrePaneW = 380f, HugeTheatrePaneW = 440f;
+
+    public const float SmallTheatreLyricsType = 22f, StandardTheatreLyricsType = 24f, HugeTheatreLyricsType = 26f;
+
     /// <summary>Compact (C-Stage-Compact, C-Lyrics-Compact): the 104 stacked card at a 16 gutter, the lyrics at 26, the identity as the
     /// now-playing card, and no gallery sheet until one is asked for.</summary>
     public static StageTierMetrics CompactMetrics { get; } = new(TransportH: 104f, TransportInset: 16f, LyricsTypeMin: 26f, LyricsTypeMax: 26f)
@@ -82,14 +90,23 @@ public static class ClassicStageTiers
     };
 
     /// <summary>Small (C-Stage-Small, C-Lyrics-Small): the 96 card at a 16 gutter, the lyrics at 30, up to the authored 36.</summary>
-    public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 96f, TransportInset: 16f, LyricsTypeMin: 30f, LyricsTypeMax: 36f);
+    public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 96f, TransportInset: 16f, LyricsTypeMin: 30f, LyricsTypeMax: 36f)
+    {
+        TheatrePaneW = SmallTheatrePaneW, TheatreLyricsType = SmallTheatreLyricsType,
+    };
 
     /// <summary>Standard: the tuned stage (the 112 card at 24, the authored 36 grown up to 64).</summary>
-    public static StageTierMetrics StandardMetrics { get; } = new(TransportH: 112f, TransportInset: 24f, LyricsTypeMin: 36f, LyricsTypeMax: 64f);
+    public static StageTierMetrics StandardMetrics { get; } = new(TransportH: 112f, TransportInset: 24f, LyricsTypeMin: 36f, LyricsTypeMax: 64f)
+    {
+        TheatrePaneW = StandardTheatrePaneW, TheatreLyricsType = StandardTheatreLyricsType,
+    };
 
     /// <summary>Huge (C-Lyrics-Huge, C-Stage-Huge): Standard's card, the lyrics capped at the boards' 48, the docked gallery down to the foot
     /// with the card beside it.</summary>
-    public static StageTierMetrics HugeMetrics { get; } = StandardMetrics with { LyricsTypeMax = 48f, GalleryToFoot = true };
+    public static StageTierMetrics HugeMetrics { get; } = StandardMetrics with
+    {
+        LyricsTypeMax = 48f, GalleryToFoot = true, TheatrePaneW = HugeTheatrePaneW, TheatreLyricsType = HugeTheatreLyricsType,
+    };
 
     /// <summary>The Up next column's width and the bars' height of C-Stage-Huge4K.</summary>
     public const float UpNextW = 520f, ArtBarsH = 140f;

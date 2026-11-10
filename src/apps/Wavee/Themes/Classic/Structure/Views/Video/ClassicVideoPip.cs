@@ -49,6 +49,8 @@ internal static class ClassicVideoPip
 
         return new BoxEl
         {
+            // the presenter's box: where the picture is (the core reads its painted rect for the glide to and from the full-screen stage)
+            Key = "video:presenter", OnRealized = props.Realized,
             Direction = 1, ClipToBounds = true, ZStack = true,
             // A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes inactive, the element
             // hides its DComp visual and pumps with an inert binding (nothing is placed or shown from this slot; the player's own state pump

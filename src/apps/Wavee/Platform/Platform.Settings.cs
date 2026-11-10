@@ -58,6 +58,10 @@ public static partial class Platform
         public static readonly SettingKey<bool> StageGalleryOpen = new("stage.galleryOpen", true);
         /// <summary>The Up next column beside the lyrics is open (its drawer tab collapses it off the stage's right edge and back).</summary>
         public static readonly SettingKey<bool> StageUpNextOpen = new("stage.upNextOpen", true);
+        /// <summary>The stage's Video mode shows the picture in Theatre (a panel beside it) rather than Cinema (the picture fills the stage).</summary>
+        public static readonly SettingKey<bool> StageTheatre = new("stage.theatre", false);
+        /// <summary>The panel Theatre shows beside the picture, as a <c>Stage.PaneKind</c> int (1 Lyrics · 2 Up next; anything else ⇒ Up next).</summary>
+        public static readonly SettingKey<int> StageTheatrePane = new("stage.theatrePane", 2);
         /// <summary>The "Pick your visualizer" tip has been dismissed once.</summary>
         public static readonly SettingKey<bool> StageTipSeen = new("stage.tipSeen", false);
         /// <summary>The visualizer LAYOUT as an int (0 Card · 1 Large art · 2 Centered · 3 Artist — append only; unknown ⇒ Card,

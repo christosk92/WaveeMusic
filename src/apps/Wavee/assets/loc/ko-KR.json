@@ -952,6 +952,8 @@
       "video": "동영상"
     },
     "exit": "전체 화면 종료",
+    "theatreMode": "극장 모드",
+    "fillScreen": "화면 채우기",
     "gallery": "비주얼라이저 갤러리 및 설정",
     "galleryTitle": "비주얼라이저",
     "closePanel": "패널 닫기",

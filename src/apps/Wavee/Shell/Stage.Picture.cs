@@ -72,6 +72,11 @@ public static partial class Stage
 
         internal static void NoteMode(bool video) => s_videoMode.SetIfChanged(video);
 
+        /// <summary>The mounted stage shows the picture in Theatre (a panel beside it), and which panel; peeked (the inspector's <c>status</c>).</summary>
+        public static bool TheatrePeek() => s_view.Peek()?.Stage.Theatre.Peek() ?? false;
+
+        public static PaneKind TheatrePanePeek() => s_view.Peek()?.Stage.TheatrePane.Peek() ?? PaneKind.None;
+
         internal static void Publish(StageRootView? view) => s_view.Value = view;
 
         /// <summary>Unpublish <paramref name="view"/> (only if it is still the published one: a successor may have published its own).</summary>
@@ -92,8 +97,11 @@ public static partial class Stage
         [CoreHost]
         sealed class ChromeHost : Component
         {
+            // it comes and goes WITH the stage (the stage wrapper's own entrance and exit, `Stage.EnterTerminal` / `ExitTerminal`): it is not
+            // inside the stage's subtree, and without its own it popped in and vanished at once while the stage under it faded
             public override Element Render()
-                => Flow.Show(static () => Shown() && s_view.Value is not null, Embed.Comp(static () => new ChromeView()));
+                => Flow.Show(static () => Shown() && s_view.Value is not null,
+                    Embed.Comp(static () => new ChromeView()) with { Enter = EnterTerminal, Exit = ExitTerminal });
         }
 
         /// <summary>The structure's <see cref="ViewKeys.StagePictureChrome"/> under the stage's context (its views read the same

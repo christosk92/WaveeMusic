@@ -1,8 +1,8 @@
 // ── Themes/Classic/Structure/Views/Stage/ClassicStageTopBar.cs — Classic's `Stage.TopBar` (themes plan 6.1, T7a1) ───────────
 //
 // From `Shell\Stage.UI.cs`'s `TopBar` component: 48 DIP, brand · the SelectorBar (pill tinted through TemplateParts) · the options
-// toggle · exit. With a music video on (the stage's Video mode, the board "Classic · Cinema") the tabs lead with Video and the options
-// toggle gives way to "Switch to audio". It fills its wrapper (Grow); the root places it under the chrome's Show. The mode, the layout class and the accent are the
+// toggle · exit. With a music video on (the board "Classic · Cinema") the tabs lead with Video, and in Video mode the options toggle gives
+// way to "Theatre mode" / "Fill the screen" (the board "Classic · Theatre") and "Switch to audio". It fills its wrapper (Grow); the root places it under the chrome's Show. The mode, the layout class and the accent are the
 // stage context's signals (`props.Stage`), the verbs are its actions (`SetMode`, `OpenOptions`, `Exit`, `OverControls`); the options
 // button's realized node is the TeachingTip's anchor SIGNAL (V-U16). On a Compact window (C-Stage-Compact) the mode tabs and the glyph
 // buttons are 40 tall, the Compact target rule (`ClassicStageTiers.StageOf`). The template owns the selector's index cell and the pill's
@@ -35,18 +35,26 @@ internal static class ClassicStageTopBar
         var L = st.Layout.Value;
         var set = st.Accent.Value;
         float targetH = ClassicStageTiers.StageOf(ctx.Tier()).BarTargetH;
-        // The tabs: today's four, or (a music video on, the board "Classic · Cinema") Video first, then Lyrics, Up next and Artist. A stage
-        // that shows the Visualizer keeps today's tabs (the Video set has no Visualizer tab to stand on).
-        bool videoTabs = VideoTabs(st);
+        // The tabs: today's four, or (a music video on, the board "Classic · Cinema") Video first, then today's four. In Video mode the tab
+        // that stands lit is Video in Cinema and the panel's own tab in Theatre (Lyrics or Up next beside the picture).
+        bool videoTabs = st.VideoOffered.Value;
         bool videoMode = st.Mode.Value == Stage.Mode.Video;
+        bool theatre = st.Theatre.Value;
         var modes = videoTabs ? s_videoModes : s_modes;
         var index = h.UseSignal(0);
-        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(VideoTabs(st) ? s_videoModes : s_modes, st.Mode.Value))));
+        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.VideoOffered.Value ? s_videoModes : s_modes, LitTab(st)))));
         var parts = h.UseMemo(() => { var p = new TemplateParts(); p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill }); return p; }, DepKey.From(set.GetHashCode()));
-        string[] items = L.IconOnlySelector ? ["", "", "", ""]
-            : videoTabs ? [Loc.Get(Strings.Stage.Mode.Video), Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
+        string[] items = L.IconOnlySelector ? (videoTabs ? ["", "", "", "", ""] : ["", "", "", ""])
+            : videoTabs ? [Loc.Get(Strings.Stage.Mode.Video), Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
             : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
-        string?[] icons = videoTabs ? [Icons.Video, Icons.Document, SegoeGlyphs.Queue, Icons.Contact] : [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact];
+        string?[] icons = videoTabs ? [Icons.Video, Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact] : [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact];
+        // Video mode's buttons: [Theatre mode | Fill the screen] (where the tier has a Theatre), [Switch to audio], [Exit], each labelled only
+        // where the allocator says the column holds it
+        bool theatreOffered = videoMode && L.TheatreFits;
+        var labels = videoMode ? L.VideoBarLabels(modes.Length, theatreOffered) : (Exit: L.ExitLabelShown(modes.Length), Theatre: false, Audio: false);
+        var toggleTheatre = st.ToggleTheatre;
+        string theatreText = Loc.Get(theatre ? Strings.Stage.FillScreen : Strings.Stage.TheatreMode);
+        string theatreGlyph = theatre ? Icons.FullScreen : Icons.SplitView;
         var style = new SelectorBarStyle
         {
             RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
@@ -90,15 +98,21 @@ internal static class ClassicStageTopBar
                     Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Stage.Layout.BarButtonGap,
                     Children =
                     [
+                        // Video mode: Cinema ⇄ Theatre ("Theatre mode" slides the panel in beside the picture, "Fill the screen" is the way back)
+                        theatreOffered
+                            ? labels.Theatre
+                                ? Button.Create(theatreText, toggleTheatre, ButtonAppearance.Subtle, ControlSize.Small, glyph: theatreGlyph) with { Shrink = 0f }
+                                : ToolTip.Wrap(BarGlyph(theatreGlyph, toggleTheatre, lit: false, onRealized: null, targetH), theatreText)
+                            : new BoxEl { Visible = false },
                         // Video mode: "Switch to audio" (the video off, the stage on the cover and lyrics) where the options toggle stands (the
-                        // visualizer's options have nothing to set over the picture); labelled only where the allocator says the column holds it
+                        // visualizer's options have nothing to set over the picture)
                         videoMode
-                            ? L.AudioLabelShown
+                            ? labels.Audio
                                 ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f }
                                 : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH), Loc.Get(Strings.Player.SwitchToAudio))
                             : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
                         // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
-                        L.ExitLabelShown
+                        labels.Exit
                             ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
                             : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
                     ],
@@ -109,10 +123,11 @@ internal static class ClassicStageTopBar
 
     /// <summary>The selector's modes, tab by tab: today's, and the Video set (contract 1.95).</summary>
     static readonly Stage.Mode[] s_modes = [Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
-    static readonly Stage.Mode[] s_videoModes = [Stage.Mode.Video, Stage.Mode.Lyrics, Stage.Mode.Queue, Stage.Mode.Artist];
+    static readonly Stage.Mode[] s_videoModes = [Stage.Mode.Video, Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
 
-    /// <summary>The Video set of tabs shows: the stage offers the picture and is not on the Visualizer (subscribes).</summary>
-    static bool VideoTabs(Stage.StageCtx st) => st.VideoOffered.Value && st.Mode.Value != Stage.Mode.Visualizer;
+    /// <summary>The tab that stands lit (subscribes): the mode, or in Video mode's Theatre the tab of the panel beside the picture.</summary>
+    static Stage.Mode LitTab(Stage.StageCtx st)
+        => st.Mode.Value == Stage.Mode.Video && st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value) : st.Mode.Value;
 
     /// <summary>A 40×36 glass glyph button of the top bar (the options toggle, the icon-only exit); 40×40 on a Compact window.</summary>
     static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized, float targetH) => new()

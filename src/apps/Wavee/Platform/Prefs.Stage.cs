@@ -42,6 +42,15 @@ public static partial class Prefs
         public static void SetGalleryOpen(bool on) { Platform.Settings.Set(Platform.Keys.StageGalleryOpen, on); Bump(); }
         public static bool UpNextOpen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageUpNextOpen); }
         public static void SetUpNextOpen(bool on) { Platform.Settings.Set(Platform.Keys.StageUpNextOpen, on); Bump(); }
+        public static bool Theatre() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageTheatre); }
+        public static int TheatrePane() { _ = Epoch.Value; return global::Wavee.Stage.TheatreRules.CoercePane(Platform.Settings.Get(Platform.Keys.StageTheatrePane)); }
+        /// <summary>Theatre on with <paramref name="pane"/> beside the picture, or off (Cinema; the pane is kept for the next Theatre).</summary>
+        public static void SetTheatre(bool on, int pane)
+        {
+            Platform.Settings.Set(Platform.Keys.StageTheatre, on);
+            Platform.Settings.Set(Platform.Keys.StageTheatrePane, global::Wavee.Stage.TheatreRules.CoercePane(pane));
+            Bump();
+        }
         public static int Layout() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.Coerce(Platform.Settings.Get(Platform.Keys.StageLayout)); }
         public static void SetLayout(int layout) { Platform.Settings.Set(Platform.Keys.StageLayout, global::Wavee.Stage.LayoutRules.Coerce(layout)); Bump(); }
         public static int Spectrum() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.CoerceSpectrum(Platform.Settings.Get(Platform.Keys.StageSpectrum)); }

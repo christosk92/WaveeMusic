@@ -4137,6 +4137,8 @@
       "video": "Video"
     },
     "exit": "Exit full screen",
+    "theatreMode": "Theatre mode",
+    "fillScreen": "Fill the screen",
     "gallery": "Visualizer gallery and settings",
     "galleryTitle": "Visualizer",
     "closePanel": "Close panel",

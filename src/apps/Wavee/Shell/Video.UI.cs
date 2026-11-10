@@ -113,16 +113,195 @@ public static partial class Video
     static readonly Func<NodeHandle> s_followReservation = static () =>
     {
         var resolved = PlacementCore.Resolve(State.Surface.Peek());
+        // the picture gliding between its home and the stage follows the glide's box (StageGlide), whichever way it goes
+        if (StageGlide.Following && MainWindowHole.Stageable(resolved)) return StageGlide.Node;
         if (Stage.Picture.ShownPeek() && MainWindowHole.Stageable(resolved)) return Stage.Picture.Reservation;
         return MainWindowHole.FollowsReservation(resolved) ? s_dockedReservation : default;
     };
 
-    /// <summary>What the main window's presenter follows right now (the inspector's <c>status</c>): <c>stage</c> (the full-screen stage's
-    /// reservation, its Video mode), <c>docked</c> (the docked card's) or <c>none</c> (its own geometry).</summary>
+    /// <summary>What the main window's presenter follows right now (the inspector's <c>status</c>): <c>glide</c> (the box it glides on between
+    /// its home and the stage), <c>stage</c> (the full-screen stage's reservation, its Video mode), <c>docked</c> (the docked card's) or
+    /// <c>none</c> (its own geometry).</summary>
     public static string PresenterFollows()
     {
         var target = s_followReservation();
-        return target.IsNull ? "none" : target == Stage.Picture.Reservation ? "stage" : "docked";
+        return target.IsNull ? "none" : target == StageGlide.Node ? "glide" : target == Stage.Picture.Reservation ? "stage" : "docked";
+    }
+
+    /// <summary>The main window presenter's box (the theme's <c>Video.Pip</c> box reports it, <see cref="VideoPipProps.Realized"/>): where the
+    /// picture IS on screen, what a glide leaves from. ROOT-LIFETIME state.</summary>
+    static readonly RootState<NodeHandle> s_presenterState = new("Video.Presenter");
+    static readonly Action<NodeHandle> s_presenterRealized = static h => s_presenterState.Value = h;
+
+    /// <summary>The mini player's rect relative to the presenter's layout origin (the stay-mounted presenter publishes it: its geometry is its
+    /// own signals): where a glide out of the stage lands for a video that lives in the mini player.</summary>
+    static Func<RectF>? s_floatingRect;
+
+    /// <summary>THE GLIDE. The video hole cannot fade and cannot sit under a scaled or transitioning ancestor, so the picture cannot ride the
+    /// stage's own entrance; its RECT can move. When the stage starts or stops showing the picture (<c>Stage.Picture.Shown</c>: opening or
+    /// closing the full screen in Video mode, or a tab that takes the picture to or from a mini player) the presenter stops following its
+    /// target for a moment and follows a hollow box in the video layer instead (the engine's <c>FollowRect</c>, size and painted origin): the
+    /// box mounts at the presenter's rect of the frame before, then moves to the target's rect (the stage's reservation, the docked card's,
+    /// the mini player's) on a Reflow bounds transition with the stage's own entrance dynamics, so its laid-out size and its origin interpolate
+    /// together, and the presenter follows it frame by frame. When the box lands on the target the presenter follows the target itself
+    /// again, at the same rect. A picture the stage covers (a docked video under the Visualizer) has no rect to leave from or land on: no glide.</summary>
+    static class StageGlide
+    {
+        /// <summary>The box's rect in the glide layer's coordinates, and its generation (a new glide REMOUNTS it at its first rect, so the box
+        /// never animates from where the last glide left it).</summary>
+        public static readonly Signal<RectF> Rect = new(default);
+        public static readonly Signal<int> Generation = new(0);
+
+        /// <summary>A glide is running (subscribes): the presenter draws the picture alone while it glides.</summary>
+        public static readonly Signal<bool> Active = new(false);
+
+        static readonly RootState<NodeHandle> s_node = new("Video.StageGlide");
+
+        /// <summary>The live glide box (UI thread).</summary>
+        public static NodeHandle Node => s_node.Value;
+
+        /// <summary>The presenter follows the glide box now (peeked: the engine's follow pass runs outside any reactive scope).</summary>
+        public static bool Following => Active.Peek() && !s_node.Value.IsNull;
+
+        public static readonly Action<NodeHandle> Realized = static h => s_node.Value = h;
+
+        /// <summary>The bounds transition the box moves on: Reflow (the laid-out size interpolates, so the follower's size does) with the stage
+        /// wrapper's entrance dynamics (<c>Element.Transition</c>'s default, the same spring the stage's scale and fade run on).</summary>
+        public static readonly LayoutTransition Motion = new(TransitionChannels.Bounds, TransitionDynamics.Default, SizeMode.Reflow);
+
+        /// <summary>A rect is within half a DIP of another (the glide landed).</summary>
+        public static bool Near(in RectF a, in RectF b, float eps = 0.5f)
+            => MathF.Abs(a.X - b.X) < eps && MathF.Abs(a.Y - b.Y) < eps && MathF.Abs(a.W - b.W) < eps && MathF.Abs(a.H - b.H) < eps;
+    }
+
+    /// <summary>The glide's host (mounted once, by <see cref="PipLayer"/>): a full-bleed layer that takes no input and paints nothing, holding the
+    /// one hollow glide box, and the small machine that starts a glide on the picture's staged edge, resolves its target once the target is laid
+    /// out (the frame after the edge), keeps it on a target that still moves, and ends it when the box has landed.</summary>
+    [CoreHost]
+    sealed class GlideHost : Component
+    {
+        /// <summary>Frames a glide may run before it is ended where it is (a target that never lays out, a spring that never settles).</summary>
+        const int MaxTicks = 120;
+        const float TickMs = 16f;
+
+        readonly Action _onTick;
+        readonly Action<NodeHandle> _layerRealized;
+        TimerHandle _tick;
+        NodeHandle _layer;
+        bool _shown, _toStage, _aimed;
+        int _ticks;
+
+        public GlideHost()
+        {
+            _onTick = Tick;
+            _layerRealized = h => _layer = h;
+        }
+
+        public override Element Render()
+        {
+            _tick = UseTimeout(_onTick, 3_600_000f, DepKey.Empty);   // armed per glide (RestartIn), never by itself
+            // the staged edge: read in the reactive flush that commits it, before layout, so the presenter's rect is still the last frame's
+            UseSignalEffect(() =>
+            {
+                bool shown = Stage.Picture.Shown();
+                if (shown == _shown) return;
+                _shown = shown;
+                Begin(shown);
+            });
+            var r = StageGlide.Rect.Value;
+            int gen = StageGlide.Generation.Value;
+            // keyed per glide inside an unkeyed layer: a new glide mounts a fresh box at its first rect (no animation from the last one)
+            return HoleBoxes.GlideLayer(_layerRealized, HoleBoxes.GlideBox("video:glide:" + gen, r, StageGlide.Motion, StageGlide.Realized));
+        }
+
+        /// <summary>Start a glide from where the presenter is now toward the stage (<paramref name="toStage"/>) or back to its home.</summary>
+        void Begin(bool toStage)
+        {
+            var scene = Context.Scene;
+            var presenter = s_presenterState.Value;
+            var resolved = PlacementCore.Resolve(State.Surface.Peek());
+            // only a picture that is on screen now AND after the edge glides: a docked video the stage keeps covering (Video mode left for the
+            // Visualizer) hides, and one the stage covered (the Visualizer left for Video mode) has no rect to leave from
+            bool landsShown = toStage || !MainWindowHole.Hidden(resolved, Shell.Ui.ImmersiveLyrics.Peek(), staged: false);
+            if (scene is null || !MainWindowHole.Stageable(resolved) || !landsShown || presenter.IsNull || !scene.IsLive(presenter) || !scene.IsShown(presenter))
+            {
+                End();
+                return;
+            }
+            var from = scene.AbsoluteRect(presenter);
+            if (from.W < 1f || from.H < 1f) { End(); return; }
+            _toStage = toStage;
+            _aimed = false;
+            _ticks = 0;
+            StageGlide.Rect.Value = ToLayer(scene, from);
+            StageGlide.Generation.Value = StageGlide.Generation.Peek() + 1;
+            StageGlide.Active.Value = true;
+            _tick.RestartIn(1f);
+        }
+
+        void End()
+        {
+            StageGlide.Active.Value = false;
+            _aimed = false;
+        }
+
+        /// <summary>One step: aim the box at the target once it is laid out, follow a target that still moves, end once the box has landed.</summary>
+        void Tick()
+        {
+            var scene = Context.Scene;
+            if (!StageGlide.Active.Peek() || scene is null) return;
+            if (++_ticks > MaxTicks) { End(); return; }
+            if (TryTarget(scene, out var target))
+            {
+                var local = ToLayer(scene, target);
+                if (!_aimed || !StageGlide.Near(local, StageGlide.Rect.Peek()))
+                {
+                    StageGlide.Rect.Value = local;
+                    _aimed = true;
+                }
+                else
+                {
+                    var box = StageGlide.Node;
+                    if (!box.IsNull && scene.IsLive(box) && StageGlide.Near(scene.AbsoluteRect(box), target)) { End(); return; }
+                }
+            }
+            _tick.RestartIn(TickMs);
+        }
+
+        /// <summary>Where the glide lands, in window DIP: the stage's reservation, or the picture's home (the docked card's reservation, the mini
+        /// player's own rect). False while it is not laid out yet.</summary>
+        bool TryTarget(FluentGpu.Scene.SceneStore scene, out RectF target)
+        {
+            target = default;
+            NodeHandle node;
+            if (_toStage) node = Stage.Picture.Reservation;
+            else
+            {
+                var resolved = PlacementCore.Resolve(State.Surface.Peek());
+                if (resolved == SurfacePlacement.Floating)
+                {
+                    var presenter = s_presenterState.Value;
+                    if (s_floatingRect is not { } floating || presenter.IsNull || !scene.IsLive(presenter)) return false;
+                    var abs = scene.AbsoluteRect(presenter);
+                    ref var paint = ref scene.Paint(presenter);
+                    var home = floating();
+                    target = new RectF(abs.X - paint.LocalTransform.Dx + home.X, abs.Y - paint.LocalTransform.Dy + home.Y, home.W, home.H);
+                    return target.W >= 1f && target.H >= 1f;
+                }
+                node = resolved == SurfacePlacement.Docked ? s_dockedReservation : default;
+            }
+            if (node.IsNull || !scene.IsLive(node)) return false;
+            target = scene.AbsoluteRect(node);
+            return target.W >= 1f && target.H >= 1f;
+        }
+
+        /// <summary>A window-DIP rect in the glide layer's coordinates (the box is placed by its margin inside the layer).</summary>
+        RectF ToLayer(FluentGpu.Scene.SceneStore scene, in RectF r)
+        {
+            if (_layer.IsNull || !scene.IsLive(_layer)) return r;
+            var origin = scene.AbsoluteRect(_layer);
+            return new RectF(r.X - origin.X, r.Y - origin.Y, r.W, r.H);
+        }
     }
 
     // MOUNT POINT (stage B contract)
@@ -161,6 +340,8 @@ public static partial class Video
         PopOut.TitleFactory = static () => CurrentTitle() is { Length: > 0 } title ? title : Loc.Get(Strings.Player.NowPlaying);
         return HoleBoxes.Layer(
             [
+                // The picture's glide between its home and the full-screen stage (a hollow box the presenter follows while it glides).
+                Embed.Comp(static () => new GlideHost()),
                 Embed.Comp(static () => new PipSurface()),
                 // The full-screen stage's chrome OVER the picture (its Video mode): right after the presenter, so it paints over the hole.
                 Stage.Picture.ChromeLayer(),
@@ -568,7 +749,7 @@ public static partial class Video
             // The stage's Video mode owns the transport while it shows the picture (its own card, over the picture): the presenter's strip
             // stands down, so the window never draws two.
             var owned = UseComputed(() => p.ChromeVisible.Value && State.Transport.Value == p.Identity
-                && !(p.Identity == TransportOwner.Docked && Stage.Picture.Shown()));
+                && !(p.Identity == TransportOwner.Docked && (Stage.Picture.Shown() || StageGlide.Active.Value)));
             return OnMedia.Transport(owned, p.Feed);
         }
     }
@@ -636,6 +817,27 @@ public static partial class Video
         public static Element Presenter(Element pip) => new BoxEl
         {
             Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [pip],
+        };
+
+        /// <summary>The glide's layer (<see cref="GlideHost"/>): full-bleed in the video layer, no input, no paint, its own layout boundary (the
+        /// glide box's Reflow ticks re-solve it alone). A SIBLING of the presenter, never its ancestor: the transition it holds is legal here.</summary>
+        public static Element GlideLayer(Action<NodeHandle> realized, Element box) => new BoxEl
+        {
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+            ZStack = true, HitTestVisible = false, IsolateLayout = true,
+            OnRealized = realized,
+            Children = [box],
+        };
+
+        /// <summary>The hollow glide box the presenter follows while it glides (<see cref="StageGlide"/>): placed by its margin at
+        /// <paramref name="r"/>, moving on <paramref name="motion"/>, painting nothing.</summary>
+        public static Element GlideBox(string key, in RectF r, LayoutTransition motion, Action<NodeHandle> realized) => new BoxEl
+        {
+            Key = key,
+            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+            Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = MathF.Max(0f, r.W), Height = MathF.Max(0f, r.H),
+            Layout = motion,
+            OnRealized = realized,
         };
 
         /// <summary>The fullscreen layer's pass-through column while fullscreen resolves.</summary>
@@ -955,8 +1157,9 @@ public static partial class Video
             UseSignalEffect(static () => { _ = Prefs.Epoch.Value; SyncAspect(); });
 
             var resolved = PlacementCore.Resolve(State.Surface.Value);
-            // The full-screen stage shows the picture (its Video mode): the box follows the stage's reservation and draws the picture alone.
-            bool staged = Stage.Picture.Shown() && MainWindowHole.Stageable(resolved);
+            // The full-screen stage shows the picture (its Video mode): the box follows the stage's reservation and draws the picture alone; so
+            // does a picture gliding between its home and the stage (StageGlide).
+            bool staged = (Stage.Picture.Shown() || StageGlide.Active.Value) && MainWindowHole.Stageable(resolved);
             // The presenter is mounted for EVERY reason the main window may need to pump the session: the immersive stage
             // covering a docked video HIDES it (the bound Visible below) rather than unmounting it, and a pop-out
             // hand-off keeps it mounted (hidden) until the pop-out presents. The Detached-only read keeps every other
@@ -1010,6 +1213,7 @@ public static partial class Video
                     {
                         Placement = resolved,
                         Staged = staged,
+                        Realized = s_presenterRealized,
                         Visible = s_surfaceVisible,
                         FollowRect = s_followReservation,
                         Width = _widthBind,
@@ -1054,6 +1258,21 @@ public static partial class Video
         }
 
         Size2 ViewportPeek() => _vpSig?.Peek() ?? new Size2(1280f, 720f);
+
+        /// <summary>The ONE presenter publishes where the mini player sits (the glide's landing back in it), once.</summary>
+        public PipSurface() => s_floatingRect = FloatingRect;
+
+        /// <summary>The mini player's rect relative to the box's layout origin: the floating arm of the geometry binds, peeked.</summary>
+        RectF FloatingRect()
+        {
+            var vp = ViewportPeek();
+            var slot = DockedSlot.Peek();
+            float w = PipOverlay.Width(SurfacePlacement.Floating, vp.Width, _w.Peek(), slot.W);
+            float h = PipOverlay.Height(SurfacePlacement.Floating, vp.Height, _h.Peek(), slot.H);
+            var o = PipOverlay.Offset(SurfacePlacement.Floating, vp.Width, vp.Height, _placed.Peek(), _x.Peek(), _y.Peek(), _w.Peek(), _h.Peek(),
+                slot.X, slot.Y, ShellPolicy.Now.Panel.Pip);
+            return o.Identity ? new RectF(0f, 0f, w, h) : new RectF(o.X, o.Y, w, h);
+        }
 
         /// <summary>Commit the DRAWN position first (an unplaced card would otherwise snap to the origin on the first sample)
         /// and release the reservation: placing it is the user opting into a free-floating overlay.</summary>

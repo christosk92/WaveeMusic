@@ -29,6 +29,13 @@ versions separately under `v*` and is not tracked in this file.)
   "Switch to audio" in the top bar turns the video off and lands on today's cover and lyrics. F11 and "Video in
   fullscreen" open this same full screen; WinUI and Zune keep their video-only full screen for now.
 
+- **Theatre mode in the video full screen (Classic).** "Theatre mode" in the full screen's top bar slides a panel in beside
+  the music video, Up next or the lyrics: the picture moves to the left at its own shape, its title under it, and nothing
+  ever covers it; "Fill the screen" takes it back. The Lyrics and Up next tabs open Theatre on their panel and the Video tab
+  returns to the full picture; full screen remembers the choice across tracks and restarts. The transport stays up in
+  Theatre. The Visualizer tab is back while a video plays. Opening and leaving full screen glides the picture between the
+  docked card (or the mini player) and the screen instead of jumping there.
+
 - **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.

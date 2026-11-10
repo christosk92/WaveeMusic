@@ -153,6 +153,10 @@ public sealed record VideoPipProps
     /// and the template draws the picture ALONE, whatever <see cref="Placement"/> says (no card, no strip, no zones): the stage draws its own
     /// chrome over it. Appended (contract 1.95).</summary>
     public bool Staged { get; init; }
+
+    /// <summary>Put it on the box (its <c>OnRealized</c>): the core reads the presenter's painted rect where the picture glides between its home
+    /// (the docked card, the mini player) and the full-screen stage. Appended (contract 1.96).</summary>
+    public Action<NodeHandle>? Realized { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.VideoPopOut"/>. Built per render of the core's pop-out content (the join, the fullscreen mode and

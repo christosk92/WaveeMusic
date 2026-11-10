@@ -110,6 +110,15 @@ public static partial class Stage
         /// <summary>The stage offers its Video mode now (<see cref="Picture.Offered"/>: the structure draws it and a music video is on in the
         /// main window): the top bar's Video tab is there. SurfaceCore writes it.</summary>
         public readonly Signal<bool> VideoOffered = new(false);
+        /// <summary>Video mode's stored arrangement (<c>Prefs.Stage.Theatre</c> / <c>.TheatrePane</c>, mirrored by the epoch effect): Theatre is
+        /// wanted, and the panel it shows beside the picture (Lyrics or Up next).</summary>
+        public readonly Signal<bool> TheatreWanted = new(false);
+        public readonly Signal<PaneKind> TheatrePane = new(PaneKind.Queue);
+        /// <summary>DERIVED by SurfaceCore: the stage shows the picture in THEATRE now (Video mode, Theatre wanted, and the layout has room for
+        /// the panel, <c>Layout.TheatreFits</c>): the picture sits in the left region and <see cref="Pane"/> is the panel beside it.</summary>
+        public readonly Signal<bool> Theatre = new(false);
+        /// <summary>The top bar's "Theatre mode" / "Fill the screen": Cinema ⇄ Theatre (stored).</summary>
+        public Action ToggleTheatre = static () => { };
         public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
         public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
         /// <summary>The gallery is open AND the layout has room for it (<c>Layout.ShowGallery</c>) — the pane's mount gate
@@ -194,6 +203,10 @@ public static partial class Stage
         // Video mode then takes over where the structure draws it)
         if (Video.State.Resolved == Video.SurfacePlacement.Fullscreen) Video.State.ExitFullscreen();
         begin?.Invoke(Entry.MorphKey);
+        // the stage OPENS on the picture whenever it is offered (SurfaceCore's first mode): say so in the same flush as the open, before the
+        // stage mounts, so the docked picture is never hidden for the frames between (the "covered by the stage" rule) and its glide to the
+        // stage leaves from where it is on screen
+        Picture.NoteMode(Picture.OfferedNow());
         Shell.Ui.ImmersiveLyrics.Value = true;
         Diagnostics.NoteEnter(cause);
     }
@@ -260,14 +273,34 @@ public static partial class Stage
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
             _ctx.SetMode = mode =>
             {
+                bool offered = _ctx.VideoOffered.Peek();
                 if (mode == Mode.Video)
                 {
-                    if (_ctx.VideoOffered.Peek()) _pictureWanted.Value = true;
+                    // the Video tab: the picture, filling the stage (Cinema)
+                    if (offered)
+                    {
+                        _pictureWanted.Value = true;
+                        if (_ctx.TheatreWanted.Peek()) Prefs.Stage.SetTheatre(false, (int)_ctx.TheatrePane.Peek());
+                    }
+                    _verbs.Activity();
+                    return;
+                }
+                // the Lyrics and Up next tabs with a music video on: the picture stays, the panel slides in beside it (Theatre), where the
+                // layout has room for it; Visualizer and Artist leave the picture as before
+                if (offered && TheatreRules.OpensTheatre(mode) && _ctx.Layout.Peek().TheatreFits)
+                {
+                    _pictureWanted.Value = true;
+                    Prefs.Stage.SetTheatre(true, (int)TheatreRules.PaneOf(mode));
                     _verbs.Activity();
                     return;
                 }
                 _pictureWanted.Value = false;
                 _verbs.SetMode(mode);
+            };
+            _ctx.ToggleTheatre = () =>
+            {
+                Prefs.Stage.SetTheatre(!_ctx.Theatre.Peek(), (int)_ctx.TheatrePane.Peek());
+                _verbs.Activity();
             };
             _ctx.SwitchToAudio = () =>
             {
@@ -319,6 +352,7 @@ public static partial class Stage
                 HairlineFraction = () => _frac.Value,
                 ShowPicture = () => ctx.Mode.Value == Mode.Video,
                 PictureRealized = Picture.Realized,
+                ShowTheatre = () => ctx.Theatre.Value,
                 TopBar = new StageTopBarProps { Stage = ctx },
                 Transport = TransportProps(ctx),
                 Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },
@@ -399,6 +433,8 @@ public static partial class Stage
                 ctx.Kind.SetIfChanged((Visualizer.Kind)Prefs.Stage.Visualizer());
                 ctx.GalleryOpen.SetIfChanged(Prefs.Stage.GalleryOpen());
                 ctx.UpNextOpen.SetIfChanged(Prefs.Stage.UpNextOpen());
+                ctx.TheatreWanted.SetIfChanged(Prefs.Stage.Theatre());
+                ctx.TheatrePane.SetIfChanged((PaneKind)Prefs.Stage.TheatrePane());
                 ctx.LyricsOverlay.SetIfChanged(Prefs.Stage.LyricsOverlay());
                 ctx.Calm.SetIfChanged(Prefs.Stage.Calm());
                 ctx.Moments.SetIfChanged(Prefs.Stage.Moments());
@@ -421,6 +457,9 @@ public static partial class Stage
                 Diagnostics.NoteMode(m);                          // gated: logs only on a real change, keeps the card's mode truthful
                 Picture.NoteMode(m == Mode.Video);
             });
+            // Theatre as SHOWN: Video mode, wanted, and the window tier's layout has room for the panel (a crossing into a tier without one
+            // draws Cinema and keeps the choice for the way back)
+            UseSignalEffect(() => ctx.Theatre.SetIfChanged(ctx.Mode.Value == Mode.Video && ctx.TheatreWanted.Value && ctx.Layout.Value.TheatreFits));
             // the stage's view, for the chrome Video mode draws over the picture (in the video layer, outside this subtree)
             var view = _view;
             UseLayoutEffect(() =>
@@ -448,7 +487,10 @@ public static partial class Stage
             UseSignalEffect(() =>
             {
                 var look = ctx.Look.Value;
-                ctx.Pane.SetIfChanged(LayoutRules.Pane(look.Mode, look.Eff, look.HeroLyrics));
+                // Video mode has a pane only in Theatre: the panel beside the picture
+                ctx.Pane.SetIfChanged(look.Mode == Mode.Video
+                    ? ctx.Theatre.Value ? ctx.TheatrePane.Value : PaneKind.None
+                    : LayoutRules.Pane(look.Mode, look.Eff, look.HeroLyrics));
             });
             UseSignalEffect(() => LyricsPaneShown.SetIfChanged(ctx.Pane.Value == PaneKind.Lyrics));
 
@@ -638,9 +680,12 @@ public static partial class Stage
     /// <summary>The pane region's core host: WHICH pane is shown and the KeepAlive that keeps each pane's state (the lyrics view's scroll,
     /// follow and measured rows) across mode switches, and the Artist pane's props cache. The region (its rect at (PaneX, PaneTop), its move
     /// with the cover, its clip, when it shows) and the frame each pane enters in are the structure's (<c>Stage.Pane</c>,
-    /// <c>ClassicStagePane</c>).</summary>
+    /// <c>ClassicStagePane</c>).
+    /// <para>THEATRE (<paramref name="theatre"/>): Video mode's panel beside the picture is a second host of its own, mounted only while Theatre
+    /// shows: it keys on the STORED Theatre panel (Lyrics or Up next, never None, so a panel sliding out keeps its body until it is gone), the
+    /// lyrics at the panel's type (<c>Layout.TheatreLyricsTypeScale</c>) and the Up next list in its narrow column form (the Huge 4K column's).</para></summary>
     [CoreHost]
-    sealed class PaneHost : Component
+    sealed class PaneHost(bool theatre = false) : Component
     {
         StageArtistPaneProps? _artist;   // the Artist pane's props: built once per pane host (the facts hold the bio length cache)
         StagePaneProps? _props;          // built once per stage context: the template re-renders on the context's signals it reads
@@ -649,14 +694,20 @@ public static partial class Stage
         {
             var ctx = UseContext(StageContext)!;
             if (_props is null || !ReferenceEquals(_props.Stage, ctx))
-                _props = new StagePaneProps { Stage = ctx, Panes = (frame, empty) => Panes(ctx, frame, empty) };
+                _props = new StagePaneProps { Stage = ctx, Panes = (frame, empty) => Panes(ctx, frame, empty), Theatre = theatre };
             return ViewSlots.View(ViewKeys.StagePane, _props);
         }
 
         // keyed by the PANE, not the mode: Lyrics mode and Large art share "pane:1", so ONE lyrics view (its scroll, follow
         // and measured rows) serves both and a switch between them re-keys nothing
         Element Panes(StageCtx ctx, Func<Element, Element> frame, Func<Element> empty)
-            => Flow.KeepAlive(() => ctx.Pane.Value, static p => "pane:" + (int)p, p => p switch
+            => theatre
+            ? Flow.KeepAlive(() => ctx.TheatrePane.Value, static p => "theatre:" + (int)p, p => p switch
+            {
+                PaneKind.Lyrics => frame(Lyrics.StagePane(ctx.Slab.Accent, theatre: true)),
+                _ => frame(Queue.StagePane(aside: true)),
+            })
+            : Flow.KeepAlive(() => ctx.Pane.Value, static p => "pane:" + (int)p, p => p switch
             {
                 PaneKind.Lyrics => frame(Lyrics.StagePane(ctx.Slab.Accent)),
                 PaneKind.Queue => frame(Queue.StagePane()),

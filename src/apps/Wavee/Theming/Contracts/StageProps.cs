@@ -141,6 +141,12 @@ public sealed record StageRootView
     /// <summary>The picture's reservation was realized: the stay-mounted presenter follows this node (the engine's <c>FollowRect</c>). Put it
     /// on the reservation's box. Appended (contract 1.95).</summary>
     public Action<NodeHandle> PictureRealized { get; init; } = static _ => { };
+
+    /// <summary>Video mode shows the picture in THEATRE (<c>StageCtx.Theatre</c>): the reservation sits in the left region with the title block
+    /// under it, the Theatre panel (<see cref="StageLayers.TheatrePane"/>) beside it on the right, and the chrome stays at rest (no idle hide);
+    /// otherwise Video mode is CINEMA (the reservation fills the stage). The template moves the reservation between the two rects with a
+    /// layout transition the presenter follows. A predicate. Appended (contract 1.96).</summary>
+    public Func<bool> ShowTheatre { get; init; } = static () => false;
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePictureChrome"/>: the stage's chrome over the music video in Video mode (the top bar, the
@@ -178,6 +184,11 @@ public sealed record StageLayers
     /// a second stage-queue host that mounts <see cref="ViewKeys.QueueStagePane"/> with <see cref="QueueStagePaneProps.Aside"/>. Null where the core
     /// offers none. Appended (contract 1.22).</summary>
     public Func<Element>? UpNext { get; init; }
+
+    /// <summary>Video mode's Theatre panel beside the picture (Lyrics or Up next, the stored Theatre panel): a second pane host that mounts
+    /// <see cref="ViewKeys.StagePane"/> with <see cref="StagePaneProps.Theatre"/>, the lyrics at the panel's type and the Up next list in its
+    /// column form. Mount it under <see cref="StageRootView.ShowTheatre"/>. Null where the core offers none. Appended (contract 1.96).</summary>
+    public Func<Element>? TheatrePane { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePane"/>: the pane region (Lyrics, Up next, Artist) the core pane host mounts. The template
@@ -192,6 +203,12 @@ public sealed record StagePaneProps
     /// <summary>The core's KeepAlive over the shown pane, keyed <c>pane:&lt;kind&gt;</c>: it wraps each pane's body in <c>frame</c> (the theme's
     /// frame: its entrance and exit) and mounts <c>empty</c> for no pane. Call it from the template's render and place what comes back.</summary>
     public required Func<Func<Element, Element>, Func<Element>, Element> Panes { get; init; }
+
+    /// <summary>Video mode's Theatre panel beside the picture (<see cref="StageLayers.TheatrePane"/>): the template places the region at its
+    /// Theatre rect and shows it for as long as it is mounted (the root mounts it only while <see cref="StageRootView.ShowTheatre"/> holds and
+    /// plays its entrance and exit); <see cref="Panes"/> then keys on the stored Theatre panel (Lyrics or Up next) and never mounts
+    /// <c>empty</c>. Appended (contract 1.96).</summary>
+    public bool Theatre { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.StageTopBar"/>.</summary>

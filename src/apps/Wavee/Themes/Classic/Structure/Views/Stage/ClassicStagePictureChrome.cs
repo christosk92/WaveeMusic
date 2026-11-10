@@ -4,7 +4,9 @@
 // presenter following the stage's reservation, `ClassicStageRoot`), a scrim under the top bar, the top bar with the Video tab, "Switch to
 // audio" and Exit, and over a scrim at the foot the title block (the track's title, its "Artist · Album" line) above the stage's own
 // transport card. Everything but the picture comes and goes on the stage's idle machine (`StageRootView.ChromeVisible`, 3 s without the
-// pointer; paused, it stays), with the stage's Enter/Exit; the hairline shows while it rests.
+// pointer; paused, it stays), with the stage's Enter/Exit; the hairline shows while it rests. In THEATRE (`StageRootView.ShowTheatre`, the
+// board "Classic · Theatre") the scrims and the title over the picture give way to the title block UNDER the picture, the chrome stays at rest
+// (nothing of it covers the picture) and the ground that takes the pointer shrinks to the picture's box (the panel beside it is the stage's).
 //
 // The core mounts this in the VIDEO layer right after the presenter (the hole erases what is painted under it), so it is not inside the
 // stage's subtree: the ground carries the stage's pointer wiring (a move is idle activity, a double-click leaves full screen) and the keys
@@ -36,6 +38,12 @@ internal static class ClassicStagePictureChrome
         var tier = ClassicStageTiers.StageOf(ctx.Tier());
         var exit = v.Stage.Exit;
         var fade = new EnterExit(Opacity: 0f, Active: true);
+        // Theatre: the picture in the left region with its title under it and the panel beside it (the stage draws the panel); the chrome stays
+        // at rest there (none of it covers the picture) and the hairline gives way to the transport. Cinema keeps the idle chrome.
+        var theatre = ClassicStageTheatreGeometry.Of(L);
+        Func<bool> cinemaChrome = () => v.ChromeVisible() && !v.ShowTheatre();
+        Func<bool> chromeShown = () => v.ChromeVisible() || v.ShowTheatre();
+        Func<bool> hairline = () => !v.ChromeVisible() && !v.ShowTheatre();
         return Stage.Layer with
         {
             Key = "stage:picturechrome",
@@ -46,14 +54,12 @@ internal static class ClassicStagePictureChrome
             OnKeyDown = v.OnKeyDown,
             Children =
             [
-                // the ground over the picture: it takes the pointer (the picture under it never does), and a double-click on it leaves full screen
-                new BoxEl
-                {
-                    Key = "picture:ground", AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = ColorF.Transparent,
-                    OnPointerReleased = e => { if (e.ClickCount >= 2) exit(); },
-                },
-                // the scrims: under the top bar, and under the title block and the transport
-                Flow.Show(v.ChromeVisible, Stage.Layer with
+                // the ground over the picture: it takes the pointer (the picture under it never does), and a double-click on it leaves full
+                // screen. Cinema: the whole stage. Theatre: the picture's box alone, so the panel beside it (the stage's, under this layer) and
+                // the floor around it take their own pointer.
+                Embed.Comp(new GroundProps(v), static () => new Ground()),
+                // the scrims: under the top bar, and under the title block and the transport (Cinema: the chrome over the picture)
+                Flow.Show(cinemaChrome, Stage.Layer with
                 {
                     Key = "picture:scrims", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -71,17 +77,24 @@ internal static class ClassicStagePictureChrome
                         },
                     ],
                 }),
-                // the title block: the transport card's content edge, a gap above the card
-                Flow.Show(v.ChromeVisible, Stage.Layer with
+                // the title block: the transport card's content edge, a gap above the card (Cinema)
+                Flow.Show(cinemaChrome, Stage.Layer with
                 {
                     Key = "picture:title", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true),
                     Transition = MotionTok.ControlNormal,
                     Children = [Title(v, L, tier)],
                 }),
-                ClassicStageRoot.TopBar(v),
-                ClassicStageRoot.Transport(v),
-                ClassicStageRoot.Hairline(v),
+                // Theatre's title block under the picture, at rest
+                Flow.Show(v.ShowTheatre, Stage.Layer with
+                {
+                    Key = "picture:theatre-title", HitTestVisible = false, HitTestPassThrough = false,
+                    Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
+                    Children = [ClassicStageTheatre.TheatreTitle(v, theatre.Title)],
+                }),
+                ClassicStageRoot.TopBar(v, chromeShown),
+                ClassicStageRoot.Transport(v, chromeShown),
+                ClassicStageRoot.Hairline(v, hairline),
             ],
         };
     }
@@ -110,6 +123,32 @@ internal static class ClassicStagePictureChrome
                 },
             ],
         };
+    }
+
+    sealed record GroundProps(StageRootView View);
+
+    /// <summary>The ground: the whole stage in Cinema, the picture's box in Theatre (moving with the reservation's spring). A component of its
+    /// own, so a Cinema ⇄ Theatre change re-renders this box alone.</summary>
+    sealed class Ground : Component
+    {
+        public override Element Render()
+        {
+            var v = UseProps<GroundProps>().View;
+            var r = ClassicStageTheatre.PictureRect(v.Stage.Layout.Value, v.ShowTheatre());
+            var exit = v.Stage.Exit;
+            return Stage.Layer with
+            {
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "picture:ground", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Fill = ColorF.Transparent,
+                        Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H, Layout = ClassicStageTheatre.Move,
+                        OnPointerReleased = e => { if (e.ClickCount >= 2) exit(); },
+                    },
+                ],
+            };
+        }
     }
 
     /// <summary>The stage veil at alpha <paramref name="a"/> (the arm's veil: dark on the dark arm, light on the light).</summary>

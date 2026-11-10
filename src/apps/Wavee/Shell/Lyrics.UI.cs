@@ -84,21 +84,23 @@ public static partial class Lyrics
     /// `Stage.UI.cs`'s). The SAME view at stage metrics on the stage's ink, with the ART ACCENT for the active-line pill.
     /// <paramref name="accent"/> is a mount-time signal INSTANCE (the slab's <c>Accent</c>, stable for the stage's life —
     /// the contract the Slider/ToggleSwitch signal instances follow): props freeze at mount, so only the signal's
-    /// VALUE ever changes.</summary>
-    public static Element StagePane(IReadSignal<ColorF> accent) => Embed.Comp(() => new StageColumn(accent));
+    /// VALUE ever changes. <paramref name="theatre"/>: Video mode's Theatre panel beside the picture, at the panel's type
+    /// (<see cref="Stage.Layout.TheatreLyricsTypeScale"/>).</summary>
+    public static Element StagePane(IReadSignal<ColorF> accent, bool theatre = false) => Embed.Comp(() => new StageColumn(accent, theatre));
 
     /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
     /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it (the cap and the
     /// gutter are the structure's, `Lyrics.View`). The scale reaches the view as a VALUE-GATED signal (tuned R1): a size step keeps the
     /// column MOUNTED — the rows re-render at the new type in place, the run lengths and extents are re-measured and the follow re-latches
     /// the active line at the band — instead of re-keying the view, which remounted it and made the text jump.</summary>
-    sealed class StageColumn(IReadSignal<ColorF> accent) : Component
+    sealed class StageColumn(IReadSignal<ColorF> accent, bool theatre) : Component
     {
         readonly Signal<float> _typeScale = new(1f);
 
         public override Element Render()
         {
-            float scale = UseContext(Stage.StageContext)?.Layout.Value.LyricsTypeScale ?? 1f;
+            var stage = UseContext(Stage.StageContext);
+            float scale = stage is null ? 1f : theatre ? stage.Layout.Value.TheatreLyricsTypeScale : stage.Layout.Value.LyricsTypeScale;
             _typeScale.SetIfChanged(scale > 0f && float.IsFinite(scale) ? scale : 1f);
             var typeScale = _typeScale;
             return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: typeScale))

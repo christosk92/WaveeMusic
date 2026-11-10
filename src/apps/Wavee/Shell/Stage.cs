@@ -61,6 +61,24 @@ public static partial class Stage
         public static int FaceStep(int keyCode) => keyCode == PreviousFaceKey ? -1 : keyCode == NextFaceKey ? 1 : 0;
     }
 
+    /// <summary>Video mode's two arrangements (the board "Classic · Theatre"): CINEMA, the picture fills the stage; THEATRE, a panel (Lyrics or
+    /// Up next) slides in beside the picture, which gets smaller and is never covered. The Lyrics and Up next tabs open Theatre on their panel,
+    /// the Video tab and "Fill the screen" return to Cinema; the choice is a stored preference (<c>Prefs.Stage.Theatre</c>).</summary>
+    public static class TheatreRules
+    {
+        /// <summary>A stored or hand-edited pane int → a panel Theatre can show (Lyrics or Up next); anything else is Up next.</summary>
+        public static int CoercePane(int stored) => stored == (int)PaneKind.Lyrics ? (int)PaneKind.Lyrics : (int)PaneKind.Queue;
+
+        /// <summary>The tabs that open Theatre on their own panel instead of leaving the picture.</summary>
+        public static bool OpensTheatre(Mode mode) => mode is Mode.Lyrics or Mode.Queue;
+
+        /// <summary>The panel a tab opens.</summary>
+        public static PaneKind PaneOf(Mode mode) => mode == Mode.Lyrics ? PaneKind.Lyrics : PaneKind.Queue;
+
+        /// <summary>The tab that stands for a Theatre panel (the selector's highlight).</summary>
+        public static Mode TabOf(PaneKind pane) => pane == PaneKind.Lyrics ? Mode.Lyrics : Mode.Queue;
+    }
+
     // ── 2. the allocator ────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The four layout classes. Desktop is the 1920×1080 board; the others are the prototypes' container queries.</summary>
@@ -257,6 +275,19 @@ public static partial class Stage
         public (float X, float Y, float W, float H) UpNextRect
             => (MathF.Max(0f, W - TransportInset - M.UpNextW), GalleryTop, M.UpNextW, MathF.Max(0f, TransportTop - Pad - GalleryTop));
 
+        // ── Video mode's Theatre (the picture with a panel beside it) ──
+
+        /// <summary>The window tier has a Theatre (<see cref="Theming.StageTierMetrics.TheatrePaneW"/>) and the stage is a wide class: the
+        /// panel docks beside the picture. Elsewhere Video mode is Cinema only and the Lyrics and Up next tabs leave the picture.</summary>
+        public bool TheatreFits => M.TheatrePaneW > 0f && Aspect is Aspect.Desktop or Aspect.Ultrawide;
+
+        /// <summary>Theatre's panel width (the window tier's).</summary>
+        public float TheatrePaneW => M.TheatrePaneW;
+
+        /// <summary>The lyrics' scale in Theatre's panel over the authored size (<see cref="LyricsTypeMin"/>); the stage's own where the tier
+        /// states none.</summary>
+        public float TheatreLyricsTypeScale => M.TheatreLyricsType > 0f ? M.TheatreLyricsType / LyricsTypeMin : LyricsTypeScale;
+
         /// <summary>The lyrics pane's width beside the Up next column (never wider than the pane). The board's gap (<see cref="UpNextGap"/>) is
         /// a 3840 stage's: at 1920 the same 336 DIP left the lyrics about 250 wide and they fell to one word per line. So the GAP gives way
         /// first, down to <see cref="UpNextGapMin"/>, while the room beside the column is short of <see cref="LyricsMeasureMin"/>; a 4K stage
@@ -362,22 +393,35 @@ public static partial class Stage
         /// button, and the labelled exit button's budget (glyph + "Exit full screen" in the longest shipped locale).</summary>
         public const float TopBarPadL = 16f, TopBarPadR = 8f, TopBarGap = 8f, SelectorGap = 4f;
         public const float BarButtonW = 40f, BarButtonGap = 4f, ExitLabelW = 220f;
-        /// <summary>The SelectorBar's four items, labelled or icon-only.</summary>
-        public float SelectorW => 4f * (IconOnlySelector ? SelectorIconOnlyW : SelectorItemW) + 3f * SelectorGap;
+        /// <summary>The SelectorBar's items (four; five with a music video on: Video leads), labelled or icon-only.</summary>
+        public float SelectorW(int tabs) => tabs * (IconOnlySelector ? SelectorIconOnlyW : SelectorItemW) + (tabs - 1) * SelectorGap;
         /// <summary>Each side column of the top bar: the brand and the button cluster split what the SelectorBar leaves
         /// (both Grow 1 · Basis 0), so the selector stays centred.</summary>
-        public float TopBarSideW => MathF.Max(0f, (W - TopBarPadL - TopBarPadR - SelectorW - 2f * TopBarGap) * 0.5f);
+        public float TopBarSideW(int tabs) => MathF.Max(0f, (W - TopBarPadL - TopBarPadR - SelectorW(tabs) - 2f * TopBarGap) * 0.5f);
         /// <summary>The exit button carries its label only beside a labelled selector AND when its column holds the gallery
         /// toggle plus the labelled button; otherwise it is the glyph alone with the label as its tooltip — it never
         /// truncates to "Ex…" (the icon-only classes show "⤢" alone, §3.5).</summary>
-        public bool ExitLabelShown => !IconOnlySelector && TopBarSideW >= BarButtonW + BarButtonGap + ExitLabelW;
+        public bool ExitLabelShown(int tabs) => !IconOnlySelector && TopBarSideW(tabs) >= BarButtonW + BarButtonGap + ExitLabelW;
 
-        /// <summary>Video mode's "Switch to audio" button's budget (its glyph and its label in the longest shipped locale).</summary>
-        public const float AudioLabelW = 168f;
+        /// <summary>Video mode's "Theatre mode" / "Fill the screen" and "Switch to audio" buttons' budgets (each one's glyph and its label in
+        /// the longest shipped locale).</summary>
+        public const float TheatreLabelW = 168f, AudioLabelW = 168f;
 
-        /// <summary>Video mode's "Switch to audio" carries its label only beside a labelled selector and when its column holds it beside
-        /// the labelled exit; otherwise it is the glyph alone with the label as its tooltip (never truncated).</summary>
-        public bool AudioLabelShown => !IconOnlySelector && TopBarSideW >= AudioLabelW + BarButtonGap + ExitLabelW;
+        /// <summary>Which of Video mode's buttons carry their labels: the column holds [Theatre] [Switch to audio] [Exit], each a glyph with its
+        /// label as the tooltip until the column has room for its label, the exit first, then the Theatre button, then "Switch to audio"
+        /// (never truncated). <paramref name="theatre"/>: the Theatre button is offered (<see cref="TheatreFits"/>).</summary>
+        public (bool Exit, bool Theatre, bool Audio) VideoBarLabels(int tabs, bool theatre)
+        {
+            if (IconOnlySelector) return (false, false, false);
+            float side = TopBarSideW(tabs);
+            float w = (theatre ? BarButtonW + BarButtonGap : 0f) + BarButtonW + BarButtonGap + BarButtonW;   // every button a glyph
+            bool exit = side >= w - BarButtonW + ExitLabelW;
+            if (exit) w += ExitLabelW - BarButtonW;
+            bool theatreLabel = theatre && side >= w - BarButtonW + TheatreLabelW;
+            if (theatreLabel) w += TheatreLabelW - BarButtonW;
+            bool audio = side >= w - BarButtonW + AudioLabelW;
+            return (exit, theatreLabel, audio);
+        }
 
         // ── the transport card's clusters ───────────────────────────────────────────────────────────────────────────
 
