@@ -242,7 +242,7 @@ internal static class ClassicPanel
         }) with { Key = ClassicPanelTiers.SheetScrollKey, Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
-    /// <summary>The panel's surface with the edge-to-edge canvas over it (Tideline) while the Canvas style rests with a canvas to play; the docked
+    /// <summary>The panel's surface with the edge-to-edge canvas over it while the Canvas style rests with a canvas to play; the docked
     /// video pinned in the hero's place keeps the plain surface.</summary>
     internal static Element WithBleed(Element surface, PanelProps props, PanelView view) => view.Pinned == PanelPinned.DockedVideo
         ? surface

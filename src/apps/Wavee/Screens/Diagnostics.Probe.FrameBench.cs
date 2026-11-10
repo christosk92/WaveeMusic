@@ -348,6 +348,27 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = false;
                     return r;
                 }
+                case FrameBenchScenarios.RailCanvas:
+                {
+                    // The now-playing panel in the Canvas player style with a canvas playing (the edge-to-edge canvas over the panel): the
+                    // real video through the compositor, which the headless inspector does not have. A shot of it lands in the output
+                    // folder (`rail-canvas.png`; the video itself is a hole in the captured frame), and the canvas player's state in the note.
+                    if (!Platform.Args.Fake || Entities.FakeCanvasTracks.Length == 0) return Skip("needs --fake (the seeded canvases)");
+                    int saved = Rail.PlayerPrefs.Style();
+                    Rail.PlayerPrefs.SetStyle(Rail.PlayerCatalog.Canvas, "bench");
+                    string canvasTrack = "spotify:track:tr" + Entities.FakeCanvasTracks[0].ToString(CultureInfo.InvariantCulture);
+                    Base(playing: true, canvasTrack);
+                    Shell.Ui.Mode.Value = Shell.RailMode.NowPlaying;
+                    Shell.Ui.RailOpen.Value = true;
+                    Settle(4.0);
+                    if (s_benchDevice is { } shotDevice) PlayDemoShot(host, w, shotDevice, Path.Combine(OutDir(), "rail-canvas.png"));
+                    var r = Measure(null, "track=" + canvasTrack + " rail=now-playing style=canvas player=" + CanvasVideo.PlayerState()
+                        + " natural=" + CanvasVideo.PlayerNatural().Width.ToString(CultureInfo.InvariantCulture) + "x" + CanvasVideo.PlayerNatural().Height.ToString(CultureInfo.InvariantCulture)
+                        + " running=" + CanvasVideo.Running);
+                    Shell.Ui.RailOpen.Value = false;
+                    Rail.PlayerPrefs.SetStyle(saved, "bench");
+                    return r;
+                }
                 case FrameBenchScenarios.ArtistLyrics:
                 {
                     // An artist page under the lyrics rail with a word-synced track playing: the owner's "listening while browsing an

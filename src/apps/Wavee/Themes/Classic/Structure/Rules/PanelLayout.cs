@@ -57,29 +57,26 @@ internal static class ClassicPanelLayout
 /// <summary>The constants of Classic's now-playing hero and body.</summary>
 internal static class ClassicHeroLayout
 {
-    // ── the edge-to-edge canvas, "Tideline" (canvas-design/project/BleedClassic.dc.html) ───────────────────────────────
+    // ── the edge-to-edge canvas ──────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It ends in a slowly moving wave whose crest sits at
-    /// min(canvas foot - 110, panel height - 300): a 220 band darkens the canvas toward it (the media scope's shade at 35 %: the ground in the
-    /// dark kind, the media stage in the light kind, `Deck.BleedShade`), three swells (H 140, centred on the crest) drift at 33, 21 and 14 s a
-    /// panel's width: two in the art's colours (the dominant hue behind the second one) and the front one in the plain panel ground with a 1.5
-    /// crest line in the art's hue (55 %): the front swell is where the canvas gives way to the ground. Under the crest the panel is plain (its
-    /// own ground, as with the canvas off); a 150 band of the shade (75 %) keeps the header readable. The meta's top sits 24 under the crest.
-    /// Reduced motion: the swells stand still.</summary>
-    public const float BleedAspect = 16f / 9f, BleedCrestLift = 110f, BleedCrestRoom = 300f, BleedDarkBand = 220f, BleedDarkA = 0.35f,
-        BleedWaveH = 140f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f, BleedCrestLine = 1.5f, BleedCrestA = 0.55f;
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It dissolves into the panel's plain ground (its own, as with the
+    /// canvas off): the picture has fully given way at min(canvas foot - 110, panel height - 300) (<see cref="BleedEnd"/>), after a 200 fade
+    /// whose alpha follows an eased curve (the seven alphas below: slow off the picture, slow into the ground, so neither end shows an
+    /// edge). Nothing moves and nothing is tinted by the art (the owner, 2026-11-10). A 150 band of the media scope's shade (75 %,
+    /// `Deck.BleedShade`) keeps the header readable. The meta's top sits 24 under the fade's end.</summary>
+    public const float BleedAspect = 16f / 9f, BleedEndLift = 110f, BleedEndRoom = 300f, BleedFadeH = 200f,
+        BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f;
 
-    /// <summary>The swells, back to front: amplitude, baseline (inside the 140 band), periods per panel width, and the drift (a panel's width
-    /// per period, ms); the art-coloured swells' alpha (the back one in the dominant hue, the middle one in the second).</summary>
-    public const float WaveBackAmp = 16f, WaveBackBase = 46f, WaveBackPeriods = 1f, WaveBackMs = 33000f,
-        WaveMidAmp = 12f, WaveMidBase = 58f, WaveMidPeriods = 2f, WaveMidMs = 21000f,
-        WaveFrontAmp = 10f, WaveFrontBase = 70f, WaveFrontPeriods = 2f, WaveFrontMs = 14000f,
-        WaveBackA = 0.85f, WaveMidA = 0.9f;
+    /// <summary>The fade's curve: the ground's alpha at every sixth of the fade (a smootherstep). A gradient holds four stops, so the fade
+    /// is two gradients, one over the other, of three sixths each (<see cref="BleedFadeThird"/>, <see cref="BleedFadeTwoThirds"/> inside
+    /// each): the upper one runs A0..A3, the lower one A3..A6.</summary>
+    public const float BleedFadeA0 = 0f, BleedFadeA1 = 0.035f, BleedFadeA2 = 0.21f, BleedFadeA3 = 0.5f, BleedFadeA4 = 0.79f, BleedFadeA5 = 0.965f,
+        BleedFadeA6 = 1f, BleedFadeThird = 1f / 3f, BleedFadeTwoThirds = 2f / 3f;
 
-    /// <summary>The art-coloured swells' HSL lightness, per kind (the back swell deeper, the middle one a step toward the plain ground, so the
-    /// tide steps down to the panel), the cap on their saturation (the art's own below it), and how far apart (degrees) a role's hue must stand to
-    /// be the art's second colour.</summary>
-    public const float WaveBackLightL = 0.58f, WaveMidLightL = 0.74f, WaveBackDarkL = 0.46f, WaveMidDarkL = 0.32f, WaveSatMax = 0.6f, WaveHueApart = 30f;
+    /// <summary>Where the canvas has fully given way to the ground, from the panel's top: <paramref name="canvasH"/> is the canvas's height,
+    /// <paramref name="panelH"/> the panel's (0 before it is measured).</summary>
+    public static float BleedEnd(float canvasH, float panelH)
+        => MathF.Min(canvasH - BleedEndLift, (panelH > 0f ? panelH : canvasH) - BleedEndRoom);
 
     /// <summary>The ratio the meta's accent text (the art's hue) is solved to on the plain ground: AA's 4.5 with a little headroom.</summary>
     public const float ArtTextContrast = 4.8f;
@@ -91,10 +88,10 @@ internal static class ClassicHeroLayout
 
     public const ushort BleedSourceWeight = 600, BleedTitleWeight = 600;
 
-    /// <summary>The meta under the crest: the 64 cover (r10) with a soft glow in the art's dominant colour (28 blur, 10 down, 35 %), 14 to the
-    /// title (22/26 semibold) over the artist in the art's hue as text (14/20) and "album · year" (12/16, the primary ink at 70 %), 3 apart; the
-    /// saved heart in that hue on a 40 circle of it at 14 %.</summary>
-    public const float BleedCover = 64f, BleedCoverRadius = 10f, BleedGlowBlur = 28f, BleedGlowY = 10f, BleedGlowA = 0.35f, BleedMetaGap = 14f,
+    /// <summary>The meta under the fade: the 64 cover (r10, flat on the ground: no glow, the owner, 2026-11-10), 14 to the title (22/26
+    /// semibold) over the artist in the art's hue as text (14/20) and "album · year" (12/16, the primary ink at 70 %), 3 apart; the saved
+    /// heart in that hue on a 40 circle of it at 14 %.</summary>
+    public const float BleedCover = 64f, BleedCoverRadius = 10f, BleedMetaGap = 14f,
         BleedTitleSize = 22f, BleedTitleLine = 26f, BleedLinesGap = 3f, BleedYearA = 0.70f, BleedHeart = 40f, BleedHeartA = 0.14f;
 
     // ── the track meta ───────────────────────────────────────────────────────────────────────────────────────────────

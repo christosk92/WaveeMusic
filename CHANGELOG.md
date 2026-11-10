@@ -26,6 +26,11 @@ versions separately under `v*` and is not tracked in this file.)
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.
 
+### Changed
+
+- **Canvas in the Classic now-playing panel ends in a plain fade.** The picture now dissolves into the panel on a smooth
+  curve; the drifting waves at its foot and the coloured glow under the small cover are gone.
+
 ### Fixed
 
 - **Acrylic over the Canvas in full screen.** The player bar, the Up next column and the view switcher at the top were flat
