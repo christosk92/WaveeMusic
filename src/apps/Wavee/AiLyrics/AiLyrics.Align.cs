@@ -14,8 +14,10 @@
 //   OnlineViterbi  the forward pass advances frame by frame and is exact. Tokens are COMMITTED in order; a commit
 //                  backtraces from the best state at the newest frame. The worker commits just in time (when the
 //                  playhead gets close), so each decision has heard as much of the song as possible. A line-time
-//                  prior (when the input is line-synced) keeps identical chorus lines from sliding a bar late.
-//   Snap           a word that starts after silence moves back to where the vocal level rises.
+//                  prior (when the input is line-synced) keeps identical chorus lines from sliding a bar late; for
+//                  Japanese it also bounds a line by how long its text can take to sing (LinePrior), so a line
+//                  before an instrumental gap or after a long intro cannot slide seconds into it.
+//   Snap         a word that starts after silence moves back to where the vocal level rises.
 //   Fill/Assemble  a line the model timed (at least half its letters) gets a time for every word: an untimed word is
 //                  interpolated between its timed neighbours or to the line's own bounds, never invented for a line
 //                  with nothing timed (TrackJob.BuildDoc keeps that line as the provider's). The syllable texts join
@@ -161,6 +163,52 @@ public static partial class AiLyrics
         /// one regex "word") and whose model was trained on text without "|".</summary>
         public static bool IsCharacterTimed(string? language) => language == "ja";
 
+        // ── the line-time prior ─────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A language's own shape of the line-time prior (<see cref="LineWindows"/>). A line's window ends at
+        /// the next line's start, or <see cref="CapSeconds"/> + <see cref="CapSecondsPerToken"/> per token after its
+        /// own start if that is sooner; and the blanks before the first line and after the last are free (an intro or an
+        /// outro costs nothing, so the first and last lines are not pulled into them).</summary>
+        public readonly record struct LinePrior(double CapSeconds, double CapSecondsPerToken);
+
+        /// <summary>The sung-length prior of <paramref name="language"/>, or null for the plain one (a line's window runs
+        /// to the next line's start). Japanese only: measured with the offline harness on 34 Japanese songs against
+        /// human per-character timing (12,386 scored characters), it moved the p90 start error from 735 to 587 ms and the
+        /// lines more than 1 s off from 58 to 29; 1 s + 0.8 s per token (+ the pad) still covers where the last character
+        /// starts in all but 13 of the 1,145 human-timed lines, and only 3 lines got worse by more than 300 ms. English, Dutch and Korean have no audio to measure it on, so they keep the plain prior
+        /// (their alignment is unchanged).</summary>
+        public static LinePrior? LinePriorOf(string? language) => language == "ja" ? new LinePrior(1.0, 0.8) : null;
+
+        /// <summary>Per token of <paramref name="g"/>: the time range (s) its line is expected in, for a line-synced
+        /// source with these line starts. A line's range is [its start - pad, the next line's start + pad] (after the
+        /// last line: 30 s), its upper end bounded by the language's <see cref="LinePriorOf"/> when it has one; a
+        /// separator takes the range of the token before it.</summary>
+        public static (double Lo, double Hi)[] LineWindows(Graph g, IReadOnlyList<long> lineStartsMs, string? language, double padSeconds)
+        {
+            int n = lineStartsMs.Count;
+            var w = new (double Lo, double Hi)[g.Length];
+            if (n == 0) return w;
+            var starts = new double[n + 1];
+            for (int i = 0; i < n; i++) starts[i] = lineStartsMs[i] / 1000.0;
+            starts[n] = starts[n - 1] + 30;                                    // after the last line: open-ended
+            var hi = new double[n];
+            for (int i = 0; i < n; i++) hi[i] = starts[i + 1];
+            if (LinePriorOf(language) is { } prior)
+            {
+                var tokens = new int[n];
+                for (int k = 0; k < g.Length; k++) if (g.OwnerLine[k] >= 0) tokens[g.OwnerLine[k]]++;
+                for (int i = 0; i < n; i++)
+                    if (tokens[i] > 0) hi[i] = Math.Min(hi[i], starts[i] + prior.CapSeconds + prior.CapSecondsPerToken * tokens[i]);
+            }
+            for (int k = 0; k < g.Length; k++)
+            {
+                int li = g.OwnerLine[k];
+                if (li < 0) { w[k] = k > 0 ? w[k - 1] : (starts[0] - padSeconds, hi[0] + padSeconds); continue; }
+                w[k] = (starts[li] - padSeconds, hi[li] + padSeconds);
+            }
+            return w;
+        }
+
         /// <summary>The units a line is timed in for <paramref name="language"/>: its <see cref="Words"/>, or for a
         /// character-timed language its <see cref="Characters"/>. Every caller that cuts or replays timing uses this,
         /// so the units of a fresh result and of its replay are the same.</summary>
@@ -290,8 +338,10 @@ public static partial class AiLyrics
             public int Committed => _committed;
 
             /// <param name="windows">Per token: the time range (s) its line is expected in, or null for no prior.</param>
+            /// <param name="freeEdges">The blank before the first token has no lower bound and the blank after the last
+            /// token no upper bound (<see cref="LinePrior"/>): an intro or an outro of any length costs nothing.</param>
             public OnlineViterbi(Graph g, int blank, IReadOnlyList<(double Lo, double Hi)>? windows = null,
-                double priorPerS = 0.5, double skipCost = 2.0)
+                double priorPerS = 0.5, double skipCost = 2.0, bool freeEdges = false)
             {
                 _l = g.Length; _s = 2 * _l + 1;
                 _lab = new int[_s];
@@ -312,6 +362,7 @@ public static partial class AiLyrics
                         _winLo[2 * k] = Math.Min(windows[k - 1].Lo, windows[k].Lo);
                         _winHi[2 * k] = Math.Max(windows[k - 1].Hi, windows[k].Hi);
                     }
+                    if (freeEdges) { _winLo[0] = double.NegativeInfinity; _winHi[_s - 1] = double.PositiveInfinity; }
                 }
                 _dp = new double[_s]; _next = new double[_s];
                 _rowBytes = (_s + 3) / 4;

@@ -98,19 +98,12 @@ public static partial class AiLyrics
             IReadOnlyList<(double, double)>? windows = null;
             if (_linePrior && _graph.Length > 0)
             {
-                var starts = new double[src.Lines.Count + 1];
-                for (int i = 0; i < src.Lines.Count; i++) starts[i] = src.Lines[i].StartMs / 1000.0;
-                starts[^1] = starts[^2] + 30;                                   // after the last line: open-ended
-                var w = new (double, double)[_graph.Length];
-                for (int k = 0; k < _graph.Length; k++)
-                {
-                    int li = _graph.OwnerLine[k];
-                    if (li < 0) { w[k] = k > 0 ? w[k - 1] : (starts[0] - PriorPadSeconds, starts[1] + PriorPadSeconds); continue; }
-                    w[k] = (starts[li] - PriorPadSeconds, starts[li + 1] + PriorPadSeconds);
-                }
-                windows = w;
+                var starts = new long[src.Lines.Count];
+                for (int i = 0; i < starts.Length; i++) starts[i] = src.Lines[i].StartMs;
+                windows = Align.LineWindows(_graph, starts, language, PriorPadSeconds);
             }
-            _vit = new Align.OnlineViterbi(_graph, aln.Vocab.Blank, windows);
+            // a language with a sung-length prior (Japanese) also frees the intro and the outro (Align.LinePrior)
+            _vit = new Align.OnlineViterbi(_graph, aln.Vocab.Blank, windows, freeEdges: windows is not null && Align.LinePriorOf(language) is not null);
         }
 
         public int LineCount => _src.Lines.Count;

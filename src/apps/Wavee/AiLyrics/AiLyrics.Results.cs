@@ -10,9 +10,10 @@
 // join back to the line text the karaoke wipe measures against. A different source text (hash) or line count is a
 // miss: the song is aligned again; so is a file whose language or decision version (Rules.DecisionVersion) differs from
 // what the language decision answers today. A replay passes the same acceptance check as a fresh result (the host runs
-// it). Format 2 added "decision"; a format-1 file is a miss, and the next play of that track writes a new one.
+// it). Format 2 added "decision"; a format-1 file is a miss, and the next play of that track writes a new one. Format 3
+// (same layout) marks Japanese timed with the sung-length prior, so a Japanese result timed before it is not replayed.
 //
-//   { "v": 2, "trackId": "…", "pack": 1, "language": "en", "decision": 3, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
+//   { "v": 3, "trackId": "…", "pack": 1, "language": "en", "decision": 3, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
 //     "savedUnixMs": 0, "lines": [ { "s": 12340, "e": 15000, "w": [[12340,12600,"Nobody "],[12600,13100,"pray "]] } ] }
 //
 // The host does the file I/O (worker thread at job end, boot Task for the sweep); this file only encodes, decodes,
@@ -33,8 +34,9 @@ public static partial class AiLyrics
     public static class Results
     {
         /// <summary>The file format's version (the <c>v</c> field). A file of another version is a miss. 2: the
-        /// <c>decision</c> field, and results only saved after the acceptance check (every format-1 file is re-timed).</summary>
-        public const int FormatVersion = 2;
+        /// <c>decision</c> field, and results only saved after the acceptance check (every format-1 file is re-timed).
+        /// 3: Japanese is timed with its sung-length prior (Align.LinePriorOf); the file layout is unchanged.</summary>
+        public const int FormatVersion = 3;
 
         /// <summary>The sweep keeps at most this many result files…</summary>
         public const int MaxFiles = 500;

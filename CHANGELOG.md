@@ -68,6 +68,13 @@ versions separately under `v*` and is not tracked in this file.)
   pop-out window and a crossed-out camera, and its full-screen row reads "Video in fullscreen"; the app's own full
   screen keeps the regular arrows, and the video's is a framed screen.
 - **Full screen has a button in the Classic title bar.** It sits right beside minimise, after the bell, friends and pin; the player bar's menus keep the row for narrow windows.
+- **AI word timing on Japanese songs lands closer, and on more songs.** A Japanese line can no longer slide seconds into
+  the instrumental break after it or the long intro before it: the aligner knows about how long a line's characters
+  take to sing, and one short character timed at zero length no longer costs a line its word timing. In every language,
+  a song whose provider line times sit a steady second or two off the music is no longer turned down for it, and a line
+  whose words start far later than the line itself keeps its line highlight instead of wiping in the wrong place.
+  Measured on 34 Japanese songs against human timing: 9 in 10 characters within 0.59 s instead of 0.74 s, lines more
+  than a second off halved, 23 of 27 songs timed instead of 20. Japanese songs timed before are timed once more.
 
 ### Fixed
 

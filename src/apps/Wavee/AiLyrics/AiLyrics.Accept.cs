@@ -5,10 +5,13 @@
 //
 // The aligner always returns SOME path, so its output is checked against the provider's document it was built over:
 //
-//   per line  word starts never go back; at most 10 % of the words last zero time; for a line-synced source the words
-//             lie inside [the line's provider start - 0.6 s, the next line's provider start + 0.6 s] and the line starts
-//             no earlier than 0.6 s before its provider start; line starts never go back. A line that fails is DEMOTED:
-//             it becomes the provider's line again (line-level highlight).
+//   per line  word starts never go back; at most 10 % of the words last zero time (a character-timed language: at most
+//             one unit or 10 %, whichever is more); for a line-synced source the words lie inside [the line's provider
+//             start - 0.6 s, the next line's provider start + 0.6 s], that window WIDENED by the result's own whole-track
+//             offset (TrackOffsetMs), the line starts no earlier than the window, and its first word starts at most 2 s
+//             after the line's provider start moved by that offset (the words did not drift into the gap after the
+//             line); line starts never go back. A line that fails is DEMOTED: it becomes the provider's line again
+//             (line-level highlight).
 //   whole     fewer than 60 % of the lines that have letters end up word-synced: the result is REJECTED (not shown,
 //             not saved), and the track keeps the provider's line sync. While a job runs, the lines timed so far are
 //             judged once there are 20 with letters, against a lower bar (50 %): measured on the 187 cached results
@@ -16,6 +19,22 @@
 //             that the end accepts (60 % from 10 lines on stopped 10 good ones).
 //
 // Unlike the provider gate (Lyrics.Timing.HasUnusableWordTiming), a line whose words all last zero time is judged too.
+//
+// Measured (2026-11-11) with the offline harness on 34 Japanese songs against human per-character timing, and without
+// audio on the 191 cached English/Dutch/Korean results that still match their provider document:
+//   offset    two Japanese songs whose provider lines sit ~0.9 s off the audio lost 28 lines timed within 100 ms of the
+//             human timing to the window and were rejected; widened by the offset they publish (one from 6 to 37 of
+//             39 lines). en/nl/ko: 4 rejected results publish (3 with the drift rule too; one sits a steady 1.95 s
+//             off, one 1.5 s), and no line that passes without it is demoted (the window only grows). The provider's line starts are kept as they are (Align.WordSyncedLine): the lines that stay
+//             line-level keep the provider's timeline, and shifting a whole document is the provider reranker's job
+//             (Lyrics.Doc.OffsetMsApplied), not the aligner's.
+//   zero      Japanese: one zero-length kana or kanji demoted a good line of under 10 units (good lines demoted for it:
+//             4 -> 0; a collapsed line, two or more zero units, is still caught). Words keep 10 %: allowing one zero-
+//             length word would publish 5 rejected en/ko results, 4 of them ones the earlier audit found doubtful.
+//   drift     Japanese: demotes 5 lines more than 1 s off (accepted lines that far off on published songs: 10 -> 6) and
+//             no line within 300 ms of the human timing. en/nl/ko: 40 lines that pass without it are demoted, most of
+//             them a last line drifted into the outro or a line whose words are crammed into the second before the
+//             next line; no result that passes without it is rejected.
 
 using System.Globalization;
 
@@ -28,8 +47,16 @@ public static partial class AiLyrics
         /// <summary>How far before its provider line a word may start (and after the next line's start it may end).</summary>
         public const long LeadMs = 600;
 
-        /// <summary>A line with more than this share of zero-duration words is demoted.</summary>
+        /// <summary>A line with more than this share of zero-duration words is demoted (a character-timed language
+        /// allows one zero-length unit however short the line).</summary>
         public const double MaxZeroShare = 0.10;
+
+        /// <summary>A line whose first word starts more than this after its provider start (moved by the result's
+        /// offset) is demoted: its words drifted into the gap after the line.</summary>
+        public const long DriftMs = 2000;
+
+        /// <summary><see cref="TrackOffsetMs"/> needs at least this many word-synced lines (fewer: no offset).</summary>
+        public const int OffsetMinLines = 5;
 
         /// <summary>A result with fewer word-synced lines than this share of its lines with letters is rejected.</summary>
         public const double MinSyncedShare = 0.60;
@@ -44,15 +71,18 @@ public static partial class AiLyrics
         public static bool IsLineSynced(Lyrics.Doc doc) => doc.IsSynced && doc.Sync != Lyrics.SyncKind.Unsynced;
 
         /// <summary>What the check found. <see cref="Eligible"/>: judged lines with letters; <see cref="Synced"/>: of
-        /// those, the ones word-synced by the aligner after the check; the three causes count demoted lines.</summary>
-        public readonly record struct Verdict(int Judged, int Eligible, int Synced, int Demoted, int Disorder, int Zero, int Window, bool Rejected)
+        /// those, the ones word-synced by the aligner after the check; the four causes count demoted lines;
+        /// <see cref="OffsetMs"/>: the result's whole-track offset (<see cref="TrackOffsetMs"/>) the window was widened by.</summary>
+        public readonly record struct Verdict(int Judged, int Eligible, int Synced, int Demoted, int Disorder, int Zero, int Window, int Drift,
+            long OffsetMs, bool Rejected)
         {
             public string Describe()
             {
                 var ci = CultureInfo.InvariantCulture;
                 return $"judged={Judged.ToString(ci)} eligible={Eligible.ToString(ci)} synced={Synced.ToString(ci)} " +
                        $"share={(Eligible == 0 ? 0 : (double)Synced / Eligible).ToString("0.00", ci)} demoted={Demoted.ToString(ci)} " +
-                       $"(order={Disorder.ToString(ci)} zero={Zero.ToString(ci)} window={Window.ToString(ci)})";
+                       $"(order={Disorder.ToString(ci)} zero={Zero.ToString(ci)} window={Window.ToString(ci)} drift={Drift.ToString(ci)}) " +
+                       $"offset={OffsetMs.ToString(ci)}ms";
             }
         }
 
@@ -64,7 +94,9 @@ public static partial class AiLyrics
             int n = Math.Min(source.Lines.Count, result.Lines.Count);
             int judged = Math.Min(judgedLines, n);
             bool synced = IsLineSynced(source);
-            int eligible = 0, wordSynced = 0, demoted = 0, disorder = 0, zero = 0, window = 0;
+            bool characters = Align.IsCharacterTimed(result.Language);
+            long offset = synced ? TrackOffsetMs(source, result, judged) : 0;
+            int eligible = 0, wordSynced = 0, demoted = 0, disorder = 0, zero = 0, window = 0, drift = 0;
             var lines = new List<Lyrics.Line>(result.Lines.Count);
             long prevStart = long.MinValue;
             for (int i = 0; i < result.Lines.Count; i++)
@@ -74,8 +106,7 @@ public static partial class AiLyrics
                 var src = source.Lines[i];
                 bool hasLetters = HasLetter(src.Text);
                 if (hasLetters) eligible++;
-                bool ours = !ReferenceEquals(line, src) && line.IsWordByWord && line.Syllables.Count > 0;
-                if (!ours)
+                if (!IsOurs(line, src))
                 {
                     // the provider's line, or (plain-text source) a line-level line: only its start must not go back
                     if (!synced && line.StartMs < prevStart) line = line with { StartMs = prevStart };
@@ -91,17 +122,18 @@ public static partial class AiLyrics
                     if (k > 0 && syl[k].StartMs < syl[k - 1].StartMs) ordered = false;
                     if (syl[k].EndMs <= syl[k].StartMs) zeros++;
                 }
-                bool fewZeros = zeros <= MaxZeroShare * syl.Count;
-                bool inside = true;
+                bool fewZeros = zeros <= (characters ? Math.Max(1, MaxZeroShare * syl.Count) : MaxZeroShare * syl.Count);
+                bool inside = true, near = true;
                 if (synced)
                 {
-                    long lo = src.StartMs - LeadMs;
-                    long hi = i + 1 < source.Lines.Count ? source.Lines[i + 1].StartMs + LeadMs : long.MaxValue;
+                    long lo = src.StartMs + Math.Min(0, offset) - LeadMs;
+                    long hi = i + 1 < source.Lines.Count ? source.Lines[i + 1].StartMs + Math.Max(0, offset) + LeadMs : long.MaxValue;
                     if (line.StartMs < lo) inside = false;
                     for (int k = 0; k < syl.Count && inside; k++)
                         if (syl[k].StartMs < lo || syl[k].EndMs > hi) inside = false;
+                    near = syl[0].StartMs <= src.StartMs + offset + DriftMs;
                 }
-                if (ordered && fewZeros && inside)
+                if (ordered && fewZeros && inside && near)
                 {
                     if (hasLetters) wordSynced++;
                     lines.Add(line);
@@ -111,7 +143,8 @@ public static partial class AiLyrics
                 demoted++;
                 if (!ordered) disorder++;
                 else if (!fewZeros) zero++;
-                else window++;
+                else if (!inside) window++;
+                else drift++;
                 var back = synced ? src : line with { Syllables = [], IsWordByWord = false, StartMs = Math.Max(prevStart, line.StartMs) };
                 lines.Add(back);
                 prevStart = Math.Max(prevStart, back.StartMs);
@@ -119,9 +152,32 @@ public static partial class AiLyrics
             bool rejected = final
                 ? eligible == 0 || wordSynced < MinSyncedShare * eligible
                 : eligible >= MinLinesWhileRunning && wordSynced < MinSyncedShareWhileRunning * eligible;
-            verdict = new Verdict(judged, eligible, wordSynced, demoted, disorder, zero, window, rejected);
+            verdict = new Verdict(judged, eligible, wordSynced, demoted, disorder, zero, window, drift, offset, rejected);
             return rejected ? null : result with { Lines = lines };
         }
+
+        /// <summary>The result's whole-track offset from the provider's line times (ms; positive: the singing comes
+        /// later): over the first <paramref name="judgedLines"/> lines, the median of (first word start - provider line
+        /// start) over the word-synced lines with letters, the lower middle of an even count; 0 with fewer than
+        /// <see cref="OffsetMinLines"/> such lines. Without it, a provider whose lines sit a steady second off the audio
+        /// demotes most lines of a good result.</summary>
+        public static long TrackOffsetMs(Lyrics.Doc source, Lyrics.Doc result, int judgedLines)
+        {
+            int n = Math.Min(Math.Min(source.Lines.Count, result.Lines.Count), judgedLines);
+            var d = new List<long>(n);
+            for (int i = 0; i < n; i++)
+            {
+                var src = source.Lines[i];
+                var line = result.Lines[i];
+                if (IsOurs(line, src) && HasLetter(src.Text)) d.Add(line.Syllables[0].StartMs - src.StartMs);
+            }
+            if (d.Count < OffsetMinLines) return 0;
+            d.Sort();
+            return d[(d.Count - 1) / 2];
+        }
+
+        /// <summary>A line the aligner timed: not the provider's own line, word by word, with words.</summary>
+        static bool IsOurs(Lyrics.Line line, Lyrics.Line src) => !ReferenceEquals(line, src) && line.IsWordByWord && line.Syllables.Count > 0;
 
         static bool HasLetter(string? text)
         {
