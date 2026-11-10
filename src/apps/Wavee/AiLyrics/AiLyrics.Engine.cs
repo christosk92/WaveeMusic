@@ -285,8 +285,10 @@ public static partial class AiLyrics
                 double? next = null;
                 for (int j = li + 1; j < n; j++)
                 {
-                    var t = Array.Find(times[j], w => w.IsSet);
-                    if (t.IsSet) { next = t.Start; break; }
+                    // The first TIMED word of line j. (Array.Find answered default(WordTime) = (0, 0) for a line with none,
+                    // which reads as set: `next` became 0 s and Fill then squeezed the whole line into zero duration.)
+                    int first = Array.FindIndex(times[j], static w => w.IsSet);
+                    if (first >= 0) { next = times[j][first].Start; break; }
                     if (_src.IsSynced) { next = _src.Lines[j].StartMs / 1000.0; break; }
                 }
                 double lineStart = _src.IsSynced ? src.StartMs / 1000.0 : (lines.Count > 0 ? (lines[^1].EndMs ?? lines[^1].StartMs) / 1000.0 : 0);
