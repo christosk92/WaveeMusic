@@ -65,9 +65,11 @@ internal static partial class ClassicPlayerBar
         var facePrevious = rc.UseRef<EntityRef>(default);         // the identity that block last stated
         var videoAnchor = rc.UseRef<NodeHandle>(default);
         var videoMenu = rc.UseRef<OverlayHandle?>(null);
+        var viewAnchor = rc.UseRef<NodeHandle>(default);
+        var viewMenu = rc.UseRef<OverlayHandle?>(null);
         var overlay = rc.UseContext(Overlay.Service);
         var input = rc.UseContext(InputHooks.Current);
-        var begin = rc.UseContext(SharedTransition.Begin);   // the Expand door opens the fullscreen stage with the art's flight captured first (null headless)
+        var begin = rc.UseContext(SharedTransition.Begin);   // the view split's Full screen row opens the stage with the art's flight captured first (null headless)
         var barNode = rc.UseRef<NodeHandle>(default);
         float artScale = rc.UseContext(Viewport.Scale);
         // The title and the artists are marquees of one group (the engine control: the start at rest, two passes after a track change,
@@ -219,8 +221,8 @@ internal static partial class ClassicPlayerBar
             // In the mini bar the door takes the press, the cover inside it none.
             HitTestVisible = !mini,
             // The morph tag ONLY: the click above keeps today's navigation and there is NO double-click entry (a
-            // double-click's first click would still navigate, InputDispatcher.DoubleClickMs = 500). The Expand button
-            // is the bar's door; the flight captures this TAGGED art wherever the click lands. A morph-tagged slot
+            // double-click's first click would still navigate, InputDispatcher.DoubleClickMs = 500). The view split's
+            // "Full screen" row is the bar's door; the flight captures this TAGGED art wherever the click lands. A morph-tagged slot
             // mounts no shimmer and a frozen placeholder — accepted for a 48-DIP thumbnail.
             Children = [Controls.Artwork(v.ArtUrl, artBox, artBox, mini ? ClassicPlayerTiers.MiniArtCorner : ClassicPlayerBarLayout.ArtCorner,
                 morphKey: props.ArtMorphKey, scale: artScale, keepWhileHidden: true)],
@@ -383,7 +385,7 @@ internal static partial class ClassicPlayerBar
             return kids.ToArray();
         }
 
-        // ── RIGHT — shuffle/repeat · volume · lyrics · video · queue · devices · expand · ⋯ ──────────────────────
+        // ── RIGHT — shuffle/repeat · volume · lyrics · video · queue · devices · views · ⋯ ───────────────────────
         // Every slot the LEVEL has is in the row at its fixed width (the core's `RightSlots`, in bit order), the video split's included:
         // a track without a video shows the split disabled in place (2026-11-07; from 2026-09-16 the split existed only with a video,
         // and every skip between a video and a plain track moved the cluster and the centre). Playback state only lights a face (the
@@ -402,6 +404,22 @@ internal static partial class ClassicPlayerBar
                 FlyoutPlacement.TopEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
+        }
+
+        // The view split's menu: the two views its main half is not (the mini player, full screen), the core's rows.
+        void OpenViewMenu()
+        {
+            if (viewMenu.Value is { IsOpen: true } open) { open.Close(); return; }
+            ToolTip.CloseOpen();   // as the video split's: a bubble open on either half would sit over the menu's rows
+            var commands = v.ViewMenu;
+            var items = new List<MenuFlyoutItem>(commands.Length);
+            for (int i = 0; i < commands.Length; i++) items.Add(props.OverflowRow(commands[i], begin));
+            viewMenu.Value = overlay.Open(
+                () => viewAnchor.Value,
+                () => MenuFlyout.Create(items, () => viewMenu.Value?.Close(), size: OverlayFit.MenuSize),
+                FlyoutPlacement.TopEdgeAlignedRight,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+            viewMenu.Value.ClosedAction = () => viewMenu.Value = null;
         }
 
         Element RightSlotOf(RightSlot slot)
@@ -462,20 +480,49 @@ internal static partial class ClassicPlayerBar
                 }
                 case RightSlot.Queue:
                     return Slot("queue", w, box, lit,
-                        BarButton(Icons.Queue, props.OpenQueue, true, v.QueueOpen, box, glyph));
+                        ToolTip.Wrap(BarButton(SegoeGlyphs.Queue, props.OpenQueue, true, v.QueueOpen, box, glyph), Loc.Get(Strings.Player.Queue)));
                 case RightSlot.Devices:
                     return Slot("devices", w, box, lit, Embed.Comp(() => new DevicesButton(props, box, glyph)));
-                case RightSlot.Mini:
-                    return Slot("mini", w, box, lit,
-                        ToolTip.Wrap(BarButton(Icons.BackToWindow, props.OpenMiniPlayer ?? (static () => { }), props.OpenMiniPlayer is not null, false, box, glyph),
-                            Loc.Get(Strings.Mini.Title)));
-                case RightSlot.Expand:
-                    // The bar's door to the fullscreen stage. The now-playing RAIL toggle moved to the "⋯" overflow
-                    // (OverflowCommand.NowPlaying), so the rail keeps a door; this button never latches.
-                    return Slot("expand", w, box, lit,
-                        ToolTip.Wrap(
-                            BarButton(Icons.FullScreen, () => verbs.OpenStage(begin, "bar-expand"), true, false, box, glyph),
-                            Loc.Get(Strings.Player.Fullscreen)));
+                case RightSlot.View:
+                {
+                    // The player's three views in one control, set apart by a rule from the panel toggles before it: the panel on now
+                    // playing (the main half, latched while it is open) and, behind the chevron, the mini player and full screen. Latched,
+                    // the split wears the one checked plate across both halves, as the video split does.
+                    bool canPanel = props.ToggleNowPlaying is not null;
+                    var (viewPlate, viewPlateHover) = CheckedPlate(v.NowPlayingOpen && canPanel);
+                    float lead = m.ViewLeadW - ClassicPlayerBarLayout.ViewRuleW - ClassicPlayerBarLayout.ViewRuleInset;
+                    return Slot("view", w, box, lit, new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Width = ClassicPlayerBarLayout.ViewRuleW, Height = ClassicPlayerBarLayout.ViewRuleH, Shrink = 0f,
+                                Margin = new Edges4(ClassicPlayerBarLayout.ViewRuleInset, 0f, lead, 0f), Fill = Tok.StrokeDividerDefault,
+                            },
+                            new BoxEl
+                            {
+                                Direction = 0, AlignItems = FlexAlign.Center,
+                                Corners = Radii.ControlAll, Fill = viewPlate, HoverFill = viewPlateHover, PressedFill = viewPlate,
+                                BrushTransitionMs = Design.Motion.Faster,
+                                OnRealized = h => viewAnchor.Value = h,
+                                OnContextRequested = _ => OpenViewMenu(),
+                                Children =
+                                [
+                                    ToolTip.Wrap(
+                                        BarButton(WaveeIcons.NowPlaying, props.ToggleNowPlaying ?? (static () => { }), canPanel, v.NowPlayingOpen, box, glyph,
+                                            font: WaveeIcons.Font, platedWhenLatched: false),
+                                        Loc.Get(Strings.Player.NowPlaying)),
+                                    ToolTip.Wrap(
+                                        BarButton(Icons.ChevronDownSmall, OpenViewMenu, true, v.NowPlayingOpen && canPanel, m.SplitChevronW,
+                                            ClassicPlayerBarLayout.SplitChevronGlyph, boxHeight: box, platedWhenLatched: false),
+                                        Loc.Get(Strings.Player.ViewOptions)),
+                                ],
+                            },
+                        ],
+                    });
+                }
                 default:
                     // Reserved only where the idle menu is already non-empty, so the command set is never empty here.
                     return Slot("more", w, box, lit, MoreButton(props, v.Overflow, box, glyph));

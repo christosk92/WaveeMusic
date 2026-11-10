@@ -72,6 +72,8 @@ public sealed record PlayerBarMetrics
     public float VolumeSliderW { get; init; }
     /// <summary>The video split button's disclosure chevron width.</summary>
     public float SplitChevronW { get; init; }
+    /// <summary>The room the view split's slot keeps ahead of its button, for the rule that sets it apart (<see cref="RightSlot.View"/>).</summary>
+    public float ViewLeadW { get; init; }
     /// <summary>The episode speed button's width (it is part of the podcast transport's width budget).</summary>
     public float EpisodeSpeedButtonW { get; init; }
     /// <summary>The smallest button box: the episode speed button's height.</summary>
@@ -178,6 +180,10 @@ public sealed record PlayerBarView
     public bool LyricsOpen { get; init; }
     /// <summary>The panel is open on the queue.</summary>
     public bool QueueOpen { get; init; }
+    /// <summary>The panel is open on now playing (the view split's main half is latched).</summary>
+    public bool NowPlayingOpen { get; init; }
+    /// <summary>The rows behind the view split's chevron, in menu order (built with <see cref="PlayerBarProps.OverflowRow"/>).</summary>
+    public OverflowCommand[] ViewMenu { get; init; } = [];
 }
 
 /// <summary>The props of <see cref="ViewKeys.PlayerBar"/>.</summary>
@@ -275,4 +281,6 @@ public sealed record PlayerBarProps
     public Action? OpenNowPlaying { get; init; }
     /// <summary>Open the mini player (#197): the right cluster's <see cref="RightSlot.Mini"/> button. Null: the button is disabled.</summary>
     public Action? OpenMiniPlayer { get; init; }
+    /// <summary>The view split's main half (<see cref="RightSlot.View"/>): open the panel on now playing, or close it when it is. Null: disabled.</summary>
+    public Action? ToggleNowPlaying { get; init; }
 }

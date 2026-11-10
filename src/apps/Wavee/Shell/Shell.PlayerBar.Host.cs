@@ -105,6 +105,7 @@ public static partial class Shell
             ProgressLine = static () => ProgressLine(),
             OpenNowPlaying = static () => PanelHost.Shared.SetMode(RailMode.NowPlaying),
             OpenMiniPlayer = static () => MiniPlayer.Toggle("bar"),
+            ToggleNowPlaying = static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying),
         };
 
         /// <inheritdoc />
@@ -271,7 +272,7 @@ public static partial class Shell
                     LeftW = L.LeftW, ArtSize = L.ArtSize, RowGap = L.RowGap, RowPad = L.RowPad, ClusterGap = L.ClusterGap,
                     LeftGap = L.LeftGap, SeekGap = L.SeekGap, RightGap = L.RightGap, TopEdgeWidth = L.TopEdgeWidth,
                     Height = policy.Height,
-                    VolumeSliderW = PlayerBarLayout.VolumeSliderW, SplitChevronW = PlayerBarLayout.SplitChevronW,
+                    VolumeSliderW = PlayerBarLayout.VolumeSliderW, SplitChevronW = PlayerBarLayout.SplitChevronW, ViewLeadW = PlayerBarLayout.ViewLeadW,
                     EpisodeSpeedButtonW = EpisodeSpeedButtonWidth, MinButtonBox = PlayerBarLayout.MinButtonBox,
                 },
                 Episode = isEpisode,
@@ -314,6 +315,8 @@ public static partial class Shell
                 VideoLive = videoLive,
                 LyricsOpen = railOpen && railMode == RailMode.Lyrics,
                 QueueOpen = railOpen && railMode == RailMode.Queue || PanelHost.Shared.SecondOpen(),
+                NowPlayingOpen = railOpen && railMode == RailMode.NowPlaying,
+                ViewMenu = PlayerBarRules.ViewMenu,
             };
         }
 

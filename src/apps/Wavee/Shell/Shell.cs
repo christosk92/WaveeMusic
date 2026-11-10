@@ -1334,7 +1334,7 @@ public static partial class Shell
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
         float RightGap, float TopEdgeWidth, float RightWMax,
-        bool ShowTitleBlock = true, bool ShowVideoSplit = false)
+        bool ShowTitleBlock = true, bool ShowVideoSplit = false, bool ShowViewSplit = false)
     {
         static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
 
@@ -1348,6 +1348,10 @@ public static partial class Shell
 
         /// <summary>The video split button's disclosure chevron: narrow, full button height.</summary>
         public const float SplitChevronW = 20f;
+
+        /// <summary>The room the view split's slot keeps ahead of its button: the rule that sets the player's views apart from the panel
+        /// toggles before them, and the air on both sides of it.</summary>
+        public const float ViewLeadW = 11f;
 
         /// <summary>The indeterminate seek sweep's nominal track width. Used to be a hard 2400 literal — correct for
         /// the windows the ladder was authored against, but on a 3440-DIP ultrawide the sweep stopped 1040+ DIP short
@@ -1400,7 +1404,8 @@ public static partial class Shell
                 RightGap: level.RightGap,
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
                 RightWMax: 0f,
-                ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit));
+                ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit),
+                ShowViewSplit: Has(slots, Theming.PlayerBarSlots.ViewSplit));
             // The right cluster's width at this tier (PlayerBarRules.RightWidth: the level's slots, the video split's whatever the track);
             // the 300-DIP seek-bar floor and any arithmetic over the cluster use this.
             return layout with { RightWMax = PlayerBarRules.RightWidth(in layout) };

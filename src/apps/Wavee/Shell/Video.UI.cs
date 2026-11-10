@@ -187,7 +187,7 @@ public static partial class Video
         bool hasVideo = DeckHasVideo(Playback.DeckVideo.Peek(), Playback.CurrentId.Peek());
         var hostCapable = State.HostCapability.Peek();
 
-        MenuFlyoutItem Row(SurfacePlacement p, string labelKey, string icon, string? accelWhenAllowed)
+        MenuFlyoutItem Row(SurfacePlacement p, string labelKey, IconRef icon, string? accelWhenAllowed)
         {
             string? reasonKey = PlacementMenuRules.ReasonKey(hasVideo, hostCapable, p);
             bool allowed = reasonKey is null;
@@ -202,9 +202,9 @@ public static partial class Video
 
         var items = new List<MenuFlyoutItem>(7)
         {
-            Row(SurfacePlacement.Docked, Strings.Player.DockInRail, Icons.SplitView, null),
-            Row(SurfacePlacement.Floating, Strings.Player.VideoMiniPlayer, Icons.BackToWindow, null),
-            Row(SurfacePlacement.Detached, Strings.Player.VideoInSeparateWindow, Icons.Movie, null),
+            Row(SurfacePlacement.Docked, Strings.Player.DockInRail, SegoeGlyphs.DockRight, null),
+            Row(SurfacePlacement.Floating, Strings.Player.VideoMiniPlayer, SegoeGlyphs.PictureInPicture, null),
+            Row(SurfacePlacement.Detached, Strings.Player.VideoInSeparateWindow, SegoeGlyphs.PopOut, null),
         };
         if (includeFullscreen)
             items.Add(Row(SurfacePlacement.Fullscreen, Strings.Player.VideoFullScreen, Icons.FullScreen, "F11"));
@@ -219,7 +219,7 @@ public static partial class Video
         if (PlacementCore.IsActive(state))
         {
             items.Add(MenuFlyoutItem.Separator);
-            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Player.TurnOffVideo), Icons.Cancel, true, State.TurnOff));
+            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Player.TurnOffVideo), new IconRef { Glyph = WaveeIcons.VideoOff, Font = WaveeIcons.Font }, true, State.TurnOff));
         }
         return items;
     }

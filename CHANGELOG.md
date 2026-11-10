@@ -30,6 +30,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 - **Canvas in the Classic now-playing panel ends in a plain fade.** The picture now dissolves into the panel on a smooth
   curve; the drifting waves at its foot and the coloured glow under the small cover are gone.
+- **The Classic player bar has one button for the player views.** Now playing is the button; the mini player and full
+  screen sit behind its chevron, set apart from the queue and devices by a thin rule. At the widest bar the "..." menu
+  has nothing left to hold and is gone.
+- **Icons that say what they do.** The queue is lines with a note, now playing a window with a play mark in its side
+  pane, the mini player a window folding into its corner. The video menu shows a docked pane, picture in picture, a
+  pop-out window and a crossed-out camera, and its full-screen row reads "Video in fullscreen"; the app's own full
+  screen wears the title bar's window mark.
 
 ### Fixed
 

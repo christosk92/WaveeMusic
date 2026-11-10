@@ -760,7 +760,7 @@
     "dockInRail": "레일에 도킹",
     "video": "비디오",
     "videoMiniPlayer": "미니 플레이어에서 재생",
-    "videoFullScreen": "전체 화면",
+    "videoFullScreen": "동영상 전체 화면",
     "videoExitFullScreen": "전체 화면 종료",
     "videoHeight": "비디오 높이 {height}",
     "fullscreen": "전체 화면",

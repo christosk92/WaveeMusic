@@ -85,7 +85,7 @@ internal static class ClassicVideoPip
                 HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
                 Children =
                 [
-                    Glyph(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
+                    Glyph(SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
                     Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
                     Glyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.TurnOffDocked, tier),
                 ],

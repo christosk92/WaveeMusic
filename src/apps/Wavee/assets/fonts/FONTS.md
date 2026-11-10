@@ -3,7 +3,7 @@
 | File | What | Origin / licence |
 | --- | --- | --- |
 | `SegoeFluentIcons.ttf` | Segoe Fluent Icons v1.54, **unmodified** (2,033 glyphs, incl. the Fluent-only ones such as RefineSparkle U+F1D5) | Microsoft's Segoe Fluent Icons symbol font, (c) Microsoft Corporation, redistributed inside this Windows application per its licence (Microsoft provides the face for use in Windows apps: <https://learn.microsoft.com/windows/apps/design/style/segoe-fluent-icons-font>). Embedding flag: Editable (`OS/2.fsType = 8`). Listed in `ops/build/notices-extra.json` -> `THIRD-PARTY-NOTICES.txt`. |
-| `wavee-icons.otf` | Wavee's own three marks (Play next / Add to queue / Lyrics), built by `build-wavee-icons.py` | First party. |
+| `wavee-icons.otf` | Wavee's marks the icon font lacks (Play next / Add to queue / Lyrics / Now playing / Video off), built by `build-wavee-icons.py` | First party, except Video off: Fluent UI System Icons "Video Off", (c) Microsoft Corporation, MIT licence. |
 
 Why Segoe Fluent Icons is bundled: the system family of the same name ships with Windows 11 only. On Windows 10 the
 app's icon font used to be the OS face, so DirectWrite substituted Segoe MDL2 Assets and every glyph *added* in Fluent

@@ -258,7 +258,10 @@ public static partial class Shell
             if (VideoSlotReserved(layout)) slots |= RightSlot.Video;
             if (layout.ShowQueue) slots |= RightSlot.Queue;
             if (layout.ShowDevices) slots |= RightSlot.Devices;
-            if (layout.ShowExpand) slots |= RightSlot.Mini | RightSlot.Expand;   // the mini player rides full screen's tiers (#197)
+            // The player's views: one split (now playing, with the mini player and full screen behind its chevron) on a level that states
+            // it, else the two buttons (the mini player rides full screen's tiers, #197).
+            if (layout.ShowViewSplit) slots |= RightSlot.View;
+            else if (layout.ShowExpand) slots |= RightSlot.Mini | RightSlot.Expand;
             if (OverflowSlotReserved(layout)) slots |= RightSlot.More;
             return slots;
         }
@@ -269,6 +272,7 @@ public static partial class Shell
         {
             RightSlot.VolumeSlider => PlayerBarLayout.VolumeSliderW,
             RightSlot.Video => layout.ButtonBox + PlayerBarLayout.SplitChevronW,
+            RightSlot.View => PlayerBarLayout.ViewLeadW + layout.ButtonBox + PlayerBarLayout.SplitChevronW,
             _ => layout.ButtonBox,
         };
 
@@ -331,15 +335,20 @@ public static partial class Shell
             if (!layout.ShowShuffleRepeat) { dest[n++] = OverflowCommand.Shuffle; dest[n++] = OverflowCommand.Repeat; }
             if (!layout.ShowLyrics && active) dest[n++] = OverflowCommand.Lyrics;
             if (!layout.ShowQueue) dest[n++] = OverflowCommand.Queue;
-            dest[n++] = OverflowCommand.NowPlaying;
-            if (!layout.ShowExpand) dest[n++] = OverflowCommand.FullScreen;
+            // A level with the view split has all three views in the row (one home per verb): none of their rows is built.
+            if (!layout.ShowViewSplit) dest[n++] = OverflowCommand.NowPlaying;
+            bool viewsInRow = layout.ShowExpand || layout.ShowViewSplit;
+            if (!viewsInRow) dest[n++] = OverflowCommand.FullScreen;
             // The mini player rides full screen's tiers in the row (#197); where the row drops them, the menu carries both doors.
-            if (!layout.ShowExpand) dest[n++] = OverflowCommand.Mini;
+            if (!viewsInRow) dest[n++] = OverflowCommand.Mini;
             // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
             if (!layout.ShowVideoSplit && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;
             return n;
         }
+
+        /// <summary>The rows behind the view split's chevron, in menu order: the two views its main half is not.</summary>
+        public static readonly OverflowCommand[] ViewMenu = [OverflowCommand.Mini, OverflowCommand.FullScreen];
 
         /// <summary>Off → Context → Track → Off.</summary>
         public static RepeatMode NextRepeat(RepeatMode mode) => mode switch
@@ -464,6 +473,7 @@ public static partial class Shell
             ShowDevices = Has(slots, Theming.PlayerBarSlots.Devices),
             ShowQueue = Has(slots, Theming.PlayerBarSlots.Queue),
             ShowVideoSplit = Has(slots, Theming.PlayerBarSlots.VideoSplit),
+            ShowViewSplit = Has(slots, Theming.PlayerBarSlots.ViewSplit),
             ShowVolumeSlider = Has(slots, Theming.PlayerBarSlots.VolumeSlider),
             ShowShuffleRepeat = Has(slots, Theming.PlayerBarSlots.ShuffleRepeat),
             ShowLikeSlot = Has(slots, Theming.PlayerBarSlots.LikeSlot),

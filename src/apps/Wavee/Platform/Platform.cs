@@ -811,7 +811,7 @@ public static partial class Log
 // ── 8. glyphs (the font faces, set BEFORE the harness runs) ──────────────────────────────────────────────────────────
 
 /// <summary>The custom WaveeIcons font — Spotify's real "Play next" / "Add to queue" marks the Segoe Fluent set does
-/// not carry (the engine's generated Icons.* superset carries every other Wavee glyph; only these three custom-font
+/// not carry (the engine's generated Icons.* superset carries every other Wavee glyph; only these custom-font
 /// marks stay app-local). ASCII-safe <c>Of(0x____)</c> convention: built from hex codepoints at runtime so the SOURCE
 /// stays pure-ASCII, because raw PUA chars and escapes get mangled by the edit/encoding chain.</summary>
 public static class WaveeIcons
@@ -821,6 +821,8 @@ public static class WaveeIcons
     public static readonly string PlayNext = Of(0xE900);    // play-on-top mark (front of queue)
     public static readonly string PlayAfter = Of(0xE901);   // play-on-bottom / add-to-queue mark (end of queue)
     public static readonly string Lyrics = Of(0xE902);      // lyrics / chat bubble
+    public static readonly string NowPlaying = Of(0xE903);  // the now-playing panel: a window whose right pane holds a play mark
+    public static readonly string VideoOff = Of(0xE904);    // a crossed-out camera: turn the video off
 
     /// <summary>Absolute path + #family. The engine loads by PATH; the #suffix is a stable cache key only.</summary>
     public static readonly string Font =
@@ -836,6 +838,22 @@ public static class SegoeGlyphs
 
     /// <summary>A person with a plus (Segoe "AddFriend"): the Follow toggle at rest (tuned Classic D21).</summary>
     public static readonly string AddFriend = Of(0xE8FA);
+
+    /// <summary>Lines beside a music note: the queue, wherever a queue door is drawn (the engine's <c>Icons.Queue</c> is the
+    /// album disc).</summary>
+    public static readonly string Queue = Of(0xE90B);
+    /// <summary>A window with a pane on its right: the video docked in the panel.</summary>
+    public static readonly string DockRight = Of(0xE90D);
+    /// <summary>A screen with a small filled picture in its corner: the video's mini player (picture in picture).</summary>
+    public static readonly string PictureInPicture = Of(0xED73);
+    /// <summary>A window with an arrow leaving a second one: the video in a window of its own.</summary>
+    public static readonly string PopOut = Of(0xED6B);
+    /// <summary>A window folding down into its corner: the app's mini player (<c>BackToWindow</c>, the arrows pointing inward,
+    /// is Windows' "leave full screen").</summary>
+    public static readonly string MiniPlayer = Of(0xEE47);
+    /// <summary>The title bar's two stacked windows (the caption's restore mark): the APP's full screen, the stage. The diagonal
+    /// arrows (<c>Icons.FullScreen</c>) are the VIDEO's full screen, so the two never share a glyph (the owner, 2026-11-10).</summary>
+    public static readonly string AppFullScreen = Of(0xE923);
 }
 
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content

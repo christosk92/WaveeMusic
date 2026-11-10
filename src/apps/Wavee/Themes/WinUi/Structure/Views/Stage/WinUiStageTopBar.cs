@@ -38,7 +38,7 @@ internal static class WinUiStageTopBar
         h.UseSignalEffect(() => index.SetIfChanged((int)st.Mode.Value));
         var parts = h.UseMemo(() => { var p = new TemplateParts(); p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill }); return p; }, DepKey.From(set.GetHashCode()));
         string[] items = t.PillIcons ? ["", "", "", ""] : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
-        string?[]? icons = t.PillIcons ? [Icons.Document, Icons.Equalizer, Icons.Queue, Icons.Contact] : null;
+        string?[]? icons = t.PillIcons ? [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact] : null;
         var style = new SelectorBarStyle
         {
             LabelSize = t.PillTextSize, RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,

@@ -325,15 +325,15 @@ public static partial class Shell
                 return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
                     static () => PlayerVerbs.Default.OpenPanel(RailMode.Lyrics), new IconRef { Glyph = WaveeIcons.Lyrics, Font = WaveeIcons.Font });
             case OverflowCommand.Queue:
-                return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), Icons.Queue, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.Queue));
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), SegoeGlyphs.Queue, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.Queue));
             case OverflowCommand.NowPlaying:
-                return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), Icons.ChevronUp, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying));
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), new IconRef { Glyph = WaveeIcons.NowPlaying, Font = WaveeIcons.Font }, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying));
             case OverflowCommand.FullScreen:
                 // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
-                return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), SegoeGlyphs.AppFullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
             case OverflowCommand.Mini:
                 // The mini player's door at the tiers without the row's button (PlayerBarRules.Overflow, #197).
-                return new MenuFlyoutItem(Loc.Get(Strings.Mini.Title), Icons.BackToWindow, true, static () => MiniPlayer.Toggle("bar-overflow"));
+                return new MenuFlyoutItem(Loc.Get(Strings.Mini.Title), SegoeGlyphs.MiniPlayer, true, static () => MiniPlayer.Toggle("bar-overflow"));
             case OverflowCommand.Video:
             {
                 bool live = Video.PlacementCore.IsActive(Video.State.Surface.Peek());

@@ -30,6 +30,10 @@ public enum RightSlot : ushort
     More = 1 << 9,
     /// <summary>The mini player (#197): between the queue / devices and full screen, wherever full screen is.</summary>
     Mini = 1 << 10,
+    /// <summary>The view split (contract 1.93): the panel on now playing, with the mini player and full screen behind its chevron. It
+    /// follows the devices, set apart from the panel toggles before it; a level has it INSTEAD of <see cref="Mini"/> and
+    /// <see cref="Expand"/>.</summary>
+    View = 1 << 11,
 }
 
 /// <summary>The right cluster's ROW order (the bits are presence, not order: <see cref="RightSlot.Mini"/> is the newest bit and sits
@@ -39,7 +43,7 @@ public static class RightSlotOrder
     public static readonly RightSlot[] All =
     [
         RightSlot.Shuffle, RightSlot.Repeat, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Lyrics, RightSlot.Video, RightSlot.Queue,
-        RightSlot.Devices, RightSlot.Mini, RightSlot.Expand, RightSlot.More,
+        RightSlot.Devices, RightSlot.View, RightSlot.Mini, RightSlot.Expand, RightSlot.More,
     ];
 }
 

@@ -121,7 +121,7 @@ internal static class ClassicPanel
     {
         bool devices = transport is { Device: not null, ToggleDevicePicker: not null };
         Element lyrics = SheetDoor(WaveeIcons.Lyrics, WaveeIcons.Font, Loc.Get(Strings.Player.Lyrics), () => show(PanelMode.Lyrics));
-        Element queue = SheetDoor(Icons.Queue, null, Loc.Get(Strings.Player.Queue), () => show(PanelMode.Queue));
+        Element queue = SheetDoor(SegoeGlyphs.Queue, null, Loc.Get(Strings.Player.Queue), () => show(PanelMode.Queue));
         return new BoxEl
         {
             Key = ClassicPanelTiers.SheetDoorsKey, Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
@@ -308,7 +308,7 @@ internal static class ClassicPanel
         return HeaderBox(
         [
             TitleText(Title(body)),
-            HeaderButton(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), () =>
+            HeaderButton(SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
                 props.VideoToMiniPlayer();

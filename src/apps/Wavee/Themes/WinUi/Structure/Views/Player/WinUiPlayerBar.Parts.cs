@@ -176,7 +176,7 @@ internal static partial class WinUiPlayerBar
                     with { Key = v.VolumePopup ? "volume-popup" : "volume-inline" });
             case RightSlot.Mini:
                 return Lit(PL.MiniKey, lit, ToolTip.Wrap(
-                    Button(Icons.BackToWindow, props.OpenMiniPlayer ?? (static () => { }), props.OpenMiniPlayer is not null, false, PL.ToolBox, PL.ToolBox, PL.Glyph),
+                    Button(SegoeGlyphs.MiniPlayer, props.OpenMiniPlayer ?? (static () => { }), props.OpenMiniPlayer is not null, false, PL.ToolBox, PL.ToolBox, PL.Glyph),
                     Loc.Get(Strings.Mini.Title)));
             default:
                 return Lit(PL.ExpandKey, lit, ToolTip.Wrap(

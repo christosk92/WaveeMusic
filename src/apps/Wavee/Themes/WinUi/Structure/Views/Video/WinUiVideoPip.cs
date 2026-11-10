@@ -110,7 +110,7 @@ internal static class WinUiVideoPip
             Strip(tier, new Edges4(Spacing.S, Video.Pip.EdgeBand, Spacing.S, 0f), default,
             [
                 new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
-                Glyph("mini", Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
+                Glyph("mini", SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
                 Glyph("fullscreen", Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
                 Glyph("off", Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.TurnOffDocked, tier),
             ]),

@@ -236,6 +236,9 @@
 // 1.92 (the docked video handle): `PanelProps.DockedVideoHandle` and its `DockedVideoGrip` (the core's resize band under the docked card, in the
 // theme's grip look: the old splitter overlaid the card's foot, where the presenter's transport took every press). `PanelProps.DockedVideoMin`,
 // `DockedVideoMax` and `CommitDockedVideo` went with it (the handle owns the clamp and the commit), removed before any external theme existed.
+// 1.93 (the view split): `PlayerBarSlots.ViewSplit` and its slot `RightSlot.View`: the player's three views in one control (the panel on now
+// playing as the main half, the mini player and full screen behind a chevron), for a level that states it instead of `Expand`. With it
+// `PlayerBarMetrics.ViewLeadW`, `PlayerBarView.NowPlayingOpen` and `ViewMenu`, `PlayerBarProps.ToggleNowPlaying`.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -251,7 +254,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 92;
+    public const int Minor = 93;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
