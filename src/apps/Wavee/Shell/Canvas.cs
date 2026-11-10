@@ -128,10 +128,15 @@ public static partial class CanvasVideo
         if (Owner.Peek() != owner) Owner.Value = owner;
     }
 
-    /// <summary>The owner's element mounted (it presents now) / unmounted.</summary>
-    internal static void BindSurface(Surface s) => Bound.Value = s;
+    /// <summary>The owner's element mounted (it presents now) / unmounted. Counted per surface, as the claims are: when a surface's
+    /// element is replaced by a new mount of the SAME surface and the new one binds before the old one's cleanup runs, that cleanup
+    /// must not clear the binding the new element just made (the element reports in-view only when it flips, so a binding cleared
+    /// under it left the player paused for good).</summary>
+    static readonly int[] s_binds = new int[5];   // one per Surface (None unused)
+    internal static void BindSurface(Surface s) { s_binds[(int)s]++; Bound.Value = s; }
     internal static void UnbindSurface(Surface s)
     {
+        if (s_binds[(int)s] > 0 && --s_binds[(int)s] > 0) return;   // another element of this surface still presents
         if (Bound.Peek() == s) { Bound.Value = Surface.None; s_presenterOccluded.Value = null; }
         if (Presented.Peek() == s) Presented.Value = Surface.None;
         if (Owner.Peek() == s || Owner.Peek() == Surface.None) InView.Value = false;
