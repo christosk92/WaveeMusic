@@ -147,6 +147,12 @@ public sealed record StageRootView
     /// otherwise Video mode is CINEMA (the reservation fills the stage). The template moves the reservation between the two rects with a
     /// layout transition the presenter follows. A predicate. Appended (contract 1.96).</summary>
     public Func<bool> ShowTheatre { get; init; } = static () => false;
+
+    /// <summary>Video mode holds while an AUDIO-ONLY track plays (the video is on, this track has none: <c>StageCtx.AudioFace</c>): the frame stays
+    /// (the top bar with the Video tab disabled, the shelf or the Theatre panel, the transport) and the picture's place shows the track's cover
+    /// and lyrics instead of the picture. No presenter (and so no video hole) is up meanwhile: the template draws the face as an ordinary stage
+    /// layer over the reservation, and the next track with a video brings the picture back by itself. A predicate. Appended (contract 1.97).</summary>
+    public Func<bool> ShowAudioFace { get; init; } = static () => false;
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePictureChrome"/>: the stage's chrome over the music video in Video mode (the top bar, the
@@ -189,6 +195,15 @@ public sealed record StageLayers
     /// <see cref="ViewKeys.StagePane"/> with <see cref="StagePaneProps.Theatre"/>, the lyrics at the panel's type and the Up next list in its
     /// column form. Mount it under <see cref="StageRootView.ShowTheatre"/>. Null where the core offers none. Appended (contract 1.96).</summary>
     public Func<Element>? TheatrePane { get; init; }
+
+    /// <summary>Video mode's Up next shelf over the picture (Cinema): the core host that mounts <see cref="ViewKeys.QueueStageShelf"/>. Null where
+    /// the core offers none. Appended (contract 1.97).</summary>
+    public Func<Element>? UpNextShelf { get; init; }
+
+    /// <summary>The audio face's lyrics (<see cref="StageRootView.ShowAudioFace"/>): the stage's reading column at the stage's type in Cinema and at
+    /// the Theatre panel's in Theatre, ticking only while the face shows lyrics (<c>StageCtx.AudioLyrics</c>). Null where the core offers none.
+    /// Appended (contract 1.97).</summary>
+    public Func<Element>? PictureLyrics { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePane"/>: the pane region (Lyrics, Up next, Artist) the core pane host mounts. The template

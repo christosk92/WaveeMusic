@@ -22,6 +22,7 @@
 //   Huge      the 112 card at 24, lyrics capped at 48 (C-Lyrics-Huge, C-Stage-Huge4K: 48/60); the docked gallery runs to the foot and
 //             the card yields its width beside it (C-Stage-Huge)
 //   Theatre   Video mode's panel beside the picture: Small 320, Standard 380, Huge 440 wide (none on a Compact window)
+//   Shelf     Video mode's Up next shelf over the picture (Cinema): cards Small 176, Standard 216, Huge 256 wide (none on a Compact window)
 //   Huge 4K   from the detail family's Huge 4K mark (`ClassicDetailTiers.HugeWideRung`, 3200 wide): Huge's, plus the 520 Up next column
 //             beside the lyrics and the 140 bars under the cover's title column in Lyrics mode (C-Stage-Huge4K)
 // A Compact window draws the identity as the now-playing CARD (C-Stage-Compact, C-Lyrics-Compact: the 56 cover and one title line in a 72
@@ -136,17 +137,22 @@ public static class ClassicStageTiers
 
     private const float TunedRightGap = 6f;
 
+    /// <summary>Video mode's Up next shelf over the picture (Cinema, the board "Classic · Cinema": 216 wide cards at its 1440 stage), per window
+    /// tier: Small 176, Standard 216, Huge (and Huge 4K) 256. A Compact window has none. How many cards show is the stage's width over the card
+    /// (<c>ClassicStageShelfGeometry.Cards</c>). Declared before the records that read them.</summary>
+    public const float SmallShelfCardW = 176f, StandardShelfCardW = 216f, HugeShelfCardW = 256f;
+
     private static readonly ClassicStageLayout[] s_stage =
     [
         // Compact (C-Stage-Compact): 40 x 40 targets in the top bar (the board draws 40 x 36 mode tabs; the Compact rule wins), the 56 disc.
-        new(WidthTier.Compact, BarTargetH: 40f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap),
+        new(WidthTier.Compact, BarTargetH: 40f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap),   // no shelf: the Compact stage has no Theatre either
         // Small (C-Stage-Small, C-Lyrics-Small): the 48 disc and the 88 volume slider of the 96 card.
-        new(WidthTier.Small, BarTargetH: 36f, PlayDiscMax: 48f, VolumeW: 88f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap),
+        new(WidthTier.Small, BarTargetH: 36f, PlayDiscMax: 48f, VolumeW: 88f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { ShelfCardW = SmallShelfCardW },
         // Standard: the tuned stage (the card's 20 / 10 padding, the theme's S between the centred buttons, 6 in the right cluster).
-        new(WidthTier.Standard, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap),
+        new(WidthTier.Standard, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { ShelfCardW = StandardShelfCardW },
         // Huge (C-Stage-Huge, C-Stage-Huge4K, C-StageFaces-Huge): the same 56 disc and 128 slider in the boards' card: 24 / 14 padding, 12
         // between the centred buttons, 8 in the right cluster.
-        new(WidthTier.Huge, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, new Edges4(24f, 14f, 24f, 0f), ClusterGap: 12f, RightGap: 8f),
+        new(WidthTier.Huge, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, new Edges4(24f, 14f, 24f, 0f), ClusterGap: 12f, RightGap: 8f) { ShelfCardW = HugeShelfCardW },
     ];
 
     /// <summary>The stage views' record for window tier <paramref name="window"/> (Huge 4K reads Huge's).</summary>
@@ -190,7 +196,11 @@ public static class ClassicStageTiers
 /// <see cref="ClassicStageTiers.StackedTransportPadding"/>).</param>
 /// <param name="ClusterGap">The gap between the centred buttons (shuffle, previous, play, next, repeat); null: the theme's <c>Spacing.S</c>.</param>
 /// <param name="RightGap">The right cluster's gap (heart, mute, volume, device, "...").</param>
-public sealed record ClassicStageLayout(WidthTier Tier, float BarTargetH, float PlayDiscMax, float VolumeW, Edges4 TransportPadding, float? ClusterGap, float RightGap);
+public sealed record ClassicStageLayout(WidthTier Tier, float BarTargetH, float PlayDiscMax, float VolumeW, Edges4 TransportPadding, float? ClusterGap, float RightGap)
+{
+    /// <summary>Video mode's Up next shelf: one card's width (its 16:9 thumbnail's), 0 where the tier has no shelf (Compact).</summary>
+    public float ShelfCardW { get; init; }
+}
 
 /// <summary>What Classic's queue, lyrics and video views lay out inside the panel in one window tier.</summary>
 /// <param name="Tier">The window tier.</param>

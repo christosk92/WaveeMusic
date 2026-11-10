@@ -18,6 +18,12 @@
 // (`Video.PipLayer`): painted after the hole, under the app's overlays (menus, toasts). It is the stage's chrome, on the stage's
 // signals and verbs (the same `StageCtx`, idle machine and key map): there is one transport, the stage's; the presenter's own
 // on-media strip stands down while the picture is staged.
+//
+// THE AUDIO FACE. Video mode outlives an audio-only track: while video stays ON for the main window (`VideoOn`: the placement is sticky across
+// tracks) and the stage was in Video mode, a track without a video keeps the frame (the top bar with the Video tab disabled, Cinema's shelf or
+// Theatre's panel, the transport) and the picture's place shows the cover and the lyrics (`StageCtx.AudioFace`). No presenter is mounted for such a
+// track, so no hole is up: the face is an ordinary stage layer over the reservation, and the presenter that the next video track mounts covers
+// it (it follows the same reservation, which never left).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -52,6 +58,15 @@ public static partial class Stage
         /// (docked or in the mini player: <see cref="Video.MainWindowHole.Stageable"/>). A video in the pop-out stays in its window.</summary>
         public static bool Offered()
             => ShellPolicy.Tracked.Stage.VideoStage && Video.MainWindowHole.Stageable(Video.PlacementCore.Resolve(Video.State.Surface.Value));
+
+        /// <summary>Video is ON for the main window (subscribes): the structure draws Video mode and the user's placement is the docked card or the
+        /// mini player, whether or not the playing track has a video (the placement is sticky across tracks: <c>PlacementCore.TurnOff</c>). What
+        /// keeps Video mode up over an audio-only track (the audio face), so the next track with a video brings the picture back by itself.</summary>
+        public static bool VideoOn()
+            => ShellPolicy.Tracked.Stage.VideoStage && Video.State.Surface.Value.Requested is Video.SurfacePlacement.Docked or Video.SurfacePlacement.Floating;
+
+        /// <summary>The mounted stage holds Video mode over an audio-only track (the audio face); peeked (the inspector's <c>status</c>).</summary>
+        public static bool AudioFacePeek() => s_view.Peek()?.Stage.AudioFace.Peek() ?? false;
 
         /// <summary><see cref="Offered"/> without subscribing: where a stage that opens now starts.</summary>
         public static bool OfferedNow()

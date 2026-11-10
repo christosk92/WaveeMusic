@@ -14,7 +14,9 @@
 //   VIDEO MODE (Cinema, `StageRootView.ShowPicture`): the audio stack above (backdrop to hairline) gives way to the PICTURE's hollow
 //   reservation, full-bleed on the letterbox ground; the ONE video presenter follows it (it lives in the video layer: the stage wrapper's
 //   entrance may not be its ancestor). The chrome over the picture is `ClassicStagePictureChrome` (`Stage.PictureChrome`, mounted by the
-//   core above the hole) and builds its top bar, transport and hairline with this file's builders, so both draw one chrome.
+//   core above the hole) and builds its top bar, transport and hairline with this file's builders, so both draw one chrome. Over an audio-only
+//   track Video mode holds and the AUDIO FACE (`ClassicStageAudioFace`: the cover and the lyrics) stands in the picture's place, an ordinary layer
+//   right after the reservation (no presenter is up, so no hole erases it).
 //
 //   ZStack placement: vertical = AlignSelf, horizontal = JustifySelf (FlexLayout.cs:1279-1286). A Flow.Show boundary and a component are
 //   transparent ANCHORS (default flex COLUMNS), so every Show's child is a full-bleed `Stage.Layer` and the placed box sits one level
@@ -66,6 +68,14 @@ internal static class ClassicStageRoot
                 {
                     Key = "stage:picture", HitTestVisible = false, HitTestPassThrough = false,
                     Children = [Embed.Comp(new ClassicStageTheatre.PictureProps(v), static () => new ClassicStageTheatre.Picture())],
+                }),
+                // the AUDIO FACE: Video mode over an audio-only track (no presenter, no hole): the cover and the lyrics in the picture's place,
+                // fading in over the reservation and out under the picture that the next video track brings back (ClassicStageAudioFace)
+                Flow.Show(() => v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
+                {
+                    Key = "stage:audioface",
+                    Enter = s_faceFade, Exit = s_faceFade, Transition = MotionTok.StandardEnter,
+                    Children = [Embed.Comp(new ClassicStageAudioFace.Props(v), static () => new ClassicStageAudioFace())],
                 }),
                 // Theatre's panel (Lyrics or Up next) beside the picture: it slides in from the right as Theatre opens and back out as it closes
                 Flow.Show(() => v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
@@ -253,6 +263,9 @@ internal static class ClassicStageRoot
 
     /// <summary>The Up next column's slide: in from the right and back out the same way.</summary>
     static readonly EnterExit s_upNextMotion = new(Dx: ClassicStageGeometry.UpNextSlide, Opacity: 0f, Active: true);
+
+    /// <summary>The audio face's cross-fade (in over the reservation as an audio-only track starts, out under the picture that comes back).</summary>
+    static readonly EnterExit s_faceFade = new(Opacity: 0f, Active: true);
 
     /// <summary>Theatre's panel slide: in from the right beside the shrinking picture, and back out the same way as the picture fills the stage.</summary>
     static readonly EnterExit s_theatreMotion = new(Dx: ClassicStageTheatreGeometry.PaneSlide, Opacity: 0f, Active: true);

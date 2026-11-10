@@ -37,13 +37,23 @@ internal static class ClassicStageTopBar
         float targetH = ClassicStageTiers.StageOf(ctx.Tier()).BarTargetH;
         // The tabs: today's four, or (a music video on, the board "Classic · Cinema") Video first, then today's four. In Video mode the tab
         // that stands lit is Video in Cinema and the panel's own tab in Theatre (Lyrics or Up next beside the picture).
-        bool videoTabs = st.VideoOffered.Value;
+        // Over an audio-only track Video mode holds (the audio face): the same tabs, the Video tab shown disabled until a track with a video
+        // brings the picture back.
         bool videoMode = st.Mode.Value == Stage.Mode.Video;
+        bool videoTabs = st.VideoOffered.Value || videoMode;
+        bool audioFace = st.AudioFace.Value;
         bool theatre = st.Theatre.Value;
         var modes = videoTabs ? s_videoModes : s_modes;
         var index = h.UseSignal(0);
-        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.VideoOffered.Value ? s_videoModes : s_modes, LitTab(st)))));
-        var parts = h.UseMemo(() => { var p = new TemplateParts(); p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill }); return p; }, DepKey.From(set.GetHashCode()));
+        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.VideoOffered.Value || st.Mode.Value == Stage.Mode.Video ? s_videoModes : s_modes, LitTab(st)))));
+        var parts = h.UseMemo(() =>
+        {
+            var p = new TemplateParts();
+            p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill });
+            // the Video tab while no picture is offered: disabled (no press, no focus), dimmed at rest
+            if (audioFace) p.Set<BoxEl>(SelectorBar.PartItem, b => b.Key == VideoTabKey ? b with { IsEnabled = false, Opacity = ClassicStageCinemaGeometry.DisabledTabA } : b);
+            return p;
+        }, DepKey.From(set.GetHashCode(), audioFace ? 1 : 0));
         string[] items = L.IconOnlySelector ? (videoTabs ? ["", "", "", "", ""] : ["", "", "", ""])
             : videoTabs ? [Loc.Get(Strings.Stage.Mode.Video), Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
             : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
@@ -85,14 +95,15 @@ internal static class ClassicStageTopBar
                     [
                         new BoxEl { Width = ClassicStageGeometry.BrandMark, Height = ClassicStageGeometry.BrandMark, Corners = ClassicStageGeometry.BrandMarkCorners, Fill = Prop.Bind(st.Slab.Accent), Shrink = 0f },
                         new TextEl("Wavee") { Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Weight = ClassicStageGeometry.BrandWeight, Color = Ink.Ink, Shrink = 0f },
-                        new TextEl(Loc.Get(videoMode ? Strings.Player.VideoFullScreen : Strings.Stage.Brand))
+                        new TextEl(Loc.Get(videoMode && !audioFace ? Strings.Player.VideoFullScreen : Strings.Stage.Brand))
                         {
                             Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                             MinWidth = 0f, Shrink = 1f, Visible = !L.IconOnlySelector,
                         },
                     ],
                 },
-                SelectorBar.Create(items, index, onChange: i => setMode(modes[Math.Clamp(i, 0, modes.Length - 1)]), parts: parts, icons: icons, style: style),
+                SelectorBar.Create(items, index, onChange: i => setMode(modes[Math.Clamp(i, 0, modes.Length - 1)]), parts: parts, icons: icons, style: style,
+                    itemKeys: videoTabs ? s_videoTabKeys : null),
                 new BoxEl
                 {
                     Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Stage.Layout.BarButtonGap,
@@ -101,15 +112,15 @@ internal static class ClassicStageTopBar
                         // Video mode: Cinema ⇄ Theatre ("Theatre mode" slides the panel in beside the picture, "Fill the screen" is the way back)
                         theatreOffered
                             ? labels.Theatre
-                                ? Button.Create(theatreText, toggleTheatre, ButtonAppearance.Subtle, ControlSize.Small, glyph: theatreGlyph) with { Shrink = 0f }
-                                : ToolTip.Wrap(BarGlyph(theatreGlyph, toggleTheatre, lit: false, onRealized: null, targetH), theatreText)
+                                ? Button.Create(theatreText, toggleTheatre, ButtonAppearance.Subtle, ControlSize.Small, glyph: theatreGlyph) with { Shrink = 0f, Key = "stage:bar:theatre" }
+                                : ToolTip.Wrap(BarGlyph(theatreGlyph, toggleTheatre, lit: false, onRealized: null, targetH) with { Key = "stage:bar:theatre" }, theatreText)
                             : new BoxEl { Visible = false },
                         // Video mode: "Switch to audio" (the video off, the stage on the cover and lyrics) where the options toggle stands (the
                         // visualizer's options have nothing to set over the picture)
                         videoMode
                             ? labels.Audio
-                                ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f }
-                                : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH), Loc.Get(Strings.Player.SwitchToAudio))
+                                ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, Key = "stage:bar:audio" }
+                                : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH) with { Key = "stage:bar:audio" }, Loc.Get(Strings.Player.SwitchToAudio))
                             : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
                         // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
                         labels.Exit
@@ -125,9 +136,16 @@ internal static class ClassicStageTopBar
     static readonly Stage.Mode[] s_modes = [Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
     static readonly Stage.Mode[] s_videoModes = [Stage.Mode.Video, Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
 
-    /// <summary>The tab that stands lit (subscribes): the mode, or in Video mode's Theatre the tab of the panel beside the picture.</summary>
+    /// <summary>The Video set's tab keys (the Video tab's is how the parts find it to disable it over an audio-only track).</summary>
+    const string VideoTabKey = "stage:tab:video";
+    static readonly string?[] s_videoTabKeys = [VideoTabKey, "stage:tab:lyrics", "stage:tab:visualizer", "stage:tab:queue", "stage:tab:artist"];
+
+    /// <summary>The tab that stands lit (subscribes): the mode, or in Video mode's Theatre the tab of the panel beside the picture, or over an
+    /// audio-only track in Cinema the Lyrics tab (the face shows them; the Video tab is disabled).</summary>
     static Stage.Mode LitTab(Stage.StageCtx st)
-        => st.Mode.Value == Stage.Mode.Video && st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value) : st.Mode.Value;
+        => st.Mode.Value != Stage.Mode.Video ? st.Mode.Value
+         : st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value)
+         : st.AudioFace.Value ? Stage.Mode.Lyrics : Stage.Mode.Video;
 
     /// <summary>A 40×36 glass glyph button of the top bar (the options toggle, the icon-only exit); 40×40 on a Compact window.</summary>
     static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized, float targetH) => new()

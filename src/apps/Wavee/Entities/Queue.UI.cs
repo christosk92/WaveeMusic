@@ -112,6 +112,22 @@ public static partial class Queue
                            d.DurationMs, thin, d.IsExplicit, Album: album);
     }
 
+    /// <summary>A row's music video (<see cref="QueueRowVideo"/>), off the display row: whether it has one (the flag bits <see cref="EnsureRows"/>
+    /// already asks for with <see cref="TrackFields.Video"/>) and its still by the album page's rule (<c>Album.SelectVideos</c>: the video's own
+    /// still, else the video counterpart's art, else the song's). Three column reads and the cached url resolve; asked only by the stage's
+    /// Video mode (the shelf and the Theatre list), never by an ordinary queue row.</summary>
+    static QueueRowVideo VideoOf(EntityRef r)
+    {
+        if (r.Kind != EntityKind.Track || new Track(r.Slot) is not { IsValid: true } t || t.Unplayable()) return default;
+        Track d = t.ForDisplay;
+        if (!d.HasVideo) return default;
+        var counterpart = d.VideoCounterpart;
+        StringId still = !d.VideoImageId.IsEmpty ? d.VideoImageId
+                       : counterpart.IsValid && !counterpart.ImageId.IsEmpty ? counterpart.ImageId
+                       : d.ImageId;
+        return new QueueRowVideo(true, Controls.ArtUrl(still));
+    }
+
     /// <summary>Ask the catalog for the context entity's name, so <see cref="ContextName"/> has one to answer with — as ONE
     /// span ask over (table, row, groups) (plan §3.5: the per-row callers became span asks; the tick's drain batches it
     /// with everything else the tick asked) — and open a playlist context's LIST through the one open rule at the queue's
@@ -342,8 +358,11 @@ public static partial class Queue
             QueuePlayingFrom? playingFrom = rail ? Shell.QueueModel.PlayingFromOf(contextName, ContextTarget(ContextId, in Wire)) : null;
             Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : cursor, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
-            if (!rail) Model = Model with { History = ReadHistory() };
+            if (!rail && ReadsHistory) Model = Model with { History = ReadHistory() };
         }
+
+        /// <summary>The surface lists "played before this" (the stage's Up next column); the rail and the shelf do not.</summary>
+        protected virtual bool ReadsHistory => true;
 
         static readonly Func<ulong> s_rowsDigest = RowsDigest;
         static readonly Func<int> s_cursor = static () =>
@@ -406,6 +425,9 @@ public static partial class Queue
                 h = Fold(h, ((ulong)(uint)d.TitleId.Value << 32) | (uint)d.ArtistLineId.Value);
                 h = Fold(h, ((ulong)(uint)d.ImageId.Value << 32) | (uint)d.DurationMs);
                 h = Fold(h, d.FlagBits);   // explicit, video, availability
+                // the video's still (VideoOf: the stage's Video mode draws it), the counterpart's art its fallback
+                var vc = d.VideoCounterpart;
+                h = Fold(h, ((ulong)(uint)d.VideoImageId.Value << 32) | (vc.IsValid ? (uint)vc.ImageId.Value : 0u));
                 // The album and the artists by what a row SHOWS of them (the album's title and cover, each artist's name and identity, who is
                 // billed), not by their row versions: an artist or album page re-answering its own row must not re-render the queue.
                 int al = d.Album.Slot;
@@ -492,6 +514,8 @@ public static partial class Queue
 
         public QueueRowText TextOf(EntityRef row) => Queue.TextOf(row);
 
+        public QueueRowVideo VideoOf(EntityRef row) => Queue.VideoOf(row);
+
         public string Clock(int durationMs) => Playback.TimeFormat.Clock(durationMs);
 
         public string RowKey(string prefix, ulong itemId, int index) => Queue.RowKey(prefix, itemId, index);
@@ -543,9 +567,14 @@ public static partial class Queue
     };
 
     /// <summary>The Up next column as the stage's pane region mounts it (the <c>Queue.StagePane</c> view inside the stage's pane frame), or, with
-    /// <paramref name="aside"/>, as the Huge 4K stage docks it beside the lyrics in its own frame (C-Stage-Huge4K).</summary>
-    public static Element StagePane(bool aside = false)
-        => aside ? Embed.Comp(static () => new StagePaneHost(aside: true)) : Embed.Comp(static () => new StagePaneHost());
+    /// <paramref name="aside"/>, as the Huge 4K stage docks it beside the lyrics in its own frame (C-Stage-Huge4K), or, with <paramref name="video"/>
+    /// too, as the Theatre panel beside the music video (its rows lead with the video's thumbnail).</summary>
+    public static Element StagePane(bool aside = false, bool video = false)
+        => video ? Embed.Comp(static () => new StagePaneHost(aside: true, video: true))
+         : aside ? Embed.Comp(static () => new StagePaneHost(aside: true)) : Embed.Comp(static () => new StagePaneHost());
+
+    /// <summary>The Up next shelf over the music video (the stage's Video mode, Cinema): the <c>Queue.StageShelf</c> view on this render's queue.</summary>
+    public static Element StageShelf() => Embed.Comp(static () => new StageShelfHost());
 
     /// <summary>The rail panel's host: this render's queue, the three sections' page counters, the lane, and the facts the panel
     /// reads for it ("Playing from" and where the now-playing row plays from). The picture is the structure's <c>Queue.Panel</c>.</summary>
@@ -646,9 +675,9 @@ public static partial class Queue
     /// the structure's <c>Queue.StagePane</c>.</summary>
     sealed class StagePaneHost : QueueSurface
     {
-        readonly bool _aside;
+        readonly bool _aside, _video;
 
-        public StagePaneHost(bool aside = false) : base(new Shell.QueuePages(unified: true)) => _aside = aside;
+        public StagePaneHost(bool aside = false, bool video = false) : base(new Shell.QueuePages(unified: true)) { _aside = aside; _video = video; }
 
         public override Element Render()
         {
@@ -665,8 +694,25 @@ public static partial class Queue
                 Lane = this,
                 Verbs = Verbs,
                 Aside = _aside,
+                Video = _video,
                 Player = PlayerVerbs.Default,
             });
+        }
+    }
+
+    /// <summary>The Up next shelf's host (the stage's Video mode, Cinema): this render's queue and the row facts; no pages, no lane (the shelf shows
+    /// the first few rows and never reorders). The cards, how many the width holds, and the first card's ring are the structure's
+    /// <c>Queue.StageShelf</c>.</summary>
+    sealed class StageShelfHost : QueueSurface
+    {
+        public StageShelfHost() : base(new Shell.QueuePages(unified: true)) { }
+
+        protected override bool ReadsHistory => false;
+
+        public override Element Render()
+        {
+            Prologue(rail: false);
+            return ViewSlots.View(ViewKeys.QueueStageShelf, new QueueStageShelfProps { Queue = Model, Lane = this, Verbs = Verbs });
         }
     }
 

@@ -11,6 +11,12 @@
 // The core mounts this in the VIDEO layer right after the presenter (the hole erases what is painted under it), so it is not inside the
 // stage's subtree: the ground carries the stage's pointer wiring (a move is idle activity, a double-click leaves full screen) and the keys
 // that bubble here go to the stage's key map. The top bar, the transport and the hairline are the stage root's own builders: one chrome.
+//
+// UP NEXT (Cinema): the shelf of the next tracks (`ClassicStageShelf`, the core's `StageLayers.UpNextShelf`) rides in and out with the idle chrome,
+// a gap above the transport card; the title block stands a gap above the shelf's place, which is reserved on every tier that has a shelf, so neither
+// moves when the shelf comes or goes. THE AUDIO FACE (`StageRootView.ShowAudioFace`, an audio-only track while video stays on): the frame stays (top
+// bar, shelf, transport), the title over the picture and its scrims give way to the face's own cover and title (`ClassicStageAudioFace`, a stage layer
+// under this one: no picture, so no hole), and the ground lets the pointer through to the face's lyrics.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -42,6 +48,9 @@ internal static class ClassicStagePictureChrome
         // at rest there (none of it covers the picture) and the hairline gives way to the transport. Cinema keeps the idle chrome.
         var theatre = ClassicStageTheatreGeometry.Of(L);
         Func<bool> cinemaChrome = () => v.ChromeVisible() && !v.ShowTheatre();
+        // the title over the picture and its scrims: Cinema with a picture (the audio face draws its own title under the cover)
+        Func<bool> overPicture = () => v.ChromeVisible() && !v.ShowTheatre() && !v.ShowAudioFace();
+        bool shelf = tier.ShelfCardW > 0f && v.Layers.UpNextShelf is not null;
         Func<bool> chromeShown = () => v.ChromeVisible() || v.ShowTheatre();
         Func<bool> hairline = () => !v.ChromeVisible() && !v.ShowTheatre();
         return Stage.Layer with
@@ -59,7 +68,7 @@ internal static class ClassicStagePictureChrome
                 // the floor around it take their own pointer.
                 Embed.Comp(new GroundProps(v), static () => new Ground()),
                 // the scrims: under the top bar, and under the title block and the transport (Cinema: the chrome over the picture)
-                Flow.Show(cinemaChrome, Stage.Layer with
+                Flow.Show(overPicture, Stage.Layer with
                 {
                     Key = "picture:scrims", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -77,13 +86,29 @@ internal static class ClassicStagePictureChrome
                         },
                     ],
                 }),
-                // the title block: the transport card's content edge, a gap above the card (Cinema)
-                Flow.Show(cinemaChrome, Stage.Layer with
+                // the title block: the transport card's content edge, a gap above the shelf's reserved place or the card (Cinema)
+                Flow.Show(overPicture, Stage.Layer with
                 {
                     Key = "picture:title", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true),
                     Transition = MotionTok.ControlNormal,
                     Children = [Title(v, L, tier)],
+                }),
+                // Up next: the shelf of the next tracks a gap above the transport card, with the chrome (Cinema, on a tier that has one)
+                Flow.Show(() => shelf && cinemaChrome(), Stage.Layer with
+                {
+                    Key = "picture:shelf",
+                    Enter = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true),
+                    Transition = MotionTok.ControlNormal,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Direction = 1,
+                            Margin = new Edges4(ShelfLeft(L, tier), 0f, 0f, L.TransportH + L.TransportInset + ClassicStageShelfGeometry.AboveTransport),
+                            Children = [v.Layers.UpNextShelf is { } upNext ? upNext() : new BoxEl()],
+                        },
+                    ],
                 }),
                 // Theatre's title block under the picture, at rest
                 Flow.Show(v.ShowTheatre, Stage.Layer with
@@ -103,12 +128,15 @@ internal static class ClassicStagePictureChrome
     static Element Title(StageRootView v, Stage.Layout L, ClassicStageLayout tier)
     {
         var identity = v.Identity;
-        float left = L.TransportLeft + tier.TransportPadding.Left;
+        float left = ShelfLeft(L, tier);
+        // above the shelf's place where the tier has a shelf (reserved: the shelf comes and goes with the chrome, the title never moves for it)
+        float shelfH = v.Layers.UpNextShelf is null ? 0f : ClassicStageShelfGeometry.Height(tier.ShelfCardW);
+        float above = shelfH > 0f ? ClassicStageShelfGeometry.AboveTransport + shelfH + ClassicStageShelfGeometry.TitleAbove : G.TitleAboveTransport;
         return new BoxEl
         {
             AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Direction = 1, Gap = G.TitleGap, HitTestVisible = false,
             MaxWidth = MathF.Max(0f, MathF.Min(G.TitleMaxWFrac * L.W, L.W - left - L.TransportInset)),
-            Margin = new Edges4(left, 0f, 0f, L.TransportH + L.TransportInset + G.TitleAboveTransport),
+            Margin = new Edges4(left, 0f, 0f, L.TransportH + L.TransportInset + above),
             Children =
             [
                 new TextEl("")
@@ -125,6 +153,21 @@ internal static class ClassicStagePictureChrome
         };
     }
 
+    /// <summary>The left edge the title block and the shelf share: the transport card's content edge.</summary>
+    public static float ShelfLeft(Stage.Layout L, ClassicStageLayout tier) => L.TransportLeft + tier.TransportPadding.Left;
+
+    /// <summary>The shelf's width: from <see cref="ShelfLeft"/> to the transport card's content edge on the right.</summary>
+    public static float ShelfWidth(Stage.Layout L, ClassicStageLayout tier)
+        => MathF.Max(0f, L.W - ShelfLeft(L, tier) - L.TransportInset - tier.TransportPadding.Right);
+
+    /// <summary>The top of the Cinema chrome's lower block under the audio face (which draws no title block over the picture): the shelf's
+    /// reserved place where the tier has a shelf, else the transport card.</summary>
+    public static float LowerBlockTop(StageRootView v, Stage.Layout L, ClassicStageLayout tier)
+    {
+        float shelfH = v.Layers.UpNextShelf is null ? 0f : ClassicStageShelfGeometry.Height(tier.ShelfCardW);
+        return shelfH > 0f ? L.H - (L.TransportH + L.TransportInset + ClassicStageShelfGeometry.AboveTransport + shelfH) : L.TransportTop;
+    }
+
     sealed record GroundProps(StageRootView View);
 
     /// <summary>The ground: the whole stage in Cinema, the picture's box in Theatre (moving with the reservation's spring). A component of its
@@ -136,6 +179,8 @@ internal static class ClassicStagePictureChrome
             var v = UseProps<GroundProps>().View;
             var r = ClassicStageTheatre.PictureRect(v.Stage.Layout.Value, v.ShowTheatre());
             var exit = v.Stage.Exit;
+            // the audio face has no picture to guard: the pointer reaches the face (its lyrics scroll and take their clicks) and the stage's root
+            bool audio = v.ShowAudioFace();
             return Stage.Layer with
             {
                 Children =
@@ -143,7 +188,7 @@ internal static class ClassicStagePictureChrome
                     new BoxEl
                     {
                         Key = "picture:ground", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Fill = ColorF.Transparent,
-                        Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H, Layout = ClassicStageTheatre.Move,
+                        Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H, Layout = ClassicStageTheatre.Move, HitTestVisible = !audio,
                         OnPointerReleased = e => { if (e.ClickCount >= 2) exit(); },
                     },
                 ],

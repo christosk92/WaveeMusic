@@ -112,7 +112,8 @@ internal static class ClassicLyrics
                     host.VideoNoteShown,
                     new BoxEl
                     {
-                        Shrink = 0f, MinWidth = 0f,
+                        // it WRAPS inside a narrow column (the Theatre panel beside the picture) instead of ending in an ellipsis
+                        Shrink = 1f, MinWidth = 0f,
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
                         Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS),
                         Corners = CornerRadius4.All(Radii.Control),
@@ -122,8 +123,8 @@ internal static class ClassicLyrics
                         [
                             new TextEl(Loc.Get(Strings.Player.LyricsSyncUnavailableDuringVideo))
                             {
-                                Size = ClassicLyricsRules.VideoNoteSize, Weight = ClassicLyricsRules.NoteWeight, MinWidth = 0f, Color = ink.Tertiary,
-                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                                Size = ClassicLyricsRules.VideoNoteSize, Weight = ClassicLyricsRules.NoteWeight, MinWidth = 0f, Shrink = 1f, Color = ink.Tertiary,
+                                Wrap = TextWrap.Wrap, TextAlign = TextAlign.Center,
                             },
                         ],
                     }),

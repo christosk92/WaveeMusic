@@ -36,6 +36,16 @@ versions separately under `v*` and is not tracked in this file.)
   Theatre. The Visualizer tab is back while a video plays. Opening and leaving full screen glides the picture between the
   docked card (or the mini player) and the screen instead of jumping there.
 
+- **Up next in the video full screen (Classic).** With a video on, Up next tells videos from songs at a glance: a track
+  that has a music video shows the video's still, one that has none shows its cover on a dark plate, each tagged "Video"
+  or "Audio". The full picture has a shelf of what plays next over the bottom of the picture that comes and goes with the
+  controls (the first card is what plays next; a click plays it), and the Theatre list beside the picture leads every row
+  with the same thumbnail.
+- **Songs without a video in the video full screen (Classic).** When the queue reaches a song with no video, the full
+  screen stays as it is (the top bar, Up next and the transport): the picture's place shows the song's cover and its
+  synced lyrics and the Video tab waits, greyed out. The next song with a video brings the picture back by itself, in
+  the full picture or Theatre as you left it.
+
 - **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.
@@ -61,6 +71,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Esc and F11 left full screen open.** Pressing Esc (or F11) in full screen did nothing, with or without a video: the
+  keys went to a part of the screen that did not handle them. They leave full screen again; Space and the arrows keep
+  playing, seeking and setting the volume.
+- **"Synced lyrics aren't available while a video is playing" was cut off** beside the video in Theatre: it wraps now.
 - **A Canvas that stayed a still picture.** When the looping video failed to open (its cached loop file had been
   cleaned up, for one), the still stayed over the playing music for the whole track and nothing was logged. The loop is
   rebuilt, a failed open is logged and tried once more, and the loop cache now keeps the canvases you played last.

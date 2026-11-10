@@ -98,6 +98,13 @@ public static class ClassicQueueRules
     /// <summary>The gap under the Next row.</summary>
     public static float StageNextGap => Spacing.M;
 
+    /// <summary>Beside the music video (the stage's Video mode, Theatre; the board "Classic · Theatre"): a row is 70 tall around its 96 x 54 thumbnail
+    /// (the video's still, or the cover inset on a plate), the title 13/18 over the artists 12/16; the first upcoming song keeps its plate and eyebrow
+    /// at 88 around a 112 x 63 thumbnail. No position or grip column: the whole row is the drag source, as before.</summary>
+    public const float StageVideoRowH = 70f, StageVideoThumbW = 96f, StageVideoThumbH = 54f;
+
+    public const float StageVideoNextH = 88f, StageVideoNextThumbW = 112f, StageVideoNextThumbH = 63f;
+
     /// <summary>A section caption's height.</summary>
     public const float StageHeaderH = 40f;
 

@@ -86,24 +86,31 @@ public static partial class Lyrics
     /// the contract the Slider/ToggleSwitch signal instances follow): props freeze at mount, so only the signal's
     /// VALUE ever changes. <paramref name="theatre"/>: Video mode's Theatre panel beside the picture, at the panel's type
     /// (<see cref="Stage.Layout.TheatreLyricsTypeScale"/>).</summary>
-    public static Element StagePane(IReadSignal<ColorF> accent, bool theatre = false) => Embed.Comp(() => new StageColumn(accent, theatre));
+    public static Element StagePane(IReadSignal<ColorF> accent, bool theatre = false) => Embed.Comp(() => new StageColumn(accent, theatre, follow: false, s_stageVisible));
+
+    // MOUNT POINT (video full screen, the audio face)
+    /// <summary>The stage's reading column in the picture's place while Video mode holds over an audio-only track (<c>Stage.StageCtx.AudioFace</c>):
+    /// the same view at the stage's type in Cinema and the Theatre panel's in Theatre (it follows <c>StageCtx.Theatre</c> in place), ticking only
+    /// while <paramref name="visible"/> reads true (its own gate: the pane region's lyrics, parked in Theatre's KeepAlive, keep theirs).</summary>
+    public static Element PictureLyrics(IReadSignal<ColorF> accent, Func<bool> visible) => Embed.Comp(() => new StageColumn(accent, false, follow: true, visible));
 
     /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
     /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it (the cap and the
     /// gutter are the structure's, `Lyrics.View`). The scale reaches the view as a VALUE-GATED signal (tuned R1): a size step keeps the
     /// column MOUNTED — the rows re-render at the new type in place, the run lengths and extents are re-measured and the follow re-latches
     /// the active line at the band — instead of re-keying the view, which remounted it and made the text jump.</summary>
-    sealed class StageColumn(IReadSignal<ColorF> accent, bool theatre) : Component
+    sealed class StageColumn(IReadSignal<ColorF> accent, bool theatre, bool follow, Func<bool> visible) : Component
     {
         readonly Signal<float> _typeScale = new(1f);
 
         public override Element Render()
         {
             var stage = UseContext(Stage.StageContext);
-            float scale = stage is null ? 1f : theatre ? stage.Layout.Value.TheatreLyricsTypeScale : stage.Layout.Value.LyricsTypeScale;
+            bool atTheatre = follow ? stage?.Theatre.Value ?? false : theatre;
+            float scale = stage is null ? 1f : atTheatre ? stage.Layout.Value.TheatreLyricsTypeScale : stage.Layout.Value.LyricsTypeScale;
             _typeScale.SetIfChanged(scale > 0f && float.IsFinite(scale) ? scale : 1f);
             var typeScale = _typeScale;
-            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: typeScale))
+            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: visible, accent: accent, onStage: true, typeScale: typeScale))
                 with { Key = "lyrics:stage" };
         }
     }

@@ -10,7 +10,9 @@
 // lane's drag maths needs each slot's height EXACT. The first upcoming song is the NEXT row (larger art, an eyebrow, display type); each section
 // opens with a caption and its count; a row shows its position, which turns into the grip on hover while the list owns the drag; an end-aligned
 // duration, a hover-revealed ✕, glass instead of the row-hover plate, autoplay at 0.68. The stage's accent, scale and width are the stage's
-// ambient context (`Stage.StageContext`); the Autoplay switch's signal mirrors the queue's autoplay fact (a switch binds a signal).
+// ambient context (`Stage.StageContext`); the Autoplay switch's signal mirrors the queue's autoplay fact (a switch binds a signal). Beside the
+// music video (`QueueStagePaneProps.Video`, Theatre) every row leads with the stage's 16:9 thumbnail (`ClassicStageThumb`: the video's still, or
+// the audio-only track's cover inset on a plate) and drops the position column; the rhythm stays one row height.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -34,6 +36,7 @@ internal sealed class ClassicQueueStagePane : Component
     Action<bool>? _setAutoplay;
     QueueProps _queue = null!;
     float _s = 1f;
+    bool _video;
 
     /// <summary>The first row of the whole upcoming list is the Next row: its extent includes the gap under it.</summary>
     bool IsNextSlot(QueueSlot slot) => slot.IsRow && _queue.TryRow(slot.Section, slot.Pos, out var row) && row.Index == 0;
@@ -42,7 +45,8 @@ internal sealed class ClassicQueueStagePane : Component
     {
         QueueSlotKind.More => Px(ClassicQueueRules.MoreRowH) + Px(Spacing.XS) + Px(Spacing.XXS),   // = ShowMore's rendered height + margins (each term rounded as rendered)
         QueueSlotKind.Header => ClassicQueueRules.StageHeaderH * _s,
-        _ => IsNextSlot(slot) ? (ClassicQueueRules.StageNextH + ClassicQueueRules.StageNextGap) * _s : ClassicQueueRules.StageRowH * _s,
+        _ => IsNextSlot(slot) ? ((_video ? ClassicQueueRules.StageVideoNextH : ClassicQueueRules.StageNextH) + ClassicQueueRules.StageNextGap) * _s
+                              : (_video ? ClassicQueueRules.StageVideoRowH : ClassicQueueRules.StageRowH) * _s,
     };
 
     float Px(float v) => MathF.Round(v * _s);
@@ -68,7 +72,9 @@ internal sealed class ClassicQueueStagePane : Component
         // the Huge 4K stage's Up next column beside the lyrics (C-Stage-Huge4K) stands in its own frame: the board's 1x rows across that frame's
         // width, not the pane region's scale and list cap
         _s = props.Aside ? 1f : layout.QueueScale;
-        lane.SetMetrics(ClassicQueueRules.StageRowH * _s, _extentOf ??= ExtentOf);
+        // beside the music video (Theatre) every row leads with its 16:9 thumbnail (the video's still, or the cover on a plate)
+        _video = props.Video;
+        lane.SetMetrics((_video ? ClassicQueueRules.StageVideoRowH : ClassicQueueRules.StageRowH) * _s, _extentOf ??= ExtentOf);
         bool art = !ClassicOptions.HideTrackArt();
 
         var kids = new List<Element>(2);
@@ -82,7 +88,8 @@ internal sealed class ClassicQueueStagePane : Component
                 if (slot.Kind == QueueSlotKind.More) { slots[i] = ShowMore(props, slot.Section); continue; }
                 if (slot.Kind == QueueSlotKind.Header) { slots[i] = StageHeader(slot.Section); continue; }
                 slots[i] = _queue.TryRow(slot.Section, slot.Pos, out var row)
-                    ? lane.Lane(item, row.Index == 0 ? NextRow(props, row, art) : Row(props, row, art), lane.RowKey("s", row.ItemId, row.Index))
+                    ? lane.Lane(item, _video ? VideoRow(props, row, art, next: row.Index == 0) : row.Index == 0 ? NextRow(props, row, art) : Row(props, row, art),
+                                lane.RowKey("s", row.ItemId, row.Index))
                     : new BoxEl();
             }
             kids.Add(lane.List(new BoxEl { Key = "stageupcoming", Direction = 1, Children = slots }, "stagelane:upcoming"));
@@ -219,6 +226,62 @@ internal sealed class ClassicQueueStagePane : Component
             Padding = new Edges4(Px(Spacing.M), 0f, Px(Spacing.S), 0f), Corners = Radii.CardAll,
             Fill = Ink.Plate, HoverFill = Ink.PlateHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
             BorderWidth = 1f, BorderColor = Ink.Stroke,
+            PressScale = R.Motion.ScaleSubtle.Press,
+            Opacity = row.Section == QueueSection.Autoplay ? ClassicQueueRules.StageAutoplayDim : 1f,
+            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
+            OnClick = () => verbs.Play(itemId, index, r),
+            Enter = ClassicQueue.RowEnter,
+            Exit = ClassicQueue.RowExit,
+            Layout = LayoutTransition.Slide,
+            Children = kids.ToArray(),
+        };
+        return lane.Attach(el, itemId, index, r);
+    }
+
+    /// <summary>A row beside the music video (Theatre; the board "Classic · Theatre"): the 16:9 thumbnail (the video's still, or the audio-only
+    /// track's cover inset on a plate, tagged so the two kinds read apart) with the play overlay, the title over the artists, the duration and
+    /// the hover ✕. The first upcoming song keeps its plate, eyebrow and larger thumbnail. Same verbs as any row (click plays it, the lane drags
+    /// it, right-click opens its menu).</summary>
+    Element VideoRow(QueueStagePaneProps props, in QueueRowProps row, bool art, bool next)
+    {
+        var lane = props.Lane;
+        var verbs = props.Verbs;
+        EntityRef r = row.Ref;
+        QueueRowText text = lane.TextOf(r);
+        ulong itemId = row.ItemId;
+        int index = row.Index;
+        var kids = new List<Element>(4);
+        if (art)
+        {
+            float tw = Px(next ? ClassicQueueRules.StageVideoNextThumbW : ClassicQueueRules.StageVideoThumbW);
+            float th = Px(next ? ClassicQueueRules.StageVideoNextThumbH : ClassicQueueRules.StageVideoThumbH);
+            kids.Add(new BoxEl
+            {
+                Width = tw, Height = th, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = Radii.ControlAll,
+                Children = [ClassicStageThumb.Of(text, lane.VideoOf(r), tw, th, Radii.Control), Controls.NowPlayingOverlay(text.Uri, () => verbs.Play(itemId, index, r), Px(26f), centred: true)],
+            });
+        }
+        kids.Add(next
+            ? TitleBlock(text, Px(16f), Px(22f), 600, Loc.Get(Strings.Stage.NextTrack), Px(12f), Px(16f))
+            : TitleBlock(text, Px(13f), Px(18f), 600, null, Px(12f), Px(16f)));
+        kids.Add(new BoxEl
+        {
+            Width = Px(ClassicQueueRules.StageTimeW), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+            Children = [new TextEl(text.DurationMs > 0 ? lane.Clock(text.DurationMs) : "") { Size = Px(12f), LineHeight = Px(16f), Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap }],
+        });
+        kids.Add(RemoveSlot(verbs, row));
+
+        var el = new BoxEl
+        {
+            Key = lane.RowKey("s", itemId, index) + (next ? ":vnext" : ":v") + ":art=" + art + ":s=" + Px(100f),
+            Draggable = lane.OwnDrag(itemId, index, r),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.M),
+            Height = Px(next ? ClassicQueueRules.StageVideoNextH : ClassicQueueRules.StageVideoRowH),
+            Margin = next ? new Edges4(0f, 0f, 0f, Px(ClassicQueueRules.StageNextGap)) : default,
+            Padding = new Edges4(Px(Spacing.S), 0f, Px(Spacing.XS), 0f), Corners = next ? Radii.CardAll : Radii.ControlAll,
+            Fill = next ? Ink.Plate : Ink.GlassRest, HoverFill = next ? Ink.PlateHover : Ink.GlassHover, PressedFill = Ink.GlassPressed,
+            BrushTransitionMs = Design.Motion.Faster,
+            BorderWidth = next ? 1f : 0f, BorderColor = Ink.Stroke,
             PressScale = R.Motion.ScaleSubtle.Press,
             Opacity = row.Section == QueueSection.Autoplay ? ClassicQueueRules.StageAutoplayDim : 1f,
             Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,

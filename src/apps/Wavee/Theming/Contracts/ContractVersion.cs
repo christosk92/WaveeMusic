@@ -247,6 +247,10 @@
 // 1.96 (video full screen, Theatre): `StageRootView.ShowTheatre` (the picture in the left region, a panel beside it), `StageLayers.TheatrePane`
 // and `StagePaneProps.Theatre` (the panel's own pane host), `StageTierMetrics.TheatrePaneW` / `.TheatreLyricsType` (a tier's Theatre panel and
 // its lyrics' type; 0: no Theatre on that tier) and `VideoPipProps.Realized` (the presenter's node: the picture glides between its home and the stage).
+// 1.97 (video full screen, Up next and the audio face): `QueueRowVideo` and `IQueueLane.VideoOf` (a queue row's music video and its 16:9 still,
+// asked only where the stage shows the picture), `QueueStagePaneProps.Video` (the Theatre list's thumbnail rows), the key `ViewKeys.QueueStageShelf`
+// (`QueueStageShelfProps`: Cinema's Up next shelf), `StageLayers.UpNextShelf` / `.PictureLyrics` and `StageRootView.ShowAudioFace` (Video mode
+// holds over an audio-only track: the frame stays, the picture's place shows the cover and the lyrics).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -262,7 +266,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 96;
+    public const int Minor = 97;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

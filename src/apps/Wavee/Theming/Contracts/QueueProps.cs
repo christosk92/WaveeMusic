@@ -136,6 +136,11 @@ public interface IQueueVerbs
 public readonly record struct QueueRowText(string Uri, string Title, string Artists, string? Art, int DurationMs, bool Thin, bool Explicit,
     bool Unavailable = false, string Album = "");
 
+/// <summary>A queue row's music-video facts, read only where the stage shows the picture (its Video mode's Up next shelf and Theatre list):
+/// the track has a music video, and the 16:9 still that stands for it (the album page's rule: the video's own still, else its video
+/// counterpart's art, else the song's art; null when none is known). An episode or an unknown row has none. Appended (contract 1.97).</summary>
+public readonly record struct QueueRowVideo(bool HasVideo, string? Still);
+
 /// <summary>The reorder lane and the facts a queue surface's rows need from the core (<c>Queue.QueueSurface</c> implements it).</summary>
 public interface IQueueLane
 {
@@ -185,6 +190,10 @@ public interface IQueueLane
     /// its show by version), read untracked: a row built from data (<c>Controls.FromData</c>) carries it, so an unchanged row is an equal push and
     /// skips its render when the panel re-renders, and a row whose facts landed is not. Appended (contract 1.90).</summary>
     ulong RowStamp(EntityRef row);
+
+    /// <summary>The row's music-video facts (see <see cref="QueueRowVideo"/>). Ask only where they are drawn (the stage's Video mode): an ordinary
+    /// queue row never pays for them. Appended (contract 1.97).</summary>
+    QueueRowVideo VideoOf(EntityRef row);
 }
 
 /// <summary>The section's one-letter tag in row and slot keys (and the queue's diagnostic line).</summary>
@@ -240,4 +249,24 @@ public sealed record QueueStagePaneProps
     /// <summary>The player's shuffle and repeat verbs (the page's "shuffle" and "repeat" words; the lit state is <see cref="QueueProps.Shuffle"/> / <see cref="QueueProps.Repeat"/>).
     /// Appended (contract 1.41); null: no words.</summary>
     public IPlayerVerbs? Player { get; init; }
+
+    /// <summary>The column stands beside the music video (the stage's Video mode, Theatre): its rows lead with a 16:9 thumbnail (the video's still
+    /// for a track that has one, the cover inset on a plate for an audio-only track; <see cref="IQueueLane.VideoOf"/>). Appended (contract 1.97).</summary>
+    public bool Video { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.QueueStageShelf"/>: the stage's Up next SHELF over the music video (Video mode, Cinema): the next
+/// tracks as 16:9 cards, the first one what plays next. Mounted by <c>Queue.StageShelfHost</c> (the core host); the structure decides how many
+/// cards its width holds and draws them from <see cref="QueueProps.Rows"/> in list order. Appended (contract 1.97).</summary>
+public sealed record QueueStageShelfProps
+{
+    /// <summary>What the queue is.</summary>
+    public required QueueProps Queue { get; init; }
+
+    /// <summary>The row facts (<see cref="IQueueLane.TextOf"/>, <see cref="IQueueLane.VideoOf"/>, <see cref="IQueueLane.Clock"/>,
+    /// <see cref="IQueueLane.RowKey"/>, the row's menu through <see cref="IQueueLane.Attach"/>); the shelf has no reorder lane.</summary>
+    public required IQueueLane Lane { get; init; }
+
+    /// <summary>The queue's verbs (a card plays its row).</summary>
+    public required IQueueVerbs Verbs { get; init; }
 }

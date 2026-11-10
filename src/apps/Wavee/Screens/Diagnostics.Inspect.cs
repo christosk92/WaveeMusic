@@ -977,8 +977,8 @@ public static partial class Diagnostics
         /// whenever a video is up in the main window and the theme draws it).</summary>
         static bool IsStageVideo(Inspect.Args a) => string.Equals(a.Str("stage"), "video", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>`stage{open, mode, offered, picture, theatre, panel?, follows}`: the fullscreen stage (open, the mode it shows, whether it offers
-        /// its Video mode), the picture (the stage shows it: Video mode; in Theatre with which panel beside it) and what the one video presenter
+        /// <summary>`stage{open, mode, offered, picture, face?, theatre, panel?, follows}`: the fullscreen stage (open, the mode it shows, whether it offers
+        /// its Video mode), the picture (the stage shows it: Video mode; its face, the video or the audio face over an audio-only track; in Theatre with which panel beside it) and what the one video presenter
         /// follows right now (glide: the box it glides on; stage: the stage's reservation; docked: the docked card's; none: its own geometry).</summary>
         static void WriteStageFacts(Utf8JsonWriter w)
         {
@@ -988,6 +988,8 @@ public static partial class Diagnostics
             if (open) w.WriteString("mode", Stage.Diagnostics.LastMode.ToString());
             w.WriteBoolean("offered", Stage.Picture.OfferedNow());
             w.WriteBoolean("picture", Stage.Picture.ShownPeek());
+            // Video mode over an audio-only track: the frame stays, the picture's place shows the cover and the lyrics
+            if (Stage.Picture.ShownPeek()) w.WriteString("face", Stage.Picture.AudioFacePeek() ? "audio" : "video");
             bool theatre = Stage.Picture.TheatrePeek();
             w.WriteBoolean("theatre", theatre);
             if (theatre) w.WriteString("panel", Stage.Picture.TheatrePanePeek().ToString());
