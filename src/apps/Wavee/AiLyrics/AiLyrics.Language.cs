@@ -7,15 +7,23 @@
 // finds a path through the audio and returns confident-looking nonsense. So the language is decided from evidence, in
 // this order, and there is NO default: anything unclear is skipped and the track keeps the provider's line sync.
 //
-//   1. script, per word (Align.Words, the aligner's own tokenisation): Hangul, Latin or another script
-//   2. another script (kana, Han, Cyrillic, Greek, Thai, Arabic, ...) >= 10 % of the letters: no model, skip
-//      (measured on 972 provider documents: en/nl/ko-tagged lyrics have 0 % CJK at most, Japanese ones 18 % at least)
-//   3. Hangul against Latin: the majority script picks the family; the minority's lines stay line-level (the aligner
+//   1. script, per word (Align.Words, the aligner's own tokenisation): Hangul, Latin, kana, Han or another script
+//   2. Japanese: kana + Han letters outnumber both the Latin and the Hangul letters, kana are at least a quarter of
+//      them (a Chinese lyric is Han with no kana: never Japanese) and every other script stays under 10 %: "ja".
+//      Measured on the owner's 1,027 cached provider documents: Japanese lyrics have 56 % kana among their CJK letters
+//      at the least; the Han-only documents have none.
+//   3. another script (Han without kana, Cyrillic, Greek, Thai, Arabic, kana in a mostly Latin lyric, ...) >= 10 % of
+//      the letters: no model, skip (en/nl/ko-tagged lyrics have 0 % CJK at most, Japanese ones 18 % at least)
+//   4. Hangul against Latin: the majority script picks the family; the minority's lines stay line-level (the aligner
 //      times only words its model spells, and a line with less than half its letters timed is never word-synced)
-//   4. a Latin lyric: a provider tag naming a Latin-script language decides (installed or not); untagged, or tagged
+//   5. a Latin lyric: a provider tag naming a Latin-script language decides (installed or not); untagged, or tagged
 //      with a non-Latin language (an English K-pop song tagged "ko"), its words are scored against the model languages
 //      and against profiles of other Latin languages, and only a clear winner is taken (see ModelLanguages)
-//   5. before a job starts, the chosen model must spell at least half the words (SpellableShare, run by the worker)
+//   6. before a job starts, the chosen model must spell at least half the timed units (SpellableShare, run by the
+//      worker): words, or for Japanese single characters (Align.Units)
+//
+// Step 2 cannot change a decision steps 3-5 make: a lyric that passes step 3 has under 10 % kana + Han, so they never
+// outnumber its Latin or Hangul letters.
 
 using System.Globalization;
 using System.Text;
@@ -27,13 +35,17 @@ public static partial class AiLyrics
     public static partial class Rules
     {
         /// <summary>The version of this decision procedure. It is saved in every results file, and a file decided by
-        /// another version is not replayed (the track is timed again).</summary>
-        public const int DecisionVersion = 2;
+        /// another version is not replayed (the track is timed again). 3: Japanese (step 2), timed by character.</summary>
+        public const int DecisionVersion = 3;
 
-        /// <summary>Letters of a script no model speaks (step 2), as a share of all letters, from which a lyric is skipped.</summary>
+        /// <summary>Letters of a script no model speaks (step 3), as a share of all letters, from which a lyric is skipped.</summary>
         public const double OtherScriptSkipShare = 0.10;
 
-        /// <summary>Step 5: words with a letter outside the model's vocabulary must stay under this share.</summary>
+        /// <summary>Step 2: kana as a share of the kana + Han letters from which a CJK lyric is Japanese. Japanese
+        /// lyrics measured 56 % at the least, Chinese has none.</summary>
+        public const double JapaneseMinKanaShare = 0.25;
+
+        /// <summary>Step 6: units with a letter outside the model's vocabulary must stay under this share.</summary>
         public const double UnspellableSkipShare = 0.50;
 
         /// <summary>A winner by word score needs at least this many hits on its own list.</summary>
@@ -102,16 +114,20 @@ public static partial class AiLyrics
         };
 
         /// <summary>How the language was decided (or why none was).</summary>
-        public enum LanguageStep : byte { NoLetters, OtherScript, Hangul, Tag, Words, Unclear }
+        public enum LanguageStep : byte { NoLetters, OtherScript, Hangul, Tag, Words, Unclear, Japanese }
 
         /// <summary>One decision with its evidence, for the log. <see cref="Language"/> is null when no model may time
-        /// the lyric. Shares are of letters (scripts) or of Latin words (scores).</summary>
+        /// the lyric. Shares are of letters (scripts) or of Latin words (scores). <see cref="Other"/> counts every
+        /// letter that is neither Hangul nor Latin (kana and Han included); <see cref="Kana"/> and <see cref="Han"/>
+        /// are the CJK part of it.</summary>
         public readonly record struct LanguageDecision(
             string? Language, LanguageStep Step, string Tag,
             int Letters, int Hangul, int Latin, int Other,
-            int Words, string Best, int BestHits, double BestShare, string Second, double SecondShare)
+            int Words, string Best, int BestHits, double BestShare, string Second, double SecondShare,
+            int Kana = 0, int Han = 0)
         {
-            /// <summary>"step=Words tag=- letters=812 hangul=0.00 latin=1.00 other=0.00 words=301 best=en:0.41(123) second=nl:0.04".</summary>
+            /// <summary>"step=Words tag=- letters=812 hangul=0.00 latin=1.00 other=0.00 words=301 best=en:0.41(123) second=nl:0.04";
+            /// " kana=0.40 han=0.20" after "other" when the lyric has any.</summary>
             public string Describe()
             {
                 var ci = CultureInfo.InvariantCulture;
@@ -122,6 +138,9 @@ public static partial class AiLyrics
                   .Append(" hangul=").Append((Hangul / l).ToString("0.00", ci))
                   .Append(" latin=").Append((Latin / l).ToString("0.00", ci))
                   .Append(" other=").Append((Other / l).ToString("0.00", ci));
+                if (Kana + Han > 0)
+                    sb.Append(" kana=").Append((Kana / l).ToString("0.00", ci))
+                      .Append(" han=").Append((Han / l).ToString("0.00", ci));
                 if (Words > 0)
                     sb.Append(" words=").Append(Words.ToString(ci))
                       .Append(" best=").Append(Best).Append(':').Append(BestShare.ToString("0.00", ci)).Append('(').Append(BestHits.ToString(ci)).Append(')')
@@ -139,7 +158,7 @@ public static partial class AiLyrics
         public static LanguageDecision DecideLanguage(Lyrics.Doc doc)
         {
             string tag = PrimaryTag(doc.Language);
-            int letters = 0, hangul = 0, latin = 0;
+            int letters = 0, hangul = 0, latin = 0, kana = 0, han = 0;
             for (int li = 0; li < doc.Lines.Count; li++)
                 foreach (var word in Align.Words(doc.Lines[li].Text ?? ""))
                     foreach (char c in word.Text.Normalize(NormalizationForm.FormC))
@@ -148,10 +167,15 @@ public static partial class AiLyrics
                         letters++;
                         if (IsHangul(c)) hangul++;
                         else if (IsLatin(c)) latin++;
+                        else if (Align.IsKana(c)) kana++;
+                        else if (Align.IsHan(c)) han++;
                     }
             int other = letters - hangul - latin;
-            var d = new LanguageDecision(null, LanguageStep.NoLetters, tag, letters, hangul, latin, other, 0, "", 0, 0, "", 0);
+            var d = new LanguageDecision(null, LanguageStep.NoLetters, tag, letters, hangul, latin, other, 0, "", 0, 0, "", 0, kana, han);
             if (letters == 0) return d;
+            int cjk = kana + han;
+            if (cjk > latin && cjk > hangul && kana >= JapaneseMinKanaShare * cjk && other - cjk < OtherScriptSkipShare * letters)
+                return d with { Language = "ja", Step = LanguageStep.Japanese };
             if (other >= OtherScriptSkipShare * letters) return d with { Step = LanguageStep.OtherScript };
             if (hangul > latin) return d with { Language = "ko", Step = LanguageStep.Hangul };
             if (LatinTags.Contains(tag)) return d with { Language = tag, Step = LanguageStep.Tag };
@@ -222,14 +246,15 @@ public static partial class AiLyrics
             }
         }
 
-        /// <summary>Step 5: the share of a lyric's words (those with at least one letter) whose every letter the model
-        /// can spell (<see cref="Align.Vocab.Spells"/>); 0 when there are none.</summary>
-        public static double SpellableShare(Lyrics.Doc doc, Align.Vocab vocab, out int words)
+        /// <summary>Step 6: the share of a lyric's timed units (<see cref="Align.Units"/> for <paramref name="language"/>:
+        /// words, or Japanese characters; those with at least one letter) whose every letter the model can spell
+        /// (<see cref="Align.Vocab.Spells"/>); 0 when there are none.</summary>
+        public static double SpellableShare(Lyrics.Doc doc, Align.Vocab vocab, out int words, string language = "")
         {
             words = 0;
             int spellable = 0;
             for (int li = 0; li < doc.Lines.Count; li++)
-                foreach (var word in Align.Words(doc.Lines[li].Text ?? ""))
+                foreach (var word in Align.Units(doc.Lines[li].Text ?? "", language))
                 {
                     if (!vocab.Spells(word.Text, out bool hasLetter) && hasLetter) { words++; continue; }
                     if (!hasLetter) continue;

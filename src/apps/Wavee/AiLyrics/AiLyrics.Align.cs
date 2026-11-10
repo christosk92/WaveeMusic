@@ -8,7 +8,8 @@
 // single best monotonic path of the lyric's letters through those frames (CTC forced alignment) and turns it into
 // word timings and a word-synced Lyrics.Doc.
 //
-//   Graph          one token per letter, a separator between words; words in parentheses are OPTIONAL (backing vocals
+//   Units          the timed units of a line: words, or for Japanese single characters (no spaces to split on)
+//   Graph          one token per letter, a separator between words (none for Japanese); words in parentheses are OPTIONAL (backing vocals
 //                  and ad-libs are often faint or missing in the separated vocals): a skip edge jumps over them.
 //   OnlineViterbi  the forward pass advances frame by frame and is exact. Tokens are COMMITTED in order; a commit
 //                  backtraces from the best state at the newest frame. The worker commits just in time (when the
@@ -35,12 +36,17 @@ public static partial class AiLyrics
         // ── vocabulary ──────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The aligner's letter vocabulary (the model's vocab.json): letter -> class id. The blank is
-        /// &lt;pad&gt;; "|" separates words. Upper-case vocabularies (the English model) get upper-cased text.</summary>
+        /// &lt;pad&gt;; "|" separates words. Upper-case vocabularies (the English model) get upper-cased text.
+        /// A vocabulary with kana (the Japanese model) is <see cref="Japanese"/>: text is NFKC-normalised (half- and
+        /// full-width forms to the vocabulary's), never case-folded, and only kana and Han yield tokens — its few Latin
+        /// letters and digits are not trusted (it was trained on Japanese text), so a Latin word in a Japanese lyric is
+        /// untimed and interpolated between its timed neighbours (Fill). A second pass with a Latin model over those
+        /// words would go in TrackJob; it is not built.</summary>
         public sealed class Vocab
         {
             readonly Dictionary<string, int> _ids;
             public readonly int Blank, Separator, Classes;
-            public readonly bool Upper;
+            public readonly bool Upper, Japanese;
 
             public Vocab(Dictionary<string, int> ids)
             {
@@ -49,6 +55,7 @@ public static partial class AiLyrics
                 Separator = ids["|"];
                 Classes = ids.Values.Max() + 1;
                 Upper = ids.ContainsKey("E");
+                Japanese = ids.ContainsKey("あ");
             }
 
             public static Vocab Parse(string json)
@@ -81,14 +88,20 @@ public static partial class AiLyrics
                 return all;
             }
 
-            // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed
+            // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed.
+            // Japanese: NFKC (half-width katakana and their voicing marks compose to the full-width kana), no case.
             string Prepare(string word)
-                => (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
+                => Japanese
+                    ? word.Normalize(System.Text.NormalizationForm.FormKC)
+                    : (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
 
             /// <summary>A character's class id: itself, else without its accent (a Hangul syllable without its final
-            /// consonant); false when the model has neither, and for the word separator.</summary>
+            /// consonant; a voiced kana the model lacks, ぢ → ち, without its voicing mark); false when the model has
+            /// neither, for the word separator, and (Japanese) for anything but kana and Han.</summary>
             bool TryId(char c, out int id)
             {
+                id = 0;
+                if (Japanese && !IsKana(c) && !IsHan(c)) return false;
                 string ch = c.ToString();
                 if (!_ids.TryGetValue(ch, out id))
                 {
@@ -141,13 +154,82 @@ public static partial class AiLyrics
             return list;
         }
 
+        // ── the timed units of a line ───────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Whether a language is timed character by character (<see cref="Characters"/>) and aligned without
+        /// the word separator (<see cref="Graph.Build"/>): Japanese, which is written without spaces (a whole phrase is
+        /// one regex "word") and whose model was trained on text without "|".</summary>
+        public static bool IsCharacterTimed(string? language) => language == "ja";
+
+        /// <summary>The units a line is timed in for <paramref name="language"/>: its <see cref="Words"/>, or for a
+        /// character-timed language its <see cref="Characters"/>. Every caller that cuts or replays timing uses this,
+        /// so the units of a fresh result and of its replay are the same.</summary>
+        public static List<LyricWord> Units(string text, string? language)
+            => IsCharacterTimed(language) ? Characters(text) : Words(text);
+
+        /// <summary>Japanese units: each kana and each Han character starts one; a prolonged-sound mark (ー), a small
+        /// kana (ゃ, っ, ...) and a combining voicing mark attach to the unit before them (they lengthen or modify that
+        /// sound); a run of other word characters (a Latin word, digits) is one unit, as are apostrophes inside it.
+        /// Units never span a space or punctuation, and the text between units (spaces, punctuation, symbols) belongs
+        /// to the unit before it when the line is cut (<see cref="WordSyncedLine"/>), so the cut texts join back to the
+        /// line. Parentheses, ASCII or full-width, make the units inside optional.</summary>
+        public static List<LyricWord> Characters(string text)
+        {
+            var list = new List<LyricWord>();
+            int depth = 0, pos = 0;
+            foreach (Match m in s_word.Matches(text))
+            {
+                for (int i = pos; i < m.Index; i++)
+                {
+                    if (text[i] is '(' or '（') depth++;
+                    else if (text[i] is ')' or '）') depth = Math.Max(0, depth - 1);
+                }
+                pos = m.Index + m.Length;
+                bool optional = depth > 0;
+                int start = m.Index;
+                bool runJa = IsJapaneseUnitChar(text[start]);
+                for (int i = m.Index + 1; i < pos; i++)
+                {
+                    char c = text[i];
+                    bool ja = IsJapaneseUnitChar(c);
+                    bool joins = ja ? runJa && AttachesToPrevious(c)          // a mark joins the kana before it
+                                    : !runJa || c is '\'' or '’';            // a Latin run goes on; an apostrophe joins anything
+                    if (joins) continue;
+                    list.Add(new LyricWord(text[start..i], start, optional));
+                    start = i; runJa = ja;
+                }
+                list.Add(new LyricWord(text[start..pos], start, optional));
+            }
+            return list;
+        }
+
+        /// <summary>A character that is (part of) a Japanese unit: kana, Han, or a combining voicing mark.</summary>
+        static bool IsJapaneseUnitChar(char c) => IsKana(c) || IsHan(c) || c is '゙' or '゚';
+
+        /// <summary>Marks that lengthen or modify the sound before them: ー (and its half-width form), the small kana
+        /// (sokuon, small vowels, ya/yu/yo/wa), the combining and half-width voicing marks.</summary>
+        static bool AttachesToPrevious(char c) => c is 'ー' or 'ｰ' or '゙' or '゚' or 'ﾞ' or 'ﾟ'
+            or 'ぁ' or 'ぃ' or 'ぅ' or 'ぇ' or 'ぉ' or 'っ' or 'ゃ' or 'ゅ' or 'ょ' or 'ゎ'
+            or 'ァ' or 'ィ' or 'ゥ' or 'ェ' or 'ォ' or 'ッ' or 'ャ' or 'ュ' or 'ョ' or 'ヮ'
+            or (>= 'ㇰ' and <= 'ㇿ') or (>= 'ｧ' and <= 'ｯ');
+
+        /// <summary>Hiragana, katakana (with ー and the phonetic extensions) and half-width katakana.</summary>
+        public static bool IsKana(char c) => c is (>= 'ぁ' and <= 'ゟ') or (>= '゠' and <= 'ヿ')
+            or (>= 'ㇰ' and <= 'ㇿ') or (>= 'ｦ' and <= 'ﾟ');
+
+        /// <summary>Han ideographs of the BMP (unified, extension A, compatibility) and the marks 々 and 〆.</summary>
+        public static bool IsHan(char c) => c is (>= '一' and <= '鿿') or (>= '㐀' and <= '䶿')
+            or (>= '豈' and <= '﫿') or '々' or '〆';
+
         // ── the graph ───────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The lyric as CTC tokens. <see cref="OwnerLine"/>/<see cref="OwnerWord"/> are -1 on separators.
         /// Skip edges (<see cref="SkipSrc"/> -> <see cref="SkipDst"/>, both STATE indices) jump over an optional word
         /// and the separator before it: from the blank before that separator (before its first letter for the first
         /// word) to the blank after its last letter. Consecutive optional words chain (one's target is the next's
-        /// source).</summary>
+        /// source). Without <c>wordSeparator</c> (a character-timed language, <see cref="IsCharacterTimed"/>) no "|"
+        /// goes between units: the letters follow each other with only CTC blanks between them, and a skip edge runs
+        /// from the blank before an optional unit's first letter to the blank after its last.</summary>
         public sealed class Graph
         {
             public readonly int[] Tokens, OwnerLine, OwnerWord, SkipSrc, SkipDst;
@@ -155,7 +237,7 @@ public static partial class AiLyrics
 
             Graph(int[] tokens, int[] ol, int[] ow, int[] ss, int[] sd) { Tokens = tokens; OwnerLine = ol; OwnerWord = ow; SkipSrc = ss; SkipDst = sd; }
 
-            public static Graph Build(IReadOnlyList<IReadOnlyList<LyricWord>> lines, Vocab vocab)
+            public static Graph Build(IReadOnlyList<IReadOnlyList<LyricWord>> lines, Vocab vocab, bool wordSeparator = true)
             {
                 var tokens = new List<int>(); var ol = new List<int>(); var ow = new List<int>();
                 var ss = new List<int>(); var sd = new List<int>();
@@ -169,7 +251,7 @@ public static partial class AiLyrics
                         vocab.Tokens(words[wi].Text, buf);
                         if (buf.Count == 0) continue;
                         int sep = -1;
-                        if (tokens.Count > 0) { sep = tokens.Count; tokens.Add(vocab.Separator); ol.Add(-1); ow.Add(-1); }
+                        if (wordSeparator && tokens.Count > 0) { sep = tokens.Count; tokens.Add(vocab.Separator); ol.Add(-1); ow.Add(-1); }
                         int k0 = tokens.Count;
                         foreach (int t in buf) { tokens.Add(t); ol.Add(li); ow.Add(wi); }
                         int k1 = tokens.Count - 1;

@@ -140,7 +140,7 @@ public static partial class AiLyrics
     static int s_posMs, s_playing;
     static long s_posAtTick;
 
-    static readonly string[] s_languageOrder = ["en", "es", "nl", "ko"];
+    static readonly string[] s_languageOrder = ["en", "es", "nl", "ko", "ja"];
 
     // ══ boot and shutdown ═════════════════════════════════════════════════════════════════════════════════════════
 
@@ -880,7 +880,7 @@ public static partial class AiLyrics
             // its vocabulary is timed in part or not at all
             if (VocabOf(req.Language) is { } vocab)
             {
-                double spellable = Rules.SpellableShare(req.Source, vocab, out int spellWords);
+                double spellable = Rules.SpellableShare(req.Source, vocab, out int spellWords, req.Language);
                 if (1 - spellable >= Rules.UnspellableSkipShare)
                 {
                     Log.Info("ai-lyrics", FormattableString.Invariant($"ai.skip track={req.TrackId} reason=Unspellable language={req.Language} spellable={spellable:0.00} words={spellWords} {req.Decision}"));

@@ -6,13 +6,13 @@
 // A finished alignment is saved as `ai\lyrics\results\<trackId>.v<PackVersion>.json` so the next play is instant. The
 // file holds TIMING ONLY: the words' texts are written for a human reading the file, but the document shown is always
 // rebuilt over the provider's current lines (text, translation, romanization), and the syllable texts are re-cut from
-// the provider's text at the word boundaries `Align.Words` finds, exactly as `Align.WordSyncedLine` cuts them, so they
+// the provider's text at the unit boundaries `Align.Units` finds (words; Japanese characters), exactly as `Align.WordSyncedLine` cuts them, so they
 // join back to the line text the karaoke wipe measures against. A different source text (hash) or line count is a
 // miss: the song is aligned again; so is a file whose language or decision version (Rules.DecisionVersion) differs from
 // what the language decision answers today. A replay passes the same acceptance check as a fresh result (the host runs
 // it). Format 2 added "decision"; a format-1 file is a miss, and the next play of that track writes a new one.
 //
-//   { "v": 2, "trackId": "…", "pack": 1, "language": "en", "decision": 2, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
+//   { "v": 2, "trackId": "…", "pack": 1, "language": "en", "decision": 3, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
 //     "savedUnixMs": 0, "lines": [ { "s": 12340, "e": 15000, "w": [[12340,12600,"Nobody "],[12600,13100,"pray "]] } ] }
 //
 // The host does the file I/O (worker thread at job end, boot Task for the sweep); this file only encodes, decodes,
@@ -213,7 +213,7 @@ public static partial class AiLyrics
         /// different source hash, pack version or track id, a language other than <paramref name="language"/> (today's
         /// decision) or another decision version, a different line count, or nothing word-timed. Each line keeps the
         /// PROVIDER's text, translation and romanization; a line with saved words gets their timing, its syllable texts
-        /// re-cut from the provider's text at the <see cref="Align.Words"/> boundaries (so they join back to the line
+        /// re-cut from the provider's text at the <see cref="Align.Units"/> boundaries (so they join back to the line
         /// text) and, for a line-synced provider, keeps the provider's start unless its first word is earlier (as
         /// <see cref="Align.WordSyncedLine"/> does); a line without saved words — or whose word count no longer matches —
         /// stays the provider's line (a plain-text provider's takes the saved line time: it has none of its own).
@@ -236,7 +236,7 @@ public static partial class AiLyrics
                 var lineLevel = lineSynced ? src : src with { StartMs = cached.StartMs, EndMs = cached.EndMs, Syllables = [], IsWordByWord = false };
                 if (cached.Words.Count == 0) { lines.Add(lineLevel); continue; }
                 string text = src.Text;
-                var words = Align.Words(text);
+                var words = Align.Units(text, language);
                 if (words.Count != cached.Words.Count) { lines.Add(lineLevel); continue; }
 
                 var syl = new List<Lyrics.Syllable>(words.Count);

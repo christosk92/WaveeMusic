@@ -103,5 +103,12 @@
     "license": "Apache-2.0",
     "url": "https://huggingface.co/kresnik/wav2vec2-large-xlsr-korean",
     "note": "Korean syllable recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on the Zeroth-Korean corpus (OpenSLR 40, CC BY 4.0, by Lucas Jo and Wonkyum Lee, Atlas Guide Inc.; https://www.openslr.org/40/), converted like the English one. Optional download from models.cproducts.dev."
+  },
+  {
+    "name": "wav2vec2-large-xlsr-53-japanese",
+    "version": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese (revision cf031e02)",
+    "license": "Apache-2.0",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
+    "note": "Japanese kana and kanji recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1, CSS10 and JSUT (VERIFY: the JSUT corpus terms before the pack is published), converted like the English one. Optional download from models.cproducts.dev."
   }
 ]

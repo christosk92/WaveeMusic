@@ -103,6 +103,11 @@ wav2vec2-large-xlsr-53-dutch  jonatasgrosman/wav2vec2-large-xlsr-53-dutch (revis
   url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-dutch
   note:    Dutch letter recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1 and CSS10, converted like the English one. Optional download from models.cproducts.dev.
 
+wav2vec2-large-xlsr-53-japanese  jonatasgrosman/wav2vec2-large-xlsr-53-japanese (revision cf031e02)
+  license: Apache-2.0
+  url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-japanese
+  note:    Japanese kana and kanji recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1, CSS10 and JSUT (VERIFY: the JSUT corpus terms before the pack is published), converted like the English one. Optional download from models.cproducts.dev.
+
 wav2vec2-large-xlsr-53-spanish  jonatasgrosman/wav2vec2-large-xlsr-53-spanish
   license: Apache-2.0
   url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish

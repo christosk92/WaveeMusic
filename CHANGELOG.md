@@ -33,6 +33,12 @@ versions separately under `v*` and is not tracked in this file.)
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.
 
+- **AI word timing for Japanese lyrics (not downloadable yet).** Japanese joins English, Spanish, Dutch and Korean in the
+  AI lyrics languages: a lyric written mostly in kana and kanji is timed character by character (a long vowel mark or
+  a small kana goes with the sound before it), and Chinese lyrics, which have no kana, are never sent to it. English
+  words inside a Japanese line are placed between their timed neighbours; a line that is mostly English keeps its line
+  highlight. Every song timed before is timed once more, since the language decision changed.
+
 ### Changed
 
 - **Canvas in the Classic now-playing panel ends in a plain fade.** The picture now dissolves into the panel on a smooth

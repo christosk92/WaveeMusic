@@ -202,6 +202,7 @@ internal static partial class ZuneSettings
             "es" => Loc.Get(AiS.Lang.Es),
             "nl" => Loc.Get(AiS.Lang.Nl),
             "ko" => Loc.Get(AiS.Lang.Ko),
+            "ja" => Loc.Get(AiS.Lang.Ja),
             _ => lang.ToUpperInvariant(),
         };
 

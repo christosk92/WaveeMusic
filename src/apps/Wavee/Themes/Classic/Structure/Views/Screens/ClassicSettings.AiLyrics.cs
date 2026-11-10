@@ -432,6 +432,7 @@ internal static partial class ClassicSettings
             "es" => Loc.Get(AiS.Lang.Es),
             "nl" => Loc.Get(AiS.Lang.Nl),
             "ko" => Loc.Get(AiS.Lang.Ko),
+            "ja" => Loc.Get(AiS.Lang.Ja),
             _ => lang.ToUpperInvariant(),
         };
 
@@ -453,6 +454,7 @@ internal static partial class ClassicSettings
             if (langs.ContainsKey("es")) order.Add("es");
             if (langs.ContainsKey("nl")) order.Add("nl");
             if (langs.ContainsKey("ko")) order.Add("ko");
+            if (langs.ContainsKey("ja")) order.Add("ja");
             var rest = new List<string>();
             foreach (var key in langs.Keys)
                 if (!AiContains(order, key)) rest.Add(key.ToLowerInvariant());

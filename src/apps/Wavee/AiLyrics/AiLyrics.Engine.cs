@@ -88,8 +88,9 @@ public static partial class AiLyrics
         {
             _src = src; _language = language; _sep = sep; _aln = aln; _pcm = pcm; _playhead = playheadSeconds;
             _linePrior = src.IsSynced && src.Sync != Lyrics.SyncKind.Unsynced;
-            foreach (var l in src.Lines) _words.Add(Align.Words(l.Text));
-            _graph = Align.Graph.Build(_words, aln.Vocab);
+            // words, or Japanese characters, aligned without "|" between them (Align.Units, Align.IsCharacterTimed)
+            foreach (var l in src.Lines) _words.Add(Align.Units(l.Text, language));
+            _graph = Align.Graph.Build(_words, aln.Vocab, wordSeparator: !Align.IsCharacterTimed(language));
             _lineLastToken = new int[src.Lines.Count];
             Array.Fill(_lineLastToken, -1);
             for (int k = 0; k < _graph.Length; k++) if (_graph.OwnerLine[k] >= 0) _lineLastToken[_graph.OwnerLine[k]] = k;
