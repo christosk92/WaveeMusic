@@ -107,9 +107,23 @@ public static partial class Video
     static NodeHandle s_dockedReservation { get => s_dockedReservationState.Value; set => s_dockedReservationState.Value = value; }
 
     /// <summary>The overlay's <c>FollowRect</c>: ONE cached delegate (a fresh closure per render would re-diff the box). It
-    /// reads the placement with <c>Peek</c> because the engine runs it outside any reactive scope.</summary>
-    static readonly Func<NodeHandle> s_followDockedReservation =
-        static () => MainWindowHole.FollowsReservation(PlacementCore.Resolve(State.Surface.Peek())) ? s_dockedReservation : default;
+    /// reads the placement with <c>Peek</c> because the engine runs it outside any reactive scope. While the full-screen stage shows
+    /// the picture (its Video mode, <c>Stage.Picture</c>) the presenter follows the STAGE's reservation, whichever home it came from;
+    /// otherwise the docked card's while docked.</summary>
+    static readonly Func<NodeHandle> s_followReservation = static () =>
+    {
+        var resolved = PlacementCore.Resolve(State.Surface.Peek());
+        if (Stage.Picture.ShownPeek() && MainWindowHole.Stageable(resolved)) return Stage.Picture.Reservation;
+        return MainWindowHole.FollowsReservation(resolved) ? s_dockedReservation : default;
+    };
+
+    /// <summary>What the main window's presenter follows right now (the inspector's <c>status</c>): <c>stage</c> (the full-screen stage's
+    /// reservation, its Video mode), <c>docked</c> (the docked card's) or <c>none</c> (its own geometry).</summary>
+    public static string PresenterFollows()
+    {
+        var target = s_followReservation();
+        return target.IsNull ? "none" : target == Stage.Picture.Reservation ? "stage" : "docked";
+    }
 
     // MOUNT POINT (stage B contract)
     /// <summary>The right rail's ONE docked card (the Cap face), full-bleed at the rail's width, pinned above the header
@@ -148,6 +162,8 @@ public static partial class Video
         return HoleBoxes.Layer(
             [
                 Embed.Comp(static () => new PipSurface()),
+                // The full-screen stage's chrome OVER the picture (its Video mode): right after the presenter, so it paints over the hole.
+                Stage.Picture.ChromeLayer(),
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
                 Embed.Comp(static () => new HostObserver()),
                 Embed.Comp(static () => new JoinWatch()),
@@ -246,7 +262,9 @@ public static partial class Video
     /// for it — see <see cref="MainWindowHole.FullscreenAffordanceExits"/>.</summary>
     static readonly Action s_toggleMainFullscreen = static () =>
     {
-        if (MainWindowHole.FullscreenAffordanceExits(PlacementCore.Resolve(State.Surface.Peek()))) State.ExitFullscreen();
+        // the full-screen stage showing the picture (its Video mode) is the full screen this affordance leaves
+        if (Stage.Picture.ShownPeek()) Stage.Close(null, "video-affordance");
+        else if (MainWindowHole.FullscreenAffordanceExits(PlacementCore.Resolve(State.Surface.Peek()))) State.ExitFullscreen();
         else State.OpenAt(SurfacePlacement.Fullscreen);
     };
 
@@ -547,7 +565,10 @@ public static partial class Video
         public override Element Render()
         {
             var p = UseProps<Props>();
-            var owned = UseComputed(() => p.ChromeVisible.Value && State.Transport.Value == p.Identity);
+            // The stage's Video mode owns the transport while it shows the picture (its own card, over the picture): the presenter's strip
+            // stands down, so the window never draws two.
+            var owned = UseComputed(() => p.ChromeVisible.Value && State.Transport.Value == p.Identity
+                && !(p.Identity == TransportOwner.Docked && Stage.Picture.Shown()));
             return OnMedia.Transport(owned, p.Feed);
         }
     }
@@ -934,6 +955,8 @@ public static partial class Video
             UseSignalEffect(static () => { _ = Prefs.Epoch.Value; SyncAspect(); });
 
             var resolved = PlacementCore.Resolve(State.Surface.Value);
+            // The full-screen stage shows the picture (its Video mode): the box follows the stage's reservation and draws the picture alone.
+            bool staged = Stage.Picture.Shown() && MainWindowHole.Stageable(resolved);
             // The presenter is mounted for EVERY reason the main window may need to pump the session: the immersive stage
             // covering a docked video HIDES it (the bound Visible below) rather than unmounting it, and a pop-out
             // hand-off keeps it mounted (hidden) until the pop-out presents. The Detached-only read keeps every other
@@ -986,8 +1009,9 @@ public static partial class Video
                     ViewSlots.View(ViewKeys.VideoPip, new VideoPipProps
                     {
                         Placement = resolved,
+                        Staged = staged,
                         Visible = s_surfaceVisible,
-                        FollowRect = s_followDockedReservation,
+                        FollowRect = s_followReservation,
                         Width = _widthBind,
                         Height = _heightBind,
                         Transform = _transformBind,
@@ -1005,7 +1029,8 @@ public static partial class Video
         /// <summary>A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes inactive, the
         /// element hides its DComp visual and pumps with an inert binding (nothing is placed or shown from this slot; the player's own
         /// state pump never depended on this element, F132), and uncovering re-places the same visual with no new slot.</summary>
-        static readonly Prop<bool> s_surfaceVisible = Prop.Of(static () => !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value));
+        static readonly Prop<bool> s_surfaceVisible = Prop.Of(static () =>
+            !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value, Stage.Picture.Shown()));
 
         /// <summary>The picture: the keyed video area (the player stage over the poster), one component of its own, PERSISTENT across a
         /// theme switch (<c>Flow.Persist("video.presenter")</c>, plan A4.2): the switch remounts the root, and the new theme's presenter

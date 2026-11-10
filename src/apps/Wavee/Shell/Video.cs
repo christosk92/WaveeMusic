@@ -743,17 +743,23 @@ public static partial class Video
         public static bool Mounted(SurfacePlacement resolved, bool popOutPresented)
             => Owns(resolved) || (resolved == SurfacePlacement.Detached && !popOutPresented);
 
-        /// <summary>Whether the mounted presenter must be invisible: the immersive stage covers a docked video, or the
-        /// video lives in the pop-out and this presenter is only the outgoing half of the hand-off. A hidden presenter
-        /// stays mounted, pumps with an inert binding (nothing placed or shown from its slot) and publishes nothing the
-        /// player does not already publish itself.</summary>
-        public static bool Hidden(SurfacePlacement resolved, bool immersive)
-            => resolved == SurfacePlacement.Detached || (resolved == SurfacePlacement.Docked && immersive);
+        /// <summary>Whether the mounted presenter must be invisible: the immersive stage covers a docked video (unless the stage
+        /// shows the picture, <paramref name="staged"/>: then the presenter follows the stage's reservation instead), or the video lives
+        /// in the pop-out and this presenter is only the outgoing half of the hand-off. A hidden presenter stays mounted, pumps with an
+        /// inert binding (nothing placed or shown from its slot) and publishes nothing the player does not already publish itself.</summary>
+        public static bool Hidden(SurfacePlacement resolved, bool immersive, bool staged)
+            => resolved == SurfacePlacement.Detached || (resolved == SurfacePlacement.Docked && immersive && !staged);
+
+        /// <summary>Whether the full-screen stage can show the video of <paramref name="resolved"/> (its Video mode): the main window's
+        /// presenter holds it at a home (the docked card or the mini player), which the stage's reservation then takes over for as long
+        /// as the stage shows it. A video in the pop-out stays in its own window; a video off has nothing to show.</summary>
+        public static bool Stageable(SurfacePlacement resolved) => resolved is SurfacePlacement.Docked or SurfacePlacement.Floating;
 
         /// <summary>Whether the stay-mounted presenter takes its rect from the docked reservation (the engine's
         /// <c>FollowRect</c>, resolved in the same frame after layout and the animation tick) instead of from its own bound
         /// Width/Height/Transform. Only Docked has a reservation in the layout tree; the mini player and fullscreen are
-        /// positioned by the presenter's own geometry.</summary>
+        /// positioned by the presenter's own geometry. The stage's Video mode is the other reservation (<see cref="Stageable"/>):
+        /// while it shows the picture, the presenter follows the stage's instead, whichever home it came from.</summary>
         public static bool FollowsReservation(SurfacePlacement resolved) => resolved == SurfacePlacement.Docked;
 
         public static bool EngineTransportEnabled => false;

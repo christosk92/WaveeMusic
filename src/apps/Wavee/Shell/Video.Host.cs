@@ -207,17 +207,39 @@ public static partial class Video
                 if (target == SurfacePlacement.Fullscreen) { SetPopOutFullscreen(true, "open-at"); return; }
                 if (target == SurfacePlacement.Detached) SetPopOutFullscreen(false, "open-at");
             }
+            if (target == SurfacePlacement.Fullscreen && OpenStage("open-at")) return;
             Commit(PlacementCore.OpenAt(Surface.Peek(), target));
+        }
+
+        /// <summary>THE MAIN WINDOW'S "VIDEO IN FULL SCREEN" where the structure draws the stage's Video mode
+        /// (<c>StagePolicy.VideoStage</c>): there is ONE full screen, the stage, and it opens on the picture. The video comes on at its
+        /// main-window home first when it was off (the mini player when that is where the user keeps it, else the docked card; the
+        /// preferred home is not rewritten): the stage shows the picture by taking that presenter over. False where the structure keeps
+        /// the video-only full screen, and the caller commits it as before.</summary>
+        static bool OpenStage(string why)
+        {
+            if (!Stage.Picture.Supported) return false;
+            var s = Surface.Peek();
+            if (!MainWindowHole.Stageable(PlacementCore.Resolve(s)) && PlacementCore.Resolve(s) != SurfacePlacement.Fullscreen)
+            {
+                var home = s.Preferred == SurfacePlacement.Floating ? SurfacePlacement.Floating : SurfacePlacement.Docked;
+                Commit(PlacementCore.OpenAt(s, home) with { Preferred = s.Preferred });
+            }
+            Log.Info(LogCategory, "video full screen opens the stage why=" + why + " placement=" + Resolved);
+            Stage.Open(null, "video-" + why);
+            return true;
         }
 
         /// <summary>Off — globally and stickily. Every user-initiated close lands here.</summary>
         public static void TurnOff() => Commit(PlacementCore.TurnOff(Surface.Peek()));
 
         /// <summary>Fullscreen where the video IS: the pop-out's own fullscreen while it is Detached (its monitor), else the main
-        /// window's full-bleed surface (the main window's monitor). See <see cref="OpenAt"/>.</summary>
+        /// window's full screen: the stage on the picture where the structure draws it (<see cref="OpenStage"/>), the video-only
+        /// full-bleed surface elsewhere. See <see cref="OpenAt"/>.</summary>
         public static void EnterFullscreen()
         {
             if (Resolved == SurfacePlacement.Detached) { SetPopOutFullscreen(true, "enter"); return; }
+            if (OpenStage("enter")) return;
             Commit(PlacementCore.EnterFullscreen(Surface.Peek()));
         }
 

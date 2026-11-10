@@ -13,6 +13,7 @@
 //   `Stage.Gallery`    StageGalleryProps       the visualizer gallery pane
 //   `Stage.Options`    StageOptionsProps       the options popover (it mounts in the overlay layer, outside the stage subtree)
 //   `Stage.Caption`    StageCaptionProps       the lyric caption (its own file)
+//   `Stage.PictureChrome` StagePictureChromeProps  Video mode's chrome over the picture (mounted by the core in the video layer)
 //   `Stage.Backdrop` ... `Stage.ArtistPane`   the layout layers (T7a2: `StageLayerProps.cs`)
 //
 // WHY THE ROOT IS MOUNTED THROUGH `Mount`. The surface is a component with hooks that must run in a fixed order whatever theme
@@ -127,6 +128,30 @@ public sealed record StageRootView
 
     /// <summary>The core layers, as builders: the pane host (it mounts the lyrics pane, `Queue.StagePane` and <see cref="ViewKeys.StageArtistPane"/>), the caption host and the zero-size machinery.</summary>
     public required StageLayers Layers { get; init; }
+
+    // ── Video mode (Cinema): the picture is the one video presenter, following a reservation the template draws ──────────
+
+    /// <summary>The stage shows the music video (<c>Stage.Mode.Video</c>). Only a structure whose stage policy states
+    /// <see cref="Theming.StagePolicy.VideoStage"/> is ever in it. While it holds, the template draws a hollow reservation for the picture
+    /// (its box carries <see cref="PictureRealized"/>; the presenter follows its painted rect), none of the audio layers (the picture covers
+    /// them), and none of its chrome: the chrome over the picture is <see cref="ViewKeys.StagePictureChrome"/>, which the core mounts above
+    /// the video hole. A predicate. Appended (contract 1.95).</summary>
+    public Func<bool> ShowPicture { get; init; } = static () => false;
+
+    /// <summary>The picture's reservation was realized: the stay-mounted presenter follows this node (the engine's <c>FollowRect</c>). Put it
+    /// on the reservation's box. Appended (contract 1.95).</summary>
+    public Action<NodeHandle> PictureRealized { get; init; } = static _ => { };
+}
+
+/// <summary>The props of <see cref="ViewKeys.StagePictureChrome"/>: the stage's chrome over the music video in Video mode (the top bar, the
+/// title block, the transport, the hairline, their scrims), drawn by the structure with the stage's own view (its wiring, predicates and
+/// chrome props). The core mounts it in the video layer right after the presenter, so it paints over the picture; the template is a
+/// full-bleed layer whose ground passes the pointer to the stage's idle machine (<see cref="StageRootView.OnHoverMove"/>) and leaves full
+/// screen on a double-click. Appended (contract 1.95).</summary>
+public sealed record StagePictureChromeProps
+{
+    /// <summary>The mounted stage's view (one per stage: built once by the core surface).</summary>
+    public required StageRootView Root { get; init; }
 }
 
 /// <summary>Element builders of the stage's layers that are not the layout layers' (those are views since T7a2: backdrop, hero, face, scrim,

@@ -186,6 +186,12 @@ public sealed record StagePolicy(AspectThresholds Aspect)
     /// <summary>The metrics of every window tier that has none of its own (Standard).</summary>
     public StageTierMetrics Metrics { get; init; } = StageTierMetrics.Default;
 
+    /// <summary>The structure draws the stage's Video mode (Cinema: <c>Stage.Mode.Video</c>, the reservation the picture follows and
+    /// <see cref="Contracts.ViewKeys.StagePictureChrome"/>). Where it does, the app has ONE full screen: the stage opens on the picture while a
+    /// video is on, and F11, the video menu's "Video in fullscreen" and the presenter's own full-screen buttons open the stage. Where it does not,
+    /// those doors keep the video-only full screen. Default false. Appended (contract 1.95).</summary>
+    public bool VideoStage { get; init; }
+
     /// <summary>The metrics while the window is Compact; null keeps <see cref="Metrics"/>.</summary>
     public StageTierMetrics? Compact { get; init; }
 

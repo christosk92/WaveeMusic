@@ -148,6 +148,11 @@ public sealed record VideoPipProps
     /// <summary>The mini player's "Play in a separate window" button: announce and pop the video out. Null where the host cannot open a
     /// second window. Appended (contract 1.54).</summary>
     public Action? ToSeparateWindow { get; init; }
+
+    /// <summary>The picture is staged in the full-screen stage's Video mode: the box follows the stage's reservation (<see cref="FollowRect"/>)
+    /// and the template draws the picture ALONE, whatever <see cref="Placement"/> says (no card, no strip, no zones): the stage draws its own
+    /// chrome over it. Appended (contract 1.95).</summary>
+    public bool Staged { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.VideoPopOut"/>. Built per render of the core's pop-out content (the join, the fullscreen mode and

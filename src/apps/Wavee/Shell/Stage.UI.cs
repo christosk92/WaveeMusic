@@ -105,7 +105,11 @@ public static partial class Stage
 
         /// <summary>SurfaceCore's resolved layout (its first render, before any view reads it).</summary>
         internal void BindLayout(IReadSignal<Layout> source) => _layout = source;
+        /// <summary>What the stage shows: the stored mode, or <see cref="Stage.Mode.Video"/> while the picture is offered and chosen.</summary>
         public readonly Signal<Mode> Mode = new(Stage.Mode.Lyrics);
+        /// <summary>The stage offers its Video mode now (<see cref="Picture.Offered"/>: the structure draws it and a music video is on in the
+        /// main window): the top bar's Video tab is there. SurfaceCore writes it.</summary>
+        public readonly Signal<bool> VideoOffered = new(false);
         public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
         public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
         /// <summary>The gallery is open AND the layout has room for it (<c>Layout.ShowGallery</c>) — the pane's mount gate
@@ -167,6 +171,9 @@ public static partial class Stage
         public Action OpenGallery = static () => { };
         public Action<Mode> SetMode = static _ => { };
         public Action ToggleGallery = static () => { }, Exit = static () => { }, Activity = static () => { };
+        /// <summary>Video mode's "Switch to audio": the video goes off (the placement menu's "Turn off video", one verb) and the stage lands on
+        /// the cover and lyrics.</summary>
+        public Action SwitchToAudio = static () => { };
         /// <summary>Collapse or open the Up next column (persisted: the stage reopens as it was left).</summary>
         public Action ToggleUpNext = static () => { };
         /// <summary>The idle machine's holds: pointer over a control · a menu/tip/flyout open (counted) · a seek scrub.</summary>
@@ -178,11 +185,14 @@ public static partial class Stage
 
     /// <summary>Enter from any entry point. <paramref name="begin"/> is the caller's <c>UseContext(SharedTransition.Begin)</c>
     /// (null when headless): the bar art's flight is captured BEFORE the mount so the hero receives it. Nothing playing opens
-    /// an EMPTY stage, exactly as the rail ⛶ does today (V-U53).</summary>
+    /// an EMPTY stage, exactly as the rail ⛶ does today (V-U53). With a music video on, a structure that draws the Video mode opens
+    /// on the picture (<see cref="Picture"/>).</summary>
     public static void Open(Action<string>? begin, string cause)
     {
-        if (!Entry.CanEnter(Video.State.Resolved == Video.SurfacePlacement.Fullscreen)) return;
         if (Shell.Ui.ImmersiveLyrics.Peek()) return;
+        // ONE full screen: a video-only full screen that is up gives way to the stage (the picture goes back to its home, which the stage's
+        // Video mode then takes over where the structure draws it)
+        if (Video.State.Resolved == Video.SurfacePlacement.Fullscreen) Video.State.ExitFullscreen();
         begin?.Invoke(Entry.MorphKey);
         Shell.Ui.ImmersiveLyrics.Value = true;
         Diagnostics.NoteEnter(cause);
@@ -226,6 +236,10 @@ public static partial class Stage
         // started in Render with the host timer clock (MediaPlayerElement.cs:729-730) — never with 0 (V-U10).
         readonly ChromeIdle _idle = ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage);
         readonly IStageVerbs _verbs;
+        // Video mode: the picture was chosen (the stage OPENS on it whenever it is offered; the Video tab chooses it, another tab leaves it), and
+        // the stored mode the stage shows otherwise (the preference, mirrored by the epoch effect). Mode.Video is never stored.
+        readonly Signal<bool> _pictureWanted = new(Picture.OfferedNow());
+        readonly Signal<Mode> _stored = new(Mode.Lyrics);
         // The root box's wiring and the structure's view of the surface: built ONCE (the delegates close over this component's fields);
         // each render only re-sizes the view. The structure places all of it and decides none of it.
         readonly StageRootView _view;
@@ -244,7 +258,23 @@ public static partial class Stage
             _onWake = () => { _armedDueMs = double.PositiveInfinity; Sync(); };
             // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
-            _ctx.SetMode = _verbs.SetMode;
+            _ctx.SetMode = mode =>
+            {
+                if (mode == Mode.Video)
+                {
+                    if (_ctx.VideoOffered.Peek()) _pictureWanted.Value = true;
+                    _verbs.Activity();
+                    return;
+                }
+                _pictureWanted.Value = false;
+                _verbs.SetMode(mode);
+            };
+            _ctx.SwitchToAudio = () =>
+            {
+                _pictureWanted.Value = false;
+                Video.State.TurnOff();
+                _verbs.SetMode(Mode.Lyrics);
+            };
             // the verbs decide on the gallery as it is SHOWN (StageModel.StateOf), then the ask is noted: the order matters on a tier whose
             // gallery opens only on request, where the first press must open a sheet nobody has seen yet
             _ctx.ToggleGallery = () => { _verbs.ToggleGallery(); _ctx.GalleryAsked.Value = true; };
@@ -287,6 +317,8 @@ public static partial class Stage
                 // artist-header lookups only while the Artist layout is the stored choice in Visualizer mode (Card never pays for them)
                 ShowHeroFacts = () => ctx.Mode.Value == Mode.Visualizer && ctx.LayoutPref.Value == VizLayout.Artist,
                 HairlineFraction = () => _frac.Value,
+                ShowPicture = () => ctx.Mode.Value == Mode.Video,
+                PictureRealized = Picture.Realized,
                 TopBar = new StageTopBarProps { Stage = ctx },
                 Transport = TransportProps(ctx),
                 Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },
@@ -363,9 +395,7 @@ public static partial class Stage
             // ── EVERY preference, once per Prefs.Stage epoch, into the context's signals (O8) — the only Prefs.Stage reads on the stage ──
             UseSignalEffect(() =>
             {
-                var m = (Mode)Prefs.Stage.Mode();
-                ctx.Mode.SetIfChanged(m);
-                Diagnostics.NoteMode(m);                          // gated: logs only on a real change, keeps the card's mode truthful
+                _stored.SetIfChanged((Mode)Prefs.Stage.Mode());
                 ctx.Kind.SetIfChanged((Visualizer.Kind)Prefs.Stage.Visualizer());
                 ctx.GalleryOpen.SetIfChanged(Prefs.Stage.GalleryOpen());
                 ctx.UpNextOpen.SetIfChanged(Prefs.Stage.UpNextOpen());
@@ -380,6 +410,24 @@ public static partial class Stage
                 ctx.HeroMotion.SetIfChanged(Prefs.Stage.HeroMotion());
                 ctx.HeroDim.SetIfChanged(Prefs.Stage.HeroDim());
             });
+
+            // ── the mode: the picture while it is offered and chosen (Video mode, never stored), else the stored mode; the picture's
+            //    showing state goes to Stage.Picture (the presenter follows the stage's reservation while it holds) ──
+            UseSignalEffect(() => ctx.VideoOffered.SetIfChanged(Picture.Offered()));
+            UseSignalEffect(() =>
+            {
+                var m = _pictureWanted.Value && ctx.VideoOffered.Value ? Mode.Video : _stored.Value;
+                ctx.Mode.SetIfChanged(m);
+                Diagnostics.NoteMode(m);                          // gated: logs only on a real change, keeps the card's mode truthful
+                Picture.NoteMode(m == Mode.Video);
+            });
+            // the stage's view, for the chrome Video mode draws over the picture (in the video layer, outside this subtree)
+            var view = _view;
+            UseLayoutEffect(() =>
+            {
+                Picture.Publish(view);
+                return () => Picture.Withdraw(view);
+            }, DepKey.Empty);
 
             // ── the layout axis, derived (each effect reads only what the previous wrote): the effective layout, whether the caption
             //    line shows, the ONE Look the geometry takes, the pane region's pane, and the lyrics view's visibility gate ──
@@ -537,7 +585,8 @@ public static partial class Stage
                 _verbs.StepFace(step, e.Shift);
                 return;
             }
-            if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.G && !e.IsRepeat) { e.Handled = true; _ctx.ToggleGallery(); return; }
+            // G is the visualizer's: Video mode has no gallery (the picture is the stage)
+            if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.G && !e.IsRepeat && _ctx.Mode.Peek() != Mode.Video) { e.Handled = true; _ctx.ToggleGallery(); return; }
             var intent = Shell.PlayerKey(e.KeyCode, true, e.Handled, e.Ctrl || e.Alt, e.Shift);
             if (intent == Shell.PlayerKeyIntent.None) return;
             e.Handled = true;

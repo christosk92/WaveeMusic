@@ -107,6 +107,8 @@ public static class ClassicStageTiers
         Huge = HugeMetrics,
         HugeWide = HugeWideMetrics,
         HugeWideRung = ClassicDetailTiers.HugeWideRung,
+        // Classic draws the stage's Video mode (Cinema, the board "Classic · Cinema"): one full screen while a video is on.
+        VideoStage = true,
     };
 
     // ── the stage views' record (per window tier) ────────────────────────────────────────────────────────────────────────

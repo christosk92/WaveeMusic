@@ -19,8 +19,8 @@
 //   • `Stage.Transport` the three predicates the transport card keeps (byte-identical to the previous stage).
 //   • `Stage.Tone`      the accent cross-fade and scrim constants (alphas live here, colours in StageInk — ch 00 §4.4;
 //                       named Tone because the UI files alias `Ink = Wavee.Theming.Roles.StageInk`, V-U1).
-//   • `Stage.Entry`     who may enter (not over fullscreen video — an EMPTY stage is allowed, as the rail ⛶ does today) and
-//                       the morph key the bar art and the hero share.
+//   • `Stage.Entry`     the morph key the bar art and the hero share (an EMPTY stage is allowed, as the rail ⛶ does today; a
+//                       video full screen that is up gives way to the stage, `Stage.Open`).
 //   • `Stage.Caption`   the lyric caption's clock view (which line it hangs on, when the break dots stand in) and its slots.
 //
 // Rules: `System`-only — no Element, no signal, no entity read — so Wavee.Tests drives the real arithmetic. No
@@ -32,11 +32,14 @@ public static partial class Stage
 {
     // ── 1. the four modes ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>What the right-hand region shows. PERSISTED ints (Platform.Keys.StageMode) — append only.</summary>
-    public enum Mode : byte { Lyrics = 0, Visualizer = 1, Queue = 2, Artist = 3 }
+    /// <summary>What the right-hand region shows. PERSISTED ints (Platform.Keys.StageMode) — append only. <see cref="Video"/> is the one
+    /// mode that is never stored: the stage shows the playing music video, and it is offered and chosen while a video is on
+    /// (<see cref="Picture"/>), never restored from the preference.</summary>
+    public enum Mode : byte { Lyrics = 0, Visualizer = 1, Queue = 2, Artist = 3, Video = 4 }
 
     public static class ModeRules
     {
+        /// <summary>The STORED modes (Lyrics through Artist): <see cref="Mode.Video"/> is not one.</summary>
         public const int Count = 4;
         /// <summary>A stored/hand-edited int → a real mode; anything else is Lyrics.</summary>
         public static int Coerce(int stored) => (uint)stored < (uint)Count ? stored : (int)Mode.Lyrics;
@@ -369,6 +372,13 @@ public static partial class Stage
         /// truncates to "Ex…" (the icon-only classes show "⤢" alone, §3.5).</summary>
         public bool ExitLabelShown => !IconOnlySelector && TopBarSideW >= BarButtonW + BarButtonGap + ExitLabelW;
 
+        /// <summary>Video mode's "Switch to audio" button's budget (its glyph and its label in the longest shipped locale).</summary>
+        public const float AudioLabelW = 168f;
+
+        /// <summary>Video mode's "Switch to audio" carries its label only beside a labelled selector and when its column holds it beside
+        /// the labelled exit; otherwise it is the glyph alone with the label as its tooltip (never truncated).</summary>
+        public bool AudioLabelShown => !IconOnlySelector && TopBarSideW >= AudioLabelW + BarButtonGap + ExitLabelW;
+
         // ── the transport card's clusters ───────────────────────────────────────────────────────────────────────────
 
         /// <summary>The card's horizontal padding · the centred cluster (shuffle · previous · PLAY 56 · next · repeat at Gap 8)
@@ -585,8 +595,5 @@ public static partial class Stage
         /// <summary>The shared-element key the player bar's art and the stage hero both carry (an IMAGE node — the
         /// engine captures only image nodes, ConnectedAnimation.cs:246-250).</summary>
         public const string MorphKey = "stage:art";
-        /// <summary>Never over a fullscreen VIDEO (F11 owns that). Nothing playing is NOT a bar: the rail ⛶ opens an empty
-        /// stage today (the rail's ⛶: "a track with no lyrics still opens a full stage") and so does every door here (V-U53).</summary>
-        public static bool CanEnter(bool videoFullscreen) => !videoFullscreen;
     }
 }

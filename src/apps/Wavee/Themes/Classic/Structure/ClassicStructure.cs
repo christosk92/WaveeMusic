@@ -133,6 +133,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
         // P3: the stage's pane region (its rect, move, clip and the frame each pane enters in); the KeepAlive and which pane is shown stay core (`Stage.PaneHost`).
         views.Add(ViewKeys.StagePane, ClassicStagePane.Template, "classic.stage.pane");
+        // Video mode (Cinema, contract 1.95): the stage's chrome over the picture, mounted by the core above the video hole.
+        views.Add(ViewKeys.StagePictureChrome, ClassicStagePictureChrome.Template, "classic.stage.picture-chrome");
         // T7b: the lyrics reading surface (the layer stack, the overlays, the stage's reading column) and its lines style (the state line, the
         // loading bars, the unsynced block, the synced list and its rows, the podcast peek). The document, the clock, the follow, the cascade,
         // the depth-of-field ramp and the word wipe stay core (`Lyrics.ViewCore`).

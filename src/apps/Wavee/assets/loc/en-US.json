@@ -4132,7 +4132,8 @@
       "lyrics": "Lyrics",
       "visualizer": "Visualizer",
       "queue": "Up next",
-      "artist": "Artist"
+      "artist": "Artist",
+      "video": "Video"
     },
     "exit": "Exit full screen",
     "gallery": "Visualizer gallery and settings",

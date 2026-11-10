@@ -40,4 +40,10 @@ public static partial class ViewKeys
     /// <summary>The pane region (Lyrics, Up next, Artist): the region's rect, move and clip, and the frame every pane's body enters in.
     /// Mounted by the core pane host, which keeps the KeepAlive and which pane is shown. Props: <see cref="StagePaneProps"/>.</summary>
     public static readonly ViewKey<StagePaneProps> StagePane = new("Stage.Pane");
+
+    /// <summary>Video mode's chrome OVER the picture (Cinema): the top bar with the Video tab, the title block over its scrim, the transport and the
+    /// hairline, on the stage's idle machine. Mounted by the core in the video layer right after the presenter (the hole erases what is painted
+    /// under it), only while the stage shows the picture, so only a structure that states <c>StagePolicy.VideoStage</c> registers it. Props:
+    /// <see cref="StagePictureChromeProps"/>. Appended (contract 1.95).</summary>
+    public static readonly ViewKey<StagePictureChromeProps> StagePictureChrome = new("Stage.PictureChrome");
 }

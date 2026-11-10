@@ -243,7 +243,7 @@ public static partial class Diagnostics
             Arg("chrome", ArgType.Enum, "shown: the chrome at rest with no auto-hide (Zune's hover band, the video presenter's transport, the fullscreen stage's controls)", null, "shown|hidden"),
             Arg("join", ArgType.Enum, "the video join poster's state: poster (the artwork alone: a player bound, no picture yet), working (the ring and Loading..., the default offline), failed (the fault line)", null, "poster|working|failed", requires: "video"),
             Arg("fromMs", ArgType.Int, "the fake video track's position", "74000", requires: "video"),
-            Arg("stage", ArgType.Enum, "the fullscreen stage's mode (key f11 opens it)", null, "lyrics|visualizer|queue|artist"),
+            Arg("stage", ArgType.Enum, "the fullscreen stage's mode (key f11 opens it); video: open the stage at the mount, on the picture (Video mode, Cinema) when a video is up (with video=docked|floating) and the theme draws it", null, "lyrics|visualizer|queue|artist|video"),
             Arg("layout", ArgType.Enum, "the fullscreen stage's layout", null, "card|large|centered|artist"),
             Arg("gallery", ArgType.Enum, "the fullscreen stage's gallery", null, "on|off|true|false"),
             Arg("heroLyrics", ArgType.Enum, "the Artist layout's lyrics over the photo", null, "on|off|true|false"),

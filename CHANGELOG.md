@@ -22,6 +22,13 @@ versions separately under `v*` and is not tracked in this file.)
   Ctrl+Alt+M, or from the taskbar's right-click menu; the full window hides while it is open and comes back from the art,
   the back button or any way you bring Wavee back, and the music never stops (#197).
 
+- **Full screen opens on the music video (Classic).** With a video on, the app's full screen now opens on the picture,
+  edge to edge, instead of on the cover and lyrics: Video is its first tab, Lyrics, Up next and Artist stay one click away.
+  The top bar, the title and the transport fade after 3 seconds without the pointer (the cursor too) and come back on any
+  move or key; Space, the arrows and the volume keys work as before, and Esc, F11 or a double-click on the picture leave.
+  "Switch to audio" in the top bar turns the video off and lands on today's cover and lyrics. F11 and "Video in
+  fullscreen" open this same full screen; WinUI and Zune keep their video-only full screen for now.
+
 - **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.

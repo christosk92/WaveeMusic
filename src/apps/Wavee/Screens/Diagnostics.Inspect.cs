@@ -889,6 +889,12 @@ public static partial class Diagnostics
                         _ => Playback.Video.SwitchPhase.Idle,
                     };
             }
+            // `stage=video` opens the stage at the mount (on the picture when a video is up and the theme draws Video mode).
+            if (IsStageVideo(a))
+            {
+                Stage.Open(null, "inspect.mount");
+                RunFrames(30);
+            }
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
                 Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
@@ -949,10 +955,10 @@ public static partial class Diagnostics
         {
             error = "";
             if (!(a.Has("stage") || a.Has("layout") || a.Has("gallery") || a.Has("heroLyrics"))) return true;
-            if (a.Has("stage"))
+            if (a.Has("stage") && !IsStageVideo(a))
             {
                 int mode = a.Str("stage").ToLowerInvariant() switch { "lyrics" => 0, "visualizer" => 1, "queue" => 2, "artist" => 3, _ => -1 };
-                if (mode < 0) { error = "stage is lyrics, visualizer, queue or artist"; return false; }
+                if (mode < 0) { error = "stage is lyrics, visualizer, queue, artist or video"; return false; }
                 Prefs.Stage.SetMode(mode);
             }
             if (a.Has("layout"))
@@ -965,6 +971,25 @@ public static partial class Diagnostics
             if (a.Has("heroLyrics")) Prefs.Stage.SetHeroLyrics(a.Str("heroLyrics").ToLowerInvariant() is "on" or "true" or "1");
             Prefs.Stage.SetTipSeen();
             return true;
+        }
+
+        /// <summary>`stage=video`: the mount opens the stage itself (Video mode is never a stored preference: the stage opens on the picture
+        /// whenever a video is up in the main window and the theme draws it).</summary>
+        static bool IsStageVideo(Inspect.Args a) => string.Equals(a.Str("stage"), "video", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>`stage{open, mode, offered, picture, follows}`: the fullscreen stage (open, the mode it shows, whether it offers its Video mode)
+        /// and the picture (the stage shows it: Video mode) and what the one video presenter follows right now (stage: the stage's reservation;
+        /// docked: the docked card's; none: its own geometry).</summary>
+        static void WriteStageFacts(Utf8JsonWriter w)
+        {
+            w.WriteStartObject("stage");
+            bool open = Shell.Ui.ImmersiveLyrics.Peek();
+            w.WriteBoolean("open", open);
+            if (open) w.WriteString("mode", Stage.Diagnostics.LastMode.ToString());
+            w.WriteBoolean("offered", Stage.Picture.OfferedNow());
+            w.WriteBoolean("picture", Stage.Picture.ShownPeek());
+            w.WriteString("follows", Video.PresenterFollows());
+            w.WriteEndObject();
         }
 
         /// <summary>`video{resolved, requested, preferred, transport, player}`: the one video surface's placement (process statics a
@@ -1617,6 +1642,7 @@ public static partial class Diagnostics
             w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
             WriteHealth(w);   // overlays, memory and GC (Diagnostics.Inspect.Picture.cs)
             WriteVideoFacts(w);
+            WriteStageFacts(w);
             WriteCanvasFacts(w);
             if (_shell is { } shell)
             {

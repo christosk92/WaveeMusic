@@ -10,6 +10,7 @@
 //              shadow; docked and fullscreen draw none of them. Visible is BOUND, so covering or releasing the picture re-renders and remounts
 //              nothing; the three geometry binds and `FollowRect` are the engine's (docked: the box is placed over the reservation).
 //   docked     a hover strip (mini player, full screen, off), right-aligned, no label.
+//   staged     the picture alone: the full-screen stage shows it (Video mode) and draws its own chrome over it.
 //   floating   a hover strip: the drag surface and the close button, inset by the corner width and the edge band so neither sits under a
 //              resize zone; and the eight resize zones, a 3-row skeleton whose every non-zone cell is pass-through, topmost so a zone always
 //              wins over the chrome. Corner rows are 12 tall, edge bands 6 thin; the south-east zone carries the one painted pixel of the layer.
@@ -37,11 +38,13 @@ internal static class ClassicVideoPip
     /// <summary>The registered template of <see cref="ViewKeys.VideoPip"/>.</summary>
     public static Element Template(VideoPipProps props, in ViewContext ctx)
     {
-        bool floating = props.Placement == Video.SurfacePlacement.Floating;
+        // Staged in the full-screen stage (its Video mode): the picture alone, following the stage's reservation; the stage draws its chrome.
+        bool staged = props.Staged;
+        bool floating = !staged && props.Placement == Video.SurfacePlacement.Floating;
         // The chrome's targets are the window tier's: a Compact window (C-Video-Compact) shows 40 x 40 buttons at rest on a 40 strip.
         var tier = ClassicStageTiers.PanelOf(ctx.Tier());
         var kids = new List<Element>(4) { props.Area() };
-        if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
+        if (!staged && props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
         if (floating) { kids.Add(Chrome(props, tier)); kids.Add(ResizeBands(props.Gestures, tier)); }
 
         return new BoxEl
