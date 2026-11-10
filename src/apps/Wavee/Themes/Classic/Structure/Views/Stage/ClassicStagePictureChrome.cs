@@ -56,8 +56,9 @@ internal static class ClassicStagePictureChrome
         return Stage.Layer with
         {
             Key = "stage:picturechrome",
-            // the stage's pointer wiring and key map, for the moves and keys that land on this layer instead of the stage's root
-            OnHoverMove = v.OnHoverMove,
+            // the stage's pointer wiring and key map, for the moves and keys that land on this layer instead of the stage's root. A move
+            // anywhere within it is idle activity: the picture's ground is the hit leaf, the bars and the card are children.
+            OnPointerMoveWithin = v.OnHoverMove,
             OnPointerExit = v.OnPointerExit,
             OnPointerWheel = v.OnPointerWheel,
             OnKeyDown = v.OnKeyDown,

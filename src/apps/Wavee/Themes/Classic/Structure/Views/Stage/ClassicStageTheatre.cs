@@ -34,14 +34,27 @@ internal static class ClassicStageTheatre
 
     public sealed record PictureProps(StageRootView View);
 
-    /// <summary>The floor and the reservation. A component of its own so a Cinema ⇄ Theatre change re-renders this box alone (the reservation's
-    /// rect), never the stage root.</summary>
+    /// <summary>The floor, the letterbox ground and the reservation. A component of its own so a Cinema ⇄ Theatre change re-renders this box alone
+    /// (the reservation's rect), never the stage root.
+    /// <para>THE RESERVATION IS HOLLOW: it is the one box that moves (its bounds spring between the two rects, the presenter following it), and a
+    /// box that paints re-rasters every tile it crosses on every frame of that move. So the letterbox black is never on the moving box: it is a
+    /// STILL box at each layout's rect (the whole stage in Cinema, the 16:9 box in Theatre), a sibling under the reservation (never an ancestor of
+    /// the picture). What shows is what the moving black box showed: the presenter (its own letterbox included) covers its rect on every frame,
+    /// Theatre's box lies inside the shrinking picture from the first frame and Cinema's ground comes back only once the growing picture has
+    /// filled the stage (<see cref="ClassicStageTheatreGeometry.GroundReturnMs"/>), so the floor shows around the moving picture either way.</para></summary>
     internal sealed class Picture : Component
     {
+        bool _theatre;   // the layout the last render drew: what tells a return from Theatre from the stage opening in Cinema
+
         public override Element Render()
         {
             var v = UseProps<PictureProps>().View;
-            var r = PictureRect(v.Stage.Layout.Value, v.ShowTheatre());
+            var L = v.Stage.Layout.Value;
+            bool theatre = v.ShowTheatre();
+            bool fromTheatre = _theatre && !theatre;
+            _theatre = theatre;
+            var r = PictureRect(L, theatre);
+            var box = G.Of(L).Picture;
             return Stage.Layer with
             {
                 HitTestVisible = false, HitTestPassThrough = false,
@@ -49,12 +62,31 @@ internal static class ClassicStageTheatre
                 [
                     // the floor around the picture in Theatre (under it in Cinema the letterbox covers it)
                     new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = Ink.Floor, HitTestVisible = false },
+                    // Cinema's letterbox ground, edge to edge: there at once when the stage opens in Cinema; back from Theatre once the picture has
+                    // filled the stage (until then the floor shows around the growing picture, as it did around the growing box); gone at once as
+                    // Theatre opens (the floor shows around the shrinking picture)
+                    theatre
+                        ? new BoxEl { Visible = false }
+                        : new BoxEl
+                        {
+                            Key = "stage:picture:ground", AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = Tok.MediaLetterbox, HitTestVisible = false,
+                            Enter = fromTheatre ? new EnterExit(Opacity: 0f, Active: true, DelayMs: G.GroundReturnMs) : default,
+                            Transition = MotionTok.ControlNormal,
+                        },
+                    // Theatre's letterbox box, still at the picture's 16:9 rect (the shrinking picture covers it from the first frame)
+                    theatre
+                        ? new BoxEl
+                        {
+                            Key = "stage:picture:letterbox", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                            Margin = new Edges4(box.X, box.Y, 0f, 0f), Width = box.W, Height = box.H, Fill = Tok.MediaLetterbox,
+                        }
+                        : new BoxEl { Visible = false },
+                    // the reservation: hollow, moving
                     new BoxEl
                     {
                         Key = "stage:picture:box",
                         AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                         Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H,
-                        Fill = Tok.MediaLetterbox,
                         Layout = Move,
                         OnRealized = v.PictureRealized,
                     },

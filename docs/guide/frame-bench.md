@@ -51,7 +51,7 @@ second is **warm**. Label them (`--bench-label`) and compare the two summaries.
 | `--bench-size WxH` | The window's CLIENT size in DIP at its monitor's DPI (`--bench-size 1440x960`), so two runs measure one layout; without it the window keeps the size it came up at. `windowPx` in the summary says what landed. |
 | `--theme ID`, `--bench-blur N`, `--bench-layout card\|large` | The theme the run uses (`--fake` keeps it in memory), and for the stage scenarios the lyrics blur (0–100) and the stage layout. The summary records the look the run had: `theme`, `kind`, `scale`, `lyricsBlur`, `stageLayout` (schema 2.2), and the stdout head line prints `theme=` and `blur=`. |
 | `--probe-out DIR` | Where everything is written (default `<profile>\bench`). |
-| `--fake-video PATH` | With `--fake`: enables the `video` scenario. |
+| `--fake-video PATH` | With `--fake`: enables the `video` scenario (and the opt-in `stage-theatre` / `stage-cinema`). |
 | `--bench-shots` | `sidebar-disclosure` / `drawer-toggle` only: before the measured window, two toggles from rest with every presented frame captured for 0.6 s into `shots\<scenario>-<toggle>-<frame>-<ms>.png`. A capture stalls the GPU for its turn, so the frames are spaced wider than the display's; the motion is time-based, so each is the true pose at its moment. |
 
 Real targets come from the profile itself: `WaveeMusic\play-recency.json` (what was played, newest first) and
@@ -84,6 +84,8 @@ The full suite at the default windows takes about 3–4 minutes.
 | `drawer-toggle` | Opt-in, by name only: the first bench playlist, its third row's drawer opening and closing every 0.6 s (a `FlowReveal` drawer in the track table). |
 | `playlist-playing` | Opt-in, by name only: a track playing, the first bench playlist's page on screen (the playing row's equalizer where the list holds the track, the seek bar), rail closed. The owner's "playing, looking at a playlist" steady state. |
 | `playlist-lyrics` | Opt-in, by name only: the same with the lyrics rail open. |
+| `stage-theatre` | Opt-in, by name only, `--fake --fake-video` only: the full screen on the music video (Classic's Video mode), the picture moving between Cinema and Theatre every 1.5 s. The stage stays windowed (the window keeps its off-monitor place). |
+| `stage-cinema` | Opt-in, by name only, `--fake --fake-video` only: the same full screen at rest in Cinema, its chrome idled out. |
 | `hide-restore` | Opt-in, by name only (it minimizes and hides the window): minimize, tray-hide and cover cycles, memory sampled visible / hidden / restored plus the restore latency. See `docs/guide/hidden-memory.md` and `ops/tools/hidden-mem.ps1`. |
 
 The scroll scenarios first wait (Home 20 s, the list 30 s) for a scroller whose content is at least three viewports long —

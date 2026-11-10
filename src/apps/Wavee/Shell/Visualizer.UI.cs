@@ -204,8 +204,13 @@ public static partial class Visualizer
             core.Bind(ctx, hooks, Context.Runtime is { } rt ? (Action<Action>)rt.Batch : null);
             bool playing = Playback.IsPlaying.Value;
             bool occluded = hooks.WindowOccluded?.Value ?? false;
-            bool run = Demand.Ticks(Shell.Ui.ImmersiveLyrics.Value, playing, core._settled.Value, occluded, Design.Reduced);
+            bool stageUp = Shell.Ui.ImmersiveLyrics.Value, reduced = Design.Reduced, settled = core._settled.Value;
+            // nothing it drives per frame is on screen while the picture covers the stage: it runs there only to land a fade
+            bool shown = Demand.Shown(ctx.Mode.Value, ctx.AudioFace.Value);
+            bool run = Demand.Ticks(stageUp, playing, shown, settled, occluded, reduced);
             core.Run = run;
+            core.WouldRun = Demand.Ticks(stageUp, playing, shown: true, settled, occluded, reduced);
+            core.Shown = shown;
             UseEffect(core._lease);
             UseEffect(core._onPosition);
             UseEffect(core._demandEdges);

@@ -46,7 +46,7 @@ internal static class ClassicStagePane
     }
 
     /// <summary>Video mode's Theatre panel (the board "Classic · Theatre"): a card at the panel's rect on the right of the picture, the Huge 4K Up
-    /// next column's look (the stage's card acrylic, its stroke, the card corners), shown for as long as the root keeps it mounted (its slide
+    /// next column's look (the stage's card acrylic as the tone it resolves to over the stage floor, its stroke, the card corners), shown for as long as the root keeps it mounted (its slide
     /// in and out is the root's); a tier crossing moves it with the pane region's move.</summary>
     static Element Theatre(StagePaneProps props, Stage.Layout L)
     {
@@ -55,7 +55,9 @@ internal static class ClassicStagePane
         {
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, Margin = new Edges4(pane.X, pane.Y, 0f, 0f),
             Direction = 1, Padding = Edges4.All(ClassicStageTheatreGeometry.PanePad), Corners = Radii.CardAll, ClipToBounds = true,
-            Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            // the card's acrylic over the flat stage floor resolves to one tone: painted, it is the same card without a backdrop capture and a
+            // blur every frame the picture beside it moves (ClassicStageTheatreGeometry.CardOnFloor)
+            Fill = ClassicStageTheatreGeometry.CardOnFloor, BorderWidth = 1f, BorderColor = Ink.Stroke,
             Layout = s_move,
             Children = [props.Panes(s_frame, s_empty)],
         };

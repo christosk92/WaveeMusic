@@ -55,7 +55,7 @@ internal static class ClassicStageRoot
         {
             Width = v.Width, Height = v.Height, ZStack = true, ClipToBounds = true, Focusable = true,   // explicit size (V-U49); the floor is the Backdrop's
             OnRealized = v.OnRealized,
-            OnHoverMove = v.OnHoverMove,
+            OnPointerMoveWithin = v.OnHoverMove,   // a move anywhere within the stage is idle activity (over a lyric line, a pane, the chrome)
             OnPointerExit = v.OnPointerExit,
             OnPointerWheel = v.OnPointerWheel,
             OnKeyDown = v.OnKeyDown,

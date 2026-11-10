@@ -56,6 +56,9 @@ public sealed record StageRootView
 
     public required Action<NodeHandle> OnRealized { get; init; }
 
+    /// <summary>A pointer move: idle activity. Wire it as <c>OnPointerMoveWithin</c> (a move ANYWHERE within the box, a child's hit included: a
+    /// lyric line, the picture's ground) rather than <c>OnHoverMove</c> (the hovered leaf alone, so a move over a child is lost). The surface
+    /// reads the window position itself, so the box's local point only stands in when the platform has none.</summary>
     public required Action<Point2> OnHoverMove { get; init; }
 
     public required Action OnPointerExit { get; init; }

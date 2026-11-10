@@ -68,11 +68,11 @@ internal static class ClassicStageTransport
                 Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Height = rowH,
                 Children =
                 [
-                    Heart(f.Saved, f.Like, set.Fill),
-                    ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                    Play(f.Playing, f.PrimaryEnabled, disc, set, verbs),
-                    ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-                    more,
+                    ClassicStageTopBar.Held(Heart(f.Saved, f.Like, set.Fill), overControls),
+                    ClassicStageTopBar.Held(ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)), overControls),
+                    ClassicStageTopBar.Held(Play(f.Playing, f.PrimaryEnabled, disc, set, verbs), overControls),
+                    ClassicStageTopBar.Held(ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)), overControls),
+                    ClassicStageTopBar.Held(more, overControls),
                 ],
             };
         }
@@ -100,6 +100,7 @@ internal static class ClassicStageTransport
                     new BoxEl
                     {
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.ClusterGap ?? Spacing.S, Shrink = 0f,
+                        OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
                         Children =
                         [
                             ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)),
@@ -109,23 +110,33 @@ internal static class ClassicStageTransport
                             ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)),
                         ],
                     },
-                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = tier.RightGap, Children = right.ToArray() },
+                    // the right cluster's buttons hug their own row: the column's empty lead holds nothing
+                    new BoxEl
+                    {
+                        Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                        Children = [new BoxEl { Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.RightGap, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = right.ToArray() }],
+                    },
                 ],
             };
         }
 
+        // Video mode's Theatre: the card sits on the flat stage floor (nothing of the picture under it), where the acrylic resolves to one tone;
+        // that tone, painted, is the same card without a backdrop capture and a blur every frame something beside it moves. Over the picture
+        // (Cinema) and over the audio stage's art the card keeps its acrylic.
+        bool flat = st.Mode.Value == Stage.Mode.Video && st.Theatre.Value;
         return new BoxEl
         {
             Grow = 1f, Height = L.TransportH, Direction = 1, Padding = stacked ? ClassicStageTiers.StackedTransportPadding : tier.TransportPadding, Corners = Radii.CardAll,
-            Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
-            OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
+            Acrylic = flat ? null : Ink.Card, Fill = flat ? ClassicStageTheatreGeometry.CardOnFloor : ColorF.Transparent, Shadow = Elevation.Card, ClipToBounds = true,
+            // the chrome is held by the controls (the seek bar, the buttons), not by the card: a pointer resting on "Playing from" or the
+            // card's padding idles out like one resting on the picture
             Children =
             [
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
                     // the bar's own seek; its scrub edge holds the chrome through the new onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
-                    Children = [props.TimeText(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [props.SeekBar(st.Scrubbing)] }, props.TimeText(true, Ink.InkSecondary)],
+                    Children = [props.TimeText(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = [props.SeekBar(st.Scrubbing)] }, props.TimeText(true, Ink.InkSecondary)],
                 },
                 row,
             ],

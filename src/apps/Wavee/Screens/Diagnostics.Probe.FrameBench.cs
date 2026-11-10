@@ -523,6 +523,47 @@ public static partial class Diagnostics
                         Shell.Ui.RailOpen.Value = false;
                         return r;
                     }
+                case FrameBenchScenarios.StageTheatre:
+                case FrameBenchScenarios.StageCinema:
+                {
+                    // The full screen on the music video (Classic's Video mode): the picture moving between Cinema and Theatre every 1.5 s
+                    // (the reservation's spring, the presenter following it, the panel sliding in and out), or Cinema at rest with its chrome
+                    // idled out (the window sits off every monitor: no pointer over it).
+                    if (Platform.Args.FakeVideo is null) return Skip("needs --fake --fake-video <path>");
+                    Base(playing: true, "spotify:track:tr0");
+                    // the video docked in the main window (what the stage stages), the fake clip as its source
+                    Video.State.FoldAvailability(true);
+                    Video.State.OpenAt(Video.SurfacePlacement.Docked);
+                    Settle(3.0);
+                    bool savedTheatre = Prefs.Stage.Theatre();
+                    int pane = Prefs.Stage.TheatrePane();
+                    Prefs.Stage.SetTheatre(false, pane);
+                    // the window stays where the bench put it (off every monitor): the stage must not take a monitor over to go full screen
+                    bool keptWindowed = ImmersiveService.Shared.KeepWindowed;
+                    ImmersiveService.Shared.KeepWindowed = true;
+                    Stage.Open(null, "bench");
+                    Settle(2.0);
+                    Pending r;
+                    if (!Stage.Picture.ShownPeek()) r = Skip("the stage did not open on the picture (Video mode not offered)");
+                    else if (name == FrameBenchScenarios.StageTheatre)
+                    {
+                        bool on = false;
+                        int toggles = 0;
+                        r = Measure(new Driver(now => { on = !on; toggles++; Prefs.Stage.SetTheatre(on, pane); return now + 1.5; }), "picture=stage toggle=1.5s");
+                        r = r with { Note = r.Note + " toggles=" + toggles };
+                    }
+                    else
+                    {
+                        Settle(4.0);   // the chrome idles out after 3 s
+                        r = Measure(null, "picture=stage chrome=" + (ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage).ChromeVisible ? "shown" : "hidden"));
+                    }
+                    Stage.Close(null, "bench");
+                    Settle(1.0);
+                    ImmersiveService.Shared.KeepWindowed = keptWindowed;
+                    Prefs.Stage.SetTheatre(savedTheatre, pane);
+                    Video.State.TurnOff();
+                    return r;
+                }
                 case FrameBenchScenarios.NavGc:
                 {
                     // `--bench-nav-play`: the first playlist plays, so its row's equalizer runs while the bench navigates.

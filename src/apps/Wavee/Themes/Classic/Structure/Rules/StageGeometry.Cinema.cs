@@ -168,6 +168,17 @@ internal static class ClassicStageTheatreGeometry
     /// <summary>The panel's padding (the board's 16) and how far it slides in from the right (the Huge 4K Up next column's slide).</summary>
     public const float PanePad = 16f, PaneSlide = 32f;
 
+    /// <summary>How long after Theatre closes Cinema's letterbox ground comes back (ms, then a fade): the reservation's spring
+    /// (<c>ClassicStageGeometry.PaneMoveResponse</c> 0.45 s, damping 0.90; envelope e^(-ζ·2π/response·t)) has brought the growing picture
+    /// within half a DIP of the whole stage by then from a move of 1000 DIP, so the ground appears under the picture and never around it.</summary>
+    public const float GroundReturnMs = 600f;
+
+    /// <summary>The panel card's and the transport card's ground in Theatre: the stage's card acrylic (<c>StageInk.Card</c>) resolved over the
+    /// stage floor they sit on, through the acrylic's own recipe (<see cref="FluentGpu.Foundation.AcrylicSpec.CompositeOver"/>: a blur of a flat
+    /// floor is that floor). The same card, painted once, instead of a backdrop capture and a blur on every frame something beside it moves.
+    /// Read where the card is built (a theme or arm flip re-renders it).</summary>
+    public static ColorF CardOnFloor => Wavee.Theming.Roles.StageInk.Card.CompositeOver(Wavee.Theming.Roles.StageInk.Floor);
+
     /// <summary>The picture's rect, its title block's and the panel's, in stage DIP, for the stage layout <paramref name="L"/>.</summary>
     public readonly record struct Rects(RectF Picture, RectF Title, RectF Pane);
 

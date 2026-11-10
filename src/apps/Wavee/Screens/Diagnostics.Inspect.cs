@@ -994,6 +994,18 @@ public static partial class Diagnostics
             w.WriteBoolean("theatre", theatre);
             if (theatre) w.WriteString("panel", Stage.Picture.TheatrePanePeek().ToString());
             w.WriteString("follows", Video.PresenterFollows());
+            // the idle chrome: shown or hidden, why it last changed, and what holds it up (the `[stage.chrome]` log line's facts)
+            if (open)
+            {
+                var idle = ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage);
+                w.WriteStartObject("chrome");
+                w.WriteBoolean("visible", idle.ChromeVisible);
+                w.WriteString("cause", idle.LastCause);
+                w.WriteString("holds", Stage.ChromeHoldsText(idle.Holds));
+                w.WriteNumber("menus", idle.MenuHolds);
+                w.WriteBoolean("cursorHidden", idle.CursorHidden);
+                w.WriteEndObject();
+            }
             w.WriteEndObject();
         }
 

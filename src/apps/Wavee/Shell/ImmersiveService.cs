@@ -68,6 +68,12 @@ public sealed class ChromeIdle
     public bool CursorHidden => _machine?.CursorHidden ?? false;
     public double NextWakeMs => _machine?.NextWakeMs ?? double.PositiveInfinity;
 
+    /// <summary>Why visible chrome may not hide right now (none before <see cref="Start"/>): the `[stage.chrome]` line and the inspector's status.</summary>
+    public ChromeHold Holds => _machine?.Holds ?? ChromeHold.None;
+
+    /// <summary>Why the last visibility edge happened (the machine's static literal; "mount" before <see cref="Start"/>).</summary>
+    public string LastCause => _machine?.LastCause ?? "mount";
+
     /// <summary>Create the machine at <paramref name="nowMs"/> if it does not exist. Idempotent: a surface that adopts a
     /// surviving idle keeps its state.</summary>
     public void Start(double nowMs)
@@ -84,17 +90,34 @@ public sealed class ChromeIdle
 
     public void PointerMoved(float x, float y, double nowMs) => _machine?.PointerMoved(x, y, nowMs);
 
+    /// <summary>The pointer really left the surface: the window, onto another monitor, or the window blurred.</summary>
     public void PointerLeft(double nowMs) => _machine?.PointerLeft(nowMs);
+
+    /// <summary>Hover was TAKEN while the pointer is still over the surface (it crossed from the stage onto the chrome the video layer draws
+    /// over the picture, or an overlay took it): the pointer holds drop, nothing is scheduled.</summary>
+    public void PointerCovered(double nowMs) => _machine?.PointerCovered(nowMs);
 
     public void SetPointerOverControls(bool over, double nowMs) => _machine?.SetPointerOverControls(over, nowMs);
 
     public void SetScrubbing(bool on, double nowMs) => _machine?.SetScrubbing(on, nowMs);
 
-    public void SetPlayback(bool playing, double nowMs)
+    public void SetPlayback(ChromePlayback playback, double nowMs)
     {
-        _machine?.SetPlayback(playing ? ChromePlayback.Playing : ChromePlayback.Paused, nowMs);
+        _machine?.SetPlayback(playback, nowMs);
         _machine?.SetCursorMayHide(true, nowMs);
     }
+
+    /// <summary>The playback fact the chrome reacts to, from the deck's phase and fault. Only a stop the user needs the controls for pins
+    /// them: a pause, the end, nothing on the deck, a failure. Opening a track (a video still joining, a skip's load) counts as playing, as
+    /// <c>PlayerChromeVisibility</c> defines it (a rebuffer never leaves <see cref="Playback.Phase.Playing"/>): a load neither reveals nor pins.</summary>
+    public static ChromePlayback PlaybackOf(Playback.Phase phase, Playback.Fault fault)
+        => fault != Playback.Fault.None ? ChromePlayback.Failed
+         : phase switch
+         {
+             Playback.Phase.Playing or Playback.Phase.Loading => ChromePlayback.Playing,
+             Playback.Phase.Paused => ChromePlayback.Paused,
+             _ => ChromePlayback.Ended,
+         };
 
     /// <summary>A menu opened (<paramref name="open"/>) or closed. The count never goes below zero; the machine hears the
     /// hold as one bool (some menu is open).</summary>

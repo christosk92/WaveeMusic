@@ -270,6 +270,7 @@ public static partial class Stage
         Action<string>? _begin;
         NodeHandle _root;
         bool _cursorHidden, _paletteSeeded;
+        bool? _loggedVisible;   // the last chrome visibility the `[stage.chrome]` line reported
         OverlayHandle? _tip, _options;
 
         public SurfaceCore()
@@ -338,8 +339,16 @@ public static partial class Stage
             {
                 Stage = ctx, Width = 0f, Height = 0f,
                 OnRealized = h => _root = h,
-                OnHoverMove = p => { _idle.PointerMoved(p.X, p.Y, Now()); Sync(); },
-                OnPointerExit = () => { _idle.PointerLeft(Now()); Sync(); },
+                // a move ANYWHERE within the stage (the theme wires it as OnPointerMoveWithin, so a move over a lyric line or the picture's ground
+                // counts too), in window DIP: the stage's root and the chrome over the picture (the video layer, another tree) report one point
+                OnHoverMove = p => { var w = _hooks?.GetPointerPosition?.Invoke() ?? p; _idle.PointerMoved(w.X, w.Y, Now()); Sync(); },
+                // a hover handed from one tree to the other (the stage ⇄ the chrome over the picture) or taken by an overlay is not a leave: only
+                // a pointer outside the stage (another monitor, outside the window) lets the chrome go after the leave debounce
+                OnPointerExit = () =>
+                {
+                    if (PointerOverStage()) _idle.PointerCovered(Now()); else _idle.PointerLeft(Now());
+                    Sync();
+                },
                 OnPointerWheel = _ => { _idle.Activity(ChromeActivity.Pointer, Now()); Sync(); },   // wheel = activity (V-U22)
                 OnKeyDown = OnKey,
                 // Never leave focus NULL while the stage is up: an unhandled Escape clears it and disarms the key map (the fullscreen video layer guards the same way).
@@ -572,8 +581,9 @@ public static partial class Stage
             _wake = UseTimeout(_onWake, 1_000f, DepKey.Empty);                           // arms once at mount — harmless (Sync re-arms)
             var idle = _idle;
             idle.Start(_wake.NowMs);
-            bool playing = Playback.IsPlaying.Value;
-            UseEffect(() => { idle.SetPlayback(playing, Now()); Sync(); }, DepKey.From(playing));
+            // a pause, the end or a failure pins the chrome; a load (a video joining, a skip) does not (ChromeIdle.PlaybackOf)
+            var chromePlayback = ChromeIdle.PlaybackOf(Playback.PhaseSignal.Value, Playback.Error.Value);
+            UseEffect(() => { idle.SetPlayback(chromePlayback, Now()); Sync(); }, DepKey.From((int)chromePlayback));
 
             // ── the hairline fraction from the coarse report (1 Hz is plenty for a 3-DIP line) ──
             UseSignalEffect(() => { int d = Playback.DurationMs.Value, p = Playback.PositionMs.Value; _frac.SetIfChanged(d > 0 ? Math.Clamp(p / (float)d, 0f, 1f) : 0f); });
@@ -674,6 +684,12 @@ public static partial class Stage
             double now = _wake.NowMs;
             vis.Tick(now);
             _ctx.Chrome.SetIfChanged(vis.ChromeVisible);
+            // one line per visibility edge, naming the cause and what holds it (a chrome that sticks says why in the owner's log)
+            if (vis.ChromeVisible != _loggedVisible)
+            {
+                _loggedVisible = vis.ChromeVisible;
+                Log.Info(Diagnostics.Category, $"[stage.chrome] {(vis.ChromeVisible ? "show" : "hide")} cause={vis.LastCause} holds={ChromeHoldsText(vis.Holds)} menus={vis.MenuHolds}");
+            }
             if (vis.CursorHidden != _cursorHidden)
             {
                 _cursorHidden = vis.CursorHidden;
@@ -690,7 +706,20 @@ public static partial class Stage
         }
 
         double Now() => _wake.NowMs;
+
+        /// <summary>Is the pointer still over the stage (window DIP; the stage fills the window)? False when the platform has no trustworthy
+        /// position (outside the client area, the window blurred).</summary>
+        bool PointerOverStage()
+        {
+            if (_hooks?.GetPointerPosition?.Invoke() is not { } p) return false;
+            var L = _ctx.Layout.Peek();
+            return p.X >= 0f && p.Y >= 0f && p.X < L.W && p.Y < L.H;
+        }
     }
+
+    /// <summary>The idle chrome's holds as "none" or "Stopped|OverControls": the `[stage.chrome]` line (an edge, never a frame) and the
+    /// inspector's `status`.</summary>
+    internal static string ChromeHoldsText(ChromeHold h) => h == ChromeHold.None ? "none" : h.ToString().Replace(", ", "|");
 
     // ══ 1b. THE CORE LAYERS (each a component on the context's SIGNALS — SurfaceCore's tree is static, V-U50) ═════════
     // The backdrop, hero photo, face, scrim, spectrum, card, identity and artist name are the structure's since T7a2 (`Shell\Stage.Layers.cs`

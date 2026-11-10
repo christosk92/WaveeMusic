@@ -78,6 +78,15 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Switching the video full screen between the full picture and Theatre stuttered.** The picture's move no longer repaints
+  the screen under it on every frame, and the Theatre panel and the transport no longer re-blur what is behind them while
+  the picture moves beside them (they look the same). While the video fills the screen, the visualizer's clock stops
+  instead of running every frame for nothing on screen.
+- **The full screen's controls stayed up although the mouse was idle**, also with the mouse on another monitor. A video
+  that is still loading no longer keeps them up (a pause, the end and an error still do); resting the mouse on the empty
+  part of the top bar or the transport card lets them fade like resting on the picture (only the buttons, tabs and seek bar
+  hold them); moving the mouse over the picture or over the lyrics brings them back; and the mouse leaving the window lets
+  them go. Each show and hide is now written to the log with what caused it and what held it.
 - **Esc and F11 left full screen open.** Pressing Esc (or F11) in full screen did nothing, with or without a video: the
   keys went to a part of the screen that did not handle them. They leave full screen again; Space and the arrows keep
   playing, seeking and setting the volume.

@@ -286,10 +286,17 @@ public static partial class Visualizer
         public static bool PullsScope(Tier tier, bool visualizerMode, int readers)
             => tier >= Tier.Spectrum && visualizerMode && readers > 0;
 
-        /// <summary>Does the clock run? While the stage is up and not occluded/reduced, and either playing or
-        /// something is still settling (a release tail, a ripple fading out).</summary>
-        public static bool Ticks(bool stageUp, bool playing, bool settled, bool occluded, bool reduced)
-            => stageUp && !occluded && !reduced && (playing || !settled);
+        /// <summary>Does the clock run? While the stage is up and not occluded/reduced, and either playing with something it
+        /// drives on screen (<paramref name="shown"/>, <see cref="Shown"/>) or something is still settling (a release tail, a
+        /// ripple fading out, an accent or palette fade).</summary>
+        public static bool Ticks(bool stageUp, bool playing, bool shown, bool settled, bool occluded, bool reduced)
+            => stageUp && !occluded && !reduced && ((playing && shown) || !settled);
+
+        /// <summary>Is anything the clock drives frame by frame on screen? Not while the music video covers the stage (Video mode with
+        /// the picture: the faces, the backdrop field and the spectrum are not mounted under it); the audio face and every audio mode
+        /// are. The accent and palette fades still run there (they settle the clock, <see cref="Ticks"/>), so the hairline and the
+        /// brand mark keep their cross-fade.</summary>
+        public static bool Shown(Stage.Mode mode, bool audioFace) => mode != Stage.Mode.Video || audioFace;
     }
 
     // ── 3. bands ───────────────────────────────────────────────────────────────────────────────────────────────────

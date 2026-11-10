@@ -82,7 +82,8 @@ internal static class ClassicStageTopBar
             Grow = 1f, Height = Stage.Layout.TopBarH, Direction = 0, AlignItems = FlexAlign.Center,
             Padding = ClassicStageGeometry.TopBarPadding, Gap = Spacing.S,
             Gradient = GradientDown(new GradientStop(0f, Shade(ClassicStageGeometry.TopBarVeilA)), new GradientStop(1f, Shade(0f))),
-            OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
+            // the chrome is held by the CONTROLS (the tabs, the buttons), not by the bar: a pointer resting on the brand or the empty bar
+            // idles out like one resting on the picture (Held)
             Children =
             [
                 new BoxEl
@@ -102,35 +103,53 @@ internal static class ClassicStageTopBar
                         },
                     ],
                 },
-                SelectorBar.Create(items, index, onChange: i => setMode(modes[Math.Clamp(i, 0, modes.Length - 1)]), parts: parts, icons: icons, style: style,
-                    itemKeys: videoTabs ? s_videoTabKeys : null),
+                Held(SelectorBar.Create(items, index, onChange: i => setMode(modes[Math.Clamp(i, 0, modes.Length - 1)]), parts: parts, icons: icons, style: style,
+                    itemKeys: videoTabs ? s_videoTabKeys : null), overControls),
                 new BoxEl
                 {
-                    Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Stage.Layout.BarButtonGap,
+                    Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
                     Children =
                     [
-                        // Video mode: Cinema ⇄ Theatre ("Theatre mode" slides the panel in beside the picture, "Fill the screen" is the way back)
-                        theatreOffered
-                            ? labels.Theatre
-                                ? Button.Create(theatreText, toggleTheatre, ButtonAppearance.Subtle, ControlSize.Small, glyph: theatreGlyph) with { Shrink = 0f, Key = "stage:bar:theatre" }
-                                : ToolTip.Wrap(BarGlyph(theatreGlyph, toggleTheatre, lit: false, onRealized: null, targetH) with { Key = "stage:bar:theatre" }, theatreText)
-                            : new BoxEl { Visible = false },
-                        // Video mode: "Switch to audio" (the video off, the stage on the cover and lyrics) where the options toggle stands (the
-                        // visualizer's options have nothing to set over the picture)
-                        videoMode
-                            ? labels.Audio
-                                ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, Key = "stage:bar:audio" }
-                                : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH) with { Key = "stage:bar:audio" }, Loc.Get(Strings.Player.SwitchToAudio))
-                            : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
-                        // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
-                        labels.Exit
-                            ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
-                            : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
+                        // the buttons hug their own row (the column's empty lead is the bar's, which holds nothing)
+                        new BoxEl
+                        {
+                            Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Stage.Layout.BarButtonGap,
+                            OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
+                            Children =
+                            [
+                                // Video mode: Cinema ⇄ Theatre ("Theatre mode" slides the panel in beside the picture, "Fill the screen" is the way back)
+                                theatreOffered
+                                    ? labels.Theatre
+                                        ? Button.Create(theatreText, toggleTheatre, ButtonAppearance.Subtle, ControlSize.Small, glyph: theatreGlyph) with { Shrink = 0f, Key = "stage:bar:theatre" }
+                                        : ToolTip.Wrap(BarGlyph(theatreGlyph, toggleTheatre, lit: false, onRealized: null, targetH) with { Key = "stage:bar:theatre" }, theatreText)
+                                    : new BoxEl { Visible = false },
+                                // Video mode: "Switch to audio" (the video off, the stage on the cover and lyrics) where the options toggle stands (the
+                                // visualizer's options have nothing to set over the picture)
+                                videoMode
+                                    ? labels.Audio
+                                        ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, Key = "stage:bar:audio" }
+                                        : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH) with { Key = "stage:bar:audio" }, Loc.Get(Strings.Player.SwitchToAudio))
+                                    : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
+                                // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
+                                labels.Exit
+                                    ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
+                                    : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
+                            ],
+                        },
                     ],
                 },
             ],
         };
     }
+
+    /// <summary><paramref name="control"/> holding the chrome while the pointer is anywhere over it (its subtree's enter and exit), in a box that
+    /// hugs it: the hold is the control's, never the bar's or the card's empty area (the top bar's and the transport card's).</summary>
+    internal static BoxEl Held(Element control, Action<bool> overControls) => new()
+    {
+        Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+        OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
+        Children = [control],
+    };
 
     /// <summary>The selector's modes, tab by tab: today's, and the Video set (contract 1.95).</summary>
     static readonly Stage.Mode[] s_modes = [Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
