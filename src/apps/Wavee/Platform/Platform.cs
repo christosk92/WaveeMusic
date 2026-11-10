@@ -851,10 +851,10 @@ public static class SegoeGlyphs
     /// <summary>A window folding down into its corner: the app's mini player (<c>BackToWindow</c>, the arrows pointing inward,
     /// is Windows' "leave full screen").</summary>
     public static readonly string MiniPlayer = Of(0xEE47);
-    /// <summary>A screen framed by four corner marks: the APP's full screen, the stage (the title bar's button, the player bar's
-    /// rows). The diagonal arrows (<c>Icons.FullScreen</c>) are the VIDEO's full screen, so the two never share a glyph (the owner,
-    /// 2026-11-10).</summary>
-    public static readonly string AppFullScreen = Of(0xE9A6);
+    /// <summary>A screen framed by four corner marks: the VIDEO's full screen. The regular full-screen glyph, the diagonal arrows
+    /// (<c>Icons.FullScreen</c>), is the APP's (the stage: the title bar's button, the player bar's rows), so the two never share
+    /// a glyph (the owner, 2026-11-10).</summary>
+    public static readonly string VideoFullScreen = Of(0xE9A6);
 }
 
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content

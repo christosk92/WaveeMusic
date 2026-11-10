@@ -220,7 +220,7 @@ internal static partial class ZunePlayerBar
                     Loc.Get(Strings.Mini.Title)));
             case RightSlot.Expand:
                 return Slot("expand", lit, ToolTip.Wrap(
-                    Glyph(SegoeGlyphs.AppFullScreen, () => verbs.OpenStage(begin, "bar-expand"), true, Tok.TextSecondary, box, glyph),
+                    Glyph(Icons.FullScreen, () => verbs.OpenStage(begin, "bar-expand"), true, Tok.TextSecondary, box, glyph),
                     Loc.Get(Strings.Player.Fullscreen)));
             default:
             {

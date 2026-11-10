@@ -207,7 +207,7 @@ public static partial class Video
             Row(SurfacePlacement.Detached, Strings.Player.VideoInSeparateWindow, SegoeGlyphs.PopOut, null),
         };
         if (includeFullscreen)
-            items.Add(Row(SurfacePlacement.Fullscreen, Strings.Player.VideoFullScreen, Icons.FullScreen, "F11"));
+            items.Add(Row(SurfacePlacement.Fullscreen, Strings.Player.VideoFullScreen, SegoeGlyphs.VideoFullScreen, "F11"));
         // Always-on-top is a property of the SEPARATE WINDOW: offered only while that is where the video lives.
         if (now == SurfacePlacement.Detached)
         {

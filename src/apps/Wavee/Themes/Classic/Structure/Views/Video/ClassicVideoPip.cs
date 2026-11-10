@@ -86,7 +86,7 @@ internal static class ClassicVideoPip
                 Children =
                 [
                     Glyph(SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
-                    Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
+                    Glyph(SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
                     Glyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.TurnOffDocked, tier),
                 ],
             },
@@ -134,7 +134,7 @@ internal static class ClassicVideoPip
             Opacity = tier.MediaChromeAtRest ? 1f : 0f, HoverOpacity = 1f,
             HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
             Children = tier.MediaChromeAtRest
-                ? [Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier), dragSurface, close]
+                ? [Glyph(SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier), dragSurface, close]
                 : [dragSurface, close],
         };
         return new BoxEl { Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [strip] };

@@ -36,9 +36,8 @@ versions separately under `v*` and is not tracked in this file.)
 - **Icons that say what they do.** The queue is lines with a note, now playing a window with a play mark in its side
   pane, the mini player a window folding into its corner. The video menu shows a docked pane, picture in picture, a
   pop-out window and a crossed-out camera, and its full-screen row reads "Video in fullscreen"; the app's own full
-  screen has its own mark, a framed screen.
-- **Full screen has a button in the Classic title bar.** It sits with the bell, friends and pin, where the window's own
-  controls are; the player bar's menus keep the row for narrow windows.
+  screen keeps the regular arrows, and the video's is a framed screen.
+- **Full screen has a button in the Classic title bar.** It sits right beside minimise, after the bell, friends and pin; the player bar's menus keep the row for narrow windows.
 
 ### Fixed
 

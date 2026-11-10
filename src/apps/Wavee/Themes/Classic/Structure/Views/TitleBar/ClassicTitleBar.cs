@@ -186,14 +186,15 @@ internal static class ClassicTitleBar
         var l = props.Layout();
         if (!l.ShowTrailing) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         var kids = new List<Element>(5) { AuthChip(props, l.Chip) };
-        // The ONE "actions in row" stage: bell, friends, full screen and pin enter together (the budget's RowActions). Below it they
+        // The ONE "actions in row" stage: bell, friends, pin and full screen enter together (the budget's RowActions). Below it they
         // fold into the profile menu (pin simply drops, the tab menu still offers it; full screen stays in the player bar's menus).
+        // Full screen is the island's last: a window-level verb, it sits right beside the caption's minimise (the owner, 2026-11-10).
         if (l.ShowActions)
         {
             kids.Add(Embed.Comp(() => new BellButton(props)) with { Key = "chrome-bell" });
             kids.Add(ChromeButton(Icons.Friends, props.ToggleFriends, Loc.Get(Strings.Shell.Friends), "chrome-friends"));
-            if (props.OpenFullScreen is not null) kids.Add(Embed.Comp(() => new FullScreenButton(props)) with { Key = "chrome-fullscreen-host" });
             kids.Add(PinButton(props));
+            if (props.OpenFullScreen is not null) kids.Add(Embed.Comp(() => new FullScreenButton(props)) with { Key = "chrome-fullscreen-host" });
         }
         return new BoxEl
         {
@@ -317,14 +318,14 @@ internal static class ClassicTitleBar
     }
 
     /// <summary>The trailing island's bell: the unread pill over the button's own box (never its footprint).</summary>
-    /// <summary>The app's full screen (the stage): a window-level verb, so its button sits with the title bar's actions. The pin
-    /// keeps the island's end, where its place may be empty.</summary>
+    /// <summary>The app's full screen (the stage): a window-level verb, so its button ends the island, beside the caption's minimise,
+    /// in the regular full-screen glyph.</summary>
     private sealed class FullScreenButton(ShellTitleBarProps props) : Component
     {
         public override Element Render()
         {
             var begin = UseContext(SharedTransition.Begin);   // the art's flight is captured before the stage mounts (null headless)
-            return ChromeButton(SegoeGlyphs.AppFullScreen, () => props.OpenFullScreen?.Invoke(begin), Loc.Get(Strings.Player.Fullscreen), "chrome-fullscreen");
+            return ChromeButton(Icons.FullScreen, () => props.OpenFullScreen?.Invoke(begin), Loc.Get(Strings.Player.Fullscreen), "chrome-fullscreen");
         }
     }
 

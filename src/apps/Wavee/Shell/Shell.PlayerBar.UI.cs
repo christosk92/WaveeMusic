@@ -330,7 +330,7 @@ public static partial class Shell
                 return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), new IconRef { Glyph = WaveeIcons.NowPlaying, Font = WaveeIcons.Font }, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying));
             case OverflowCommand.FullScreen:
                 // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
-                return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), SegoeGlyphs.AppFullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
             case OverflowCommand.Mini:
                 // The mini player's door at the tiers without the row's button (PlayerBarRules.Overflow, #197).
                 return new MenuFlyoutItem(Loc.Get(Strings.Mini.Title), SegoeGlyphs.MiniPlayer, true, static () => MiniPlayer.Toggle("bar-overflow"));

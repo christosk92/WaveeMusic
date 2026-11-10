@@ -313,7 +313,7 @@ internal static class ClassicPanel
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
                 props.VideoToMiniPlayer();
             }),
-            HeaderButton(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), () =>
+            HeaderButton(SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
                 props.VideoToFullScreen();

@@ -120,7 +120,7 @@ public static class WinUiPlayerLayout
     /// <summary>The tools' glyphs as the board draws them (Segoe Fluent Icons: quote U+E9B2, music queue U+E90B, devices U+E975, full screen
     /// brackets U+E9A6).</summary>
     public static readonly string LyricsGlyph = ((char)0xE9B2).ToString(), QueueGlyph = ((char)0xE90B).ToString(),
-        DevicesGlyph = ((char)0xE975).ToString(), ExpandGlyph = ((char)0xE9A6).ToString();
+        DevicesGlyph = ((char)0xE975).ToString(), ExpandGlyph = ((char)0xE740).ToString();   // the app's full screen: the regular glyph (the framed screen is the video's)
 
     /// <summary>The tools' gap (the board's 4).</summary>
     public const float ToolGap = 4f;
