@@ -176,7 +176,8 @@ public static partial class Diagnostics
 
         static bool NeedsLyrics(FrameBenchOptions o)
             => Array.IndexOf(o.Scenarios, FrameBenchScenarios.Lyrics) >= 0 || Array.IndexOf(o.Scenarios, FrameBenchScenarios.LyricsLine) >= 0
-            || Array.IndexOf(o.Scenarios, FrameBenchScenarios.StageLyrics) >= 0;
+            || Array.IndexOf(o.Scenarios, FrameBenchScenarios.StageLyrics) >= 0
+            || Array.IndexOf(o.Scenarios, FrameBenchScenarios.ArtistLyrics) >= 0;
 
         static FrameBenchTargets RealTargets(FrameBenchOptions o)
         {
@@ -344,6 +345,24 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = true;
                     Settle(1.0);
                     var r = Measure(null, "track=" + track);
+                    Shell.Ui.RailOpen.Value = false;
+                    return r;
+                }
+                case FrameBenchScenarios.ArtistLyrics:
+                {
+                    // An artist page under the lyrics rail with a word-synced track playing: the owner's "listening while browsing an
+                    // artist" state (the hero, the top tracks and the rail's lines all on screen while the words step).
+                    if (t.Artists.Length == 0) return Skip("no artist");
+                    string? track = word ?? line ?? play;
+                    if (track is null) return Skip("no track to play");
+                    Base(playing: true, track);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(t.Artists[0]), "Bench artist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Shell.Ui.Mode.Value = Shell.RailMode.Lyrics;
+                    Shell.Ui.RailOpen.Value = true;
+                    Settle(2.0);
+                    var r = Measure(null, "artist=" + t.Artists[0] + " track=" + track + " rail=lyrics");
                     Shell.Ui.RailOpen.Value = false;
                     return r;
                 }
