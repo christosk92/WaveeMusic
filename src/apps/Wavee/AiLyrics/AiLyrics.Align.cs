@@ -15,8 +15,10 @@
 //                  playhead gets close), so each decision has heard as much of the song as possible. A line-time
 //                  prior (when the input is line-synced) keeps identical chorus lines from sliding a bar late.
 //   Snap           a word that starts after silence moves back to where the vocal level rises.
-//   Fill/Assemble  every word of the line text gets a time (skipped optional words share their gap) and the syllable
-//                  texts join back to the line text, which the karaoke wipe measures against.
+//   Fill/Assemble  a line the model timed (at least half its letters) gets a time for every word: an untimed word is
+//                  interpolated between its timed neighbours or to the line's own bounds, never invented for a line
+//                  with nothing timed (TrackJob.BuildDoc keeps that line as the provider's). The syllable texts join
+//                  back to the line text, which the karaoke wipe measures against.
 
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -61,20 +63,40 @@ public static partial class AiLyrics
             /// accent, then dropped. Empty when nothing is left (digits, symbols).</summary>
             public void Tokens(string word, List<int> into)
             {
-                // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed
-                string w = (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
-                foreach (char c in w)
+                foreach (char c in Prepare(word)) if (TryId(c, out int id)) into.Add(id);
+            }
+
+            /// <summary>Whether every LETTER of a word yields a token (<see cref="Tokens"/> drops the ones that do not:
+            /// that word is then timed only in part, or not at all). <paramref name="hasLetter"/>: the word has any.</summary>
+            public bool Spells(string word, out bool hasLetter)
+            {
+                hasLetter = false;
+                bool all = true;
+                foreach (char c in Prepare(word))
                 {
-                    string ch = c.ToString();
-                    if (!_ids.ContainsKey(ch))
-                    {
-                        string bare = c is >= '가' and <= '힣' ? WithoutFinal(c) : StripAccent(ch);
-                        if (!_ids.ContainsKey(bare)) continue;
-                        ch = bare;
-                    }
-                    if (ch == "|") continue;
-                    into.Add(_ids[ch]);
+                    if (!char.IsLetter(c)) continue;
+                    hasLetter = true;
+                    if (!TryId(c, out _)) all = false;
                 }
+                return all;
+            }
+
+            // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed
+            string Prepare(string word)
+                => (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
+
+            /// <summary>A character's class id: itself, else without its accent (a Hangul syllable without its final
+            /// consonant); false when the model has neither, and for the word separator.</summary>
+            bool TryId(char c, out int id)
+            {
+                string ch = c.ToString();
+                if (!_ids.TryGetValue(ch, out id))
+                {
+                    string bare = c is >= '가' and <= '힣' ? WithoutFinal(c) : StripAccent(ch);
+                    if (!_ids.TryGetValue(bare, out id)) return false;
+                    ch = bare;
+                }
+                return ch != "|";
             }
 
             /// <summary>A Hangul syllable without its final consonant (랗 → 라, 꽉 → 꽈): the Korean model knows 1,202 of
@@ -433,9 +455,11 @@ public static partial class AiLyrics
         /// <summary>A word-synced line from the provider's line and the word times: syllable texts are the line text cut
         /// at word starts, so they join back to <see cref="Lyrics.Line.Text"/> exactly (the wipe measures against it).
         /// No word starts before <paramref name="prevStartMs"/> (the previous line's start): line starts stay in order,
-        /// which the line resolve's binary search relies on.</summary>
+        /// which the line resolve's binary search relies on. <paramref name="keepLineStart"/> (a line-synced source):
+        /// the line keeps the provider's start unless its first word starts earlier (the provider's line times are
+        /// right far more often than a word the aligner placed late); otherwise it starts with its first word.</summary>
         public static Lyrics.Line WordSyncedLine(Lyrics.Line src, IReadOnlyList<LyricWord> words, WordTime[] times, double? nextStartS,
-            long? prevStartMs = null)
+            long? prevStartMs = null, bool keepLineStart = false)
         {
             string text = src.Text;
             var syl = new List<Lyrics.Syllable>(words.Count);
@@ -449,9 +473,11 @@ public static partial class AiLyrics
                 e = Math.Max(e, s);
                 syl.Add(new Lyrics.Syllable(s, e, text.Substring(from, to - from)));
             }
+            long start = keepLineStart ? Math.Min(src.StartMs, syl[0].StartMs) : syl[0].StartMs;
+            if (prevStartMs is long p) start = Math.Max(start, p);
             return src with
             {
-                StartMs = syl[0].StartMs,
+                StartMs = start,
                 Syllables = syl,
                 EndMs = src.EndMs ?? syl[^1].EndMs,
                 IsWordByWord = true,

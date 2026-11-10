@@ -53,6 +53,12 @@ versions separately under `v*` and is not tracked in this file.)
   rebuilt, a failed open is logged and tried once more, and the loop cache now keeps the canvases you played last.
 - **AI word timing: lines that flashed past.** A line followed by one the model could not time was squeezed to zero
   length.
+- **AI word timing only in a language it knows.** A Japanese, Greek, Russian or French song no longer gets English word
+  timing made up for it: the language comes from the lyric's script, then the provider's tag, then a clear majority of
+  its words, and a song that matches no installed model keeps its line-by-line sync. A line the model could not hear
+  stays the provider's line instead of getting invented times, a line keeps the provider's start, and a result with too
+  few well-timed lines is thrown away instead of shown or saved. Songs timed before this update are timed again the next
+  time they play.
 
 - **Acrylic over the Canvas in full screen.** The player bar, the Up next column and the view switcher at the top were flat
   dark slabs while a Canvas played behind them. They are frosted glass again: the video shows through them blurred and

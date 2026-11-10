@@ -589,16 +589,19 @@ public static partial class AiLyrics
         if (reason != SkipReason.None)
         {
             if (Track.Peek().TrackId != trackId || Track.Peek().Reason != reason)
-                Log.Info("ai-lyrics", $"ai.skip track={trackId} reason={reason} provider={doc?.Provider} sync={doc?.Sync} tag={doc?.Language} language={(doc is null ? "" : Rules.LanguageOf(doc))}");
+                Log.Info("ai-lyrics", $"ai.skip track={trackId} reason={reason} provider={doc?.Provider} sync={doc?.Sync} tag={doc?.Language} language={(doc is null ? "" : Rules.LanguageOf(doc))}"
+                    + (doc is null ? "" : " " + Rules.DecideLanguage(doc).Describe()));
             Track.Value = new TrackStatus(trackId, TrackPhase.Skipped, reason, doc is null ? "" : Rules.LanguageOf(doc), 0, doc?.Lines.Count ?? 0, 0, false);
             return;
         }
-        string language = Rules.LanguageOf(doc!);
+        var decision = Rules.DecideLanguage(doc!);
+        string language = decision.Language ?? "";                                 // Eligibility passed: decided and installed
         int ticket = s_ledger.BeginJob(trackId);
         Track.Value = new TrackStatus(trackId, TrackPhase.Working, SkipReason.None, language, 0, doc!.Lines.Count, 0, false);
         Job.Value = new JobInfo(trackId, language, doc.Lines.Count, 0, track.DurationMs / 1000.0, 0, 0, 0, 0, false, ResultPathOf(trackId), "working", "");
         s_worker ??= new Worker();
-        s_worker.Start(new JobRequest(trackId, ticket, track.Uri.Text, track.DurationMs, doc, language, prefersAi, Platform.Network.IsMetered));
+        s_worker.Start(new JobRequest(trackId, ticket, track.Uri.Text, track.DurationMs, doc, language, prefersAi, Platform.Network.IsMetered,
+            decision.Describe()));
     }
 
     // ── posts from the worker (UI thread) ─────────────────────────────────────────────────────────────────────────
@@ -615,8 +618,9 @@ public static partial class AiLyrics
 
     // ══ the worker thread ═════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <param name="Decision">The language decision's evidence (<see cref="Rules.LanguageDecision.Describe"/>), for the log.</param>
     sealed record JobRequest(string TrackId, int Ticket, string Uri, long DurationMs, Lyrics.Doc Source, string Language,
-        bool OverrideProvider, bool Metered);
+        bool OverrideProvider, bool Metered, string Decision);
 
     sealed class Worker
     {
@@ -627,6 +631,8 @@ public static partial class AiLyrics
         string _installedKey = "";
         IReadOnlyList<string> _installed = [];
         CancellationTokenSource? _jobCts;
+        readonly Dictionary<string, Align.Vocab?> _vocabs = new(StringComparer.Ordinal);   // per language, for the spell check
+        readonly HashSet<string> _rejected = new(StringComparer.Ordinal);                 // results rejected this session
         volatile bool _loaded;
         long _lastUseMs;   // the worker thread's own clock: when a command last ran with the models loaded
 
@@ -843,21 +849,48 @@ public static partial class AiLyrics
         {
             ct.ThrowIfCancellationRequested();
             ulong hash = Rules.SourceHash(req.Source.Lines);
-            // 1. the results cache: a replay needs no NPU and no audio
+            int lineCount = req.Source.Lines.Count;
+            string rejectKey = req.TrackId + ":" + hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + ":" + req.Language;
+            if (_rejected.Contains(rejectKey))
+            {
+                // the same words in the same language were rejected earlier this session: the aligner would answer the same
+                Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=RejectedEarlier language={req.Language}");
+                s_post(() => Skip(req, SkipReason.Failed, "timing rejected earlier"));
+                return;
+            }
+            // 1. the results cache: a replay needs no NPU and no audio, and passes the same acceptance check as a new result
             string resultPath = ResultPathOf(req.TrackId);
             try
             {
                 if (File.Exists(resultPath) && Results.TryDecode(File.ReadAllText(resultPath), out var cached)
-                    && Results.Overlay(cached, req.Source, hash) is { } overlay)
+                    && Results.Overlay(cached, req.Source, hash, req.Language) is { } overlay)
                 {
-                    Log.Info("ai-lyrics", $"ai.results.hit track={req.TrackId}");
-                    Publish(req, overlay, new JobProgress(req.Source.Lines.Count, req.Source.Lines.Count, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0, ct);
-                    return;
+                    if (Acceptance.Check(req.Source, overlay, lineCount, final: true, out var verdict) is { } accepted)
+                    {
+                        Log.Info("ai-lyrics", $"ai.results.hit track={req.TrackId} {verdict.Describe()}");
+                        Publish(req, accepted, new JobProgress(lineCount, lineCount, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0, ct);
+                        return;
+                    }
+                    Log.Info("ai-lyrics", $"ai.result.rejected track={req.TrackId} source=cache language={req.Language} {verdict.Describe()}");
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", "results read failed", ex); }
 
-            // 2. timing a new song fetches its audio once more: not on a metered connection
+            // 2. the model must be able to spell the lyric (step 5 of the language decision): a word with a letter outside
+            // its vocabulary is timed in part or not at all
+            if (VocabOf(req.Language) is { } vocab)
+            {
+                double spellable = Rules.SpellableShare(req.Source, vocab, out int spellWords);
+                if (1 - spellable >= Rules.UnspellableSkipShare)
+                {
+                    Log.Info("ai-lyrics", FormattableString.Invariant($"ai.skip track={req.TrackId} reason=Unspellable language={req.Language} spellable={spellable:0.00} words={spellWords} {req.Decision}"));
+                    s_post(() => Skip(req, SkipReason.LanguageNotInstalled, FormattableString.Invariant($"the {req.Language} model spells {spellable:0.00} of the words")));
+                    return;
+                }
+                req = req with { Decision = req.Decision + FormattableString.Invariant($" spellable={spellable:0.00} spellWords={spellWords}") };
+            }
+
+            // 3. timing a new song fetches its audio once more: not on a metered connection
             if (req.Metered)
             {
                 Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=Metered");
@@ -891,15 +924,54 @@ public static partial class AiLyrics
                 s_post(() => Skip(req, SkipReason.AudioUnavailable, "audio: " + fault));
                 return;
             }
-            Log.Info("ai-lyrics", $"ai.job.start track={req.TrackId} language={req.Language} lines={req.Source.Lines.Count}");
+            Log.Info("ai-lyrics", $"ai.job.start track={req.TrackId} language={req.Language} lines={lineCount} {req.Decision}");
             var job = new TrackJob(req.Source, req.Language, _models.Separator, aligner, pcm, PlayheadSeconds);
-            var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct), ct,
-                _scratch ??= new JobScratch());
+            Acceptance.Verdict last = default;
+            Lyrics.Doc? shown = null;
+            // every publish passes the acceptance check: failing lines go back to the provider's, and a result with too
+            // few word-synced lines stops the job (nothing more is shown, nothing is saved)
+            var final = job.RunUntil((doc, p) =>
+            {
+                var accepted = Acceptance.Check(req.Source, doc, p.LinesReady, p.Final, out last);
+                if (accepted is null) return false;
+                Publish(req, accepted, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct);
+                shown = accepted;
+                return true;
+            }, ct, _scratch ??= new JobScratch());
+            if (final is null || shown is null)
+            {
+                ct.ThrowIfCancellationRequested();
+                _rejected.Add(rejectKey);
+                var verdict = last;
+                Log.Info("ai-lyrics", $"ai.result.rejected track={req.TrackId} source=job language={req.Language} ms={sw.ElapsedMilliseconds} {verdict.Describe()}");
+                s_post(() =>
+                {
+                    s_lastPublished.Remove(req.TrackId);                           // never re-layer a rejected result
+                    Skip(req, SkipReason.Failed, "timing rejected: " + verdict.Describe());
+                });
+                return;
+            }
             Directory.CreateDirectory(ResultsDir);
             string tmp = resultPath + ".tmp";
-            File.WriteAllText(tmp, Results.Encode(final, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            File.WriteAllText(tmp, Results.Encode(shown, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));   // what was accepted
             File.Move(tmp, resultPath, overwrite: true);
-            Log.Info("ai-lyrics", $"ai.job.done track={req.TrackId} ms={sw.ElapsedMilliseconds} separate={job.SeparateSeconds:0.0}s align={job.AlignSeconds:0.0}s");
+            Log.Info("ai-lyrics", $"ai.job.done track={req.TrackId} ms={sw.ElapsedMilliseconds} separate={job.SeparateSeconds:0.0}s align={job.AlignSeconds:0.0}s {last.Describe()}");
+        }
+
+        /// <summary>A language's aligner vocabulary for the spell check: the loaded aligner's, else read once from the
+        /// models folder (a few KB); null when it cannot be read (the job then finds the language missing).</summary>
+        Align.Vocab? VocabOf(string language)
+        {
+            if (_models is not null && _models.Aligners.TryGetValue(language, out var loaded)) return loaded.Vocab;
+            if (_vocabs.TryGetValue(language, out var known)) return known;
+            Align.Vocab? vocab = null;
+            try { vocab = Align.Vocab.Parse(File.ReadAllText(Path.Combine(ModelsDir, $"align-{language}.vocab.json"))); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or KeyNotFoundException)
+            {
+                Log.Info("ai-lyrics", $"ai.vocab.unavailable language={language} {ex.GetType().Name}");
+            }
+            _vocabs[language] = vocab;
+            return vocab;
         }
 
         /// <summary>An audio open the job will not use: close it whenever it lands (it may still be fetching).</summary>

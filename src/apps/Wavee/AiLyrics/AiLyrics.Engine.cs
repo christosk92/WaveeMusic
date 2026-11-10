@@ -117,6 +117,11 @@ public static partial class AiLyrics
         /// <summary>Runs the song to the end. <paramref name="publish"/> is called (on this thread) whenever more lines
         /// are complete, and once at the end with the final document.</summary>
         public Lyrics.Doc Run(Action<Lyrics.Doc, JobProgress> publish, CancellationToken ct, JobScratch? scratch = null)
+            => RunUntil((d, p) => { publish(d, p); return true; }, ct, scratch)!;
+
+        /// <summary><see cref="Run"/>, but <paramref name="publish"/> may stop the job by answering false (the host's
+        /// acceptance check rejected the result): the job then ends at once and answers null.</summary>
+        public Lyrics.Doc? RunUntil(Func<Lyrics.Doc, JobProgress, bool> publish, CancellationToken ct, JobScratch? scratch = null)
         {
             Elapsed.Start();
             // Every buffer below is past the large-object threshold (~28 MB together). They come from the worker's
@@ -238,15 +243,14 @@ public static partial class AiLyrics
                     if (added > 0 && ready > linesReady)
                     {
                         linesReady = ready;
-                        publish(BuildDoc(ready), new JobProgress(ready, LineCount, ctcPos / (double)Sr16, false));
+                        if (!publish(BuildDoc(ready), new JobProgress(ready, LineCount, ctcPos / (double)Sr16, false))) { Elapsed.Stop(); return null; }
                     }
                 }
 
                 _vit.Commit(0, final: true);
                 var doc = BuildDoc(LineCount);
                 Elapsed.Stop();
-                publish(doc, new JobProgress(LineCount, LineCount, ctcPos / (double)Sr16, true));
-                return doc;
+                return publish(doc, new JobProgress(LineCount, LineCount, ctcPos / (double)Sr16, true)) ? doc : null;
             }
             finally
             {
@@ -277,11 +281,22 @@ public static partial class AiLyrics
             Align.CollectWordTimes(_graph, _vit, times);
             Align.SnapToOnsets(times, _env.At, _env.Count, _env.QuietThreshold());
 
+            bool lineSynced = Acceptance.IsLineSynced(_src);
             var lines = new List<Lyrics.Line>(n);
             for (int li = 0; li < n; li++)
             {
                 var src = _src.Lines[li];
                 if (li >= readyLines || _words[li].Count == 0) { lines.Add(src); continue; }
+                if (!MostlyTimed(_words[li], times[li]))
+                {
+                    // Never fabricate a line: fewer than half its letters were placed by the model (a script or words the
+                    // model cannot spell, an optional line it skipped). A line-synced source keeps the provider's line as
+                    // it is; a plain-text source has no line time to keep, so the line starts where the previous one ends
+                    // (line-level, no words) and the starts stay in order.
+                    if (lineSynced) lines.Add(src);
+                    else lines.Add(src with { StartMs = lines.Count > 0 ? lines[^1].EndMs ?? lines[^1].StartMs : 0, EndMs = null, Syllables = [], IsWordByWord = false });
+                    continue;
+                }
                 double? next = null;
                 for (int j = li + 1; j < n; j++)
                 {
@@ -293,7 +308,7 @@ public static partial class AiLyrics
                 }
                 double lineStart = _src.IsSynced ? src.StartMs / 1000.0 : (lines.Count > 0 ? (lines[^1].EndMs ?? lines[^1].StartMs) / 1000.0 : 0);
                 if (!Align.Fill(times[li], lineStart, next)) { lines.Add(src); continue; }
-                lines.Add(Align.WordSyncedLine(src, _words[li], times[li], next, lines.Count > 0 ? lines[^1].StartMs : null));
+                lines.Add(Align.WordSyncedLine(src, _words[li], times[li], next, lines.Count > 0 ? lines[^1].StartMs : null, keepLineStart: lineSynced));
             }
             return _src with
             {
@@ -306,6 +321,21 @@ public static partial class AiLyrics
                 Generated = true,
                 OffsetMsApplied = 0,
             };
+        }
+
+        /// <summary>At least half of a line's letters belong to words the model timed (before <see cref="Align.Fill"/>);
+        /// false for a line without letters (digits, symbols: nothing the model could have heard).</summary>
+        static bool MostlyTimed(IReadOnlyList<Align.LyricWord> words, Align.WordTime[] times)
+        {
+            int letters = 0, timed = 0;
+            for (int i = 0; i < words.Count; i++)
+            {
+                int n = 0;
+                foreach (char c in words[i].Text) if (char.IsLetter(c)) n++;
+                letters += n;
+                if (times[i].IsSet) timed += n;
+            }
+            return letters > 0 && timed * 2 >= letters;
         }
 
         static void EnsureCap(ref float[] a, ref float[] b, int need)

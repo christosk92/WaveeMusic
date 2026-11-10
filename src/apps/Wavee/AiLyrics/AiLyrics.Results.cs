@@ -8,9 +8,11 @@
 // rebuilt over the provider's current lines (text, translation, romanization), and the syllable texts are re-cut from
 // the provider's text at the word boundaries `Align.Words` finds, exactly as `Align.WordSyncedLine` cuts them, so they
 // join back to the line text the karaoke wipe measures against. A different source text (hash) or line count is a
-// miss: the song is aligned again.
+// miss: the song is aligned again; so is a file whose language or decision version (Rules.DecisionVersion) differs from
+// what the language decision answers today. A replay passes the same acceptance check as a fresh result (the host runs
+// it). Format 2 added "decision"; a format-1 file is a miss, and the next play of that track writes a new one.
 //
-//   { "v": 1, "trackId": "…", "pack": 1, "language": "en", "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
+//   { "v": 2, "trackId": "…", "pack": 1, "language": "en", "decision": 2, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
 //     "savedUnixMs": 0, "lines": [ { "s": 12340, "e": 15000, "w": [[12340,12600,"Nobody "],[12600,13100,"pray "]] } ] }
 //
 // The host does the file I/O (worker thread at job end, boot Task for the sweep); this file only encodes, decodes,
@@ -30,8 +32,9 @@ public static partial class AiLyrics
 {
     public static class Results
     {
-        /// <summary>The file format's version (the <c>v</c> field). A file of another version is a miss.</summary>
-        public const int FormatVersion = 1;
+        /// <summary>The file format's version (the <c>v</c> field). A file of another version is a miss. 2: the
+        /// <c>decision</c> field, and results only saved after the acceptance check (every format-1 file is re-timed).</summary>
+        public const int FormatVersion = 2;
 
         /// <summary>The sweep keeps at most this many result files…</summary>
         public const int MaxFiles = 500;
@@ -49,10 +52,12 @@ public static partial class AiLyrics
 
         /// <summary>A decoded results file.</summary>
         /// <param name="SourceHash">The host's hash of the provider document the timing was generated over.</param>
+        /// <param name="Decision">The <see cref="Rules.DecisionVersion"/> that chose <paramref name="Language"/>.</param>
         public sealed record ResultDoc(
             string TrackId,
             int Pack,
             string? Language,
+            int Decision,
             string? Origin,
             ulong SourceHash,
             long SavedUnixMs,
@@ -87,6 +92,7 @@ public static partial class AiLyrics
                 w.WriteString("trackId", final.TrackId);
                 w.WriteNumber("pack", PackVersion);
                 if (final.Language is not null) w.WriteString("language", final.Language);
+                w.WriteNumber("decision", Rules.DecisionVersion);
                 if (final.Origin is not null) w.WriteString("origin", final.Origin);
                 w.WriteString("sourceHash", sourceHash.ToString("x16", CultureInfo.InvariantCulture));
                 w.WriteNumber("savedUnixMs", savedUnixMs);
@@ -134,6 +140,7 @@ public static partial class AiLyrics
                 if (!Str(root, "trackId", out string? trackId) || trackId is not { Length: > 0 }) return false;
                 if (!Int(root, "pack", out long pack) || pack is < int.MinValue or > int.MaxValue) return false;
                 if (!OptStr(root, "language", out string? language) || !OptStr(root, "origin", out string? origin)) return false;
+                if (!Int(root, "decision", out long decision) || decision is < 0 or > int.MaxValue) return false;
                 if (!Str(root, "sourceHash", out string? hashText) || hashText is null
                     || !ulong.TryParse(hashText, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ulong hash)) return false;
                 if (!Int(root, "savedUnixMs", out long saved)) return false;
@@ -167,7 +174,7 @@ public static partial class AiLyrics
                     }
                     lines.Add(new ResultLine(ls, lend, words));
                 }
-                r = new ResultDoc(trackId, (int)pack, language, origin, hash, saved, lines);
+                r = new ResultDoc(trackId, (int)pack, language, (int)decision, origin, hash, saved, lines);
                 return true;
             }
             catch (JsonException)
@@ -203,14 +210,19 @@ public static partial class AiLyrics
         // ── overlay ─────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The generated document for <paramref name="provider"/> from saved timing, or null for a miss: a
-        /// different source hash, pack version or track id, a different line count, or nothing word-timed. Each line
-        /// keeps the PROVIDER's text, translation and romanization; a line with saved words gets their timing, its
-        /// syllable texts re-cut from the provider's text at the <see cref="Align.Words"/> boundaries (so they join back
-        /// to the line text); a line without saved words — or whose word count no longer matches — stays the provider's
-        /// line.</summary>
-        public static Lyrics.Doc? Overlay(ResultDoc r, Lyrics.Doc provider, ulong providerHash)
+        /// different source hash, pack version or track id, a language other than <paramref name="language"/> (today's
+        /// decision) or another decision version, a different line count, or nothing word-timed. Each line keeps the
+        /// PROVIDER's text, translation and romanization; a line with saved words gets their timing, its syllable texts
+        /// re-cut from the provider's text at the <see cref="Align.Words"/> boundaries (so they join back to the line
+        /// text) and, for a line-synced provider, keeps the provider's start unless its first word is earlier (as
+        /// <see cref="Align.WordSyncedLine"/> does); a line without saved words — or whose word count no longer matches —
+        /// stays the provider's line (a plain-text provider's takes the saved line time: it has none of its own).
+        /// The caller runs <see cref="Acceptance.Check"/> on the answer.</summary>
+        public static Lyrics.Doc? Overlay(ResultDoc r, Lyrics.Doc provider, ulong providerHash, string language)
         {
             if (r.SourceHash != providerHash || r.Pack != PackVersion) return null;
+            if (r.Decision != Rules.DecisionVersion || !string.Equals(r.Language, language, StringComparison.Ordinal)) return null;
+            bool lineSynced = Acceptance.IsLineSynced(provider);
             if (!string.Equals(r.TrackId, provider.TrackId, StringComparison.Ordinal)) return null;
             int n = provider.Lines.Count;
             if (r.Lines.Count != n || n == 0) return null;
@@ -221,10 +233,11 @@ public static partial class AiLyrics
             {
                 var src = provider.Lines[li];
                 var cached = r.Lines[li];
-                if (cached.Words.Count == 0) { lines.Add(src); continue; }
+                var lineLevel = lineSynced ? src : src with { StartMs = cached.StartMs, EndMs = cached.EndMs, Syllables = [], IsWordByWord = false };
+                if (cached.Words.Count == 0) { lines.Add(lineLevel); continue; }
                 string text = src.Text;
                 var words = Align.Words(text);
-                if (words.Count != cached.Words.Count) { lines.Add(src); continue; }
+                if (words.Count != cached.Words.Count) { lines.Add(lineLevel); continue; }
 
                 var syl = new List<Lyrics.Syllable>(words.Count);
                 for (int i = 0; i < words.Count; i++)
@@ -236,7 +249,8 @@ public static partial class AiLyrics
                 }
                 lines.Add(src with
                 {
-                    StartMs = syl[0].StartMs,
+                    StartMs = Math.Max(lineSynced ? Math.Min(src.StartMs, syl[0].StartMs) : syl[0].StartMs,
+                        lines.Count > 0 ? lines[^1].StartMs : long.MinValue),
                     Syllables = syl,
                     EndMs = src.EndMs ?? cached.EndMs ?? syl[^1].EndMs,
                     IsWordByWord = true,

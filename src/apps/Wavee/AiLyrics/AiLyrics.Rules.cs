@@ -167,7 +167,7 @@ public static partial class AiLyrics
             if (HasWordTiming(doc.Lines)) return SkipReason.AlreadyWordByWord;
             bool plain = doc.Sync == Lyrics.SyncKind.Unsynced || !doc.IsSynced;
             if (plain ? !plainText : !wordSync) return plain ? SkipReason.PlainTextOff : SkipReason.WordSyncOff;
-            if (!Contains(languages, LanguageOf(doc))) return SkipReason.LanguageNotInstalled;
+            if (!Contains(languages, LanguageOf(doc))) return SkipReason.LanguageNotInstalled;   // "" = no model may time it (AiLyrics.Language.cs)
             if (durationMs > MaxDurationMs) return SkipReason.TooLong;
             if (energySaver && !keepOnSaver) return SkipReason.BatterySaver;
             return SkipReason.None;
@@ -191,114 +191,6 @@ public static partial class AiLyrics
         {
             for (int i = 0; i < list.Count; i++) if (string.Equals(list[i], value, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
-        }
-
-        /// <summary>The aligner language for a document: the source's own tag (primary subtag, lower case) when it names
-        /// one, else a heuristic between the two aligners: Spanish when the text has ñ/¿/¡ or Spanish function words
-        /// make up a real share of it, else "en". (Portuguese also reads as Spanish here; only en/es aligners exist.)</summary>
-        public static string LanguageOf(Lyrics.Doc doc)
-        {
-            // The words decide when they clearly read as a language we have a model for: a provider's tag can be wrong
-            // (an English song tagged with another language would otherwise be skipped as "no model installed").
-            if (MostlyHangul(doc.Lines)) return "ko";
-            if (LooksSpanish(doc.Lines)) return "es";
-            if (Looks(doc.Lines, DutchWords, ratio: 6)) return "nl";
-            if (LooksEnglish(doc.Lines)) return "en";
-            string? tag = doc.Language;
-            if (!string.IsNullOrWhiteSpace(tag))
-            {
-                int cut = tag.IndexOfAny(['-', '_']);
-                string primary = (cut > 0 ? tag[..cut] : tag).Trim().ToLowerInvariant();
-                if (primary.Length > 0 && primary != "und" && primary != "zxx") return primary;
-            }
-            return "en";
-        }
-
-        static readonly HashSet<string> EnglishWords = new(StringComparer.Ordinal)
-        {
-            "the", "and", "you", "your", "i", "me", "my", "a", "to", "of", "in", "on", "it", "is", "that", "this", "with",
-            "for", "be", "are", "was", "we", "our", "they", "she", "he", "her", "his", "but", "not", "so", "all", "just",
-            "what", "when", "can", "do", "don", "t", "s", "m", "ll", "re", "ve", "im", "ive", "dont", "cant", "like", "love",
-            "know", "baby", "oh", "yeah", "if", "at", "up", "down", "out", "no", "now", "never", "because", "again", "around",
-        };
-
-        static readonly HashSet<string> DutchWords = new(StringComparer.Ordinal)
-        {
-            "de", "het", "een", "ik", "je", "jij", "jou", "niet", "van", "dat", "die", "op", "met", "voor", "zijn", "maar",
-            "als", "wat", "mijn", "wij", "we", "ze", "er", "nog", "ook", "naar", "bij", "door", "om", "te", "heb", "ben",
-            "kan", "zo", "nu", "hier", "waar", "alles", "liefde", "hart", "nooit", "altijd", "wil", "weet", "jouw", "mij",
-            "zij", "geen", "meer", "dan", "nacht", "dag", "laat", "gaan", "komt", "zonder", "samen",
-        };
-
-        /// <summary>Korean lyrics: at least a quarter of the letters are Hangul syllables (K-pop mixes in English, which
-        /// the Korean model cannot align; those words get interpolated timing).</summary>
-        static bool MostlyHangul(IReadOnlyList<Lyrics.Line> lines)
-        {
-            int letters = 0, hangul = 0;
-            for (int li = 0; li < lines.Count; li++)
-                foreach (char ch in (lines[li].Text ?? "").Normalize(System.Text.NormalizationForm.FormC))
-                {
-                    if (!char.IsLetter(ch)) continue;
-                    letters++;
-                    if (ch is >= '\uAC00' and <= '\uD7A3') hangul++;
-                }
-            return hangul >= 4 && hangul * 4 >= letters;
-        }
-
-        static bool LooksEnglish(IReadOnlyList<Lyrics.Line> lines) => Looks(lines, EnglishWords, ratio: 5);
-
-        /// <summary>At least three hits on <paramref name="words"/>, two of them different, and one in
-        /// <paramref name="ratio"/> words a hit.</summary>
-        static bool Looks(IReadOnlyList<Lyrics.Line> lines, HashSet<string> words, int ratio)
-        {
-            int tokens = 0, hits = 0;
-            var distinct = new HashSet<string>(StringComparer.Ordinal);
-            for (int li = 0; li < lines.Count; li++)
-            {
-                string text = lines[li].Text ?? "";
-                int start = -1;
-                for (int i = 0; i <= text.Length; i++)
-                {
-                    char c = i < text.Length ? text[i] : ' ';
-                    if (char.IsLetter(c)) { if (start < 0) start = i; continue; }
-                    if (start < 0) continue;
-                    string word = text[start..i].ToLowerInvariant();
-                    start = -1;
-                    tokens++;
-                    if (words.Contains(word)) { hits++; distinct.Add(word); }
-                }
-            }
-            return hits >= 3 && distinct.Count >= 2 && hits * ratio >= tokens;
-        }
-
-        static readonly HashSet<string> SpanishWords = new(StringComparer.Ordinal)
-        {
-            "el", "la", "los", "las", "que", "y", "un", "una", "es", "de", "en", "del", "al", "por", "con", "para", "mi",
-            "tu", "yo", "se", "lo", "te", "como", "pero", "más", "mas", "muy", "porque", "estoy", "eres", "soy", "está",
-            "esta", "todo", "nada", "cuando", "sin", "quiero", "tengo", "contigo", "amor", "corazón",
-        };
-
-        static bool LooksSpanish(IReadOnlyList<Lyrics.Line> lines)
-        {
-            int tokens = 0, hits = 0;
-            var distinct = new HashSet<string>(StringComparer.Ordinal);
-            for (int li = 0; li < lines.Count; li++)
-            {
-                string text = lines[li].Text ?? "";
-                int start = -1;
-                for (int i = 0; i <= text.Length; i++)
-                {
-                    char c = i < text.Length ? text[i] : ' ';
-                    if (c is 'ñ' or 'Ñ' or '¿' or '¡') return true;
-                    if (char.IsLetter(c)) { if (start < 0) start = i; continue; }
-                    if (start < 0) continue;
-                    string word = text[start..i].ToLowerInvariant();
-                    start = -1;
-                    tokens++;
-                    if (SpanishWords.Contains(word)) { hits++; distinct.Add(word); }
-                }
-            }
-            return hits >= 3 && distinct.Count >= 2 && hits * 8 >= tokens;
         }
 
         /// <summary>The results cache's file-name-safe key for a track: its id with every character outside
