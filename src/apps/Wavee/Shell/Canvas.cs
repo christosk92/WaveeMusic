@@ -167,6 +167,10 @@ public static partial class CanvasVideo
         string _open = "";
         bool _playing;
         int _openedSeen;
+        // One open = one serial. A failure is judged only once the open it belongs to has LANDED (s_landedSerial), and once per
+        // open (_judgedSerial); a file is opened again after a failure once (_retriedFile), never in a loop.
+        int _openSerial, _judgedSerial;
+        string _retriedFile = "";
 
         public override Element Render()
         {
@@ -295,13 +299,26 @@ public static partial class CanvasVideo
                 return;
             }
             var player = Player;
+            // A FAILED open is not an open. The player says so in its state (read here, so a failure re-runs this effect); before, nothing
+            // read it: the poster stayed over the playing music for the whole track and no line was logged (2026-11-10). The failure is
+            // logged with what the player reports, and the file is opened once more: its source is prepared afresh then (a loop file
+            // that was pruned from the cache is rebuilt).
+            if (player.State.Value == PlaybackState.Failed && _open == now.File && s_landedSerial == _openSerial && _judgedSerial != _openSerial)
+            {
+                _judgedSerial = _openSerial;
+                bool retry = _retriedFile != now.File;
+                Log.Warn("canvas", "canvas.player failed track=" + now.Uri + " file=" + System.IO.Path.GetFileName(now.File)
+                    + " exists=" + System.IO.File.Exists(now.File) + " error=" + PlayerError() + " retry=" + retry);
+                if (retry) { _retriedFile = now.File; _open = ""; }
+            }
             if (_open != now.File)
             {
                 _open = now.File;
                 _playing = false;
+                int serial = ++_openSerial;
                 if (Log.IsEnabled(WaveeLogLevel.Info))
                     Log.Info("canvas", "canvas.player open track=" + now.Uri + " owner=" + owner + " file=" + System.IO.Path.GetFileName(now.File));
-                Open(player, now.File);
+                Open(player, now.File, serial);
             }
             bool run = inView && playing && !occluded && !reduced;
             int opened = Opened.Value;                 // an open landed: apply the run state to the new session
@@ -315,22 +332,30 @@ public static partial class CanvasVideo
             _ = run ? player.PlayAsync() : player.PauseAsync();
         }
 
-        static async void Open(MediaPlayer player, string file)
+        /// <summary>The serial of the last open that LANDED (its <c>OpenAsync</c> returned or threw): UI thread only.</summary>
+        static int s_landedSerial;
+
+        static async void Open(MediaPlayer player, string file, int serial)
         {
             try
             {
                 player.SetMuted(true);
                 await player.OpenAsync(MediaSource.FromFile(file).Loop(), new MediaOpenOptions { StartPaused = true });
-                Files.Post(static () =>
-                {
-                    s_player?.SetMuted(true);
-                    Opened.Value = Opened.Peek() + 1;
-                });
             }
             catch (Exception ex)
             {
                 Log.Warn("canvas", "canvas.open failed file=" + System.IO.Path.GetFileName(file) + " " + ex.GetType().Name + ": " + ex.Message);
             }
+            // Landed, whichever way: the observer applies the run state to the new session, or judges the failure. (An open that never
+            // lands logs no "opened" line after its "open": that pair missing in a log is an open stuck before its metadata.)
+            Files.Post(() =>
+            {
+                s_player?.SetMuted(true);
+                s_landedSerial = serial;
+                if (Log.IsEnabled(WaveeLogLevel.Info))
+                    Log.Info("canvas", "canvas.player opened file=" + System.IO.Path.GetFileName(file) + " state=" + PlayerState() + " natural=" + PlayerNatural());
+                Opened.Value = Opened.Peek() + 1;
+            });
         }
     }
 }

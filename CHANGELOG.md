@@ -41,6 +41,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **A Canvas that stayed a still picture.** When the looping video failed to open (its cached loop file had been
+  cleaned up, for one), the still stayed over the playing music for the whole track and nothing was logged. The loop is
+  rebuilt, a failed open is logged and tried once more, and the loop cache now keeps the canvases you played last.
+- **AI word timing: lines that flashed past.** A line followed by one the model could not time was squeezed to zero
+  length.
+
 - **Acrylic over the Canvas in full screen.** The player bar, the Up next column and the view switcher at the top were flat
   dark slabs while a Canvas played behind them. They are frosted glass again: the video shows through them blurred and
   tinted, as the album art does.
