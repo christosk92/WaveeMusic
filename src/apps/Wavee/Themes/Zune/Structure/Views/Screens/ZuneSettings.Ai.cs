@@ -308,8 +308,15 @@ internal static partial class ZuneSettings
             return metric + " · " + (n > 0 ? Loc.Format(etaKey, ("n", n)) : Loc.Get(etaKey));
         }
 
-        /// <summary>The host's raw detail ("1.2 GB|C:\" for a full disk) as one readable line.</summary>
+        /// <summary>The host's raw detail ("1.2 GB|C:\" for a full disk) as one readable line. It rides in the bar's message, which wraps on
+        /// whole words only, so a URL or a path gets a break opportunity (a zero-width space) after each separator: unbroken, a download's
+        /// URL is wider than the bar at a narrow window and pushed the bar past the settings column.</summary>
         static string Detail(string raw)
-            => string.IsNullOrWhiteSpace(raw) ? "" : string.Join(" · ", raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            => string.IsNullOrWhiteSpace(raw) ? ""
+                : string.Join(" · ", raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    .Replace("/", "/" + BreakHere, StringComparison.Ordinal).Replace("\\", "\\" + BreakHere, StringComparison.Ordinal);
+
+        /// <summary>A line-break opportunity that draws nothing (U+200B, zero-width space).</summary>
+        const char BreakHere = (char)0x200B;
     }
 }

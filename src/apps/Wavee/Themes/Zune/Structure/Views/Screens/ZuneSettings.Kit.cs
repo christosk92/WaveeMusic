@@ -287,9 +287,22 @@ internal sealed class ZuneKit
         Children = [Icon(glyph, Z.DiscGlyph, enabled ? Tok.TextOnAccentPrimary : Tok.TextOnAccentDisabled)],
     };
 
-    /// <summary>A pair of status words under a banner: an engine info bar (square, no ring in Zune) with the words as the page wrote them.</summary>
-    public static Element Notice(InfoBarSeverity severity, string title, string message, Element? action = null)
-        => InfoBar.Create(severity, title, message, isClosable: false, actionButton: action);
+    /// <summary>A pair of status words under a banner: an engine info bar (square, no ring in Zune) with the words as the page wrote them.
+    /// The bar takes the column's width, never its content's: it sits in a row as its one flexible cell (basis 0, grown to the row the column
+    /// stretches), because a wrapping action row inside it measures as wide as the room it is offered (a wrap row's measure is its whole line),
+    /// and that measure widened the settings column: the language failure's bar and every row with it stood 16 DIP past the gutter at 480.</summary>
+    public static Element Notice(InfoBarSeverity severity, string title, string message, Element? action = null) => new BoxEl
+    {
+        Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children = [InfoBar.Create(severity, title, message, isClosable: false, actionButton: action)],
+            },
+        ],
+    };
 
     /// <summary>A quiet word row for a fact (label | value).</summary>
     public Element Fact(string key, string label, string? value) => Row(key, label, null,
