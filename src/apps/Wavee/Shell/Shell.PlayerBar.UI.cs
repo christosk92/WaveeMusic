@@ -519,8 +519,10 @@ public static partial class Shell
             _readoutContent = () => ViewSlots.View(ViewKeys.SeekReadout, readout);
             _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_scrub.Display.Value, 0f, 1f), 1e-4f), 1f));
             _recompute = _scrub.Recompute;
-            _modeNow = _scrub.Mode;
-            _dwellNow = _scrub.DwellMs;
+            // the shape and dwell memos read the model only while the rail shows: concealed they answer what they read last and depend on the
+            // reveal alone, so a duration or window change behind it recomputes nothing and re-renders no rail
+            _modeNow = () => Concealed() ? _lastMode : _lastMode = _scrub.Mode();
+            _dwellNow = () => Concealed() ? _lastDwell : _lastDwell = _scrub.DwellMs();
             _onReport = OnReport;
             _onCommit = OnCommit;
             _onCancel = OnCancel;
@@ -531,7 +533,26 @@ public static partial class Shell
             _onBounds = b => _scrub.SetRailWidth(b.W);
         }
 
+        /// <summary>What the last render drew: what a CONCEALED rail answers (see <see cref="Render"/>).</summary>
+        Element? _held;
+
+        SeekRailMode _lastMode;
+        float _lastDwell;
+
+        /// <summary>The rail's reveal is down (subscribes the reader to it).</summary>
+        bool Concealed() => _reveal is { } reveal && !reveal.Value;
+
+        /// <summary>CONCEALED (its reveal down: the bar's page under the full-screen stage, an idled-out strip or stage chrome), the rail answers
+        /// what it drew last and reads nothing but the reveal, so a track change, a load or a duration change behind it re-renders nothing (its
+        /// gate, its shape and dwell memos, its report effect and steppers are already parked by the same reveal); the reveal's rise re-renders it
+        /// on that frame, current at once (the hooks this skips keep their state: they are keyed by call site).</summary>
         public override Element Render()
+        {
+            if (_held is { } held && _reveal is { } concealedBy && !concealedBy.Value) return held;
+            return _held = RenderLive();
+        }
+
+        Element RenderLive()
         {
             var draw = _drawn ? UseProps<SeekRailDraw>().Draw : null;
             var gate = _scrub.Gate();

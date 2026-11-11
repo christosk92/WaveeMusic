@@ -100,7 +100,8 @@ public static partial class Shell
             // the bar is the page's: under the full-screen stage it holds its last state and does no work (PageShown)
             SeekBar = static () => SeekBar(reveal: PageShown),
             TimeText = static remaining => TimeText(remaining, reveal: PageShown),
-            CreditsStamp = static () => BarCreditsStamp(),
+            // the credits line's stamp holds under the full-screen stage too (a track change behind it re-renders no credits row)
+            CreditsStamp = HeldUnderStage(static () => BarCreditsStamp()),
             Credits = static () => BarCredits(),
             OverflowRow = OverflowItem,
             VideoPlacementMenu = static () => Video.PlacementMenu(includeFullscreen: true),
