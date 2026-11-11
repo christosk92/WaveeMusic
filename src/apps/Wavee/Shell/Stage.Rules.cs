@@ -160,16 +160,17 @@ public static partial class Stage
         /// <summary>The line the rows were seeded for; -1 = none (the UI writes the split, or nothing is wiping).</summary>
         public int Line => _line;
 
-        /// <summary>LineRow's split: the char-weighted sung fraction on TRUE time, nudged by the wipe's own lead mid-line.</summary>
-        public static float SplitAt(Lyrics.Line line, long now)
-        {
-            float split = Lyrics.Wipe.ComputeSplit(line, now);
-            return split > 0f && split < 1f ? Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f) : split;
-        }
+        /// <summary>The lyrics rows' split (<see cref="Lyrics.Wipe.SplitWithLead"/>) on TRUE time: on the glyph axis of the caption's
+        /// own laid line (<paramref name="bounds"/>, <see cref="Lyrics.Wipe.GlyphBounds"/>, measured once per line, wrap width and
+        /// type), so a word's sweep ends on the next word's first glyph and the lead waits through a pause; empty bounds (the line
+        /// not laid out yet) keep the character weights and the constant lead.</summary>
+        public static float SplitAt(Lyrics.Line line, long now, ReadOnlySpan<float> bounds)
+            => Lyrics.Wipe.SplitWithLead(line, now, bounds, lead: true);
 
         /// <summary>The split the UI writes at <paramref name="now"/>: stepped in whole DIPs of the run (as the render thread
         /// steps a <see cref="GlyphWipe.Run"/> of the same length).</summary>
-        public static float UiSplit(Lyrics.Line line, long now, float runLen) => GlyphWipe.Quantize(SplitAt(line, now), Run(runLen));
+        public static float UiSplit(Lyrics.Line line, long now, float runLen, ReadOnlySpan<float> bounds)
+            => GlyphWipe.Quantize(SplitAt(line, now, bounds), Run(runLen));
 
         static float Run(float runLen) => runLen > 1f ? runLen : 0f;
 
@@ -177,7 +178,7 @@ public static partial class Stage
         /// <paramref name="anchor"/>; <paramref name="clockNowMs"/> is the frame clock <paramref name="now"/> was estimated
         /// on (a report that moves position - clock re-seeds). False = the line's nodes are not realized yet.</summary>
         public bool Seed(AnimEngine anim, SceneStore scene, Lyrics.Line line, int anchor, NodeHandle main, NodeHandle glow,
-            long now, long clockNowMs, float runLen)
+            long now, long clockNowMs, float runLen, ReadOnlySpan<float> bounds)
         {
             if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out _)) return false;
             bool halo = !glow.IsNull && scene.IsLive(glow) && scene.TryGetGlyphWipe(glow, out _);
@@ -185,7 +186,7 @@ public static partial class Stage
             if (_line == anchor && _main == main && _glow == (halo ? glow : default) && Math.Abs(clock - _clock) <= 1L) return true;
             if (_line >= 0 && (_line != anchor || _main != main)) Hold(anim, scene);
             float softness = Lyrics.Wipe.SoftnessOfLine(runLen > 1f ? runLen : MathF.Max(1f, scene.Bounds(main).W), large: true);
-            var keys = Lyrics.Wipe.SplitKeyframes(line, now, lead: true, out long endMs);
+            var keys = Lyrics.Wipe.SplitKeyframes(line, now, lead: true, bounds, out long endMs);
             _line = anchor; _main = main; _glow = halo ? glow : default; _clock = clock;
             if (keys is null)
             {
@@ -256,10 +257,10 @@ public static partial class Stage
 
         /// <summary>The UI's own write of the wipe — the lyrics view's write path in shape: the split stepped along the run,
         /// the per-line DIP feather, the settled/eps write-stops (a tick that moves nothing writes nothing).</summary>
-        public static void DriveUi(SceneStore scene, NodeHandle main, NodeHandle glow, Lyrics.Line line, long now, float runLen)
+        public static void DriveUi(SceneStore scene, NodeHandle main, NodeHandle glow, Lyrics.Line line, long now, float runLen, ReadOnlySpan<float> bounds)
         {
             if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out var mw)) return;
-            float split = UiSplit(line, now, runLen);
+            float split = UiSplit(line, now, runLen, bounds);
             float softness = Lyrics.Wipe.SoftnessOfLine(runLen > 1f ? runLen : MathF.Max(1f, scene.Bounds(main).W), large: true);
             if (WipeMoved(split, softness, in mw))
             {

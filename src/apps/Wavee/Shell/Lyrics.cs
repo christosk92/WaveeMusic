@@ -793,7 +793,8 @@ public static partial class Lyrics
         /// space where the line wraps does not). One seam query per syllable, so a surface measures it once per layout (a
         /// line's text, wrap width or type) and hands the result to <see cref="ComputeSplit(Line, long, ReadOnlySpan{float})"/>
         /// and <see cref="SplitKeyframes(Line, long, bool, ReadOnlySpan{float}, out long)"/>; never per frame. Null when the
-        /// syllables do not cut <see cref="Line.Text"/> exactly, the run has no glyphs, or the seam cannot measure ranges:
+        /// syllables do not cut <see cref="Line.Text"/> exactly (a syllable may run past the text's end by whitespace alone: a word
+        /// line trimmed of the space its last syllable carries, Verse's), the run has no glyphs, or the seam cannot measure ranges:
         /// the caller keeps the character weights.</summary>
         public static float[]? GlyphBounds(FluentGpu.Text.IFontSystem fonts, Line line, in FluentGpu.Text.TextStyle style, float wrapWidth)
         {
@@ -805,8 +806,9 @@ public static partial class Lyrics
             for (int i = 0; i < n; i++)
             {
                 string t = syl[i].Text;
-                if (pos + t.Length > text.Length || string.CompareOrdinal(text, pos, t, 0, t.Length) != 0) return null;
-                pos += t.Length;
+                int k = Math.Min(t.Length, text.Length - pos);
+                if (string.CompareOrdinal(text, pos, t, 0, k) != 0 || !t.AsSpan(k).IsWhiteSpace()) return null;
+                pos += k;
             }
             if (pos != text.Length) return null;
 
@@ -819,7 +821,7 @@ public static partial class Lyrics
             pos = 0;
             for (int i = 0; i < n; i++)
             {
-                int a = pos, b = pos + syl[i].Text.Length;
+                int a = pos, b = Math.Min(text.Length, pos + syl[i].Text.Length);
                 pos = b;
                 while (a < b && char.IsWhiteSpace(text[a])) a++;
                 while (b > a && char.IsWhiteSpace(text[b - 1])) b--;

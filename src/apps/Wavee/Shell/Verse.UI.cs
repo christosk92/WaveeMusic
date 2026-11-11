@@ -130,6 +130,11 @@ public static partial class Verse
         public NodeHandle[] Nodes = [], Text = [], BloomText = [], Halo = [];
         public readonly FloatSignal BlockAlpha = new(1f), BlockDy = new(0f), Progress = new(0f), Echo = new(0f);
         public NodeHandle BlockNode, WholeText;
+        /// <summary>Per wiping word, its syllables' glyph bounds on the word node as drawn (<see cref="Lyrics.Wipe.GlyphBounds"/>), and the
+        /// whole run's over its line; measured once per rig (a rig is one line at one type size and column) the first time the driver finds
+        /// the node laid out. Null = not measured yet (the character weights meanwhile).</summary>
+        public float[]?[] WordBounds = [];
+        public float[]? WholeBounds;
         public Signal<int>? Lit;
         /// <summary>The ghost depth the live line echoes (0 = none in the stack — the echo lane never runs).</summary>
         public int EchoD;
@@ -410,7 +415,7 @@ public static partial class Verse
             bool playing = Playback.IsPlaying.Peek();
             rig.Alpha = new FloatSignal[n]; rig.Dy = new FloatSignal[n]; rig.State = new Signal<int>[n];
             rig.Swell = new FloatSignal?[n]; rig.Bloom = new FloatSignal?[n];
-            rig.Nodes = new NodeHandle[n]; rig.Text = new NodeHandle[n]; rig.BloomText = new NodeHandle[n]; rig.Halo = new NodeHandle[n];
+            rig.Nodes = new NodeHandle[n]; rig.Text = new NodeHandle[n]; rig.WordBounds = new float[]?[n]; rig.BloomText = new NodeHandle[n]; rig.Halo = new NodeHandle[n];
             bool still = _reduced || rig.Dense;
             for (int i = 0; i < n; i++)
             {
@@ -477,10 +482,11 @@ public static partial class Verse
             return rig.HairW > 1f ? MathF.Round(p * rig.HairW) / rig.HairW : p;
         }
 
-        static float WipeSplit(in Word w, long now, float width)
+        /// <summary>A wiping word's split: the lyrics rows' (<see cref="Lyrics.Wipe.SplitWithLead"/>) over the word's own syllables, on
+        /// their glyph bounds once measured (<see cref="WordBoundsOf"/>), stepped in whole DIPs of the word.</summary>
+        static float WipeSplit(in Word w, long now, float width, ReadOnlySpan<float> bounds)
         {
-            float split = Words.Split(in w, now);
-            if (split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = w.Timed is { } timed ? Lyrics.Wipe.SplitWithLead(timed, now, bounds, lead: true) : Words.Split(in w, now);
             if (width > 1f && split > 0f && split < 1f) split = MathF.Round(split * width) / width;
             return split;
         }
@@ -503,8 +509,7 @@ public static partial class Verse
                 };
                 if (rig.WholeWipe)
                 {
-                    float split = Lyrics.Wipe.ComputeSplit(line, now);
-                    if (split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+                    float split = Lyrics.Wipe.SplitWithLead(line, now, rig.WholeBounds, lead: true);
                     run = run with
                     {
                         Wipe = new GlyphWipe(ink, ink with { A = Lyrics.Wipe.UnsungAlpha }, split, Lyrics.Wipe.SoftnessOfLine(rig.Widths[0], large: true)),
@@ -569,7 +574,7 @@ public static partial class Verse
             float split = 0f, soft = 0f;
             if (wipe)
             {
-                split = WipeSplit(in w, now, rig.Widths[i]);
+                split = WipeSplit(in w, now, rig.Widths[i], rig.WordBounds[i]);
                 soft = Lyrics.Wipe.SoftnessOfLine(MathF.Max(1f, rig.Widths[i]), large: true);
                 ColorF before = st.Peek() == 2 ? ink : slab.A.Peek();
                 main = main with { Wipe = new GlyphWipe(before, ink with { A = Lyrics.Wipe.UnsungAlpha }, split, soft), OnRealized = h => rig.Text[i] = h };
@@ -962,7 +967,7 @@ public static partial class Verse
                     rig.State[i].SetIfChanged(st);
                     if (rig.Wipes(i) && (st == 1 || p > 0f))
                     {
-                        float split = WipeSplit(in w, now, rig.Widths[i]);
+                        float split = WipeSplit(in w, now, rig.Widths[i], WordBoundsOf(scene, rig, i));
                         WriteWipe(scene, rig.Text[i], split, st == 2 ? ink : accent, recolour: true);
                         WriteWipe(scene, rig.BloomText[i], split, default, recolour: false);
                     }
@@ -986,8 +991,7 @@ public static partial class Verse
                 if (rig.WholeWipe)
                 {
                     var line = song.Doc.Lines[rig.Line];
-                    float split = Lyrics.Wipe.ComputeSplit(line, now);
-                    if (split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+                    float split = Lyrics.Wipe.SplitWithLead(line, now, WholeBoundsOf(scene, rig, line), lead: true);
                     WriteWipe(scene, rig.WholeText, split, default, recolour: false);
                 }
             }
@@ -1014,6 +1018,25 @@ public static partial class Verse
 
         /// <summary>A landing σ straight onto the node's paint column (no bound channel for blur), PaintDirty on that node only;
         /// the landed 0 is exact so the recorder drops the layer.</summary>
+        /// <summary>Word <paramref name="i"/>'s glyph bounds, measured on its text node as drawn (<see cref="Lyrics.Wipe.DrawnLayout"/>) the
+        /// first time the node is laid out, then read; empty until then (the character weights).</summary>
+        static ReadOnlySpan<float> WordBoundsOf(SceneStore scene, Rig rig, int i)
+        {
+            if ((uint)i >= (uint)rig.WordBounds.Length) return default;
+            if (rig.WordBounds[i] is { } known) return known;
+            if (rig.Words[i].Timed is not { } timed || TextSeam.Default is not { } fonts
+                || !Lyrics.Wipe.DrawnLayout(scene, rig.Text[i], out var style, out float wrap)) return default;
+            return rig.WordBounds[i] = Lyrics.Wipe.GlyphBounds(fonts, timed, in style, wrap) ?? [];
+        }
+
+        /// <summary>The whole run's glyph bounds over its line (<see cref="WordBoundsOf"/>'s rule, on the run's node at its auto-fit size).</summary>
+        static ReadOnlySpan<float> WholeBoundsOf(SceneStore scene, Rig rig, Lyrics.Line line)
+        {
+            if (rig.WholeBounds is { } known) return known;
+            if (TextSeam.Default is not { } fonts || !Lyrics.Wipe.DrawnLayout(scene, rig.WholeText, out var style, out float wrap)) return default;
+            return rig.WholeBounds = Lyrics.Wipe.GlyphBounds(fonts, line, in style, wrap) ?? [];
+        }
+
         static void WriteBlur(SceneStore scene, NodeHandle h, float sigma)
         {
             if (h.IsNull || !scene.IsLive(h)) return;

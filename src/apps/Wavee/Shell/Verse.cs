@@ -21,7 +21,7 @@
 //      start (`Timing.LineMode`), and an unsynced document is a still poem block. The lyrics surface refuses to fake per-
 //      word timing (Lyrics.cs AdvancePastInterlude) and so does this one.
 //   2. ONE DEFINITION. The sung fraction inside a word is `Lyrics.Wipe.ComputeSplit` over a synthetic per-word line built
-//      once per song; the held-note envelope is `Lyrics.Wipe.HeldSyllableGlow` over the same line; the line resolve and
+//      once per song (the face's wipes take it with its lead on the word's measured glyphs, `Lyrics.Wipe.SplitWithLead`); the held-note envelope is `Lyrics.Wipe.HeldSyllableGlow` over the same line; the line resolve and
 //      the break are `Lyrics.ResolveLine` / `AdvancePastInterlude`. Nothing here re-derives a lyric rule.
 //   3. PER SONG, PER LINE, PER FRAME. `Song.Build` allocates (once per document — the sanctioned exception, like the lyrics
 //      pipeline); `Flow.Layout` and `Emphasis.Line` run per line into caller spans; every envelope (`Land`, `Hold`,
@@ -124,7 +124,8 @@ public static partial class Verse
         }
 
         /// <summary>The sung fraction of a word at <paramref name="nowMs"/> — the lyrics wipe's char-weighted split over the
-        /// word's own syllables; a line-timed word is all-or-nothing at its start.</summary>
+        /// word's own syllables; a line-timed word is all-or-nothing at its start. (A drawn wipe sweeps the word's measured glyphs
+        /// instead: <c>Verse.UI</c>'s WipeSplit.)</summary>
         public static float Split(in Word w, long nowMs)
             => w.Timed is { } l ? Lyrics.Wipe.ComputeSplit(l, nowMs) : nowMs >= w.StartMs ? 1f : 0f;
 

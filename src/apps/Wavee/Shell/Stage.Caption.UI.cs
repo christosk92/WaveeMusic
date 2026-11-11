@@ -50,7 +50,7 @@ public static partial class Stage
     /// allocator's caption geometry (<c>Layout.CaptionX/W/Bottom</c> — the lower third, above the transport and hairline) over a
     /// soft elliptical veil, never a plate.
     /// <list type="bullet">
-    /// <item>The active line carries the lyrics view's karaoke WIPE (<c>Wipe.ComputeSplit</c> + <c>LeadFrac</c>, its DIP feather
+    /// <item>The active line carries the lyrics view's karaoke WIPE (<c>Wipe.SplitWithLead</c> on its own glyph bounds, its DIP feather
     /// over the measured run, its lift — LineRow's recipe) and a blurred accent BLOOM layer that follows the same split; a
     /// line-synced line has no wipe and fades in whole. No other line is blurred.</item>
     /// <item>A real instrumental break (and a long intro) shows the lyrics view's three breathing dots in the active slot
@@ -80,6 +80,11 @@ public static partial class Stage
         NodeHandle _mainNode, _glowNode, _dotsNode;
         int _wipeLine = -1;
         float _runLen = float.NaN, _wrapW = float.NaN;
+        // the active line's glyph bounds (Lyrics.Wipe.GlyphBounds) and the style + width they and the run were measured at: valid while
+        // _runLen is (every reset of the run resets them), re-measured when the drawn line's type or width moves
+        float[] _bounds = [];
+        FluentGpu.Text.TextStyle _runStyle;
+        float _runWrap = float.NaN;
         // The render-thread wipe rows (CaptionWipeRows).
         readonly CaptionWipeRows _rows = new();
         // The one-shot wake at the next view edge (Caption.EdgeWake, published to CaptionWake), the timer's callback, and
@@ -152,7 +157,7 @@ public static partial class Stage
             if (capW != _wrapW) { _wrapW = capW; _runLen = float.NaN; }
             if (!dots) _dotsNode = default;
             // after the commit that realized this view's nodes: seed (or hand back) the wipe and re-arm the edge wake
-            UseEffect(_tick, DepKey.From(HashCode.Combine(view, centreI, _docGen, playing, capW)));
+            UseEffect(_tick, DepKey.From(HashCode.Combine(view, centreI, _docGen, playing, capW, aSize)));
 
             string gen = _docGen.ToString(System.Globalization.CultureInfo.InvariantCulture);
             string? prevText = prevI >= 0 && lines[prevI].Text.Length > 0 ? lines[prevI].Text : null;
@@ -165,7 +170,7 @@ public static partial class Stage
                 activeText = line.Text;
                 if (line.IsWordByWord && line.Syllables.Count > 0)
                 {
-                    float split = SplitAt(line, _clock.Anchored ? Now() : 0L);
+                    float split = SplitAt(line, _clock.Anchored ? Now() : 0L, Bounds);
                     float soft = Lyrics.Wipe.SoftnessOfLine(float.IsNaN(_runLen) ? MathF.Max(1f, capW) : _runLen, large: true);
                     float lift = Lyrics.Wipe.LiftFor(large: true, Design.Reduced);
                     float run = float.IsNaN(_runLen) ? 0f : _runLen;   // the run the render thread steps the split along
@@ -197,7 +202,10 @@ public static partial class Stage
         /// <summary>The packed view at <paramref name="now"/> (<see cref="Caption.ViewAt"/>).</summary>
         static int ComputeView(Lyrics.Doc d, long now, out long gapStart, out long gapEnd) => Caption.ViewAt(d, now, out gapStart, out gapEnd);
 
-        static float SplitAt(Lyrics.Line line, long now) => CaptionWipeRows.SplitAt(line, now);
+        static float SplitAt(Lyrics.Line line, long now, ReadOnlySpan<float> bounds) => CaptionWipeRows.SplitAt(line, now, bounds);
+
+        /// <summary>The active line's glyph bounds while its measure holds (empty before the line is laid out: the character weights).</summary>
+        ReadOnlySpan<float> Bounds => float.IsNaN(_runLen) ? default : _bounds;
 
         void Tick()
         {
@@ -215,11 +223,17 @@ public static partial class Stage
             var line = d.Lines[anchor];
             if (!line.IsWordByWord || line.Syllables.Count == 0) { _rows.Hold(Context.Anim, scene); return; }
             var main = _mainNode;
-            if (!main.IsNull && scene.IsLive(main) && float.IsNaN(_runLen)) _runLen = MeasureRun(scene, main, line.Text);
+            if (Lyrics.Wipe.DrawnLayout(scene, main, out var drawn, out float wrap)
+                && (float.IsNaN(_runLen) || drawn != _runStyle || MathF.Abs(wrap - _runWrap) >= 0.5f))
+            {
+                // a line laid out anew under a seeded wipe (its type or width moved) re-seeds on the new axis
+                if (!float.IsNaN(_runLen)) _rows.Cancel(Context.Anim);
+                MeasureRun(scene, main, line, in drawn, wrap);
+            }
             if (_clock.Advancing && Context.Anim is { RenderOwnsCompositor: true } anim
-                && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, FrameTime.NowMs, _runLen)) return;
+                && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, FrameTime.NowMs, _runLen, Bounds)) return;
             _rows.Cancel(Context.Anim);   // the UI owns the split (paused, buffering, a host whose render thread does not own the compositor)
-            CaptionWipeRows.DriveUi(scene, main, _glowNode, line, now, _runLen);
+            CaptionWipeRows.DriveUi(scene, main, _glowNode, line, now, _runLen, Bounds);
         }
 
         /// <summary>Arm (or clear) the one-shot wake at media instant <paramref name="atMs"/> (<see cref="long.MaxValue"/> =
@@ -243,18 +257,23 @@ public static partial class Stage
             }
         }
 
-        /// <summary>The active line's reading-order run length at the wrap width it was laid out at (one seam query per line,
-        /// stack-allocated — the lyrics view's MeasureRunLength over the node's OWN text style).</summary>
-        float MeasureRun(SceneStore scene, NodeHandle node, string text)
+        /// <summary>The active line's reading-order run length and its syllables' glyph bounds (<see cref="Lyrics.Wipe.GlyphBounds"/>), in
+        /// the style and at the width the caption DRAWS the line (<see cref="Lyrics.Wipe.DrawnLayout"/>): one seam query for the run and
+        /// one per syllable, once per line, wrap width and type, never per frame.</summary>
+        void MeasureRun(SceneStore scene, NodeHandle node, Lyrics.Line line, in FluentGpu.Text.TextStyle style, float wrap)
         {
-            float wrap = _wrapW > 1f ? _wrapW : scene.Bounds(node).W;
-            if (text.Length == 0 || !(wrap > 1f) || FluentGpu.Text.TextSeam.Default is not { } fonts) return MathF.Max(1f, wrap);
-            var style = scene.Layout(node).TextStyle;
+            _runStyle = style;
+            _runWrap = wrap;
+            _bounds = [];
+            float box = MathF.Max(1f, scene.Bounds(node).W);
+            string text = line.Text;
+            if (text.Length == 0 || FluentGpu.Text.TextSeam.Default is not { } fonts) { _runLen = box; return; }
+            if (line.IsWordByWord && line.Syllables.Count > 0) _bounds = Lyrics.Wipe.GlyphBounds(fonts, line, in style, wrap) ?? [];
             Span<RectF> fragments = stackalloc RectF[8];
             int n = fonts.GetRangeRects(text, in style, wrap, 0, text.Length, fragments);
             float sum = 0f;
             for (int i = 0; i < n; i++) sum += fragments[i].W;
-            return sum > 1f ? sum : MathF.Max(1f, wrap);
+            _runLen = sum > 1f ? sum : box;
         }
 
         /// <summary>The dots' fill + breath on the media clock (the lyrics view's DriveInterludeDots): three alpha signals bound
