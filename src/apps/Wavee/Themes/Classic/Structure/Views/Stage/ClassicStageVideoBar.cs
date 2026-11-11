@@ -29,6 +29,7 @@ using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 using G = Wavee.Themes.Classic.ClassicStageVideoBarGeometry;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee.Themes.Classic;
 
@@ -93,8 +94,9 @@ internal sealed class ClassicStageVideoBar : Component
         };
     }
 
-    /// <summary>The on-media scrim at alpha <paramref name="a"/>.</summary>
-    static ColorF Scrim(float a) => R.OnMedia.CoverScrim with { A = a };
+    /// <summary>The stage veil at alpha <paramref name="a"/> (the arm's: dark on the dark arm, light on the light, as Cinema's own scrims): the
+    /// pills carry the controls' contrast over any picture.</summary>
+    static ColorF Scrim(float a) => Ink.Veil with { A = a };
 
     sealed record RowProps(StageTransportProps T, int Fold, bool TheatreOffered);
 
@@ -109,6 +111,9 @@ internal sealed class ClassicStageVideoBar : Component
             var f = t.Facts();
             var verbs = t.Verbs;
             var set = st.Accent.Value;
+            // the state colour ON the dark pills: the stage's accent where the arm is dark (it is lifted for a dark ground); on the light arm the
+            // accent is solved as ink for a pale ground and reads as nothing on a dark pill, so the on-media ink marks the state there
+            var lit = Ink.IsDark ? set.Fill : R.OnMedia.Ink;
             var overlay = UseContext(Overlay.Service);
             var menuOpen = st.MenuOpen;
             var overControls = st.OverControls;
@@ -121,13 +126,13 @@ internal sealed class ClassicStageVideoBar : Component
                 ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
                 ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, f.NextEnabled), Loc.Get(Strings.Player.Next)),
             };
-            if (fold < G.FoldMute) left.Add(Embed.Comp(new VolumeProps(t, set, fold < G.FoldSlider), static () => new Volume()));
+            if (fold < G.FoldMute) left.Add(Embed.Comp(new VolumeProps(t, fold < G.FoldSlider), static () => new Volume()));
 
-            var right = new List<Element>(8) { Heart(f.Saved, f.Like, set.Fill) };
+            var right = new List<Element>(8) { Heart(f.Saved, f.Like, lit) };
             if (fold < G.FoldSatellites)
             {
-                right.Add(ToolTip.Wrap(Toggle(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)));
-                right.Add(ToolTip.Wrap(Toggle(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)));
+                right.Add(ToolTip.Wrap(Toggle(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, lit), Loc.Get(Strings.Player.Shuffle)));
+                right.Add(ToolTip.Wrap(Toggle(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, lit), Loc.Get(Strings.Player.Repeat)));
                 right.Add(Embed.Comp(new ClassicStageTransport.DeviceButton.Props(t, OnPicture: true), static () => new ClassicStageTransport.DeviceButton()));
             }
             right.Add(ToolTip.Wrap((Glyph(Icons.More, null, true) with { Key = "picture:bar:more", ClickRequestsContext = true })
@@ -201,7 +206,7 @@ internal sealed class ClassicStageVideoBar : Component
         Children = [new BoxEl { Key = saved ? "sh:on" : "sh:off", Children = [new TextEl(saved ? Icons.HeartFill : Icons.Heart) { Size = G.HeartGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = saved ? accent : R.OnMedia.Ink }] }],
     };
 
-    sealed record VolumeProps(StageTransportProps T, AccentSet Set, bool Slider);
+    sealed record VolumeProps(StageTransportProps T, bool Slider);
 
     /// <summary>The mute button and, where the row has room for it, the volume slider it reveals while the pointer is over the group or the mute has
     /// keyboard focus (YouTube's): the slider's width eases open and shut, pushing the time along. Its own component: a mute, a volume drag or the
