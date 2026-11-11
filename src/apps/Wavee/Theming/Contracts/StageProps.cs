@@ -309,6 +309,14 @@ public sealed record StageTransportProps
     /// <summary>The bar's elapsed / remaining time label (the core host that mounts <see cref="ViewKeys.TimeLabel"/>) in the given ink.</summary>
     public required Func<bool, ColorF, Element> TimeText { get; init; }
 
+    /// <summary><see cref="SeekBar"/> for a transport that idles out with the stage's chrome: while the idle chrome is hidden (and Video mode holds no
+    /// audio face, whose control bar stays at rest) it holds its last state and drives no frames, and the chrome's return brings it current before
+    /// the fade-in. Null: a core without it (use <see cref="SeekBar"/>). Appended (contract 1.101).</summary>
+    public Func<Action<bool>, Element>? SeekBarWithChrome { get; init; }
+
+    /// <summary><see cref="TimeText"/> for a transport that idles out with the stage's chrome (see <see cref="SeekBarWithChrome"/>). Appended (contract 1.101).</summary>
+    public Func<bool, ColorF, Element>? TimeTextWithChrome { get; init; }
+
     /// <summary>Is playback muted (read inside the mute button's own render).</summary>
     public required Func<bool> Muted { get; init; }
 

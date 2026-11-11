@@ -70,7 +70,7 @@ public static partial class Lyrics
     /// <summary>The stage column ticks only while the stage is up AND the pane region shows the lyrics (Lyrics mode, Large art, the
     /// Artist hero with lyrics — <see cref="Stage.LyricsPaneShown"/>; any other pane parks it, the pane host keeps it mounted).
     /// A render-time signal read (O8): nothing here touches the preference registry.</summary>
-    static readonly Func<bool> s_stageVisible = static () => Shell.Ui.ImmersiveLyrics.Value && Stage.LyricsPaneShown.Value;
+    static readonly Func<bool> s_stageVisible = static () => Shell.Ui.ImmersiveLyrics.Value && Stage.LyricsPaneShown.Value && Stage.Picture.PaneOnScreen();
 
     // MOUNT POINT (stage B contract)
     /// <summary>The rail's lyrics body (`RailMode.Lyrics`): the reading surface at rail metrics on theme ink. The header
@@ -528,6 +528,13 @@ public static partial class Lyrics
             }, DepKey.From(BitConverter.SingleToInt32Bits(typeScale)));
 
             // ── what is playing ─────────────────────────────────────────────────────────────────────────────────────
+            // A HIDDEN view (its gate down: the rail's lyrics under the full-screen stage, the stage's Lyrics pane parked under the picture, the
+            // audio face's column over a video) holds what it drew last and follows no track: a track change behind the cover loads, mounts and
+            // scrolls nothing. The gate's rise re-renders it on the frame it shows, on the playing track at once (no swap: see `_heldHidden`).
+            // Not the podcast reader: its subject is its own episode.
+            if (!open && _heldView is { } heldView && !_readerEpisode.IsValid) { _heldHidden = true; return heldView; }
+            bool caughtUp = _heldHidden;
+            _heldHidden = false;
             var current = Playback.Current.Value;
             _subject = _readerEpisode.IsValid ? _readerEpisode : Playback.CurrentId.Value;
             bool anything = _subject.IsValid;
@@ -557,7 +564,7 @@ public static partial class Lyrics
             }
             // a skip from one document to the next swaps them as text (the stage's track swap): the old lines fade out where they stand, then
             // the next document fades in, in the layer stack the structure's view places the body in; a first mount is born as it was
-            bool swapped = _trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal);
+            bool swapped = _trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal) && !caughtUp;
             if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
             _subjectEpoch = accountEpoch;
             _trackId = trackId;
@@ -587,9 +594,14 @@ public static partial class Lyrics
             return MountView(body: body, ticker: ticker, debug: debug, footer: footer);
         }
 
+        /// <summary>What the last render drew (what a hidden view holds), and whether the last render held it (the next shown render catches up
+        /// without the track swap's fade: nobody saw the old document go).</summary>
+        Element? _heldView;
+        bool _heldHidden;
+
         /// <summary>Mount the structure's surface (<see cref="LyricsContracts.ViewKeys.LyricsView"/>) over what this render decided.</summary>
         Element MountView(string? message = null, Element? body = null, Element? ticker = null, Element? debug = null, Element? footer = null)
-            => ViewSlots.View(LyricsContracts.ViewKeys.LyricsView, new LyricsContracts.LyricsViewProps
+            => _heldView = ViewSlots.View(LyricsContracts.ViewKeys.LyricsView, new LyricsContracts.LyricsViewProps
             {
                 Host = this, Message = message, Body = body, Ticker = ticker, Debug = debug, Footer = footer,
             });
@@ -2135,8 +2147,11 @@ public static partial class Lyrics
             bool syncOff = SyncGate.SyncSuppressed(Playback.VideoActive.Value);
             bool show = PeekClock.ShouldShow(doc);
             _doc = show && !syncOff ? doc : null;
-            UseInterval(tick, TickMs, enabled: show && !syncOff);
-            UseLayoutEffect(() => { if (_doc is not null) Tick(); }, DepKey.From(show));
+            // the reel is the page's (the rail's now-playing body): under the full-screen stage it holds its pair and its clock stops; the stage's
+            // close ticks it once at once, so the pair is current on the close's first frame
+            bool seen = Shell.PageShown.Value;
+            UseInterval(tick, TickMs, enabled: show && !syncOff && seen);
+            UseLayoutEffect(() => { if (_doc is not null && seen) Tick(); }, DepKey.From(show ? 1 : 0, seen ? 1 : 0));
 
             var pair = _pair.Value;
             // ORDER matters: the `!show` early-out runs BEFORE the video branch — over an unsynced or absent document a

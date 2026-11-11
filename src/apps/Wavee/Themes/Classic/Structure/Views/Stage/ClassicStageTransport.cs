@@ -135,7 +135,8 @@ internal static class ClassicStageTransport
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Layout = ClassicTierMotion.Shove,
                     // the bar's own seek; its scrub edge holds the chrome through the new onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
-                    Children = [props.TimeText(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = [props.SeekBar(st.Scrubbing)] }, props.TimeText(true, Ink.InkSecondary)],
+                    // the card idles out with the chrome: its seek and times hold while it is hidden (the props' WithChrome hosts)
+                    Children = [(props.TimeTextWithChrome ?? props.TimeText)(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = [(props.SeekBarWithChrome ?? props.SeekBar)(st.Scrubbing)] }, (props.TimeTextWithChrome ?? props.TimeText)(true, Ink.InkSecondary)],
                 },
                 row,
             ],

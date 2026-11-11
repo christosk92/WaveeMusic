@@ -82,7 +82,7 @@ internal sealed class ClassicStageVideoBar : Component
                                         new BoxEl
                                         {
                                             Grow = 1f, Shrink = 1f, MinWidth = 0f, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
-                                            Children = [t.SeekBar(st.Scrubbing)],
+                                            Children = [(t.SeekBarWithChrome ?? t.SeekBar)(st.Scrubbing)],   // holds while the bar idles out
                                         },
                                     ],
                                 },
@@ -156,7 +156,7 @@ internal sealed class ClassicStageVideoBar : Component
                     new BoxEl
                     {
                         Height = G.Button, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Padding = new Edges4(G.TimePadX, 0f, G.TimePadX, 0f),
-                        Children = [t.TimeText(false, ink), Caption("/") with { Color = R.OnMedia.Ink }, t.TimeText(true, ink)],   // loc-allow: the times' own separator
+                        Children = [(t.TimeTextWithChrome ?? t.TimeText)(false, ink), Caption("/") with { Color = R.OnMedia.Ink }, (t.TimeTextWithChrome ?? t.TimeText)(true, ink)],   // loc-allow: the times' own separator
                     },
                 ], overControls) with
                 {

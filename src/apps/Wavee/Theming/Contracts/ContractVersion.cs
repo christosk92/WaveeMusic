@@ -260,6 +260,10 @@
 // `Stage.Layout.VideoBarLabels` gives way to `VideoAudioLabelShown` (the top bar keeps "Switch to audio" alone in Video mode); no external theme exists.
 // 1.100 (video full screen, Theatre's about block): `StageRootView.About` / `.DemandAbout` / `.OpenArtist` and `StageAboutFacts` (the playing
 // track's primary artist and the track's facts under Theatre's title, from what the Artist pane already asks; the Artist tab opens in the stage).
+// 1.101 (video full screen, the audio face as a colour field; idle under and inside the stage): `ILyricsHost.OnPicture` (the lyrics mount in the
+// picture's place: a lines style may draw its rows there as a picture of the song, the active line in full ink and the others at their secondary
+// ink); `StageTransportProps.SeekBarWithChrome` / `.TimeTextWithChrome` (the seek rail and the time labels of a transport that idles out with the
+// stage's chrome: they hold their last state while it is hidden).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -275,7 +279,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 100;
+    public const int Minor = 101;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

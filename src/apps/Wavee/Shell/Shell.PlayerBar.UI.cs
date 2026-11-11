@@ -73,7 +73,41 @@ public static partial class Shell
         => Embed.Comp(() => new BarSeekRail(feed, onScrubbing, reveal));
 
     /// <summary>The mini player bar's progress hairline (TC2): the same rail host, drawn as a line with no thumb and no hit test.</summary>
-    public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true));
+    public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true, reveal: PageShown));
+
+    // ── THE PAGE UNDER THE STAGE ─────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The main window's page is on screen: no full-screen stage covers it (<see cref="Ui.ImmersiveLyrics"/> is down). A reveal signal
+    /// like the on-media strip's chrome-visible one (<see cref="SeekBar"/>, <see cref="TimeText"/>): what the page shows under the stage holds
+    /// its last state and does no work while the stage covers it (no seek-rail pixel steps, no 1 Hz time text, no Next up re-render, no lyrics
+    /// peek tick), and the stage's close brings it current on its first frame, before the stage's exit shows it (no catch-up).</summary>
+    public static readonly IReadSignal<bool> PageShown = new NotSignal(Ui.ImmersiveLyrics);
+
+    /// <summary><paramref name="reveal"/> and <see cref="PageShown"/> both (a strip's own reveal on a page the stage can cover).</summary>
+    public static IReadSignal<bool> PageShownAnd(IReadSignal<bool>? reveal) => reveal is null ? PageShown : new AndSignal(reveal, PageShown);
+
+    /// <summary>A reveal computed by <paramref name="value"/> (its reads subscribe the reader) and peeked by <paramref name="peek"/>.</summary>
+    public static IReadSignal<bool> Reveal(Func<bool> value, Func<bool> peek) => new FuncSignal(value, peek);
+
+    sealed class FuncSignal(Func<bool> value, Func<bool> peek) : IReadSignal<bool>
+    {
+        public bool Value => value();
+        public bool Peek() => peek();
+    }
+
+    /// <summary>A signal's negation, read through it (the read subscribes to the source).</summary>
+    sealed class NotSignal(IReadSignal<bool> source) : IReadSignal<bool>
+    {
+        public bool Value => !source.Value;
+        public bool Peek() => !source.Peek();
+    }
+
+    /// <summary>Two signals both true, read through them (both reads subscribe, in order, every time).</summary>
+    sealed class AndSignal(IReadSignal<bool> a, IReadSignal<bool> b) : IReadSignal<bool>
+    {
+        public bool Value { get { bool x = a.Value; bool y = b.Value; return x && y; } }
+        public bool Peek() => a.Peek() && b.Peek();
+    }
 
     /// <summary>The same rail host drawn by its caller instead of the theme's `Player.SeekRail` (the mini player draws its own rail and edge
     /// line, #197). The drawing is RE-PUSHED (the caller's ink, accent and hover change it); the scrub machinery is the bar's.</summary>

@@ -15,6 +15,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
@@ -64,6 +65,10 @@ public static partial class Stage
         // the bar's own seek; its scrub edge holds the chrome through the onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
         SeekBar = static onScrubbing => Shell.SeekBar(onScrubbing: onScrubbing),
         TimeText = static (remaining, ink) => Shell.TimeText(remaining, ink),
+        // the same, for a transport that idles out with the chrome: while the idle chrome is hidden (Classic's transport card, or Video mode's control
+        // bar over a playing picture) they hold their last state and drive no frames; the chrome's return brings them current before its fade-in
+        SeekBarWithChrome = onScrubbing => Shell.SeekBar(onScrubbing: onScrubbing, reveal: ChromeReveal(ctx)),
+        TimeTextWithChrome = (remaining, ink) => Shell.TimeText(remaining, ink, ChromeReveal(ctx)),
         Muted = static () => Playback.Muted.Value,
         ToggleMute = static () => Playback.ToggleMute(),
         Volume = static () => Playback.Volume.Value,
@@ -74,6 +79,11 @@ public static partial class Stage
         // the docked video's own settings rows (OnMedia.MoreMenu over Video.PlacementMenu, which knows the stage shows the picture)
         VideoMenu = static () => OnMedia.MoreMenu(),
     };
+
+    /// <summary>The stage's transport is on screen: the idle chrome is up, or Video mode holds the audio face (its control bar stays at rest
+    /// there, `ClassicStagePictureChrome`).</summary>
+    static IReadSignal<bool> ChromeReveal(StageCtx ctx)
+        => Shell.Reveal(() => ctx.Chrome.Value || ctx.AudioFace.Value, () => ctx.Chrome.Peek() || ctx.AudioFace.Peek());
 
     /// <summary>Everything the transport card draws that is playback state. The reads are the old <c>TransportCard.Render</c>'s, in its order.</summary>
     static StageTransportFacts TransportFacts(StageCtx ctx)

@@ -79,6 +79,11 @@ public static partial class Stage
         /// follow target and its strip read, and what mounts the chrome over the picture.</summary>
         public static bool Shown() => Shell.Ui.ImmersiveLyrics.Value && s_videoMode.Value;
 
+        /// <summary>The stage's pane region is on screen (subscribes): always outside Video mode; in Video mode only Theatre's panel shows one (Cinema
+        /// is the picture alone, the audio face reads its own column). What the parked lyrics pane's gate reads, so a Lyrics pane kept alive under the
+        /// picture neither ticks nor follows.</summary>
+        public static bool PaneOnScreen() => !s_videoMode.Value || s_view.Value is { } v && v.Stage.Theatre.Value && v.Stage.TheatrePane.Value == PaneKind.Lyrics;
+
         /// <summary><see cref="Shown"/> without subscribing (the engine's follow pass runs outside any reactive scope).</summary>
         public static bool ShownPeek() => Shell.Ui.ImmersiveLyrics.Peek() && s_videoMode.Peek();
 

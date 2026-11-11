@@ -62,9 +62,10 @@ public static partial class Shell
         {
             Host = Instance,
             Verbs = PlayerVerbs.Default,
-            TitleText = static () => BarTitleText(),
-            TitleInk = static () => PlayerBarRules.InkOf(BarStateNow()),
-            TitleHasRoute = static () => !BarTitleRoute().IsNone,
+            // the bound title channels hold under the full-screen stage (HeldUnderStage), as the render does (Use)
+            TitleText = HeldUnderStage(static () => BarTitleText()),
+            TitleInk = HeldUnderStage(static () => PlayerBarRules.InkOf(BarStateNow())),
+            TitleHasRoute = HeldUnderStage(static () => !BarTitleRoute().IsNone),
             DragPayload = static () => BarDragPayload(),
             DeviceIsRemote = static () =>
             {
@@ -96,8 +97,9 @@ public static partial class Shell
             ArtMorphKey = Stage.Entry.MorphKey,
             VolumeText = PlayerBarRules.VolumePercent,
             RateText = EpisodeRateText,
-            SeekBar = static () => SeekBar(),
-            TimeText = static remaining => TimeText(remaining),
+            // the bar is the page's: under the full-screen stage it holds its last state and does no work (PageShown)
+            SeekBar = static () => SeekBar(reveal: PageShown),
+            TimeText = static remaining => TimeText(remaining, reveal: PageShown),
             CreditsStamp = static () => BarCreditsStamp(),
             Credits = static () => BarCredits(),
             OverflowRow = OverflowItem,
@@ -108,9 +110,32 @@ public static partial class Shell
             ToggleNowPlaying = static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying),
         };
 
+        /// <summary>The view the last render drew: what the bar answers while the full-screen stage covers it (see <see cref="Use"/>).</summary>
+        PlayerBarView? _held;
+
+        /// <summary><paramref name="read"/>, held under the full-screen stage: while the stage covers the page it answers what it answered last and
+        /// subscribes to nothing but the cover (<see cref="PageShown"/>), so a bound channel of the bar does no work behind the stage; the close re-runs it.</summary>
+        static Func<T> HeldUnderStage<T>(Func<T> read)
+        {
+            T held = default!;
+            bool has = false;
+            return () =>
+            {
+                if (has && !PageShown.Value) return held;
+                held = read();
+                has = true;
+                return held;
+            };
+        }
+
         /// <inheritdoc />
         public PlayerBarView Use(RenderContext hooks)
         {
+            // UNDER THE STAGE: the bar is the page's, and the full-screen stage covers it. While it does, the bar answers the view it drew last and
+            // reads nothing but the cover, so a track change, a load or a video placement behind the stage re-renders no bar; the stage's close
+            // re-renders it on the close's first frame (the hooks this skips keep their state: they are keyed by call site).
+            if (_held is { } held && !PageShown.Value) return held;
+
             // ── 1. the level machine (was PlayerBarRoot) ──
             // The window width walks the structure's level sub-ladder with its hold (the RAW level, kept apart so the hold never sees a
             // clamp), and the committed WINDOW TIER clamps it to the levels the tier may use (the policy's `Windows`, TC2): a level that
@@ -264,7 +289,7 @@ public static partial class Shell
             // The podcast step buttons' enablement is read only for an episode that owns the transport (the read subscribes).
             bool seekStepEnabled = isEpisode && ownsTransport && PlaybackScrubSource.Instance.Gate(track: true).Enabled;
 
-            return new PlayerBarView
+            return _held = new PlayerBarView
             {
                 Metrics = new PlayerBarMetrics
                 {
