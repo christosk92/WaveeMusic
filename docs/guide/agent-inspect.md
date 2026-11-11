@@ -695,7 +695,7 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `border?` | `{w, color}`. |
 | `corners?` | `[tl, tr, br, bl]`. |
 | `clip?` | `true` when the node clips to its bounds, or `{x, y, w, h}` for an authored clip rect. |
-| `text?` | `string` (the resolved StringId), `sizeDip`, `lineHeight?`, `weight`, `family?`, `color`, `case?`, `maxLines?`, `wrap?`, `trim?`, `charSpacing?`, `trimmed`, `natural {w, h}`, `overflowX?`, `overflowY?`. A span run has an empty `string` and a `spans` count. An icon glyph (one or two private-use characters) prints as `glyph:<name>`, with its `codepoint` beside it. The name is the engine's `Icons` constant (`Icons.TryGetName`: `glyph:Bell`), else the app's own: the name a theme registered for a glyph it declares (`ThemeInspection.RegisterGlyphNames` in its composition file: `glyph:PlaySolid` for U+F5B0, `glyph:LyricsGlyph`), else `SegoeGlyphs` (`glyph:AddFriend`). Text in the app's own font (`WaveeIcons`, `family` ending `#WaveeIcons`) is named from that font's marks only (`glyph:Lyrics`, `glyph:PlayNext`), because they reuse Segoe code points (U+E900..U+E902). A glyph nothing names prints as `glyph:U+XXXX`. Text that mixes words and glyphs prints each glyph so, set apart from the words by a blank (`Afterglow glyph:U+E8B2`), and `codepoint` lists the glyphs' code points only. |
+| `text?` | `string` (the resolved StringId), `sizeDip`, `lineHeight?`, `weight`, `family?`, `color`, `case?`, `maxLines?`, `wrap?`, `trim?`, `charSpacing?`, `trimmed`, `natural {w, h}`, `overflowX?`, `overflowY?`, `drawn? {lines, cut, ellipsis, naturalLines, overhang?}`. A span run has an empty `string` and a `spans` count. An icon glyph (one or two private-use characters) prints as `glyph:<name>`, with its `codepoint` beside it. The name is the engine's `Icons` constant (`Icons.TryGetName`: `glyph:Bell`), else the app's own: the name a theme registered for a glyph it declares (`ThemeInspection.RegisterGlyphNames` in its composition file: `glyph:PlaySolid` for U+F5B0, `glyph:LyricsGlyph`), else `SegoeGlyphs` (`glyph:AddFriend`). Text in the app's own font (`WaveeIcons`, `family` ending `#WaveeIcons`) is named from that font's marks only (`glyph:Lyrics`, `glyph:PlayNext`), because they reuse Segoe code points (U+E900..U+E902). A glyph nothing names prints as `glyph:U+XXXX`. Text that mixes words and glyphs prints each glyph so, set apart from the words by a blank (`Afterglow glyph:U+E8B2`), and `codepoint` lists the glyphs' code points only. |
 | `flags` | `visible`, `focusable`, `focused`, `hovered`, `pressed`, `disabled`, `clipsToBounds`, `scrollable`, `hitTest`. |
 | `role?` | The automation role. |
 | `handlers?` | `click`, `key`, `pointer`, `char`, `repeat`, `pressed`, `context`, `focus`, `drag`, `wheel`, `selectableText`, `spanLinks`, `gesture`, `clickRequestsContext`, `rowCells`. |
@@ -703,13 +703,23 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `anim?` | `true` while the node has live animation tracks. |
 | `children` | The node's child count. |
 
-**`trimmed`** comes from the engine's `AppHost.QueryTextOverflow`. It re-measures the run without the cut, through the
-host's own font system, and compares that with the laid-out box:
+**`trimmed`** comes from the engine's `AppHost.QueryTextOverflow`. It re-measures the run UNCUT (no trim, no line cap),
+through the host's own font system, and compares that natural size with the laid-out box. It says what the words want,
+not what the draw did:
 
 - A single-line run is trimmed when it is wider than its box.
-- A wrapping run is trimmed when it is taller than its box, or than its line budget allows.
+- A wrapping run is trimmed when its uncut block (laid at the box width) is taller than its box. A word wider than the box
+  under `WrapWholeWords` does not set `overflowX`; `drawn.overhang` reports it.
 
-`natural` is the size the run wants. `trimSource` says whether the answer rests on real metrics: `dwrite` means it
+`natural` is the size the run wants. **`drawn`** is what the draw's own layout did: the run laid out once as it is drawn
+(its style at the auto-fit size, its trim and line cap, at the box width). `lines` is its line count; `cut` is true when it
+does not show all of the content (a line ellipsized or cut by the trim, lines dropped past `maxLines`, an overflow suffix;
+text drawn whole past its box is not `cut`, the box clips that); `ellipsis` is true when an ellipsis glyph was drawn.
+Beside them, from the uncut run at the same width: `naturalLines` (the lines the words want) and `overhang` (a wrapped
+word drawn past the box; hanging trailing spaces do not count). The two readings disagree exactly where a defect hides:
+`drawn.cut` with `trimmed: false` is text the engine ellipsised although its words fit (`text.trim` class `fits`), and
+`trimmed: true` with an ellipsis trim and no `drawn.cut` is text drawn whole past its box. `drawn` is absent under the
+headless model, which never draws. `trimSource` says whether the answer rests on real metrics: `dwrite` means it
 does; `headless-model` means `--text headless` was used and the answer is not truthful.
 
 ### `render {path, scale?, alpha?, max?}`

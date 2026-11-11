@@ -50,6 +50,8 @@ public static partial class Diagnostics
             public const string Gutter = "gutter", RightEdge = "right-edge", Clip = "clip", Trim = "trim", Type = "type",
                 Target = "target", Duplicate = "duplicate", Rhythm = "rhythm", Contrast = "contrast";
 
+            public const string OverlapText = "overlap.text";
+
             public const string EdgeLeft = "edge.left", EdgeRight = "edge.right", TextClip = "text.clip", OverlapSibling = "overlap.sibling",
                 TextTrim = "text.trim", TypeFloor = "type.floor", TypeScale = "type.scale", TargetSize = "target.size",
                 DuplicateAction = "duplicate.action", SpaceStack = "space.stack", ContrastText = "contrast.text";
@@ -89,7 +91,8 @@ public static partial class Diagnostics
             new(Rules.EdgeRight, Rules.RightEdge, Level.Gate, "right edges on the theme guide's declared x"),
             new(Rules.TextClip, Rules.Clip, Level.Gate, "text ink cut by a clipping ancestor or a hard scroll edge"),
             new(Rules.OverlapSibling, Rules.Clip, Level.Gate, "sibling boxes with text or a target that overlap"),
-            new(Rules.TextTrim, Rules.Trim, Level.Gate, "trimmed text, by class: near-miss, never, overflow, designed, single"),
+            new(Rules.OverlapText, Rules.Clip, Level.Gate, "two texts anywhere in the tree drawn into each other outside a designed ZStack overlay: glyph ink over ink (error), or boxes crowding where a text left its box (warn)"),
+            new(Rules.TextTrim, Rules.Trim, Level.Gate, "trimmed text, by class: fits, near-miss, never, overflow, designed, single"),
             new(Rules.TypeFloor, Rules.Type, Level.Gate, "text under the type floor"),
             new(Rules.TypeScale, Rules.Type, Level.Gate, "the type styles in use (a report)"),
             new(Rules.TargetSize, Rules.Target, Level.Gate, "click targets under the tier's floor, by their effective area (Compact's 40 DIP floor gates; the 32 DIP floor above it is todo)"),
@@ -237,8 +240,29 @@ public static partial class Diagnostics
             /// <summary>The trim mode name (<c>None</c>, <c>Clip</c>, <c>CharacterEllipsis</c>, <c>WordEllipsis</c>).</summary>
             public string Trim { get; init; } = "None";
 
-            /// <summary>The engine says the run does not show all of its content (<c>QueryTextOverflow</c>).</summary>
+            /// <summary>The engine says the run's UNCUT layout does not fit its box (<c>QueryTextOverflow</c>: the natural size against the box). What
+            /// the draw did is <see cref="DrawnCut"/>.</summary>
             public bool Trimmed { get; init; }
+
+            /// <summary>The engine read what the draw's own layout did (<see cref="DrawnLines"/>, <see cref="DrawnCut"/>, <see cref="DrawnEllipsis"/>).
+            /// False: unknown (the headless text model, a snapshot saved before the drawn facts existed); the rules then judge as before.</summary>
+            public bool HasDrawn { get; init; }
+
+            /// <summary>Lines the draw lays out (with <see cref="HasDrawn"/>).</summary>
+            public int DrawnLines { get; init; }
+
+            /// <summary>The draw does not show all of the content: a line ellipsized or cut by the trim, lines dropped past MaxLines, an overflow
+            /// suffix (with <see cref="HasDrawn"/>). Content drawn whole past the box is not a drawn cut.</summary>
+            public bool DrawnCut { get; init; }
+
+            /// <summary>The draw shows an ellipsis glyph (with <see cref="HasDrawn"/>).</summary>
+            public bool DrawnEllipsis { get; init; }
+
+            /// <summary>Lines the uncut run lays out at the box width (with <see cref="HasDrawn"/>): how many lines the words want.</summary>
+            public int NaturalLines { get; init; }
+
+            /// <summary>The uncut wrapped run draws a word past the box (a whole-word overhang; with <see cref="HasDrawn"/>).</summary>
+            public bool NaturalOverhang { get; init; }
 
             /// <summary>The size the run wants, uncut.</summary>
             public float NaturalW { get; init; }
@@ -1098,6 +1122,7 @@ public static partial class Diagnostics
                     Rules.EdgeLeft or Rules.EdgeRight => EdgeRule(s, spec.Id, found),
                     Rules.TextClip => ClipRule(s, found),
                     Rules.OverlapSibling => OverlapRule(s, found),
+                    Rules.OverlapText => TextOverTextRule(s, found),
                     Rules.TextTrim => TrimRule(s, o, found),
                     Rules.TypeFloor => TypeFloorRule(s, o, found),
                     Rules.TypeScale => TypeScaleRule(s, found),
@@ -1336,8 +1361,11 @@ public static partial class Diagnostics
                 => "give the scroller an edge fade on that side (or declare a guide Bleed with a reason); never shrink the type",
             Rules.TextClip => "grow the clipping box or move the text inside it; Zune display type is never shrunk to fit (wrap, grow, bleed)",
             Rules.OverlapSibling => "give the overlap a ZStack (if it is a designed overlay) or space the siblings; never hide one of them",
+            Rules.OverlapText => "a text runs out of the box that reserves its room: let that box grow with its lines (or give a designed overlay its ZStack); never hide, shrink or cut one of the texts",
             Rules.TextTrim => cause switch
             {
+                "fits" => "the engine ellipsised words that fit: its trim test must agree with its wrap test (TextLayoutEngine); never shrink the type or narrow the words",
+                "fits:nowrap" => "the box is a hair narrower than its words: give the label its measured width in its lane (or the engine's no-wrap trim takes the wrap slack: an engine decision); never shrink the type",
                 "near-miss" => "the box is a hair narrower than its words: let the lane grow or take its width from the tier record; never shrink the type",
                 "never" => "this text must not trim: wrap it, grow its box or move the secondary content; never shrink Zune display type",
                 "overflow" => "the text spills its box: give it a lane that fits (Shrink=1, MinWidth=0, a wrap or an ellipsis by design)",
@@ -2183,6 +2211,239 @@ public static partial class Diagnostics
             return looked;
         }
 
+        // ── overlap.text (clip): text drawn over text anywhere in the tree ───────────────────────────────────────────
+
+        /// <summary>One words run overlap.text compares: its node, its scroll space (the nearest scrolling ancestor, -1: none) and, in the
+        /// lint scope's space and on screen, the rect a person sees of its glyph ink and of its box.</summary>
+        readonly record struct InkRun(Node Node, int Space, bool Glyphs, RectF Ink, RectF Box, RectF ScreenInk, RectF ScreenBox)
+        {
+            /// <summary>What the y-sweep keys on in one space: the ink and the box together.</summary>
+            public RectF Key(bool screen) => screen ? Union(ScreenInk, ScreenBox) : Union(Ink, Box);
+        }
+
+        static RectF Union(RectF a, RectF b)
+        {
+            if (a.IsEmpty) return b;
+            if (b.IsEmpty) return a;
+            float x = MathF.Min(a.X, b.X), y = MathF.Min(a.Y, b.Y);
+            return new RectF(x, y, MathF.Max(a.Right, b.Right) - x, MathF.Max(a.Bottom, b.Bottom) - y);
+        }
+
+        /// <summary>How far two text BOXES must overlap on both axes (DIP) for the crowd tier of <c>overlap.text</c>.</summary>
+        public const float CrowdOverlap = 2f;
+
+        /// <summary>Two different in-scope word runs drawn into each other, wherever they sit in the tree (cousins several levels apart: a card's
+        /// description running out of its row into the next card's title). Two tiers, one id:
+        /// <para>INK (error): their GLYPH ink overlaps past <see cref="Slack"/> on both axes (<see cref="InkBox"/> with <see cref="TextRun.HasInk"/>;
+        /// without it the box, a line box's leading of a quarter em allowed): text drawn over text.</para>
+        /// <para>CROWD (warn, cause <c>crowd:</c>): their BOXES overlap by more than <see cref="CrowdOverlap"/> on both axes AND at least one of them
+        /// runs out of an ancestor below their common ancestor (<see cref="RunsOutOf"/>): the collision exists because a text left the box that
+        /// reserves its room, so the ink only touches (the last line of one card jammed against the next card's title). A designed tight stack runs
+        /// out of nothing and stays silent. The ink tier wins when both hold.</para>
+        /// <para>Each rect is cut by what the run's ancestors clip (text scrolled or clipped away does not count, a spill past its own box does).
+        /// Two runs in the SAME scroll space (the same nearest scrolling ancestor) are compared in the lint scope's space, so a below-the-fold
+        /// collision inside one page is found under <c>scope=content</c>; runs in DIFFERENT scroll spaces (a list row against fixed chrome, two
+        /// scrollers) are compared only by what is on SCREEN for both, whatever the scope. Not a finding: two runs in different children of a
+        /// ZStack (their nearest common ancestor is a designed overlay); a run mid animation or under a sticky header; runs in different roots
+        /// (overlay layers); a run whose opacity leaves under a tenth of its ink; a pair an opaque plate painted between them separates (the
+        /// later run sits on a card over the earlier); and a pair <c>overlap.sibling</c> already reports (siblings whose boxes overlap).
+        /// Candidates are swept in y order (once per space kind), never every pair of the page.</para></summary>
+        static int TextOverTextRule(Snapshot s, List<Finding> into)
+        {
+            IReadOnlyList<Node> nodes = s.Nodes;
+            int count = nodes.Count;
+            InspectVisible.Scope scope = s.PreparedFor ?? InspectVisible.Scope.Screen;
+            // What each node's ancestors cut it to (the screen, and the scope's space): the visible rect without the node's own box, so ink
+            // that spills past its box is seen where it lands. Plus each node's depth, root, scroll space and whether it sits under a sticky header.
+            var window = new RectF(0f, 0f, s.Width, s.Height);
+            var childScreen = new RectF[count];
+            var childContent = new RectF[count];
+            var depth = new int[count];
+            var root = new int[count];
+            var space = new int[count];
+            var pinned = new bool[count];
+            var candidates = new List<InkRun>();
+            for (int i = 0; i < count; i++)
+            {
+                Node n = nodes[i];
+                int p = n.Parent;
+                bool inherited = p >= 0 && p < i;
+                RectF screen = inherited ? childScreen[p] : n.Seeded ? n.SeedScreen : window;
+                RectF content = inherited ? childContent[p] : n.Seeded ? n.SeedContent : window;
+                RectF cut = scope switch { InspectVisible.Scope.Content => content, InspectVisible.Scope.All => RectF.Infinite, _ => screen };
+                RectF screenCut = screen;
+                InspectVisible.CutChildren(n.Rect, n.Clips, n.ScrollAxis, n.ClipRect, ref screen, ref content);
+                childScreen[i] = screen;
+                childContent[i] = content;
+                depth[i] = inherited ? depth[p] + 1 : 0;
+                root[i] = inherited ? root[p] : i;
+                space[i] = !inherited ? -1 : nodes[p].ScrollAxis != 0 ? p : space[p];
+                pinned[i] = n.Sticky || (inherited && pinned[p]);
+
+                if (!n.InScope || n.Text is not { } t || !IsWords(n) || n.Animating || n.Moving || pinned[i]) continue;
+                if (!t.Spans && string.IsNullOrWhiteSpace(t.String)) continue;   // spaces draw no ink
+                if (n.Opacity * (t.Color.A > 0f ? t.Color.A : 1f) < 0.1f) continue;   // faded out: nothing to read
+                RectF ink = t.HasInk ? InkBox(n, t, out _) : n.Rect;
+                RectF seenInk = BelowPinned(n, ink.Intersect(screenCut)), seenBox = BelowPinned(n, n.Rect.Intersect(screenCut));
+                RectF scopeInk = ink.Intersect(cut), scopeBox = n.Rect.Intersect(cut);
+                if (scope == InspectVisible.Scope.Screen) { scopeInk = seenInk; scopeBox = seenBox; }
+                bool any = (scopeInk.W > Slack && scopeInk.H > Slack) || (scopeBox.W > Slack && scopeBox.H > Slack)
+                    || (seenInk.W > Slack && seenInk.H > Slack) || (seenBox.W > Slack && seenBox.H > Slack);
+                if (any) candidates.Add(new InkRun(n, space[i], t.HasInk, scopeInk, scopeBox, seenInk, seenBox));
+            }
+            if (candidates.Count < 2) return candidates.Count;
+
+            // The opaque plates (a card, a menu, a pinned bar), in paint order: one painted after the earlier run and over the overlap hides it.
+            var plates = new List<int>();
+            for (int x = 0; x < count; x++)
+            {
+                Node o = nodes[x];
+                if (o.Text is null && !o.Image && o.Fill.A * o.Opacity >= 0.98f && !o.Visible.IsEmpty && o.Visible.W >= 4f && o.Visible.H >= 4f) plates.Add(x);
+            }
+
+            // Pass 1: runs in the same scroll space, in the scope's space. Pass 2: runs in different scroll spaces, on screen only.
+            foreach (bool onScreen in (bool[])[false, true])
+            {
+                var sweep = new List<InkRun>(candidates.Count);
+                foreach (InkRun c in candidates)
+                {
+                    RectF k = c.Key(onScreen);
+                    if (k.W > Slack && k.H > Slack) sweep.Add(c);
+                }
+                sweep.Sort((a, b) => a.Key(onScreen).Y.CompareTo(b.Key(onScreen).Y));
+                for (int i = 0; i < sweep.Count; i++)
+                {
+                    InkRun ci = sweep[i];
+                    RectF ki = ci.Key(onScreen);
+                    for (int j = i + 1; j < sweep.Count && sweep[j].Key(onScreen).Y < ki.Bottom - Slack; j++)
+                    {
+                        InkRun cj = sweep[j];
+                        if ((ci.Space == cj.Space) == onScreen) continue;   // each pair is judged in exactly one pass
+                        JudgePair(s, nodes, depth, root, plates, ci, cj, onScreen, into);
+                    }
+                }
+            }
+            return candidates.Count;
+        }
+
+        /// <summary>A rect cut at a recyclable item's hit top (a virtual list's pinned prefix covers the viewport above it): what shows on screen.</summary>
+        static RectF BelowPinned(Node n, RectF r)
+        {
+            if (!float.IsFinite(n.HitTop) || !(n.HitTop > r.Y)) return r;
+            return n.HitTop >= r.Bottom ? default : new RectF(r.X, n.HitTop, r.W, r.Bottom - n.HitTop);
+        }
+
+        /// <summary>One pair of overlap.text: the ink tier (error), else the crowd tier (warn), after every exclusion.</summary>
+        static void JudgePair(Snapshot s, IReadOnlyList<Node> nodes, int[] depth, int[] root, List<int> plates, InkRun ci, InkRun cj, bool onScreen,
+            List<Finding> into)
+        {
+            // Paint order: a is drawn first.
+            (InkRun first, InkRun second) = ci.Node.Index < cj.Node.Index ? (ci, cj) : (cj, ci);
+            Node a = first.Node, b = second.Node;
+            TextRun ta = a.Text!, tb = b.Text!;
+            RectF inkA = onScreen ? first.ScreenInk : first.Ink, inkB = onScreen ? second.ScreenInk : second.Ink;
+            RectF boxA = onScreen ? first.ScreenBox : first.Box, boxB = onScreen ? second.ScreenBox : second.Box;
+            bool glyphs = first.Glyphs && second.Glyphs;
+            RectF o = inkA.Intersect(inkB);
+            // Without glyph ink, two line boxes may share their leading and descent with no glyph in it: allow a quarter em.
+            bool inkTier = o.W > Slack && o.H > Slack && (glyphs || o.H > Slack + LeadingEm * MathF.Min(ta.Size, tb.Size));
+            RectF ob = boxA.Intersect(boxB);
+            bool boxOverlap = ob.W > CrowdOverlap && ob.H > CrowdOverlap;
+            if (!inkTier && !boxOverlap) return;
+            if (root[a.Index] != root[b.Index]) return;   // different overlay layers
+            int lca = CommonAncestor(nodes, depth, a.Index, b.Index);
+            if (lca < 0) return;
+            Node common = nodes[lca];
+            if (common.ZStack) return;   // different children of a ZStack: a designed overlay
+            // Siblings whose boxes overlap are overlap.sibling's finding already.
+            if (a.Parent == b.Parent && common.ScrollAxis == 0)
+            {
+                RectF boxes = a.Rect.Intersect(b.Rect);
+                if (boxes.W > 1f && boxes.H > 1f) return;
+            }
+            string cause = PatternOfKey(a.Key ?? a.Pattern) + "+" + PatternOfKey(b.Key ?? b.Pattern);
+            string reason = s.RealText ? "" : "headless text model: the boxes are the 0.55 x size model's, not DirectWrite's";
+            if (inkTier && !PlateBetween(nodes, plates, a.Index, b.Index, o))
+            {
+                string outA = RunsOutOf(nodes, a, inkA, lca), outB = RunsOutOf(nodes, b, inkB, lca);
+                into.Add(new Finding(Rules.OverlapText, Severity.Error,
+                    $"text {TextName(tb)} is drawn over text {TextName(ta)}: their {(glyphs ? "glyph ink" : "boxes")} overlap by {F(o.W)} x {F(o.H)} in {common.Ref}{RunsOutText(ta, tb, outA, outB)}",
+                    [a.Ref, b.Ref])
+                {
+                    Measured = [M("overlapX", o.X), M("overlapY", o.Y), M("overlapW", o.W), M("overlapH", o.H), M("glyphInk", glyphs ? 1 : 0)],
+                    Expected = [M("overlapW", 0), M("overlapH", 0)],
+                    Pattern = common.Pattern,
+                    Cause = cause,
+                    Outcome = s.RealText ? Outcome.Fail : Outcome.Review,
+                    Reason = reason,
+                    Rects = [Where(a), Where(b)],
+                    Nodes = [a.Index, b.Index],
+                });
+                return;
+            }
+            if (!boxOverlap || PlateBetween(nodes, plates, a.Index, b.Index, ob)) return;
+            // The crowd tier: only where a text left the box that reserves its room (its own box against its ancestors' boxes).
+            string boxOutA = RunsOutOf(nodes, a, a.Rect, lca), boxOutB = RunsOutOf(nodes, b, b.Rect, lca);
+            if (boxOutA.Length == 0 && boxOutB.Length == 0) return;
+            into.Add(new Finding(Rules.OverlapText, Severity.Warn,
+                $"text {TextName(tb)} crowds text {TextName(ta)}: their boxes overlap by {F(ob.W)} x {F(ob.H)} in {common.Ref}{RunsOutText(ta, tb, boxOutA, boxOutB)}",
+                [a.Ref, b.Ref])
+            {
+                Measured = [M("overlapX", ob.X), M("overlapY", ob.Y), M("overlapW", ob.W), M("overlapH", ob.H), M("glyphInk", glyphs ? 1 : 0)],
+                Expected = [M("overlapW", 0), M("overlapH", 0)],
+                Pattern = common.Pattern,
+                Cause = "crowd:" + cause,
+                Outcome = s.RealText ? Outcome.Fail : Outcome.Review,
+                Reason = reason,
+                Rects = [Where(a), Where(b)],
+                Nodes = [a.Index, b.Index],
+            });
+        }
+
+        /// <summary>The message tail naming the boxes the two runs leave ("" when neither leaves one).</summary>
+        static string RunsOutText(TextRun ta, TextRun tb, string outA, string outB)
+            => outA.Length > 0 && outB.Length > 0 ? $"; {TextName(ta)} runs out of {outA}, {TextName(tb)} out of {outB}"
+             : outA.Length > 0 ? $"; {TextName(ta)} runs out of {outA}"
+             : outB.Length > 0 ? $"; {TextName(tb)} runs out of {outB}"
+             : "";
+
+        /// <summary>The nearest common ancestor of nodes <paramref name="a"/> and <paramref name="b"/> (-1: different roots).</summary>
+        static int CommonAncestor(IReadOnlyList<Node> nodes, int[] depth, int a, int b)
+        {
+            while (a >= 0 && b >= 0 && a != b)
+            {
+                if (depth[a] >= depth[b]) a = nodes[a].Parent;
+                else b = nodes[b].Parent;
+            }
+            return a >= 0 && a == b ? a : -1;
+        }
+
+        /// <summary>An opaque plate painted after node <paramref name="a"/> and before node <paramref name="b"/> (or as <paramref name="b"/>'s
+        /// ancestor) covers <paramref name="overlap"/>: <paramref name="b"/> sits on a card drawn over <paramref name="a"/>, which is hidden there.</summary>
+        static bool PlateBetween(IReadOnlyList<Node> nodes, List<int> plates, int a, int b, RectF overlap)
+        {
+            foreach (int x in plates)
+            {
+                if (x <= a) continue;
+                if (x >= b) break;
+                RectF v = nodes[x].Visible;
+                if (v.X <= overlap.X + Slack && v.Y <= overlap.Y + Slack && v.Right >= overlap.Right - Slack && v.Bottom >= overlap.Bottom - Slack) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The nearest ancestor of <paramref name="n"/> below <paramref name="stop"/> whose box the run's ink runs out of (by more than
+        /// <see cref="Slack"/>): where the text leaves the room reserved for it. "" when the ink stays inside every one of them.</summary>
+        static string RunsOutOf(IReadOnlyList<Node> nodes, Node n, RectF ink, int stop)
+        {
+            for (int p = n.Parent; p >= 0 && p != stop; p = nodes[p].Parent)
+            {
+                RectF r = nodes[p].Rect;
+                if (ink.X < r.X - Slack || ink.Y < r.Y - Slack || ink.Right > r.Right + Slack || ink.Bottom > r.Bottom + Slack) return nodes[p].Ref;
+            }
+            return "";
+        }
+
         // ── text.trim (trim) ────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>How far a no-wrap run's words overrun its box, or a wrapped run's lines its height.</summary>
@@ -2198,13 +2459,29 @@ public static partial class Diagnostics
 
         static bool Ellipsis(TextRun t) => t.Trim is "CharacterEllipsis" or "WordEllipsis";
 
+        /// <summary>The run's uncut words fit its box (within <see cref="Slack"/>) and its line cap: a no-wrap run as wide as its box or narrower;
+        /// a wrapped run whose uncut block is no taller than its box, wants no more lines than its MaxLines and lays no word past its width.
+        /// Needs the drawn facts (<see cref="TextRun.HasDrawn"/>).</summary>
+        static bool WordsFit(Node n, TextRun t)
+        {
+            if (t.MaxLines > 0 && t.NaturalLines > t.MaxLines) return false;   // the line cap cut words that want more lines
+            if (!t.Wraps) return t.NaturalW <= n.Rect.W + Slack;
+            // A collapsed box (<= 1 DIP) does not wrap at all, and a whole-word overhang is wider than the box: neither fits.
+            return n.Rect.W > 1f && !t.NaturalOverhang && t.NaturalH <= n.Rect.H + Slack;
+        }
+
         /// <summary>Text the engine reports trimmed (<c>QueryTextOverflow</c>), in scope, by class (first match wins):
-        /// never (a guide <see cref="LintIntent.NeverTrim"/>: error), overflow (<c>Trim=None</c>: the words spill, error), near-miss (warn),
+        /// fits (the DRAW cut the run although its uncut words fit its box and its line cap: the engine ellipsised words that fit; error on a
+        /// wrapping run, warn with cause fits:nowrap on a no-wrap run, which trims at its exact width by design; never a designed ellipsis, judged before the rest and also when the uncut run is not trimmed; needs the drawn facts),
+        /// never (a guide <see cref="LintIntent.NeverTrim"/>: error), overflow (<c>Trim=None</c>: the words spill, error; also a trimmed wrapped run
+        /// the draw did NOT cut whose DRAWN block outgrows its box by a line or more: every line is drawn and spills, its trim never fired; a wrapped
+        /// run the draw did not cut whose drawn block fits its box is no finding at all, whatever its uncut block says), near-miss (warn),
         /// hard-clip (<c>Trim=Clip</c>: warn, whatever the family says: the boards draw an ellipsis), designed (an ELLIPSIS under a guide
         /// <see cref="LintIntent.TrimOk"/>, an <c>allowTrim</c> prefix, or MaxLines plus an ellipsis in a REPEATED CELL, <see cref="Node.CellCount"/>:
         /// the same cell in 3 instances of a key family, a caption per card, not any text under a page section that happens to repeat; warn,
         /// suppressed, and one report line counts them), single (a lone ellipsis: review). Under the headless text model only a designed
-        /// ellipsis keeps its class (the intent holds whatever the model measures); the rest is model (review).</summary>
+        /// ellipsis keeps its class (the intent holds whatever the model measures); the rest is model (review). Without the drawn facts (the
+        /// headless model, a snapshot saved before them) the rule judges exactly as it did before them: no fits, no drawn-whole overflow.</summary>
         static int TrimRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
@@ -2214,15 +2491,54 @@ public static partial class Diagnostics
             {
                 if (!n.InScope || n.Text is not { } t || !IsWords(n)) continue;
                 looked++;
+                bool drawn = s.RealText && t.HasDrawn;
+                if (drawn && t.DrawnCut && WordsFit(n, t))
+                {
+                    // The words fit and the engine cut them anyway (a trim test stricter than the wrap test): a verdict on real text, never a
+                    // designed ellipsis (a designed MaxLines + ellipsis cell cuts words that do NOT fit). On a WRAPPING run it breaks an engine
+                    // guarantee (its trim agrees with its wrap test): error. A NO-WRAP run trims at its exact width by design today (whether it takes
+                    // the wrap slack is an open engine decision), so its sub-half-DIP cut is a warning with its own cause: still a verdict.
+                    string cut = t.DrawnEllipsis ? "ellipsised" : "cut";
+                    into.Add(new Finding(Rules.TextTrim, t.Wraps ? Severity.Error : Severity.Warn,
+                        $"text {Q(t.String)} is {cut} although its words fit its box: natural {F(t.NaturalW)} x {F(t.NaturalH)} in box {F(n.Rect.W)} x {F(n.Rect.H)}"
+                        + (t.Wraps ? $", {t.NaturalLines.ToString(CultureInfo.InvariantCulture)} {Plural(t.NaturalLines, "line", "lines")} wanted, {t.DrawnLines.ToString(CultureInfo.InvariantCulture)} drawn"
+                            : " (a no-wrap run trims at its exact width: under a half DIP short)"),
+                        [n.Ref])
+                    {
+                        Measured = [M("w", n.Rect.W), M("h", n.Rect.H), M("size", t.Size), M("lines", t.DrawnLines)],
+                        Expected = [M("w", t.NaturalW), M("h", t.NaturalH), M("lines", t.NaturalLines)],
+                        Pattern = n.Pattern,
+                        Cause = t.Wraps ? "fits" : "fits:nowrap",
+                        Rects = [Where(n)],
+                        Nodes = [n.Index],
+                    });
+                    continue;
+                }
                 if (!t.Trimmed) continue;
                 // One unwrapped line whose words fit its width ellipsises nothing: the engine reports its line box taller than its box (a display
                 // title on its exact line, Zune's 130 line in a 122 box; "Episodes 14" at 31.92 in 30). Whether its ink is cut is text.clip's (audit B8).
                 if (!t.Wraps && t.NaturalW <= n.Rect.W + Slack) continue;
-                string how = t.Wraps
+                // A wrapped run the draw did NOT cut shows every word: what it spills is judged by its DRAWN block (drawn lines x the line height,
+                // NaturalH / NaturalLines) against the box, never by the uncut block (which counts the empty lines after a trailing "\n\n" that the
+                // line cap drops without cutting anything). A drawn block that fits its box is no finding at all. Known only with the drawn facts.
+                bool judged = drawn && t.Wraps && !t.DrawnCut && t.NaturalLines > 0;
+                float lineH = judged ? t.NaturalH / t.NaturalLines : 0f;
+                float drawnH = judged ? t.DrawnLines * lineH : 0f;
+                if (judged && drawnH <= n.Rect.H + Slack) continue;
+                // A trimmed (ellipsis or clip) run whose drawn block outgrows its box: its trim never fired, every line is drawn and spills past the
+                // box exactly as a Trim=None run's do (the overflow class)…
+                bool spills = judged && t.Trim != "None";
+                // …but by less than one of its lines it spills only line box (leading under the last line), as the unwrapped run above does: no
+                // words are lost or ellipsised, and whether its ink is cut is text.clip's.
+                if (spills && drawnH - n.Rect.H < lineH) continue;
+                string how = spills
+                    ? $"draws {t.DrawnLines.ToString(CultureInfo.InvariantCulture)} {Plural(t.DrawnLines, "line", "lines")} taller than its box"
+                    : t.Wraps
                     ? (t.MaxLines > 0 && t.OverflowY ? $"wraps past its {t.MaxLines}-line budget" : "wraps taller than its box")
                     : "is wider than its box";
-                string mode = t.Trim switch { "None" => "overflowing", "Clip" => "hard-clipped", _ => "ellipsised" };
-                float over = Overrun(n, t);
+                string mode = spills ? "spilling: every line is drawn, its trim never cut it"
+                    : t.Trim switch { "None" => "overflowing", "Clip" => "hard-clipped", _ => "ellipsised" };
+                float over = spills ? drawnH - n.Rect.H : Overrun(n, t);
                 string cls;
                 Severity sev;
                 Outcome outcome = Outcome.Fail;
@@ -2239,7 +2555,7 @@ public static partial class Diagnostics
                     reason = "headless text model: the trim is the 0.55 x size model's, not DirectWrite's";
                 }
                 else if (never is not null) { cls = "never"; sev = Severity.Error; reason = never.Reason; }
-                else if (t.Trim == "None") { cls = "overflow"; sev = Severity.Error; }
+                else if (t.Trim == "None" || spills) { cls = "overflow"; sev = Severity.Error; }
                 else if (NearMiss(n, t) && s.RealText) { cls = "near-miss"; sev = Severity.Warn; }
                 else if (t.Trim == "Clip") { cls = "hard-clip"; sev = Severity.Warn; }
                 else if (designable)
@@ -2260,7 +2576,7 @@ public static partial class Diagnostics
                     _ => $"text {Q(t.String)} {how} and is {mode}",
                 };
                 into.Add(new Finding(Rules.TextTrim, sev,
-                    $"{lead}: natural {F(t.NaturalW)} x {F(t.NaturalH)}, box {F(n.Rect.W)} x {F(n.Rect.H)}", [n.Ref])
+                    $"{lead}: natural {F(t.NaturalW)} x {F(t.NaturalH)}, box {F(n.Rect.W)} x {F(n.Rect.H)}{(spills ? $", drawn block {F(drawnH)} high" : "")}", [n.Ref])
                 {
                     Measured = [M("w", n.Rect.W), M("h", n.Rect.H), M("size", t.Size), M("over", over)],
                     Expected = [M("w", t.NaturalW), M("h", t.NaturalH)],

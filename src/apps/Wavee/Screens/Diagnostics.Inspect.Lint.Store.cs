@@ -285,6 +285,17 @@ public static partial class Diagnostics
             if (t.Wraps) w.WriteBoolean("wraps", true);
             if (t.Trim != "None") w.WriteString("trim", t.Trim);
             if (t.Trimmed) w.WriteBoolean("trimmed", true);
+            if (t.HasDrawn)
+            {
+                // What the draw's own layout did; absent = unknown (the headless text model, a snapshot saved before it was read).
+                w.WriteStartObject("drawn");
+                w.WriteNumber("lines", t.DrawnLines);
+                if (t.DrawnCut) w.WriteBoolean("cut", true);
+                if (t.DrawnEllipsis) w.WriteBoolean("ellipsis", true);
+                w.WriteNumber("naturalLines", t.NaturalLines);
+                if (t.NaturalOverhang) w.WriteBoolean("overhang", true);
+                w.WriteEndObject();
+            }
             Num(w, "nw", t.NaturalW);
             Num(w, "nh", t.NaturalH);
             if (t.HasInk)
@@ -631,8 +642,32 @@ public static partial class Diagnostics
             if (size <= 0f && e.TryGetProperty("size", out _)) r.Fail("text.size", "is above 0");
             string trim = r.Str(e, "trim", "None");
             if (trim is not ("None" or "Clip" or "CharacterEllipsis" or "WordEllipsis")) r.Fail("text.trim", "is None, Clip, CharacterEllipsis or WordEllipsis, not '" + trim + "'");
+            // The drawn facts: absent in a snapshot saved before they existed (or read under the headless model): unknown, the rules judge as before.
+            bool hasDrawn = false;
+            int drawnLines = 0, naturalLines = 0;
+            bool drawnCut = false, drawnEllipsis = false, overhang = false;
+            if (e.TryGetProperty("drawn", out JsonElement drawn) && drawn.ValueKind != JsonValueKind.Null)
+            {
+                if (drawn.ValueKind != JsonValueKind.Object)
+                    r.Fail("text.drawn", "is an object {lines, cut, ellipsis, naturalLines, overhang}, not " + drawn.GetRawText());
+                else
+                {
+                    hasDrawn = true;
+                    drawnLines = r.Int(drawn, "lines", 0);
+                    drawnCut = r.Bool(drawn, "cut");
+                    drawnEllipsis = r.Bool(drawn, "ellipsis");
+                    naturalLines = r.Int(drawn, "naturalLines", 0);
+                    overhang = r.Bool(drawn, "overhang");
+                }
+            }
             return new InspectLint.TextRun(r.Str(e, "s", ""), size)
             {
+                HasDrawn = hasDrawn,
+                DrawnLines = drawnLines,
+                DrawnCut = drawnCut,
+                DrawnEllipsis = drawnEllipsis,
+                NaturalLines = naturalLines,
+                NaturalOverhang = overhang,
                 LineHeight = r.Finite(e, "lh", 0f, 0f),
                 Weight = r.Int(e, "weight", 400),
                 MaxLines = r.Int(e, "maxLines", 0),
