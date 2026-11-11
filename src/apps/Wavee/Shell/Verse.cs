@@ -750,6 +750,31 @@ public static partial class Verse
 
         public static float GhostPitch(in Region r, int d) => MathF.Round(r.Base * GhostScale(d) * LineK) + GhostGap;
 
+        /// <summary>The gap between the parts under the live line (the hairline, the translation, the count-in, the read-ahead).</summary>
+        public const float LowerGap = 8f;
+
+        /// <summary>The room the parts under the live line can take at type <paramref name="size"/>, at their tallest: the hairline, a two-line
+        /// translation and the read-ahead (taller than a break's label, count-in and "next" label over the same read-ahead), each a gap apart.
+        /// What a region keeps under its anchor so the read-ahead is never clipped by the region's foot.</summary>
+        public static float LowerReserve(float size)
+        {
+            float small = MathF.Round(size * ReadAheadK), line = MathF.Round(small * SmallLineK);
+            return HairlineH + 3f * LowerGap + 3f * line;
+        }
+
+        /// <summary>The small lines' (translation, read-ahead) line height over their size.</summary>
+        public const float SmallLineK = 1.3f;
+
+        /// <summary><see cref="GhostPitch"/> at a type size before a region exists.</summary>
+        public static float GhostPitchAt(float size, int d) => MathF.Round(size * GhostScale(d) * LineK) + GhostGap;
+
+        /// <summary>A free column the structure publishes beside a part it draws over the face (stage coordinates; default = none).</summary>
+        public readonly record struct Side(float Left, float Top, float Right, float Bottom)
+        {
+            /// <summary>It exists and is at least <paramref name="height"/> tall.</summary>
+            public bool Fits(float height) => Right > Left && Bottom - Top >= height;
+        }
+
         /// <summary>How many ghosts fit between the live block's top and <see cref="Region.GhostTop"/>, ≤ the class's depth.</summary>
         public static int GhostsThatFit(in Region r, float liveTop)
         {
@@ -769,8 +794,11 @@ public static partial class Verse
         /// publishes with the face (<c>Visualizer.FaceSpec.SafeBottom</c>: above a now-playing card it draws over the face, Zune's Card
         /// arrangement); 0 = none. The live line and what reads under it stand above it: the anchor rises when the default would put them
         /// under the card. <paramref name="extraTop"/> is how far the structure's rect starts below the core's own (a title it draws over the
-        /// face): the ghosts stop that much lower.</summary>
-        public static Region For(in Stage.Layout L, float faceW, float faceH, bool galleryOpen, bool chrome, float safeBottom = 0f, float extraTop = 0f)
+        /// face): the ghosts stop that much lower.
+        /// <paramref name="side"/>: the free column the structure publishes BESIDE that card (<c>Visualizer.FaceSpec</c>'s side rect); Verse stands
+        /// there, whole (ghosts, live line, read-ahead at their sizes), when the room above the card cannot hold its ghost, live line and read-ahead.</summary>
+        public static Region For(in Stage.Layout L, float faceW, float faceH, bool galleryOpen, bool chrome, float safeBottom = 0f, float extraTop = 0f,
+            Side side = default)
         {
             float caption = L.CaptionFont.Size;
             float cardFoot = Stage.Layout.NowPlayingCardY + Stage.Layout.NowPlayingCardH + Stage.Layout.Pad;
@@ -805,12 +833,24 @@ public static partial class Verse
                     float colX = MathF.Round((faceW - colW) * 0.5f);
                     float bottom = L.TransportTop - BottomGap;
                     float anchor = AnchorFrac * faceH;
-                    if (safeBottom > 0f && safeBottom < bottom)
+                    float lineH = MathF.Round(size * LineK);
+                    float below = lineH * 0.5f + BlockAir + LowerReserve(size);
+                    float above = lineH * 0.5f + BlockAir + GhostPitchAt(size, 1);
+                    if (safeBottom > 0f && safeBottom < bottom && safeBottom - top < above + below && side.Fits(above + below))
+                    {
+                        // the room above the card cannot hold Verse whole: it stands in the column beside the card, centred in it, its own
+                        // anchor (the live line) at the column's anchor share, never past what its ghost above and read-ahead below need
+                        top = MathF.Max(top, side.Top);
+                        bottom = side.Bottom;
+                        colW = Stage.Layout.Q4(MathF.Min(colW, side.Right - side.Left));
+                        colX = MathF.Round(side.Left + (side.Right - side.Left - colW) * 0.5f);
+                        anchor = Math.Clamp(top + AnchorFrac * (bottom - top), top + above, bottom - below);
+                    }
+                    else if (safeBottom > 0f && safeBottom < bottom)
                     {
                         // a card over the face: the live line (one row's half), its hairline and the read-ahead stand above its gutter
                         bottom = safeBottom;
-                        float below = MathF.Round(size * LineK) * 0.5f + BlockAir + HairlineH + BlockAir + MathF.Round(size * ReadAheadK * LineK);
-                        anchor = MathF.Max(top + MathF.Round(size * LineK), MathF.Min(anchor, bottom - below));
+                        anchor = MathF.Max(top + lineH, MathF.Min(anchor, bottom - below));
                     }
                     return new Region(L.Aspect, colX, colW, MathF.Round(anchor), size, Emphasis.HeldScale,
                         faceH >= TallH ? TallGhosts : DesktopGhosts, top, bottom,

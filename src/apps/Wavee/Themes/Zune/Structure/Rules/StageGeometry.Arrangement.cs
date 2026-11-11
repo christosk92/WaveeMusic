@@ -364,6 +364,20 @@ public static partial class ZuneStageGeometry
         return new Stage.FaceSafeRect(0f, top, right, MathF.Max(1f, bottom - top));
     }
 
+    /// <summary>The free column BESIDE the now-playing card in the Card arrangement (the second region <c>Visualizer.FaceSpec</c> carries): from
+    /// the card's right edge plus the stage's gutter to the face's right edge (left of an open gallery) less the gutter, from the face-safe top
+    /// to the card's foot. Empty in every other arrangement, and when the column is narrower than the card itself (a narrow window: no room
+    /// beside it).</summary>
+    public static Stage.FaceSafeRect FaceSide(in Stage.Layout layout, in ZuneStageArrangement a, in Stage.FaceSafeRect safe, bool galleryShown)
+    {
+        if (a.Form != ZuneStageForm.Card || a.Card.IsEmpty) return default;
+        float left = a.Card.Right + Stage.Layout.Pad;
+        float right = layout.W - layout.FaceRight(galleryShown) - Stage.Layout.Pad;
+        float top = safe.Y, bottom = a.Card.Bottom;
+        if (right - left < a.Card.W || bottom <= top) return default;
+        return new Stage.FaceSafeRect(left, top, right - left, bottom - top);
+    }
+
     /// <summary>The caption block's bottom margin from the stage's foot: above the card in the Card arrangement (a gutter over it), under
     /// the controls in the Centered one, the allocator's elsewhere.</summary>
     public static float CaptionBottom(in Stage.Layout layout, in ZuneStageArrangement a, float allocated) => a.Form switch

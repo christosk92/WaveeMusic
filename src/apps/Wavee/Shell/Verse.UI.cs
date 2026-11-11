@@ -65,7 +65,9 @@ public static partial class Verse
     /// <summary>The Verse face. A gallery tile is a still word with a wipe (no lyrics read, no clock, no blur); the stage
     /// face is the host component, re-pushed (slab, size) props.</summary>
     public static Element Face(Visualizer.Slab slab, in Visualizer.Palette pal, in Visualizer.FaceSpec spec)
-        => spec.Preview ? Preview(in pal, in spec) : Embed.Comp(new HostProps(slab, spec.W, spec.H, SafeHead(in spec), SafeFoot(in spec)), static () => new Host());
+        => spec.Preview ? Preview(in pal, in spec)
+            : Embed.Comp(new HostProps(slab, spec.W, spec.H, SafeHead(in spec), SafeFoot(in spec),
+                spec.HasSide ? new Geometry.Side(spec.SideLeft, spec.SideTop, spec.SideRight, spec.SideBottom) : default), static () => new Host());
 
     /// <summary>The foot of the face-safe rect the structure handed the face (0 = none): what a card over the face leaves free.</summary>
     static float SafeFoot(in Visualizer.FaceSpec spec) => spec.SafeBottom > spec.SafeTop ? spec.SafeBottom : 0f;
@@ -73,7 +75,7 @@ public static partial class Verse
     /// <summary>The head of that rect (0 = none): under a title the structure draws over the face (Zune's display line in its Card arrangement).</summary>
     static float SafeHead(in Visualizer.FaceSpec spec) => spec.SafeBottom > spec.SafeTop ? spec.SafeTop : 0f;
 
-    sealed record HostProps(Visualizer.Slab Slab, float W, float H, float SafeTop, float SafeBottom);
+    sealed record HostProps(Visualizer.Slab Slab, float W, float H, float SafeTop, float SafeBottom, Geometry.Side Side);
 
     /// <summary>The gallery tile: the face's name set as a sung word — the wipe two-thirds through it in the cover's
     /// accent, the rest faint ink — over a hairline at the same point. Three nodes, nothing bound.</summary>
@@ -107,6 +109,9 @@ public static partial class Verse
     static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
     static EnterExit FadeOut => new(Opacity: 0f, Active: true);
     static readonly LayoutTransition s_glide = new(TransitionChannels.Position, TransitionDynamics.Tween(480f, Easing.FluentDecelerate));
+    /// <summary>The ghost stack's and the lower parts' move when the region moves (a resize, the band above a card giving way to the column beside
+    /// it): their bounds glide on the ghosts' own tween instead of snapping to the new place.</summary>
+    static readonly LayoutTransition s_region = new(TransitionChannels.Bounds, TransitionDynamics.Tween(480f, Easing.FluentDecelerate), SizeMode.Relayout);
 
     // ══ 2. THE PER-LINE RIG ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -251,7 +256,7 @@ public static partial class Verse
 
             // what the structure reserves over the face beyond the core's own face-safe rect (whose top Verse already follows, chrome-aware)
             float extraTop = p.SafeTop > 0f ? MathF.Max(0f, p.SafeTop - L.FaceSafe(galleryOpen, false).Y) : 0f;
-            var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome, p.SafeBottom, extraTop);
+            var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome, p.SafeBottom, extraTop, p.Side);
             bool blurOn = region.LandBlur && Lyrics.Prefs.BlurStrength(onStage: false) >= Land.BlurMinStrength;
             Element[] body;
             if (song is null)
@@ -650,7 +655,7 @@ public static partial class Verse
             return new BoxEl
             {
                 Key = "v:ghosts", Direction = 1, Width = r.ColumnW, Gap = Geometry.GhostGap, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start,
-                Margin = new Edges4(r.ColumnX, 0f, 0f, MathF.Max(0f, H - bottomY)), HitTestVisible = false,
+                Margin = new Edges4(r.ColumnX, 0f, 0f, MathF.Max(0f, H - bottomY)), HitTestVisible = false, Layout = reduced ? (LayoutTransition?)null : s_region,
                 Transform = Prop.Of(() => Affine2D.Translation(0f, Coupling.BassSink(slab.Low.Value, calm, reduced))),
                 Children = kids.ToArray(),
             };
@@ -729,7 +734,7 @@ public static partial class Verse
                 if (secondary is { Length: > 0 })
                     kids.Add(new TextEl(secondary)
                     {
-                        Key = "v:t:" + _gen + ":" + live, Size = small, LineHeight = MathF.Round(small * 1.3f), Weight = 500, FontFamily = DisplayFace,
+                        Key = "v:t:" + _gen + ":" + live, Size = small, LineHeight = MathF.Round(small * Geometry.SmallLineK), Weight = 500, FontFamily = DisplayFace,
                         Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                         Enter = SlotEnter, Exit = FadeOut, Transition = MotionTok.StandardEnter,
                     });
@@ -752,16 +757,17 @@ public static partial class Verse
                     });
                 kids.Add(new TextEl(lines[next].Text)
                 {
-                    Key = "v:n:" + _gen + ":" + next, Size = small, LineHeight = MathF.Round(small * 1.3f), Weight = 600, FontFamily = DisplayFace,
+                    Key = "v:n:" + _gen + ":" + next, Size = small, LineHeight = MathF.Round(small * Geometry.SmallLineK), Weight = 600, FontFamily = DisplayFace,
                     Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     Enter = SlotEnter, Exit = FadeOut, Transition = MotionTok.StandardEnter,
                 });
             }
             return new BoxEl
             {
-                Key = "v:lower", Direction = 1, Width = r.ColumnW, Gap = 8f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Key = "v:lower", Direction = 1, Width = r.ColumnW, Gap = Geometry.LowerGap, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 AlignItems = rig.Rtl ? FlexAlign.End : FlexAlign.Start,
                 Margin = new Edges4(r.ColumnX, top, 0f, 0f), MaxHeight = MathF.Max(0f, r.Bottom - top), ClipToBounds = true, HitTestVisible = false,
+                Layout = _reduced ? (LayoutTransition?)null : s_region,
                 Children = kids.ToArray(),
             };
         }
