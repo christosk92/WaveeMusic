@@ -124,6 +124,27 @@ public static partial class Diagnostics
                     });
                     continue;
                 }
+                // The full-screen stage's transport band while its idle chrome hides the card (`StageIdleBand`, 0 while the chrome shows): the
+                // stage's designed idle look, not a pane that stopped painting. Only a band that tall (the card's height, up to the pane's gap above
+                // it: StageIdleCard..StageIdleBand) at the window's foot, only while hidden: an
+                // empty band with the chrome shown (the card missing), or any other band, is still a fault.
+                if (s.StageIdleBand > 0f && band.H >= s.StageIdleCard - 2f * Slack && band.H <= s.StageIdleBand + 2f * Slack
+                    && MathF.Abs(band.Bottom - s.Height) <= 2f * Slack)
+                {
+                    into.Add(new Finding(Rules.PictureUnpainted, Severity.Info,
+                        $"{sc.Ref} ends at y={F(bottom)}, {F(band.H)} above the bottom of {frame.Ref}: the band is the {F(s.StageIdleBand)} DIP the stage's transport card owns, and its idle chrome hides the card", [sc.Ref, frame.Ref])
+                    {
+                        Measured = [M("band", band.H), M("stageIdleCard", s.StageIdleCard), M("stageIdleBand", s.StageIdleBand)],
+                        Pattern = PatternOfKey(sc.Key ?? sc.Pattern),
+                        Cause = "stage-idle",
+                        Rects = [band],
+                        Nodes = [sc.Index],
+                        Outcome = Outcome.Suppressed,
+                        SuppressedBy = "intent",
+                        Reason = "the stage's transport band while the idle chrome hides the card (Stage.Picture.IdleTransportBandPeek): the designed idle look",
+                    });
+                    continue;
+                }
                 into.Add(new Finding(Rules.PictureUnpainted, Severity.Error,
                     $"the page stops painting short of its frame: {sc.Ref} ends at y={F(bottom)} with {F(sc.ScrollMax - sc.ScrollOffset)} DIP more to show, " +
                     $"{F(band.H)} above the bottom of {frame.Ref}, and the band {F(band.X)},{F(band.Y)} {F(band.W)} x {F(band.H)} under it paints only #{Hex(colour)}",

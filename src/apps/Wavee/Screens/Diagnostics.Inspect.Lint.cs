@@ -566,6 +566,18 @@ public static partial class Diagnostics
             /// snapshot saved before the field existed.</summary>
             public float Reserved { get; init; }
 
+            /// <summary>The band (DIP, at the foot of the window) the full-screen stage's transport card owns, while the stage's idle chrome HIDES
+            /// the card (every theme unmounts it then): <c>Stage.Picture.IdleTransportBandPeek</c>, at most the layout's <c>PaneBottom</c> (the
+            /// card, its inset and the pane's gap above it) and at least <see cref="StageIdleCard"/>. The stage then shows only its backdrop there by
+            /// design (the lyrics viewport stays put, so the active line never moves on an idle cycle); <c>picture.unpainted</c> does not call that
+            /// band a pane that stopped painting. 0 while the chrome shows (the card must paint it then), with no stage, and in a snapshot saved
+            /// before the field existed.</summary>
+            public float StageIdleBand { get; init; }
+
+            /// <summary>The least of that band: the transport card and its inset (<c>Layout.TransportH</c> + <c>TransportInset</c>); a theme's
+            /// reading column ends at the card's top or at the pane's gap above it. 0 with <see cref="StageIdleBand"/>.</summary>
+            public float StageIdleCard { get; init; }
+
             /// <summary>The text runs of subtrees on their way out (an exit animation still drawing them: the outgoing lyric line of a crossfade).
             /// The node list leaves exiting subtrees out (they are not the page); <c>text.copies</c> reads these. Not saved by `save=`.</summary>
             public IReadOnlyList<ExitingRun> ExitingText { get; init; } = [];

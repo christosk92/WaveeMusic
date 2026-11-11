@@ -112,6 +112,8 @@ public static partial class Diagnostics
             if (s.PlayingFromContext) w.WriteBoolean("playingFromContext", true);
             if (s.ChromeHeld) w.WriteBoolean("chromeHeld", true);
             if (s.Reserved > 0f) Num(w, "reserved", s.Reserved);
+            if (s.StageIdleBand > 0f) Num(w, "stageIdleBand", s.StageIdleBand);
+            if (s.StageIdleCard > 0f) Num(w, "stageIdleCard", s.StageIdleCard);
             w.WriteString("guide", s.GuideId);
             WriteEdges(w, "edges", s.Edges);
             if (s.MirrorEdges.Count > 0) WriteEdges(w, "mirrorEdges", s.MirrorEdges);
@@ -375,6 +377,8 @@ public static partial class Diagnostics
                     PlayingFromContext = head.Bool(root, "playingFromContext"),
                     ChromeHeld = head.Bool(root, "chromeHeld"),
                     Reserved = head.Finite(root, "reserved", 0f, 0f),
+                    StageIdleBand = head.Finite(root, "stageIdleBand", 0f, 0f),
+                    StageIdleCard = head.Finite(root, "stageIdleCard", 0f, 0f),
                     GuideId = head.Str(root, "guide", ""),
                     Edges = ReadEdges(root, head),
                     MirrorEdges = ReadEdges(root, head, "mirrorEdges"),

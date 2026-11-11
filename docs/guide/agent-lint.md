@@ -305,6 +305,14 @@ the theme's `PanelPolicy.Pip`; the snapshot's `reserved`) is the layout's design
 lists it as `info` suppressed (cause `reserved`). Classic's 0.2.9 design ends the page above the parked card on purpose (kept by owner
 decision); a theme whose card floats over the page (`PipBounds.OverlaysContent`: WinUI since C0, Zune) reserves nothing, so the same
 band there stays an error. The scene cannot tell a wrong declaration from a right one: pre-C0 WinUI inherited Classic's reservation.
+The full-screen stage's transport band is the same kind of design WHILE ITS IDLE CHROME HIDES THE CARD: every theme unmounts the
+card when its chrome idles out, and the lyrics pane ends at the card's top (Zune: `Layout.TransportH` plus its inset, 112 DIP at
+1440 x 960) or at the pane's gap above it (Classic: `Layout.PaneBottom`, 168), so only the backdrop shows there (growing the viewport
+into it would move the active line on every idle cycle). A band at the window's foot between those two heights while the stage's
+chrome is hidden (`Stage.Picture.IdleTransportBandPeek`, the snapshot's `stageIdleCard` and `stageIdleBand`, 0 while the chrome
+shows) is listed as `info` suppressed
+(cause `stage-idle`). With the chrome shown (`chrome=shown`, or before it idles out) the card must paint the band: an empty one is
+an error, as is any band of another height or place.
 
 **`text.ruled`** (warn; promoted 10-24). A rule or line primitive (a fill at most 2.5 DIP thick and 16 long, not a slider's,
 progress bar's or scroll bar's track, nor a thin drag bar) crosses a text's glyph box: horizontal, inside the run's ink from a

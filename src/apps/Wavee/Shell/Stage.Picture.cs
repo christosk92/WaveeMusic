@@ -72,6 +72,19 @@ public static partial class Stage
         /// peeked (the frame bench's note). True while no stage is mounted.</summary>
         public static bool ChromePeek() => s_view.Peek()?.Stage.Chrome.Peek() ?? true;
 
+        /// <summary>The band at the window's foot the mounted stage's transport card owns, while the idle chrome HIDES the card (every theme unmounts
+        /// it then): at least the card and its inset (<c>Layout.TransportH</c> + the tier's <c>TransportInset</c>), at most that and the pane's gap
+        /// above it (<c>Layout.PaneBottom</c>; a theme places its reading column at either). The stage's designed idle look shows only its backdrop
+        /// there (growing the lyrics viewport into it would move the active line on every idle cycle). (0, 0) while the chrome shows or no stage
+        /// is mounted. Peeked (the inspector's <c>picture.unpainted</c>).</summary>
+        public static (float Min, float Max) IdleTransportBandPeek()
+        {
+            if (s_view.Peek() is not { } v || v.Stage.Chrome.Peek()) return (0f, 0f);
+            var L = v.Stage.Layout.Peek();
+            float card = L.TransportH + (L.Metrics?.TransportInset ?? 0f);
+            return (MathF.Min(card, L.PaneBottom), MathF.Max(card, L.PaneBottom));
+        }
+
         /// <summary>The mounted stage shows the end card (a music video ended, the countdown runs); peeked (the inspector's <c>status</c>).</summary>
         public static bool EndCardPeek() => s_view.Peek()?.Stage.EndCard.Peek() ?? false;
 

@@ -772,6 +772,8 @@ public static partial class Diagnostics
                 PlayingFromContext = PlayingFromContext(),
                 ChromeHeld = InspectSwitches.HoverChromeAtRest,
                 Reserved = Video.FloatingSurfaceReserve.Peek(),
+                StageIdleBand = Stage.Picture.IdleTransportBandPeek().Max,
+                StageIdleCard = Stage.Picture.IdleTransportBandPeek().Min,
                 ExitingText = exiting,
             };
         }
