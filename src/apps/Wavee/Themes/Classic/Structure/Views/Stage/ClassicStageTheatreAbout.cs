@@ -108,7 +108,14 @@ internal sealed class ClassicStageTheatreAbout : Component
         if (f is null || f.Bio.Length > 0)
         {
             desc.Add(Ui.Body(f?.Bio ?? "") with { Color = Ink.InkSecondary, LineHeight = G.BioLine, MaxLines = G.BioLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
-            if (artist) desc.Add(new BoxEl { Direction = 0, Children = [HyperlinkButton.Create(Loc.Get(Strings.Stage.Artist.ReadMore), open, size: ControlSize.Small)] });
+            // "Read more" stands in the text column: the link's label, not its hover plate, lines up with the bio (the plate reaches out
+            // past the column by the link's own padding, as an inline link's does)
+            if (artist)
+                desc.Add(new BoxEl
+                {
+                    Direction = 0, Margin = new Edges4(-ControlMetrics.For(ControlSize.Small).Padding.Left, 0f, 0f, 0f),
+                    Children = [HyperlinkButton.Create(Loc.Get(Strings.Stage.Artist.ReadMore), open, size: ControlSize.Small)],
+                });
         }
         if (desc.Count > 0)
             kids.Add(new BoxEl { Direction = 1, Gap = G.DescLineGap, MinWidth = 0f, Margin = new Edges4(0f, artist ? G.DescGap : 0f, 0f, 0f), Children = desc.ToArray() });
