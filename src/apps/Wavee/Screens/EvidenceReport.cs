@@ -386,16 +386,27 @@ public static class EvidenceReport
         1 => "kind", 2 => "origin", 3 => "phase", 4 => "identity", 5 => "residual", 6 => "extent", _ => "-",
     };
 
+    static string More(int node, uint gen, byte bits, Func<int, uint, string> nodeName)
+        => node > 0 ? nodeName(node, gen) + "(0x" + bits.ToString("x", Inv) + ")" : "-";
+
     /// <summary>walks.tsv: the walk ledger tail (every slice re-record and why), oldest first.</summary>
     public static string WalksTsv(ReadOnlySpan<WalkEntry> walks, Func<int, uint, string> nodeName)
     {
         var sb = new StringBuilder(64 + walks.Length * 72);
-        sb.Append("frame\tnode\tnodeKey\trole\twhy\tdetail\tbytes\n");
+        sb.Append("frame\tnode\tnodeKey\trole\twhy\tdetail\tbytes\tculprit\tculpritKey\tculpritBits\tculpritCount\tmore\n");
         foreach (ref readonly WalkEntry w in walks)
             sb.Append(I(w.Frame)).Append('\t').Append(I(w.NodeIndex)).Append(':').Append(I(w.Gen)).Append('\t')
               .Append(w.NodeIndex > 0 ? nodeName(w.NodeIndex, w.Gen) : "-").Append('\t')
               .Append(I(w.Role)).Append('\t').Append(((WalkWhy)w.Why).ToString()).Append('\t')
-              .Append("0x").Append(w.Detail.ToString("x", Inv)).Append('\t').Append(I(w.Bytes)).Append('\n');
+              .Append("0x").Append(w.Detail.ToString("x", Inv)).Append('\t').Append(I(w.Bytes)).Append('\t')
+              // RecordDirty: the first node down the dirty trail whose OWN bits are set (the node that dirtied the walk)
+              .Append(w.Culprit > 0 ? I(w.Culprit) + ":" + I(w.CulpritGen) : "-").Append('\t')
+              .Append(w.Culprit > 0 ? nodeName(w.Culprit, w.CulpritGen) : "-").Append('\t')
+              .Append("0x").Append(w.CulpritBits.ToString("x", Inv)).Append('\t').Append(I(w.CulpritCount)).Append('\t')
+              // the next three self-dirty nodes of the trail: key(bits) each
+              .Append(More(w.Culprit2, w.Culprit2Gen, w.Culprit2Bits, nodeName)).Append(' ')
+              .Append(More(w.Culprit3, w.Culprit3Gen, w.Culprit3Bits, nodeName)).Append(' ')
+              .Append(More(w.Culprit4, w.Culprit4Gen, w.Culprit4Bits, nodeName)).Append('\n');
         return sb.ToString();
     }
 
