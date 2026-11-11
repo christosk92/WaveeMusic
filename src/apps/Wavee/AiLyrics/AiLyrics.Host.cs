@@ -128,6 +128,18 @@ public static partial class AiLyrics
     /// <summary>Set by the Settings card while it is on screen: a toast is redundant then (Rules.ToastOnReady).</summary>
     public static bool SettingsCardVisible { get; set; }
 
+    /// <summary>True while the headless inspector shows a staged <see cref="Current"/> (<see cref="Stage"/>): the card renders that
+    /// status, and every verb is inert (no download, no model load, no job, nothing read or written under <see cref="Root"/>).</summary>
+    public static bool Staged { get; private set; }
+
+    /// <summary>The headless inspector's `state kind=ai`: publish <paramref name="status"/> as the card's status without the module
+    /// (the inspector never calls <see cref="Install"/>), or put the boot's "not started" back (<c>null</c>; the next mount does).</summary>
+    public static void Stage(Status? status)
+    {
+        Staged = status is not null;
+        Current.Value = status ?? Status.Unknown;
+    }
+
     static Action<Action> s_post = static a => a();
     static CancellationTokenSource? s_downloadCts;
     static CancellationTokenSource? s_loadCts;
@@ -207,6 +219,7 @@ public static partial class AiLyrics
 
     public static void SetEnabled(bool on)
     {
+        if (Staged) return;
         var st = Current.Peek();
         if (on && !Rules.CanToggleOn(st.Availability)) return;
         Prefs.AiLyrics.Set(Platform.Keys.AiLyricsEnabled, on);
@@ -234,7 +247,7 @@ public static partial class AiLyrics
 
     static void StartDownload(IReadOnlyList<string> languages, string? addLanguage)
     {
-        if (s_downloadCts is not null) return;                     // one download at a time
+        if (Staged || s_downloadCts is not null) return;           // one download at a time (none while the inspector stages the card)
         var cts = new CancellationTokenSource();
         s_downloadCts = cts;
         s_pauseRequested = false;
@@ -325,6 +338,7 @@ public static partial class AiLyrics
     /// loads the models again. A failure of one language's download is retried with <see cref="InstallLanguage"/>.</summary>
     public static void Retry()
     {
+        if (Staged) return;
         var st = Current.Peek();
         if (Rules.RetryLoadsModels(st.Error)) LoadModels(reload: true);
         else StartDownload();
@@ -334,6 +348,7 @@ public static partial class AiLyrics
     /// unload, so no file is still mapped by a session; a loaded runtime DLL is cleared on the next start.</summary>
     public static void RemoveFiles(Action<bool>? deferred = null)
     {
+        if (Staged) return;
         CancelJob();
         CancelDownloadInternal(pause: false);
         CancelLoads();
@@ -363,6 +378,7 @@ public static partial class AiLyrics
     /// <summary>Download one more aligner language, then reload the models with it.</summary>
     public static void InstallLanguage(string language)
     {
+        if (Staged) return;
         var langs = new List<string>(LanguagesSetting());
         if (!langs.Contains(language)) langs.Add(language);
         StartDownload(langs, addLanguage: language);
@@ -371,6 +387,7 @@ public static partial class AiLyrics
     /// <summary>Remove one aligner language (never the last one). Its files go on the worker after the unload.</summary>
     public static void RemoveLanguage(string language)
     {
+        if (Staged) return;
         var langs = new List<string>(LanguagesSetting());
         if (langs.Count <= 1 || !langs.Remove(language)) return;
         CancelJob();
@@ -392,6 +409,7 @@ public static partial class AiLyrics
     /// <summary>Open the AI files folder in Explorer.</summary>
     public static void OpenFolder()
     {
+        if (Staged) return;
         _ = Task.Run(() =>
         {
             try
@@ -557,7 +575,7 @@ public static partial class AiLyrics
         _ = Prefs.AiLyrics.Epoch.Value;
         _ = PreferEpoch.Value;
 
-        if (!st.Enabled || st.Phase != SetupPhase.Ready || !id.IsValid)
+        if (Staged || !st.Enabled || st.Phase != SetupPhase.Ready || !id.IsValid)
         {
             if (s_ledger.JobRunning) CancelJob();
             if (Track.Peek().Phase != TrackPhase.Idle) Track.Value = default;

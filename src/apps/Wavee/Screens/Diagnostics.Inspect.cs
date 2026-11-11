@@ -600,6 +600,8 @@ public static partial class Diagnostics
                         string kind = a.Str("kind").ToLowerInvariant();
                         BeforeState(shell);
                         if (a.Has("page")) return PageState(id, name, a, kind, shell);
+                        // The AI lyrics settings card in each of its states, staged without the module (Diagnostics.Inspect.AiLyrics.cs).
+                        if (kind == "ai") return AiState(id, name, a);
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
@@ -918,6 +920,7 @@ public static partial class Diagnostics
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();
+            RestoreAiLyrics();   // a `state kind=ai` staged the AI lyrics card
             Entities.RestoreStagedShelves();   // a `state page=<library tab>` staged the account's relations
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();

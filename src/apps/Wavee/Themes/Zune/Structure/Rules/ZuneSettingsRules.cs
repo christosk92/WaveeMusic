@@ -276,6 +276,10 @@ public static class ZuneSettingsRules
     /// <summary>The lane's air above and below the column.</summary>
     public const float LaneTop = 4f, LaneBottom = 32f;
 
+    /// <summary>How far the lane's scroll clip reaches left of the column (the column itself does not move): a glyph whose ink hangs left
+    /// of its advance at the gutter (a lowercase j's hook, "japanese" in the AI lyrics languages) is not cut by the clip.</summary>
+    public const float LaneInk = 4f;
+
     /// <summary>The gap between the column and the preview, the preview's basis and its cap.</summary>
     public const float AsideGap = 48f, AsideBasis = 320f, AsideMax = 480f, AsideMaxStandard = 360f;
 

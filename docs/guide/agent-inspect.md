@@ -476,7 +476,7 @@ transport do=repeat value=all
 transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
 ```
 
-### `state {kind, page?}` and `dialog {kind}`
+### `state {kind, page?, ai?, error?, lang?}` and `dialog {kind}`
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
@@ -488,7 +488,31 @@ come from the same catalogue (`--fake` installs that source; a live build asks S
 `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
 The reply's `leftOpen[{key, first}]` lists the overlays the state opened (Zune Compact's `loading` leaves the omni flyout up):
 `lint` fails them as `overlay.open` until `key esc` closes them.
-`mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
+`mount` and `reset` clear the vacancy.
+
+**The AI lyrics settings card: `state kind=ai`.** The server never starts the AI lyrics module, so the card is always "not
+started" (the switch off and disabled). `state kind=ai ai=<case> error=<kind> lang=<iso>` stages the card's one status model
+(`AiLyrics.Current`, through `AiLyrics.Stage`; `Diagnostics.Inspect.AiLyrics.cs`) on the Settings page that shows the card
+(Classic and WinUI: `route=settings arg=appearance`, the card `appearance.ai-lyrics`; Zune: `arg=lyrics`, the card `zs:ai`), with
+no module behind it: while it stands every module verb is inert, so a click on Try again, Remove, a language or the switch downloads
+nothing, loads nothing and never touches the profile's `ai\lyrics` folder. The cases: `off`, `unavailable` (not an Arm64 PC: the
+switch off and disabled), `setup` (needs its download), `downloading` (40 %, a speed and a file), `paused`, `preparing` (the first
+NPU compile, 3 of 8), `ready` (default; English and Spanish installed), `lang-failed` (a language added to a ready feature failed:
+the card stays Ready, with that language's own bar `ai:lang-failed` / `zs:ai:lang-failed`), `setup-failed` (a first setup stopped
+on a language's file: the whole card is the error, naming it), `error` (the whole feature: a shared file, the runtime, the NPU, the
+compile; the bar is `ai:error` / `zs:ai:error`) and `none` ("not started" again). `error=notfound|offline|network|hash|diskfull|unknown`
+(`runtime|nonpu|compile` too, for `ai=error`) picks the failure kind, with the detail the real download writes for it (the URL, the
+file, the drive); `lang=` the failed language (`ja` by default; a pack language). The bars' buttons are keyed: `ai:details` /
+`zs:ai:details` (reveals the raw detail in place) and `ai:retry` / `zs:ai:retry`. The reply names the `phase`, `error` and
+`failedLanguage`. The next `mount` (or `reset`) puts "not started" back.
+
+```text
+mount w=1440 h=960 theme=zune route=settings arg=lyrics
+state kind=ai ai=lang-failed error=diskfull
+click key=zs:ai:details trace=40 prefix=zs:ai     # the raw detail opens in place, traced
+```
+
+`dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
 photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. **The lightbox needs a
 `mount ... images=real`**: under the default fake decoder its photographs are flat gradients and it cannot be reviewed. Lint the lightbox with `root=` its key,

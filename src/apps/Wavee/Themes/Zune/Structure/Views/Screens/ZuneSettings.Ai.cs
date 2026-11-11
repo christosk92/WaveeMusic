@@ -137,7 +137,7 @@ internal static partial class ZuneSettings
             string detail = Detail(st.ErrorDetail);
             long installed = st.InstalledBytes;
             var actions = new List<Element>(3);
-            if (detail.Length > 0) actions.Add(k.Cmd(Loc.Get(AiS.Details), () => _details.Value = !_details.Peek()));
+            if (detail.Length > 0) actions.Add(k.Cmd(Loc.Get(AiS.Details), () => _details.Value = !_details.Peek()) with { Key = "zs:ai:details" });
             if (AiLyrics.Rules.ErrorOffersRemove(error)) actions.Add(k.Cmd(Loc.Get(AiS.Remove), () => ConfirmRemove(installed)));
             if (AiLyrics.Rules.ErrorOffersRetry(error))
                 actions.Add(k.Cmd(Loc.Get(AiS.Retry), static () =>
@@ -145,7 +145,7 @@ internal static partial class ZuneSettings
                     // a download error downloads again: the same metered question as Download (a model error does not)
                     if (AiLyrics.Rules.RetryLoadsModels(AiLyrics.Current.Peek().Error)) AiLyrics.Retry();
                     else DownloadThen(Remaining(AiLyrics.Current.Peek()), static () => AiLyrics.Retry());
-                }, accent: true));
+                }, accent: true) with { Key = "zs:ai:retry" });
             string shown = _details.Value && detail.Length > 0 ? AiS.Error.Detail(detail) : "";
             return ZuneKit.Notice(InfoBarSeverity.Error,
                 language.IsSet ? AiS.LangError.Title(AiLyrics.LanguageName(language.Language)) : Loc.Get(AiLyrics.Rules.ErrorKey(error)),
@@ -161,12 +161,12 @@ internal static partial class ZuneSettings
             string lang = failure.Language;
             string detail = Detail(failure.Detail);
             var actions = new List<Element>(2);
-            if (detail.Length > 0) actions.Add(k.Cmd(Loc.Get(AiS.Details), () => _langDetails.Value = !_langDetails.Peek()));
+            if (detail.Length > 0) actions.Add(k.Cmd(Loc.Get(AiS.Details), () => _langDetails.Value = !_langDetails.Peek()) with { Key = "zs:ai:details" });
             actions.Add(k.Cmd(Loc.Get(AiS.Retry), () =>
             {
                 _langDetails.Value = false;                                        // the next failure opens with its details shut
                 DownloadThen(LanguageBytes(lang), () => AiLyrics.InstallLanguage(lang));
-            }, accent: true));
+            }, accent: true) with { Key = "zs:ai:retry" });
             return ZuneKit.Notice(InfoBarSeverity.Error, AiS.LangError.Title(AiLyrics.LanguageName(lang)),
                 Join(Loc.Get(AiLyrics.Rules.LanguageErrorKey(failure.Kind)), _langDetails.Value && detail.Length > 0 ? AiS.Error.Detail(detail) : ""),
                 new BoxEl { Direction = 0, Gap = Z.ControlGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f, Children = actions.ToArray() })

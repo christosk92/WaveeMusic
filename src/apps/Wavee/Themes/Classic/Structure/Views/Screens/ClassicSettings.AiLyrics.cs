@@ -283,7 +283,7 @@ internal static partial class ClassicSettings
             long installed = st.InstalledBytes;
             var actions = new List<Element>(3);
             if (detail.Length > 0)
-                actions.Add(LinkButton(Loc.Get(AiS.Details), () => setDetails(!details)));
+                actions.Add(LinkButton(Loc.Get(AiS.Details), () => setDetails(!details)) with { Key = "ai:details" });
             if (AiLyrics.Rules.ErrorOffersRemove(error))
                 actions.Add(StdButton(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed)));
             if (AiLyrics.Rules.ErrorOffersRetry(error))
@@ -292,13 +292,13 @@ internal static partial class ClassicSettings
                     // a download error downloads again: the same metered question as Download (a model error does not)
                     if (AiLyrics.Rules.RetryLoadsModels(AiLyrics.Current.Peek().Error)) AiLyrics.Retry();
                     else AiDownloadThen(AiRemainingBytes(), static () => AiLyrics.Retry());
-                }));
-            string shown = details && detail.Length > 0 ? AiS.Error.Detail(detail) : "";
+                }) with { Key = "ai:retry" });
             return InfoBar.Create(InfoBarSeverity.Error,
                 language.IsSet ? AiS.LangError.Title(AiLyrics.LanguageName(language.Language)) : Loc.Get(AiLyrics.Rules.ErrorKey(error)),
-                language.IsSet ? AiJoin(Loc.Get(AiLyrics.Rules.LanguageErrorKey(error)), shown) : shown,
+                language.IsSet ? Loc.Get(AiLyrics.Rules.LanguageErrorKey(error)) : "",
                 isClosable: false,
-                actionButton: actions.Count == 0 ? null : AiRow(actions.ToArray()));
+                actionButton: actions.Count == 0 ? null : AiRow(actions.ToArray()),
+                content: AiDetailArea(detail, details));
         }
 
         /// <summary>One language's download failed while the feature is ready: which language, why in plain words, the raw
@@ -310,12 +310,12 @@ internal static partial class ClassicSettings
             string detail = AiDetail(failure.Detail);
             var actions = new List<Element>(2);
             if (detail.Length > 0)
-                actions.Add(LinkButton(Loc.Get(AiS.Details), () => setDetails(!details)));
+                actions.Add(LinkButton(Loc.Get(AiS.Details), () => setDetails(!details)) with { Key = "ai:details" });
             actions.Add(AccentButton(Loc.Get(AiS.Retry), () =>
             {
                 setDetails(false);                                                 // the next failure opens with its details shut
                 AiDownloadThen(AiLanguageBytes(lang), () => AiLyrics.InstallLanguage(lang));
-            }));
+            }) with { Key = "ai:retry" });
             return new BoxEl
             {
                 Key = "ai:lang-failed", Direction = 1, AlignSelf = FlexAlign.Stretch, Layout = s_aiHeightReflow,
@@ -323,14 +323,27 @@ internal static partial class ClassicSettings
                 [
                     InfoBar.Create(InfoBarSeverity.Error,
                         AiS.LangError.Title(AiLyrics.LanguageName(lang)),
-                        AiJoin(Loc.Get(AiLyrics.Rules.LanguageErrorKey(failure.Kind)), details && detail.Length > 0 ? AiS.Error.Detail(detail) : ""),
+                        Loc.Get(AiLyrics.Rules.LanguageErrorKey(failure.Kind)),
                         isClosable: false,
-                        actionButton: AiRow(actions.ToArray())),
+                        actionButton: AiRow(actions.ToArray()),
+                        content: AiDetailArea(detail, details)),
                 ],
             };
         }
 
-        static string AiJoin(string a, string b) => b.Length == 0 ? a : a.Length == 0 ? b : a + " " + b;
+        /// <summary>The raw detail behind "Details", in the bar's content area under its title, reason and buttons: opening it only grows
+        /// the bar (its own height ease), so the title, the reason and the buttons keep their places (in the message it re-wrapped the row
+        /// into the stacked form and the buttons jumped under it). Always present, empty while shut, so the bar's structure never changes.</summary>
+        static Element AiDetailArea(string detail, bool open) => new BoxEl
+        {
+            // its height eases on the bar's own resize curve, so the detail opens in step with the bar around it (no clip: the bar's
+            // plate grows on the same curve, and a clip here cut the text's side bearings)
+            Key = "ai:detail", Direction = 1, MinWidth = 0f, Shrink = 1f, Layout = MotionRecipes.CardResizeHeight,
+            Padding = open && detail.Length > 0 ? new Edges4(0f, 0f, 0f, Spacing.M) : default,
+            Children = open && detail.Length > 0
+                ? [new TextEl(AiS.Error.Detail(detail)) { Size = InfoBar.DefaultStyle.MessageSize, Color = InfoBar.DefaultStyle.TextColor, Wrap = TextWrap.Wrap, MinWidth = 0f, Shrink = 1f }]
+                : [],
+        };
 
         // ── small builders ──────────────────────────────────────────────────────────────────────────────────────────────
 

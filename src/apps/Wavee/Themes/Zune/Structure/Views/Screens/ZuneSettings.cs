@@ -98,8 +98,9 @@ internal static partial class ZuneSettings
                 ScrollView(new BoxEl
                 {
                     Direction = 0, Wrap = true, Gap = Z.AsideGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-                    Padding = new Edges4(0f, Z.LaneTop, 0f, Z.LaneBottom), Children = scrolled.ToArray(),
-                }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = "zs:" + slug, Key = "zs:scroll:" + slug },
+                    // the clip reaches LaneInk left of the column, the column stays where it was (a left-hanging glyph at the gutter keeps its ink)
+                    Padding = new Edges4(Z.LaneInk, Z.LaneTop, 0f, Z.LaneBottom), Children = scrolled.ToArray(),
+                }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Margin = new Edges4(-Z.LaneInk, 0f, 0f, 0f), ScrollKey = "zs:" + slug, Key = "zs:scroll:" + slug },
             ],
         };
 
