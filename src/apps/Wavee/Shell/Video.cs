@@ -1418,14 +1418,15 @@ public static partial class Video
             // picture yet is still the poster's story: `ShouldMountPlayerStage` alone dropped the poster ~1s before
             // `FrameSeen`, showing a blank/stale stage under the "video" label. The picture only counts once framed.
             if (SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent) && s.FrameSeen) return JoinVisual.Video;
-            if (!s.Wanted) return JoinVisual.Poster;
-            bool joining = IsJoining(in s);
-            if (joining && ShowsSpinner(joinElapsedMs)) return JoinVisual.Working;
+            if (IsJoining(in s) && ShowsSpinner(joinElapsedMs)) return JoinVisual.Working;
             // Under the budget a surface shows the picture it already has: across an in-place video → video switch that is the
             // previous source's last frame, which the presenter holds until the next one's first frame (picture → picture, never
-            // picture → poster → picture). A first video has nothing to hold (the poster); a slow successor still earns the ring
-            // past the budget (above) and a failed one the fault line, both over the held frame; an audio successor is not a join.
-            if (joining && s.PictureHeld && SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent)) return JoinVisual.Video;
+            // picture → poster → picture). Whatever the switch's own facts say in between: the host's teardown of the old load
+            // publishes no source, an Idle phase and, for a moment, no wanted placement before the next one resolves, and none of
+            // that is a reason to cover a picture that is still there. The PRESENTER says when it is gone (a failure, a stop, an
+            // audio-only successor end its hold). A first video has nothing to hold (the poster); a slow successor still earns the
+            // ring past the budget (above) and a failed one the fault line, both over the held frame.
+            if (s.PictureHeld && SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent)) return JoinVisual.Video;
             return JoinVisual.Poster;
         }
     }
