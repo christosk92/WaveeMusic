@@ -282,13 +282,19 @@ internal static class ClassicStageTheatreGeometry
     /// <summary>The picture's rect, its title block's and the panel's, in stage DIP, for the stage layout <paramref name="L"/>. The panel is the open
     /// list's box: from the picture's top edge to the stage's foot, <see cref="ListPad"/> outside the tier's panel width on both sides (its rows'
     /// content keeps the gutters).</summary>
-    /// <para>The about block (<c>About</c>) stands under the title, as wide as the picture, only where the room down to the stage's gutter holds it whole;
-    /// elsewhere it is empty (0 wide) and the title block stands alone.</para>
+    /// <para>THE PICTURE'S RULE: Theatre exists to put the information beside and under the picture, so the picture is the largest 16:9 box the
+    /// left column holds that still leaves room under it for the title block AND the about block (<see cref="UnderH"/>), down to the stage's gutter.
+    /// The rule is one continuous function of the stage's size: no tier edge flips the about block on or off, and nothing under the picture jumps.</para>
+    /// <para>The about block (<c>About</c>) stands under the title, as wide as the picture; only a region too short to hold anything (no picture at
+    /// all) leaves it empty (0 wide).</para>
     public readonly record struct Rects(RectF Picture, RectF Title, RectF Pane, RectF About)
     {
         /// <summary>The about block shows (it fits whole under the title).</summary>
         public bool AboutFits => About.W > 0f;
     }
+
+    /// <summary>What the picture leaves under itself: its gap to the title block, the title block, the about block's gap and the about block.</summary>
+    public const float UnderH = TitleGap + TitleBlockH + AboutGap + AboutH;
 
     public static Rects Of(Stage.Layout L)
     {
@@ -299,13 +305,13 @@ internal static class ClassicStageTheatreGeometry
         float paneW = L.TheatrePaneW;
         float paneX = L.W - gutter - paneW;
         float columnW = MathF.Max(0f, paneX - 2f * gutter);
-        float roomH = MathF.Max(0f, regionH - TitleGap - TitleBlockH);
+        float roomH = MathF.Max(0f, regionH - UnderH);
         float picW = columnW, picH = MathF.Round(columnW / PictureAspect);
         if (picH > roomH) { picH = roomH; picW = MathF.Round(roomH * PictureAspect); }
         float x = gutter + MathF.Round((columnW - picW) * 0.5f);
         float y = top;   // the picture's top edge under the top bar (the board "B · Open list"), its title under it
         float aboutY = y + picH + TitleGap + TitleBlockH + AboutGap;
-        var about = aboutY + AboutH <= bottom ? new RectF(x, aboutY, picW, AboutH) : default;
+        var about = picH > 0f && aboutY + AboutH <= bottom + 0.5f ? new RectF(x, aboutY, picW, AboutH) : default;
         return new Rects(new RectF(x, y, picW, picH), new RectF(x, y + picH + TitleGap, picW, TitleBlockH),
             new RectF(paneX - ListPad, y, paneW + 2f * ListPad, MathF.Max(0f, L.H - y)), about);
     }
