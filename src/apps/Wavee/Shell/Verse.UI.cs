@@ -173,7 +173,9 @@ public static partial class Verse
         float _beatMs;
         int _lastBeat = int.MinValue;
         long _lastBeatWallMs;
-        readonly Action _tick, _tickCore, _onBeat, _onPausedSeek, _rearm;
+        readonly Action _tick, _tickCore, _onBeat, _onPausedSeek, _rearm, _settle;
+        /// <summary>Bumped by every <see cref="BuildRig"/>: the key of the one post-layout settle a new rig gets.</summary>
+        int _rigSeq;
 
         public Host()
         {
@@ -182,6 +184,7 @@ public static partial class Verse
             _onBeat = OnBeat;
             _onPausedSeek = OnPausedSeek;
             _rearm = () => _live.Value = true;
+            _settle = () => Reactive.Untrack(SettleRig);
         }
 
         public override Element Render()
@@ -251,6 +254,9 @@ public static partial class Verse
             }
             else if (!timed) { _rig = null; body = [Poem(song.Doc, in region)]; }
             else body = Timed(song!, in region, view, now, gapStart, playing, p.W, p.H, blurOn, dark);
+            // a new rig's words were seeded on the character weights (their nodes were not laid out yet): once they are, the
+            // measured split lands in the same frame — a paused face gets no tick to do it
+            UseLayoutEffect(_settle, DepKey.From(_rigSeq));
 
             return new BoxEl
             {
@@ -355,6 +361,7 @@ public static partial class Verse
         {
             var lines = song.Doc.Lines;
             var rig = new Rig(key, live);
+            _rigSeq++;
             if (next >= 0) rig.NextStartMs = lines[next].StartMs;
             if (dots && next >= 0) rig.Lit = new Signal<int>(CountIn.Lit(now, rig.NextStartMs, _beatMs));
             if (live < 0) return rig;
@@ -1057,6 +1064,35 @@ public static partial class Verse
             if (!moved && !tinted) return;
             scene.SetGlyphWipe(h, recolour ? w with { Split = split, Before = before } : w with { Split = split });
             scene.Mark(h, NodeFlags.PaintDirty);
+        }
+
+        /// <summary>The post-layout settle of a NEW rig (once per rig, never per frame): its wiping words' glyph bounds are measured
+        /// on their laid-out nodes and the split written on that axis at the clock's present, as the tick's <see cref="Drive"/> does
+        /// (same gates and inks). Playing, the next tick would do the same a frame later; paused, nothing else would.</summary>
+        void SettleRig()
+        {
+            if (_rig is not { Line: >= 0 } rig || _song is not { } song || _slab is not { } slab || Context.Scene is not { } scene) return;
+            long now = ClockNow();
+            if (rig.Mode == TimingMode.Word)
+            {
+                bool playing = _clock.Playing;
+                ColorF ink = Ink.Ink, accent = slab.A.Peek();
+                for (int i = 0; i < rig.Words.Length; i++)
+                {
+                    if (!rig.Wipes(i)) continue;
+                    ref readonly var w = ref rig.Words[i];
+                    int st = rig.State[i].Peek();
+                    if (st != 1 && !(LandAt(rig, i, now, playing) > 0f)) continue;
+                    float split = WipeSplit(in w, now, rig.Widths[i], WordBoundsOf(scene, rig, i));
+                    WriteWipe(scene, rig.Text[i], split, st == 2 ? ink : accent, recolour: true);
+                    WriteWipe(scene, rig.BloomText[i], split, default, recolour: false);
+                }
+            }
+            else if (rig.WholeWipe)
+            {
+                var line = song.Doc.Lines[rig.Line];
+                WriteWipe(scene, rig.WholeText, Lyrics.Wipe.SplitWithLead(line, now, WholeBoundsOf(scene, rig, line), lead: true), default, recolour: false);
+            }
         }
 
         void Apply(in Lyrics.MotionDecision d, long now)
