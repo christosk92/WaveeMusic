@@ -4,7 +4,11 @@
 // (`Queue.StagePaneHost`) keeps the reads, the split, the ONE page counter of the continuous list, the realized slots, the reorder lane and
 // the verbs; this view draws the column in the stage's ink.
 //
-//   column  [ "Up next" · Autoplay ToggleSwitch ] · ScrollEl[ lane[ headers · Next row · rows · Show more ] | "Nothing up next" ]
+//   column  [ "Up next" · Autoplay ToggleSwitch ] · lane[ virtual list[ headers · Next row · rows · Show more | "Nothing up next" ] ]
+//
+// The body is ONE VIRTUALIZED list (the rail panel's way, `ClassicQueuePanel`): only the rows the viewport shows, and its overscan, are built, with
+// KEYED identity, so a track change (the head of the queue advancing) moves the rows it keeps and builds only the one that scrolls in. The slots'
+// extents are stated EXACTLY (the lane's drag maths reads the same numbers); the vacancy sentence is measured on its first realize.
 //
 // Every metric scales by `Stage.Layout.QueueScale` (1 on the board, 1.25 on a 2560×1080 ultrawide) and is rounded as rendered, because the
 // lane's drag maths needs each slot's height EXACT. The first upcoming song is the NEXT row (larger art, an eyebrow, display type); each section
@@ -41,6 +45,13 @@ internal sealed class ClassicQueueStagePane : Component
     float _s = 1f;
     bool _video;
     QueueSection? _lead;   // Theatre's open list: the first section with rows, whose caption the list's header row stands for
+    QueueStagePaneProps _props = null!;
+    bool _art;
+    readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
+    float[] _extents = new float[64];
+    /// <summary>The list's last item is the vacancy sentence ("Nothing up next") when the queue is empty: its estimate until its first measure.</summary>
+    const float VacancyEstimate = 64f;
+    Func<int, Element>? _item;
 
     /// <summary>The first row of the whole upcoming list is the Next row: its extent includes the gap under it.</summary>
     bool IsNextSlot(QueueSlot slot) => slot.IsRow && _queue.TryRow(slot.Section, slot.Pos, out var row) && IsNext(row);
@@ -97,31 +108,22 @@ internal sealed class ClassicQueueStagePane : Component
         lane.SetMetrics((_video ? ClassicQueueRules.StageVideoRowH : ClassicQueueRules.StageRowH) * _s, _extentOf ??= ExtentOf);
         bool art = !ClassicOptions.HideTrackArt();
 
-        var kids = new List<Element>(2);
-        if (lane.SlotCount > 0)
+        _props = props;
+        _art = art;
+        // the items, in list order: the lane's slots (under the live projection while a row is lifted, so each position states the extent of the
+        // slot shown there), then the vacancy sentence when nothing is up next
+        int n = lane.SlotCount + (_queue.Empty ? 1 : 0);
+        if (_extents.Length < n) _extents = new float[n * 2];
+        for (int i = 0; i < lane.SlotCount; i++) _extents[i] = ExtentOf(lane.SlotAt(lane.ItemAt(i)));
+        if (_queue.Empty) _extents[n - 1] = -VacancyEstimate;
+        _layout.SetExtents(_extents.AsSpan(0, n));
+        var list = Virtual.Custom(n, _layout, _item ??= Item) with
         {
-            var slots = new Element[lane.SlotCount];
-            for (int i = 0; i < slots.Length; i++)
-            {
-                int item = lane.ItemAt(i);
-                var slot = lane.SlotAt(item);
-                if (slot.Kind == QueueSlotKind.More) { slots[i] = ShowMore(props, slot.Section); continue; }
-                if (slot.Kind == QueueSlotKind.Header)
-                {
-                    // the open list's header row names the lead section (Theatre): its own caption is a zero-height slot (its extent is 0 too)
-                    slots[i] = _video && slot.Section == _lead ? new BoxEl { Key = "stagehdr:" + QueueSections.Tag(slot.Section), Height = 0f, BlocksDragArm = true } : StageHeader(slot.Section);
-                    continue;
-                }
-                slots[i] = _queue.TryRow(slot.Section, slot.Pos, out var row)
-                    ? lane.Lane(item, RowOf(props, row, art), lane.RowKey("s", row.ItemId, row.Index))
-                    : new BoxEl();
-            }
-            kids.Add(lane.List(new BoxEl { Key = "stageupcoming", Direction = 1, Children = slots }, "stagelane:upcoming"));
-        }
-        if (_queue.Empty)
-            kids.Add(EmptySentence());
-        Element body = new BoxEl { Direction = 1, MinHeight = 0f, Children = kids.ToArray() };
-        Element rows = lane.SlotCount == 0 ? lane.List(body, "stagelane:empty") : body;
+            Grow = 1f, MinHeight = 0f, KeyedIdentity = true, AutoEdgeFade = true,
+            AutoEdgeFadeBand = _video ? ClassicStageTheatreGeometry.ListFadeH : 0f,
+            ScrollKey = _video ? "stagequeue:theatre" : props.Aside ? "stagequeue:aside" : "stagequeue",
+        };
+        Element rows = lane.List(list, lane.SlotCount > 0 ? "stagelane:upcoming" : "stagelane:empty").As<BoxEl>() with { Grow = 1f, MinHeight = 0f };
 
         float s = _s;
         if (_video) return OpenList(rows, toggle);
@@ -144,13 +146,26 @@ internal sealed class ClassicQueueStagePane : Component
                         },
                     ],
                 },
-                new ScrollEl
-                {
-                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = props.Aside ? "stagequeue:aside" : "stagequeue",
-                    Content = rows,
-                },
+                rows,
             ],
         };
+    }
+
+    /// <summary>The list's item <paramref name="i"/>: a lane slot (a section header, a row, a "Show more"), or the vacancy sentence after them.</summary>
+    Element Item(int i)
+    {
+        var props = _props;
+        var lane = props.Lane;
+        if ((uint)i >= (uint)lane.SlotCount) return EmptySentence();
+        int item = lane.ItemAt(i);
+        var slot = lane.SlotAt(item);
+        if (slot.Kind == QueueSlotKind.More) return ShowMore(props, slot.Section);
+        // the open list's header row names the lead section (Theatre): its own caption is a zero-height slot (its extent is 0 too)
+        if (slot.Kind == QueueSlotKind.Header)
+            return _video && slot.Section == _lead ? new BoxEl { Key = "stagehdr:" + QueueSections.Tag(slot.Section), Height = 0f, BlocksDragArm = true } : StageHeader(slot.Section);
+        return _queue.TryRow(slot.Section, slot.Pos, out var row)
+            ? lane.Lane(item, RowOf(props, row, _art), lane.RowKey("s", row.ItemId, row.Index))
+            : new BoxEl { Key = "stagegap:" + i };
     }
 
     /// <summary>Theatre's open list (the board "B · Open list"): the header row on the picture's top edge ("Up next" in BodyStrong with the upcoming
@@ -175,11 +190,7 @@ internal sealed class ClassicQueueStagePane : Component
                     ToggleSwitch.Create(_autoplay, _setAutoplay, style: toggle),
                 ],
             },
-            new ScrollEl
-            {
-                Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = ClassicStageTheatreGeometry.ListFadeH, ScrollKey = "stagequeue:theatre",
-                Content = rows,
-            },
+            rows,
         ],
     };
 
@@ -190,7 +201,7 @@ internal sealed class ClassicQueueStagePane : Component
     /// <summary>"Nothing up next": the one sentence under an empty list.</summary>
     static Element EmptySentence() => new BoxEl
     {
-        Padding = new Edges4(0f, Spacing.XXL, 0f, 0f),
+        Key = "stagequeue:empty", Padding = new Edges4(0f, Spacing.XXL, 0f, 0f),
         Children = [new TextEl(Loc.Get(Strings.Player.QueueEmpty)) { Size = ClassicQueueRules.EmptySize, LineHeight = ClassicQueueRules.EmptyLine, Color = Ink.InkTertiary }],
     };
 
