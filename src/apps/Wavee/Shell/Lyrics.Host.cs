@@ -2016,7 +2016,13 @@ public static partial class Lyrics
             // The memory cache may already hold it (a re-play inside the session): take that synchronously so the
             // surface never shimmers for a document it already has.
             if (provider.Peek(trackId) is { } warm) { Commit(trackId, warm, upgrade: false); return; }
-            _ = FetchAsync(provider, trackId);
+            // Started on the pool, never inline: an async method runs synchronously up to its first INCOMPLETE await, and
+            // the aggregator's prefix is the disk read-through (File.Exists, the open, a read that completes at once for a
+            // cached file), the JSON parse, the timing and junk-line repair, then the resolve and every source's start. Inline,
+            // that ran inside the caller's effect on the UI thread: 10.5 ms of one frame (`[ui] frame.slow
+            // slowEffect=LyricFacts:10.5`, the stage entering full screen after a track switch, 2026-11-11). The answer
+            // still lands through Commit's ToUi hop, as it always did, so the surface sees the same states in the same order.
+            _ = Task.Run(() => FetchAsync(provider, trackId));
         }
 
         static async Task FetchAsync(Aggregator provider, string trackId)
@@ -2095,7 +2101,7 @@ public static partial class Lyrics
             if (string.IsNullOrEmpty(trackId) || Provider is not { } provider) return;
             lock (Docs) { Docs.Remove(trackId); Asked.Remove(trackId); OfflineMisses.Remove(trackId); }
             Changed.Value++;
-            _ = RefetchAsync(provider, trackId);
+            _ = Task.Run(() => RefetchAsync(provider, trackId));   // off the UI thread, as Ensure's fetch
         }
 
         static async Task RefetchAsync(Aggregator provider, string trackId)
