@@ -598,7 +598,10 @@ public static partial class Video
 
                 // `--fake` has no Connect cluster: the inspector's stood-in remote output (`remote=<name>`) is the owner here too.
                 bool remote = facts.Remote || Theming.InspectSwitches.RemoteDevice is not null;
-                var shape = new JoinState(phase, binding.Player is not null, wanted, framed, hosted && !remote, remote);
+                // A presenter still showing a picture (the main window's or the pop-out's): the previous source's last frame, held
+                // across an in-place switch until the next first frame.
+                bool held = s_mainPictureShown.Value || s_popOutPictureShown.Value;
+                var shape = new JoinState(phase, binding.Player is not null, wanted, framed, hosted && !remote, remote, held);
                 bool joining = Joining.IsJoining(in shape);
                 // The budget is earned ONCE per join, on its leading edge: a step from `Resolving` to `Licensing` is the
                 // same join and must not take the ring away again.
@@ -618,7 +621,7 @@ public static partial class Video
                 if ((visual, phase) == _logged) return;
                 _logged = (visual, phase);
                 Log.Info(State.LogCategory, $"video join visual={visual} phase={phase} player={shape.PlayerPresent} " +
-                    $"wanted={wanted} framed={framed} elapsedMs={elapsed} buffered={buffered} " +
+                    $"wanted={wanted} framed={framed} held={held} elapsedMs={elapsed} buffered={buffered} " +
                     $"gen={binding.Generation} key={Show(key)}");
             });
 
@@ -638,7 +641,8 @@ public static partial class Video
     /// NOT the stage's: each host stacks it over its join poster (<see cref="OwnedStrip"/>), so a poster waiting for the first frame covers the
     /// picture and never the transport.</summary>
     [CoreHost]
-    sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed) : Component
+    sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed,
+                             Signal<bool> pictureShown) : Component
     {
         long _loggedGen = -1;
         NodeHandle _box;
@@ -729,6 +733,7 @@ public static partial class Video
                         AutoHideTransportControls = !Wavee.Theming.InspectSwitches.HoverChromeAtRest,   // `mount chrome=shown`: the chrome at rest, no auto-hide
                         ChromeVisibleOut = chromeVisible,
                         ChromeFeed = feed,
+                        PictureShownOut = pictureShown,
                     }) with
                     {
                         Key = "player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -767,6 +772,12 @@ public static partial class Video
     /// the pop-out's tree has none — which is why its controls never appeared at all.</summary>
     static readonly Signal<bool> s_mainChrome = new(true);
     static readonly Signal<bool> s_popOutChrome = new(true);
+
+    /// <summary>Whether each window's presenter is showing a picture (<c>MediaPlayerElement.PictureShownOut</c>): what lets
+    /// <see cref="JoinWatch"/> keep the poster down while the previous source's last frame is held across a switch. One per HWND,
+    /// like <see cref="s_mainChrome"/>.</summary>
+    static readonly Signal<bool> s_mainPictureShown = new(false);
+    static readonly Signal<bool> s_popOutPictureShown = new(false);
 
     /// <summary>The engine's activity/pointer/pressed/scrubbing feed for each window's transport — one per HWND, same
     /// split as <see cref="s_mainChrome"/>/<see cref="s_popOutChrome"/> and for the same reason: `ChromeFeed` is an
@@ -1105,7 +1116,8 @@ public static partial class Video
                 ? new Element[]
                 {
                     Embed.Comp(static () => new PlayerStage(
-                        new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed))
+                        new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed,
+                        s_mainPictureShown))
                         with { Key = "mainstage:" + GenKey(binding.Generation) },
                     poster,
                     OwnedStrip(TransportOwner.Docked, s_mainChrome, s_mainFeed),
@@ -1467,7 +1479,7 @@ public static partial class Video
 
         /// <summary>The pop-out's stage: the shared player stage keyed by the binding generation (read when the template builds it).</summary>
         static readonly Func<Element> s_popOutStage = static () =>
-            Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen, State.ReportPopOutPresented), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
+            Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen, State.ReportPopOutPresented), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed, s_popOutPictureShown))
                 with { Key = "stage:" + GenKey(Playback.Video.Player.Peek().Generation) };
 
         /// <summary>The pop-out's strip, which the template stacks over its poster.</summary>

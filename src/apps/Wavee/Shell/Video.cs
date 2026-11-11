@@ -1372,7 +1372,11 @@ public static partial class Video
     /// remote)? Without it no local player is coming, so a surface with no player is not "joining" — it is the poster.</param>
     /// <param name="Remote">Does a FOREIGN device own playback (<c>Playback.DeckVideo.Remote</c>)? The surface is a controller's: it shows
     /// what the owner plays, never a local join.</param>
-    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen, bool Hosted = true, bool Remote = false);
+    /// <param name="PictureHeld">Is a presenter of the bound player still showing a picture (<c>MediaPlayerElement.PictureShownOut</c>)?
+    /// Across an in-place video → video switch the element holds the previous source's last frame, at that frame's own size and place,
+    /// until the next source's first frame; it lets go itself on a failure, a stop or an audio-only successor.</param>
+    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen, bool Hosted = true, bool Remote = false,
+                                            bool PictureHeld = false);
 
     /// <summary>The loading picture, decided. The artwork shows at once and the ring only for a join that outlasts
     /// <see cref="Playback.Video.Budgets.JoiningNoSpinnerMs"/> — a spinner that flashes for 200 ms reports trouble that
@@ -1380,7 +1384,7 @@ public static partial class Video
     public static class Joining
     {
         /// <summary>The join budget. Under it a surface shows the picture it already has (the previous frame while a
-        /// player is bound, the poster while none is) and claims nothing.</summary>
+        /// player is bound and its presenter holds one, <see cref="JoinState.PictureHeld"/>; the poster otherwise) and claims nothing.</summary>
         public const int SpinnerDelayMs = Playback.Video.Budgets.JoiningNoSpinnerMs;
 
         /// <summary>Has THIS join outlasted the budget? The one thing the clock decides — never what state we are in.</summary>
@@ -1415,7 +1419,14 @@ public static partial class Video
             // `FrameSeen`, showing a blank/stale stage under the "video" label. The picture only counts once framed.
             if (SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent) && s.FrameSeen) return JoinVisual.Video;
             if (!s.Wanted) return JoinVisual.Poster;
-            return IsJoining(in s) && ShowsSpinner(joinElapsedMs) ? JoinVisual.Working : JoinVisual.Poster;
+            bool joining = IsJoining(in s);
+            if (joining && ShowsSpinner(joinElapsedMs)) return JoinVisual.Working;
+            // Under the budget a surface shows the picture it already has: across an in-place video → video switch that is the
+            // previous source's last frame, which the presenter holds until the next one's first frame (picture → picture, never
+            // picture → poster → picture). A first video has nothing to hold (the poster); a slow successor still earns the ring
+            // past the budget (above) and a failed one the fault line, both over the held frame; an audio successor is not a join.
+            if (joining && s.PictureHeld && SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent)) return JoinVisual.Video;
+            return JoinVisual.Poster;
         }
     }
 
