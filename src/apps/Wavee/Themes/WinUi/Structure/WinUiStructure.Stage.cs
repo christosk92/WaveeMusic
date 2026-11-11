@@ -29,5 +29,9 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.StageNowPlayingCard, WinUiStageNowPlayingCard.Template, "winui.stage.now-playing-card");
         views.Add(ViewKeys.StageIdentity, WinUiStageIdentity.Template, "winui.stage.identity");
         views.Add(ViewKeys.StagePane, WinUiStagePane.Template, "winui.stage.pane");
+        // Video mode (Cinema and Theatre; `WinUiStageTiers.Policy` states VideoStage): the chrome over the picture, the Up next shelf and the end card
+        views.Add(ViewKeys.StagePictureChrome, WinUiStagePictureChrome.Template, "winui.stage.picture-chrome");
+        views.Add(ViewKeys.QueueStageShelf, WinUiStageShelf.Template, "winui.queue.stage-shelf");
+        views.Add(ViewKeys.StageEndCard, WinUiStageEndCard.Template, "winui.stage.end-card");
     }
 }

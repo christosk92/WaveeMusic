@@ -41,10 +41,13 @@ internal static class WinUiVideoPip
     /// <summary>The registered template of <see cref="ViewKeys.VideoPip"/>.</summary>
     public static Element Template(VideoPipProps props, in ViewContext ctx)
     {
-        bool floating = props.Placement == Video.SurfacePlacement.Floating;
+        // Staged in the full-screen stage (its Video mode): the picture alone, following the stage's reservation; the stage draws its chrome
+        // (`WinUiStagePictureChrome`), so no card, strip or zones of the placement's own
+        bool staged = props.Staged;
+        bool floating = !staged && props.Placement == Video.SurfacePlacement.Floating;
         var tier = VR.OfFacts(ctx.Tier());
         var kids = new List<Element>(4) { props.Area() };
-        if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
+        if (!staged && props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
         if (floating)
         {
             kids.Add(Chrome(props, tier));
@@ -54,6 +57,7 @@ internal static class WinUiVideoPip
         return new BoxEl
         {
             Key = Key,
+            OnRealized = props.Realized,   // the presenter's box: the core reads its painted rect for the glide to and from the full-screen stage
             Direction = 1, ClipToBounds = true, ZStack = true,
             Visible = props.Visible,
             // Docked: the engine places this box over the reservation's painted rect in the same frame and the three binds below stand down.
