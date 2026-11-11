@@ -68,6 +68,10 @@ public static partial class Stage
         /// <summary>The mounted stage holds Video mode over an audio-only track (the audio face); peeked (the inspector's <c>status</c>).</summary>
         public static bool AudioFacePeek() => s_view.Peek()?.Stage.AudioFace.Peek() ?? false;
 
+        /// <summary>The mounted stage's controls are shown: the idle chrome the stage itself publishes (<c>StageCtx.Chrome</c>, what its views read);
+        /// peeked (the frame bench's note). True while no stage is mounted.</summary>
+        public static bool ChromePeek() => s_view.Peek()?.Stage.Chrome.Peek() ?? true;
+
         /// <summary>The mounted stage shows the end card (a music video ended, the countdown runs); peeked (the inspector's <c>status</c>).</summary>
         public static bool EndCardPeek() => s_view.Peek()?.Stage.EndCard.Peek() ?? false;
 

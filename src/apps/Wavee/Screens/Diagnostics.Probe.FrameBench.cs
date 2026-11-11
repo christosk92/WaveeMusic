@@ -563,8 +563,15 @@ public static partial class Diagnostics
                     }
                     else
                     {
-                        Settle(4.0);   // the chrome idles out after 3 s
-                        r = Measure(null, "picture=stage chrome=" + (ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage).ChromeVisible ? "shown" : "hidden"));
+                        // the chrome idles out 3 s after the stage's holds let go (a load holds it): wait for the stage to publish it hidden, then
+                        // name what it published at the window's start and end (the stage's own signal, what its views read: not the idle machine,
+                        // whose last value only moves on its own tick)
+                        Settle(1.0);
+                        PumpUntil(host, w, static () => !Stage.Picture.ChromePeek(), 15);
+                        string atStart = Stage.Picture.ChromePeek() ? "shown" : "hidden";
+                        r = Measure(null, "picture=stage");
+                        string atEnd = Stage.Picture.ChromePeek() ? "shown" : "hidden";
+                        r = r with { Note = r.Note + " chrome=" + (atStart == atEnd ? atStart : atStart + "->" + atEnd) };
                     }
                     Stage.Close(null, "bench");
                     Settle(1.0);
