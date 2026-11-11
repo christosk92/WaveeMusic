@@ -309,6 +309,7 @@ internal static class RailWiring
         // the docked strip's own reveal, and the page's: the stage covers the rail (Shell.PageShown)
         SeekBar = static (chromeFeed, reveal) => Shell.SeekBar(chromeFeed, reveal: Shell.PageShownAnd(reveal)),
         TimeText = static (remaining, ink, reveal) => Shell.TimeText(remaining, ink, Shell.PageShownAnd(reveal)),
+        ElapsedAlone = static (ink, reveal) => Shell.TimeText(false, ink, Shell.PageShownAnd(reveal), alone: true),
         FadeChrome = static (ctx, node, show) => OnMedia.FadeChrome(ctx, node, show),
     };
 

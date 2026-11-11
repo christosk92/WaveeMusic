@@ -287,6 +287,7 @@ internal static class ClassicTransport
     public static Element TimeLabel(TimeLabelProps props, in ViewContext ctx)
     {
         if (props.LiveSlot) return Embed.Comp(() => new LiveSlot(props));
+        if (props.Alone && !props.IsLive) return AloneLabel(props);
 
         bool right = props.Remaining;
         var ink = props.Ink;
@@ -310,6 +311,26 @@ internal static class ClassicTransport
                 ink is { } inkColor
                     ? caption with { Text = label, Color = inkColor, Wrap = TextWrap.NoWrap }
                     : caption with { Text = label, Wrap = TextWrap.NoWrap },
+            ],
+        };
+    }
+
+    static readonly Func<string> s_noWidest = static () => "0:00";
+
+    /// <summary>The elapsed time ALONE (a time pill folded to it, <see cref="TimeLabelProps.Alone"/>): the slot is the track's widest elapsed
+    /// time (every digit a "0", the hour form when the track has one; an invisible copy holds it), so the clock never moves the pill, and the
+    /// digits sit centred in it.</summary>
+    static Element AloneLabel(TimeLabelProps props)
+    {
+        var caption = FluentGpu.Dsl.Ui.Caption("");
+        var shown = caption with { Text = Prop.Of(props.Label), Wrap = TextWrap.NoWrap, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center };
+        return new BoxEl
+        {
+            ZStack = true, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                caption with { Text = Prop.Of(props.Widest ?? s_noWidest), Color = ColorF.Transparent, Wrap = TextWrap.NoWrap },   // the reservation
+                props.Ink is { } ink ? shown with { Color = ink } : shown,
             ],
         };
     }

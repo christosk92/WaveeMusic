@@ -78,6 +78,10 @@ public sealed record OnMediaTransportProps
     /// <summary>A time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>): (right-hand remaining slot, the ink, <c>reveal</c>).</summary>
     public required Func<bool, ColorF, IReadSignal<bool>, Element> TimeText { get; init; }
 
+    /// <summary>(1.104) The elapsed time's core host for a time pill that shows it ALONE (<see cref="TimeLabelProps.Alone"/>): (the ink, <c>reveal</c>).
+    /// Null: a theme falls back to <see cref="TimeText"/>.</summary>
+    public Func<ColorF, IReadSignal<bool>, Element>? ElapsedAlone { get; init; }
+
     /// <summary>Seed the eased chrome fade on a captured node: (the hook context, the node, show). Skip the mount run: chrome is born
     /// at its terminal.</summary>
     public required Action<RenderContext, NodeHandle, bool> FadeChrome { get; init; }

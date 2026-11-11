@@ -178,7 +178,7 @@ internal sealed class ClassicOverlayChrome : Component
 
         var times = fold < M.FoldTime
             ? new[] { props.TimeText(false, ink, props.Visible), Bar.Folds(Bar.TimeSlash() with { Key = "onmedia:bar:time:slash" }), Bar.Folds(props.TimeText(true, ink, props.Visible) with { Key = "onmedia:bar:time:total" }) }
-            : new[] { props.TimeText(false, ink, props.Visible) };
+            : new[] { (props.ElapsedAlone?.Invoke(ink, props.Visible) ?? props.TimeText(false, ink, props.Visible)) with { Key = "onmedia:bar:time:alone" } };
 
         return new BoxEl
         {

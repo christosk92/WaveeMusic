@@ -125,9 +125,10 @@ public static partial class Shell
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
     /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
     /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
-    /// position, and the reveal brings it current.</summary>
-    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null)
-        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal));
+    /// position, and the reveal brings it current. <paramref name="alone"/>: the elapsed label with no "/ total" beside it
+    /// (<see cref="TimeLabelProps.Alone"/>).</summary>
+    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool alone = false)
+        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal, alone));
 
     /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model
     /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarHost"/> mirrors model → rail with an equality gate, and the
@@ -743,9 +744,12 @@ public static partial class Shell
         string _shown = "";                    // the last text the bind produced: what a concealed label keeps holding
         readonly Func<string> _label;
 
-        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null)
+        readonly bool _alone;
+
+        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool alone = false)
         {
             _remaining = remaining;
+            _alone = alone && !remaining;
             _ink = ink;
             _reveal = reveal;
             _label = Label;
@@ -801,6 +805,7 @@ public static partial class Shell
             return ViewSlots.View(ViewKeys.TimeLabel, new TimeLabelProps
             {
                 Remaining = _remaining,
+                Alone = _alone,
                 Ink = _ink,
                 IsLive = isLive,
                 // The right slot while live is the LIVE word-mark or the GO LIVE action: there is no duration to count.
