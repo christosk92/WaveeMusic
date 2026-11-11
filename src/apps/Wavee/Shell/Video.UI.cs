@@ -930,6 +930,9 @@ public static partial class Video
         Action<NodeHandle>? _onRealized;   // the reservation's reports, built once (an equal props record skips the template)
         Action<RectF>? _onBounds;
         string? _fittedFor;
+        long _frameEpochWas;               // the last `FirstFrame` value seen, and the source that bump belonged to (as JoinWatch)
+        string _framedKey = "";
+        SizeI _shownNatural;               // the natural the cap last fitted while no picture was held: a held picture's shape
         GeometryLogGate _slotGate;
         TimerHandle _slotFlush;
         (string Key, float RailW, int Nw, int Nh, float H, bool Pinned, string Src) _loggedFit;
@@ -941,7 +944,9 @@ public static partial class Video
             // The Cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before any
             // resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
             // (`NaturalSeed`; 16:9 when nothing is known). The handle pins it until its double-click: the pin is READ here (an
-            // unpin re-fits at once, and the card eases there) and written only by the handle's verbs.
+            // unpin re-fits at once, and the card eases there) and written only by the handle's verbs. Across an in-place switch
+            // the main presenter holds the previous source's last frame until the next source's first frame: the cap keeps that
+            // picture's shape until then (`DockedFit`), so the held frame is never shrunk into the next source's shape.
             UseSignalEffect(() =>
             {
                 var src = Playback.Video.Source.Value;
@@ -949,13 +954,20 @@ public static partial class Video
                 var decoded = Playback.Video.Player.Value.Player?.NaturalSize.Value ?? default;
                 var catalogue = CurrentCatalogueSize();
                 float railW = Shell.Ui.RailWidth.Value;
+                long frame = Playback.Video.FirstFrame.Value;
+                bool pictureShown = s_mainPictureShown.Value;
                 if (face != DockedFace.Cap) return;
-                // The fit itself — the source change that unpins, the natural size's source, the pinned-or-fitted height —
-                // is the pure `DockedFit`; this effect applies it.
+                // `FirstFrame` bumps once per source: the bump's source has its own picture up, so a picture shown before it is held.
+                if (frame != _frameEpochWas) { _frameEpochWas = frame; _framedKey = sourceKey; }
+                bool holds = pictureShown && !string.Equals(_framedKey, sourceKey, StringComparison.Ordinal);
+                // The fit itself — the source change that unpins, the natural size's source, the pinned-or-fitted height, the held
+                // picture's shape — is the pure `DockedFit`; this effect applies it.
                 var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Value,
                     Shell.Ui.DockedVideoHeight.Peek(), railW, decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
-                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, Shell.Ui.RailBodyHeight.Peek()));
+                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, Shell.Ui.RailBodyHeight.Peek(), holds,
+                    _shownNatural.Width, _shownNatural.Height));
                 if (fit.SourceChanged) _fittedFor = sourceKey;
+                if (!holds) _shownNatural = new SizeI(fit.NaturalW, fit.NaturalH);
                 string dimSource = fit.DimSource;
                 var natural = new SizeI(fit.NaturalW, fit.NaturalH);
                 bool pinned = fit.Pinned;

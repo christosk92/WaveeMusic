@@ -1292,7 +1292,11 @@ public static partial class Video
     /// <summary>The docked cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before
     /// any resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
     /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). The handle PINS the height (a drag or a key step) and the pin
-    /// holds across sources and restarts, clamped to the current floor and ceiling; only its double-click unpins it.</summary>
+    /// holds across sources and restarts, clamped to the current floor and ceiling; only its double-click unpins it.
+    /// Across an in-place switch the presenter holds the previous source's last frame at its own size and place until the next
+    /// source's first frame: while it does, an unpinned cap keeps that picture's shape (the natural it last fitted a shown
+    /// picture with) and takes the next source's fit when the hold ends, eased like any refit. A cold open holds nothing and
+    /// reserves the next source's shape as soon as it is known.</summary>
     public static class DockedFit
     {
         /// <param name="SourceKey">The playing source's key ("" with none).</param>
@@ -1301,9 +1305,15 @@ public static partial class Video
         /// <param name="PinnedHeight">The stored height (what a pinned cap keeps).</param>
         /// <param name="RailW">The rail's width — the card is full-bleed, so this IS the video's width.</param>
         /// <param name="RemainingRailH">The rail height left for the cap (the fit's ceiling).</param>
+        /// <param name="HoldsPicture">Is the main presenter holding the previous source's last frame (a picture shown, and no first
+        /// frame of the current source yet)?</param>
+        /// <param name="HeldW">The natural size the cap last fitted while no picture was held: the held picture's (0×0 ⇒ unknown).</param>
         public readonly record struct Input(string SourceKey, string? FittedFor, bool Pinned, float PinnedHeight, float RailW,
                                             int DecodedW, int DecodedH, int ManifestW, int ManifestH, int CatalogueW, int CatalogueH,
-                                            float RemainingRailH);
+                                            float RemainingRailH, bool HoldsPicture, int HeldW, int HeldH);
+
+        /// <summary>The fit line's name for a fit kept on the held picture's shape.</summary>
+        public const string HeldSource = "held";
 
         /// <param name="SourceChanged">A different source than the last fit: the caller records it.</param>
         /// <param name="Pinned">Is the height the user's (the pin, which a source change keeps)?</param>
@@ -1318,6 +1328,13 @@ public static partial class Video
         {
             bool changed = !string.Equals(i.SourceKey, i.FittedFor, StringComparison.Ordinal);
             bool pinned = i.Pinned;
+            if (i.HoldsPicture && !pinned)
+            {
+                // The held frame is drawn at its own natural inside the cap: refitting to the next source now would shrink or
+                // letterbox it. An unknown held shape keeps the height the cap has.
+                float kept = i.HeldW > 0 && i.HeldH > 0 ? Shell.FitDockedVideoHeight(i.RailW, i.HeldW, i.HeldH, i.RemainingRailH) : i.PinnedHeight;
+                return new Result(changed, false, i.HeldW, i.HeldH, HeldSource, kept, WritesHeight: true);
+            }
             string dimSource = NaturalSeed.Name(NaturalSeed.Pick(i.DecodedW, i.DecodedH, i.ManifestW, i.ManifestH,
                 i.CatalogueW, i.CatalogueH, out int naturalW, out int naturalH));
             float height = pinned

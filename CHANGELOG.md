@@ -107,6 +107,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Switching between music videos of different shapes no longer squeezes the old picture.** The last frame of the video you
+  leave now stays exactly where and as large as it was until the next video's first frame is actually on screen (it was let
+  go about a quarter of a second early and drawn at the new video's size), and the docked video's card keeps the old
+  picture's shape until then, easing to the new one with the new picture. A video opened from nothing still reserves its
+  shape at once, and its cover stays up until the picture is there.
 - **The video full screen (Classic): Theatre's about block was missing on big screens and "Read more" sat out of line;**
   Theatre now always leaves room for the title and the about block under the picture, and "Read more" lines up with the
   text above it. Theatre's Up next builds only the rows on screen, so a long queue opens and moves as fast as a short one.
