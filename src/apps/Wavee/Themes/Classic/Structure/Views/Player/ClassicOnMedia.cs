@@ -9,8 +9,9 @@
 //
 // The pills, the glyph buttons, the scrim and the time pill are the stage bar's own builders; the numbers are `ClassicOnMediaLayout`'s over
 // `ClassicStageVideoBarGeometry`'s. The row folds as the picture narrows (`ClassicOnMediaLayout.Fold`): the time to the elapsed time, then
-// the volume pair (mute, the slider's chevron) into "…", then previous and next into "…". Play and "…" never fold; a folded control is a
-// row of "…" (the volume's opens the same slider card, at "…").
+// the volume pair (mute, the slider's chevron) into "…", then previous and next into "…". Play and "…" never fold; a folded control is an
+// icon button in the primary strip of "…" (the menu kit's context menu, as the stage bar's "…"), in the bar's order, over the same rows at
+// every width (the volume's opens the same slider card, at "…"). The time folded to the elapsed time reserves only its own digits, centred.
 //
 // WHY THIS IS NOT HOVER-REVEALED. The first cut used the card idiom (`Opacity = 0, HoverOpacity = 1`), which is right
 // for a strip inside a hover container and wrong here: a reveal is driven by the nearest INTERACTIVE ancestor
@@ -68,7 +69,6 @@ internal sealed class ClassicOverlayChrome : Component
         var overlay = UseContext(Overlay.Service);
         var moreAnchor = UseRef<NodeHandle>(default);
         var volAnchor = UseRef<NodeHandle>(default);
-        var moreHandle = UseRef<OverlayHandle?>(null);
         var volHandle = UseRef<OverlayHandle?>(null);
         var volumeAfterMore = UseRef(false);
         var stripRef = UseRef<NodeHandle>(default);
@@ -81,55 +81,31 @@ internal sealed class ClassicOverlayChrome : Component
 
         bool volumeShown = fold < M.FoldVolume, skipShown = fold < M.FoldSkip;
 
-        // "…": the controls the row folded away first (one row each, the bar's order), then the surface's own rows (OnMedia.MoreMenu)
-        IReadOnlyList<MenuFlyoutItem> MoreItems()
+        // "…": the menu kit's context menu (the stage bar's "…" opens the same way). The controls the row folded away stand in its primary
+        // strip, one icon button each in the bar's order; the rows under it are the surface's own (OnMedia.MoreMenu), the same at every width.
+        ContextMenuModel? MoreModel()
         {
             var rows = props.MoreMenu();
-            if (volumeShown) return rows;
-            var items = new List<MenuFlyoutItem>(rows.Count + 5);
+            if (volumeShown) return new ContextMenuModel(rows);
+            var strip = new List<AppBarCommand>(4);
             if (!skipShown)
             {
-                items.Add(new MenuFlyoutItem(Loc.Get(Strings.Player.Previous), Icons.Previous, facts.PrevEnabled, props.Previous));
-                items.Add(new MenuFlyoutItem(Loc.Get(Strings.Player.Next), Icons.Next, facts.NextEnabled, props.Next));
+                strip.Add(new AppBarCommand(Icons.Previous, Loc.Get(Strings.Player.Previous), props.Previous, Enabled: facts.PrevEnabled));
+                strip.Add(new AppBarCommand(Icons.Next, Loc.Get(Strings.Player.Next), props.Next, Enabled: facts.NextEnabled));
             }
-            items.Add(new MenuFlyoutItem(Loc.Get(facts.Muted ? Strings.Player.Unmute : Strings.Player.Mute), facts.Muted ? Icons.Volume : Icons.Mute, true, props.ToggleMute));
+            strip.Add(new AppBarCommand(facts.Muted ? Icons.Mute : Icons.Volume, Loc.Get(facts.Muted ? Strings.Player.Unmute : Strings.Player.Mute), props.ToggleMute));
             // the slider card opens at "…" once the menu has closed (two popups never stand at once)
-            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Player.Volume), Icons.ChevronUp, true, () => volumeAfterMore.Value = true));
-            items.Add(MenuFlyoutItem.Separator);
-            for (int i = 0; i < rows.Count; i++) items.Add(rows[i]);
-            return items;
+            strip.Add(new AppBarCommand(Icons.ChevronUp, Loc.Get(Strings.Player.Volume), () => volumeAfterMore.Value = true));
+            return new ContextMenuModel(strip, rows);
         }
 
-        void ToggleMore()
+        // Allowed to leave the window (an OS popup with the window's material where it must), and declared over a video hole: the plate is
+        // the flat one from frame one if a lease is ever refused (the engine's own transport makes the same declaration over this hole).
+        var moreOptions = new ContextMenuOptions
         {
-            if (moreHandle.Value is { IsOpen: true } open) { open.Close(); return; }
-            volumeAfterMore.Value = false;
-            moreHandle.Value = overlay.Open(
-                () => moreAnchor.Value,
-                () => MenuFlyout.Create(MoreItems(), () => moreHandle.Value?.Close(), size: OverlayFit.MenuSize),
-                FlyoutPlacement.TopEdgeAlignedRight,
-                // A MENU, so the DEFAULT chrome (Flyout) - which is also the only chrome that carries an OS window
-                // material. `Chrome: PopupChrome.Popup` mapped to PopupWindowMaterial.None, which fails the second
-                // conjunct of OverlayHost's `wantWindowed` and pinned this popup IN-APP despite the
-                // ConstrainToRootBounds=false right here asking it to escape. In-app over a VIDEO HOLE is the one
-                // place acrylic cannot work - the hole is a DestOut erase and the video is a sibling DComp visual
-                // below the UI swapchain, so the layer samples premultiplied zero - so OverlayHost fell back to
-                // FlatAcrylicFill(), #FCFCFC at .85: the flat opaque slab. Windowed, the plate paints only the
-                // presenter's residual tint over the window's real DWM backdrop, and the video blurs through.
-                //
-                // OpaqueSurface is inert while the lease holds (`overVideo` is gated on `!osBacked`); it is the
-                // frame-ONE fallback if a lease is ever refused, so a refusal degrades to a solid plate instead of
-                // a menu that is nothing but its 1px ring and its text. Same declaration the engine's own
-                // transport makes for its quality/speed pickers over this same hole.
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss)
-                    { ConstrainToRootBounds = false, OpaqueSurface = true });
-            if (moreHandle.Value is { } h)
-                h.ClosedAction = () =>
-                {
-                    moreHandle.Value = null;
-                    if (volumeAfterMore.Value) { volumeAfterMore.Value = false; ToggleVolume(moreAnchor); }
-                };
-        }
+            KeyboardPlacement = FlyoutPlacement.TopEdgeAlignedRight, OpaqueSurface = true,
+            OnClosed = _ => { if (volumeAfterMore.Value) { volumeAfterMore.Value = false; ToggleVolume(moreAnchor); } },
+        };
 
         void ToggleVolume(Ref<NodeHandle> anchor)
         {
@@ -174,7 +150,8 @@ internal sealed class ClassicOverlayChrome : Component
         var right = new List<Element>(2);
         if (volumeShown)
             right.Add(Slot("volume", ToolTip.Wrap(Bar.Glyph(Icons.ChevronUp, () => ToggleVolume(volAnchor), true, onRealized: h => volAnchor.Value = h), Loc.Get(Strings.Player.Volume))));
-        right.Add(ToolTip.Wrap(Bar.Glyph(Icons.More, ToggleMore, true, onRealized: h => moreAnchor.Value = h) with { Key = "onmedia:bar:more" }, Loc.Get(Strings.Common.More)));
+        right.Add(ToolTip.Wrap((Bar.Glyph(Icons.More, null, true, onRealized: h => moreAnchor.Value = h) with { Key = "onmedia:bar:more", ClickRequestsContext = true })
+            .WithContextMenu(overlay, () => { volumeAfterMore.Value = false; return MoreModel(); }, moreOptions), Loc.Get(Strings.Common.More)));
 
         var times = fold < M.FoldTime
             ? new[] { props.TimeText(false, ink, props.Visible), Bar.Folds(Bar.TimeSlash() with { Key = "onmedia:bar:time:slash" }), Bar.Folds(props.TimeText(true, ink, props.Visible) with { Key = "onmedia:bar:time:total" }) }
