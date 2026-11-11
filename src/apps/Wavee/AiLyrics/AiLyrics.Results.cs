@@ -12,8 +12,9 @@
 // what the language decision answers today. A replay passes the same acceptance check as a fresh result (the host runs
 // it). Format 2 added "decision"; a format-1 file is a miss, and the next play of that track writes a new one. Format 3
 // (same layout) marks Japanese timed with the sung-length prior, so a Japanese result timed before it is not replayed.
+// Format 4 (same layout): word ends follow the voice (Align.EndAtVoice); every earlier file is a miss and re-timed.
 //
-//   { "v": 3, "trackId": "…", "pack": 1, "language": "en", "decision": 3, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
+//   { "v": 4, "trackId": "…", "pack": 1, "language": "en", "decision": 3, "origin": "spotify", "sourceHash": "a1b2c3d4e5f60708",
 //     "savedUnixMs": 0, "lines": [ { "s": 12340, "e": 15000, "w": [[12340,12600,"Nobody "],[12600,13100,"pray "]] } ] }
 //
 // The host does the file I/O (worker thread at job end, boot Task for the sweep); this file only encodes, decodes,
@@ -35,8 +36,10 @@ public static partial class AiLyrics
     {
         /// <summary>The file format's version (the <c>v</c> field). A file of another version is a miss. 2: the
         /// <c>decision</c> field, and results only saved after the acceptance check (every format-1 file is re-timed).
-        /// 3: Japanese is timed with its sung-length prior (Align.LinePriorOf); the file layout is unchanged.</summary>
-        public const int FormatVersion = 3;
+        /// 3: Japanese is timed with its sung-length prior (Align.LinePriorOf); the file layout is unchanged. 4: word
+        /// ends follow the voice (Align.EndAtVoice), not the last letter's 20 ms spike; every earlier file is re-timed
+        /// on its next play.</summary>
+        public const int FormatVersion = 4;
 
         /// <summary>The sweep keeps at most this many result files…</summary>
         public const int MaxFiles = 500;

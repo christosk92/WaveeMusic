@@ -273,7 +273,9 @@ public static partial class AiLyrics
             var times = new Align.WordTime[n][];
             for (int li = 0; li < n; li++) { times[li] = new Align.WordTime[_words[li].Count]; Array.Fill(times[li], Align.WordTime.None); }
             Align.CollectWordTimes(_graph, _vit, times);
-            Align.SnapToOnsets(times, _env.At, _env.Count, _env.QuietThreshold());
+            float quiet = _env.QuietThreshold();
+            Align.SnapToOnsets(times, _env.At, _env.Count, quiet);
+            var endRule = Align.EndRuleOf(_language);
 
             bool lineSynced = Acceptance.IsLineSynced(_src);
             var lines = new List<Lyrics.Line>(n);
@@ -302,6 +304,15 @@ public static partial class AiLyrics
                 }
                 double lineStart = _src.IsSynced ? src.StartMs / 1000.0 : (lines.Count > 0 ? (lines[^1].EndMs ?? lines[^1].StartMs) / 1000.0 : 0);
                 if (!Align.Fill(times[li], lineStart, next)) { lines.Add(src); continue; }
+                // The line's last word ends no later than the next line starts: its first timed word, and for a line-synced
+                // source the provider's line time too (the hand-off), so its wipe is never cut by the next line.
+                double? bound = next;
+                if (lineSynced && li + 1 < n)
+                {
+                    double ps = _src.Lines[li + 1].StartMs / 1000.0;
+                    bound = bound is double b ? Math.Min(b, ps) : ps;
+                }
+                Align.EndAtVoice(times[li], _words[li], bound, _env.At, _env.Count, quiet, endRule, _language);
                 lines.Add(Align.WordSyncedLine(src, _words[li], times[li], next, lines.Count > 0 ? lines[^1].StartMs : null, keepLineStart: lineSynced));
             }
             return _src with

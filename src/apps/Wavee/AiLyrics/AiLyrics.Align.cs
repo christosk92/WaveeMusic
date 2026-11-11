@@ -1,5 +1,5 @@
 // ── AiLyrics/AiLyrics.Align.cs ───────────────────────────────────────────────────────────────────────────────────────
-// Vocab, LyricWords, Graph, OnlineViterbi, Snap, Fill, Assemble
+// Vocab, LyricWords, Graph, OnlineViterbi, Snap, Ends, Fill, Assemble
 //
 // Role: CORE (pure: no I/O, no clock, no engine)
 //
@@ -18,6 +18,8 @@
 //                  Japanese it also bounds a line by how long its text can take to sing (LinePrior), so a line
 //                  before an instrumental gap or after a long intro cannot slide seconds into it.
 //   Snap         a word that starts after silence moves back to where the vocal level rises.
+//   Ends         a word ends where the voice goes quiet after its last letter, else at the next word (EndAtVoice): the
+//                path's own end is the last letter's spike, the onset of the sound.
 //   Fill/Assemble  a line the model timed (at least half its letters) gets a time for every word: an untimed word is
 //                  interpolated between its timed neighbours or to the line's own bounds, never invented for a line
 //                  with nothing timed (TrackJob.BuildDoc keeps that line as the provider's). The syllable texts join
@@ -177,6 +179,9 @@ public static partial class AiLyrics
         /// lines more than 1 s off from 58 to 29; 1 s + 0.8 s per token (+ the pad) still covers where the last character
         /// starts in all but 13 of the 1,145 human-timed lines, and only 3 lines got worse by more than 300 ms. English, Dutch and Korean have no audio to measure it on, so they keep the plain prior
         /// (their alignment is unchanged).</summary>
+        /// <remarks>Kept apart from the word-end cap (<see cref="EndRuleOf"/>, Japanese 1.3 s per character) on purpose:
+        /// this prior bounds where a line's tokens may be PLACED and was measured on starts (changing it moves starts); the
+        /// end cap bounds how long a placed unit LASTS and was measured on human ends. Neither reads the other.</remarks>
         public static LinePrior? LinePriorOf(string? language) => language == "ja" ? new LinePrior(1.0, 0.8) : null;
 
         /// <summary>Per token of <paramref name="g"/>: the time range (s) its line is expected in, for a line-synced
@@ -543,6 +548,93 @@ public static partial class AiLyrics
                     words[i] = new WordTime(ns, w.End);
                     prevEnd = w.End;
                 }
+            }
+        }
+
+        // ── word ends ───────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A language's word-end rule (<see cref="EndAtVoice"/>). <see cref="CapSecondsPerUnit"/>: the longest a
+        /// word lasts per sung unit (<see cref="SungUnits"/>) when the voice never goes quiet before the next word;
+        /// <see cref="QuietFrames"/> 10 ms envelope frames in a row below the silence threshold, or <see cref="DropDb"/>
+        /// under the loudest level since the word's start, end it there.</summary>
+        public readonly record struct EndRule(double CapSecondsPerUnit, int QuietFrames, float DropDb);
+
+        /// <summary>The word-end rule of <paramref name="language"/>. The cap is the language's 95th percentile of the human
+        /// duration per sung unit (provider word-synced lyrics in the lyric cache): Korean 937 ms per syllable block
+        /// (19 songs, 3,195 words), Japanese 1,300 ms per character (39 songs, 15,343 units), English 739 ms per vowel group
+        /// (8 songs, 2,301 words; Dutch has no human word timing and shares the Latin-script cap), rounded. The quiet test (12
+        /// frames, 15 dB under the word's peak) was chosen on the offline harness (34 Japanese songs, audio): it moved the
+        /// median end error of units before a human pause from +180 ms (next start only) to +70 ms.</summary>
+        public static EndRule EndRuleOf(string? language) => language switch
+        {
+            "ko" => new EndRule(0.95, 12, 15f),
+            "ja" => new EndRule(1.30, 12, 15f),
+            _ => new EndRule(0.75, 12, 15f),
+        };
+
+        /// <summary>The sung units of a word the end cap counts: Hangul syllable blocks for Korean, one per character unit
+        /// for a character-timed language (<see cref="IsCharacterTimed"/>), else vowel groups (a run of vowels is one); at
+        /// least 1.</summary>
+        public static int SungUnits(string word, string? language)
+        {
+            if (IsCharacterTimed(language)) return 1;
+            int n = 0;
+            if (language == "ko")
+            {
+                foreach (char c in word) if (c is >= '가' and <= '힣') n++;
+                if (n > 0) return n;
+            }
+            bool prev = false;
+            foreach (char c in word)
+            {
+                bool v = IsVowel(c);
+                if (v && !prev) n++;
+                prev = v;
+            }
+            return Math.Max(1, n);
+        }
+
+        static bool IsVowel(char c) => "aeiouyàáâäèéêëìíîïòóôöùúûüAEIOUYÀÁÂÄÈÉÊËÌÍÎÏÒÓÔÖÙÚÛÜ".Contains(c);
+
+        /// <summary>Word ends that follow the voice. The CTC path puts a word's end at its last letter's spike, the onset
+        /// of the sound, never its end: a one-syllable word lasted 20 ms and the wipe then stood still until the next word
+        /// (Korean: a fifth of all words). A word now ends where the separated vocals go quiet after its last token
+        /// (<see cref="EndRule.QuietFrames"/> frames below <paramref name="quiet"/> or <see cref="EndRule.DropDb"/> under
+        /// the word's own peak), else at the next word's start, and never more than
+        /// <see cref="EndRule.CapSecondsPerUnit"/> per <see cref="SungUnits"/> after its own start. The next word's start
+        /// bounds it (nothing overlaps or reorders), and the line's last word ends no later than
+        /// <paramref name="boundS"/> (the next line's start). The bounds limit the extension only: a word never ends
+        /// before its last token. Starts are never moved. <paramref name="env"/>: the level in dB per 10 ms frame, as
+        /// <see cref="SnapToOnsets"/>; only its first <paramref name="envFrames"/> frames are known.</summary>
+        public static void EndAtVoice(WordTime[] words, IReadOnlyList<LyricWord> units, double? boundS, Func<int, float> env, int envFrames,
+            float quiet, EndRule rule, string? language)
+        {
+            const double hop = 0.01;
+            int n = words.Length;
+            for (int i = 0; i < n; i++)
+            {
+                var w = words[i];
+                if (!w.IsSet) continue;
+                double s = w.Start, e = w.End;
+                double? nb = i + 1 < n ? (words[i + 1].IsSet ? words[i + 1].Start : null) : boundS;
+                double hi = Math.Max(e, s + rule.CapSecondsPerUnit * SungUnits(units[i].Text, language));
+                if (nb is double b) hi = Math.Min(hi, b);
+                hi = Math.Max(hi, e);
+                double end = hi;
+                int f0 = (int)(e / hop), f1 = Math.Min((int)(hi / hop), envFrames - 1), run = 0;
+                float peak = float.MinValue;
+                for (int f = (int)(s / hop); f <= Math.Min(f0, envFrames - 1); f++) peak = Math.Max(peak, env(f));
+                for (int f = f0; f <= f1; f++)
+                {
+                    float lv = env(f);
+                    peak = Math.Max(peak, lv);
+                    if (lv < quiet || (rule.DropDb > 0 && lv < peak - rule.DropDb))
+                    {
+                        if (++run >= rule.QuietFrames) { end = (f - rule.QuietFrames + 1) * hop; break; }
+                    }
+                    else run = 0;
+                }
+                words[i] = new WordTime(s, Math.Max(end, e));
             }
         }
 

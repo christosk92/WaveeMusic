@@ -12,8 +12,10 @@
 //             after the line's provider start moved by that offset (the words did not drift into the gap after the
 //             line); line starts never go back. A line that fails is DEMOTED: it becomes the provider's line again
 //             (line-level highlight).
-//   whole     fewer than 60 % of the lines that have letters end up word-synced: the result is REJECTED (not shown,
-//             not saved), and the track keeps the provider's line sync. While a job runs, the lines timed so far are
+//   whole     fewer than 60 % of the lines that have letters end up word-synced, or more than 25 % of the words on the
+//             word-synced lines last 40 ms or less (spikes: the voice was quiet right after the word, Align.EndAtVoice,
+//             so the words sit where nobody sings): the result is REJECTED (not shown, not saved), and the track keeps
+//             the provider's line sync. While a job runs, the lines timed so far are
 //             judged once there are 20 with letters, against a lower bar (50 %): measured on the 187 cached results
 //             that still match their provider document, that stops 19 of the 21 results the end rejects and none
 //             that the end accepts (60 % from 10 lines on stopped 10 good ones).
@@ -31,6 +33,9 @@
 //   zero      Japanese: one zero-length kana or kanji demoted a good line of under 10 units (good lines demoted for it:
 //             4 -> 0; a collapsed line, two or more zero units, is still caught). Words keep 10 %: allowing one zero-
 //             length word would publish 5 rejected en/ko results, 4 of them ones the earlier audit found doubtful.
+//   spikes    after the word-end rule: Japanese (harness, audio) at most 8 % of a song's accepted units last <= 40 ms
+//             (median 1.7 %); human word timing 0 %. en/nl/ko cached results with the rule replayed without the
+//             envelope: no verdict changes. Before the rule a fifth of all Korean words were 20 ms spikes.
 //   drift     Japanese: demotes 5 lines more than 1 s off (accepted lines that far off on published songs: 10 -> 6) and
 //             no line within 300 ms of the human timing. en/nl/ko: 40 lines that pass without it are demoted, most of
 //             them a last line drifted into the outro or a line whose words are crammed into the second before the
@@ -58,6 +63,13 @@ public static partial class AiLyrics
         /// <summary><see cref="TrackOffsetMs"/> needs at least this many word-synced lines (fewer: no offset).</summary>
         public const int OffsetMinLines = 5;
 
+        /// <summary>A word lasting this long or less is a spike (<see cref="MaxSpikeShare"/>): two aligner frames.</summary>
+        public const long SpikeMs = 40;
+
+        /// <summary>A result whose word-synced lines carry more than this share of spikes is rejected: its words were placed
+        /// where the voice is quiet (Align.EndAtVoice gives a sung word its sound).</summary>
+        public const double MaxSpikeShare = 0.25;
+
         /// <summary>A result with fewer word-synced lines than this share of its lines with letters is rejected.</summary>
         public const double MinSyncedShare = 0.60;
 
@@ -72,9 +84,11 @@ public static partial class AiLyrics
 
         /// <summary>What the check found. <see cref="Eligible"/>: judged lines with letters; <see cref="Synced"/>: of
         /// those, the ones word-synced by the aligner after the check; the four causes count demoted lines;
+        /// <see cref="Words"/>/<see cref="Spikes"/>: the words on the accepted word-synced lines, and those of them lasting
+        /// <see cref="SpikeMs"/> or less;
         /// <see cref="OffsetMs"/>: the result's whole-track offset (<see cref="TrackOffsetMs"/>) the window was widened by.</summary>
         public readonly record struct Verdict(int Judged, int Eligible, int Synced, int Demoted, int Disorder, int Zero, int Window, int Drift,
-            long OffsetMs, bool Rejected)
+            long OffsetMs, bool Rejected, int Words = 0, int Spikes = 0)
         {
             public string Describe()
             {
@@ -82,7 +96,7 @@ public static partial class AiLyrics
                 return $"judged={Judged.ToString(ci)} eligible={Eligible.ToString(ci)} synced={Synced.ToString(ci)} " +
                        $"share={(Eligible == 0 ? 0 : (double)Synced / Eligible).ToString("0.00", ci)} demoted={Demoted.ToString(ci)} " +
                        $"(order={Disorder.ToString(ci)} zero={Zero.ToString(ci)} window={Window.ToString(ci)} drift={Drift.ToString(ci)}) " +
-                       $"offset={OffsetMs.ToString(ci)}ms";
+                       $"offset={OffsetMs.ToString(ci)}ms spikes={Spikes.ToString(ci)}/{Words.ToString(ci)}";
             }
         }
 
@@ -96,7 +110,7 @@ public static partial class AiLyrics
             bool synced = IsLineSynced(source);
             bool characters = Align.IsCharacterTimed(result.Language);
             long offset = synced ? TrackOffsetMs(source, result, judged) : 0;
-            int eligible = 0, wordSynced = 0, demoted = 0, disorder = 0, zero = 0, window = 0, drift = 0;
+            int eligible = 0, wordSynced = 0, demoted = 0, disorder = 0, zero = 0, window = 0, drift = 0, words = 0, spikes = 0;
             var lines = new List<Lyrics.Line>(result.Lines.Count);
             long prevStart = long.MinValue;
             for (int i = 0; i < result.Lines.Count; i++)
@@ -136,6 +150,8 @@ public static partial class AiLyrics
                 if (ordered && fewZeros && inside && near)
                 {
                     if (hasLetters) wordSynced++;
+                    words += syl.Count;
+                    for (int k = 0; k < syl.Count; k++) if (syl[k].EndMs - syl[k].StartMs <= SpikeMs) spikes++;
                     lines.Add(line);
                     prevStart = Math.Max(prevStart, line.StartMs);
                     continue;
@@ -149,10 +165,11 @@ public static partial class AiLyrics
                 lines.Add(back);
                 prevStart = Math.Max(prevStart, back.StartMs);
             }
+            bool spiky = spikes > MaxSpikeShare * words;
             bool rejected = final
-                ? eligible == 0 || wordSynced < MinSyncedShare * eligible
-                : eligible >= MinLinesWhileRunning && wordSynced < MinSyncedShareWhileRunning * eligible;
-            verdict = new Verdict(judged, eligible, wordSynced, demoted, disorder, zero, window, drift, offset, rejected);
+                ? eligible == 0 || wordSynced < MinSyncedShare * eligible || spiky
+                : eligible >= MinLinesWhileRunning && (wordSynced < MinSyncedShareWhileRunning * eligible || spiky);
+            verdict = new Verdict(judged, eligible, wordSynced, demoted, disorder, zero, window, drift, offset, rejected, words, spikes);
             return rejected ? null : result with { Lines = lines };
         }
 
