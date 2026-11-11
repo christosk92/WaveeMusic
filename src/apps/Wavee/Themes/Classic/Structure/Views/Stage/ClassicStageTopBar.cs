@@ -118,7 +118,7 @@ internal static class ClassicStageTopBar
                                 // visualizer's options have nothing to set over the picture); the docked video menu's "Turn off video" is this verb
                                 videoMode
                                     ? audioLabel
-                                        ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
+                                        ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, HitSlop = ClassicStageGeometry.LabelledButtonSlop, Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
                                         : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH), Loc.Get(Strings.Player.SwitchToAudio)) with { Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
                                     : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
                                 // the audio modes' way out (Video mode's is the control bar's). Labelled only where the allocator says the column holds it
