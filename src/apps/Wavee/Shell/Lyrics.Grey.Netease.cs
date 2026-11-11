@@ -172,8 +172,11 @@ public static partial class Lyrics
                     if (s.Artists is not null)
                         foreach (var a in s.Artists)
                             if (!string.IsNullOrWhiteSpace(a?.Name)) artists.Add(a!.Name!);
+                    // `transNames` (the web client's "tns") is the song's and the album's TRANSLATED name — a Korean or
+                    // Japanese release carries its English title there. `alias` is not used: it holds version and
+                    // credit notes ("Live Clip", "原唱：IU") as often as another name.
                     hits.Add(new Hit(s.Id.ToString(CultureInfo.InvariantCulture), s.Name ?? "", artists, s.Album?.Name,
-                        Math.Max(0L, s.Duration), DurationGrainMs));
+                        Math.Max(0L, s.Duration), DurationGrainMs, NonBlank(s.TransNames), NonBlank(s.Album?.TransNames)));
                 }
                 return hits;
             }
@@ -286,6 +289,14 @@ public static partial class Lyrics
                 Log.Info(Diag.Category, line.Replace('\r', ' ').Replace('\n', ' '));
             }
 
+            static IReadOnlyList<string>? NonBlank(string?[]? names)
+            {
+                if (names is null || names.Length == 0) return null;
+                var outv = new List<string>(names.Length);
+                foreach (string? n in names) if (!string.IsNullOrWhiteSpace(n)) outv.Add(n!);
+                return outv.Count > 0 ? outv : null;
+            }
+
             static string FormatDelta(in Hit hit, Request req)
             {
                 if (hit.DurationMs <= 0 || req.DurationMs <= 0) return "?";
@@ -331,9 +342,10 @@ internal sealed record NeteaseSearchDto(int Code, NeteaseSearchResultDto? Result
 
 internal sealed record NeteaseSearchResultDto(NeteaseSongDto?[]? Songs);
 
-internal sealed record NeteaseSongDto(long Id, string? Name, NeteaseNamedDto?[]? Artists, NeteaseNamedDto? Album, long Duration);
+internal sealed record NeteaseSongDto(long Id, string? Name, NeteaseNamedDto?[]? Artists, NeteaseNamedDto? Album, long Duration,
+    string?[]? TransNames = null);
 
-internal sealed record NeteaseNamedDto(string? Name);
+internal sealed record NeteaseNamedDto(string? Name, string?[]? TransNames = null);
 
 internal sealed record NeteaseLyricDto(
     int Code,

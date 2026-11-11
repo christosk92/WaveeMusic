@@ -169,7 +169,11 @@ public static partial class Lyrics
                             if (a is not null && FirstNonBlank(a.Name, a.Title) is { } name) artists.Add(name);
                     string? album = AlbumName(s.Album) ?? FirstNonBlank(s.AlbumName);
                     long durMs = s.Interval > 0 ? (long)Math.Round(s.Interval * 1000d) : 0;
-                    hits.Add(new Hit(id, title, artists, album, durMs, 1000));
+                    // `subtitle` is QQ's second name for the song (and the album's): a translation on many Korean and
+                    // Japanese releases. The matcher scores the title against the best of the two.
+                    string[]? altTitles = FirstNonBlank(s.Subtitle) is { } sub ? [sub] : null;
+                    string[]? altAlbums = AlbumSubtitle(s.Album) is { } asub ? [asub] : null;
+                    hits.Add(new Hit(id, title, artists, album, durMs, 1000, altTitles, altAlbums));
                 }
                 return hits;
             }
@@ -240,6 +244,10 @@ public static partial class Lyrics
                     => el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
             }
 
+            static string? AlbumSubtitle(JsonElement album)
+                => album.ValueKind == JsonValueKind.Object && album.TryGetProperty("subtitle", out var v)
+                   && v.ValueKind == JsonValueKind.String ? FirstNonBlank(v.GetString()) : null;
+
             static string? FirstNonBlank(params ReadOnlySpan<string?> values)
             {
                 foreach (var v in values)
@@ -280,7 +288,8 @@ internal sealed record QqSong(
     QqSinger?[]? Singer,
     JsonElement Album,
     string? AlbumName,
-    double Interval /* seconds */);
+    double Interval /* seconds */,
+    string? Subtitle = null);
 
 internal sealed record QqSinger(string? Name, string? Title);
 

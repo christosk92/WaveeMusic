@@ -12,6 +12,11 @@
 // reason, and a hit that reports no duration drops the dimension and is capped at High — in 0.2.9 such a hit won
 // automatically.
 //
+// Names in two scripts (`Score`'s remarks hold THE CROSS-SCRIPT RULE): a title or album is scored against the best of
+// its forms — the name, the source's translated names (`Hit.AltTitles`/`AltAlbums`), and both halves of a bilingual
+// "원제 (English)" name — and a field with no script in common is unknown rather than a 0. Before it, a Korean title on
+// QQ/NetEase vetoed an exact-duration, same-artist hit for a Spotify title in English.
+//
 // Text comparison runs on `CjkFold.Fold` (full-width → ASCII, half-width kana → full-width, lowercase,
 // Traditional → Simplified, katakana → hiragana). Hand-written by design: `string.Normalize(NFKC)` is not used because
 // the build runs with InvariantGlobalization + NativeAOT (plan correction 6). The fold is COMPARISON-ONLY; nothing here
@@ -31,13 +36,17 @@ public static partial class Lyrics
 
     /// <summary>One search hit, source-neutral. <paramref name="DurationGrainMs"/> is the source's duration precision
     /// (1000 for a source that reports whole seconds, 0 for millisecond precision) — half of it is forgiven before the
-    /// duration Gaussian, so rounding alone never costs a band. <paramref name="DurationMs"/> 0 = unknown.</summary>
+    /// duration Gaussian, so rounding alone never costs a band. <paramref name="DurationMs"/> 0 = unknown.
+    /// <paramref name="AltTitles"/>/<paramref name="AltAlbums"/> are the source's own TRANSLATED names for the same
+    /// song/album (NetEase <c>transNames</c>, QQ <c>subtitle</c>): the title and album are scored against the best of
+    /// the name and its alternatives.</summary>
     public readonly record struct Hit(string Id, string Title, IReadOnlyList<string> Artists, string? Album,
-                                      long DurationMs, int DurationGrainMs);
+                                      long DurationMs, int DurationGrainMs,
+                                      IReadOnlyList<string>? AltTitles = null, IReadOnlyList<string>? AltAlbums = null);
 
     /// <summary>A hit's verdict. <paramref name="Title"/>/<paramref name="Artist"/>/<paramref name="Album"/>/
     /// <paramref name="Duration"/> are the per-field points on the 7-point scale, −1 when that field was not compared
-    /// (absent on either side). <paramref name="Confidence"/> is the renormalised weighted score in [0,1] (0 when a
+    /// (absent on either side, or — title and album — written in scripts with nothing in common). <paramref name="Confidence"/> is the renormalised weighted score in [0,1] (0 when a
     /// hard gate fired). <paramref name="Reason"/> leads with the duration delta and carries the title rule, any cap and
     /// any gate — it is the tail of <see cref="MetadataMatch.Describe"/>.</summary>
     public readonly record struct MatchScore(MatchBand Band, double Confidence, double Title, double Artist,
@@ -60,14 +69,35 @@ public static partial class Lyrics
         // Artist names are the same person when one contains the other or their Levenshtein similarity reaches this.
         const double ArtistSimilarity = 0.88;
 
+        /// <summary>The matcher's RULE version. Bump it whenever a change can turn a hit this matcher rejected into an
+        /// accepted one: every remembered miss (the grey sources' <c>source-misses.json</c> and the disk cache's
+        /// "no lyrics anywhere" marker) records the version it was decided under, and one from another version is
+        /// dropped on read so the track is asked again. 2 = the cross-script rule, translated names, bilingual titles,
+        /// and plain-text lyrics no longer taken for uniform decoy timing.</summary>
+        public const int Version = 2;
+
+        /// <summary>THE CROSS-SCRIPT RULE's duration bound: 2σ of the duration Gaussian, after the source's grain is
+        /// forgiven. A hit whose title cannot be compared (no script in common) rests on artist identity and this.</summary>
+        public const double CrossScriptDurationMs = 2 * DurationSigmaMs;
+
+        /// <summary>THE CROSS-SCRIPT RULE's album bar: when both sides carry an album in a common script it must reach
+        /// this (the LCS ≥ 0.90 band or better) — a same-artist, same-length song from another release is refused.</summary>
+        const double CrossScriptAlbumPoints = 4;
+
         /// <summary>Scores one hit against the request.</summary>
+        /// <remarks>THE CROSS-SCRIPT RULE (the one place it lives; every title-scoring source goes through here): a
+        /// title or album whose two sides share no script — Latin against Hangul, Kana or Han, after the source's
+        /// translated names and the halves of a bilingual "원제 (English)" title were tried — is UNKNOWN, not a
+        /// mismatch; a hit with an unknown title is accepted (capped at High) only on artist IDENTITY (every credit
+        /// paired, 7 points), |Δduration| ≤ <see cref="CrossScriptDurationMs"/> after the grain, and an album that,
+        /// where comparable, agrees — otherwise its title counts 0 and caps it at Low, as before.</remarks>
         public static MatchScore Score(Request req, in Hit hit)
         {
             string reqTitle = req.Title ?? "";
             string hitTitle = hit.Title ?? "";
 
-            // ── title (always compared) ──
-            double title = TitlePoints(reqTitle, hitTitle, out string titleRule);
+            // ── title (always compared; −1 = no script in common) ──
+            double title = FieldPoints(reqTitle, null, hitTitle, hit.AltTitles, out string titleRule);
 
             // ── artist ──
             double artist = -1;
@@ -75,10 +105,11 @@ public static partial class Lyrics
             var hitArtists = SplitArtists(hit.Artists);
             if (reqArtists.Count > 0 && hitArtists.Count > 0) artist = ArtistPoints(reqArtists, hitArtists);
 
-            // ── album ──
+            // ── album (−1 = absent on a side, or no script in common) ──
             double album = -1;
-            if (!string.IsNullOrWhiteSpace(req.Album) && !string.IsNullOrWhiteSpace(hit.Album))
-                album = TitlePoints(req.Album, hit.Album!, out _);
+            string? albumRule = null;
+            if (!string.IsNullOrWhiteSpace(req.Album) && (!string.IsNullOrWhiteSpace(hit.Album) || hit.AltAlbums is { Count: > 0 }))
+                album = FieldPoints(req.Album, null, hit.Album ?? "", hit.AltAlbums, out albumRule);
 
             // ── duration ──
             double duration = -1;
@@ -90,12 +121,30 @@ public static partial class Lyrics
                 duration = DurationPoints(delta, hit.DurationGrainMs);
             }
 
-            // ── renormalise over the fields both sides carry ──
-            double sum = WTitle * title, max = WTitle * Points;
+            // ── the cross-script rule (see the remarks) ──
+            bool crossScript = title < 0, crossAccepted = false;
+            string? crossRefused = null;
+            if (crossScript)
+            {
+                double slack = haveDuration
+                    ? Math.Max(0d, Math.Abs((double)delta) - Math.Max(0, hit.DurationGrainMs) / 2d)
+                    : double.PositiveInfinity;
+                if (artist < Points) crossRefused = "artist " + (artist < 0 ? "-" : artist.ToString("0.#", CultureInfo.InvariantCulture)) + "<7";
+                else if (!haveDuration) crossRefused = "no duration";
+                else if (slack > CrossScriptDurationMs) crossRefused = "|Δ|>" + CrossScriptDurationMs.ToString("0", CultureInfo.InvariantCulture) + "ms";
+                else if (album >= 0 && album < CrossScriptAlbumPoints)
+                    crossRefused = "album " + album.ToString("0.#", CultureInfo.InvariantCulture) + "<" + CrossScriptAlbumPoints.ToString("0", CultureInfo.InvariantCulture);
+                crossAccepted = crossRefused is null;
+                if (!crossAccepted) title = 0;   // refused: the title vetoes exactly as a mismatch always has
+            }
+
+            // ── renormalise over the fields both sides carry (an accepted cross-script title is not one of them) ──
+            double sum = 0d, max = 0d;
+            if (!crossAccepted) { sum += WTitle * title; max += WTitle * Points; }
             if (artist >= 0) { sum += WArtist * artist; max += WArtist * Points; }
             if (album >= 0) { sum += WAlbum * album; max += WAlbum * Points; }
             if (duration >= 0) { sum += WDuration * duration; max += WDuration * Points; }
-            double confidence = Math.Clamp(sum / max, 0d, 1d);
+            double confidence = max > 0 ? Math.Clamp(sum / max, 0d, 1d) : 0d;
 
             var reason = new StringBuilder(64);
             if (haveDuration)
@@ -105,6 +154,10 @@ public static partial class Lyrics
             }
             else reason.Append("dur=?");
             reason.Append(" t:").Append(titleRule);
+            if (crossAccepted) reason.Append("(artist+dur)");
+            else if (crossRefused is not null) reason.Append(" refused: ").Append(crossRefused);
+            if (albumRule is { } ar && (ar == "xscript" || ar.StartsWith("alt:", StringComparison.Ordinal)))
+                reason.Append(" a:").Append(ar);
 
             // ── hard gates ──
             if (haveDuration && Math.Abs(delta) > DurationGateMs)
@@ -122,7 +175,8 @@ public static partial class Lyrics
             MatchBand band = BandOf(confidence);
             MatchBand cap = MatchBand.Perfect;
             string? capWhy = null;
-            if (title <= 1) { cap = MatchBand.Low; capWhy = "title"; }
+            if (crossAccepted) { cap = MatchBand.High; capWhy = "title cross-script"; }
+            else if (title <= 1) { cap = MatchBand.Low; capWhy = "title"; }
             else if (title <= 2) { cap = MatchBand.Medium; capWhy = "title"; }
             if (artist == 0 && cap > MatchBand.Medium) { cap = MatchBand.Medium; capWhy = "artist"; }
             if (!haveDuration && cap > MatchBand.High) { cap = MatchBand.High; capWhy = "no duration"; }
@@ -197,6 +251,109 @@ public static partial class Lyrics
         {
             double d = Math.Max(0d, Math.Abs((double)deltaMs) - Math.Max(0, grainMs) / 2d);
             return Points * Math.Exp(-(d * d) / (2d * DurationSigmaMs * DurationSigmaMs));
+        }
+
+        // ── names in several scripts ────────────────────────────────────────────────────────────────────────────────
+
+        [Flags]
+        enum Script : byte { None = 0, Latin = 1, Hangul = 2, Kana = 4, Han = 8, Other = 16 }
+
+        /// <summary>The scripts a name's LETTERS are written in (digits and punctuation carry none), on folded text.</summary>
+        static Script ScriptsOf(string s)
+        {
+            Script k = Script.None;
+            foreach (char c in CjkFold.Fold(s ?? ""))
+            {
+                if (!char.IsLetter(c)) continue;
+                if (c < 'ɐ' || (c >= 'Ḁ' && c <= 'ỿ')) k |= Script.Latin;   // Latin, Latin-1, Extended A/B, Additional
+                else if ((c >= '가' && c <= '힯') || (c >= 'ᄀ' && c <= 'ᇿ') || (c >= '㄰' && c <= '㆏')) k |= Script.Hangul;
+                else if ((c >= '぀' && c <= 'ヿ') || (c >= 'ㇰ' && c <= 'ㇿ') || (c >= 'ｦ' && c <= 'ﾟ')) k |= Script.Kana;
+                else if ((c >= '一' && c <= '鿿') || (c >= '㐀' && c <= '䶿') || (c >= '豈' && c <= '﫿')) k |= Script.Han;
+                else k |= Script.Other;
+            }
+            return k;
+        }
+
+        /// <summary>Two names can be compared character by character when they share a script (or one has no
+        /// letters at all: "1989" against anything is compared as it always was).</summary>
+        static bool Comparable(Script a, Script b) => a == Script.None || b == Script.None || (a & b) != 0;
+
+        /// <summary>A name, its source-given alternatives, and the halves of every BILINGUAL one among them: a head and
+        /// a bracket/dash decoration written in scripts with nothing in common ("웃어넘기기엔 … (I loved you …)",
+        /// "春泥棒 (Haru Dorobou)") are two names for the same song. A version-neutral suffix or a version marker is
+        /// never a name.</summary>
+        static List<string> Forms(string main, IReadOnlyList<string>? alts)
+        {
+            var forms = new List<string>(4);
+            Add(main);
+            if (alts is not null) foreach (string a in alts) Add(a);
+            return forms;
+
+            void Add(string s)
+            {
+                if (string.IsNullOrWhiteSpace(s)) return;
+                if (!forms.Contains(s)) forms.Add(s);
+                var parts = Decompose(NormTitle(s));
+                if (parts.Decorations.Count == 0 || parts.Head.Length == 0) return;
+                Script head = ScriptsOf(parts.Head);
+                if (head == Script.None) return;
+                foreach (string d in parts.Decorations)
+                {
+                    if (IsSuffix(d) || IsVersionNote(d) || VersionMarkers.Mismatch(d, "", out _)) continue;
+                    Script ds = ScriptsOf(d);
+                    if (ds == Script.None || (ds & head) != 0) continue;
+                    if (!forms.Contains(parts.Head)) forms.Add(parts.Head);
+                    if (!forms.Contains(d)) forms.Add(d);
+                }
+            }
+        }
+
+        // A decoration in another script that names a VERSION rather than the song: "Lemon (钢琴版)" (piano), "(中文版)"
+        // (a Chinese-language version — other words), "(日本語ver.)", "(피아노 버전)". Splitting those off would score the
+        // bare head as the title. Folded (katakana as hiragana, Simplified); Latin entries match on word boundaries.
+        static readonly string[] VersionNoteWords =
+        [
+            "版", "ver", "version", "mix", "edit", "inst", "mr", "piano", "guitar", "伴奏", "演奏", "钢琴", "吉他", "原唱", "翻",
+            "中文", "国语", "粤语", "日语", "韩语", "英文", "日本语", "ばーじょん", "ゔぁーじょん", "버전", "피아노", "한국어",
+            "일본어", "중국어", "영어",
+        ];
+
+        static bool IsVersionNote(string d)
+        {
+            foreach (string w in VersionNoteWords)
+                if (VersionMarkers.ContainsTerm(d, w)) return true;
+            return false;
+        }
+
+        /// <summary>The best <see cref="TitlePoints"/> over every pair of forms (<see cref="Forms"/>) that share a script,
+        /// or −1 ("xscript") when no pair does — the field is then UNKNOWN, not a mismatch. A rule won by anything but the
+        /// two main names is reported as "alt:&lt;rule&gt;".</summary>
+        static double FieldPoints(string reqMain, IReadOnlyList<string>? reqAlts, string hitMain, IReadOnlyList<string>? hitAlts,
+                                  out string rule)
+        {
+            var rf = Forms(reqMain, reqAlts);
+            var hf = Forms(hitMain, hitAlts);
+            if (rf.Count == 0 || hf.Count == 0) return TitlePoints(reqMain ?? "", hitMain ?? "", out rule);
+
+            var hs = new Script[hf.Count];
+            for (int j = 0; j < hf.Count; j++) hs[j] = ScriptsOf(hf[j]);
+            double best = -1;
+            rule = "xscript";
+            for (int i = 0; i < rf.Count && best < Points; i++)
+            {
+                Script rs = ScriptsOf(rf[i]);
+                for (int j = 0; j < hf.Count && best < Points; j++)
+                {
+                    if (!Comparable(rs, hs[j])) continue;
+                    double p = TitlePoints(rf[i], hf[j], out string r);
+                    if (p > best)
+                    {
+                        best = p;
+                        rule = i == 0 && j == 0 ? r : "alt:" + r;
+                    }
+                }
+            }
+            return best;
         }
 
         // ── title cascade ───────────────────────────────────────────────────────────────────────────────────────────
@@ -283,7 +440,7 @@ public static partial class Lyrics
         /// <summary>A normalised title split into its head and its decorations (every "(…)" group and a " - tail").
         /// <c>Canonical</c> writes every decoration as "(d)"; <c>WithoutSuffixes</c> does the same after
         /// dropping the version-neutral ones (remaster, deluxe, explicit, feat …).</summary>
-        readonly record struct Parts(string Head, string Canonical, string WithoutSuffixes);
+        readonly record struct Parts(string Head, string Canonical, string WithoutSuffixes, IReadOnlyList<string> Decorations);
 
         static Parts Decompose(string s)
         {
@@ -339,7 +496,7 @@ public static partial class Lyrics
                 canon.Append(" (").Append(d).Append(')');
                 if (!IsSuffix(d)) kept.Append(" (").Append(d).Append(')');
             }
-            return new Parts(h, canon.ToString(), kept.ToString());
+            return new Parts(h, canon.ToString(), kept.ToString(), decorations);
 
             static void AddDecoration(List<string> into, string d)
             {
@@ -551,11 +708,13 @@ public static partial class Lyrics
         static bool Has(string hay, string[] variants)
         {
             foreach (string v in variants)
-                if (Contains(hay, v)) return true;
+                if (ContainsTerm(hay, v)) return true;
             return false;
         }
 
-        static bool Contains(string hay, string needle)
+        /// <summary>Is <paramref name="needle"/> in <paramref name="hay"/> (both folded)? An all-ASCII needle must sit on
+        /// ASCII word boundaries ("inst" is not in "instinct"); any other needle is a plain substring.</summary>
+        internal static bool ContainsTerm(string hay, string needle)
         {
             if (needle.Length == 0 || hay.Length < needle.Length) return false;
             bool ascii = true;

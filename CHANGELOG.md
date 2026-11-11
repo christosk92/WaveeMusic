@@ -109,6 +109,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Lyrics found for songs whose title is in another script.** A Korean, Japanese or Chinese song listed on Spotify
+  under its English title ("I loved you too much to just laugh it off") found no lyrics, though QQ Music, NetEase and
+  KuGou had them under the Korean title: a title in another alphabet now counts as unknown rather than as a mismatch, so
+  the same artist at the same length (within 1.4 s) is accepted; the sources' own translated titles and "원제 (English)"
+  titles are read too. Plain-text lyrics from lrclib were also being thrown away as fake timing; they now show (and the
+  on-device AI can time them). Songs that found nothing before are searched again instead of answering from the
+  remembered "no lyrics".
 - **Music videos showed at the wrong size for a moment.** Going full screen, changing quality or resizing the window made
   the picture too small or too large for a few frames, and a Canvas could show a black column: Windows now stretches the
   picture to its box on every frame, whatever size the video arrives in.

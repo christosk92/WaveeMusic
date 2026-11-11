@@ -2002,6 +2002,12 @@ public static partial class Lyrics
         public double Confidence { get; init; } = 1.0;
         public MatchBand Band { get; init; } = MatchBand.Perfect;
         public string? MatchNote { get; init; }
+
+        /// <summary>The source itself matched artist, title, album AND duration (lrclib's exact <c>/api/get</c>): the TEXT
+        /// is this song's, so only the timing can be fabricated, and the aggregator's uniform-timing decoy gate keeps
+        /// the words as unsynced instead of discarding them. A fuzzy search pick never sets it, and neither does an ISRC
+        /// lookup — the Musixmatch anti-scraping decoy arrives ISRC-matched with nonsense text.</summary>
+        public bool ExactLookup { get; init; }
     }
 
     /// <summary>Per-candidate decision record — kept so a wrong pick is EXPLAINABLE (which provider, why it won or
@@ -2826,10 +2832,13 @@ public static partial class Lyrics
         /// <summary>True when a document's lines march forward at an EXACTLY uniform step (and, where ends exist, an
         /// exactly uniform duration) — the other half of the same decoy tell: 206 lines every 4000 ms apart is not a
         /// human transcription, it is a generator. Needs at least 20 lines so a short, legitimately regular verse
-        /// cannot trip it; "identical within 1 ms" tolerates integer rounding without accepting real variation.</summary>
+        /// cannot trip it; "identical within 1 ms" tolerates integer rounding without accepting real variation.
+        /// A document with NO timing is not a generator's timing: an unsynced (plain-text) document, every line at 0,
+        /// marched at a "uniform" step of 0 ms and was thrown away as a decoy — lrclib's exact plain-text hit included.
+        /// A step must move forward to count.</summary>
         public static bool HasUniformLineDurations(Doc doc)
         {
-            if (doc.Lines.Count < 20) return false;
+            if (doc.Lines.Count < 20 || doc.Sync == SyncKind.Unsynced || !doc.IsSynced) return false;
             long? step = null, lineDur = null;
             for (int i = 0; i < doc.Lines.Count; i++)
             {
@@ -2837,6 +2846,7 @@ public static partial class Lyrics
                 if (i > 0)
                 {
                     long d = l.StartMs - doc.Lines[i - 1].StartMs;
+                    if (d <= 1) return false;   // lines that do not move forward are missing timing, not generated timing
                     if (step is null) step = d;
                     else if (Math.Abs(d - step.Value) > 1) return false;
                 }
@@ -2852,6 +2862,17 @@ public static partial class Lyrics
 
         static long UniformStepMs(Doc doc)
             => doc.Lines.Count >= 2 ? doc.Lines[1].StartMs - doc.Lines[0].StartMs : 0L;
+
+        /// <summary>The words without their timing: every line at 0 with no end and no syllables, the document
+        /// <see cref="SyncKind.Unsynced"/>. For a document whose TEXT is known to be the song's but whose timing is
+        /// fabricated (an exact lrclib lookup with uniform decoy timing); the on-device aligner can time it again.</summary>
+        public static Doc ToUnsynced(Doc doc)
+        {
+            var lines = new List<Line>(doc.Lines.Count);
+            foreach (var l in doc.Lines)
+                lines.Add(l with { StartMs = 0, EndMs = null, Syllables = [], IsWordByWord = false });
+            return doc with { IsSynced = false, Sync = SyncKind.Unsynced, Lines = lines, OffsetMsApplied = 0 };
+        }
 
         static string Fmt(long ms)
         {
