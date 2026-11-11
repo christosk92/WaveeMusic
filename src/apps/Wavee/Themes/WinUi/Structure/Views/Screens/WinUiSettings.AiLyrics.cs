@@ -104,7 +104,7 @@ internal static partial class WinUiSettings
             string NpuName, string NpuDriver, AiLyrics.SetupError Error, string ErrorDetail,
             long InstalledBytes, IReadOnlyList<string> Languages, long PendingDownloadBytes,
             string DownloadLabel, bool DownloadIndeterminate,
-            int PrepareDone, int PrepareTotal, bool Recompile, bool Finishing)
+            int PrepareDone, int PrepareTotal, bool Recompile, bool Finishing, AiLyrics.LanguageFailure LanguageFailure)
         {
             public static AiCardShape Of(in AiLyrics.Status s) => new(
                 s.Phase, s == AiLyrics.Status.Unknown, s.Availability, s.Enabled,
@@ -112,7 +112,7 @@ internal static partial class WinUiSettings
                 s.InstalledBytes, s.Languages, s.PendingDownloadBytes,
                 s.Phase == AiLyrics.SetupPhase.Downloading ? s.Download.Label : "",
                 s.Phase == AiLyrics.SetupPhase.Downloading && AiIndeterminate(s.Download),
-                s.Prepare.Done, s.Prepare.Total, s.Prepare.Recompile, s.Prepare.Finishing);
+                s.Prepare.Done, s.Prepare.Total, s.Prepare.Recompile, s.Prepare.Finishing, s.LanguageFailure);
         }
 
         public override Element Render()
@@ -132,6 +132,7 @@ internal static partial class WinUiSettings
                 prepare.Value = AiPrepareFraction(s);
             });
             var (details, setDetails) = UseState(false);
+            var (langDetails, setLangDetails) = UseState(false);
             // The Ready expander's open state lives with this card: it survives the arm swap (a language download swaps the arm out
             // and back) but not a remount, so a theme switch mounts the page collapsed like a fresh navigation (Q26).
             var expanded = UseSignal(false);
@@ -147,7 +148,11 @@ internal static partial class WinUiSettings
                 AiLyrics.SetupPhase.Downloading => AiArm("ai:download", DownloadingCard(shape, st, download)),
                 AiLyrics.SetupPhase.Paused => AiArm("ai:paused", PausedCard(st, download)),
                 AiLyrics.SetupPhase.Preparing => AiArm("ai:prepare", PreparingCard(shape, prepare)),
-                AiLyrics.SetupPhase.Ready => AiArm("ai:ready", ReadyExpander(st, expanded)),
+                // a language whose download failed says so under the card (the installed languages keep working); it arrives
+                // with the Ready arm itself (the download's arm swaps out), and its Details glide (the bar's own height reflow)
+                AiLyrics.SetupPhase.Ready => st.LanguageFailure.IsSet
+                    ? AiArm("ai:ready", ReadyExpander(st, expanded), LanguageFailureBar(st.LanguageFailure, langDetails, setLangDetails))
+                    : AiArm("ai:ready", ReadyExpander(st, expanded)),
                 AiLyrics.SetupPhase.Error => AiArm("ai:error", ErrorBar(st, details, setDetails), MasterCard(st, on: true)),
                 // Unknown (before the boot scan), Unavailable and Off share one shape: the switch only changes state.
                 _ => AiArm("ai:off", MasterCard(st, on: false)),
@@ -268,10 +273,12 @@ internal static partial class WinUiSettings
             });
         }
 
-        /// <summary>The failure: its one sentence, the raw detail behind "Details", and the recovery the kind allows.</summary>
+        /// <summary>The failure: its one sentence, the raw detail behind "Details", and the recovery the kind allows. A first
+        /// setup that stopped on one language's file names that language ("Couldn't download Japanese") and says why.</summary>
         static Element ErrorBar(in AiLyrics.Status st, bool details, Action<bool> setDetails)
         {
             var error = st.Error;
+            var language = st.LanguageFailure;
             string detail = AiDetail(st.ErrorDetail);
             long installed = st.InstalledBytes;
             var actions = new List<Element>(3);
@@ -286,12 +293,44 @@ internal static partial class WinUiSettings
                     if (AiLyrics.Rules.RetryLoadsModels(AiLyrics.Current.Peek().Error)) AiLyrics.Retry();
                     else AiDownloadThen(AiRemainingBytes(), static () => AiLyrics.Retry());
                 }));
+            string shown = details && detail.Length > 0 ? AiS.Error.Detail(detail) : "";
             return InfoBar.Create(InfoBarSeverity.Error,
-                Loc.Get(AiLyrics.Rules.ErrorKey(error)),
-                details && detail.Length > 0 ? AiS.Error.Detail(detail) : "",
+                language.IsSet ? AiS.LangError.Title(AiLyrics.LanguageName(language.Language)) : Loc.Get(AiLyrics.Rules.ErrorKey(error)),
+                language.IsSet ? AiJoin(Loc.Get(AiLyrics.Rules.LanguageErrorKey(error)), shown) : shown,
                 isClosable: false,
                 actionButton: actions.Count == 0 ? null : AiRow(actions.ToArray()));
         }
+
+        /// <summary>One language's download failed while the feature is ready: which language, why in plain words, the raw
+        /// detail (the URL) behind "Details", and Try again for THAT language. The installed languages are not mentioned:
+        /// they keep working.</summary>
+        static Element LanguageFailureBar(AiLyrics.LanguageFailure failure, bool details, Action<bool> setDetails)
+        {
+            string lang = failure.Language;
+            string detail = AiDetail(failure.Detail);
+            var actions = new List<Element>(2);
+            if (detail.Length > 0)
+                actions.Add(LinkButton(Loc.Get(AiS.Details), () => setDetails(!details)));
+            actions.Add(AccentButton(Loc.Get(AiS.Retry), () =>
+            {
+                setDetails(false);                                                 // the next failure opens with its details shut
+                AiDownloadThen(AiLanguageBytes(lang), () => AiLyrics.InstallLanguage(lang));
+            }));
+            return new BoxEl
+            {
+                Key = "ai:lang-failed", Direction = 1, AlignSelf = FlexAlign.Stretch, Layout = s_aiHeightReflow,
+                Children =
+                [
+                    InfoBar.Create(InfoBarSeverity.Error,
+                        AiS.LangError.Title(AiLyrics.LanguageName(lang)),
+                        AiJoin(Loc.Get(AiLyrics.Rules.LanguageErrorKey(failure.Kind)), details && detail.Length > 0 ? AiS.Error.Detail(detail) : ""),
+                        isClosable: false,
+                        actionButton: AiRow(actions.ToArray())),
+                ],
+            };
+        }
+
+        static string AiJoin(string a, string b) => b.Length == 0 ? a : a.Length == 0 ? b : a + " " + b;
 
         // ── small builders ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -358,7 +397,7 @@ internal static partial class WinUiSettings
                     new BoxEl
                     {
                         Width = WinUiSettingsRules.AiLanguageNameWidth, Shrink = 0f,
-                        Children = [new TextEl(AiLanguageName(lang)) { Size = WinUiSettingsRules.AiLanguageNameSize, LineHeight = WinUiSettingsRules.AiLanguageNameLineHeight, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                        Children = [new TextEl(AiLyrics.LanguageName(lang)) { Size = WinUiSettingsRules.AiLanguageNameSize, LineHeight = WinUiSettingsRules.AiLanguageNameLineHeight, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
                     },
                     new BoxEl { Width = WinUiSettingsRules.AiLanguageStatusWidth, Shrink = 0f, Children = [status] },
                     new BoxEl { Width = WinUiSettingsRules.AiLanguageActionWidth, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Children = [action] },
@@ -426,16 +465,6 @@ internal static partial class WinUiSettings
                 ? ""
                 : string.Join(" · ", raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-        static string AiLanguageName(string lang) => lang switch
-        {
-            "en" => Loc.Get(AiS.Lang.En),
-            "es" => Loc.Get(AiS.Lang.Es),
-            "nl" => Loc.Get(AiS.Lang.Nl),
-            "ko" => Loc.Get(AiS.Lang.Ko),
-            "ja" => Loc.Get(AiS.Lang.Ja),
-            _ => lang.ToUpperInvariant(),
-        };
-
         static bool AiContains(IReadOnlyList<string> list, string value)
         {
             for (int i = 0; i < list.Count; i++)
@@ -443,27 +472,26 @@ internal static partial class WinUiSettings
             return false;
         }
 
-        /// <summary>The pack's languages (English, Spanish, then any other in code order) and each one's download size —
-        /// read once from the embedded manifest (in memory; no disk).</summary>
+        /// <summary>The pack's languages in the manifest's order (the one order of every theme and of the host,
+        /// <see cref="AiLyrics.PackManifest.LanguageOrder"/>) and each one's download size — read once from the embedded
+        /// manifest (in memory; no disk).</summary>
         static void AiEnsureLanguages()
         {
             if (s_aiLangOrder is not null) return;
             var langs = AiLyrics.PackManifest.Embedded.Languages;
-            var order = new List<string>(langs.Count);
-            if (langs.ContainsKey("en")) order.Add("en");
-            if (langs.ContainsKey("es")) order.Add("es");
-            if (langs.ContainsKey("nl")) order.Add("nl");
-            if (langs.ContainsKey("ko")) order.Add("ko");
-            if (langs.ContainsKey("ja")) order.Add("ja");
-            var rest = new List<string>();
-            foreach (var key in langs.Keys)
-                if (!AiContains(order, key)) rest.Add(key.ToLowerInvariant());
-            rest.Sort(StringComparer.Ordinal);
-            order.AddRange(rest);
+            var order = AiLyrics.PackManifest.Embedded.LanguageOrder;
             var bytes = new long[order.Count];
             for (int i = 0; i < bytes.Length; i++) bytes[i] = AiLyrics.Pack.DownloadBytes(langs[order[i]]);
             s_aiLangBytes = bytes;
-            s_aiLangOrder = order.ToArray();
+            s_aiLangOrder = [.. order];
+        }
+
+        /// <summary>One pack language's download size (what its Try again fetches at most).</summary>
+        static long AiLanguageBytes(string lang)
+        {
+            AiEnsureLanguages();
+            int i = Array.IndexOf(s_aiLangOrder!, lang);
+            return i >= 0 ? s_aiLangBytes![i] : 0;
         }
 
         static long AiAverageLanguageBytes()

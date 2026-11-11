@@ -466,7 +466,28 @@
     },
     "lyrics": {
       "title": "가사",
-      "subtitle": "동기화된 가사를 읽는 화면"
+      "subtitle": "동기화된 가사를 읽는 화면",
+      "ai": {
+        "lang": {
+          "en": "영어",
+          "es": "스페인어",
+          "nl": "네덜란드어",
+          "ko": "한국어",
+          "ja": "일본어"
+        },
+        "toast": {
+          "languageFailed": "AI 가사용 {language}을(를) 다운로드하지 못했어요. {reason}"
+        },
+        "langError": {
+          "title": "{language}을(를) 다운로드하지 못했어요",
+          "notFound": "아직 다운로드 서버에 없어요. 나중에 다시 시도하세요.",
+          "offline": "오프라인 상태예요. 연결한 후 다시 시도하세요.",
+          "network": "연결이 끊겼어요. 이미 다운로드한 부분은 Wavee가 보관했어요.",
+          "hash": "파일이 확인을 통과하지 못해 삭제했어요. 다시 시도하세요.",
+          "diskFull": "이 PC에 여유 공간이 부족해요.",
+          "unknown": "문제가 발생했어요. 다시 시도하세요."
+        }
+      }
     },
     "nowPlaying": {
       "title": "재생 중",

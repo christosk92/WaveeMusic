@@ -34,6 +34,7 @@ internal static partial class ZuneSettings
 
         readonly Signal<bool> _removeDeferred = new(false);
         readonly Signal<bool> _details = new(false);
+        readonly Signal<bool> _langDetails = new(false);
 
         public override Element Render()
         {
@@ -80,6 +81,8 @@ internal static partial class ZuneSettings
                     kids.Add(k.DocRow(D(Tab.Appearance, "aiBatterySaver"), k.Toggle(D(Tab.Appearance, "aiBatterySaver")), Loc.Get(AiS.BatterySaverSub)));
                     kids.Add(k.Row("zs:row:ai-languages", Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AverageLanguageBytes())),
                         Languages(k, st.Languages)));
+                    // a language whose download failed says so right under the languages (the installed ones keep working)
+                    if (st.LanguageFailure.IsSet) kids.Add(LanguageFailureBar(k, st.LanguageFailure));
                     long installed = st.InstalledBytes;
                     kids.Add(k.Row("zs:row:ai-files", Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
                         new BoxEl
@@ -126,9 +129,11 @@ internal static partial class ZuneSettings
         static Element Master(ZuneKit k, bool on, bool enabled)
             => k.Switch(on, enabled ? static v => AiLyrics.SetEnabled(v) : null, enabled);
 
+        /// <summary>The failure. A first setup that stopped on one language's file names that language and says why.</summary>
         Element ErrorBar(ZuneKit k, in AiLyrics.Status st)
         {
             var error = st.Error;
+            var language = st.LanguageFailure;
             string detail = Detail(st.ErrorDetail);
             long installed = st.InstalledBytes;
             var actions = new List<Element>(3);
@@ -141,11 +146,34 @@ internal static partial class ZuneSettings
                     if (AiLyrics.Rules.RetryLoadsModels(AiLyrics.Current.Peek().Error)) AiLyrics.Retry();
                     else DownloadThen(Remaining(AiLyrics.Current.Peek()), static () => AiLyrics.Retry());
                 }, accent: true));
-            return ZuneKit.Notice(InfoBarSeverity.Error, Loc.Get(AiLyrics.Rules.ErrorKey(error)),
-                _details.Value && detail.Length > 0 ? AiS.Error.Detail(detail) : "",
+            string shown = _details.Value && detail.Length > 0 ? AiS.Error.Detail(detail) : "";
+            return ZuneKit.Notice(InfoBarSeverity.Error,
+                language.IsSet ? AiS.LangError.Title(AiLyrics.LanguageName(language.Language)) : Loc.Get(AiLyrics.Rules.ErrorKey(error)),
+                language.IsSet ? Join(Loc.Get(AiLyrics.Rules.LanguageErrorKey(error)), shown) : shown,
                 actions.Count == 0 ? null : new BoxEl { Direction = 0, Gap = Z.ControlGap, AlignItems = FlexAlign.Center, Children = actions.ToArray() })
                 with { Key = "zs:ai:error" };
         }
+
+        /// <summary>One language's download failed while the feature is ready: which language, why in plain words, the raw
+        /// detail (the URL) behind "Details", and Try again for THAT language.</summary>
+        Element LanguageFailureBar(ZuneKit k, AiLyrics.LanguageFailure failure)
+        {
+            string lang = failure.Language;
+            string detail = Detail(failure.Detail);
+            var actions = new List<Element>(2);
+            if (detail.Length > 0) actions.Add(k.Cmd(Loc.Get(AiS.Details), () => _langDetails.Value = !_langDetails.Peek()));
+            actions.Add(k.Cmd(Loc.Get(AiS.Retry), () =>
+            {
+                _langDetails.Value = false;                                        // the next failure opens with its details shut
+                DownloadThen(LanguageBytes(lang), () => AiLyrics.InstallLanguage(lang));
+            }, accent: true));
+            return ZuneKit.Notice(InfoBarSeverity.Error, AiS.LangError.Title(AiLyrics.LanguageName(lang)),
+                Join(Loc.Get(AiLyrics.Rules.LanguageErrorKey(failure.Kind)), _langDetails.Value && detail.Length > 0 ? AiS.Error.Detail(detail) : ""),
+                new BoxEl { Direction = 0, Gap = Z.ControlGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f, Children = actions.ToArray() })
+                with { Key = "zs:ai:lang-failed" };
+        }
+
+        static string Join(string a, string b) => b.Length == 0 ? a : a.Length == 0 ? b : a + " " + b;
 
         Element DownloadBar(in AiLyrics.Status st)
             => Indeterminate(st.Download) ? ProgressBar.Indeterminate(Z.AiBarWidth) : ZuneKit.Bar(Fraction(st.Download.Done, st.Download.Total), Z.AiBarWidth);
@@ -187,7 +215,7 @@ internal static partial class ZuneSettings
                     Key = "zs:ai:lang:" + lang, Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.AiLanguageRowHeight,
                     Children =
                     [
-                        new BoxEl { Width = Z.AiLanguageNameWidth, Shrink = 0f, Children = [ZuneText.Label(LanguageName(lang)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }] },
+                        new BoxEl { Width = Z.AiLanguageNameWidth, Shrink = 0f, Children = [ZuneText.Label(AiLyrics.LanguageName(lang)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }] },
                         new BoxEl { Width = Z.AiLanguageStatusWidth, Shrink = 0f, Children = [status] },
                         action,
                     ],
@@ -196,16 +224,6 @@ internal static partial class ZuneSettings
             return new BoxEl { Direction = 1, Gap = Z.AiLanguageGap, MinWidth = 0f, Children = rows };
         }
 
-        static string LanguageName(string lang) => lang switch
-        {
-            "en" => Loc.Get(AiS.Lang.En),
-            "es" => Loc.Get(AiS.Lang.Es),
-            "nl" => Loc.Get(AiS.Lang.Nl),
-            "ko" => Loc.Get(AiS.Lang.Ko),
-            "ja" => Loc.Get(AiS.Lang.Ja),
-            _ => lang.ToUpperInvariant(),
-        };
-
         static bool Contains(IReadOnlyList<string> list, string value)
         {
             for (int i = 0; i < list.Count; i++)
@@ -213,23 +231,25 @@ internal static partial class ZuneSettings
             return false;
         }
 
-        /// <summary>The pack's languages (English, Spanish, Dutch, Korean, then any other in code order) and each one's download size, read once from the embedded manifest.</summary>
+        /// <summary>The pack's languages in the manifest's order (the one order of every theme and of the host, <see cref="AiLyrics.PackManifest.LanguageOrder"/>)
+        /// and each one's download size, read once from the embedded manifest.</summary>
         static void EnsureLanguages()
         {
             if (s_langOrder is not null) return;
             var langs = AiLyrics.PackManifest.Embedded.Languages;
-            var order = new List<string>(langs.Count);
-            foreach (string code in Z.AiLanguageOrder)
-                if (langs.ContainsKey(code)) order.Add(code);
-            var rest = new List<string>();
-            foreach (var key in langs.Keys)
-                if (!Contains(order, key)) rest.Add(key.ToLowerInvariant());
-            rest.Sort(StringComparer.Ordinal);
-            order.AddRange(rest);
+            var order = AiLyrics.PackManifest.Embedded.LanguageOrder;
             var bytes = new long[order.Count];
             for (int i = 0; i < bytes.Length; i++) bytes[i] = AiLyrics.Pack.DownloadBytes(langs[order[i]]);
             s_langBytes = bytes;
-            s_langOrder = order.ToArray();
+            s_langOrder = [.. order];
+        }
+
+        /// <summary>One pack language's download size (what its Try again fetches at most).</summary>
+        static long LanguageBytes(string lang)
+        {
+            EnsureLanguages();
+            int i = Array.IndexOf(s_langOrder!, lang);
+            return i >= 0 ? s_langBytes![i] : 0;
         }
 
         static long AverageLanguageBytes()

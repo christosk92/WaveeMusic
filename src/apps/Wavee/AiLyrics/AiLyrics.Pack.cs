@@ -28,6 +28,10 @@ public static partial class AiLyrics
     public sealed class SetupException(SetupError kind, string detail) : Exception(detail)
     {
         public SetupError Kind { get; } = kind;
+
+        /// <summary>The pack file (<see cref="PackFile.Name"/>) being fetched or installed when it failed; "" = before any
+        /// file (offline, no room on the disk). The host maps it to a language (<see cref="PackManifest.LanguageOfFile"/>).</summary>
+        public string FileName { get; init; } = "";
     }
 
     public enum DownloadPhase { Checking, Downloading, Verifying, Installing }
@@ -52,6 +56,21 @@ public static partial class AiLyrics
         public IReadOnlyList<PackFile> Runtime { get; init; } = [];
         public IReadOnlyList<PackFile> Common { get; init; } = [];
         public IReadOnlyDictionary<string, IReadOnlyList<PackFile>> Languages { get; init; } = new Dictionary<string, IReadOnlyList<PackFile>>();
+
+        /// <summary>The pack's languages in the manifest's order (en, es, nl, ko, ja). The ONE language order: the Settings
+        /// list of every theme and the installed-languages setting (whose first is the language loaded first) follow it.</summary>
+        public IReadOnlyList<string> LanguageOrder { get; init; } = [];
+
+        /// <summary>The language whose files include <paramref name="fileName"/>; "" for a shared file (a runtime wheel,
+        /// the separator) or an unknown name.</summary>
+        public string LanguageOfFile(string fileName)
+        {
+            if (fileName.Length == 0) return "";
+            foreach (string l in LanguageOrder)
+                foreach (var f in Languages[l])
+                    if (string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase)) return l;
+            return "";
+        }
 
         static PackManifest? s_embedded;
         public static PackManifest Embedded => s_embedded ??= Parse(PackManifestJson);
@@ -82,11 +101,17 @@ public static partial class AiLyrics
                     [], w.GetProperty("url").GetString(), extract, dir, w.GetProperty("label").GetString() ?? ""));
             }
             var langs = new Dictionary<string, IReadOnlyList<PackFile>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var l in r.GetProperty("languages").EnumerateObject()) langs[l.Name] = Files(l.Value.GetProperty("files"));
+            var order = new List<string>();
+            foreach (var l in r.GetProperty("languages").EnumerateObject())
+            {
+                string code = l.Name.ToLowerInvariant();
+                if (!langs.ContainsKey(code)) order.Add(code);
+                langs[code] = Files(l.Value.GetProperty("files"));
+            }
             return new PackManifest
             {
                 Version = r.GetProperty("version").GetInt32(), Base = r.GetProperty("base").GetString()!,
-                Runtime = runtime, Common = Files(r.GetProperty("common")), Languages = langs,
+                Runtime = runtime, Common = Files(r.GetProperty("common")), Languages = langs, LanguageOrder = order,
             };
         }
 
@@ -245,17 +270,26 @@ public static partial class AiLyrics
             {
                 ct.ThrowIfCancellationRequested();
                 string label = f.IsWheel ? f.Label : f.Name;
-                await FetchAsync(f, modelBase, (fileDone) =>
+                try
                 {
-                    long done = doneBefore + fileDone;
-                    if (meter.Sample(done, Environment.TickCount64))
-                        progress(new DownloadProgress(DownloadPhase.Downloading, done, total, meter.BytesPerSecond, label));
-                }, ct).ConfigureAwait(false);
-                progress(new DownloadProgress(DownloadPhase.Installing, doneBefore + f.Bytes, total, meter.BytesPerSecond, label));
-                InstallOne(f);
-                var installed = Installed();
-                installed[f.Name] = f.Sha256;
-                SaveInstalled(installed);
+                    await FetchAsync(f, modelBase, (fileDone) =>
+                    {
+                        long done = doneBefore + fileDone;
+                        if (meter.Sample(done, Environment.TickCount64))
+                            progress(new DownloadProgress(DownloadPhase.Downloading, done, total, meter.BytesPerSecond, label));
+                    }, ct).ConfigureAwait(false);
+                    progress(new DownloadProgress(DownloadPhase.Installing, doneBefore + f.Bytes, total, meter.BytesPerSecond, label));
+                    InstallOne(f);
+                    var installed = Installed();
+                    installed[f.Name] = f.Sha256;
+                    SaveInstalled(installed);
+                }
+                // every failure names its file, so the host can tell one language's failure from the shared files'
+                catch (SetupException ex) when (ex.FileName.Length == 0) { throw new SetupException(ex.Kind, ex.Message) { FileName = f.Name }; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && !ct.IsCancellationRequested)
+                {
+                    throw new SetupException(SetupError.Unknown, ex.Message) { FileName = f.Name };
+                }
                 doneBefore += f.Bytes;
             }
         }

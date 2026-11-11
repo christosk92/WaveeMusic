@@ -1411,7 +1411,17 @@
         "removeDeferred": "Some files are in use and will be removed the next time Wavee starts.",
         "toast": {
           "ready": "AI lyrics are ready",
-          "failed": "AI lyrics setup failed: {reason}"
+          "failed": "AI lyrics setup failed: {reason}",
+          "languageFailed": "Couldn’t download {language} for AI lyrics. {reason}"
+        },
+        "langError": {
+          "title": "Couldn’t download {language}",
+          "notFound": "It isn't on the download server yet. Try again later.",
+          "offline": "You're offline. Connect and try again.",
+          "network": "The connection dropped. Wavee kept what it already downloaded.",
+          "hash": "A file didn't pass its check and was removed. Try again.",
+          "diskFull": "There isn't enough free space on this PC.",
+          "unknown": "Something went wrong. Try again."
         },
         "error": {
           "offline": "You're offline. Connect and try again.",

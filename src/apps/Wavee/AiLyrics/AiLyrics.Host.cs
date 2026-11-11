@@ -140,8 +140,6 @@ public static partial class AiLyrics
     static int s_posMs, s_playing;
     static long s_posAtTick;
 
-    static readonly string[] s_languageOrder = ["en", "es", "nl", "ko", "ja"];
-
     // ══ boot and shutdown ═════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Called once at shell composition with the UI post. Starts the boot scan on a background task.</summary>
@@ -218,7 +216,7 @@ public static partial class AiLyrics
             CancelDownloadInternal(pause: false);
             CancelLoads();
             s_worker?.Unload();
-            Current.Value = st with { Enabled = false, Phase = SetupPhase.Off, Error = SetupError.None, ErrorDetail = "" };
+            Current.Value = st with { Enabled = false, Phase = SetupPhase.Off, Error = SetupError.None, ErrorDetail = "", LanguageFailure = default };
             Track.Value = default;
             return;
         }
@@ -241,17 +239,20 @@ public static partial class AiLyrics
         s_downloadCts = cts;
         s_pauseRequested = false;
         var st = Current.Peek();
+        var phaseBefore = st.Phase;
         Current.Value = st with
         {
-            Phase = SetupPhase.Downloading, Error = SetupError.None, ErrorDetail = "",
+            Phase = SetupPhase.Downloading, Error = SetupError.None, ErrorDetail = "", LanguageFailure = default,
             Download = new DownloadProgress(DownloadPhase.Checking, 0, st.PendingDownloadBytes, 0, ""),
         };
+        bool onlyAddLanguage = false;
         _ = Task.Run(async () =>
         {
             try
             {
                 var all = PackManifest.Embedded.FilesFor(languages);
                 var files = Pack.Missing(all);
+                onlyAddLanguage = addLanguage is not null && files.TrueForAll(f => PackManifest.Embedded.LanguageOfFile(f.Name) == addLanguage);
                 long total = Pack.DownloadBytes(files), already = Pack.DownloadBytes(all) - total;
                 Log.Info("ai-lyrics", $"ai.download.start files={files.Count} bytes={total}");
                 await Pack.InstallAsync(files, PackManifest.Embedded.Base,
@@ -290,13 +291,20 @@ public static partial class AiLyrics
             catch (Exception ex) when (ex is SetupException or IOException or UnauthorizedAccessException)
             {
                 var kind = ex is SetupException se ? se.Kind : SetupError.Unknown;
-                Log.Warn("ai-lyrics", $"ai.download.failed kind={kind} detail={ex.Message}");
+                string file = ex is SetupException sf ? sf.FileName : "";
+                string language = Rules.FailedLanguage(PackManifest.Embedded.LanguageOfFile(file), beforeAnyFile: file.Length == 0,
+                    addLanguage, onlyAddLanguage);
+                bool keepsReady = Rules.LanguageFailureKeepsReady(language, addLanguage, phaseBefore);
+                Log.Warn("ai-lyrics", $"ai.download.failed kind={kind} language={(language.Length > 0 ? language : "-")} " +
+                                      $"scope={(keepsReady ? "language" : "feature")} file={(file.Length > 0 ? file : "-")} detail={ex.Message}");
                 s_post(() =>
                 {
                     if (s_downloadCts != cts) return;
                     s_downloadCts = null;
                     cts.Dispose();
-                    Fail(kind, ex.Message);
+                    var failure = language.Length > 0 ? new LanguageFailure(language, kind, ex.Message) : default;
+                    if (keepsReady) FailLanguage(failure);
+                    else Fail(kind, ex.Message, failure);
                 });
             }
         });
@@ -314,7 +322,7 @@ public static partial class AiLyrics
     }
 
     /// <summary>The error card's "Try again": a download error downloads again (resuming), a runtime or compile error
-    /// loads the models again.</summary>
+    /// loads the models again. A failure of one language's download is retried with <see cref="InstallLanguage"/>.</summary>
     public static void Retry()
     {
         var st = Current.Peek();
@@ -344,7 +352,7 @@ public static partial class AiLyrics
                 Current.Value = st with
                 {
                     Phase = st.Enabled ? SetupPhase.NeedsSetup : SetupPhase.Off, InstalledBytes = 0,
-                    PendingDownloadBytes = Pack.DownloadBytes(missing), Error = SetupError.None, ErrorDetail = "",
+                    PendingDownloadBytes = Pack.DownloadBytes(missing), Error = SetupError.None, ErrorDetail = "", LanguageFailure = default,
                 };
                 Track.Value = default;
                 deferred?.Invoke(!complete);
@@ -397,17 +405,40 @@ public static partial class AiLyrics
 
     // ══ internals (UI thread) ═════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A setup error. Ignored while the feature is off: a failure the user can no longer act on is not news.</summary>
-    static void Fail(SetupError kind, string detail)
+    /// <summary>A setup error: the whole feature stops (the shared files, the runtime, the NPU, or a first setup). Ignored
+    /// while the feature is off: a failure the user can no longer act on is not news. <paramref name="language"/> names the
+    /// language whose file stopped a first setup, so the card says which.</summary>
+    static void Fail(SetupError kind, string detail, LanguageFailure language = default)
     {
         var st = Current.Peek();
         if (!st.Enabled) return;
-        Current.Value = st with { Phase = SetupPhase.Error, Error = kind, ErrorDetail = detail };
+        Current.Value = st with { Phase = SetupPhase.Error, Error = kind, ErrorDetail = detail, LanguageFailure = language };
         if (Rules.ToastOnError(SettingsCardVisible, kind))
-            Notify.Say(Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
+            Notify.Say(language.IsSet
+                    ? Strings.Settings.Lyrics.Ai.Toast.LanguageFailed(LanguageName(language.Language), Loc.Get(Rules.LanguageErrorKey(kind)))
+                    : Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
                 actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
                 dedupeKey: "ai-lyrics-error");
     }
+
+    /// <summary>One language's download failed while the feature was ready: the card goes back to Ready (the installed
+    /// languages never stopped working; their models were not touched) and says which language failed and why, with Try
+    /// again for that language (<see cref="InstallLanguage"/>).</summary>
+    static void FailLanguage(LanguageFailure failure)
+    {
+        var st = Current.Peek();
+        if (!st.Enabled) return;
+        Current.Value = st with { Phase = SetupPhase.Ready, Error = SetupError.None, ErrorDetail = "", LanguageFailure = failure };
+        if (Rules.ToastOnError(SettingsCardVisible, failure.Kind))
+            Notify.Say(Strings.Settings.Lyrics.Ai.Toast.LanguageFailed(LanguageName(failure.Language), Loc.Get(Rules.LanguageErrorKey(failure.Kind))),
+                InfoBarSeverity.Error,
+                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
+                dedupeKey: "ai-lyrics-error");
+    }
+
+    /// <summary>A pack language's display name ("Japanese"); the code itself when the loc pack has no name for it.</summary>
+    public static string LanguageName(string language)
+        => Rules.LanguageNameKey(language) is { Length: > 0 } key ? Loc.Get(key) : language.ToUpperInvariant();
 
     /// <param name="deferIfCompiled">Boot: when every installed graph is already compiled, only record what is installed
     /// and leave the sessions unloaded until a job needs them (<see cref="Worker"/>'s EnsureLanguage loads them). A graph
@@ -473,11 +504,12 @@ public static partial class AiLyrics
         return Ordered(list);
     }
 
+    /// <summary>The manifest's language order (<see cref="PackManifest.LanguageOrder"/>), the one order everywhere.</summary>
     static List<string> Ordered(IEnumerable<string> langs)
     {
         var set = new HashSet<string>(langs, StringComparer.OrdinalIgnoreCase);
         var list = new List<string>();
-        foreach (var l in s_languageOrder) if (set.Remove(l)) list.Add(l);
+        foreach (var l in PackManifest.Embedded.LanguageOrder) if (set.Remove(l)) list.Add(l);
         list.AddRange(set);
         return list;
     }
@@ -788,7 +820,7 @@ public static partial class AiLyrics
             {
                 _models = LoadedModels.Load(RuntimeDir, ModelsDir, [language], null, ct);
                 _loaded = true;
-                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={language} installed={_installedKey} lazy=true ort={_models.Ort.Version}");
+                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={language} installed={string.Join(",", _installed)} lazy=true ort={_models.Ort.Version}");
             }
             else _models.SwapAligner(ModelsDir, language, null, ct);
             Log.Info("ai-lyrics", $"ai.models.switch active={language} ms={sw.ElapsedMilliseconds} recompiled={recompile}");
@@ -801,8 +833,9 @@ public static partial class AiLyrics
         {
             if (!_loaded && _models is null) return;
             long before = Environment.WorkingSet;
+            // _installed and _installedKey stay: an idle unload frees the sessions, not the record of what is installed.
+            // (Clearing the key here made the next lazy load log "installed=" with an empty list.)
             DisposeModels();
-            _installedKey = "";
             // The jobs' buffers are large-object garbage, and an idle app runs no full GC to reclaim it: the process
             // used to keep ~300 MB of dead LOH committed for hours after the unload. A BACKGROUND gen-2 collection hands
             // the freed regions back without stopping the UI thread: the unload now follows every song's job, and a

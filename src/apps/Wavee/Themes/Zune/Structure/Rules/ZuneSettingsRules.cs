@@ -322,9 +322,6 @@ public static class ZuneSettingsRules
     /// <summary>The download bar's width, a language line's height, its name and status lanes and the gap between lines.</summary>
     public const float AiBarWidth = 180f, AiLanguageRowHeight = 32f, AiLanguageNameWidth = 88f, AiLanguageStatusWidth = 84f, AiLanguageGap = 2f;
 
-    /// <summary>The pack's languages, in the order the page lists them (any other follows in code order).</summary>
-    public static readonly string[] AiLanguageOrder = ["en", "es", "nl", "ko"];
-
     // ── Storage ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Nine hand-picked hues, THEME-INVARIANT (accent tints read as one blue on dark), indexed in `StorageRules.Parts` order: library, runtime, logs, local store, audio

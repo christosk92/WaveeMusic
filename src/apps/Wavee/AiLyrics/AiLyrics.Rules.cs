@@ -33,13 +33,18 @@ public static partial class AiLyrics
     /// <param name="NpuDriver">Its driver version ("31.0.210.5").</param>
     /// <param name="Languages">The installed aligner languages (ISO 639-1).</param>
     /// <param name="PendingDownloadBytes">What <see cref="SetupPhase.NeedsSetup"/> would fetch.</param>
+    /// <param name="LanguageFailure">The last download that failed on ONE language's files (<see cref="Rules.FailedLanguage"/>).
+    /// While <see cref="SetupPhase.Ready"/> it is that language's failure only: the installed languages keep working and
+    /// the card offers Try again for that language. Under <see cref="SetupPhase.Error"/> (a first setup that stopped on a
+    /// language's file) it names the language in the error. Cleared when a download starts, the feature goes off or the
+    /// files are removed.</param>
     public readonly record struct Status(
         SetupPhase Phase, Availability Availability, bool Enabled,
         string NpuName, string NpuDriver,
         DownloadProgress Download, PrepareProgress Prepare,
         SetupError Error, string ErrorDetail,
         long InstalledBytes, IReadOnlyList<string> Languages,
-        long PendingDownloadBytes)
+        long PendingDownloadBytes, LanguageFailure LanguageFailure = default)
     {
         /// <summary>Before the boot probe answered: nothing is clickable (<see cref="SetupPhase.Unavailable"/>) and the
         /// card can test <c>== Status.Unknown</c> to show no reason yet.</summary>
@@ -47,6 +52,17 @@ public static partial class AiLyrics
             SetupPhase.Unavailable, AiLyrics.Availability.NoNpu, false, "", "",
             new DownloadProgress(DownloadPhase.Checking, 0, 0, 0, ""), default,
             SetupError.None, "", 0, Array.Empty<string>(), 0);
+    }
+
+    /// <summary>A download that failed on one language's files: the language (ISO 639-1), why, and the raw detail (the
+    /// URL, the file, the drive) for "Details". <c>default</c> = none; reads as empty strings, never null.</summary>
+    public readonly record struct LanguageFailure(string Language, SetupError Kind, string Detail)
+    {
+        readonly string? _language = Language;
+        readonly string? _detail = Detail;
+        public string Language { get => _language ?? ""; init => _language = value; }
+        public string Detail { get => _detail ?? ""; init => _detail = value; }
+        public bool IsSet => Language.Length > 0;
     }
 
     /// <summary>The current track's AI state, for the header button, the footer strip and the inspector.</summary>
@@ -307,6 +323,48 @@ public static partial class AiLyrics
             SetupError.Compile => "settings.lyrics.ai.error.compile",
             _ => "settings.lyrics.ai.error.unknown",
         };
+
+        /// <summary>Why ONE language's download failed, in plain words (the InfoBar message under "Couldn't download
+        /// {language}"). Unlike <see cref="ErrorKey"/> it never speaks of "the AI models": the other languages are fine.</summary>
+        public static string LanguageErrorKey(SetupError error) => error switch
+        {
+            SetupError.Offline => "settings.lyrics.ai.langError.offline",
+            SetupError.Network => "settings.lyrics.ai.langError.network",
+            SetupError.NotFound => "settings.lyrics.ai.langError.notFound",
+            SetupError.HashMismatch => "settings.lyrics.ai.langError.hash",
+            SetupError.DiskFull => "settings.lyrics.ai.langError.diskFull",
+            _ => "settings.lyrics.ai.langError.unknown",
+        };
+
+        /// <summary>A pack language's display name key; "" for a code the loc pack has no name for (show the code).</summary>
+        public static string LanguageNameKey(string language) => language switch
+        {
+            "en" => "settings.lyrics.ai.lang.en",
+            "es" => "settings.lyrics.ai.lang.es",
+            "nl" => "settings.lyrics.ai.lang.nl",
+            "ko" => "settings.lyrics.ai.lang.ko",
+            "ja" => "settings.lyrics.ai.lang.ja",
+            _ => "",
+        };
+
+        /// <summary>Whose failure a failed download is. The failed file's language when it belongs to one; before any file
+        /// was fetched (offline, no room on the disk) the language being added, when the download was for nothing else.
+        /// "" = the shared files every language needs (the runtime, the separator) or a first setup: the whole feature.</summary>
+        /// <param name="fileLanguage">The language of the file that failed ("" = a shared file, or no file yet).</param>
+        /// <param name="addLanguage">The language the download was adding (null = a setup or resume of everything).</param>
+        /// <param name="onlyAddLanguageMissing">Every file the download fetched belongs to <paramref name="addLanguage"/>.</param>
+        public static string FailedLanguage(string fileLanguage, bool beforeAnyFile, string? addLanguage, bool onlyAddLanguageMissing)
+        {
+            if (fileLanguage.Length > 0) return fileLanguage;
+            if (beforeAnyFile && addLanguage is { Length: > 0 } && onlyAddLanguageMissing) return addLanguage;
+            return "";
+        }
+
+        /// <summary>A language's failure stays that language's (the card stays Ready, the installed languages keep timing
+        /// songs) only when the feature was ready before the download and the download was adding that language. A first
+        /// setup that fails on a language's file still has nothing working: the whole card shows the error, naming it.</summary>
+        public static bool LanguageFailureKeepsReady(string failedLanguage, string? addLanguage, SetupPhase phaseBefore)
+            => failedLanguage.Length > 0 && failedLanguage == addLanguage && phaseBefore == SetupPhase.Ready;
 
         /// <summary>Every real error offers "Try again" (Network resumes from the partial); Cancelled goes back to
         /// NeedsSetup silently.</summary>
