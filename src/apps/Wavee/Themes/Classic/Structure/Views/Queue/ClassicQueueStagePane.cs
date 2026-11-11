@@ -397,7 +397,10 @@ internal sealed class ClassicQueueStagePane : Component
         if (text.Thin) return new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f };
         var lines = new List<Element>(3);
         if (eyebrow is not null)
-            lines.Add(R.Type.Eyebrow(eyebrow) with { Size = MathF.Round(subSize * 0.86f), Color = Ink.InkSecondary, MaxLines = 1 });
+        {
+            var e = R.Type.Eyebrow(eyebrow);   // never under the ramp's own eyebrow (Theatre's small rows would put it under the type floor)
+            lines.Add(e with { Size = MathF.Max(e.Size, MathF.Round(subSize * 0.86f)), Color = Ink.InkSecondary, MaxLines = 1 });
+        }
         lines.Add(new TextEl(text.Title)
         {
             Size = titleSize, LineHeight = titleLine, Weight = titleWeight, FontFamily = eyebrow is null ? null : R.Type.DisplayFace,

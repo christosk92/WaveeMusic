@@ -288,6 +288,7 @@ public static partial class Stage
         NodeHandle _root;
         bool _cursorHidden, _paletteSeeded;
         bool? _loggedVisible;   // the last chrome visibility the `[stage.chrome]` line reported
+        bool _movedOverRegion;   // a move has been classified over what counts (PointerOverRegion's answer without a window position)
         ChromeHold _loggedHolds;   // the holds the last `[stage.chrome] hold` lines reported (edges only)
         string _playbackFact = "playing";   // the deck's phase and fault behind the Stopped hold, for its line
         OverlayHandle? _tip, _options;
@@ -796,6 +797,7 @@ public static partial class Stage
             _idle.Region = region is null ? "stage" : "picture";
             if (region is not { } r || Inside(r, w))
             {
+                _movedOverRegion = true;
                 _idle.PointerOutsideRegion = false;
                 _idle.PointerMoved(w.X, w.Y, Now());
                 return;
@@ -815,10 +817,12 @@ public static partial class Stage
             Sync();
         }
 
-        /// <summary>The pointer is over what counts (the picture in Theatre, else the stage). With a region and no trustworthy position it is NOT over
-        /// it: no position is never a reason to hold or reveal the chrome.</summary>
+        /// <summary>The pointer is over what counts (the picture in Theatre, else the stage), for a hold or a wheel (a leave is decided by
+        /// <see cref="PointerAt"/> from a real position, never here). Without a window position the last move's own answer stands (the move that
+        /// carried the hover was classified by <see cref="PointerAt"/>); before any move, nothing is over the picture.</summary>
         bool PointerOverRegion()
-            => RegionOf() is not { } r || (_hooks?.GetPointerPosition?.Invoke() is { } p && Inside(r, p));
+            => RegionOf() is not { } r
+            || (_hooks?.GetPointerPosition?.Invoke() is { } p ? Inside(r, p) : _idle.Region == "picture" && !_idle.PointerOutsideRegion && _movedOverRegion);
 
         /// <summary>The pointer's window position for the `[stage.chrome]` lines ("x,y" or "none"). Edges only: it formats.</summary>
         string PointerText() => _hooks?.GetPointerPosition?.Invoke() is { } p ? $"{p.X:0},{p.Y:0}" : "none";
