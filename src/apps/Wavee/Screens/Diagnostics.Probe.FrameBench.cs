@@ -208,6 +208,12 @@ public static partial class Diagnostics
             return (word, line);
         }
 
+        /// <summary>stage-cinema: how long the bench waits after the stage publishes its chrome hidden before it measures the idle stage. In the
+        /// first seconds after the hide two host-timer turns (about 2.3 and 4.3 s after it) re-record the root slice with no component or bind work,
+        /// and the first presents once (2026-11-11, three runs; its owner is not named yet, see the stage-sweep report); with the window 5 s after
+        /// the hide both land before it and the idle stage measures 0 presents.</summary>
+        const double StageCinemaHiddenSettleSec = 5.0;
+
         static Pending RunScenario(string name, AppHost host, Win32Window w, FrameBenchOptions o, FrameBenchTargets t,
             string? play, string? word, string? line)
         {
@@ -568,6 +574,7 @@ public static partial class Diagnostics
                         // whose last value only moves on its own tick)
                         Settle(1.0);
                         PumpUntil(host, w, static () => !Stage.Picture.ChromePeek(), 15);
+                        Settle(StageCinemaHiddenSettleSec);   // the hide's own aftermath lands before the window (see the constant)
                         string atStart = Stage.Picture.ChromePeek() ? "shown" : "hidden";
                         r = Measure(null, "picture=stage");
                         string atEnd = Stage.Picture.ChromePeek() ? "shown" : "hidden";
