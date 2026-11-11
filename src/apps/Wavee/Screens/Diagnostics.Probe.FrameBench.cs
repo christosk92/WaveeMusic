@@ -589,13 +589,16 @@ public static partial class Diagnostics
                     ImmersiveService.Shared.KeepWindowed = false;
                     bool open = false;
                     int exits = 0;
-                    var r = Measure(new Driver(now =>
+                    void Flip()
                     {
                         open = !open;
                         if (open) Stage.Open(null, "bench");
                         else { Stage.Close(null, "bench"); exits++; }
-                        return now + 2.0;
-                    }), "stage open/close every 2 s, real full screen");
+                    }
+                    // `--bench-shots`: every presented frame of one entry and one exit, as PNGs (the exit's motion, frame by frame)
+                    if (o.Shots) Shots(name, host, w, Flip);
+                    exits = 0;
+                    var r = Measure(new Driver(now => { Flip(); return now + 2.0; }), "stage open/close every 2 s, real full screen");
                     if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
                     Settle(1.0);
                     ImmersiveService.Shared.KeepWindowed = keptWindowed;
