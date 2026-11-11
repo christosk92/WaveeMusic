@@ -66,6 +66,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The controls over a video go the moment the pointer leaves the window, as on YouTube.** In full screen (Cinema and
+  Theatre), over the docked, floating and pop-out video and in the mini player, moving the pointer out of the window (off
+  any edge, onto another screen or the taskbar, under a window that comes up over Wavee) or switching away with Alt+Tab
+  or the Windows key starts their usual short fade at once, with no wait. Moving onto one of Wavee's own menus is not
+  leaving, a seek or volume drag keeps them until you let go, and while paused they stay, as on YouTube.
 - **The Canvas dissolves into the now-playing panel itself (Classic).** The picture fades out on a smooth curve and the
   panel below it is exactly the panel the Cover style shows, in your window's own colour, instead of a flat dark ground.
   The drifting waves at its foot and the coloured glow under the small cover are gone.

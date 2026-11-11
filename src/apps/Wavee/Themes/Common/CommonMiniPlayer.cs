@@ -71,7 +71,33 @@ internal static partial class CommonMiniPlayer
         bool light = R.IsLight;
         rc.UseLayoutEffect(() => p.UseMaterial(light ? st.MaterialLight : st.MaterialDark, !light),
             DepKey.From(light ? 1 : 0, (int)st.MaterialLight, (int)st.MaterialDark, 0));
+        // The menus' handles are plain refs: the overlay service's pin epoch (both menus are anchored to this window, so they pin it) is the
+        // signal that re-reads them on every open and close. Without it a menu closed with the pointer outside left the controls up until
+        // some other change re-rendered the window.
+        _ = overlay.PinEpoch.Value;
         bool hovering = hot.Value || anchors.OptionsMenu.Value is { IsOpen: true } || anchors.DeviceMenu.Value is { IsOpen: true };
+
+        // THE WINDOW LEAVE (YouTube's rule, owner 2026-11-11): the pointer leaving the window (any edge, onto another monitor, under a window
+        // shown over this one, off a menu of ours closed outside) or the window losing activation drops the hover AT ONCE; the hover layers' own
+        // fade is the hide. The out-delay is for a hover taken inside the window only. A menu of ours that is open keeps the controls (hovering).
+        // While they show, the platform also confirms a resting pointer is still here (InputHooks.WatchPointerPresence).
+        var hooks = rc.UseContext(InputHooks.Current);
+        var hotCause = rc.UseRef("mount");
+        rc.UseEffect(() =>
+        {
+            if (hooks is null) return (Action?)null;
+            Action leave = () => { hotFall.Cancel(); hotCause.Value = "leave-window"; if (hot.Peek()) hot.Value = false; };
+            hooks.PointerLeftWindowObserved += leave;
+            hooks.WindowBlurObserved += leave;
+            return () => { hooks.PointerLeftWindowObserved -= leave; hooks.WindowBlurObserved -= leave; };
+        }, DepKey.Empty);
+        rc.UseEffect(() =>
+        {
+            Log.Info("mini", "[mini.chrome] " + (hovering ? "show" : "hide") + " cause=" + (hovering && !hot.Peek() ? "menu" : hotCause.Value));
+            if (hooks is null || !hovering) return (Action?)null;
+            hooks.WatchPointerPresence(true);
+            return () => hooks.WatchPointerPresence(false);
+        }, hovering ? 1 : 0);
         int flipDir = face == flipFrom.Value ? 0 : (face > flipFrom.Value ? 1 : -1);
         rc.UseLayoutEffect(() => flipFrom.Value = face, face);
 
@@ -121,8 +147,9 @@ internal static partial class CommonMiniPlayer
         {
             Key = H.RootKey, Grow = 1f, AlignSelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true, Fill = st.Ground(accent),
             OnRealized = h => anchors.Window.Value = h,
-            OnPointerMoveWithin = _ => { hotFall.Cancel(); if (!hot.Peek()) hot.Value = true; },
-            OnPointerExit = () => hotFall.RestartIn(st.HoverOutDelayMs),
+            OnPointerMoveWithin = _ => { hotFall.Cancel(); if (!hot.Peek()) { hotCause.Value = "enter"; hot.Value = true; } },
+            // a drag that started here (the volume, the seek) keeps the controls until its release: the window's own leave decides then
+            OnPointerExit = () => { if (hooks?.IsPointerHeld?.Invoke() == true) return; hotCause.Value = "exit"; hotFall.RestartIn(st.HoverOutDelayMs); },
             OnPointerWheel = e => p.WheelVolume(e.Steps),
             Children = children.ToArray(),
         };

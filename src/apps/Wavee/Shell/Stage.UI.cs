@@ -282,6 +282,7 @@ public static partial class Stage
         // The window's own pointer edges (InputHooks): the pointer left the window (another monitor, the desktop, the OS leave's park) or the
         // window blurred. Both are THE leave (Leave), built once so a subscription allocates nothing per event.
         readonly Action _onWindowLeave, _onWindowBlur;
+        readonly Action<bool> _onPointerHeld;
         // THE END CARD's one timer (Playback.EndHold.cs): armed from the hold's frame-clock stamp for the next whole second, so a re-render or a
         // remount re-arms it for what is left; it fires the release when the countdown is over
         readonly Action _onCountdown;
@@ -305,7 +306,7 @@ public static partial class Stage
         InputHooks? _hooks;
         Action<string>? _begin;
         NodeHandle _root;
-        bool _cursorHidden, _paletteSeeded;
+        bool _cursorHidden, _paletteSeeded, _presenceWatch;
         bool? _loggedVisible;   // the last chrome visibility the `[stage.chrome]` line reported
         bool _movedOverRegion;   // a move has been classified over what counts (PointerOverRegion's answer without a window position)
         Point2 _lastPointer = new(float.NaN, float.NaN);   // the window position the last classified move came from (a repeat is no move)
@@ -318,8 +319,16 @@ public static partial class Stage
             _onWake = () => { _armedDueMs = double.PositiveInfinity; Sync(); };
             _onWindowLeave = () => Leave("window");
             // a blur leaves too when the pointer was already out (the engine's window edge fires only for a pointer that was in): the machine
-            // hears one more leave, which only (re)schedules the leave debounce, so the chrome is free to hide whatever came before
+            // hears one more window leave, which is idempotent, so the chrome is free to hide whatever came before
             _onWindowBlur = () => Leave("blur");
+            // a button held on what counts (the picture in Theatre, else the stage) holds the chrome until its release: a volume drag carried
+            // below the bar or out of the window must not idle the chrome away under the hand (the window's leave waits for the release too)
+            _onPointerHeld = held =>
+            {
+                if (held && !PointerOverRegion()) return;
+                _idle.SetPressed(held, Now());
+                Sync();
+            };
             _onCountdown = () => Countdown(Playback.EndHoldNow.Peek());
             // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
@@ -405,6 +414,7 @@ public static partial class Stage
                 OnPointerExit = () =>
                 {
                     if (!PointerHandedOver()) return;
+                    if (_hooks?.IsPointerHeld?.Invoke() == true) return;   // a drag carried the hover across: its Pressed hold stands until the release
                     _idle.PointerCovered(Now());
                     Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=covered src=exit ptr={PointerText()}");
                     Sync();
@@ -645,6 +655,7 @@ public static partial class Stage
             UseEffect(() => () =>
             {
                 if (_cursorHidden) { hooks.SetCursorOverride?.Invoke(this, null); _cursorHidden = false; }
+                if (_presenceWatch) { hooks.WatchPointerPresence(false); _presenceWatch = false; }
                 _tip?.Close();
                 _tip = null;
                 _options?.Close();
@@ -659,10 +670,12 @@ public static partial class Stage
             {
                 hooks.PointerLeftWindowObserved += _onWindowLeave;
                 hooks.WindowBlurObserved += _onWindowBlur;
+                hooks.PointerHeldObserved += _onPointerHeld;
                 return () =>
                 {
                     hooks.PointerLeftWindowObserved -= _onWindowLeave;
                     hooks.WindowBlurObserved -= _onWindowBlur;
+                    hooks.PointerHeldObserved -= _onPointerHeld;
                 };
             }, DepKey.Empty);
 
@@ -816,6 +829,9 @@ public static partial class Stage
                 Log.Info(Diagnostics.Category, $"[stage.chrome] {(vis.ChromeVisible ? "show" : "hide")} cause={vis.LastCause} holds={ChromeHoldsText(vis.Holds)} menus={vis.MenuHolds} region={vis.Region} ptr={PointerText()} inside={(!vis.PointerOutsideRegion && PointerOnStage() ? "yes" : "no")}");
             }
             LogHoldEdges(vis);
+            // while chrome a window leave must hide is up, the platform also catches the leave no message reports (a window shown over the resting pointer)
+            bool watch = vis.ChromeVisible && (vis.Holds & (ChromeHold.Disabled | ChromeHold.Stopped)) == 0;
+            if (watch != _presenceWatch && _hooks is { } watchHooks) { _presenceWatch = watch; watchHooks.WatchPointerPresence(watch); }
             if (vis.CursorHidden != _cursorHidden)
             {
                 _cursorHidden = vis.CursorHidden;
@@ -882,14 +898,16 @@ public static partial class Stage
         /// <summary>THE one leave: the pointer is no longer over what counts. <paramref name="source"/>: <c>region</c> (off the picture in Theatre,
         /// still inside the window), <c>window</c> (the engine's window edge: out of the window, onto another monitor, the OS leave's park, or a
         /// release outside after a held drag) or <c>blur</c> (the window lost activation; on a blur with the pointer in, the <c>window</c> line comes
-        /// first). The machine drops the pointer holds, shows the cursor (Sync releases the override) and hides the chrome after its leave debounce;
-        /// the counted Menu hold, a scrub and a stop still pin it. The last move's own "over the picture" answer is forgotten, so nothing decides
+        /// first). The machine drops the pointer holds, shows the cursor (Sync releases the override) and hides the chrome: at once for
+        /// <c>window</c> and <c>blur</c> (YouTube's rule), after its leave debounce for <c>region</c>; the counted Menu hold, a scrub and a stop
+        /// still pin it, and one released while the pointer is out of the window hides it at once. The last move's own "over the picture" answer is forgotten, so nothing decides
         /// "still inside" from it until a real move comes back (that move is the machine's ENTER).</summary>
         internal void Leave(string source)
         {
             _movedOverRegion = false;
             _lastPointer = new(float.NaN, float.NaN);   // a move back at the same spot is a real enter
-            _idle.PointerLeft(Now());
+            // out of the window (or a blur) the chrome goes at once (YouTube's rule); off the picture inside it, after the debounce
+            if (source == "region") _idle.PointerLeft(Now()); else _idle.PointerLeftWindow(Now());
             Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=left src={source} ptr={PointerText()}");
             Sync();
         }
@@ -906,11 +924,11 @@ public static partial class Stage
         /// <summary>The pointer's window position for the `[stage.chrome]` lines ("x,y" or "none"). Edges only: it formats.</summary>
         string PointerText() => _hooks?.GetPointerPosition?.Invoke() is { } p ? $"{p.X:0},{p.Y:0}" : "none";
 
-        /// <summary>One `[stage.chrome] hold` line per edge of the holds that can pin the chrome (OverControls, Scrubbing, Menu, Stopped), so a chrome
+        /// <summary>One `[stage.chrome] hold` line per edge of the holds that can pin the chrome (OverControls, Pressed, Scrubbing, Menu, Stopped), so a chrome
         /// that sticks names what pins it. Called from <see cref="Sync"/>; it writes only when a hold flipped.</summary>
         void LogHoldEdges(ChromeIdle vis)
         {
-            const ChromeHold watched = ChromeHold.OverControls | ChromeHold.Scrubbing | ChromeHold.Menu | ChromeHold.Stopped;
+            const ChromeHold watched = ChromeHold.OverControls | ChromeHold.Pressed | ChromeHold.Scrubbing | ChromeHold.Menu | ChromeHold.Stopped;
             var holds = vis.Holds;
             var changed = (holds ^ _loggedHolds) & watched;
             _loggedHolds = holds;
@@ -920,7 +938,7 @@ public static partial class Stage
                     Log.Info(Diagnostics.Category, $"[stage.chrome] hold {h}={((holds & h) != 0 ? 1 : 0)}{(h == ChromeHold.Stopped ? " phase=" + _playbackFact : "")} ptr={PointerText()} holds={ChromeHoldsText(holds)} menus={vis.MenuHolds}");
         }
 
-        static readonly ChromeHold[] s_loggedHolds = [ChromeHold.OverControls, ChromeHold.Scrubbing, ChromeHold.Menu, ChromeHold.Stopped];
+        static readonly ChromeHold[] s_loggedHolds = [ChromeHold.OverControls, ChromeHold.Pressed, ChromeHold.Scrubbing, ChromeHold.Menu, ChromeHold.Stopped];
 
         static bool Inside(in RectF r, Point2 p) => p.X >= r.X && p.Y >= r.Y && p.X < r.X + r.W && p.Y < r.Y + r.H;
 

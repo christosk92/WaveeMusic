@@ -98,8 +98,12 @@ public sealed class ChromeIdle
 
     public void PointerMoved(float x, float y, double nowMs) => _machine?.PointerMoved(x, y, nowMs);
 
-    /// <summary>The pointer really left the surface: the window, onto another monitor, or the window blurred.</summary>
+    /// <summary>The pointer left what counts but not the window (Theatre: off the picture): the leave debounce.</summary>
     public void PointerLeft(double nowMs) => _machine?.PointerLeft(nowMs);
+
+    /// <summary>The pointer left the WINDOW (another monitor, the desktop, a window over ours) or the window blurred: the
+    /// controls go at once, holds permitting (YouTube's rule; <c>PlayerChromeVisibility.PointerLeftWindow</c>).</summary>
+    public void PointerLeftWindow(double nowMs) => _machine?.PointerLeftWindow(nowMs);
 
     /// <summary>Hover was TAKEN while the pointer is still over the surface (it crossed from the stage onto the chrome the video layer draws
     /// over the picture, or an overlay took it): the pointer holds drop, nothing is scheduled.</summary>
@@ -108,6 +112,10 @@ public sealed class ChromeIdle
     public void SetPointerOverControls(bool over, double nowMs) => _machine?.SetPointerOverControls(over, nowMs);
 
     public void SetScrubbing(bool on, double nowMs) => _machine?.SetScrubbing(on, nowMs);
+
+    /// <summary>A mouse/pen button is held on the surface (InputHooks.PointerHeldObserved): a drag that started there (a volume drag, a scrub)
+    /// keeps the chrome until its release, wherever the pointer went.</summary>
+    public void SetPressed(bool on, double nowMs) => _machine?.SetPressed(on, nowMs);
 
     public void SetPlayback(ChromePlayback playback, double nowMs)
     {
