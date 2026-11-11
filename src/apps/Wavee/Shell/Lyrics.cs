@@ -719,10 +719,31 @@ public static partial class Lyrics
 
         /// <summary>The CHAR-WEIGHTED sung fraction of a line at <paramref name="now"/>: each syllable contributes its
         /// text length, the one being sung contributes its own linear share, and the scan stops there. Returns an
-        /// EXACT 1 once the last syllable has ended, and 0 for a line with no syllables.</summary>
-        public static float ComputeSplit(Line line, long now)
+        /// EXACT 1 once the last syllable has ended, and 0 for a line with no syllables. A surface that has laid the line
+        /// out passes its measured <see cref="GlyphBounds"/> instead (<see cref="ComputeSplit(Line, long, ReadOnlySpan{float})"/>).</summary>
+        public static float ComputeSplit(Line line, long now) => ComputeSplit(line, now, default);
+
+        /// <summary>The sung fraction of a line at <paramref name="now"/> on the GLYPH axis the wipe paints along:
+        /// <paramref name="bounds"/>[i] is where syllable i's first glyph starts, as a fraction of the line's reading-order
+        /// run (<see cref="GlyphBounds"/>, measured once per layout), so a syllable sweeps exactly its own glyphs and its
+        /// trailing space, and the frontier sits on the next word's first glyph when a word ends. Character weights put it
+        /// half a glyph into the next word after a short Hangul word (a space is a quarter of a block wide). Empty bounds
+        /// (or a count that does not match the syllables) fall back to the character weights.</summary>
+        public static float ComputeSplit(Line line, long now, ReadOnlySpan<float> bounds)
         {
             var syl = line.Syllables;
+            if (bounds.Length > 0 && bounds.Length == syl.Count)
+            {
+                for (int i = 0; i < syl.Count; i++)
+                {
+                    long s = syl[i].StartMs, e = syl[i].EndMs;
+                    float b0 = bounds[i], b1 = i + 1 < syl.Count ? bounds[i + 1] : 1f;
+                    if (now >= e) continue;
+                    if (now < s) return Math.Clamp(b0, 0f, 1f);
+                    return Math.Clamp(b0 + (b1 - b0) * Math.Clamp((float)(now - s) / Math.Max(1L, e - s), 0f, 1f), 0f, 1f);
+                }
+                return syl.Count == 0 ? 0f : 1f;
+            }
             int total = 0;
             for (int i = 0; i < syl.Count; i++) total += Math.Max(1, syl[i].Text.Length);
             if (total == 0) return 0f;
@@ -736,6 +757,87 @@ public static partial class Lyrics
                 break;
             }
             return Math.Clamp(played / total, 0f, 1f);
+        }
+
+        /// <summary>The split (with its lead when <paramref name="lead"/>, <see cref="SplitWithLead"/>) a theme's lyrics row
+        /// draws for line <paramref name="index"/> of <paramref name="host"/>'s document: on the glyph axis the row was laid out on (<see cref="GlyphBounds"/>, measured once per layout by the
+        /// built-in lyrics surface), else the character weights. One home for every lines style, so the row's render-time
+        /// split and the frame driver's keyframes agree.</summary>
+        public static float SplitOf(Wavee.Theming.Contracts.ILyricsHost host, int index, Line line, long nowMs, bool lead)
+            => SplitWithLead(line, nowMs, host is ViewCore view ? view.WordBoundsOf(index) : default, lead);
+
+        /// <summary>Where each syllable's first glyph starts on the line as laid out, as a fraction of the line's
+        /// READING-ORDER run (the axis <see cref="FluentGpu.Foundation.GlyphWipe.Split"/> sweeps: each visual line from its
+        /// first glyph's left edge to its last glyph's right edge, the lines end to end; spaces between words count, a
+        /// space where the line wraps does not). One seam query per syllable, so a surface measures it once per layout (a
+        /// line's text, wrap width or type) and hands the result to <see cref="ComputeSplit(Line, long, ReadOnlySpan{float})"/>
+        /// and <see cref="SplitKeyframes(Line, long, bool, ReadOnlySpan{float}, out long)"/>; never per frame. Null when the
+        /// syllables do not cut <see cref="Line.Text"/> exactly, the run has no glyphs, or the seam cannot measure ranges:
+        /// the caller keeps the character weights.</summary>
+        public static float[]? GlyphBounds(FluentGpu.Text.IFontSystem fonts, Line line, in FluentGpu.Text.TextStyle style, float wrapWidth)
+        {
+            var syl = line.Syllables;
+            string text = line.Text;
+            int n = syl.Count;
+            if (n == 0 || text.Length == 0) return null;
+            int pos = 0;
+            for (int i = 0; i < n; i++)
+            {
+                string t = syl[i].Text;
+                if (pos + t.Length > text.Length || string.CompareOrdinal(text, pos, t, 0, t.Length) != 0) return null;
+                pos += t.Length;
+            }
+            if (pos != text.Length) return null;
+
+            const int MaxLines = 16;
+            Span<FluentGpu.Foundation.RectF> frags = stackalloc FluentGpu.Foundation.RectF[8];
+            Span<float> top = stackalloc float[MaxLines], left = stackalloc float[MaxLines], right = stackalloc float[MaxLines];
+            var x0 = new float[n];
+            Span<int> lineOf = n <= 256 ? stackalloc int[n] : new int[n];
+            int lines = 0;
+            pos = 0;
+            for (int i = 0; i < n; i++)
+            {
+                int a = pos, b = pos + syl[i].Text.Length;
+                pos = b;
+                while (a < b && char.IsWhiteSpace(text[a])) a++;
+                while (b > a && char.IsWhiteSpace(text[b - 1])) b--;
+                lineOf[i] = -1;
+                if (a >= b) continue;                                     // a space-only syllable draws nothing
+                int k;
+                try { k = fonts.GetRangeRects(text, in style, wrapWidth, a, b, frags); }
+                catch (NotSupportedException) { return null; }
+                for (int f = 0; f < k; f++)
+                {
+                    var r = frags[f];
+                    int li = -1;
+                    for (int j = 0; j < lines; j++) if (MathF.Abs(top[j] - r.Y) < MathF.Max(1f, r.H * 0.5f)) { li = j; break; }
+                    if (li < 0)
+                    {
+                        if (lines == MaxLines) return null;
+                        li = lines++;
+                        top[li] = r.Y; left[li] = r.X; right[li] = r.X + r.W;
+                    }
+                    left[li] = MathF.Min(left[li], r.X);
+                    right[li] = MathF.Max(right[li], r.X + r.W);
+                    if (f == 0) { lineOf[i] = li; x0[i] = r.X; }
+                }
+            }
+            Span<float> origin = stackalloc float[MaxLines];
+            float total = 0f;
+            for (int j = 0; j < lines; j++) { origin[j] = total; total += MathF.Max(0f, right[j] - left[j]); }
+            if (total <= 1f) return null;
+            // a syllable without glyphs takes no width: it starts where the next one does
+            float next = 1f;
+            for (int i = n - 1; i >= 0; i--)
+            {
+                int li = lineOf[i];
+                x0[i] = li < 0 ? next : Math.Clamp((origin[li] + x0[i] - left[li]) / total, 0f, 1f);
+                next = x0[i];
+            }
+            x0[0] = 0f;
+            for (int i = 1; i < n; i++) x0[i] = MathF.Max(x0[i], x0[i - 1]);
+            return x0;
         }
 
         /// <summary>A syllable shorter than this never glows: the bloom is for HELD notes.</summary>
@@ -783,7 +885,13 @@ public static partial class Lyrics
         /// (<c>AnimChannel.GlyphWipeSplit</c>) instead of the UI writing it every frame. <paramref name="endMs"/> = where
         /// the wipe settles at 1; null when it already has (nothing left to animate).</summary>
         public static FluentGpu.Animation.Keyframe[]? SplitKeyframes(Line line, long nowMs, bool lead, out long endMs)
+            => SplitKeyframes(line, nowMs, lead, default, out endMs);
+
+        /// <summary><see cref="SplitKeyframes(Line, long, bool, out long)"/> on the glyph axis (<see cref="GlyphBounds"/>):
+        /// the same keyframe times, each value <see cref="ComputeSplit(Line, long, ReadOnlySpan{float})"/>.</summary>
+        public static FluentGpu.Animation.Keyframe[]? SplitKeyframes(Line line, long nowMs, bool lead, ReadOnlySpan<float> bounds, out long endMs)
         {
+            if (bounds.Length > 0 && bounds.Length == line.Syllables.Count) return GlyphKeyframes(line, nowMs, lead, bounds, out endMs);
             var syl = line.Syllables;
             endMs = syl.Count == 0 ? nowMs : syl[^1].EndMs;
             if (syl.Count == 0 || endMs <= nowMs) return null;
@@ -800,7 +908,7 @@ public static partial class Lyrics
                 // the instant split + lead reaches 1: inside the syllable whose sweep crosses 1 - LeadFrac
                 for (int i = 0; i < syl.Count; i++)
                 {
-                    float a0 = ComputeSplit(line, syl[i].StartMs), a1 = ComputeSplit(line, syl[i].EndMs);
+                    float a0 = ComputeSplit(line, syl[i].StartMs, bounds), a1 = ComputeSplit(line, syl[i].EndMs, bounds);
                     if (a0 < 1f - LeadFrac && a1 >= 1f - LeadFrac && a1 > a0)
                     {
                         // both whole-ms neighbours of the crossing: the segment up to the floor is exact, the ms after it clamps
@@ -820,11 +928,104 @@ public static partial class Lyrics
             {
                 if (t == last) continue;
                 last = t;
-                float v = ComputeSplit(line, t);
+                float v = ComputeSplit(line, t, bounds);
                 if (lead && v > 0f && v < 1f) v = Math.Clamp(v + LeadFrac, 0f, 1f);
                 keys.Add(new FluentGpu.Animation.Keyframe((t - nowMs) / span, v, FluentGpu.Foundation.Easing.Linear));
             }
             return keys.ToArray();
+        }
+
+        /// <summary>A pause between two syllables at least this long is one the wipe WAITS in: the lead
+        /// (<see cref="LeadFrac"/>) eases out over the syllable before it and back in over the one after, so the frontier
+        /// stands exactly on the next word's first glyph through the pause instead of a lead's width into a word nobody sings
+        /// yet. Shorter gaps are legato: the lead holds. Glyph-axis splits only (<see cref="GlyphBounds"/>).</summary>
+        public const long LeadPauseMs = 150;
+
+        /// <summary>The share (0..1) of <see cref="LeadFrac"/> the glyph-axis wipe adds at <paramref name="now"/>: 1 while
+        /// legato; inside a syllable after a pause it grows with the syllable's progress, inside one before a pause it shrinks
+        /// with it (the smaller of the two when both), and it is 0 in a pause. Continuous in time: no step but the first
+        /// syllable's (the lead's step out of 0, as on the character axis).</summary>
+        public static float LeadWeight(Line line, long now)
+        {
+            var syl = line.Syllables;
+            for (int i = 0; i < syl.Count; i++)
+            {
+                long s = syl[i].StartMs, e = syl[i].EndMs;
+                if (now >= e) continue;
+                bool pauseBefore = i > 0 && s - syl[i - 1].EndMs >= LeadPauseMs;
+                if (now < s) return pauseBefore ? 0f : 1f;
+                bool pauseAfter = i + 1 < syl.Count && syl[i + 1].StartMs - e >= LeadPauseMs;
+                float p = Math.Clamp((float)(now - s) / Math.Max(1L, e - s), 0f, 1f);
+                return MathF.Min(pauseBefore ? p : 1f, pauseAfter ? 1f - p : 1f);
+            }
+            return 1f;
+        }
+
+        /// <summary>The wipe's split with its lead on the glyph axis (<see cref="GlyphBounds"/>; empty bounds: the character
+        /// axis and the constant lead, as before): <see cref="ComputeSplit(Line, long, ReadOnlySpan{float})"/>, plus
+        /// <see cref="LeadFrac"/> x <see cref="LeadWeight"/> while 0 &lt; split &lt; 1 when <paramref name="lead"/>.</summary>
+        public static float SplitWithLead(Line line, long now, ReadOnlySpan<float> bounds, bool lead)
+        {
+            float v = ComputeSplit(line, now, bounds);
+            if (!lead || v <= 0f || v >= 1f) return v;
+            bool glyph = bounds.Length > 0 && bounds.Length == line.Syllables.Count;
+            return Math.Clamp(v + LeadFrac * (glyph ? LeadWeight(line, now) : 1f), 0f, 1f);
+        }
+
+        /// <summary><see cref="SplitKeyframes(Line, long, bool, ReadOnlySpan{float}, out long)"/> on the glyph axis: the split
+        /// with its eased lead (<see cref="SplitWithLead"/>) is piecewise linear between the syllable edges, the middle of a
+        /// syllable with a pause on both sides, the lead's step out of 0 and the instant it reaches 1, so sampling there
+        /// reproduces it exactly.</summary>
+        static FluentGpu.Animation.Keyframe[]? GlyphKeyframes(Line line, long nowMs, bool lead, ReadOnlySpan<float> bounds, out long endMs)
+        {
+            var syl = line.Syllables;
+            endMs = syl.Count == 0 ? nowMs : syl[^1].EndMs;
+            if (syl.Count == 0 || endMs <= nowMs) return null;
+            long end = endMs;
+            var times = new List<long>(syl.Count * 3 + 4) { nowMs, end };
+            void Add(long t) { if (t > nowMs && t < end) times.Add(t); }
+            for (int i = 0; i < syl.Count; i++)
+            {
+                Add(syl[i].StartMs);
+                Add(syl[i].EndMs);
+                if (lead) Add(syl[i].StartMs + (syl[i].EndMs - syl[i].StartMs) / 2);   // where a min(p, 1 - p) lead turns
+            }
+            if (lead)
+            {
+                Add(syl[0].StartMs + 1);                                                 // the lead's step out of 0
+                // the instant split + lead reaches 1: within one linear segment of the unclamped value
+                times.Sort();
+                for (int k = 0; k + 1 < times.Count; k++)
+                {
+                    long t0 = times[k], t1 = times[k + 1];
+                    if (t1 <= t0) continue;
+                    float u0 = Raw(line, t0, bounds), u1 = Raw(line, t1, bounds);
+                    if (u0 < 1f && u1 >= 1f && u1 > u0)
+                    {
+                        double at = t0 + (1.0 - u0) / (u1 - u0) * (t1 - t0);
+                        Add((long)Math.Floor(at));
+                        Add((long)Math.Ceiling(at));
+                        break;
+                    }
+                }
+            }
+            times.Sort();
+            float span = endMs - nowMs;
+            var keys = new List<FluentGpu.Animation.Keyframe>(times.Count);
+            long last = long.MinValue;
+            foreach (long t in times)
+            {
+                if (t == last) continue;
+                last = t;
+                keys.Add(new FluentGpu.Animation.Keyframe((t - nowMs) / span, SplitWithLead(line, t, bounds, lead), FluentGpu.Foundation.Easing.Linear));
+            }
+            return keys.ToArray();
+
+            static float Raw(Line line, long t, ReadOnlySpan<float> b)
+            {
+                float v = ComputeSplit(line, t, b);
+                return v <= 0f || v >= 1f ? v : v + LeadFrac * LeadWeight(line, t);
+            }
         }
 
         /// <summary>Is the voice line's halo envelope (<see cref="Glow.VoiceAlpha"/> on a word-synced line) changing at

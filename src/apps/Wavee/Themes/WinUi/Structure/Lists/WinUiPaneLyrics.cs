@@ -126,8 +126,7 @@ internal sealed class WinUiPaneLyricsRow : Component
             // Always a wiped run (an in-place update when the line leaves the voice slot, never a node swap); off the active line both sides
             // carry the same ink, so the core's settled split shows nothing.
             bool highlight = active && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek()) : 0f;
-            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = highlight ? Lyrics.Wipe.SplitOf(host, _index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
             ColorF sung = active ? ink.Primary : rest;
             // The active line's unsung words carry the upcoming lines' ink (W-PaneLyrics: upcoming #c5c5c5): tertiary read darker than the
             // lines after it, so the line being sung looked dimmer than the ones still to come.

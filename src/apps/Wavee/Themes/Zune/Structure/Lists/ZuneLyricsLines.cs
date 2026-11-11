@@ -329,8 +329,7 @@ internal sealed class ZuneLyricsRow : Component
         GlyphWipe? wipe = null;
         if (isActive && !neutral && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line))
         {
-            float split = Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek());
-            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast);
             wipe = new GlyphWipe(Before: accent, After: ink.Primary with { A = Lyrics.Wipe.UnsungAlpha }, Split: split, Softness: host.SoftnessOfLine(index), Lift: 0f);
         }
 

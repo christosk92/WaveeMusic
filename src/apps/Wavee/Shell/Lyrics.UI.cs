@@ -347,6 +347,10 @@ public static partial class Lyrics
         // ── the wipe feather ─────────────────────────────────────────────────────────────────────────────────────────
         float[] _lineRunLen = [];         // per-line reading-order run length (NaN = unmeasured)
         float _runLenWrapW = float.NaN;   // the wrap width every cached entry was measured at
+        /// <summary>Per line: each syllable's first glyph as a fraction of the run (<see cref="Wipe.GlyphBounds"/>), written by
+        /// the same measurement as <see cref="_lineRunLen"/> (so it is re-measured exactly when that is); null = not measured,
+        /// empty = keep the character weights.</summary>
+        float[]?[] _lineWordBounds = [];
 
         // ── scene handles (reported ONCE, at realization) ────────────────────────────────────────────────────────────
         NodeHandle _viewportNode = NodeHandle.Null;
@@ -963,16 +967,34 @@ public static partial class Lyrics
             return measured;
         }
 
-        /// <summary>One seam query per line per epoch. The style MUST mirror <c>ClassicLyricsRow</c>'s LineText exactly —
-        /// the feather is a fraction of the extent measured here.</summary>
+        /// <summary>The syllables' glyph bounds of line <paramref name="index"/> on the wipe's reading-order axis
+        /// (<see cref="Wipe.GlyphBounds"/>), measured with the run length (one layout epoch: a text, wrap-width or type change
+        /// re-measures both); empty while the viewport has no geometry or the line cannot be measured (the wipe then keeps
+        /// the character weights). Per-frame callers only read the cache.</summary>
+        internal ReadOnlySpan<float> WordBoundsOf(int index)
+        {
+            float wrapWidth = CurrentWrapWidth();
+            if (float.IsNaN(wrapWidth) || (uint)index >= (uint)_lineRunLen.Length) return default;
+            if (_lineWordBounds.Length != _lineRunLen.Length) _lineWordBounds = new float[]?[_lineRunLen.Length];
+            RunLengthOf(index, wrapWidth);                                  // a stale epoch re-measures both here
+            if (_lineWordBounds[index] is null) MeasureRunLength(index, wrapWidth);
+            return _lineWordBounds[index];
+        }
+
+        /// <summary>One seam query per line per epoch (plus one per syllable for <see cref="WordBoundsOf"/>). The style MUST
+        /// mirror <c>ClassicLyricsRow</c>'s LineText exactly — the feather and the word bounds are fractions of the extent
+        /// measured here.</summary>
         float MeasureRunLength(int index, float wrapWidth)
         {
+            if ((uint)index < (uint)_lineWordBounds.Length) _lineWordBounds[index] = [];
             var doc = _doc;
             if (doc is null || (uint)index >= (uint)doc.Lines.Count) return wrapWidth;
             string text = doc.Lines[index].Text;
             if (text.Length == 0 || TextSeam.Default is not { } fonts) return wrapWidth;
             var style = new TextStyle(default, Metrics.FontSize, Metrics.Weight, TextWrap.Wrap, TextTrim.None, 0,
                 CharSpacing: 0f, LineHeight: Metrics.LineHeight);
+            if ((uint)index < (uint)_lineWordBounds.Length && doc.Lines[index] is { IsWordByWord: true, Syllables.Count: > 0 } wl)
+                _lineWordBounds[index] = Wipe.GlyphBounds(fonts, wl, in style, wrapWidth) ?? [];
             Span<RectF> fragments = stackalloc RectF[8];
             int n = fonts.GetRangeRects(text, in style, wrapWidth, 0, text.Length, fragments);
             float sum = 0f;
@@ -1612,8 +1634,7 @@ public static partial class Lyrics
             }
             if (_wipeRowLine >= 0) CancelWipeRows(anim);   // the UI owns the split again (paused, probe)
 
-            float split = Wipe.ComputeSplit(doc.Lines[voiceLine], nowMs);
-            if (!IsPodcast && split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
+            float split = Wipe.SplitWithLead(doc.Lines[voiceLine], nowMs, WordBoundsOf(voiceLine), lead: !IsPodcast);
             // Pixel-quantise the boundary (skip-submit elides sub-pixel ticks); the settled endpoints stay EXACT.
             float runW = scene.AbsoluteRect(mainNode).W;
             if (runW > 1f && split > 0f && split < 1f) split = MathF.Round(split * runW) / runW;
@@ -1649,7 +1670,7 @@ public static partial class Lyrics
         {
             if (_wipeRowLine >= 0 && (_wipeRowMain != main || _wipeRowLine != voiceLine)) CancelWipeRows(anim);
             _wipeReseed = false;
-            var keys = Wipe.SplitKeyframes(line, nowMs, lead: !IsPodcast, out long endMs);
+            var keys = Wipe.SplitKeyframes(line, nowMs, lead: !IsPodcast, WordBoundsOf(voiceLine), out long endMs);
             float softness = SoftnessOfLine(voiceLine);
             if (keys is null)
             {

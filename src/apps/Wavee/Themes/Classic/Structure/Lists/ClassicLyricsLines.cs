@@ -378,8 +378,7 @@ internal sealed class ClassicLyricsRow : Component
             // ALWAYS a two-child ZStack [glow, main], in every state: a line leaving the voice slot is an in-place
             // update, never a child-type swap (a re-shape + blur-cache miss = the lines-above-active flicker).
             bool highlight = Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek()) : 0f;
-            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = highlight ? Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
             float softness = host.SoftnessOfLine(index);
             // Podcasts: the role-driven rung (accent on the sung glyph, plain ink otherwise - never a translucent wash). Music
             // keeps its established alpha-faded unsung look untouched.
