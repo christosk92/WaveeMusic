@@ -110,7 +110,7 @@ public static partial class Lyrics
             float scale = stage is null ? 1f : atTheatre ? stage.Layout.Value.TheatreLyricsTypeScale : stage.Layout.Value.LyricsTypeScale;
             _typeScale.SetIfChanged(scale > 0f && float.IsFinite(scale) ? scale : 1f);
             var typeScale = _typeScale;
-            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: visible, accent: accent, onStage: true, typeScale: typeScale))
+            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: visible, accent: accent, onStage: true, typeScale: typeScale, onPicture: follow))
                 with { Key = "lyrics:stage" };
         }
     }
@@ -242,6 +242,8 @@ public static partial class Lyrics
         /// <summary>The fullscreen stage's view — an EXPLICIT flag (V-U51): <c>onMedia</c> is also true for the rail's
         /// on-media mode, which keeps its blur. The stage resolves blur strength 0 (<see cref="BlurPolicy.ResolveFor"/>).</summary>
         internal readonly bool OnStage;
+        /// <summary>The stage's reading column in the picture's place (Video mode's audio face, <see cref="PictureLyrics"/>): mount config.</summary>
+        internal readonly bool OnPicture;
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
@@ -286,8 +288,9 @@ public static partial class Lyrics
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
             IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
-            bool darkArm = false)
+            bool darkArm = false, bool onPicture = false)
         {
+            OnPicture = onPicture;
             _bandOverride = band;
             _gutter = gutter;
             _readerEpisode = readerEpisode;

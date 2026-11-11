@@ -543,13 +543,22 @@ public static partial class Diagnostics
                     ImmersiveService.Shared.KeepWindowed = true;
                     Stage.Open(null, "bench");
                     Settle(2.0);
+                    // `--bench-stage-audio`: the picture's place holds the AUDIO FACE (an audio-only track plays while Video mode stays on: a
+                    // local track, which `--fake-video` does not light), so the bench measures the face's colour field instead of the picture
+                    bool audioFace = Array.IndexOf(Platform.Args.Argv, "--bench-stage-audio") >= 0;
+                    if (audioFace)
+                    {
+                        Playback.PlayContext("wavee:local:track:0");
+                        PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20);
+                        Settle(2.0);
+                    }
                     Pending r;
                     if (!Stage.Picture.ShownPeek()) r = Skip("the stage did not open on the picture (Video mode not offered)");
                     else if (name == FrameBenchScenarios.StageTheatre)
                     {
                         bool on = false;
                         int toggles = 0;
-                        r = Measure(new Driver(now => { on = !on; toggles++; Prefs.Stage.SetTheatre(on, pane); return now + 1.5; }), "picture=stage toggle=1.5s");
+                        r = Measure(new Driver(now => { on = !on; toggles++; Prefs.Stage.SetTheatre(on, pane); return now + 1.5; }), "picture=stage toggle=1.5s" + (audioFace ? " face=" + (Stage.Picture.AudioFacePeek() ? "audio" : "video") : ""));
                         r = r with { Note = r.Note + " toggles=" + toggles };
                     }
                     else

@@ -163,14 +163,78 @@ internal static class ClassicStageAudioFaceGeometry
 
     public const int TitleMaxLines = 2;
 
-    /// <summary>The gap between the cover column and the lyrics (Cinema: this share of the stage's width; Theatre: the box's padding).</summary>
+    /// <summary>Cinema: the gap between the cover column and the lyrics, as a share of the stage's width.</summary>
     public const float LyricsGapFrac = 0.05f;
-
-    /// <summary>Theatre: the padding inside the picture's box around the cover and the lyrics, and the box's corners.</summary>
-    public const float BoxPad = 24f;
 
     /// <summary>The cover's floor in Cinema (the stage's hero floor).</summary>
     public const float CoverMin = 168f;
+
+    /// <summary>The cover's decode size: the larger above this side.</summary>
+    public const float CoverDecodeSmallW = 400f;
+
+    public const int CoverDecodeSmall = 512, CoverDecodeLarge = 1024;
+
+    // ── the COLOUR FIELD (the board "Audio player as a colour field", concept 1, 1440 x 810 with the 1008 x 567 box) ──────────────────────────
+    // The picture's frame stays where the picture is and keeps its shape; for an audio-only track it is filled with the track's own colour instead
+    // of the letterbox black: a still field from the stage's palette (`StageCtx.BasePalette`), one radial fill whose soft light pool sits behind the
+    // cover (the board's #8aa66a pool at the top-left) and runs on the diagonal through the palette's mid tone into its deep tone (the board's
+    // 120° blend #55683f → #33452f → #1c2620) with a hint of the second colour at the far corner (the board's teal pool behind the lyrics). ONE
+    // opaque fill per pixel, as the flat floor it replaces: a second layer would add a repaint under the lyrics.
+
+    /// <summary>The field's centre (the light pool, behind the cover) as a share of the frame per axis, and its reach (radius) per axis.</summary>
+    public const float FieldCentreX = 0.2f, FieldCentreY = 0.28f, FieldReachX = 1.05f, FieldReachY = 1.45f;
+
+    /// <summary>The stops along the reach: the light pool, the mid tone, the deep tone.</summary>
+    public const float FieldMidAt = 0.42f, FieldDeepAt = 1f;
+
+    /// <summary>The light pool lifts the palette's first colour this far toward white (the board's pool is a step lighter than its blend); the mid
+    /// tone is that colour this far toward the deep tone; the deep tone takes this much of the second colour (the far pool).</summary>
+    public const float FieldPoolLift = 0.12f, FieldMidDeep = 0.5f, FieldDeepSecond = 0.3f;
+
+    /// <summary>The contrast every tone of the field keeps for the lyrics' other lines (the board draws them at 62 % of the ink: the word-synced
+    /// lines' unsung ink, <c>Lyrics.Wipe.UnsungAlpha</c> of the ink, and the line-synced lines' secondary ink), so the active line's full ink and the
+    /// title's read with them.</summary>
+    public const float FieldContrast = 4.5f;
+
+    /// <summary>How far a tone that fails <see cref="FieldContrast"/> steps toward the arm's floor per try (the veil), at most to the floor itself.</summary>
+    public const float FieldVeilStep = 0.1f;
+
+    /// <summary>Theatre: the cover's side as a share of the frame's height (the board's 360 of 567), its inset from the frame's left edge and top as
+    /// shares of the frame's width and height (48 of 1008, 56 of 567), the gap to the lyrics column as a share of the width (48 of 1008), the
+    /// column's top a little under the cover's (76 of 567) and its right inset (52 of 1008).</summary>
+    public const float TheatreCoverH = 0.635f, TheatreInsetX = 0.048f, TheatreInsetY = 0.099f, TheatreLyricsGap = 0.048f, TheatreLyricsTop = 0.134f,
+        TheatreLyricsRight = 0.052f;
+
+    /// <summary>Theatre: the cover's largest share of the box's width left after the insets and the gap (a short, wide box keeps the lyrics' room).</summary>
+    public const float TheatreCoverMaxW = 0.45f;
+
+    /// <summary>The field's three tones for the palette <paramref name="p"/> on the arm whose floor is <paramref name="floor"/>: the light pool, the
+    /// mid tone and the deep tone, each veiled toward the floor until each of the lyrics' other inks (<paramref name="other"/>, <paramref name="other2"/>)
+    /// reads at <see cref="FieldContrast"/> on it. Any palette passes: a very light cover on the dark arm is dimmed, a dark one on the light arm is
+    /// lifted, a grey one stays grey.</summary>
+    public static (ColorF Pool, ColorF Mid, ColorF Deep) FieldTones(in Visualizer.Palette p, ColorF floor, ColorF other, ColorF other2)
+    {
+        var a = p.A with { A = 1f };
+        var pool = ColorF.Lerp(a, s_white, FieldPoolLift);
+        var deep = ColorF.Lerp(p.Deep with { A = 1f }, p.B with { A = 1f }, FieldDeepSecond);
+        var mid = ColorF.Lerp(a, deep, FieldMidDeep);
+        return (Clamp(pool, floor, other, other2), Clamp(mid, floor, other, other2), Clamp(deep, floor, other, other2));
+    }
+
+    static ColorF s_white => ColorF.FromRgba(0xff, 0xff, 0xff);
+
+    /// <summary><paramref name="tone"/> veiled toward <paramref name="floor"/> until both inks read on it (see <see cref="FieldTones"/>).</summary>
+    public static ColorF Clamp(ColorF tone, ColorF floor, ColorF other, ColorF other2)
+    {
+        floor = floor with { A = 1f };
+        for (float veil = 0f; veil < 1f; veil += FieldVeilStep)
+        {
+            var c = ColorF.Lerp(tone, floor, veil);
+            if (ColorContrast.Ratio(ColorContrast.Flatten(other, c), c) >= FieldContrast && ColorContrast.Ratio(ColorContrast.Flatten(other2, c), c) >= FieldContrast)
+                return c;
+        }
+        return floor;
+    }
 }
 
 /// <summary>The numbers of Video mode's END CARD (the board "Classic · End of video", Classic-End.dc.html, 1440 x 810): over the picture's last frame,

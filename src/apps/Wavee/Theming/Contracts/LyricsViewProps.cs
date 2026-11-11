@@ -86,6 +86,11 @@ public interface ILyricsHost
     /// style's rows take no click, focus or button role. Default false.</summary>
     bool Inert => false;
 
+    /// <summary>The mount stands in the picture's place on the stage's Video mode (the audio face over an audio-only track): a style may read its
+    /// rows as a picture of the song there (the board "Audio player as a colour field": the active line in full ink, the others at the secondary
+    /// ink, no distance ladder). Default false. Appended (contract 1.101).</summary>
+    bool OnPicture => false;
+
     // ── what is on screen (live: reads subscribe the caller) ───────────────────────────────────────────────────────
 
     /// <summary>The row type and rhythm of the document on screen (the timed surface's, at the stage's scale).</summary>

@@ -4,10 +4,21 @@
 // frame (the top bar with the Video tab disabled, Cinema's Up next shelf or Theatre's panel, the control bar) and the picture's place holds the
 // track's cover and its synced lyrics (`StageRootView.ShowAudioFace`). The next track with a video brings the picture back by itself.
 //
-//   Cinema   the stage's floor under the top bar; the cover (the audio stage's hero size, held above the shelf's place) with the title (Display 28/34,
-//            two lines) and the "Artist · Album" line under it on the left, the lyrics beside it at the stage's type, down to the shelf's place.
-//   Theatre  inside the picture's 16:9 box (its title block stays under the box, the chrome's): the cover on the left and the lyrics beside it at the
-//            Theatre panel's type, or the cover alone, centred, beside Theatre's own Lyrics panel (one reading column, never two).
+// THE COLOUR FIELD (the board "Audio player as a colour field", concept 1; the owner's "not a fan that the player thing is just a black slab"). The
+// frame stays exactly where the picture is and keeps the picture's shape (Theatre's 16:9 box, square-cornered as the picture; Cinema's whole stage):
+// an audio-only track fills it with its OWN colour instead of the letterbox black, a still field from the stage's palette (`StageCtx.BasePalette`;
+// `ClassicStageAudioFaceGeometry.FieldTones`, clamped so the lyrics' inks read on it in both arms). One opaque radial fill per track, keyed by the
+// palette so a track change cross-fades it, never animated per frame (`Field`, its own component).
+//
+//   Cinema   the field edge to edge; the cover (the audio stage's hero size, held above the shelf's place) with the title (Display 28/34, two lines)
+//            and the "Artist · Album" line under it on the left, the lyrics beside it at the stage's type, down to the shelf's place.
+//   Theatre  inside the picture's 16:9 box (its title block stays under the box, the chrome's): the cover at the box's left (the board's 63 % of its
+//            height, the stage covers' shadow and control corners) and the lyrics in the column beside it at the Theatre panel's type, or the
+//            cover alone, centred, beside Theatre's own Lyrics panel (one reading column, never two).
+//
+// THE MOUNT (a video → audio track change used to cost one 22 ms frame: the face, its lyrics host, the lyrics view and its rows in one go). The face
+// mounts in stages: the field, the cover and the title on the change's frame; the reading column a frame later (`_column`, armed by a posted
+// action), its rows when its document lands. The column fades in as it always did, so the stage is invisible.
 //
 // THE VIDEO HOLE. No presenter is up while an audio-only track plays (the placement resolves to nothing), so no hole erases this layer: it is an
 // ordinary stage layer over the reservation (the root mounts it right after the picture's). When the picture comes back the presenter covers the box
@@ -42,19 +53,17 @@ internal sealed class ClassicStageAudioFace : Component
         var plate = ClassicStageTheatre.PictureRect(L, theatre);
         if (theatre)
         {
-            // the box above the control bar at its foot (at rest over the face, ClassicStageVideoBar)
-            float pad = G.BoxPad;
-            float innerH = MathF.Max(0f, plate.H - ClassicStageVideoBarGeometry.BarH - 2f * pad);
+            // the board's proportions inside the box, clear of the control bar at its foot (at rest over the face, ClassicStageVideoBar)
+            float insetX = MathF.Round(plate.W * G.TheatreInsetX), insetY = MathF.Round(plate.H * G.TheatreInsetY);
+            float roomH = MathF.Max(0f, plate.H - ClassicStageVideoBarGeometry.BarH - insetY);
+            float gap = MathF.Round(plate.W * G.TheatreLyricsGap), right = MathF.Round(plate.W * G.TheatreLyricsRight);
+            float cover = MathF.Round(MathF.Max(0f, MathF.Min(MathF.Min(plate.H * G.TheatreCoverH, roomH), (plate.W - insetX - gap - right) * G.TheatreCoverMaxW)));
             if (!lyrics)
-            {
-                float c = innerH;
-                return new Rects(plate, new RectF(plate.X + MathF.Round((plate.W - c) * 0.5f), plate.Y + pad, c, c), default, default);
-            }
-            float cover = MathF.Round(MathF.Min(innerH, (plate.W - 3f * pad) * 0.4f));
-            float cy = plate.Y + pad + MathF.Round((innerH - cover) * 0.5f);
-            float lx = plate.X + pad + cover + pad;
-            return new Rects(plate, new RectF(plate.X + pad, cy, cover, cover), default,
-                new RectF(lx, plate.Y + pad, MathF.Max(0f, plate.X + plate.W - pad - lx), innerH));
+                return new Rects(plate, new RectF(plate.X + MathF.Round((plate.W - cover) * 0.5f), plate.Y + insetY + MathF.Round((roomH - cover) * 0.5f), cover, cover), default, default);
+            float lx = plate.X + insetX + cover + gap;
+            float ly = plate.Y + MathF.Round(plate.H * G.TheatreLyricsTop);
+            return new Rects(plate, new RectF(plate.X + insetX, plate.Y + insetY, cover, cover), default,
+                new RectF(lx, ly, MathF.Max(0f, plate.X + plate.W - right - lx), MathF.Max(0f, plate.Y + plate.H - ClassicStageVideoBarGeometry.BarH - ly)));
         }
         // Cinema: under the top bar, down to the shelf's reserved place (or the control bar), at the audio stage's left gutter
         float top = Stage.Layout.TopBarH + G.TopUnderBar;
@@ -67,6 +76,10 @@ internal sealed class ClassicStageAudioFace : Component
         return new Rects(plate, new RectF(x, top, size, size), new RectF(x, top + size + G.TitleGap, size, titleH - G.TitleGap),
             lyrics ? new RectF(lyricsX, top, MathF.Max(0f, L.W - lyricsX - L.PaneRight), regionH) : default);
     }
+
+    /// <summary>The reading column's stage of the mount (see the file header): false on the face's first frame, true from the next.</summary>
+    readonly Signal<bool> _column = new(false);
+    Action? _armColumn;
 
     public override Element Render()
     {
@@ -84,21 +97,21 @@ internal sealed class ClassicStageAudioFace : Component
         var lr = lyrics ? r.Lyrics : Of(v, L, tier, theatre, true).Lyrics;
         var track = sc.RowValue();
         string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
-        float corners = Radii.Card;
-        int decode = r.Cover.W > 400f ? 1024 : 512;
+        float corners = Radii.Control;   // the stage covers' control corners (the identity card's)
+        int decode = r.Cover.W > G.CoverDecodeSmallW ? G.CoverDecodeLarge : G.CoverDecodeSmall;
         var identity = v.Identity;
         var fade = new EnterExit(Opacity: 0f, Active: true);
         var move = ClassicStageTheatre.Move;
+        // the reading column mounts a frame after the face (the staged mount): posted once, from the mount's effect
+        var post = UsePost();
+        _armColumn ??= () => _column.Value = true;
+        UseEffect(() => post(_armColumn), DepKey.Empty);
         return Stage.Layer with
         {
             Children =
             [
-                // the picture's place: the stage's floor over the reservation's letterbox
-                new BoxEl
-                {
-                    Key = "stage:audioface:plate", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Margin = new Edges4(r.Plate.X, r.Plate.Y, 0f, 0f), Width = r.Plate.W, Height = r.Plate.H, Fill = Ink.Floor, Layout = move,
-                },
+                // the picture's place: the track's colour field over the reservation's letterbox (the frame's own shape and place)
+                Embed.Comp(new Props(v), static () => new Field()),
                 new BoxEl
                 {
                     Key = "stage:audioface:cover", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
@@ -134,8 +147,8 @@ internal sealed class ClassicStageAudioFace : Component
                         },
                     ],
                 }),
-                // the synced lyrics beside the cover (not beside Theatre's own Lyrics panel)
-                Flow.Show(() => sc.AudioLyrics.Value && v.Layers.PictureLyrics is not null, Stage.Layer with
+                // the synced lyrics beside the cover (not beside Theatre's own Lyrics panel), from the mount's second frame
+                Flow.Show(() => _column.Value && sc.AudioLyrics.Value && v.Layers.PictureLyrics is not null, Stage.Layer with
                 {
                     Key = "stage:audioface:lyrics",
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
@@ -151,5 +164,48 @@ internal sealed class ClassicStageAudioFace : Component
                 }),
             ],
         };
+    }
+
+    /// <summary>The colour field in the picture's place (see the file header): its own component, so a palette (a track change) or a Cinema ⇄
+    /// Theatre change re-renders this box alone. The frame is a still box at the picture's rect moving with the reservation; the field inside it is
+    /// keyed by its tones, so the old track's field fades out under the new one.</summary>
+    sealed class Field : Component
+    {
+        static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+        public override Element Render()
+        {
+            var v = UseProps<Props>().View;
+            var st = v.Stage;
+            var plate = ClassicStageTheatre.PictureRect(st.Layout.Value, v.ShowTheatre());
+            var palette = st.BasePalette.Value;
+            var (pool, mid, deep) = G.FieldTones(palette, Ink.Floor, Ink.Ink with { A = Lyrics.Wipe.UnsungAlpha }, Ink.InkSecondary);
+            var field = new GradientSpec(GradientShape.Radial, 0f,
+                [new GradientStop(0f, pool), new GradientStop(G.FieldMidAt, mid), new GradientStop(G.FieldDeepAt, deep)])
+            {
+                RadialCenter = new Point2(G.FieldCentreX, G.FieldCentreY),
+                RadialRadius = new Point2(G.FieldReachX, G.FieldReachY),
+            };
+            return Stage.Layer with
+            {
+                HitTestVisible = false, HitTestPassThrough = false,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "stage:audioface:plate", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false, ZStack = true,
+                        Margin = new Edges4(plate.X, plate.Y, 0f, 0f), Width = plate.W, Height = plate.H, ClipToBounds = true, Layout = ClassicStageTheatre.Move,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = "stage:audioface:field:" + HashCode.Combine(pool, mid, deep), AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                                HitTestVisible = false, Gradient = field, Enter = s_fade, Exit = s_fade, Transition = MotionTok.StandardEnter,
+                            },
+                        ],
+                    },
+                ],
+            };
+        }
     }
 }

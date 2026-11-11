@@ -334,10 +334,21 @@ internal sealed class ClassicLyricsRow : Component
     {
         bool podcast = _host.IsPodcast;
         bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, _emphasis.Value);
+        float to = RowOpacity(_host, podcast, ownsPlayback, _emphasis.Value);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
+    }
+
+    /// <summary>The row's opacity rung: the distance ladder, or in the picture's place (<see cref="ILyricsHost.OnPicture"/>) no ladder: an
+    /// upcoming row at <see cref="ClassicLyricsRules.PictureRowOpacity"/> (its own ink is the unsung or the secondary one), a word-synced row already
+    /// sung (its glyphs are the full ink) at <see cref="ClassicLyricsRules.PicturePastOpacity"/>, so every line but the active one reads alike.</summary>
+    float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
+    {
+        float rung = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
+        if (!host.OnPicture || rung >= 1f) return rung;
+        bool sung = (emphasis & Lyrics.Emphasis.PastBit) != 0 && _line.IsWordByWord && _line.Syllables.Count > 0;
+        return sung ? ClassicLyricsRules.PicturePastOpacity : ClassicLyricsRules.PictureRowOpacity;
     }
 
     public override Element Render()
@@ -363,7 +374,7 @@ internal sealed class ClassicLyricsRow : Component
         // spring key, so the first render after an OS flip retargets.
         bool reduce = Design.Reduced;
         float scale = neutral ? 1f : Lyrics.Surface.ScaleFor(isActive, reduce);
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
         // The scale springs retarget on the active flip (the only input of the scale rest), never per rung.

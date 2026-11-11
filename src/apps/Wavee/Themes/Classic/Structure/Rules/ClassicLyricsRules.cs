@@ -17,6 +17,14 @@ internal static class ClassicLyricsRules
     /// stage's type scale, left-anchored, its gutter spelled as TRAILING padding (the leading air is the stage's pane region gap).</summary>
     public const float StageColumnMaxW = 1000f, StageColumnGutter = 24f;
 
+    /// <summary>The reading column in the PICTURE's place (Video mode's audio face, the board "Audio player as a colour field"): the other lines keep
+    /// this row opacity (no distance ladder: the song reads as a picture on its colour field, the active line in full ink and the others at their
+    /// own secondary ink, the word-synced unsung ink or the secondary rung).</summary>
+    public const float PictureRowOpacity = 1f;
+
+    /// <summary>…and a row already sung, whose glyphs are the full ink: at this opacity it reads as the other lines do (the board's 62 %).</summary>
+    public const float PicturePastOpacity = 0.62f;
+
     // ── the state line ─────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A centred one-line state ("No lyrics available", "Nothing playing").</summary>

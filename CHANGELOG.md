@@ -42,9 +42,11 @@ versions separately under `v*` and is not tracked in this file.)
   controls (the first card is what plays next; a click plays it), and the Theatre list beside the picture leads every row
   with the same thumbnail.
 - **Songs without a video in the video full screen (Classic).** When the queue reaches a song with no video, the full
-  screen stays as it is (the top bar, Up next and the transport): the picture's place shows the song's cover and its
-  synced lyrics and the Video tab waits, greyed out. The next song with a video brings the picture back by itself, in
-  the full picture or Theatre as you left it.
+  screen stays as it is (the top bar, Up next and the transport): the picture's frame stays where it is and fills with
+  the song's own colour, a soft field from the cover's palette with the cover large at its left and the synced lyrics
+  beside it (the sung line in full white, the others clearly readable, on any cover in the light and dark look), and the
+  Video tab waits, greyed out. The next song with a video brings the picture back by itself, in the full picture or
+  Theatre as you left it; only the frame's inside cross-fades, the controls, the title and the about block stay put.
 - **"Up next in 5" when a music video ends in full screen (Classic).** The video's last frame stays, dimmed, and a card
   counts down five seconds to the next track: its thumbnail (the video's still, or the cover for a song), title, artist
   and where it plays from, with Play now and Cancel; the rest of the queue waits below it. Cancel leaves the video
@@ -99,6 +101,15 @@ versions separately under `v*` and is not tracked in this file.)
   than a second off halved, 23 of 27 songs timed instead of 20. Japanese songs timed before are timed once more.
 
 ### Fixed
+
+- **The video full screen (Classic): Theatre's about block was missing on big screens and "Read more" sat out of line;**
+  Theatre now always leaves room for the title and the about block under the picture, and "Read more" lines up with the
+  text above it. Theatre's Up next builds only the rows on screen, so a long queue opens and moves as fast as a short one.
+  Skipping from a video to a song no longer hitches, and the saved heart in the full screen's controls no longer jumps
+  when the window crosses 1920 pixels.
+- **The app kept working under the full screen.** With the full screen up, the window under it no longer ticks its seek
+  bar and times or re-draws the player bar, "Next up", the docked video's details or its lyrics on every track change, and
+  the full screen's hidden controls stop ticking too; closing the full screen shows everything current at once.
 
 - **Switching the video full screen between the full picture and Theatre stuttered.** The picture's move no longer repaints
   the screen under it on every frame, and the Theatre panel and the transport no longer re-blur what is behind them while
