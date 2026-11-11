@@ -59,8 +59,8 @@ versions separately under `v*` and is not tracked in this file.)
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
   left it open.
 
-- **AI word timing for Japanese lyrics (not downloadable yet).** Japanese joins English, Spanish, Dutch and Korean in the
-  AI lyrics languages: a lyric written mostly in kana and kanji is timed character by character (a long vowel mark or
+- **AI word timing for Japanese lyrics.** Japanese joins English, Spanish, Dutch and Korean in the AI lyrics languages
+  (add it under Settings, AI lyrics, Languages): a lyric written mostly in kana and kanji is timed character by character (a long vowel mark or
   a small kana goes with the sound before it), and Chinese lyrics, which have no kana, are never sent to it. English
   words inside a Japanese line are placed between their timed neighbours; a line that is mostly English keeps its line
   highlight. Every song timed before is timed once more, since the language decision changed.
@@ -99,6 +99,11 @@ versions separately under `v*` and is not tracked in this file.)
   whose words start far later than the line itself keeps its line highlight instead of wiping in the wrong place.
   Measured on 34 Japanese songs against human timing: 9 in 10 characters within 0.59 s instead of 0.74 s, lines more
   than a second off halved, 23 of 27 songs timed instead of 20. Japanese songs timed before are timed once more.
+- **AI word timing holds each word as long as it is sung.** A word used to end where its sound began, so short words
+  (a fifth of all Korean words) lit for a blink and the highlight then stood still; a word now lasts until the voice goes
+  quiet or the next word starts, and a line's last word ends by the time the next line starts, so its last syllable is
+  never cut off by the hand-off. A result full of words that short is no longer shown. Every song timed before is timed
+  once more the next time it plays.
 
 ### Fixed
 
@@ -150,6 +155,31 @@ versions separately under `v*` and is not tracked in this file.)
   fade out first and the next song's fade in after them, drifting in from the side you skipped to; the lyrics fade out
   and the next ones fade in; the Canvas fades through its still into the next picture instead of cutting; and a burst of
   presses settles on the last song without stutter.
+- **A failed language download in AI lyrics.** When adding a language fails, Settings now says which language and why in
+  plain words (not on the download server yet, offline, the connection dropped, a file failed its check, not enough free
+  space), with Details for the raw reason and Try again for that language; the languages already installed keep timing
+  songs. A first setup that stops on a language's file names that language. Every theme lists the languages in one order.
+- **The full screen's controls lingered after a menu closed outside the window.** Closing a menu (or ending a seek) with
+  the mouse already outside the window now lets them go after the short leave delay, not the whole idle time.
+- **Previous did nothing on the first song after the queue ran out.** With the first song of the list selected and
+  nothing playing (the queue ended with repeat off, or playback stopped), Previous now plays that song from its start.
+- **Previous, Next and seeking stayed disabled after taking over from another device.** The limits a phone's playback set
+  (a one-song list, say) now end once Wavee plays itself, instead of lasting the whole session.
+- **The Canvas in the Classic now-playing panel faded into plain grey.** The ground under it now carries the page's colour,
+  like the player bar beside it and the panel with the Canvas off, and changes with the page in one smooth fade (the fade
+  at the foot of the picture too, with no seam). Picking the Canvas style no longer lets the video show through the lower
+  panel for a moment.
+- **The word highlight ran ahead of the words.** The lit edge of a word-synced line follows each word's place in the line
+  as it is drawn, so it no longer runs into the next word after short words (Korean especially) or in Zune's full-screen
+  lyrics, where it tinted the next word's first stroke; it waits at a pause instead of lighting the next word early.
+- **A line lit before its time after a break.** During an instrumental break the next line no longer turns white seconds
+  before it is sung when it has no word timing of its own.
+- **Full screen no longer keeps the page behind it busy.** While the full screen covers the app, the player bar, the
+  side panel and its lyrics underneath stop updating; closing full screen shows them current at once.
+- **The full screen's transport stepped when the window crossed 1920 wide (Classic).** Its controls now glide to their
+  new places, the saved heart among them.
+- **Zune's switches that can't be changed showed only a grey dot.** A disabled switch (AI lyrics on a PC without an NPU,
+  for one) now draws its track under the dimmed knob, on and off.
 
 ## [0.3.8] - 2026-11-08
 
