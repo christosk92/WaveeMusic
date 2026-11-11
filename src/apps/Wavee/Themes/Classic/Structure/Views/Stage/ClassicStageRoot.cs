@@ -14,7 +14,8 @@
 //   VIDEO MODE (Cinema, `StageRootView.ShowPicture`): the audio stack above (backdrop to hairline) gives way to the PICTURE's hollow
 //   reservation, full-bleed on the letterbox ground; the ONE video presenter follows it (it lives in the video layer: the stage wrapper's
 //   entrance may not be its ancestor). The chrome over the picture is `ClassicStagePictureChrome` (`Stage.PictureChrome`, mounted by the
-//   core above the hole) and builds its top bar, transport and hairline with this file's builders, so both draw one chrome. Over an audio-only
+//   core above the hole) and builds its top bar with this file's builder, so both draw one top bar (its transport is the control bar over the
+//   picture, `ClassicStageVideoBar`, and its hairline sits at the picture's foot). Over an audio-only
 //   track Video mode holds and the AUDIO FACE (`ClassicStageAudioFace`: the cover and the lyrics) stands in the picture's place, an ordinary layer
 //   right after the reservation (no presenter is up, so no hole erases it).
 //
@@ -157,12 +158,11 @@ internal static class ClassicStageRoot
     }
 
     /// <summary>The hairline while the chrome is hidden: BOTTOM edge (AlignSelf), full width (JustifySelf) as a direct child of the Show's
-    /// layer — directly under the Show anchor its AlignSelf End read horizontally and left it 0 wide (V-U49). The audio stack's and the
-    /// picture chrome's.</summary>
-    internal static Element Hairline(StageRootView v, Func<bool>? shown = null)
+    /// layer — directly under the Show anchor its AlignSelf End read horizontally and left it 0 wide (V-U49).</summary>
+    static Element Hairline(StageRootView v)
     {
         var fade = new EnterExit(Opacity: 0f, Active: true);
-        return Flow.Show(shown ?? (() => !v.ChromeVisible()), Stage.Layer with
+        return Flow.Show(() => !v.ChromeVisible(), Stage.Layer with
         {
             Key = "stage:hairline", HitTestVisible = false, HitTestPassThrough = false,
             Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -246,9 +246,9 @@ internal static class ClassicStageRoot
     /// tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23), or beside a gallery that runs to the foot (C-Stage-Huge);
     /// its own component places it, so a gallery toggle re-renders the placement and not this surface. This layer carries only the
     /// Enter/Exit: "chrome:transport" sits on the placement's own layer, whose FIRST CHILD is the card (the contract every chrome key keeps:
-    /// the keyed layer's first child is the bar, the card or the pane). The audio stack's chrome and the picture chrome's (<paramref name="shown"/>:
-    /// the picture chrome keeps it at rest in Theatre).</summary>
-    internal static Element Transport(StageRootView v, Func<bool>? shown = null) => Flow.Show(shown ?? v.ChromeVisible, Stage.Layer with
+    /// the keyed layer's first child is the bar, the card or the pane). The audio stack's chrome (Video mode's transport is the control bar over the
+    /// picture, `ClassicStageVideoBar`).</summary>
+    static Element Transport(StageRootView v) => Flow.Show(v.ChromeVisible, Stage.Layer with
     {
         Key = "chrome:transport:motion",
         Enter = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,

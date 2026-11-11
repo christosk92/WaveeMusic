@@ -7,6 +7,12 @@
 // Reflow bounds spring (the pane region's move): its laid-out size and its origin interpolate together, so the presenter that follows it grows
 // and shrinks with it frame by frame and nothing ever covers the picture. The title block under the picture in Theatre is the picture
 // chrome's (`ClassicStagePictureChrome`, `TheatreTitle`).
+//
+// THE PAGE'S COLOUR (Theatre: "why is the page just full black?"): on the floor, under everything, a STILL wash in the playing track's palette
+// (`StageCtx.BasePalette`, what the audio stage's backdrop derives), a glow around the picture's box fading to a faint tint of the whole page
+// (YouTube's ambient mode). It is painted once per track (a keyed layer: the old one fades out as the new one fades in), never per frame, never
+// over the picture (a sibling under the reservation), and it does not move with the Cinema ⇄ Theatre glide (it sits at Theatre's box; in Cinema
+// the letterbox ground covers it). The panel beside the picture is an open list on this page, so the colour shows through it with no blur.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -60,8 +66,9 @@ internal static class ClassicStageTheatre
                 HitTestVisible = false, HitTestPassThrough = false,
                 Children =
                 [
-                    // the floor around the picture in Theatre (under it in Cinema the letterbox covers it)
+                    // the floor around the picture in Theatre (under it in Cinema the letterbox covers it), and the track's colour on it
                     new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = Ink.Floor, HitTestVisible = false },
+                    Embed.Comp(new PictureProps(v), static () => new Wash()),
                     // Cinema's letterbox ground, edge to edge: there at once when the stage opens in Cinema; back from Theatre once the picture has
                     // filled the stage (until then the floor shows around the growing picture, as it did around the growing box); gone at once as
                     // Theatre opens (the floor shows around the shrinking picture)
@@ -95,8 +102,44 @@ internal static class ClassicStageTheatre
         }
     }
 
-    /// <summary>Theatre's title block under the picture: the title (Display 28/36 semibold, one line) over the "Artist · Album" line, at the
-    /// picture's left edge and width.</summary>
+    /// <summary>The page's colour: the still wash of the playing track's palette, centred on Theatre's picture box (see the file header). Its own
+    /// component: a track change (the palette) or a resize re-renders this layer alone, and the keyed glow cross-fades.</summary>
+    internal sealed class Wash : Component
+    {
+        static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+        public override Element Render()
+        {
+            var v = UseProps<PictureProps>().View;
+            var st = v.Stage;
+            var L = st.Layout.Value;
+            var palette = st.BasePalette.Value;
+            var box = G.Of(L).Picture;
+            float w = MathF.Max(1f, L.W), h = MathF.Max(1f, L.H);
+            var c = palette.A;
+            var glow = new GradientSpec(GradientShape.Radial, 0f,
+                [new GradientStop(0f, c with { A = G.WashCentreA }), new GradientStop(G.WashMidAt, c with { A = G.WashMidA }), new GradientStop(1f, c with { A = G.WashEdgeA })])
+            {
+                RadialCenter = new Point2((box.X + box.W * 0.5f) / w, (box.Y + box.H * 0.5f) / h),
+                RadialRadius = new Point2(box.W * G.WashReachX / w, box.H * G.WashReachY / h),
+            };
+            return Stage.Layer with
+            {
+                HitTestVisible = false, HitTestPassThrough = false,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "stage:wash:" + palette.GetHashCode(), AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+                        Gradient = glow, Enter = s_fade, Exit = s_fade, Transition = MotionTok.StandardEnter,
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>Theatre's title block under the picture: the title (Display 28/36 semibold, one line) over the "Artist · Album" line and the quiet
+    /// "Playing from" line, at the picture's left edge and width.</summary>
     public static Element TheatreTitle(StageRootView v, in RectF title)
     {
         var identity = v.Identity;
@@ -117,6 +160,7 @@ internal static class ClassicStageTheatre
                     Text = Prop.Of(() => identity.Meta(0).Line), Size = G.MetaSize, LineHeight = G.MetaLine, Color = Ink.InkSecondary,
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                 },
+                Embed.Comp(new SourceLine.Props(v.Transport, G.SourceSize, G.SourceLine), static () => new SourceLine()),   // the block's gap (MetaGap) is the source line's (SourceGap)
             ],
         };
     }

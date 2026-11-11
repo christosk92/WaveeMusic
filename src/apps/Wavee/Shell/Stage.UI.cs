@@ -288,6 +288,8 @@ public static partial class Stage
         NodeHandle _root;
         bool _cursorHidden, _paletteSeeded;
         bool? _loggedVisible;   // the last chrome visibility the `[stage.chrome]` line reported
+        ChromeHold _loggedHolds;   // the holds the last `[stage.chrome] hold` lines reported (edges only)
+        string _playbackFact = "playing";   // the deck's phase and fault behind the Stopped hold, for its line
         OverlayHandle? _tip, _options;
 
         public SurfaceCore()
@@ -358,7 +360,8 @@ public static partial class Stage
                 if (hold.Phase == Playback.EndHold.Counting) Playback.ReleaseEndHold(hold.AtMs);
             };
             _ctx.EndCancel = () => { FocusRoot(); Playback.CancelEndHold(); };
-            _ctx.OverControls = over => { _idle.SetPointerOverControls(over, Now()); Sync(); };
+            // in Theatre only a control over the picture holds the chrome: a top-bar button or the panel's is outside it (PointerOverRegion)
+            _ctx.OverControls = over => { _idle.SetPointerOverControls(over && PointerOverRegion(), Now()); Sync(); };
             _ctx.MenuOpen = open => { _idle.MenuOpen(open, Now()); Sync(); };
             _ctx.Scrubbing = on => { _idle.SetScrubbing(on, Now()); Sync(); };
             var ctx = _ctx;
@@ -368,15 +371,19 @@ public static partial class Stage
                 OnRealized = h => _root = h,
                 // a move ANYWHERE within the stage (the theme wires it as OnPointerMoveWithin, so a move over a lyric line or the picture's ground
                 // counts too), in window DIP: the stage's root and the chrome over the picture (the video layer, another tree) report one point
-                OnHoverMove = p => { var w = _hooks?.GetPointerPosition?.Invoke() ?? p; _idle.PointerMoved(w.X, w.Y, Now()); Sync(); },
+                // In THEATRE only the picture counts (RegionOf): a move over it is activity; the first move off it (onto the panel, the floor, the
+                // top bar) is a LEAVE, so the chrome goes after the leave debounce and the cursor never hides off the picture.
+                OnHoverMove = p => { PointerAt(_hooks?.GetPointerPosition?.Invoke() ?? p); Sync(); },
                 // a hover handed from one tree to the other (the stage ⇄ the chrome over the picture) or taken by an overlay is not a leave: only
                 // a pointer outside the stage (another monitor, outside the window) lets the chrome go after the leave debounce
                 OnPointerExit = () =>
                 {
-                    if (PointerOverStage()) _idle.PointerCovered(Now()); else _idle.PointerLeft(Now());
+                    if (!PointerOverStage()) { Leave("exit"); return; }
+                    _idle.PointerCovered(Now());
+                    Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=covered src=exit ptr={PointerText()}");
                     Sync();
                 },
-                OnPointerWheel = _ => { _idle.Activity(ChromeActivity.Pointer, Now()); Sync(); },   // wheel = activity (V-U22)
+                OnPointerWheel = _ => { if (PointerOverRegion()) { _idle.Activity(ChromeActivity.Pointer, Now()); Sync(); } },   // wheel = activity (V-U22), over the picture alone in Theatre
                 OnKeyDown = OnKey,
                 // Never leave focus NULL while the stage is up: an unhandled Escape clears it and disarms the key map (the fullscreen video layer guards the same way).
                 OnFocusChanged = got =>
@@ -618,7 +625,8 @@ public static partial class Stage
             idle.Start(_wake.NowMs);
             // a pause, the end or a failure pins the chrome; a load (a video joining, a skip) does not (ChromeIdle.PlaybackOf)
             var chromePlayback = ChromeIdle.PlaybackOf(Playback.PhaseSignal.Value, Playback.Error.Value);
-            UseEffect(() => { idle.SetPlayback(chromePlayback, Now()); Sync(); }, DepKey.From((int)chromePlayback));
+            string playbackFact = Playback.PhaseSignal.Peek() + (Playback.Error.Peek() != Playback.Fault.None ? "/" + Playback.Error.Peek() : "");
+            UseEffect(() => { _playbackFact = playbackFact; idle.SetPlayback(chromePlayback, Now()); Sync(); }, DepKey.From((int)chromePlayback));
 
             // ── the hairline fraction from the coarse report (1 Hz is plenty for a 3-DIP line) ──
             UseSignalEffect(() => { int d = Playback.DurationMs.Value, p = Playback.PositionMs.Value; _frac.SetIfChanged(d > 0 ? Math.Clamp(p / (float)d, 0f, 1f) : 0f); });
@@ -746,12 +754,14 @@ public static partial class Stage
             double now = _wake.NowMs;
             vis.Tick(now);
             _ctx.Chrome.SetIfChanged(vis.ChromeVisible);
+            if (RegionOf() is null) { vis.Region = "stage"; vis.PointerOutsideRegion = false; } else vis.Region = "picture";
             // one line per visibility edge, naming the cause and what holds it (a chrome that sticks says why in the owner's log)
             if (vis.ChromeVisible != _loggedVisible)
             {
                 _loggedVisible = vis.ChromeVisible;
-                Log.Info(Diagnostics.Category, $"[stage.chrome] {(vis.ChromeVisible ? "show" : "hide")} cause={vis.LastCause} holds={ChromeHoldsText(vis.Holds)} menus={vis.MenuHolds}");
+                Log.Info(Diagnostics.Category, $"[stage.chrome] {(vis.ChromeVisible ? "show" : "hide")} cause={vis.LastCause} holds={ChromeHoldsText(vis.Holds)} menus={vis.MenuHolds} region={vis.Region} ptr={PointerText()} inside={(vis.PointerOutsideRegion ? "no" : "yes")}");
             }
+            LogHoldEdges(vis);
             if (vis.CursorHidden != _cursorHidden)
             {
                 _cursorHidden = vis.CursorHidden;
@@ -768,6 +778,68 @@ public static partial class Stage
         }
 
         double Now() => _wake.NowMs;
+
+        /// <summary>What counts as the stage for the pointer, in window DIP: the picture's rect in Theatre (the reservation the presenter follows, as
+        /// laid out now, so the rule moves with it), else null (the whole stage). The audio face has no picture to guard: the whole stage.</summary>
+        RectF? RegionOf()
+        {
+            if (_ctx.Mode.Peek() != Mode.Video || !_ctx.Theatre.Peek() || _ctx.AudioFace.Peek()) return null;
+            var node = Picture.Reservation;
+            if (node.IsNull || _hooks?.GetNodeRect is not { } rectOf) return null;
+            return rectOf(node);
+        }
+
+        /// <summary>A pointer move at <paramref name="w"/> (window DIP): over the region it is the machine's move; the first one outside it is a leave.</summary>
+        void PointerAt(Point2 w)
+        {
+            var region = RegionOf();
+            _idle.Region = region is null ? "stage" : "picture";
+            if (region is not { } r || Inside(r, w))
+            {
+                _idle.PointerOutsideRegion = false;
+                _idle.PointerMoved(w.X, w.Y, Now());
+                return;
+            }
+            if (_idle.PointerOutsideRegion) return;
+            _idle.PointerOutsideRegion = true;
+            Leave("region");
+        }
+
+        /// <summary>THE one leave: the pointer is no longer over what counts (it went off the picture in Theatre: <c>region</c>; it left the stage:
+        /// <c>exit</c>). The machine hides the chrome after its leave debounce and the cursor stays. The window's own leave and blur edges come here
+        /// too (<paramref name="source"/> <c>window</c> / <c>blur</c>).</summary>
+        internal void Leave(string source)
+        {
+            _idle.PointerLeft(Now());
+            Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=left src={source} ptr={PointerText()}");
+            Sync();
+        }
+
+        /// <summary>The pointer is over what counts (the picture in Theatre, else the stage). With a region and no trustworthy position it is NOT over
+        /// it: no position is never a reason to hold or reveal the chrome.</summary>
+        bool PointerOverRegion()
+            => RegionOf() is not { } r || (_hooks?.GetPointerPosition?.Invoke() is { } p && Inside(r, p));
+
+        /// <summary>The pointer's window position for the `[stage.chrome]` lines ("x,y" or "none"). Edges only: it formats.</summary>
+        string PointerText() => _hooks?.GetPointerPosition?.Invoke() is { } p ? $"{p.X:0},{p.Y:0}" : "none";
+
+        /// <summary>One `[stage.chrome] hold` line per edge of the holds that can pin the chrome (OverControls, Scrubbing, Menu, Stopped), so a chrome
+        /// that sticks names what pins it. Called from <see cref="Sync"/>; it writes only when a hold flipped.</summary>
+        void LogHoldEdges(ChromeIdle vis)
+        {
+            const ChromeHold watched = ChromeHold.OverControls | ChromeHold.Scrubbing | ChromeHold.Menu | ChromeHold.Stopped;
+            var holds = vis.Holds;
+            var changed = (holds ^ _loggedHolds) & watched;
+            _loggedHolds = holds;
+            if (changed == ChromeHold.None) return;
+            foreach (var h in s_loggedHolds)
+                if ((changed & h) != 0)
+                    Log.Info(Diagnostics.Category, $"[stage.chrome] hold {h}={((holds & h) != 0 ? 1 : 0)}{(h == ChromeHold.Stopped ? " phase=" + _playbackFact : "")} ptr={PointerText()} holds={ChromeHoldsText(holds)} menus={vis.MenuHolds}");
+        }
+
+        static readonly ChromeHold[] s_loggedHolds = [ChromeHold.OverControls, ChromeHold.Scrubbing, ChromeHold.Menu, ChromeHold.Stopped];
+
+        static bool Inside(in RectF r, Point2 p) => p.X >= r.X && p.Y >= r.Y && p.X < r.X + r.W && p.Y < r.Y + r.H;
 
         /// <summary>Is the pointer still over the stage (window DIP; the stage fills the window)? False when the platform has no trustworthy
         /// position (outside the client area, the window blurred).</summary>

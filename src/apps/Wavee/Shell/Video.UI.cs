@@ -367,14 +367,18 @@ public static partial class Video
     /// <summary>The ONE builder of the placement rows — the player bar's chevron, its narrow-layout overflow and every
     /// surface's ⋯ share it. Radio-checked against the RESOLVED placement; an unavailable rung is DISABLED with its
     /// reason in the accelerator column, never hidden. "Turn off video" is a deliberate menu choice, so it turns off
-    /// directly rather than reporting a host close.</summary>
+    /// directly rather than reporting a host close.
+    /// <para>THE STAGE SHOWS THE PICTURE (<see cref="Stage.Picture.ShownPeek"/>, the full screen's gear): the video is in full screen, so that row
+    /// is the checked one (the docked card it took over is not where the user sees it), and every other placement row LEAVES full screen for its
+    /// place. "Turn off video" is the stage's own "Switch to audio" there (one verb, one home), so the list leaves it out.</para></summary>
     public static IReadOnlyList<MenuFlyoutItem> PlacementMenu(bool includeFullscreen)
     {
         var state = State.Surface.Peek();
         var now = PlacementCore.Resolve(state);
+        bool staged = Stage.Picture.ShownPeek();
         // The radio CHECK names where the video is presenting: the pop-out gone fullscreen on its own monitor is "Full screen"
-        // (the row that put it there, State.OpenAt), not "In a separate window".
-        var shown = now == SurfacePlacement.Detached && State.DetachedFullscreen.Peek() ? SurfacePlacement.Fullscreen : now;
+        // (the row that put it there, State.OpenAt), not "In a separate window"; so is the picture the full screen's stage shows.
+        var shown = staged || (now == SurfacePlacement.Detached && State.DetachedFullscreen.Peek()) ? SurfacePlacement.Fullscreen : now;
 
         // The TRUTH behind each row, read live at open time rather than off the stale `Available` snapshot: the same
         // source the availability fold reads (`Playback.DeckVideo` through `DeckHasVideo`, peeked — a menu
@@ -394,7 +398,9 @@ public static partial class Video
             // boundary or a primary click) — committing OpenAt against that stale stamp resolved to None: the video
             // loaded and played with no surface to show it (2026-09-22: audio, an endless join spinner, no window).
             return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), shown == p,
-                () => PlayerVerbs.Default.SetVideoPlacement(p, hasVideo), icon, allowed) with { AcceleratorText = accel };
+                staged && p != SurfacePlacement.Fullscreen
+                    ? () => { Stage.Close(null, "video-menu"); PlayerVerbs.Default.SetVideoPlacement(p, hasVideo); }
+                    : () => PlayerVerbs.Default.SetVideoPlacement(p, hasVideo), icon, allowed) with { AcceleratorText = accel };
         }
 
         var items = new List<MenuFlyoutItem>(7)
@@ -413,7 +419,7 @@ public static partial class Video
             items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.VideoAlwaysOnTop), onTop,
                 () => Prefs.SetAlwaysOnTop(Platform.Settings, !onTop)));
         }
-        if (PlacementCore.IsActive(state))
+        if (PlacementCore.IsActive(state) && !staged)
         {
             items.Add(MenuFlyoutItem.Separator);
             items.Add(new MenuFlyoutItem(Loc.Get(Strings.Player.TurnOffVideo), new IconRef { Glyph = WaveeIcons.VideoOff, Font = WaveeIcons.Font }, true, State.TurnOff));

@@ -73,14 +73,16 @@ internal sealed class ClassicStageEndCard : Component
         };
     }
 
-    /// <summary>Where the card is centred: Cinema between the top bar and the lower block (the shelf's reserved place, else the transport card),
+    /// <summary>Where the card is centred: Cinema between the top bar and the lower block (the shelf's reserved place, else the control bar),
     /// Theatre inside the picture's box.</summary>
     static RectF Region(Stage.Layout L, ClassicStageLayout tier, bool theatre)
     {
         if (theatre)
         {
             var box = ClassicStageTheatre.PictureRect(L, true);
-            return new RectF(box.X + G.TheatrePad, box.Y + G.TheatrePad, MathF.Max(0f, box.W - 2f * G.TheatrePad), MathF.Max(0f, box.H - 2f * G.TheatrePad));
+            // above the control bar at the box's foot (the ended deck pins it)
+            return new RectF(box.X + G.TheatrePad, box.Y + G.TheatrePad, MathF.Max(0f, box.W - 2f * G.TheatrePad),
+                MathF.Max(0f, box.H - ClassicStageVideoBarGeometry.BarH - 2f * G.TheatrePad));
         }
         float top = Stage.Layout.TopBarH;
         float bottom = ClassicStagePictureChrome.LowerBlockTop(L, tier, shelf: true);

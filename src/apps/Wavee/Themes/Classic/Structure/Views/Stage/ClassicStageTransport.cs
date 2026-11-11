@@ -120,14 +120,11 @@ internal static class ClassicStageTransport
             };
         }
 
-        // Video mode's Theatre: the card sits on the flat stage floor (nothing of the picture under it), where the acrylic resolves to one tone;
-        // that tone, painted, is the same card without a backdrop capture and a blur every frame something beside it moves. Over the picture
-        // (Cinema) and over the audio stage's art the card keeps its acrylic.
-        bool flat = st.Mode.Value == Stage.Mode.Video && st.Theatre.Value;
+        // the audio modes' card (Video mode's transport is the control bar over the picture, `ClassicStageVideoBar`)
         return new BoxEl
         {
             Grow = 1f, Height = L.TransportH, Direction = 1, Padding = stacked ? ClassicStageTiers.StackedTransportPadding : tier.TransportPadding, Corners = Radii.CardAll,
-            Acrylic = flat ? null : Ink.Card, Fill = flat ? ClassicStageTheatreGeometry.CardOnFloor : ColorF.Transparent, Shadow = Elevation.Card, ClipToBounds = true,
+            Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
             // the chrome is held by the controls (the seek bar, the buttons), not by the card: a pointer resting on "Playing from" or the
             // card's padding idles out like one resting on the picture
             Children =
@@ -224,14 +221,16 @@ internal static class ClassicStageTransport
         }
     }
 
-    /// <summary>"This PC ▾" — the two-section device picker over the SAME items the player bar builds.</summary>
-    sealed class DeviceButton : Component
+    /// <summary>"This PC ▾" — the two-section device picker over the SAME items the player bar builds. Over the picture (<see cref="Props.OnPicture"/>,
+    /// the control bar `ClassicStageVideoBar`) it is the device glyph alone on the on-media ink, the same flyout.</summary>
+    internal sealed class DeviceButton : Component
     {
-        public sealed record Props(StageTransportProps T);
+        public sealed record Props(StageTransportProps T, bool OnPicture = false);
 
         public override Element Render()
         {
-            var t = UseProps<Props>().T;
+            var p = UseProps<Props>();
+            var t = p.T;
             var st = t.Stage;
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
@@ -247,6 +246,8 @@ internal static class ClassicStageTransport
                 opened.ClosedAction = () => { handle.Value = null; st.MenuOpen(false); };
                 handle.Value = opened;
             }
+            if (p.OnPicture)
+                return ToolTip.Wrap(ClassicStageVideoBar.Glyph(device.Glyph, Toggle, true, onRealized: h => anchor.Value = h) with { Key = "picture:bar:device" }, device.Name);
             return new BoxEl
             {
                 Height = ClassicStageGeometry.DeviceHeight, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = ClassicStageGeometry.DevicePadding, Corners = Radii.ControlAll,

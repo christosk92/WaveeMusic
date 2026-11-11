@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Stage/ClassicStageAudioFace.cs — Classic's audio face in the stage's Video mode ──────────────────────────
 //
 // The board "Classic · An audio-only track plays": while video stays on and the queue reaches a track without a video, the full screen keeps its
-// frame (the top bar with the Video tab disabled, Cinema's Up next shelf or Theatre's panel, the transport) and the picture's place holds the
+// frame (the top bar with the Video tab disabled, Cinema's Up next shelf or Theatre's panel, the control bar) and the picture's place holds the
 // track's cover and its synced lyrics (`StageRootView.ShowAudioFace`). The next track with a video brings the picture back by itself.
 //
 //   Cinema   the stage's floor under the top bar; the cover (the audio stage's hero size, held above the shelf's place) with the title (Display 28/34,
@@ -42,20 +42,21 @@ internal sealed class ClassicStageAudioFace : Component
         var plate = ClassicStageTheatre.PictureRect(L, theatre);
         if (theatre)
         {
+            // the box above the control bar at its foot (at rest over the face, ClassicStageVideoBar)
             float pad = G.BoxPad;
-            float innerH = MathF.Max(0f, plate.H - 2f * pad);
+            float innerH = MathF.Max(0f, plate.H - ClassicStageVideoBarGeometry.BarH - 2f * pad);
             if (!lyrics)
             {
                 float c = innerH;
                 return new Rects(plate, new RectF(plate.X + MathF.Round((plate.W - c) * 0.5f), plate.Y + pad, c, c), default, default);
             }
             float cover = MathF.Round(MathF.Min(innerH, (plate.W - 3f * pad) * 0.4f));
-            float cy = plate.Y + MathF.Round((plate.H - cover) * 0.5f);
+            float cy = plate.Y + pad + MathF.Round((innerH - cover) * 0.5f);
             float lx = plate.X + pad + cover + pad;
             return new Rects(plate, new RectF(plate.X + pad, cy, cover, cover), default,
                 new RectF(lx, plate.Y + pad, MathF.Max(0f, plate.X + plate.W - pad - lx), innerH));
         }
-        // Cinema: under the top bar, down to the shelf's reserved place (or the transport card), at the audio stage's left gutter
+        // Cinema: under the top bar, down to the shelf's reserved place (or the control bar), at the audio stage's left gutter
         float top = Stage.Layout.TopBarH + G.TopUnderBar;
         float bottom = ClassicStagePictureChrome.LowerBlockTop(v, L, tier) - G.BottomGap;
         float regionH = MathF.Max(0f, bottom - top);

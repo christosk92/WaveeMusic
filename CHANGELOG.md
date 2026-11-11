@@ -74,6 +74,19 @@ versions separately under `v*` and is not tracked in this file.)
   pane, the mini player a window folding into its corner. The video menu shows a docked pane, picture in picture, a
   pop-out window and a crossed-out camera, and its full-screen row reads "Video in fullscreen"; the app's own full
   screen keeps the regular arrows, and the video's is a framed screen.
+- **The video full screen's controls sit on the picture, as on YouTube (Classic).** A thin seek bar runs along the bottom
+  of the picture with one row of controls under it, on dark pills: play, previous, next, mute (the volume slider opens
+  beside it when you point at it) and the time on the left; like, shuffle, repeat, the device picker, "...", the video's
+  settings, the full picture or Theatre, and leave full screen on the right. They belong to the picture in Theatre too,
+  and come and go with the mouse there: only the picture counts, so pointing at the list beside it, the floor or the top
+  bar lets them go, and the mouse pointer hides only over the picture. The settings gear holds the docked video's own
+  menu (aspect ratio, quality, playback speed, where the video plays). "Playing from" moved under the song's title.
+  Narrow windows fold shuffle, repeat and the device picker into "..." first.
+- **Theatre takes the song's colours.** Around the picture the page glows in the playing song's colours instead of
+  plain black, and the Up next list beside it is an open list on that page rather than a framed card, with a compact
+  header (Up next, the count, Autoplay). The Lyrics panel gets the same header.
+- **Up next cards over the full picture lose their frames.** A music video's card is its picture, an audio-only track's
+  card is its square cover, with the length on the art.
 - **Full screen has a button in the Classic title bar.** It sits right beside minimise, after the bell, friends and pin; the player bar's menus keep the row for narrow windows.
 - **AI word timing on Japanese songs lands closer, and on more songs.** A Japanese line can no longer slide seconds into
   the instrumental break after it or the long intro before it: the aligner knows about how long a line's characters
@@ -94,6 +107,8 @@ versions separately under `v*` and is not tracked in this file.)
   part of the top bar or the transport card lets them fade like resting on the picture (only the buttons, tabs and seek bar
   hold them); moving the mouse over the picture or over the lyrics brings them back; and the mouse leaving the window lets
   them go. Each show and hide is now written to the log with what caused it and what held it.
+- **Skipping in the video full screen with Up next open hitched.** Every track change rebuilt every row of the list; now
+  only the rows that changed update.
 - **Esc and F11 left full screen open.** Pressing Esc (or F11) in full screen did nothing, with or without a video: the
   keys went to a part of the screen that did not handle them. They leave full screen again; Space and the arrows keep
   playing, seeking and setting the volume.

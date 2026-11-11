@@ -71,8 +71,10 @@ public static partial class Diagnostics
                 default:
                     return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead, not '" + verb + "'");
             }
-            RunFrames(2);
-            string phase = AwaitPlaybackLoad(PlayLoadBudgetMs);
+            // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
+            bool traced = a.Has("trace");
+            if (!traced) RunFrames(2);
+            string phase = traced ? "traced" : AwaitPlaybackLoad(PlayLoadBudgetMs);
             return Settled(id, name, a, w =>
             {
                 w.WriteString("do", verb);

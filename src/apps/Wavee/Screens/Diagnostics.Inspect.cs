@@ -977,7 +977,7 @@ public static partial class Diagnostics
         /// whenever a video is up in the main window and the theme draws it).</summary>
         static bool IsStageVideo(Inspect.Args a) => string.Equals(a.Str("stage"), "video", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>`stage{open, mode, offered, picture, face?, theatre, panel?, follows, hold{phase, remainingMs, card}, chrome?}`: the fullscreen stage (open, the mode it shows, whether it offers
+        /// <summary>`stage{open, mode, offered, picture, face?, theatre, panel?, follows, hold{phase, remainingMs, card}, chrome{visible, cause, holds, menus, cursorHidden, region, pointerOutside}?}`: the fullscreen stage (open, the mode it shows, whether it offers
         /// its Video mode), the picture (the stage shows it: Video mode; its face, the video or the audio face over an audio-only track; in Theatre with which panel beside it) and what the one video presenter
         /// follows right now (glide: the box it glides on; stage: the stage's reservation; docked: the docked card's; none: its own geometry).</summary>
         static void WriteStageFacts(Utf8JsonWriter w)
@@ -1011,6 +1011,9 @@ public static partial class Diagnostics
                 w.WriteString("holds", Stage.ChromeHoldsText(idle.Holds));
                 w.WriteNumber("menus", idle.MenuHolds);
                 w.WriteBoolean("cursorHidden", idle.CursorHidden);
+                // what counts for the pointer (Theatre: the picture alone) and whether the pointer was last seen outside it
+                w.WriteString("region", idle.Region);
+                w.WriteBoolean("pointerOutside", idle.PointerOutsideRegion);
                 w.WriteEndObject();
             }
             w.WriteEndObject();

@@ -146,9 +146,11 @@ public sealed record StageRootView
     public Action<NodeHandle> PictureRealized { get; init; } = static _ => { };
 
     /// <summary>Video mode shows the picture in THEATRE (<c>StageCtx.Theatre</c>): the reservation sits in the left region with the title block
-    /// under it, the Theatre panel (<see cref="StageLayers.TheatrePane"/>) beside it on the right, and the chrome stays at rest (no idle hide);
-    /// otherwise Video mode is CINEMA (the reservation fills the stage). The template moves the reservation between the two rects with a
-    /// layout transition the presenter follows. A predicate. Appended (contract 1.96).</summary>
+    /// under it, the Theatre panel (<see cref="StageLayers.TheatrePane"/>) beside it on the right; otherwise Video mode is CINEMA (the reservation
+    /// fills the stage). The template moves the reservation between the two rects with a layout transition the presenter follows. In Theatre only
+    /// the PICTURE counts for the idle chrome (contract 1.99): the core takes the reservation's rect, so a move reveals the chrome over the picture
+    /// alone, a pointer that leaves the picture (onto the panel, the floor, the top bar) has left, only controls over the picture hold it, and the
+    /// cursor hides only over the picture. A predicate. Appended (contract 1.96).</summary>
     public Func<bool> ShowTheatre { get; init; } = static () => false;
 
     /// <summary>Video mode holds while an AUDIO-ONLY track plays (the video is on, this track has none: <c>StageCtx.AudioFace</c>): the frame stays
@@ -301,6 +303,12 @@ public sealed record StageTransportProps
 
     /// <summary>The device picker was opened (a demand for the device list).</summary>
     public required Action OpenDevicePicker { get; init; }
+
+    /// <summary>The music video's settings menu, built when it opens: the docked video's own "…" rows (where it plays, then Aspect ratio, Quality
+    /// and Playback speed with their current values and cascades). While the stage shows the picture the placement rows leave full screen for
+    /// their place and "Video in fullscreen" reads as the current one; turning the video off is the stage's "Switch to audio". Null: a core with
+    /// nothing to hand. Appended (contract 1.99).</summary>
+    public Func<IReadOnlyList<MenuFlyoutItem>>? VideoMenu { get; init; }
 }
 
 /// <summary>What the transport card draws that is playback state.</summary>

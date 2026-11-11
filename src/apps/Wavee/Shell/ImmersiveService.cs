@@ -74,6 +74,14 @@ public sealed class ChromeIdle
     /// <summary>Why the last visibility edge happened (the machine's static literal; "mount" before <see cref="Start"/>).</summary>
     public string LastCause => _machine?.LastCause ?? "mount";
 
+    /// <summary>What counts as the surface for the pointer: "stage" (the whole surface) or "picture" (the stage's Theatre: the picture's rect
+    /// alone). The surface states it; the `[stage.chrome]` line and the inspector's status report it.</summary>
+    public string Region { get; set; } = "stage";
+
+    /// <summary>The pointer was last seen over the stage but outside <see cref="Region"/> (the Theatre panel, the floor, the top bar): to the
+    /// machine it has LEFT.</summary>
+    public bool PointerOutsideRegion { get; set; }
+
     /// <summary>Create the machine at <paramref name="nowMs"/> if it does not exist. Idempotent: a surface that adopts a
     /// surviving idle keeps its state.</summary>
     public void Start(double nowMs)

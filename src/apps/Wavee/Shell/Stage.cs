@@ -403,25 +403,12 @@ public static partial class Stage
         /// truncates to "Ex…" (the icon-only classes show "⤢" alone, §3.5).</summary>
         public bool ExitLabelShown(int tabs) => !IconOnlySelector && TopBarSideW(tabs) >= BarButtonW + BarButtonGap + ExitLabelW;
 
-        /// <summary>Video mode's "Theatre mode" / "Fill the screen" and "Switch to audio" buttons' budgets (each one's glyph and its label in
-        /// the longest shipped locale).</summary>
-        public const float TheatreLabelW = 168f, AudioLabelW = 168f;
+        /// <summary>Video mode's "Switch to audio" button's budget (its glyph and its label in the longest shipped locale).</summary>
+        public const float AudioLabelW = 168f;
 
-        /// <summary>Which of Video mode's buttons carry their labels: the column holds [Theatre] [Switch to audio] [Exit], each a glyph with its
-        /// label as the tooltip until the column has room for its label, the exit first, then the Theatre button, then "Switch to audio"
-        /// (never truncated). <paramref name="theatre"/>: the Theatre button is offered (<see cref="TheatreFits"/>).</summary>
-        public (bool Exit, bool Theatre, bool Audio) VideoBarLabels(int tabs, bool theatre)
-        {
-            if (IconOnlySelector) return (false, false, false);
-            float side = TopBarSideW(tabs);
-            float w = (theatre ? BarButtonW + BarButtonGap : 0f) + BarButtonW + BarButtonGap + BarButtonW;   // every button a glyph
-            bool exit = side >= w - BarButtonW + ExitLabelW;
-            if (exit) w += ExitLabelW - BarButtonW;
-            bool theatreLabel = theatre && side >= w - BarButtonW + TheatreLabelW;
-            if (theatreLabel) w += TheatreLabelW - BarButtonW;
-            bool audio = side >= w - BarButtonW + AudioLabelW;
-            return (exit, theatreLabel, audio);
-        }
+        /// <summary>Video mode's top bar holds one button, "Switch to audio" (Cinema ⇄ Theatre and Exit live in the control bar over the picture):
+        /// it carries its label where the column has room for it, else it is the glyph with the label as its tooltip (never truncated).</summary>
+        public bool VideoAudioLabelShown(int tabs) => !IconOnlySelector && TopBarSideW(tabs) >= AudioLabelW;
 
         // ── the transport card's clusters ───────────────────────────────────────────────────────────────────────────
 

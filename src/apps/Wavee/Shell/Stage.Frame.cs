@@ -71,6 +71,8 @@ public static partial class Stage
         Device = DeviceFacts,
         DeviceItems = DeviceItems,
         OpenDevicePicker = static () => PlayerVerbs.Default.OpenDevicePicker(),
+        // the docked video's own settings rows (OnMedia.MoreMenu over Video.PlacementMenu, which knows the stage shows the picture)
+        VideoMenu = static () => OnMedia.MoreMenu(),
     };
 
     /// <summary>Everything the transport card draws that is playback state. The reads are the old <c>TransportCard.Render</c>'s, in its order.</summary>

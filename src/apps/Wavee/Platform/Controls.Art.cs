@@ -221,11 +221,31 @@ public static partial class Controls
         // `_props` at invocation time.
         readonly Action _onPlay;
         readonly Func<Element> _playFab;
+        // What THIS surface shows of playback, as equality-gated memos (hooks of this host): whether the playing item relates to it (the
+        // equalizer slot) and the FAB's state (0 none, 1 it owns the item, 2 it owns it and it plays). A track change moves the playing item for
+        // every surface on screen; read raw, it re-rendered every overlay and its tooltip (a 60-row Up next list: 60 hosts and their FABs per skip).
+        // Through the memos only the surfaces whose answer flipped re-render.
+        readonly Func<bool> _relates;
+        readonly Func<int> _fabState;
+        Memo<int>? _fab;
 
         public NowPlayingOverlayHost()
         {
             _onPlay = () => _latest?.OnPlay?.Invoke();
             _playFab = BuildPlayFab;
+            _relates = () =>
+            {
+                var p = _props.Value;
+                var pb = NowPlaying;
+                return p is not null && pb is not null && pb.HasActiveContext.Value && pb.RelatesTo(p.Uri);
+            };
+            _fabState = () =>
+            {
+                var p = _props.Value;
+                var pb = NowPlaying;
+                if (p is null || pb is null || !pb.HasActiveContext.Value || !pb.RelatesTo(p.Uri) || !pb.Owns(p.Uri)) return 0;
+                return pb.IsPlaying.Value ? 2 : 1;
+            };
         }
 
         public void ApplyProps(object props)
@@ -237,15 +257,14 @@ public static partial class Controls
         public override Element Render()
         {
             var p = _props.Value;
+            // the memos are hooks: called on every render, before the early return
+            bool relates = UseComputed(_relates).Value;
+            _fab = UseComputed(_fabState);   // read by the FAB inside its ToolTip's render, never here
             if (p is null) return new BoxEl();
             var pb = NowPlaying;
 
-            // COARSE first. `HasActiveContext` is one bool for the whole app; `RelatesTo` is per-card and only asked when
-            // something is actually playing. `Owns`/`IsPlaying` are NOT read here any more: only the FAB depends on
-            // them, and the FAB is built inside its ToolTip's render (below), so a play/pause flip re-renders that one
-            // node and leaves this host — which only decides the equalizer slot — alone.
-            bool anything = pb is not null && pb.HasActiveContext.Value;
-            bool relates = anything && pb!.RelatesTo(p.Uri);
+            // `Owns`/`IsPlaying` are NOT read here: only the FAB depends on them, and the FAB is built inside its ToolTip's render
+            // (below), so a play/pause flip re-renders that one node and leaves this host — which only decides the equalizer slot — alone.
 
             Element eq = relates
                 ? new BoxEl
@@ -290,10 +309,7 @@ public static partial class Controls
             // No handler, no FAB: a surface with nothing to play (the listening-history tile) must not grow a dead
             // affordance. Presence is part of the props' equality, so a rebind that gains a handler rebuilds this.
             if (p is null || p.OnPlay is null) return new BoxEl();
-            var pb = NowPlaying;
-            bool anything = pb is not null && pb.HasActiveContext.Value;
-            bool owns = anything && pb!.RelatesTo(p.Uri) && pb!.Owns(p.Uri);
-            bool playingHere = owns && pb!.IsPlaying.Value;
+            bool playingHere = (_fab?.Value ?? 0) == 2;
             return PlayFab(_onPlay, glyph: playingHere ? Icons.Pause : Icons.Play, size: p.Fab) with
             {
                 // Hover-only even while THIS surface is the one playing: at rest the equalizer pill states it (above), and

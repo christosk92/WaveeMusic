@@ -1,8 +1,9 @@
 // ── Themes/Classic/Structure/Views/Stage/ClassicStageTopBar.cs — Classic's `Stage.TopBar` (themes plan 6.1, T7a1) ───────────
 //
 // From `Shell\Stage.UI.cs`'s `TopBar` component: 48 DIP, brand · the SelectorBar (pill tinted through TemplateParts) · the options
-// toggle · exit. With a music video on (the board "Classic · Cinema") the tabs lead with Video, and in Video mode the options toggle gives
-// way to "Theatre mode" / "Fill the screen" (the board "Classic · Theatre") and "Switch to audio". It fills its wrapper (Grow); the root places it under the chrome's Show. The mode, the layout class and the accent are the
+// toggle · exit. With a music video on (the board "Classic · Cinema") the tabs lead with Video, and in Video mode the options toggle and exit
+// give way to "Switch to audio" alone: Cinema ⇄ Theatre and Exit are the control bar's over the picture (`ClassicStageVideoBar`, one home per
+// verb). It fills its wrapper (Grow); the root places it under the chrome's Show. The mode, the layout class and the accent are the
 // stage context's signals (`props.Stage`), the verbs are its actions (`SetMode`, `OpenOptions`, `Exit`, `OverControls`); the options
 // button's realized node is the TeachingTip's anchor SIGNAL (V-U16). On a Compact window (C-Stage-Compact) the mode tabs and the glyph
 // buttons are 40 tall, the Compact target rule (`ClassicStageTiers.StageOf`). The template owns the selector's index cell and the pill's
@@ -42,7 +43,6 @@ internal static class ClassicStageTopBar
         bool videoMode = st.Mode.Value == Stage.Mode.Video;
         bool videoTabs = st.VideoOffered.Value || videoMode;
         bool audioFace = st.AudioFace.Value;
-        bool theatre = st.Theatre.Value;
         var modes = videoTabs ? s_videoModes : s_modes;
         var index = h.UseSignal(0);
         h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.VideoOffered.Value || st.Mode.Value == Stage.Mode.Video ? s_videoModes : s_modes, LitTab(st)))));
@@ -58,13 +58,10 @@ internal static class ClassicStageTopBar
             : videoTabs ? [Loc.Get(Strings.Stage.Mode.Video), Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
             : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
         string?[] icons = videoTabs ? [Icons.Video, Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact] : [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact];
-        // Video mode's buttons: [Theatre mode | Fill the screen] (where the tier has a Theatre), [Switch to audio], [Exit], each labelled only
-        // where the allocator says the column holds it
-        bool theatreOffered = videoMode && L.TheatreFits;
-        var labels = videoMode ? L.VideoBarLabels(modes.Length, theatreOffered) : (Exit: L.ExitLabelShown(modes.Length), Theatre: false, Audio: false);
-        var toggleTheatre = st.ToggleTheatre;
-        string theatreText = Loc.Get(theatre ? Strings.Stage.FillScreen : Strings.Stage.TheatreMode);
-        string theatreGlyph = theatre ? Icons.FullScreen : Icons.SplitView;
+        // Video mode's one button: [Switch to audio], labelled where the allocator says the column holds it. Cinema ⇄ Theatre and Exit are the
+        // control bar's over the picture (YouTube's bottom right: one home per verb, `ClassicStageVideoBar`); the audio modes keep [options] [Exit].
+        bool audioLabel = videoMode && L.VideoAudioLabelShown(modes.Length);
+        bool exitLabel = !videoMode && L.ExitLabelShown(modes.Length);
         var style = new SelectorBarStyle
         {
             RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
@@ -117,23 +114,20 @@ internal static class ClassicStageTopBar
                             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
                             Children =
                             [
-                                // Video mode: Cinema ⇄ Theatre ("Theatre mode" slides the panel in beside the picture, "Fill the screen" is the way back)
-                                theatreOffered
-                                    ? labels.Theatre
-                                        ? Button.Create(theatreText, toggleTheatre, ButtonAppearance.Subtle, ControlSize.Small, glyph: theatreGlyph) with { Shrink = 0f, Key = "stage:bar:theatre" }
-                                        : ToolTip.Wrap(BarGlyph(theatreGlyph, toggleTheatre, lit: false, onRealized: null, targetH) with { Key = "stage:bar:theatre" }, theatreText)
-                                    : new BoxEl { Visible = false },
                                 // Video mode: "Switch to audio" (the video off, the stage on the cover and lyrics) where the options toggle stands (the
-                                // visualizer's options have nothing to set over the picture)
+                                // visualizer's options have nothing to set over the picture); the docked video menu's "Turn off video" is this verb
                                 videoMode
-                                    ? labels.Audio
+                                    ? audioLabel
                                         ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, Key = "stage:bar:audio" }
                                         : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH) with { Key = "stage:bar:audio" }, Loc.Get(Strings.Player.SwitchToAudio))
                                     : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
-                                // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
-                                labels.Exit
-                                    ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
-                                    : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
+                                // the audio modes' way out (Video mode's is the control bar's). Labelled only where the allocator says the column holds it
+                                // (never "Ex…"); else the glyph with the label as its tooltip.
+                                videoMode
+                                    ? new BoxEl { Visible = false }
+                                    : exitLabel
+                                        ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
+                                        : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
                             ],
                         },
                     ],
