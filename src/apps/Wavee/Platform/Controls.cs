@@ -776,10 +776,19 @@ public static partial class Controls
     /// remounted by a Key (the old key flip tore the whole number-cell subtree down on every transition).</para></summary>
     sealed class EqHost : Component
     {
+        /// <summary>What the last render drew: what the meter answers while the full-screen stage covers its page (see <see cref="Render"/>).</summary>
+        Element? _held;
+
         public override Element Render()
         {
             var p = UsePropsOrDefault<EqHostProps>();
             if (p is null) return new BoxEl();
+            // UNDER THE STAGE: a meter on the main window's page (every one outside the stage's own tree) is covered by the full-screen stage.
+            // While it is, the meter answers what it drew last and reads nothing but the cover (Shell.PageShown, the bar's and the rail's
+            // gate), so a track change or a play/pause behind the stage re-renders and re-seeds no meter; the close re-renders it on its
+            // first frame, current at once (the hooks this skips keep their state: they are keyed by call site).
+            bool onStage = UseContext(Stage.StageContext) is not null;
+            if (_held is { } held && !onStage && !Shell.PageShown.Value) return held;
             bool animate = p.Playing.Value;           // subscribe — a bound row's play↔pause flip re-renders THIS host in place
             bool paused = p.Paused?.Value ?? false;   // subscribe — pause without a remount
             bool reduced = Design.Reduced;            // a VALUE, never a hook branch
@@ -800,7 +809,7 @@ public static partial class Controls
             // sidebar's and the track list's tiles, ~2 tiles per frame at the display rate). The same pixels: the slice is
             // composited in the paint order the inline bars had. Off when the bars stand still (not playing, reduced
             // motion), so a static meter spends nothing of the engine's effect-slice budget.
-            return new BoxEl
+            return _held = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Center, Gap = 2f, Height = p.Height,
                 RepaintBoundary = moving,
