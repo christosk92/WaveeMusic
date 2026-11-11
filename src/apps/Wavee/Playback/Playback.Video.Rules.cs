@@ -574,8 +574,15 @@ public static partial class Playback
         {
             const double Headroom = 0.85; const int PriorCeiling = 720; const int ColdCeiling = 480;
             // A rung above 720p opens on a remembered (unmeasured) estimate only when that estimate covers its bitrate this many
-            // times over: its first segment still arrives faster than real time even if today's link is up to 8x slower than
-            // remembered, so a stale fast memory cannot delay the first frame. The first measured sample corrects the rest.
+            // times over. Where 8 comes from: the 720 ceiling exists because the first sample on a COLD connection reads far below a
+            // remembered steady-state estimate, and the controller downswitches at once from a rung above 0.95 x a measured
+            // estimate (AdaptiveBitrateController.DownSwitchFactor, rule 1 of Choose); an open the first sample reverses is the
+            // open-then-switch this ceiling prevents. Measured on the owner's link (log 2026-11-11, first video of the process):
+            // remembered 569,024 kbps, first sample (a 2.7 MB 1080p segment 0 on a cold connection) 76,885 kbps, 7.4 times lower.
+            // A rung survives that first sample when bitrate <= 0.95 x (estimate / 7.4), i.e. when the estimate covers it
+            // 7.4 / 0.95 = 7.8 times over; rounded up, ceil(7.4 / 0.95) = 8. So above 720p this opens only a rung the controller
+            // would still hold after the first cold sample. (Read as time: at 8x a 4 s segment arrives in 0.5 s at the remembered
+            // rate, and still in real time on a link 8x slower.)
             const double PriorTrust = 8.0;
             int pinned = PinnedRung(rungsAscending, pinnedHeight);
             if (pinned >= 0) { why = "pin"; return pinned; }
