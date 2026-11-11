@@ -75,7 +75,12 @@ internal static partial class ZuneSettings
         bool listPage = compact && !props.OpenSection;
         bool sectionPage = compact && props.OpenSection;
 
-        Element[] groups = AreaGroups(k, (Settings.Area)area, props);
+        // Where the area's heading sits decides the air above the column's first group: from Small up the heading is the column's first child (a section gap
+        // under it); on a Compact section page it is the panorama title ABOVE the lane, and the title's gap to the body moves INTO the scroller's top padding
+        // (the viewport starts right under the title), so a sentence that leads the area can rise to the heading's line inside the viewport instead of being
+        // clipped above it. Rows that do not lead with a sentence land where they did: TitleBodyGap + LaneTop under the title either way.
+        float laneAir = sectionPage ? Z.TitleBodyGap + Z.LaneTop : Z.LaneTop;
+        Element[] groups = AreaGroups(k, (Settings.Area)area, props, headingGap: compact ? laneAir : Z.SectionGap);
 
         if (!compact) groups = [SectionHeading(names[area]), .. groups];
 
@@ -99,7 +104,7 @@ internal static partial class ZuneSettings
                 {
                     Direction = 0, Wrap = true, Gap = Z.AsideGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
                     // the clip reaches LaneInk left of the column, the column stays where it was (a left-hanging glyph at the gutter keeps its ink)
-                    Padding = new Edges4(Z.LaneInk, Z.LaneTop, 0f, Z.LaneBottom), Children = scrolled.ToArray(),
+                    Padding = new Edges4(Z.LaneInk, laneAir, 0f, Z.LaneBottom), Children = scrolled.ToArray(),
                 }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Margin = new Edges4(-Z.LaneInk, 0f, 0f, 0f), ScrollKey = "zs:" + slug, Key = "zs:scroll:" + slug },
             ],
         };
@@ -108,7 +113,7 @@ internal static partial class ZuneSettings
         Element body = new BoxEl
         {
             Key = "zs:body", Direction = (byte)(lay.ListIsStrip ? 1 : 0), Gap = lay.BodyGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Padding = new Edges4(0f, Z.TitleBodyGap, 0f, 0f), AlignItems = FlexAlign.Stretch,
+            Padding = new Edges4(0f, sectionPage ? 0f : Z.TitleBodyGap, 0f, 0f), AlignItems = FlexAlign.Stretch,
             Children = bodyKids,
         };
 
