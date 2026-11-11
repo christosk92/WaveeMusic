@@ -350,21 +350,28 @@ public static partial class Lyrics
     /// by construction. That is no longer true: <see cref="Clean"/> folds a removed ♪/blank row's timestamp into the
     /// line above it, which gives a line-synced document a genuine early sung-out point for the first time. Reporting
     /// the gap lights the dots through the break (the instrumental cue those ♪ rows used to carry) while the focus
-    /// stays put, so neither half borrows the other's hazard.</para></summary>
+    /// stays put, so neither half borrows the other's hazard.</para>
+    ///
+    /// <para>The advance also needs the NEXT line to be word-by-word: only its own wipe shows it unsung, so a line-level
+    /// next line (an AI result's demoted line, a line the job has not timed yet, a mixed document) is never lit white
+    /// ahead of its start. The break is still reported, so the dots breathe through it while the sung line keeps the
+    /// focus.</para></summary>
     public static int AdvancePastInterlude(Doc doc, int active, long nowMs, out long gapStart, out long gapEnd)
     {
         gapStart = 0L; gapEnd = 0L;
         if (active < 0 || active + 1 >= doc.Lines.Count) return active;
         var l = doc.Lines[active];
+        var next = doc.Lines[active + 1];
         bool wordSynced = l.IsWordByWord && l.Syllables.Count > 0;
+        bool nextWordSynced = next.IsWordByWord && next.Syllables.Count > 0;
         // Absent syllables, only an AUTHORED end earlier than the next line is a real sung-out point; without one
         // SungOutMs falls back to the next line's start and no gap can exist anyway.
-        long nextStart = doc.Lines[active + 1].StartMs;
+        long nextStart = next.StartMs;
         if (!wordSynced && !(l.EndMs is { } e && e < nextStart)) return active;
         long sungOut = SungOutMs(doc, active);
         if (nowMs < sungOut || nextStart - sungOut < InterludeGapMs) return active;
         gapStart = sungOut; gapEnd = nextStart;
-        return wordSynced ? active + 1 : active;
+        return wordSynced && nextWordSynced ? active + 1 : active;
     }
 
     // ── 5. the NPV peek's clock ─────────────────────────────────────────────────────────────────────────────────────
