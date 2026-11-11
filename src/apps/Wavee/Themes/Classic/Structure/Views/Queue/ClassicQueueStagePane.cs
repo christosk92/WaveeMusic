@@ -156,7 +156,7 @@ internal sealed class ClassicQueueStagePane : Component
     {
         var props = _props;
         var lane = props.Lane;
-        if ((uint)i >= (uint)lane.SlotCount) return EmptySentence();
+        if ((uint)i >= (uint)lane.SlotCount) return EmptySentence(_video);
         int item = lane.ItemAt(i);
         var slot = lane.SlotAt(item);
         if (slot.Kind == QueueSlotKind.More) return ShowMore(props, slot.Section);
@@ -198,10 +198,10 @@ internal sealed class ClassicQueueStagePane : Component
     static QueueSection? LeadSection(in QueueCounts c)
         => c.Queue > 0 ? QueueSection.Queue : c.NextUp > 0 ? QueueSection.NextUp : c.Autoplay > 0 ? QueueSection.Autoplay : null;
 
-    /// <summary>"Nothing up next": the one sentence under an empty list.</summary>
-    static Element EmptySentence() => new BoxEl
+    /// <summary>"Nothing up next": the one sentence under an empty list (Theatre's open list: at its rows' inner padding, under the header's text).</summary>
+    static Element EmptySentence(bool video) => new BoxEl
     {
-        Key = "stagequeue:empty", Padding = new Edges4(0f, Spacing.XXL, 0f, 0f),
+        Key = "stagequeue:empty", Padding = new Edges4(video ? ClassicStageTheatreGeometry.ListPad : 0f, Spacing.XXL, 0f, 0f),
         Children = [new TextEl(Loc.Get(Strings.Player.QueueEmpty)) { Size = ClassicQueueRules.EmptySize, LineHeight = ClassicQueueRules.EmptyLine, Color = Ink.InkTertiary }],
     };
 
