@@ -8,7 +8,8 @@
 // title and the artist line; the first card, what plays next, is ringed in the accent. A click plays that track (the queue's own verb), a right-click
 // opens the row's menu. As many cards as the stage's width holds at the tier's card width (`ClassicStageLayout.ShelfCardW`), never a scrollbar. The
 // picture chrome (`ClassicStagePictureChrome`) places it above the transport card under the idle chrome's Show; its place (and the title block's above
-// it) is reserved whether it shows or rests.
+// it) is reserved whether it shows or rests. While the END CARD is up (`StageCtx.EndCard`) the card names what plays next, so the shelf is the board's
+// "Then" row: the tracks after the card's, none ringed.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -113,22 +114,25 @@ internal sealed class ClassicStageShelf : Component
         float cardW = tier.ShelfCardW;
         float width = ClassicStagePictureChrome.ShelfWidth(L, tier);
         var queue = props.Queue;
+        // the end card shows the first row: the shelf starts after it ("Then")
+        bool then = st.EndCard.Value;
+        int skip = then ? 1 : 0;
         // the count holds while the cards can narrow to keep it (a crossing's narrowing frames never drop a card to bring it back)
         _held = G.CardsHeld(width, cardW, _held);
-        int n = Math.Min(_held, queue.Rows.Length);
+        int n = Math.Max(0, Math.Min(_held, queue.Rows.Length - skip));
         float cardFit = G.CardWFor(width, cardW, _held);
         var lane = props.Lane;
         var verbs = props.Verbs;
         var overControls = st.OverControls;
         var cards = new Element[n];
-        for (int i = 0; i < n; i++) cards[i] = Card(lane, verbs, queue.Rows[i], cardFit, i == 0, set.Fill);
+        for (int i = 0; i < n; i++) cards[i] = Card(lane, verbs, queue.Rows[i + skip], cardFit, i == 0 && !then, set.Fill);
         return new BoxEl
         {
             Direction = 1, Gap = G.CaptionGap, Width = width, Height = G.Height(cardW),
             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
             Children =
             [
-                new TextEl(n > 0 ? Loc.Get(Strings.Stage.UpNext) : "")
+                new TextEl(n > 0 ? Loc.Get(then ? Strings.Stage.EndCard.Then : Strings.Stage.UpNext) : "")
                 {
                     Size = G.CaptionSize, LineHeight = G.CaptionLine, Weight = G.CaptionWeight, Color = Ink.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap,
                 },

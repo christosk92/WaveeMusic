@@ -156,6 +156,12 @@ public sealed record StageRootView
     /// and lyrics instead of the picture. No presenter (and so no video hole) is up meanwhile: the template draws the face as an ordinary stage
     /// layer over the reservation, and the next track with a video brings the picture back by itself. A predicate. Appended (contract 1.97).</summary>
     public Func<bool> ShowAudioFace { get; init; } = static () => false;
+
+    /// <summary>The END CARD is up (<c>StageCtx.EndCard</c>): a music video ended in Video mode and the next track waits for the countdown. The
+    /// template places <see cref="StageLayers.EndCard"/> over the picture's dimmed last frame (Cinema: the stage; Theatre: the picture's box), keeps
+    /// the chrome as it is (a paused deck pins the idle chrome) and, in Cinema, the shelf lists the tracks after the card's. A predicate.
+    /// Appended (contract 1.98).</summary>
+    public Func<bool> ShowEndCard { get; init; } = static () => false;
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePictureChrome"/>: the stage's chrome over the music video in Video mode (the top bar, the
@@ -207,6 +213,26 @@ public sealed record StageLayers
     /// the Theatre panel's in Theatre, ticking only while the face shows lyrics (<c>StageCtx.AudioLyrics</c>). Null where the core offers none.
     /// Appended (contract 1.97).</summary>
     public Func<Element>? PictureLyrics { get; init; }
+
+    /// <summary>The end card over the picture (<see cref="StageRootView.ShowEndCard"/>): the core host that mounts <see cref="ViewKeys.StageEndCard"/>
+    /// on this render's queue. Null where the core offers none. Appended (contract 1.98).</summary>
+    public Func<Element>? EndCard { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.StageEndCard"/>: the end-of-video card ("Up next in 5"). The track it names is the queue's first row
+/// (<see cref="QueueProps.Rows"/>[0]: what the advance plays), its facts through <see cref="Lane"/> (<see cref="IQueueLane.TextOf"/>,
+/// <see cref="IQueueLane.VideoOf"/>: the shelf's 16:9 thumbnail). The countdown and the two verbs are the stage's (<c>StageCtx.EndSeconds</c>,
+/// <c>EndRemainingMs</c>, <c>EndPlayNow</c>, <c>EndCancel</c>), read from the stage's context. Appended (contract 1.98).</summary>
+public sealed record StageEndCardProps
+{
+    /// <summary>What the queue is (the first row is the card's track).</summary>
+    public required QueueProps Queue { get; init; }
+
+    /// <summary>The row facts.</summary>
+    public required IQueueLane Lane { get; init; }
+
+    /// <summary>The name of what the deck plays from (the card's "From ..." line); empty when there is none.</summary>
+    public string From { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePane"/>: the pane region (Lyrics, Up next, Artist) the core pane host mounts. The template

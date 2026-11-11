@@ -955,6 +955,13 @@
     "theatreMode": "극장 모드",
     "fillScreen": "화면 채우기",
     "audioTag": "오디오",
+    "endCard": {
+      "upNextIn": "{seconds}초 후 다음 곡",
+      "from": "{context}에서",
+      "playNow": "지금 재생",
+      "cancel": "취소",
+      "then": "그다음"
+    },
     "gallery": "비주얼라이저 갤러리 및 설정",
     "galleryTitle": "비주얼라이저",
     "closePanel": "패널 닫기",

@@ -37,6 +37,7 @@ public static partial class Stage
         TheatrePane = static () => Embed.Comp(static () => new PaneHost(theatre: true)),
         UpNextShelf = static () => Queue.StageShelf(),
         PictureLyrics = static () => Embed.Comp(static () => new PictureLyricsHost()),
+        EndCard = static () => Queue.StageEndCard(),
     };
 
     /// <summary>The audio face's reading column (<see cref="StageLayers.PictureLyrics"/>): the lyrics view on the stage's accent, ticking only while

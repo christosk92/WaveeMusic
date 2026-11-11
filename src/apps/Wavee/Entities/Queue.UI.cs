@@ -576,6 +576,9 @@ public static partial class Queue
     /// <summary>The Up next shelf over the music video (the stage's Video mode, Cinema): the <c>Queue.StageShelf</c> view on this render's queue.</summary>
     public static Element StageShelf() => Embed.Comp(static () => new StageShelfHost());
 
+    /// <summary>The end card over the music video (the stage's Video mode, Playback.EndHold.cs): the <c>Stage.EndCard</c> view on this render's queue.</summary>
+    public static Element StageEndCard() => Embed.Comp(static () => new StageEndCardHost());
+
     /// <summary>The rail panel's host: this render's queue, the three sections' page counters, the lane, and the facts the panel
     /// reads for it ("Playing from" and where the now-playing row plays from). The picture is the structure's <c>Queue.Panel</c>.</summary>
     sealed class RailPanelHost : QueueSurface
@@ -713,6 +716,21 @@ public static partial class Queue
         {
             Prologue(rail: false);
             return ViewSlots.View(ViewKeys.QueueStageShelf, new QueueStageShelfProps { Queue = Model, Lane = this, Verbs = Verbs });
+        }
+    }
+
+    /// <summary>The end card's host (Video mode, a music video's end in full screen): this render's queue (its first row is what the advance plays)
+    /// and the row facts, and the name of what the deck plays from. The countdown and the card's verbs are the stage's context's.</summary>
+    sealed class StageEndCardHost : QueueSurface
+    {
+        public StageEndCardHost() : base(new Shell.QueuePages(unified: true)) { }
+
+        protected override bool ReadsHistory => false;
+
+        public override Element Render()
+        {
+            Prologue(rail: false);
+            return ViewSlots.View(ViewKeys.StageEndCard, new StageEndCardProps { Queue = Model, Lane = this, From = Model.PlayingFrom?.Name ?? "" });
         }
     }
 

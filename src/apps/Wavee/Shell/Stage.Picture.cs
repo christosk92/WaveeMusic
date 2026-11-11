@@ -68,6 +68,9 @@ public static partial class Stage
         /// <summary>The mounted stage holds Video mode over an audio-only track (the audio face); peeked (the inspector's <c>status</c>).</summary>
         public static bool AudioFacePeek() => s_view.Peek()?.Stage.AudioFace.Peek() ?? false;
 
+        /// <summary>The mounted stage shows the end card (a music video ended, the countdown runs); peeked (the inspector's <c>status</c>).</summary>
+        public static bool EndCardPeek() => s_view.Peek()?.Stage.EndCard.Peek() ?? false;
+
         /// <summary><see cref="Offered"/> without subscribing: where a stage that opens now starts.</summary>
         public static bool OfferedNow()
             => Supported && Video.MainWindowHole.Stageable(Video.PlacementCore.Resolve(Video.State.Surface.Peek()));

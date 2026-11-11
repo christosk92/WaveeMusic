@@ -46,4 +46,10 @@ public static partial class ViewKeys
     /// under it), only while the stage shows the picture, so only a structure that states <c>StagePolicy.VideoStage</c> registers it. Props:
     /// <see cref="StagePictureChromeProps"/>. Appended (contract 1.95).</summary>
     public static readonly ViewKey<StagePictureChromeProps> StagePictureChrome = new("Stage.PictureChrome");
+
+    /// <summary>Video mode's END CARD: when a music video ends in full screen, "Up next in 5" over the dimmed last frame, the next track's 16:9
+    /// thumbnail with a progress line, its title, artist and "From ..." line, Play now and Cancel. Mounted by the core host the structure places
+    /// through <c>StageLayers.EndCard</c> while <c>StageRootView.ShowEndCard</c> holds. The hold that shows it is taken only where the structure
+    /// states <c>StagePolicy.VideoStage</c>, so only such a structure registers it. Props: <see cref="StageEndCardProps"/>. Appended (contract 1.98).</summary>
+    public static readonly ViewKey<StageEndCardProps> StageEndCard = new("Stage.EndCard");
 }

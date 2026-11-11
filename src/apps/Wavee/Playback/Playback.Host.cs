@@ -1209,6 +1209,7 @@ public static partial class Playback
         VideoFacts facts = VideoFacts.Of(in s_state);
         DeckVideo.Value = facts;
         VideoActive.Value = facts.OnVideo && !facts.Remote && s_state.Phase is Phase.Playing or Phase.Paused;
+        EndHoldNow.Value = new EndHoldFacts(s_state.Hold, s_state.Hold == EndHold.None ? 0L : s_state.HoldAtMs);
 
         // The in-flight bits retire on the state that ends the flight, not on a timer: the deck is audible, so the
         // load is over; someone else owns playback, so the transfer is over.

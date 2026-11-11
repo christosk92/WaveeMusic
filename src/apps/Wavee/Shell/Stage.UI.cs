@@ -125,6 +125,19 @@ public static partial class Stage
         public readonly Signal<bool> AudioLyrics = new(false);
         /// <summary>The top bar's "Theatre mode" / "Fill the screen": Cinema ⇄ Theatre (stored).</summary>
         public Action ToggleTheatre = static () => { };
+        /// <summary>THE END CARD (Video mode; <c>Playback.EndHold.cs</c>): a music video ended and the next track waits for the countdown. SurfaceCore's
+        /// one countdown timer writes these: the card is up, the whole seconds left (5..1, ticking once a second) and the frame-clock stamp the
+        /// countdown started at (<see cref="EndRemainingMs"/> reads what is left now, for a progress line that starts where the countdown stands).
+        /// While it is up Cinema's shelf lists the tracks AFTER the card's ("Then").</summary>
+        public readonly Signal<bool> EndCard = new(false);
+        public readonly Signal<int> EndSeconds = new(0);
+        public readonly Signal<long> EndAtMs = new(0L);
+        /// <summary>What is left of the countdown now, in ms (0 when none); peeked, for the card's render.</summary>
+        public Func<int> EndRemainingMs = static () => 0;
+        /// <summary>The countdown's whole length in ms (the card's progress line spans it).</summary>
+        public int EndTotalMs => Playback.EndHoldMs;
+        /// <summary>The card's "Play now" (the next track now) and "Cancel" (no advance: playback rests at the ended video's end, in Video mode).</summary>
+        public Action EndPlayNow = static () => { }, EndCancel = static () => { };
         public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
         public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
         /// <summary>The gallery is open AND the layout has room for it (<c>Layout.ShowGallery</c>) — the pane's mount gate
@@ -250,6 +263,10 @@ public static partial class Stage
         Layout? _resolved;   // the stage layout last resolved (the classifier's hysteresis)
         readonly FloatSignal _frac = new(0f);
         readonly Action _onWake;
+        // THE END CARD's one timer (Playback.EndHold.cs): armed from the hold's frame-clock stamp for the next whole second, so a re-render or a
+        // remount re-arms it for what is left; it fires the release when the countdown is over
+        readonly Action _onCountdown;
+        TimerHandle _countdown;
         // The idle machine + the counted menu hold (the device flyout, the "…" menu, the options popover and the TeachingTip each count
         // one, V-U22) belong to the IMMERSIVE MODE, not to this component: a remount adopts the same object. The machine itself is
         // started in Render with the host timer clock (MediaPlayerElement.cs:729-730) — never with 0 (V-U10).
@@ -276,6 +293,7 @@ public static partial class Stage
         public SurfaceCore()
         {
             _onWake = () => { _armedDueMs = double.PositiveInfinity; Sync(); };
+            _onCountdown = () => Countdown(Playback.EndHoldNow.Peek());
             // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
             _ctx.SetMode = mode =>
@@ -331,6 +349,15 @@ public static partial class Stage
             _ctx.ResyncLyrics = static () => Lyrics.ViewCore.StageResync?.Invoke();
             _ctx.HasSecondLine = static () => Lyrics.Prefs.Available.Value != 0;
             _ctx.SecondLineOn = static () => Lyrics.Prefs.SecondaryLine() != 0;
+            _ctx.EndRemainingMs = static () => Playback.EndHoldNow.Peek().RemainingMs(Playback.FrameNowMs());
+            // the card's buttons leave with the card: focus goes back to the stage's root first (its key map: Space, Esc, F11), never to nothing
+            _ctx.EndPlayNow = () =>
+            {
+                FocusRoot();
+                var hold = Playback.EndHoldNow.Peek();
+                if (hold.Phase == Playback.EndHold.Counting) Playback.ReleaseEndHold(hold.AtMs);
+            };
+            _ctx.EndCancel = () => { FocusRoot(); Playback.CancelEndHold(); };
             _ctx.OverControls = over => { _idle.SetPointerOverControls(over, Now()); Sync(); };
             _ctx.MenuOpen = open => { _idle.MenuOpen(open, Now()); Sync(); };
             _ctx.Scrubbing = on => { _idle.SetScrubbing(on, Now()); Sync(); };
@@ -373,6 +400,7 @@ public static partial class Stage
                 PictureRealized = Picture.Realized,
                 ShowTheatre = () => ctx.Theatre.Value,
                 ShowAudioFace = () => ctx.AudioFace.Value,
+                ShowEndCard = () => ctx.EndCard.Value,
                 TopBar = new StageTopBarProps { Stage = ctx },
                 Transport = TransportProps(ctx),
                 Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },
@@ -485,6 +513,12 @@ public static partial class Stage
             // the audio face: Video mode without a picture now; it shows the lyrics but beside Theatre's own Lyrics panel
             UseSignalEffect(() => ctx.AudioFace.SetIfChanged(ctx.Mode.Value == Mode.Video && !ctx.VideoOffered.Value));
             UseSignalEffect(() => ctx.AudioLyrics.SetIfChanged(ctx.AudioFace.Value && !(ctx.Theatre.Value && ctx.TheatrePane.Value == PaneKind.Lyrics)));
+            // ── THE END CARD (Playback.EndHold.cs): the stage offers the hold while it shows the picture with a video face (a structure that draws
+            //    Video mode, which is the one that draws the card); its one countdown timer follows the hold. Closing the stage withdraws the
+            //    offer, which cancels a running countdown (the unmount below). ──
+            _countdown = UseTimeout(_onCountdown, Playback.EndHoldMs, DepKey.Empty);   // armed once at mount: a fire with no hold counting does nothing
+            UseSignalEffect(() => Playback.OfferEndHold(Picture.Supported && ctx.Mode.Value == Mode.Video && !ctx.AudioFace.Value));
+            UseSignalEffect(() => Countdown(Playback.EndHoldNow.Value));
             // the stage's view, for the chrome Video mode draws over the picture (in the video layer, outside this subtree)
             var view = _view;
             UseLayoutEffect(() =>
@@ -575,6 +609,7 @@ public static partial class Stage
                 _options?.Close();
                 _options = null;
                 LyricsPaneShown.Value = false;                    // the lyrics view's gate must not outlive the stage (it ticks only while shown)
+                if (!StageWanted()) Playback.OfferEndHold(false); // the stage closed: a running countdown stops (a remount keeps it)
             }, DepKey.Empty);
 
             // ── idle: the engine machine on the HOST TIMER clock, one timer re-armed from NextWakeMs (MediaPlayerElement.cs:390-416, :726-730) ──
@@ -609,6 +644,33 @@ public static partial class Stage
             var L = ctx.Layout.Value;
             // THE PICTURE IS THE STRUCTURE'S: the root box (size, wiring), the layer stack and the chrome's placement are `draw`'s.
             return Ctx.Provide(StageContext, ctx, draw(_view with { Width = L.W, Height = L.H }));   // explicit size (V-U49); the floor is the Backdrop's
+        }
+
+        /// <summary>Focus the stage's root box (the key map's home), as the stage does when it opens.</summary>
+        void FocusRoot()
+        {
+            if (!_root.IsNull) _hooks?.FocusNode?.Invoke(_root, false);
+        }
+
+        /// <summary>The end card's countdown, from the hold as it stands (<paramref name="hold"/>): the card's signals, and the ONE timer armed for
+        /// the next whole second; when nothing is left, the release (the card stays up until the advance lands). Reads no signal.</summary>
+        void Countdown(Playback.EndHoldFacts hold)
+        {
+            var ctx = _ctx;
+            if (hold.Phase != Playback.EndHold.Counting)
+            {
+                _countdown.Cancel();
+                ctx.EndCard.SetIfChanged(false);
+                ctx.EndSeconds.SetIfChanged(0);
+                return;
+            }
+            int left = hold.RemainingMs(Playback.FrameNowMs());
+            if (left <= 0) { Playback.ReleaseEndHold(hold.AtMs); return; }
+            int seconds = (left + 999) / 1000;
+            ctx.EndAtMs.SetIfChanged(hold.AtMs);
+            ctx.EndSeconds.SetIfChanged(seconds);
+            ctx.EndCard.SetIfChanged(true);
+            _countdown.RestartIn(left - (seconds - 1) * 1000);
         }
 
         /// <summary>The accent derivation (one definition, two triggers). Reads the track KEY (not the table), the cover's late

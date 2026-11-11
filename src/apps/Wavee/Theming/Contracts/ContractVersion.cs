@@ -251,6 +251,9 @@
 // asked only where the stage shows the picture), `QueueStagePaneProps.Video` (the Theatre list's thumbnail rows), the key `ViewKeys.QueueStageShelf`
 // (`QueueStageShelfProps`: Cinema's Up next shelf), `StageLayers.UpNextShelf` / `.PictureLyrics` and `StageRootView.ShowAudioFace` (Video mode
 // holds over an audio-only track: the frame stays, the picture's place shows the cover and the lyrics).
+// 1.98 (video full screen, the end card): the key `ViewKeys.StageEndCard` (`StageEndCardProps`: "Up next in 5" when a music video ends in full
+// screen), `StageLayers.EndCard`, `StageRootView.ShowEndCard`, and on `Stage.StageCtx` the card's `EndCard` / `EndSeconds` / `EndAtMs` signals,
+// `EndRemainingMs` and the verbs `EndPlayNow` / `EndCancel` (while the card is up Cinema's shelf lists the tracks after the card's).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -266,7 +269,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 97;
+    public const int Minor = 98;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

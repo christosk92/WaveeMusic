@@ -145,6 +145,56 @@ internal static class ClassicStageAudioFaceGeometry
     public const float CoverMin = 168f;
 }
 
+/// <summary>The numbers of Video mode's END CARD (the board "Classic · End of video", Classic-End.dc.html, 1440 x 810): over the picture's last frame,
+/// dimmed, "Up next in 5" (14, the number white semibold) a gap above a row of the next track's 16:9 thumbnail (the tier's width, an accent ring and
+/// a 4 high progress line at its foot) and its text column: the title (Display 28/34 semibold, two lines at most), the artist (15/20), "From ..."
+/// (12/16), then Play now (accent) and Cancel. Cinema centres it between the top bar and the shelf's reserved place; Theatre centres it in the
+/// picture's box, the thumbnail at most <see cref="TheatreThumbShare"/> of the box.</summary>
+internal static class ClassicStageEndCardGeometry
+{
+    /// <summary>The veil over the last frame (the stage veil at this alpha).</summary>
+    public const float DimA = 0.5f;
+
+    /// <summary>The caption row's gap to the card row (the board's 20), the caption (14/20; the number 600).</summary>
+    public const float CaptionGap = 20f, CaptionSize = 14f, CaptionLine = 20f;
+
+    public const ushort NumberWeight = 600;
+
+    /// <summary>The gap between the thumbnail and the text column (the board's 24), and the text column's widest and narrowest.</summary>
+    public const float RowGap = 24f, TextMaxW = 336f, TextMinW = 180f;
+
+    /// <summary>The thumbnail's corners (the board's 8), its accent ring (2), the progress line (4 high, the track at this ink alpha).</summary>
+    public const float ThumbCorners = 8f, Ring = 2f, ProgressH = 4f, ProgressTrackA = 0.15f;
+
+    /// <summary>The title (Display 28/34 semibold, two lines), the artist (15/20) and the "From" line (12/16), 8 apart.</summary>
+    public const float TitleSize = 28f, TitleLine = 34f, ArtistSize = 15f, ArtistLine = 20f, FromSize = 12f, FromLine = 16f, TextGap = 8f;
+
+    public const ushort TitleWeight = 600;
+
+    public const int TitleMaxLines = 2;
+
+    /// <summary>The buttons' row: 12 more under the text (the board's margin), 8 between them.</summary>
+    public const float ButtonsAbove = 12f, ButtonGap = 8f;
+
+    /// <summary>Theatre: the card's padding inside the picture's box, and the thumbnail's largest share of the box's width.</summary>
+    public const float TheatrePad = 24f, TheatreThumbShare = 0.42f;
+
+    /// <summary>The card rises in from this far below (and sinks back as it goes).</summary>
+    public const float EnterDy = 12f;
+
+    /// <summary>The thumbnail's width in a region <paramref name="regionW"/> wide: the tier's (<paramref name="tierW"/>), narrowed so the text column
+    /// keeps its narrowest beside it, and in Theatre at most <see cref="TheatreThumbShare"/> of the picture's box.</summary>
+    public static float ThumbW(float tierW, float regionW, bool theatre)
+    {
+        float w = MathF.Min(tierW, regionW - RowGap - TextMinW);
+        if (theatre) w = MathF.Min(w, MathF.Round(regionW * TheatreThumbShare));
+        return MathF.Max(0f, MathF.Round(w));
+    }
+
+    /// <summary>The text column's width beside a thumbnail <paramref name="thumbW"/> wide in a region <paramref name="regionW"/> wide.</summary>
+    public static float TextW(float thumbW, float regionW) => MathF.Max(0f, MathF.Min(TextMaxW, regionW - thumbW - RowGap));
+}
+
 /// <summary>The constants and rects of Classic's stage in Video mode's Theatre (the picture with a panel beside it).</summary>
 internal static class ClassicStageTheatreGeometry
 {

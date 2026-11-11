@@ -17,6 +17,11 @@
 // moves when the shelf comes or goes. THE AUDIO FACE (`StageRootView.ShowAudioFace`, an audio-only track while video stays on): the frame stays (top
 // bar, shelf, transport), the title over the picture and its scrims give way to the face's own cover and title (`ClassicStageAudioFace`, a stage layer
 // under this one: no picture, so no hole), and the ground lets the pointer through to the face's lyrics.
+//
+// THE END CARD (`StageRootView.ShowEndCard`, a music video ended and the next track waits for the countdown): the picture stays where it is, its last
+// frame under a veil (the whole stage in Cinema, the picture's box in Theatre), the card (`ClassicStageEndCard`, the core's `StageLayers.EndCard`)
+// over it; the title block over the picture gives way to it (the card names what comes next), and Cinema's shelf lists the tracks after the card's.
+// The chrome stays as it is: the paused deck pins the idle chrome.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -49,7 +54,7 @@ internal static class ClassicStagePictureChrome
         var theatre = ClassicStageTheatreGeometry.Of(L);
         Func<bool> cinemaChrome = () => v.ChromeVisible() && !v.ShowTheatre();
         // the title over the picture and its scrims: Cinema with a picture (the audio face draws its own title under the cover)
-        Func<bool> overPicture = () => v.ChromeVisible() && !v.ShowTheatre() && !v.ShowAudioFace();
+        Func<bool> overPicture = () => v.ChromeVisible() && !v.ShowTheatre() && !v.ShowAudioFace() && !v.ShowEndCard();
         bool shelf = tier.ShelfCardW > 0f && v.Layers.UpNextShelf is not null;
         Func<bool> chromeShown = () => v.ChromeVisible() || v.ShowTheatre();
         Func<bool> hairline = () => !v.ChromeVisible() && !v.ShowTheatre();
@@ -87,6 +92,13 @@ internal static class ClassicStagePictureChrome
                         },
                     ],
                 }),
+                // the end card's veil over the last frame (Cinema: the stage; Theatre: the picture's box, moving with it)
+                Flow.Show(v.ShowEndCard, Stage.Layer with
+                {
+                    Key = "picture:end-dim", HitTestVisible = false, HitTestPassThrough = false,
+                    Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
+                    Children = [Embed.Comp(new GroundProps(v), static () => new EndDim())],
+                }),
                 // the title block: the transport card's content edge, a gap above the shelf's reserved place or the card (Cinema)
                 Flow.Show(overPicture, Stage.Layer with
                 {
@@ -110,6 +122,15 @@ internal static class ClassicStagePictureChrome
                             Children = [v.Layers.UpNextShelf is { } upNext ? upNext() : new BoxEl()],
                         },
                     ],
+                }),
+                // the end card over the picture (centred between the top bar and the shelf's place, or in the picture's box)
+                Flow.Show(() => v.ShowEndCard() && v.Layers.EndCard is not null, Stage.Layer with
+                {
+                    Key = "picture:endcard",
+                    Enter = new EnterExit(Dy: ClassicStageEndCardGeometry.EnterDy, Opacity: 0f, Active: true),
+                    Exit = new EnterExit(Dy: ClassicStageEndCardGeometry.EnterDy, Opacity: 0f, Active: true),
+                    Transition = MotionTok.ControlNormal,
+                    Children = [v.Layers.EndCard is { } endCard ? endCard() : new BoxEl()],
                 }),
                 // Theatre's title block under the picture, at rest
                 Flow.Show(v.ShowTheatre, Stage.Layer with
@@ -163,9 +184,12 @@ internal static class ClassicStagePictureChrome
 
     /// <summary>The top of the Cinema chrome's lower block under the audio face (which draws no title block over the picture): the shelf's
     /// reserved place where the tier has a shelf, else the transport card.</summary>
-    public static float LowerBlockTop(StageRootView v, Stage.Layout L, ClassicStageLayout tier)
+    public static float LowerBlockTop(StageRootView v, Stage.Layout L, ClassicStageLayout tier) => LowerBlockTop(L, tier, v.Layers.UpNextShelf is not null);
+
+    /// <inheritdoc cref="LowerBlockTop(StageRootView, Stage.Layout, ClassicStageLayout)"/> (<paramref name="shelf"/>: the core offers the shelf).
+    public static float LowerBlockTop(Stage.Layout L, ClassicStageLayout tier, bool shelf)
     {
-        float shelfH = v.Layers.UpNextShelf is null ? 0f : ClassicStageShelfGeometry.Height(tier.ShelfCardW);
+        float shelfH = shelf ? ClassicStageShelfGeometry.Height(tier.ShelfCardW) : 0f;
         return shelfH > 0f ? L.H - (L.TransportH + L.TransportInset + ClassicStageShelfGeometry.AboveTransport + shelfH) : L.TransportTop;
     }
 
@@ -191,6 +215,28 @@ internal static class ClassicStagePictureChrome
                         Key = "picture:ground", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Fill = ColorF.Transparent,
                         Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H, Layout = ClassicStageTheatre.Move, HitTestVisible = !audio,
                         OnPointerReleased = e => { if (e.ClickCount >= 2) exit(); },
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>The end card's veil over the last frame: the whole stage in Cinema, the picture's box in Theatre (moving with the reservation's spring).</summary>
+    sealed class EndDim : Component
+    {
+        public override Element Render()
+        {
+            var v = UseProps<GroundProps>().View;
+            var r = ClassicStageTheatre.PictureRect(v.Stage.Layout.Value, v.ShowTheatre());
+            return Stage.Layer with
+            {
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "picture:end-veil", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                        Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H, Layout = ClassicStageTheatre.Move,
+                        Fill = Shade(ClassicStageEndCardGeometry.DimA),
                     },
                 ],
             };

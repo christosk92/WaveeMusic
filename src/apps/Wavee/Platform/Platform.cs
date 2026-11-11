@@ -219,6 +219,8 @@ public static partial class Platform
         public static readonly SettingKey<bool> CrossfadeEnabled = new("playback.crossfade.enabled", false);
         public static readonly SettingKey<int> CrossfadeMs = new("playback.crossfade.ms", 5000);
         public static readonly SettingKey<bool> AutoplayEnabled = new("playback.autoplay", true);
+        /// <summary>A music video that ends in full screen counts down ("Up next in 5") before the next one plays (Playback.EndHold.cs).</summary>
+        public static readonly SettingKey<bool> VideoEndCountdown = new("playback.video.endCountdown", true);
         public static readonly SettingKey<bool> NormalizationEnabled = new("playback.normalization", true);
 
         // ── notifications (levels are NotifyLevel: 0 Off · 1 InApp · 2 Windows) ──

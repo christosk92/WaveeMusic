@@ -142,17 +142,22 @@ public static class ClassicStageTiers
     /// (<c>ClassicStageShelfGeometry.Cards</c>). Declared before the records that read them.</summary>
     public const float SmallShelfCardW = 176f, StandardShelfCardW = 216f, HugeShelfCardW = 256f;
 
+    /// <summary>Video mode's end card (the board "Classic · End of video": a 400 wide thumbnail at its 1440 stage, 36 high buttons), per window tier:
+    /// the thumbnail Compact 240, Small 320, Standard 400, Huge 480; the buttons 40 at Compact (the Compact target rule), 36 above. Theatre's card
+    /// fits the picture's box (<c>ClassicStageEndCardGeometry</c>). Declared before the records that read them.</summary>
+    public const float CompactEndThumbW = 240f, SmallEndThumbW = 320f, StandardEndThumbW = 400f, HugeEndThumbW = 480f, EndButtonH = 36f, CompactEndButtonH = 40f;
+
     private static readonly ClassicStageLayout[] s_stage =
     [
         // Compact (C-Stage-Compact): 40 x 40 targets in the top bar (the board draws 40 x 36 mode tabs; the Compact rule wins), the 56 disc.
-        new(WidthTier.Compact, BarTargetH: 40f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap),   // no shelf: the Compact stage has no Theatre either
+        new(WidthTier.Compact, BarTargetH: 40f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { EndThumbW = CompactEndThumbW, EndButtonH = CompactEndButtonH },   // no shelf: the Compact stage has no Theatre either
         // Small (C-Stage-Small, C-Lyrics-Small): the 48 disc and the 88 volume slider of the 96 card.
-        new(WidthTier.Small, BarTargetH: 36f, PlayDiscMax: 48f, VolumeW: 88f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { ShelfCardW = SmallShelfCardW },
+        new(WidthTier.Small, BarTargetH: 36f, PlayDiscMax: 48f, VolumeW: 88f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { ShelfCardW = SmallShelfCardW, EndThumbW = SmallEndThumbW, EndButtonH = EndButtonH },
         // Standard: the tuned stage (the card's 20 / 10 padding, the theme's S between the centred buttons, 6 in the right cluster).
-        new(WidthTier.Standard, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { ShelfCardW = StandardShelfCardW },
+        new(WidthTier.Standard, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, TunedTransportPadding, ClusterGap: null, RightGap: TunedRightGap) { ShelfCardW = StandardShelfCardW, EndThumbW = StandardEndThumbW, EndButtonH = EndButtonH },
         // Huge (C-Stage-Huge, C-Stage-Huge4K, C-StageFaces-Huge): the same 56 disc and 128 slider in the boards' card: 24 / 14 padding, 12
         // between the centred buttons, 8 in the right cluster.
-        new(WidthTier.Huge, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, new Edges4(24f, 14f, 24f, 0f), ClusterGap: 12f, RightGap: 8f) { ShelfCardW = HugeShelfCardW },
+        new(WidthTier.Huge, BarTargetH: 36f, PlayDiscMax: 56f, VolumeW: 128f, new Edges4(24f, 14f, 24f, 0f), ClusterGap: 12f, RightGap: 8f) { ShelfCardW = HugeShelfCardW, EndThumbW = HugeEndThumbW, EndButtonH = EndButtonH },
     ];
 
     /// <summary>The stage views' record for window tier <paramref name="window"/> (Huge 4K reads Huge's).</summary>
@@ -200,6 +205,11 @@ public sealed record ClassicStageLayout(WidthTier Tier, float BarTargetH, float 
 {
     /// <summary>Video mode's Up next shelf: one card's width (its 16:9 thumbnail's), 0 where the tier has no shelf (Compact).</summary>
     public float ShelfCardW { get; init; }
+
+    /// <summary>Video mode's end card: the next track's 16:9 thumbnail width (Cinema; Theatre fits it to the picture's box) and its buttons' height.</summary>
+    public float EndThumbW { get; init; }
+
+    public float EndButtonH { get; init; }
 }
 
 /// <summary>What Classic's queue, lyrics and video views lay out inside the panel in one window tier.</summary>

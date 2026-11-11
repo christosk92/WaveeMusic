@@ -1551,6 +1551,8 @@
       "videoPrepareAheadSub": "Fetch video licences before you switch, so opening a music video is near-instant. Uses a little extra data for videos you may not watch.",
       "showCanvas": "Show Canvas",
       "showCanvasSub": "Play the short looping visuals artists add to their tracks in Now playing and full screen. Silent, and only for the song that is playing.",
+      "videoEndCountdown": "Count down before the next video",
+      "videoEndCountdownSub": "When a music video ends in full screen, show what plays next for 5 seconds, with Play now and Cancel. Off, the next track starts at once.",
       "qualityNormal": "Normal",
       "qualityNormalSub": "96 kbps - about 0.04 GB/hour",
       "qualityHigh": "High",
@@ -4140,6 +4142,13 @@
     "theatreMode": "Theatre mode",
     "fillScreen": "Fill the screen",
     "audioTag": "Audio",
+    "endCard": {
+      "upNextIn": "Up next in {seconds}",
+      "from": "From {context}",
+      "playNow": "Play now",
+      "cancel": "Cancel",
+      "then": "Then"
+    },
     "gallery": "Visualizer gallery and settings",
     "galleryTitle": "Visualizer",
     "closePanel": "Close panel",

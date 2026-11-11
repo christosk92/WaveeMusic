@@ -977,7 +977,7 @@ public static partial class Diagnostics
         /// whenever a video is up in the main window and the theme draws it).</summary>
         static bool IsStageVideo(Inspect.Args a) => string.Equals(a.Str("stage"), "video", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>`stage{open, mode, offered, picture, face?, theatre, panel?, follows}`: the fullscreen stage (open, the mode it shows, whether it offers
+        /// <summary>`stage{open, mode, offered, picture, face?, theatre, panel?, follows, hold{phase, remainingMs, card}, chrome?}`: the fullscreen stage (open, the mode it shows, whether it offers
         /// its Video mode), the picture (the stage shows it: Video mode; its face, the video or the audio face over an audio-only track; in Theatre with which panel beside it) and what the one video presenter
         /// follows right now (glide: the box it glides on; stage: the stage's reservation; docked: the docked card's; none: its own geometry).</summary>
         static void WriteStageFacts(Utf8JsonWriter w)
@@ -994,6 +994,13 @@ public static partial class Diagnostics
             w.WriteBoolean("theatre", theatre);
             if (theatre) w.WriteString("panel", Stage.Picture.TheatrePanePeek().ToString());
             w.WriteString("follows", Video.PresenterFollows());
+            // the end hold (Playback.EndHold.cs): none / counting (the card is up, what is left of the countdown) / waiting (cancelled, at the end)
+            var hold = Playback.EndHoldNow.Peek();
+            w.WriteStartObject("hold");
+            w.WriteString("phase", hold.Phase.ToString().ToLowerInvariant());
+            w.WriteNumber("remainingMs", hold.RemainingMs(Playback.FrameNowMs()));
+            w.WriteBoolean("card", Stage.Picture.EndCardPeek());
+            w.WriteEndObject();
             // the idle chrome: shown or hidden, why it last changed, and what holds it up (the `[stage.chrome]` log line's facts)
             if (open)
             {

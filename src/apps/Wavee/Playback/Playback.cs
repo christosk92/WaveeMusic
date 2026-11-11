@@ -1089,6 +1089,12 @@ public static partial class Playback
         /// <summary>The deck shows a row NO host holds — a launch restore, a stop, a lost ownership, the end of the queue.
         /// The next Resume loads it at <see cref="PosMs"/> instead of resuming a session that does not exist.</summary>
         public bool Parked;
+        /// <summary>The end hold (<c>Playback.EndHold.cs</c>): a music video ended in full screen and the advance waits for the stage's
+        /// countdown (Counting) or for Play once it was cancelled (Waiting). <see cref="EndHold.None"/> on every other deck.</summary>
+        public EndHold Hold;
+        /// <summary>The frame-clock stamp the hold's countdown started at (its release carries it back), and the load epoch it holds.</summary>
+        public long HoldAtMs;
+        public uint HoldLoadEpoch;
         /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
         public bool VideoWanted;
         /// <summary>Re-resolves spent on the current video load (G-142).</summary>
@@ -1295,6 +1301,9 @@ public static partial class Playback
         ScrubEnd,
         /// <summary>The gesture was abandoned (a lost capture, an unmount): nothing is committed and the held voice resumes.</summary>
         ScrubCancel,
+        /// <summary>The end hold's countdown (<c>Playback.EndHold.cs</c>): <c>IntArg</c> 0 = cancel it, 1 = release it (<c>LongArg</c> = the
+        /// hold's stamp, <see cref="State.HoldAtMs"/>), the countdown elapsing or the card's Play now.</summary>
+        EndHold,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1399,6 +1408,8 @@ public static partial class Playback
         public static Input ScrubMove(int ms, long nowMs = 0) => new(InputKind.ScrubMove, intArg: ms, nowMs: nowMs);
         public static Input ScrubEnd(int ms, long nowMs = 0) => new(InputKind.ScrubEnd, intArg: ms, nowMs: nowMs);
         public static Input ScrubCancel() => new(InputKind.ScrubCancel);
+        public static Input EndHoldCancel(long nowMs = 0) => new(InputKind.EndHold, intArg: 0, nowMs: nowMs);
+        public static Input EndHoldRelease(long atMs, long nowMs = 0) => new(InputKind.EndHold, intArg: 1, longArg: atMs, nowMs: nowMs);
         public static Input Ended(uint epoch, long nowMs = 0) => new(InputKind.Ended, epoch: epoch, nowMs: nowMs);
         public static Input TransferDone(uint epoch, bool ok) => new(InputKind.TransferDone, intArg: ok ? 1 : 0, epoch: epoch);
         public static Input PutSent(uint messageId, bool isActive)
@@ -1689,6 +1700,7 @@ public static partial class Playback
     /// <param name="fx">The effect slots for THIS drain; the last write to a slot wins.</param>
     public static void Step(ref State s, in Input i, ref Effects fx)
     {
+        if (s.Hold != EndHold.None && HoldSwallows(ref s, in i)) return;   // the end hold's own filter; no hold: never taken
         switch (i.Kind)
         {
             case InputKind.Play: DoPlay(ref s, in i, ref fx); break;
@@ -1746,8 +1758,10 @@ public static partial class Playback
             case InputKind.ScrubMove: DoScrubMove(ref s, in i, ref fx); break;
             case InputKind.ScrubEnd: DoScrubEnd(ref s, in i, ref fx); break;
             case InputKind.ScrubCancel: DoScrubCancel(ref s, ref fx); break;
+            case InputKind.EndHold: DoEndHold(ref s, in i, ref fx); break;
             default: break;
         }
+        if (s.Hold != EndHold.None) HoldInvariant(ref s);
     }
 
     // ── 9.1 transport ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -1829,6 +1843,13 @@ public static partial class Playback
     static void Advance(ref State s, in Input i, ref Effects fx, bool forward, PlayReason why, int jumpTo = -1)
     {
         if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
+        // the end hold: the row already ENDED, so Next (no row named) is the natural end's advance it deferred; Previous and a named row
+        // end the hold and run as on any paused row
+        if (s.Hold != EndHold.None)
+        {
+            s.Hold = EndHold.None;
+            if (forward && jumpTo < 0) why = PlayReason.TrackDone;
+        }
         bool natural = why == PlayReason.TrackDone;
         if (!natural && (forward ? s.NoNext : s.NoPrev))            // the context disallows the SKIP (the cluster said so)
         {
@@ -1922,6 +1943,7 @@ public static partial class Playback
     /// superseded by the very generation this one mints), and both read the same target / epoch / generation slots.</param>
     static void EmitSeek(ref State s, ref Effects fx, int ms, long nowMs, bool scrubRelease = false)
     {
+        s.Hold = EndHold.None;                           // a seek ends the end hold: the row plays on from where it landed, as any paused row
         s.PosMs = ms;
         s.PosQpc = nowMs;
         s.SeekGen++;
@@ -1965,6 +1987,7 @@ public static partial class Playback
     static void DoPause(ref State s, in Input i, ref Effects fx)
     {
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Pause, ref fx, 0, false); return; }
+        if (s.Hold == EndHold.Counting) { s.Hold = EndHold.Waiting; return; }   // the end hold: already paused at the end; the countdown stops
         if (s.Phase is not (Phase.Playing or Phase.Loading)) return;
         s.PosMs = s.Position(i.NowMs);                   // freeze the extrapolation BEFORE the phase changes
         s.PosQpc = i.NowMs;
@@ -1984,6 +2007,7 @@ public static partial class Playback
     {
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Resume, ref fx, 0, false); return; }
         if (!s.HasCurrent) return;
+        if (s.Hold != EndHold.None) { ReleaseHold(ref s, in i, ref fx); return; }   // the end hold: play = the next row, now
         if (s.Parked || s.Phase == Phase.Ended || s.Error != Fault.None)
         {
             // No host holds this row (a restore, a stop, a lost ownership, the end): resuming it is LOADING it — a
@@ -2392,6 +2416,9 @@ public static partial class Playback
     {
         if (i.Epoch != s.LoadEpoch) return;
         s.HasBeenPlayingForMs += Math.Max(0, i.NowMs - s.PosQpc);
+        // THE END HOLD'S ONE BRANCH (Playback.EndHold.cs): a music video's natural end in full screen waits for the card's countdown.
+        // Every other end (audio, a video outside full screen, the last row, the setting off) is today's advance, unchanged.
+        if (HoldsEnd(in s)) { TakeHold(ref s, in i, ref fx); return; }
         Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
     }
 

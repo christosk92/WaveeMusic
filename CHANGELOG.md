@@ -45,6 +45,13 @@ versions separately under `v*` and is not tracked in this file.)
   screen stays as it is (the top bar, Up next and the transport): the picture's place shows the song's cover and its
   synced lyrics and the Video tab waits, greyed out. The next song with a video brings the picture back by itself, in
   the full picture or Theatre as you left it.
+- **"Up next in 5" when a music video ends in full screen (Classic).** The video's last frame stays, dimmed, and a card
+  counts down five seconds to the next track: its thumbnail (the video's still, or the cover for a song), title, artist
+  and where it plays from, with Play now and Cancel; the rest of the queue waits below it. Cancel leaves the video
+  stopped at its end, and Play starts the next track whenever you like; Next, Space and the media keys play it at once,
+  Esc leaves full screen. Only in the video full screen and only after a video: songs, a video docked or in the mini
+  player, skips and the end of the queue carry on at once as before. Turn it off in Settings, Playback, Video ("Count
+  down before the next video").
 
 - **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you

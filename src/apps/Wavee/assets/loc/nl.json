@@ -955,6 +955,13 @@
     "theatreMode": "Theatermodus",
     "fillScreen": "Scherm vullen",
     "audioTag": "Audio",
+    "endCard": {
+      "upNextIn": "Hierna over {seconds}",
+      "from": "Uit {context}",
+      "playNow": "Nu afspelen",
+      "cancel": "Annuleren",
+      "then": "Daarna"
+    },
     "gallery": "Visualisatiegalerij en instellingen",
     "galleryTitle": "Visualisatie",
     "closePanel": "Paneel sluiten",

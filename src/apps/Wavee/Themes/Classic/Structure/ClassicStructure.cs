@@ -148,6 +148,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.QueueStagePane, ClassicQueue.StagePaneTemplate, "classic.queue.stage-pane");
         // Video mode's Up next shelf over the picture (Cinema): the next tracks' 16:9 cards (contract 1.97).
         views.Add(ViewKeys.QueueStageShelf, ClassicStageShelf.Template, "classic.queue.stage-shelf");
+        views.Add(ViewKeys.StageEndCard, ClassicStageEndCard.Template, "classic.stage.end-card");
         // T7c: the video surfaces' pictures: the docked card (and the watch page's stage frame), the in-window overlay and its chrome, the pop-out's
         // content, the fullscreen exit chrome, the poster with the join notice and the placement flyout. The media pipeline stays core.
         views.Add(ViewKeys.VideoDocked, ClassicVideoDocked.Template, "classic.video.docked");
