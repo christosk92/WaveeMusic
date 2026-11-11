@@ -380,8 +380,11 @@ public sealed record ZuneStageCard(float MaxW, float MinW, float Pad, float Art,
     /// <summary>The card's height: its padding, the cover, the seek row and the transport row.</summary>
     public float H => Pad + Art + SeekTop + Voice.SeekH + Voice.RowH + Pad;
 
-    /// <summary>The display block's height (the title and the artist line); 0: none.</summary>
-    public float DisplayH => DisplaySize > 0f ? DisplayLine + DisplayMetaLine : 0f;
+    /// <summary>The display block's height (the title and the artist line); 0: none. The title stacks on its exact line (block line height: the
+    /// board's tight 150/160, its descenders hang over the artist line by design); the artist line lays the line box its type needs, the stated
+    /// line or the face's natural box (<c>Detail.VerticalLayout.NaturalLineRatio</c> of its size, whichever is taller: 28 DIP type lays 37.24 over
+    /// the stated 36), so its descenders are never clipped by the block.</summary>
+    public float DisplayH => DisplaySize > 0f ? DisplayLine + MathF.Max(DisplayMetaLine, DisplayMetaSize * Detail.VerticalLayout.NaturalLineRatio) : 0f;
 }
 
 /// <summary>The Large art column in one tier.</summary>
