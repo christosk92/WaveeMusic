@@ -70,7 +70,11 @@ public static partial class Shell
     /// effect instead of moving a transform nobody can see (each tick is a recorded and presented main-window frame);
     /// the reveal re-syncs the fraction before the fade-in. Null = always live (the bar, the stage).</summary>
     public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
-        => Embed.Comp(() => new BarSeekRail(feed, onScrubbing, reveal));
+        => Embed.Comp(() => onScrubbing is null ? new BarSeekRail(feed, onScrubbing, reveal) : new StageSeekRail(feed, onScrubbing, reveal));
+
+    /// <summary>The full-screen stage's seek rail (the one host that reports a scrub through <c>onScrubbing</c>): the same rail under its own type
+    /// name, so the render census tells the stage's rail from the bar's and the strips' (the census names a component by its type).</summary>
+    sealed class StageSeekRail(PlayerChromeFeed? feed, Action<bool>? onScrubbing, IReadSignal<bool>? reveal) : BarSeekRail(feed, onScrubbing, reveal);
 
     /// <summary>The mini player bar's progress hairline (TC2): the same rail host, drawn as a line with no thumb and no hit test.</summary>
     public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true, reveal: PageShown));
@@ -468,7 +472,7 @@ public static partial class Shell
     /// <see cref="ViewKeys.SeekRail"/> with what to draw. The fill and thumb are compositor binds on
     /// <see cref="ScrubController.Display"/> (built once here); the host re-renders only on enablement / mode / advancing edges.</summary>
     [CoreHost]
-    sealed class BarSeekRail : Component, ISeekRailHost
+    class BarSeekRail : Component, ISeekRailHost
     {
         readonly PlayerChromeFeed? _chromeFeed;
         readonly Action<bool>? _onScrubbing;   // the fullscreen stage's scrub seam (its idle machine's SetScrubbing); null on the bar
