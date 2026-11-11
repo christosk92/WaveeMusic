@@ -54,9 +54,6 @@ internal static class ClassicStageCinemaGeometry
 
     /// <summary>The title block's gap above the control bar (no shelf on the tier).</summary>
     public const float TitleAboveBar = 8f;
-
-    /// <summary>The Video tab over an audio-only track (disabled): its opacity at rest.</summary>
-    public const float DisabledTabA = 0.4f;
 }
 
 /// <summary>The numbers of Video mode's Up next shelf over the picture (Cinema; the board "Classic · Cinema", its cards the board "E · Shelf",
@@ -147,6 +144,9 @@ internal static class ClassicStageThumbGeometry
 
     /// <summary>The duration badge in the shelf card's bottom-right corner (11, on the same plate as the tag).</summary>
     public const float BadgeSize = 11f, BadgeLine = 14f;
+
+    /// <summary>The film glyph a video's card leads its badge with (the track lists' glyph at the badge's type) and its gap to the duration.</summary>
+    public const float BadgeGlyph = 11f, BadgeGlyphGap = 4f;
 }
 
 /// <summary>The numbers of the AUDIO FACE: Video mode's picture place while an audio-only track plays (the board "Classic · An audio-only track

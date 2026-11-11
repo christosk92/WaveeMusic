@@ -1,7 +1,9 @@
 // ── Themes/Classic/Structure/Views/Stage/ClassicStageTopBar.cs — Classic's `Stage.TopBar` (themes plan 6.1, T7a1) ───────────
 //
 // From `Shell\Stage.UI.cs`'s `TopBar` component: 48 DIP, brand · the SelectorBar (pill tinted through TemplateParts) · the options
-// toggle · exit. With a music video on (the board "Classic · Cinema") the tabs lead with Video, and in Video mode the options toggle and exit
+// toggle · exit. The tabs lead with the stage's first tab (`StageCtx.PictureTab`, contract 1.105): Video while the playing track's video plays (the
+// board "Classic · Cinema"), Overview otherwise (Video mode's page with the audio face in the picture's place); it relabels in place in a slot that
+// reserves the wider of the two labels, so no other tab moves. In Video mode (either label) the options toggle and exit
 // give way to "Switch to audio" alone: Cinema ⇄ Theatre and Exit are the control bar's over the picture (`ClassicStageVideoBar`, one home per
 // verb). It fills its wrapper (Grow); the root places it under the chrome's Show. The mode, the layout class and the accent are the
 // stage context's signals (`props.Stage`), the verbs are its actions (`SetMode`, `OpenOptions`, `Exit`, `OverControls`); the options
@@ -37,12 +39,13 @@ internal static class ClassicStageTopBar
         var L = st.Layout.Value;
         var set = st.Accent.Value;
         float targetH = ClassicStageTiers.StageOf(ctx.Tier()).BarTargetH;
-        // The tabs: today's four, or (a music video on, the board "Classic · Cinema") Video first, then today's four. In Video mode the tab
-        // that stands lit is Video in Cinema and the panel's own tab in Theatre (Lyrics or Up next beside the picture).
-        // Over an audio-only track Video mode holds (the audio face): the same tabs, the Video tab shown disabled until a track with a video
-        // brings the picture back.
+        // The tabs: the first tab (Video while the picture plays, else Overview), then today's four; today's four alone where the structure would
+        // draw no Video mode. In Video mode the tab that stands lit is the first in Cinema and the panel's own tab in Theatre (Lyrics or Up next
+        // beside the picture or the audio face).
         bool videoMode = st.Mode.Value == Stage.Mode.Video;
-        bool videoTabs = st.VideoOffered.Value || videoMode;
+        var first = st.PictureTab.Value;
+        bool videoTabs = first != Stage.PictureTab.None;
+        bool picture = first == Stage.PictureTab.Video;
         bool audioFace = st.AudioFace.Value;
         // the bar's arm: where it stands over the AUDIO FACE's colour field (Cinema: the field fills the stage) the field decides it, the theme kind
         // does not (the face's rule, as its control bar and Cinema's shelf: a deep field on the light theme reads with the dark arm's veil and
@@ -52,19 +55,22 @@ internal static class ClassicStageTopBar
         var arm = Ink.Arm(armKind);
         var modes = videoTabs ? s_videoModes : s_modes;
         var index = h.UseSignal(0);
-        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.VideoOffered.Value || st.Mode.Value == Stage.Mode.Video ? s_videoModes : s_modes, LitTab(st)))));
+        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.PictureTab.Value != Stage.PictureTab.None ? s_videoModes : s_modes, LitTab(st)))));
+        string videoLabel = Loc.Get(Strings.Stage.Mode.Video), overviewLabel = Loc.Get(Strings.Stage.Mode.Overview);
+        // the first tab's slot holds the wider of its two labels (a ghost of each under the shown one), so a relabel on a track change moves no tab
+        bool reserve = videoTabs && !L.IconOnlySelector;
         var parts = h.UseMemo(() =>
         {
             var p = new TemplateParts();
             p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill });
-            // the Video tab while no picture is offered: disabled (no press, no focus), dimmed at rest
-            if (audioFace) p.Set<BoxEl>(SelectorBar.PartItem, b => b.Key == VideoTabKey ? b with { IsEnabled = false, Opacity = ClassicStageCinemaGeometry.DisabledTabA } : b);
+            if (reserve) p.Set<BoxEl>(SelectorBar.PartItem, b => b.Key == VideoTabKey ? Reserved(b, videoLabel, overviewLabel) : b);
             return p;
-        }, DepKey.From(set.GetHashCode(), audioFace ? 1 : 0));
+        }, DepKey.From(set.GetHashCode(), reserve ? 1 : 0, videoLabel.GetHashCode(), overviewLabel.GetHashCode()));
         string[] items = L.IconOnlySelector ? (videoTabs ? ["", "", "", "", ""] : ["", "", "", ""])
-            : videoTabs ? [Loc.Get(Strings.Stage.Mode.Video), Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
+            : videoTabs ? [picture ? videoLabel : overviewLabel, Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
             : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
-        string?[] icons = videoTabs ? [Icons.Video, Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact] : [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact];
+        // the first tab's glyph: the film for Video, the album for Overview (the cover and the lyrics; MusicNote is "Switch to audio"'s)
+        string?[] icons = videoTabs ? [picture ? Icons.Video : Icons.Album, Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact] : [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact];
         // Video mode's one button: [Switch to audio], labelled where the allocator says the column holds it. Cinema ⇄ Theatre and Exit are the
         // control bar's over the picture (YouTube's bottom right: one home per verb, `ClassicStageVideoBar`); the audio modes keep [options] [Exit].
         bool audioLabel = videoMode && L.VideoAudioLabelShown(modes.Length);
@@ -123,8 +129,10 @@ internal static class ClassicStageTopBar
                             [
                                 // Video mode: "Switch to audio" (the video off, the stage on the cover and lyrics) where the options toggle stands (the
                                 // visualizer's options have nothing to set over the picture); the docked video menu's "Turn off video" is this verb
+                                // Overview with the video off has no video to switch from: the column stays empty (the control bar holds the rest)
                                 videoMode
-                                    ? audioLabel
+                                    ? !st.VideosPlay.Value ? new BoxEl { Visible = false }
+                                    : audioLabel
                                         ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote,
                                             style: armKind == Tok.Theme ? null : OnArm(arm)) with { Shrink = 0f, HitSlop = ClassicStageGeometry.LabelledButtonSlop, Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
                                         : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH, arm), Loc.Get(Strings.Player.SwitchToAudio)) with { Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
@@ -160,16 +168,35 @@ internal static class ClassicStageTopBar
     static readonly Stage.Mode[] s_modes = [Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
     static readonly Stage.Mode[] s_videoModes = [Stage.Mode.Video, Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
 
-    /// <summary>The Video set's tab keys (the Video tab's is how the parts find it to disable it over an audio-only track).</summary>
+    /// <summary>The Video set's tab keys (the first tab's, Video or Overview, is how the parts find it to reserve its slot; one key for both labels,
+    /// so a relabel never remounts it).</summary>
     const string VideoTabKey = "stage:tab:video";
     static readonly string?[] s_videoTabKeys = [VideoTabKey, "stage:tab:lyrics", "stage:tab:visualizer", "stage:tab:queue", "stage:tab:artist"];
 
-    /// <summary>The tab that stands lit (subscribes): the mode, or in Video mode's Theatre the tab of the panel beside the picture, or over an
-    /// audio-only track in Cinema the Lyrics tab (the face shows them; the Video tab is disabled).</summary>
+    /// <summary>The tab that stands lit (subscribes): the mode, or in Video mode's Theatre the tab of the panel beside the picture (or the audio
+    /// face), or in Cinema the first tab (Video or Overview).</summary>
     static Stage.Mode LitTab(Stage.StageCtx st)
         => st.Mode.Value != Stage.Mode.Video ? st.Mode.Value
-         : st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value)
-         : st.AudioFace.Value ? Stage.Mode.Lyrics : Stage.Mode.Video;
+         : st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value) : Stage.Mode.Video;
+
+    /// <summary>The first tab's item with its label box over two invisible ghosts of it, one per label (<paramref name="a"/>, <paramref name="b"/>)
+    /// at the selected weight: the item is as wide as the wider form whichever it shows, and the shown label stays centred in it. The control's
+    /// own label box (its states, its inks) is untouched.</summary>
+    static BoxEl Reserved(BoxEl item, string a, string b)
+    {
+        if (item.Children is not [BoxEl content, .. var rest] || content.Children is not [.., TextEl label]) return item;
+        BoxEl Ghost(string text) => content with
+        {
+            Opacity = 0f, HitTestVisible = false, Key = null,
+            Children = [.. content.Children[..^1], label with { Text = text, Weight = ClassicStageGeometry.SelectorWeight }],
+        };
+        var slot = new BoxEl
+        {
+            ZStack = true,
+            Children = [Ghost(a), Ghost(b), content with { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center }],
+        };
+        return item with { Children = [slot, .. rest] };
+    }
 
     /// <summary>A 40×36 glass glyph button of the top bar (the options toggle, the icon-only exit); 40×40 on a Compact window.</summary>
     static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized, float targetH, in StageArmView arm) => new()

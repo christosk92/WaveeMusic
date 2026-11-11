@@ -20,6 +20,12 @@
 // Theatre panel's OPEN LIST (the board "B · Open list"): one header row ("Up next" in BodyStrong, the upcoming count, Autoplay and its switch)
 // standing for the lead section's caption, rows at the list's inner padding with the list item's plates (the next-up row on a quiet plate), and the
 // list fading into the page over its foot.
+//
+// VIDEOS IN THE LIST (contract 1.105). Every row of a track with a music video carries the track lists' film glyph right after its title (absent, it
+// moves nothing). While a track with a video plays as its video (`StageCtx.VideosPlay`: video is on, so the next such track plays as video) such a
+// row's thumbnail is the video's 16:9 still; otherwise every row shows its square cover. The Up next tab's thumbnail is a 16:9 SLOT at the art's
+// height (`ClassicQueueRules.StageRowThumbW`): the still fills it, a cover sits centred in it, so the row's height and its text column never move
+// when a thumbnail flips. Theatre's rows keep their 16:9 thumbnail (`ClassicStageThumb`): the still, or the cover inset on its plate.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -44,6 +50,7 @@ internal sealed class ClassicQueueStagePane : Component
     QueueProps _queue = null!;
     float _s = 1f;
     bool _video;
+    bool _stills;   // StageCtx.VideosPlay: a track with a video shows its still
     QueueSection? _lead;   // Theatre's open list: the first section with rows, whose caption the list's header row stands for
     QueueStagePaneProps _props = null!;
     bool _art;
@@ -67,7 +74,7 @@ internal sealed class ClassicQueueStagePane : Component
     Element RowOf(QueueStagePaneProps props, in QueueRowProps row, bool art)
     {
         var kind = _video ? (IsNext(row) ? RowKind.VideoNext : RowKind.Video) : IsNext(row) ? RowKind.Next : RowKind.Plain;
-        return Embed.Comp(new RowProps(props.Lane, props.Verbs, row with { Position = 0 }, props.Lane.RowStamp(row.Ref), kind, art, _s, _queue.Viewer),
+        return Embed.Comp(new RowProps(props.Lane, props.Verbs, row with { Position = 0 }, props.Lane.RowStamp(row.Ref), kind, art, _s, _queue.Viewer, _stills),
             static () => new StageRow());
     }
 
@@ -104,6 +111,7 @@ internal sealed class ClassicQueueStagePane : Component
         _s = props.Aside ? 1f : layout.QueueScale;
         // beside the music video (Theatre) every row leads with its 16:9 thumbnail (the video's still, or the cover on a plate)
         _video = props.Video;
+        _stills = ctx.VideosPlay.Value;
         _lead = _video ? LeadSection(_queue.Counts) : null;
         lane.SetMetrics((_video ? ClassicQueueRules.StageVideoRowH : ClassicQueueRules.StageRowH) * _s, _extentOf ??= ExtentOf);
         bool art = !ClassicOptions.HideTrackArt();
@@ -208,8 +216,9 @@ internal sealed class ClassicQueueStagePane : Component
     enum RowKind : byte { Plain, Next, Video, VideoNext }
 
     /// <summary>A row's props: the surface's lane and verbs (one each per surface), the row (its section position zeroed), the digest of what it shows,
-    /// its form, the art option, the stage's queue scale and whether the queue is only viewed. Equal records render nothing.</summary>
-    sealed record RowProps(IQueueLane Lane, IQueueVerbs Verbs, QueueRowProps Row, ulong Stamp, RowKind Kind, bool Art, float Scale, bool Viewer);
+    /// its form, the art option, the stage's queue scale, whether the queue is only viewed and whether a video's still stands for its track
+    /// (<c>StageCtx.VideosPlay</c>). Equal records render nothing.</summary>
+    sealed record RowProps(IQueueLane Lane, IQueueVerbs Verbs, QueueRowProps Row, ulong Stamp, RowKind Kind, bool Art, float Scale, bool Viewer, bool Stills);
 
     /// <summary>One row of the column (see <see cref="RowOf"/>).</summary>
     sealed class StageRow : Component
@@ -237,6 +246,7 @@ internal sealed class ClassicQueueStagePane : Component
             var verbs = p.Verbs;
             EntityRef r = row.Ref;
             QueueRowText text = lane.TextOf(r);
+            QueueRowVideo video = lane.VideoOf(r);
             ulong itemId = row.ItemId;
             int index = row.Index;
             bool viewer = p.Viewer;
@@ -264,8 +274,8 @@ internal sealed class ClassicQueueStagePane : Component
                     ],
                 },
             };
-            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => verbs.Play(itemId, index, r), Px(ClassicQueueRules.StageRowArt), Px(26f), (int)Px(96f)));
-            kids.Add(TitleBlock(text, Px(14f), Px(20f), 600, null, Px(12f), Px(16f)));
+            if (art) kids.Add(ArtSlot(text, video, p.Stills, () => verbs.Play(itemId, index, r), Px(ClassicQueueRules.StageRowThumbW), Px(ClassicQueueRules.StageRowArt), Px(26f), (int)Px(96f)));
+            kids.Add(TitleBlock(text, Px(14f), Px(20f), 600, null, Px(12f), Px(16f), video.HasVideo ? Px(ClassicTrackRowLayout.FilmGlyphSize) : 0f));
             // Tabular by geometry: a fixed end-aligned slot, so every colon lands on the same x.
             kids.Add(new BoxEl
             {
@@ -301,11 +311,12 @@ internal sealed class ClassicQueueStagePane : Component
             var verbs = p.Verbs;
             EntityRef r = row.Ref;
             QueueRowText text = lane.TextOf(r);
+            QueueRowVideo video = lane.VideoOf(r);
             ulong itemId = row.ItemId;
             int index = row.Index;
             var kids = new List<Element>(4);
-            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => verbs.Play(itemId, index, r), Px(ClassicQueueRules.StageNextArt), Px(32f), (int)Px(192f)));
-            kids.Add(TitleBlock(text, Px(22f), Px(28f), 600, Loc.Get(Strings.Stage.NextTrack), Px(14f), Px(20f)));
+            if (art) kids.Add(ArtSlot(text, video, p.Stills, () => verbs.Play(itemId, index, r), Px(ClassicQueueRules.StageNextThumbW), Px(ClassicQueueRules.StageNextArt), Px(32f), (int)Px(192f)));
+            kids.Add(TitleBlock(text, Px(22f), Px(28f), 600, Loc.Get(Strings.Stage.NextTrack), Px(14f), Px(20f), video.HasVideo ? Px(ClassicTrackRowLayout.FilmGlyphSize) : 0f));
             kids.Add(new BoxEl
             {
                 Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
@@ -344,6 +355,8 @@ internal sealed class ClassicQueueStagePane : Component
             var verbs = p.Verbs;
             EntityRef r = row.Ref;
             QueueRowText text = lane.TextOf(r);
+            QueueRowVideo video = lane.VideoOf(r);
+            float film = video.HasVideo ? Px(ClassicTrackRowLayout.FilmGlyphSize) : 0f;
             ulong itemId = row.ItemId;
             int index = row.Index;
             var kids = new List<Element>(4);
@@ -354,12 +367,12 @@ internal sealed class ClassicQueueStagePane : Component
                 kids.Add(new BoxEl
                 {
                     Width = tw, Height = th, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = Radii.ControlAll,
-                    Children = [ClassicStageThumb.Of(text, lane.VideoOf(r), tw, th, Radii.Control), Controls.NowPlayingOverlay(text.Uri, () => verbs.Play(itemId, index, r), Px(26f), centred: true)],
+                    Children = [ClassicStageThumb.Of(text, video, tw, th, Radii.Control, stills: p.Stills), Controls.NowPlayingOverlay(text.Uri, () => verbs.Play(itemId, index, r), Px(26f), centred: true)],
                 });
             }
             kids.Add(next
-                ? TitleBlock(text, Px(16f), Px(22f), 600, Loc.Get(Strings.Stage.NextTrack), Px(12f), Px(16f))
-                : TitleBlock(text, Px(13f), Px(18f), 600, null, Px(12f), Px(16f)));
+                ? TitleBlock(text, Px(16f), Px(22f), 600, Loc.Get(Strings.Stage.NextTrack), Px(12f), Px(16f), film)
+                : TitleBlock(text, Px(13f), Px(18f), 600, null, Px(12f), Px(16f), film));
             kids.Add(new BoxEl
             {
                 Width = Px(ClassicQueueRules.StageTimeW), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
@@ -402,8 +415,9 @@ internal sealed class ClassicQueueStagePane : Component
     }
 
     /// <summary>Title over artists (an explicit badge before the artists when the track is explicit), with an optional
-    /// eyebrow above. A THIN row (title unknown) keeps the slot empty.</summary>
-    static Element TitleBlock(QueueRowText text, float titleSize, float titleLine, ushort titleWeight, string? eyebrow, float subSize, float subLine)
+    /// eyebrow above; a track with a music video carries the track lists' film glyph right after its title (<paramref name="film"/>: its size, 0 for
+    /// none; the title yields first, the glyph keeps its size). A THIN row (title unknown) keeps the slot empty.</summary>
+    static Element TitleBlock(QueueRowText text, float titleSize, float titleLine, ushort titleWeight, string? eyebrow, float subSize, float subLine, float film)
     {
         if (text.Thin) return new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f };
         var lines = new List<Element>(3);
@@ -412,11 +426,18 @@ internal sealed class ClassicQueueStagePane : Component
             var e = R.Type.Eyebrow(eyebrow);   // never under the ramp's own eyebrow (Theatre's small rows would put it under the type floor)
             lines.Add(e with { Size = MathF.Max(e.Size, MathF.Round(subSize * 0.86f)), Color = Ink.InkSecondary, MaxLines = 1 });
         }
-        lines.Add(new TextEl(text.Title)
+        var title = new TextEl(text.Title)
         {
             Size = titleSize, LineHeight = titleLine, Weight = titleWeight, FontFamily = eyebrow is null ? null : R.Type.DisplayFace,
             Color = Ink.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        });
+        };
+        lines.Add(film > 0f
+            ? new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
+                Children = [title with { Shrink = 1f }, new TextEl(Icons.Movie) { Size = film, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkTertiary, Shrink = 0f }],
+            }
+            : title);
         Element artists = new TextEl(text.Artists) { Size = subSize, LineHeight = subLine, Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         lines.Add(text.Explicit
             ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
@@ -425,12 +446,30 @@ internal sealed class ClassicQueueStagePane : Component
         return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = 1f, Children = lines.ToArray() };
     }
 
-    /// <summary>A cover with the now-playing overlay's play FAB centred on it.</summary>
-    static Element ArtTile(string? url, string uri, Action play, float edge, float fab, int decode) => new BoxEl
+    /// <summary>The Up next tab's thumbnail: a <paramref name="slotW"/> x <paramref name="h"/> 16:9 slot holding the video's still (a track with a
+    /// video while <paramref name="stills"/>) or the square cover centred in it, the now-playing overlay's play FAB on the art itself (never over the
+    /// slot's empty sides). The slot never changes size, so the row's text column stays put when the art flips.</summary>
+    static Element ArtSlot(in QueueRowText text, in QueueRowVideo video, bool stills, Action play, float slotW, float h, float fab, int decode)
     {
-        Width = edge, Height = edge, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = Radii.ControlAll,
-        Children = [Controls.Artwork(url, edge, edge, Radii.Control, decodePx: decode), Controls.NowPlayingOverlay(uri, play, fab, centred: true)],
-    };
+        bool still = stills && video.HasVideo;
+        float w = still ? slotW : h;
+        return new BoxEl
+        {
+            Width = slotW, Height = h, Shrink = 0f, Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                new BoxEl
+                {
+                    Width = w, Height = h, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = Radii.ControlAll,
+                    Children =
+                    [
+                        Controls.Artwork(still ? video.Still : text.Art, w, h, Radii.Control, decodePx: still ? (int)MathF.Round(decode * slotW / h) : decode),
+                        Controls.NowPlayingOverlay(text.Uri, play, fab, centred: true),
+                    ],
+                },
+            ],
+        };
+    }
 
     /// <summary>A section caption in the stage's ink: the section's name and its count (the rail's grammar, on media).</summary>
     Element StageHeader(QueueSection section)

@@ -1,8 +1,9 @@
 // ── Themes/Classic/Structure/Views/Stage/ClassicStageAudioFace.cs — Classic's audio face in the stage's Video mode ──────────────────────────
 //
-// The board "Classic · An audio-only track plays": while video stays on and the queue reaches a track without a video, the full screen keeps its
-// frame (the top bar with the Video tab disabled, Cinema's Up next shelf or Theatre's panel, the control bar) and the picture's place holds the
-// track's cover and its synced lyrics (`StageRootView.ShowAudioFace`). The next track with a video brings the picture back by itself.
+// The board "Classic · An audio-only track plays", and the stage's OVERVIEW tab (contract 1.105): in Video mode without a picture (a track without
+// a video, or video off) the full screen keeps its frame (the top bar with the first tab reading Overview, Cinema's Up next shelf or Theatre's
+// panel, the control bar) and the picture's place holds the track's cover and its synced lyrics (`StageRootView.ShowAudioFace`). The next track
+// with a video that plays brings the picture back by itself, and the tab reads Video again in place.
 //
 // THE COLOUR FIELD (the board "Audio player as a colour field", concept 1; the owner's "not a fan that the player thing is just a black slab"). The
 // frame stays exactly where the picture is and keeps the picture's shape (Theatre's 16:9 box, square-cornered as the picture; Cinema's whole stage):

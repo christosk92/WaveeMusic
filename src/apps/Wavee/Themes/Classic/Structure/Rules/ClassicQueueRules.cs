@@ -95,6 +95,11 @@ public static class ClassicQueueRules
     /// <summary>The first upcoming song set apart: its height and art.</summary>
     public const float StageNextH = 104f, StageNextArt = 80f;
 
+    /// <summary>The thumbnail SLOT of the Up next tab's rows (contract 1.105): 16:9 at the art's height (the row's 38, the Next row's 80), so a track
+    /// whose video plays shows its still filling the slot and every other track its square cover centred in it; the row's height and its text column
+    /// stay where they are when a thumbnail flips between the two.</summary>
+    public const float StageRowThumbW = 68f, StageNextThumbW = 142f;
+
     /// <summary>The gap under the Next row.</summary>
     public static float StageNextGap => Spacing.M;
 

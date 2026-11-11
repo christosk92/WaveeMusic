@@ -2,13 +2,18 @@
 //
 // THE THUMBNAIL (Video mode, the boards' rules note item 6): while the stage shows the music video, every queued track is told apart at a glance.
 // A track with a video shows the video's still full-bleed; an audio-only track shows its square cover inset, centred, on a dark plate of the same
-// 16:9 size; each carries a small tag ("Video" / "Audio"). The Theatre list's rows (`ClassicQueueStagePane`) use it.
+// 16:9 size; each carries a small tag ("Video" / "Audio"). That is while a track with a video plays as its video (`StageCtx.VideosPlay`, contract
+// 1.105); otherwise every track is its cover on the plate, untagged (the row's film glyph marks the videos). The Theatre list's rows
+// (`ClassicQueueStagePane`) and the end card use it.
 //
 // THE SHELF (the board "Classic · Cinema", its cards the board "E · Shelf", strip "1 · No frame"): "Up next" over a row of the next tracks' cards. A
 // card has NO frame: a video's card IS its 16:9 still, an audio-only track's IS its square cover at the same height, so the two kinds have two widths
 // and the shape tells them apart (no "Video" / "Audio" tag); the duration is a small badge on the art's bottom-right corner, the title and the artist
 // line sit under the art at the card's own width, and the first card, what plays next, keeps the accent ring. The shape comes from the queue's video
-// fact (`IQueueLane.VideoOf`), never from an image arriving, so a still that lands after its cover moves nothing. A click plays that track (the
+// fact (`IQueueLane.VideoOf`) while a track with a video plays as its video (`StageCtx.VideosPlay`); otherwise every card is its square cover (the
+// Overview tab with video off). A track with a video carries the track lists' film glyph in the duration badge either way (the badge grows leftwards
+// from the art's corner, so a card without one moves nothing). The shape never follows an image arriving, so a still that lands after its cover
+// moves nothing; when it flips the cards slide to their new widths. A click plays that track (the
 // queue's own verb), a right-click opens the row's menu. As many cards as the stage's width seats (`ClassicStageShelfGeometry.Seat`), never a
 // scrollbar. The picture chrome (`ClassicStagePictureChrome`) places it above the control bar under the idle chrome's Show; its place (and the title
 // block's above it) is reserved whether it shows or rests. While the END CARD is up (`StageCtx.EndCard`) the card names what plays next, so the shelf
@@ -35,12 +40,12 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicStageThumb
 {
     /// <summary>A <paramref name="w"/> x <paramref name="h"/> thumbnail for one row, with its kind tag and an optional ring (<paramref name="ringW"/>
-    /// 0: none).</summary>
-    public static Element Of(in QueueRowText text, in QueueRowVideo video, float w, float h, float corners, float ringW = 0f, ColorF ring = default)
+    /// 0: none). <paramref name="stills"/> false (no track plays as its video): every track is its cover on the plate, untagged.</summary>
+    public static Element Of(in QueueRowText text, in QueueRowVideo video, float w, float h, float corners, float ringW = 0f, ColorF ring = default, bool stills = true)
     {
         bool small = w < T.SmallBelowW;
         var kids = new List<Element>(4);
-        if (video.HasVideo)
+        if (stills && video.HasVideo)
             kids.Add(Controls.Artwork(video.Still, w, h, corners, decodePx: (int)MathF.Round(w * 2f)));
         else
         {
@@ -51,7 +56,7 @@ internal static class ClassicStageThumb
                 Children = [Controls.Artwork(text.Art, cover, cover, Radii.Control, decodePx: (int)MathF.Round(cover * 2f))],
             });
         }
-        kids.Add(Tag(Loc.Get(video.HasVideo ? Strings.Stage.Mode.Video : Strings.Stage.AudioTag), small));
+        if (stills) kids.Add(Tag(Loc.Get(video.HasVideo ? Strings.Stage.Mode.Video : Strings.Stage.AudioTag), small));
         if (ringW > 0f)
             kids.Add(new BoxEl
             {
@@ -138,17 +143,18 @@ internal sealed class ClassicStageShelf : Component
         int rows = Math.Max(0, Math.Min(G.MaxCards, queue.Rows.Length - skip));
         Span<float> widths = stackalloc float[G.MaxCards];
         Span<bool> videos = stackalloc bool[G.MaxCards];
+        bool stills = st.VideosPlay.Value;
         for (int i = 0; i < rows; i++)
         {
             videos[i] = lane.VideoOf(queue.Rows[i + skip].Ref).HasVideo;
-            widths[i] = G.ArtW(cardW, videos[i]);
+            widths[i] = G.ArtW(cardW, stills && videos[i]);
         }
         var (n, scale) = G.Seat(width, widths[..rows], _held);
         _held = n;
         float artH = MathF.Round(G.ThumbH(cardW) * scale);
         var cards = new Element[n];
         for (int i = 0; i < n; i++)
-            cards[i] = Card(lane, verbs, queue.Rows[i + skip], MathF.Round(widths[i] * scale), artH, videos[i], i == 0 && !then, set.Fill, overControls, arm.Ink, arm.InkSecondary);
+            cards[i] = Card(lane, verbs, queue.Rows[i + skip], MathF.Round(widths[i] * scale), artH, stills && videos[i], videos[i], i == 0 && !then, set.Fill, overControls, arm.Ink, arm.InkSecondary);
         return new BoxEl
         {
             Direction = 1, Gap = G.CaptionGap, Width = width, Height = G.Height(cardW),
@@ -163,18 +169,19 @@ internal sealed class ClassicStageShelf : Component
         };
     }
 
-    /// <summary>One card, frameless: the art (the video's 16:9 still, or the square cover) with its duration badge and, for what plays next, the accent
-    /// ring, over the title and the artist line at the art's width; a click plays the row, a right-click opens its menu.</summary>
-    static Element Card(IQueueLane lane, IQueueVerbs verbs, QueueRowProps row, float artW, float artH, bool video, bool next, ColorF accent, Action<bool> overControls,
+    /// <summary>One card, frameless: the art (the video's 16:9 still when <paramref name="still"/>, or the square cover) with its duration badge (the
+    /// film glyph in it for a track with a video, <paramref name="hasVideo"/>) and, for what plays next, the accent ring, over the title and the artist
+    /// line at the art's width; a click plays the row, a right-click opens its menu.</summary>
+    static Element Card(IQueueLane lane, IQueueVerbs verbs, QueueRowProps row, float artW, float artH, bool still, bool hasVideo, bool next, ColorF accent, Action<bool> overControls,
         ColorF ink, ColorF inkSecondary)
     {
         var text = lane.TextOf(row.Ref);
-        string? url = video ? lane.VideoOf(row.Ref).Still : text.Art;
+        string? url = still ? lane.VideoOf(row.Ref).Still : text.Art;
         ulong itemId = row.ItemId;
         int index = row.Index;
         EntityRef r = row.Ref;
         var art = new List<Element>(3) { Controls.Artwork(url, artW, artH, Radii.Control, decodePx: (int)MathF.Round(artW * 2f)) };
-        if (text.DurationMs > 0) art.Add(Badge(lane.Clock(text.DurationMs)));
+        if (text.DurationMs > 0 || hasVideo) art.Add(Badge(text.DurationMs > 0 ? lane.Clock(text.DurationMs) : "", hasVideo));
         if (next)
             art.Add(new BoxEl
             {
@@ -221,12 +228,22 @@ internal sealed class ClassicStageShelf : Component
         return lane.Attach(el, itemId, index, r);
     }
 
-    /// <summary>The duration badge on the art's bottom-right corner: caption type on the on-media scrim (the art is media in both arms).</summary>
-    static Element Badge(string duration) => new BoxEl
+    /// <summary>The duration badge on the art's bottom-right corner: caption type on the on-media scrim (the art is media in both arms), led by the track
+    /// lists' film glyph for a track with a music video (<paramref name="video"/>; the badge grows leftwards, so its absence moves nothing).</summary>
+    static Element Badge(string duration, bool video)
     {
-        AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 0f, T.TagInset, T.TagInset), HitTestVisible = false,
-        Padding = new Edges4(T.TagPadX, T.TagPadY, T.TagPadX, T.TagPadY), Corners = CornerRadius4.All(T.TagCorners),
-        Fill = R.OnMedia.CoverScrim with { A = T.TagPlateA },
-        Children = [new TextEl(duration) { Size = T.BadgeSize, LineHeight = T.BadgeLine, Color = R.OnMedia.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap }],
-    };
+        var time = new TextEl(duration) { Size = T.BadgeSize, LineHeight = T.BadgeLine, Color = R.OnMedia.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap };
+        return new BoxEl
+        {
+            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 0f, T.TagInset, T.TagInset), HitTestVisible = false,
+            Padding = new Edges4(T.TagPadX, T.TagPadY, T.TagPadX, T.TagPadY), Corners = CornerRadius4.All(T.TagCorners),
+            Fill = R.OnMedia.CoverScrim with { A = T.TagPlateA },
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = T.BadgeGlyphGap,
+            Children = video
+                ? duration.Length > 0
+                    ? [new TextEl(Icons.Movie) { Size = T.BadgeGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = R.OnMedia.Ink }, time]
+                    : [new TextEl(Icons.Movie) { Size = T.BadgeGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = R.OnMedia.Ink }]
+                : [time],
+        };
+    }
 }
