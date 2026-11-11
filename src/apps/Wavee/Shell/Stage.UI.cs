@@ -737,7 +737,7 @@ public static partial class Stage
             AccentSignal.SetIfChanged(accentBase);
         }
 
-        /// <summary>Esc / F11 close; [ / ] step the face (the layout inside a Large art / Centered / Artist layout), G the gallery (back in Card); everything else is the player bar's own key map (Shell.PlayerBar.UI.cs:645-659 via
+        /// <summary>F11 closes; Esc steps Cinema → Theatre, else closes (<see cref="TheatreRules.EscapeStepsToTheatre"/>); [ / ] step the face (the layout inside a Large art / Centered / Artist layout), G the gallery (back in Card); everything else is the player bar's own key map (Shell.PlayerBar.UI.cs:645-659 via
         /// Shell.PlayerKey, Shell.PlayerBar.cs:448-459) so Space / ← → / ↑ ↓ work in fullscreen (O9). Media keys need nothing:
         /// they arrive through SMTC regardless of focus (Playback.Os.cs:309-323). Any key is idle activity.</summary>
         void OnKey(KeyEventArgs e)
@@ -745,7 +745,14 @@ public static partial class Stage
             _idle.Activity(ChromeActivity.Keyboard, Now());
             Sync();
             if (e.Handled) return;
-            if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.Escape) { e.Handled = true; Close(_begin, "escape"); return; }
+            if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                // Cinema → Theatre first (the toggle's own verb: its motion, its stored choice), then out (TheatreRules.EscapeStepsToTheatre)
+                if (TheatreRules.EscapeStepsToTheatre(_ctx.Mode.Peek(), _ctx.Theatre.Peek(), _ctx.AudioFace.Peek(), _ctx.Layout.Peek().TheatreFits)) { _ctx.ToggleTheatre(); return; }
+                Close(_begin, "escape");
+                return;
+            }
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.F11) { e.Handled = true; Close(_begin, "f11"); return; }
             // [ / ] the previous / next face (Shift: the group) in Visualizer mode; G the gallery (from another mode it
             // switches to Visualizer first — ModeRules.ToggleGallery)
