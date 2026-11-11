@@ -15,7 +15,7 @@
 // UP NEXT (Cinema): the shelf of the next tracks (`ClassicStageShelf`, the core's `StageLayers.UpNextShelf`) rides in and out with the idle chrome,
 // a gap above the transport card; the title block stands a gap above the shelf's place, which is reserved on every tier that has a shelf, so neither
 // moves when the shelf comes or goes. THE AUDIO FACE (`StageRootView.ShowAudioFace`, an audio-only track while video stays on): the frame stays (top
-// bar, shelf, transport), the title over the picture and its scrims give way to the face's own cover and title (`ClassicStageAudioFace`, a stage layer
+// bar, shelf, transport, at rest as in Theatre: none of it covers the face), the title over the picture and its scrims give way to the face's own cover and title (`ClassicStageAudioFace`, a stage layer
 // under this one: no picture, so no hole), and the ground lets the pointer through to the face's lyrics.
 //
 // THE END CARD (`StageRootView.ShowEndCard`, a music video ended and the next track waits for the countdown): the picture stays where it is, its last
@@ -51,13 +51,15 @@ internal static class ClassicStagePictureChrome
         var fade = new EnterExit(Opacity: 0f, Active: true);
         // Theatre: the picture in the left region with its title under it and the panel beside it (the stage draws the panel); the chrome stays
         // at rest there (none of it covers the picture) and the hairline gives way to the transport. Cinema keeps the idle chrome.
+        // The audio face is laid out clear of the whole chrome (its cover, title and lyrics end above the shelf's place), so the chrome stays at
+        // rest there too: idling it out would cover nothing and leave the frame's lower block a bare band under the lyrics.
         var theatre = ClassicStageTheatreGeometry.Of(L);
-        Func<bool> cinemaChrome = () => v.ChromeVisible() && !v.ShowTheatre();
+        Func<bool> cinemaChrome = () => (v.ChromeVisible() || v.ShowAudioFace()) && !v.ShowTheatre();
         // the title over the picture and its scrims: Cinema with a picture (the audio face draws its own title under the cover)
         Func<bool> overPicture = () => v.ChromeVisible() && !v.ShowTheatre() && !v.ShowAudioFace() && !v.ShowEndCard();
         bool shelf = tier.ShelfCardW > 0f && v.Layers.UpNextShelf is not null;
-        Func<bool> chromeShown = () => v.ChromeVisible() || v.ShowTheatre();
-        Func<bool> hairline = () => !v.ChromeVisible() && !v.ShowTheatre();
+        Func<bool> chromeShown = () => v.ChromeVisible() || v.ShowTheatre() || v.ShowAudioFace();
+        Func<bool> hairline = () => !chromeShown();
         return Stage.Layer with
         {
             Key = "stage:picturechrome",

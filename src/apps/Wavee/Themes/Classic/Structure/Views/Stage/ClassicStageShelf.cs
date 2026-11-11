@@ -68,11 +68,28 @@ internal static class ClassicStageThumb
     /// <summary>The kind tag (top-left) or the duration badge (bottom-right) on the veil's plate.</summary>
     static Element Tag(string text, bool small, bool top)
     {
-        float inset = small ? T.SmallTagInset : T.TagInset, padX = small ? T.SmallTagPadX : T.TagPadX;
+        float inset = small ? T.SmallTagInset : T.TagInset;
+        // A ZStack layer placed at Start FILLS its slot (the engine's legacy top-left origin; only Center/End take the desired size), so the tag's
+        // plate would veil the whole thumbnail: the tag sits content-sized in a full-bleed row that starts it at the inset.
+        if (top)
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Start, Padding = new Edges4(inset, inset, 0f, 0f), HitTestVisible = false,
+                Children = [Plate(text, small, top)],
+            };
+        return Plate(text, small, top) with
+        {
+            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 0f, inset, inset),
+        };
+    }
+
+    /// <summary>The tag's content-sized plate.</summary>
+    static BoxEl Plate(string text, bool small, bool top)
+    {
+        float padX = small ? T.SmallTagPadX : T.TagPadX;
         return new BoxEl
         {
-            AlignSelf = top ? FlexAlign.Start : FlexAlign.End, JustifySelf = top ? FlexAlign.Start : FlexAlign.End, HitTestVisible = false,
-            Margin = top ? new Edges4(inset, inset, 0f, 0f) : new Edges4(0f, 0f, inset, inset),
+            HitTestVisible = false,
             Padding = new Edges4(padX, T.TagPadY, padX, T.TagPadY), Corners = CornerRadius4.All(T.TagCorners),
             Fill = Ink.Veil with { A = T.TagPlateA },
             Children =
