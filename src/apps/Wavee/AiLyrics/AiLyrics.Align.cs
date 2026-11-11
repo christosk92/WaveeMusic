@@ -602,9 +602,10 @@ public static partial class AiLyrics
         /// (<see cref="EndRule.QuietFrames"/> frames below <paramref name="quiet"/> or <see cref="EndRule.DropDb"/> under
         /// the word's own peak), else at the next word's start, and never more than
         /// <see cref="EndRule.CapSecondsPerUnit"/> per <see cref="SungUnits"/> after its own start. The next word's start
-        /// bounds it (nothing overlaps or reorders), and the line's last word ends no later than
-        /// <paramref name="boundS"/> (the next line's start). The bounds limit the extension only: a word never ends
-        /// before its last token. Starts are never moved. <paramref name="env"/>: the level in dB per 10 ms frame, as
+        /// bounds it (nothing overlaps or reorders). These bounds limit the extension only: a word never ends before its
+        /// last token. The line's last word ends by <paramref name="boundS"/> (the next line's start) whenever it starts
+        /// before it, even inside its last token: the view hands the wipe to the next line there, and a word still sweeping
+        /// was cut with its last syllable unlit. Starts are never moved. <paramref name="env"/>: the level in dB per 10 ms frame, as
         /// <see cref="SnapToOnsets"/>; only its first <paramref name="envFrames"/> frames are known.</summary>
         public static void EndAtVoice(WordTime[] words, IReadOnlyList<LyricWord> units, double? boundS, Func<int, float> env, int envFrames,
             float quiet, EndRule rule, string? language)
@@ -634,7 +635,11 @@ public static partial class AiLyrics
                     }
                     else run = 0;
                 }
-                words[i] = new WordTime(s, Math.Max(end, e));
+                end = Math.Max(end, e);
+                // the line's last word is done when the next line starts (its wipe is never cut by the hand-off), whenever it
+                // starts before that; one that starts after keeps its time (acceptance judges it)
+                if (i + 1 == n && boundS is double ls && s < ls && ls < end) end = ls;
+                words[i] = new WordTime(s, end);
             }
         }
 
