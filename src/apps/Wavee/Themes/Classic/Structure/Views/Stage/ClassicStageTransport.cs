@@ -78,13 +78,15 @@ internal static class ClassicStageTransport
         }
         else
         {
-            var right = new List<Element>(5) { Heart(f.Saved, f.Like, set.Fill), Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph()) };
-            if (L.VolumeFits) right.Add(Embed.Comp(new VolumeRow.Props(set, tier.VolumeW, props), static () => new VolumeRow()));   // only where the cluster still fits the card
-            right.Add(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton()));
-            right.Add(more);
+            // A TIER CROSSING (Huge's wider padding and gaps) moves every control of the row: each glides to its new place on the tier's shove
+            // (a position FLIP; padding and gaps cannot ease themselves), so the saved heart and its neighbours never step
+            var right = new List<Element>(5) { Glide(Heart(f.Saved, f.Like, set.Fill)), Glide(Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph())) };
+            if (L.VolumeFits) right.Add(Glide(Embed.Comp(new VolumeRow.Props(set, tier.VolumeW, props), static () => new VolumeRow())));   // only where the cluster still fits the card
+            right.Add(Glide(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton())));
+            right.Add(Glide(more));
             row = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Height = rowH,
+                Direction = 0, AlignItems = FlexAlign.Center, Height = rowH, Layout = ClassicTierMotion.Shove,
                 Children =
                 [
                     new BoxEl
@@ -99,22 +101,22 @@ internal static class ClassicStageTransport
                     },
                     new BoxEl
                     {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.ClusterGap ?? Spacing.S, Shrink = 0f,
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.ClusterGap ?? Spacing.S, Shrink = 0f, Layout = ClassicTierMotion.Shove,
                         OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
                         Children =
                         [
-                            ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)),
-                            ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                            Play(f.Playing, f.PrimaryEnabled, disc, set, verbs),
-                            ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-                            ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)),
+                            Glide(ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle))),
+                            Glide(ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous))),
+                            Glide(Play(f.Playing, f.PrimaryEnabled, disc, set, verbs)),
+                            Glide(ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next))),
+                            Glide(ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat))),
                         ],
                     },
                     // the right cluster's buttons hug their own row: the column's empty lead holds nothing
                     new BoxEl
                     {
                         Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                        Children = [new BoxEl { Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.RightGap, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = right.ToArray() }],
+                        Children = [new BoxEl { Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.RightGap, Layout = ClassicTierMotion.Shove, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = right.ToArray() }],
                     },
                 ],
             };
@@ -131,7 +133,7 @@ internal static class ClassicStageTransport
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Layout = ClassicTierMotion.Shove,
                     // the bar's own seek; its scrub edge holds the chrome through the new onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
                     Children = [props.TimeText(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = [props.SeekBar(st.Scrubbing)] }, props.TimeText(true, Ink.InkSecondary)],
                 },
@@ -139,6 +141,9 @@ internal static class ClassicStageTransport
             ],
         };
     }
+
+    /// <summary><paramref name="control"/> gliding to its new place when a tier crossing moves it (<see cref="ClassicTierMotion.Shove"/>).</summary>
+    static Element Glide(Element control) => control with { Layout = ClassicTierMotion.Shove };
 
     /// <summary>The 56-DIP filled play disc: a hand-built circular BoxEl on the surface's AccentSet (Button.Create has no circular
     /// variant, so <c>ButtonPalette.ForAccent</c> is not used — V-U46).</summary>
