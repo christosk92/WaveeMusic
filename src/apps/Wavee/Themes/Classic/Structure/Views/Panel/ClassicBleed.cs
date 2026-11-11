@@ -4,11 +4,20 @@
 // over its last stretch the picture fades, on an eased curve, into the panel's own plain ground, the same ground the panel shows with the
 // canvas off (the owner, 2026-11-08: "theres too much color. it should just be plain"). Nothing moves there and nothing is tinted by the art
 // (the owner, 2026-11-10: "get rid of the wave effect, just fade it beautifully"): the art lives in the picture and in the meta's accent text.
+//
+// The ground is OPAQUE (the video is a plane under the UI and would show through translucent chrome), so it cannot let the page's shell tint
+// through the way the translucent rail does: it paints it instead. The panel with the canvas off is the content layer over the material's
+// tint over the window's backdrop; the bleed flattens exactly that (`ClassicMaterial.TintFill`, the layer's own rule, over the backdrop's
+// opaque stand-in `Tok.WindowBackground`, what the window clears to without Mica and what a capture composes under it), so the plain ground
+// keeps the page's colour like the player bar beside it (the owner, 2026-11-11: "the fade here with the canvas is just black/dark. no color").
+// Not matched: live Mica's wallpaper colour, and Home's radial washes (one opaque colour cannot carry a gradient); there the ground is the
+// page's flat tint (or the neutral ground) over that stand-in.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
 
@@ -18,15 +27,21 @@ namespace Wavee.Themes.Classic;
 /// accent text (<paramref name="Text"/>: the artist, the heart).</summary>
 internal readonly record struct ClassicBleedInk(ColorF Ground, ColorF Text)
 {
-    /// <summary>The colours for the cover at <paramref name="url"/>. The ground is the panel's own (the content layer over the shell's ground,
-    /// flattened: what the panel shows with the canvas off). The accent text is the cover's dominant hue (its grading, the house palette)
-    /// solved as text on that ground; a cover with no grading yet reads in the neutral ink. The palette watch is read inside, so a late
-    /// grading re-renders the reader.</summary>
-    public static ClassicBleedInk Of(string? url)
+    /// <summary>The material's colour under the panel: the presented state's tint as the material layer paints it
+    /// (<see cref="ClassicMaterial.TintFill"/>), or the neutral ground with no frame. Tracked reads (the state at navigation rate, the
+    /// Surfaces option): the caller re-renders when the page's tint or the option changes, never per frame.</summary>
+    public static ColorF Tint(IReadSignal<ShellMaterialState>? state, IOptionReader? options)
+        => state is null ? R.Wash.NeutralGround : ClassicMaterial.TintFill(state.Value, ClassicMaterial.Level(options));
+
+    /// <summary>The colours for the cover at <paramref name="url"/> over the material <paramref name="tint"/> (<see cref="Tint"/>). The ground
+    /// is the panel's own, flattened: the content layer over the tint over the window's backdrop (its opaque stand-in), what the docked
+    /// panel shows with the canvas off. The accent text is the cover's dominant hue (its grading, the house palette) solved as text on that ground; a cover with no
+    /// grading yet reads in the neutral ink. The palette watch is read inside, so a late grading re-renders the reader.</summary>
+    public static ClassicBleedInk Of(string? url, ColorF tint)
     {
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
         bool light = R.IsLight;
-        ColorF ground = ColorContrast.Flatten(R.Layer.FileArea, R.Layer.ShellGround);
+        ColorF ground = ColorContrast.Flatten(R.Layer.FileArea, ColorContrast.Flatten(tint, Tok.WindowBackground));
         ColorF dominant = ColorContrast.Flatten(Tok.TextSecondary, ground);   // the neutral ink, opaque (the solve keeps its alpha)
         if (url is { Length: > 0 } && (Palette.TryScheme(url, light, out Scheme s) || Palette.TryScheme(url, !light, out s)))
             dominant = ColorScience.Accent(s);
@@ -63,7 +78,7 @@ internal sealed class ClassicBleed : Component
         // Where the picture has fully given way to the ground: the meta starts BleedMetaDrop under it (ClassicNowPlayingHero).
         float end = ClassicHeroLayout.BleedEnd(vh, ph);
         float fade = MathF.Min(end, ClassicHeroLayout.BleedFadeH), half = MathF.Round(0.5f * fade);
-        var ink = ClassicBleedInk.Of(np.NowArtUrl());
+        var ink = ClassicBleedInk.Of(np.NowArtUrl(), ClassicBleedInk.Tint(UseContext(ClassicMaterial.StateSlot), UseContext(OptionStore.Context)));
         ColorF ground = ink.Ground, shade = Deck.BleedShade(ground);
         return Flow.Show(np.Bleeds, new BoxEl
         {
@@ -72,14 +87,16 @@ internal sealed class ClassicBleed : Component
             Exit = Fade, Transition = MotionTok.StandardEnter,
             Children =
             [
-                new BoxEl { Key = GroundKey, Grow = 1f, Fill = ground },
+                // The plates cross-fade a page's new tint with the material layer beside them (its own brush transition). The two fade
+                // gradients below take the new ground at once: a gradient has no brush-fade channel (only a theme switch fades one).
+                new BoxEl { Key = GroundKey, Grow = 1f, Fill = ground, BrushTransitionMs = Design.Motion.Standard },
                 np.BleedVideo(w),
                 // The dissolve: the ground's alpha rises on an eased curve (slow off the picture, slow into the ground), so neither end
                 // of the fade shows an edge. Two gradients, the curve's two halves (a gradient holds four stops).
                 Half(ground, end - fade, half, ClassicHeroLayout.BleedFadeA0, ClassicHeroLayout.BleedFadeA1, ClassicHeroLayout.BleedFadeA2, ClassicHeroLayout.BleedFadeA3),
                 Half(ground, end - fade + half, fade - half, ClassicHeroLayout.BleedFadeA3, ClassicHeroLayout.BleedFadeA4, ClassicHeroLayout.BleedFadeA5, ClassicHeroLayout.BleedFadeA6),
                 // Under the fade the plain ground covers the canvas's last stretch (and the panel below it), as the panel is with the canvas off.
-                new BoxEl { Key = FootKey, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, end, 0f, 0f), Fill = ground },
+                new BoxEl { Key = FootKey, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, end, 0f, 0f), Fill = ground, BrushTransitionMs = Design.Motion.Standard },
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = ClassicHeroLayout.BleedHeadScrimH,

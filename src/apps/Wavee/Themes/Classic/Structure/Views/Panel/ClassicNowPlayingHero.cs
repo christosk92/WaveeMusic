@@ -61,9 +61,10 @@ internal static class ClassicNowPlayingHero
         };
     }
 
-    internal static Element HeroMeta(NowPlayingHeroProps props, Track track)
+    /// <summary>The meta: the canvas's (<see cref="BleedMeta"/>, its accent solved over the material <paramref name="tint"/>) or the cover's.</summary>
+    internal static Element HeroMeta(NowPlayingHeroProps props, Track track, ColorF tint)
     {
-        if (props.Bleeds()) return BleedMeta(props, track);
+        if (props.Bleeds()) return BleedMeta(props, track, tint);
         string uri = track.Uri.Text;
         string title = track.Title;
         var meta = new List<Element>(2);
@@ -110,10 +111,10 @@ internal static class ClassicNowPlayingHero
     /// <summary>The meta under the canvas's fade, on the plain panel: the 64 cover, the title,
     /// the artist in the art's hue (solved as text on the ground) and "album · year", the saved heart in that hue on a soft circle of it; the
     /// lyrics peek under them.</summary>
-    static Element BleedMeta(NowPlayingHeroProps props, Track track)
+    static Element BleedMeta(NowPlayingHeroProps props, Track track, ColorF tint)
     {
         string uri = track.Uri.Text, title = track.Title;
-        var ink = ClassicBleedInk.Of(props.NowArtUrl());
+        var ink = ClassicBleedInk.Of(props.NowArtUrl(), tint);
         var lines = new List<Element>(3)
         {
             new TextEl(title)
@@ -612,10 +613,12 @@ internal sealed class ClassicNowPlayingBody : Component
 
         props.SubscribeEntities();
 
+        // Under the canvas the meta's accent is solved on the bleed's ground, which carries the page's tint: read (navigation rate) only then.
+        ColorF tint = props.Bleeds() ? ClassicBleedInk.Tint(UseContext(ClassicMaterial.StateSlot), UseContext(OptionStore.Context)) : default;
         return ScrollView(new BoxEl
         {
             Direction = 1,
-            Children = [ClassicNowPlayingHero.HeroMeta(props, track), Sections(props, track, nowArtist)],
+            Children = [ClassicNowPlayingHero.HeroMeta(props, track, tint), Sections(props, track, nowArtist)],
         }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
