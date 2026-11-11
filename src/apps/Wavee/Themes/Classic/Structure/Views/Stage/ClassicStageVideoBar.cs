@@ -282,8 +282,10 @@ internal sealed class ClassicStageVideoBar : Component
     sealed record MenuProps(StageTransportProps T);
 
     /// <summary>The settings gear: the music video's own menu (the docked video's "…": where it plays, aspect ratio, quality, speed), built when it
-    /// opens. It holds the idle chrome while open. Opened like the docked strip's menu: a flyout that may leave the window (over the video hole an
-    /// in-app acrylic has nothing to sample), with an opaque plate as the fallback.</summary>
+    /// opens. It holds the idle chrome while open. Opened like the docked strip's menu (<c>ClassicOnMedia</c>): a flyout that may lease an OS popup
+    /// window and take the window's acrylic. In the full screen the stage IS the monitor, so the menu always fits in the window and the engine keeps
+    /// it in-window (<c>OverlayHost</c>'s fit gate): there it frosts the UI under it (the audio face), and over the playing picture, which no
+    /// in-window backdrop can sample, it paints the acrylic's flat plate (the OpaqueSurface declaration).</summary>
     sealed class VideoMenuButton : Component
     {
         public override Element Render()
@@ -297,9 +299,13 @@ internal sealed class ClassicStageVideoBar : Component
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 if (t.VideoMenu is not { } build) return;
+                // OpaqueSurface is a DECLARATION that the plate sits over the video picture (the engine's acrylic cannot sample a video hole, so it
+                // paints the flat plate there): true over a playing video, false over the audio face, whose cover and lyrics are ordinary UI the
+                // in-window acrylic frosts. Decided at open time from the stage's own fact, never from geometry.
+                bool overVideo = !st.AudioFace.Peek();
                 var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(build(), () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.TopEdgeAlignedRight,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false, OpaqueSurface = true });
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false, OpaqueSurface = overVideo });
                 st.MenuOpen(true);
                 opened.ClosedAction = () => { handle.Value = null; st.MenuOpen(false); };
                 handle.Value = opened;
