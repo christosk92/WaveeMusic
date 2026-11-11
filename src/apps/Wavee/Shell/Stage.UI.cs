@@ -114,6 +114,10 @@ public static partial class Stage
         /// wanted, and the panel it shows beside the picture (Lyrics or Up next).</summary>
         public readonly Signal<bool> TheatreWanted = new(false);
         public readonly Signal<PaneKind> TheatrePane = new(PaneKind.Queue);
+        /// <summary>Theatre for THIS opening only, never stored: Esc from Cinema steps out one level (<see cref="TheatreRules.EscapeStepsToTheatre"/>)
+        /// and leaves <c>Prefs.Stage.Theatre</c> as it was, so the next full screen opens as the preference says. The toggle and the Video tab
+        /// clear it (they state the arrangement themselves).</summary>
+        public readonly Signal<bool> TheatreHeld = new(false);
         /// <summary>DERIVED by SurfaceCore: the stage shows the picture in THEATRE now (Video mode, Theatre wanted, and the layout has room for
         /// the panel, <c>Layout.TheatreFits</c>): the picture sits in the left region and <see cref="Pane"/> is the panel beside it.</summary>
         public readonly Signal<bool> Theatre = new(false);
@@ -324,6 +328,7 @@ public static partial class Stage
                     if (offered)
                     {
                         _pictureWanted.Value = true;
+                        _ctx.TheatreHeld.Value = false;
                         if (_ctx.TheatreWanted.Peek()) Prefs.Stage.SetTheatre(false, (int)_ctx.TheatrePane.Peek());
                     }
                     _verbs.Activity();
@@ -343,7 +348,9 @@ public static partial class Stage
             };
             _ctx.ToggleTheatre = () =>
             {
-                Prefs.Stage.SetTheatre(!_ctx.Theatre.Peek(), (int)_ctx.TheatrePane.Peek());
+                bool to = !_ctx.Theatre.Peek();
+                _ctx.TheatreHeld.Value = false;
+                Prefs.Stage.SetTheatre(to, (int)_ctx.TheatrePane.Peek());
                 _verbs.Activity();
             };
             _ctx.SwitchToAudio = () =>
@@ -534,7 +541,7 @@ public static partial class Stage
             });
             // Theatre as SHOWN: Video mode, wanted, and the window tier's layout has room for the panel (a crossing into a tier without one
             // draws Cinema and keeps the choice for the way back)
-            UseSignalEffect(() => ctx.Theatre.SetIfChanged(ctx.Mode.Value == Mode.Video && ctx.TheatreWanted.Value && ctx.Layout.Value.TheatreFits));
+            UseSignalEffect(() => ctx.Theatre.SetIfChanged(ctx.Mode.Value == Mode.Video && (ctx.TheatreWanted.Value || ctx.TheatreHeld.Value) && ctx.Layout.Value.TheatreFits));
             // the audio face: Video mode without a picture now; it shows the lyrics but beside Theatre's own Lyrics panel
             UseSignalEffect(() => ctx.AudioFace.SetIfChanged(ctx.Mode.Value == Mode.Video && !ctx.VideoOffered.Value));
             UseSignalEffect(() => ctx.AudioLyrics.SetIfChanged(ctx.AudioFace.Value && !(ctx.Theatre.Value && ctx.TheatrePane.Value == PaneKind.Lyrics)));
@@ -748,8 +755,8 @@ public static partial class Stage
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.Escape)
             {
                 e.Handled = true;
-                // Cinema → Theatre first (the toggle's own verb: its motion, its stored choice), then out (TheatreRules.EscapeStepsToTheatre)
-                if (TheatreRules.EscapeStepsToTheatre(_ctx.Mode.Peek(), _ctx.Theatre.Peek(), _ctx.AudioFace.Peek(), _ctx.Layout.Peek().TheatreFits)) { _ctx.ToggleTheatre(); return; }
+                // Cinema → Theatre first (the same derived Theatre, so the toggle's motion; held for this opening, never stored), then out (TheatreRules.EscapeStepsToTheatre)
+                if (TheatreRules.EscapeStepsToTheatre(_ctx.Mode.Peek(), _ctx.Theatre.Peek(), _ctx.AudioFace.Peek(), _ctx.Layout.Peek().TheatreFits)) { _ctx.TheatreHeld.Value = true; _verbs.Activity(); return; }
                 Close(_begin, "escape");
                 return;
             }

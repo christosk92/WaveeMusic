@@ -78,8 +78,8 @@ public static partial class Stage
         /// <summary>The tab that stands for a Theatre panel (the selector's highlight).</summary>
         public static Mode TabOf(PaneKind pane) => pane == PaneKind.Lyrics ? Mode.Lyrics : Mode.Queue;
 
-        /// <summary>Esc steps OUT one level (the owner, 2026-11-11): over a playing picture in CINEMA it goes to Theatre (the bar's own
-        /// Cinema/Theatre toggle, <c>StageCtx.ToggleTheatre</c>), where the layout has room for Theatre's panel (the toggle's own condition); in
+        /// <summary>Esc steps OUT one level (the owner, 2026-11-11): over a playing picture in CINEMA it goes to Theatre for this opening
+        /// (<c>StageCtx.TheatreHeld</c>: the toggle's arrangement and motion, the stored preference untouched), where the layout has room for Theatre's panel (the toggle's own condition); in
         /// Theatre, in every other mode, over the audio face and where Theatre does not fit it leaves the full screen as before.</summary>
         public static bool EscapeStepsToTheatre(Mode mode, bool theatre, bool audioFace, bool theatreFits)
             => mode == Mode.Video && !theatre && !audioFace && theatreFits;
