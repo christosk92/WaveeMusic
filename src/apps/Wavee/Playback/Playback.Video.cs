@@ -2111,7 +2111,8 @@ public static partial class Playback
         /// <summary>The link state an OPEN reasons from: the live controller's, or — before the first player exists —
         /// what BuildPlayer is about to seed it with (the remembered estimate under the policy cap), so a prepare and the
         /// open that adopts it compute the same rung. The cap is the last session's effective (viewport-clamped) one —
-        /// see BuildPlayer.</summary>
+        /// see BuildPlayer; once a surface has asked for a height, Opening replaces it with the cap the new session will
+        /// commit on its first pump (A4).</summary>
         static (double Kbps, bool Prior, int Cap) LinkState()
         {
             lock (s_gate)
@@ -2157,8 +2158,18 @@ public static partial class Playback
             int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
             Span<(int, int)> rungs = stackalloc (int, int)[video.Count];
             for (int i = 0; i < video.Count; i++) rungs[i] = (video[i].Quality.Resolution.Height, video[i].Quality.Bitrate);
+            // A4: the opening cap is the cap the new session commits on its first pump: the policy cap and the ladder rung at or
+            // above the height the video surface last asked for (floored at 720), not the previous session's settled cap.
+            int requestedPx, policyCap;
+            lock (s_gate) { requestedPx = s_abr?.ViewportRequestedHeight ?? 0; policyCap = s_abr?.PolicyMaxHeight ?? int.MaxValue; }
+            if (requestedPx > 0)
+            {
+                Span<int> heights = stackalloc int[video.Count];
+                for (int i = 0; i < heights.Length; i++) heights[i] = rungs[i].Item1;
+                cap = Math.Min(policyCap, AdaptiveBitrateController.ViewportCapFor(requestedPx, heights));
+            }
             var rep = video[OpeningRung(rungs, kbps, prior, cap, pin, out string why)];
-            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={why} cap={cap} pin={pin}");
+            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={why} cap={cap} pin={pin} viewport={requestedPx}");
             if (string.Equals(rep.InitUrl, d.InitUrl, StringComparison.Ordinal)) return d;
             return d with { InitUrl = rep.InitUrl, SegmentBaseUrl = rep.SegmentBaseUrl, SegmentPrefix = rep.SegmentPrefix, SegmentSuffix = rep.SegmentSuffix, RepresentationId = rep.Id };
         }
