@@ -13,7 +13,8 @@
 //   · the page title's x is the page column's ink line (`Column`): align.inset measures the page's leads against it;
 //   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album), and the settings
 //     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings), the what's-new panorama by `ZuneReleaseNotesRules.PanoramaBleed`
-//     (Z-ReleaseNotes), the artist name by `ZuneArtistRules.NameNudge` (Z-Artist) (`Hang`);
+//     (Z-ReleaseNotes), the artist name by `ZuneArtistRules.NameNudge` (Z-Artist), the lyrics peek's spine by `ZunePanelBodies.PeekSpineHang`
+//     (`Hang`);
 //   · THE BOARD SCALE: the boards space on a 2-DIP step to 24, so 6, 10, 14, 18 and 22 are on Zune's scale (`BoardScale`: space.scale).
 
 using FluentGpu.Foundation;
@@ -145,6 +146,9 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         if (ZuneOptions.Fit() == PanoramaFit.Bleed)
             policies.Add(new(LintIntent.Bleed, ZuneSettings.PreviewTitleKey,
                 "the theme options preview bleeds its panorama off the frame's edge, as the panorama option does on the pages (Z-Theme-Options)"));
+        policies.Add(new(LintIntent.Hang, ZunePanelBodies.PeekSpineKey,
+            "the lyrics peek's accent spine and its gap hang in the panel's gutter so its words stand on the bodies' column, as a quote mark hangs",
+            Value: ZunePanelBodies.PeekSpineHang));
         policies.Add(new(LintIntent.Hang, ZuneSettings.TitleKey,
             "the settings panorama bleeds left of the gutter (ZuneSettingsRules.PanoramaBleed: Z-Settings draws it at 40 over a 48 gutter)",
             Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneSettingsRules.PanoramaBleed)));
