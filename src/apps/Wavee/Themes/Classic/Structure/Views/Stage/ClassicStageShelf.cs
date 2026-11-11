@@ -130,6 +130,9 @@ internal sealed class ClassicStageShelf : Component
         var lane = props.Lane;
         var verbs = props.Verbs;
         var overControls = st.OverControls;
+        // the inks' arm: over the AUDIO FACE the colour field decides it (the face's rule: a deep field on the light theme reads with the dark arm's
+        // light ink), over a picture the theme kind does
+        var arm = Ink.Arm(st.AudioFace.Value ? ClassicStageAudioFaceGeometry.FieldArm(st.BasePalette.Value) : Tok.Theme);
         // each card's art width from the row's video fact (a video's 16:9 still, an audio-only track's square cover), then the cards the width
         // seats; the count holds while the cards can narrow to keep it (a crossing's narrowing frames never drop a card to bring it back)
         int rows = Math.Max(0, Math.Min(G.MaxCards, queue.Rows.Length - skip));
@@ -145,7 +148,7 @@ internal sealed class ClassicStageShelf : Component
         float artH = MathF.Round(G.ThumbH(cardW) * scale);
         var cards = new Element[n];
         for (int i = 0; i < n; i++)
-            cards[i] = Card(lane, verbs, queue.Rows[i + skip], MathF.Round(widths[i] * scale), artH, videos[i], i == 0 && !then, set.Fill, overControls);
+            cards[i] = Card(lane, verbs, queue.Rows[i + skip], MathF.Round(widths[i] * scale), artH, videos[i], i == 0 && !then, set.Fill, overControls, arm.Ink, arm.InkSecondary);
         return new BoxEl
         {
             Direction = 1, Gap = G.CaptionGap, Width = width, Height = G.Height(cardW),
@@ -153,7 +156,7 @@ internal sealed class ClassicStageShelf : Component
             [
                 new TextEl(n > 0 ? Loc.Get(then ? Strings.Stage.EndCard.Then : Strings.Stage.UpNext) : "")
                 {
-                    Size = G.CaptionSize, LineHeight = G.CaptionLine, Weight = G.CaptionWeight, Color = Ink.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    Size = G.CaptionSize, LineHeight = G.CaptionLine, Weight = G.CaptionWeight, Color = arm.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap,
                 },
                 new BoxEl { Direction = 0, Gap = G.CardGap, Children = cards },
             ],
@@ -162,7 +165,8 @@ internal sealed class ClassicStageShelf : Component
 
     /// <summary>One card, frameless: the art (the video's 16:9 still, or the square cover) with its duration badge and, for what plays next, the accent
     /// ring, over the title and the artist line at the art's width; a click plays the row, a right-click opens its menu.</summary>
-    static Element Card(IQueueLane lane, IQueueVerbs verbs, QueueRowProps row, float artW, float artH, bool video, bool next, ColorF accent, Action<bool> overControls)
+    static Element Card(IQueueLane lane, IQueueVerbs verbs, QueueRowProps row, float artW, float artH, bool video, bool next, ColorF accent, Action<bool> overControls,
+        ColorF ink, ColorF inkSecondary)
     {
         var text = lane.TextOf(row.Ref);
         string? url = video ? lane.VideoOf(row.Ref).Still : text.Art;
@@ -202,12 +206,12 @@ internal sealed class ClassicStageShelf : Component
                     [
                         new TextEl(text.Title)
                         {
-                            Size = G.TitleSize, LineHeight = G.TitleLine, Color = Ink.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                            Size = G.TitleSize, LineHeight = G.TitleLine, Color = ink, MaxLines = 1, Wrap = TextWrap.NoWrap,
                             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                         },
                         new TextEl(text.Artists)
                         {
-                            Size = G.MetaSize, LineHeight = G.MetaLine, Color = Ink.InkSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                            Size = G.MetaSize, LineHeight = G.MetaLine, Color = inkSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
                             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                         },
                     ],

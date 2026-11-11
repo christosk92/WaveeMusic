@@ -50,6 +50,8 @@ internal sealed class ClassicStageVideoBar : Component
         float h = G.BarH + G.ScrimFade;
         float inset = L.TransportInset;
         int fold = G.Fold(r.W, inset, L.TheatreFits);
+        // the scrim's arm: over the audio face the colour field decides it (the face's own rule), over a picture the theme kind does
+        var arm = BarArm(st, v.ShowAudioFace());
         var overControls = st.OverControls;
         var t = v.Transport;
         return Stage.Layer with
@@ -65,7 +67,7 @@ internal sealed class ClassicStageVideoBar : Component
                         new BoxEl
                         {
                             AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                            Gradient = GradientDown(new GradientStop(0f, Scrim(0f)), new GradientStop(G.ScrimSolidAt, Scrim(G.ScrimA)), new GradientStop(1f, Scrim(G.ScrimA))),
+                            Gradient = GradientDown(new GradientStop(0f, Scrim(arm, 0f)), new GradientStop(G.ScrimSolidAt, Scrim(arm, G.ScrimA)), new GradientStop(1f, Scrim(arm, G.ScrimA))),
                         },
                         new BoxEl
                         {
@@ -95,9 +97,15 @@ internal sealed class ClassicStageVideoBar : Component
         };
     }
 
-    /// <summary>The stage veil at alpha <paramref name="a"/> (the arm's: dark on the dark arm, light on the light, as Cinema's own scrims): the
+    /// <summary>The veil of <paramref name="arm"/> at alpha <paramref name="a"/> (dark on the dark arm, light on the light, as Cinema's own scrims): the
     /// pills carry the controls' contrast over any picture.</summary>
-    static ColorF Scrim(float a) => Ink.Veil with { A = a };
+    static ColorF Scrim(in Wavee.Theming.Roles.StageArmView arm, float a) => arm.Veil with { A = a };
+
+    /// <summary>The arm the bar stands on. Over the AUDIO FACE the colour field decides it, the theme kind does not
+    /// (<see cref="ClassicStageAudioFaceGeometry.FieldArm"/>, the face's title and reading column take the same): a deep field on the light theme
+    /// gets the dark arm's veil, so no pale band sits at the field's foot under its last lyric line. Over a real picture: the theme's arm.</summary>
+    static Wavee.Theming.Roles.StageArmView BarArm(Stage.StageCtx st, bool audioFace)
+        => Ink.Arm(audioFace ? ClassicStageAudioFaceGeometry.FieldArm(st.BasePalette.Value) : Tok.Theme);
 
     sealed record RowProps(StageTransportProps T, int Fold, bool TheatreOffered);
 
@@ -114,7 +122,7 @@ internal sealed class ClassicStageVideoBar : Component
             var set = st.Accent.Value;
             // the state colour ON the dark pills: the stage's accent where the arm is dark (it is lifted for a dark ground); on the light arm the
             // accent is solved as ink for a pale ground and reads as nothing on a dark pill, so the on-media ink marks the state there
-            var lit = Ink.IsDark ? set.Fill : R.OnMedia.Ink;
+            var lit = BarArm(st, st.AudioFace.Value).Dark ? set.Fill : R.OnMedia.Ink;
             var overlay = UseContext(Overlay.Service);
             var menuOpen = st.MenuOpen;
             var overControls = st.OverControls;

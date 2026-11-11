@@ -27,6 +27,26 @@ internal static class ClassicTransport
 {
     // ══ THE SEEK RAIL ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The rail's style over the AUDIO FACE (the full-screen stage's Video mode over an audio-only track): its picture bar stands on the arm
+    /// the colour field decides (<see cref="ClassicStageAudioFaceGeometry.FieldArm"/>), so where that is not the theme's arm (a deep field on the light
+    /// theme) the rail draws in that arm's ink, as the bar's volume slider draws in the on-media ink: the theme's rail tokens (a dark track, a
+    /// light-theme accent) vanish on the dark arm's scrim. Null everywhere else (the theme's own slider style, unchanged).</summary>
+    static Slider.Style? OnFieldStyle(in ViewContext ctx)
+    {
+        var st = ctx.Hooks.UseContext(Stage.StageContext);
+        if (st is null || st.Mode.Value != Stage.Mode.Video || !st.AudioFace.Value) return null;
+        var kind = ClassicStageAudioFaceGeometry.FieldArm(st.BasePalette.Value);
+        if (kind == Tok.Theme) return null;
+        var arm = Wavee.Theming.Roles.StageInk.Arm(kind);
+        return Slider.DefaultStyle with
+        {
+            RailFill = arm.Ink with { A = ClassicStageGeometry.RailAlpha }, RailFillDisabled = arm.Ink with { A = ClassicStageGeometry.RailDisabledAlpha },
+            ValueFill = arm.Ink, ValueFillPointerOver = arm.Ink, ValueFillPressed = arm.InkSecondary, ValueFillDisabled = arm.InkTertiary,
+            ThumbRing = arm.Ink, ThumbFill = arm.Ink, ThumbFillPointerOver = arm.Ink, ThumbFillPressed = arm.InkSecondary, ThumbFillDisabled = arm.InkTertiary,
+            ThumbBorder = GradientSpec.Solid(arm.Stroke),
+        };
+    }
+
     /// <summary>The registered template of <see cref="ViewKeys.SeekRail"/>: the bespoke media rail (not a Slider) over the host's binds,
     /// or the live line when there is nothing to rewind.</summary>
     public static Element SeekRail(SeekRailProps props, in ViewContext ctx)
@@ -58,7 +78,7 @@ internal static class ClassicTransport
                 ],
             };
         Element chapters = props.Chapters ?? new BoxEl { HitTestVisible = false };
-        var s = Slider.DefaultStyle;
+        var s = OnFieldStyle(ctx) ?? Slider.DefaultStyle;
         var fill = new BoxEl
         {
             Grow = 1f, Height = s.TrackHeight, AlignSelf = FlexAlign.Center,
