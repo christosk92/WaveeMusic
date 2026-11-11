@@ -296,6 +296,7 @@ public static partial class Stage
         bool _cursorHidden, _paletteSeeded;
         bool? _loggedVisible;   // the last chrome visibility the `[stage.chrome]` line reported
         bool _movedOverRegion;   // a move has been classified over what counts (PointerOverRegion's answer without a window position)
+        Point2 _lastPointer = new(float.NaN, float.NaN);   // the window position the last classified move came from (a repeat is no move)
         ChromeHold _loggedHolds;   // the holds the last `[stage.chrome] hold` lines reported (edges only)
         string _playbackFact = "playing";   // the deck's phase and fault behind the Stopped hold, for its line
         OverlayHandle? _tip, _options;
@@ -819,9 +820,27 @@ public static partial class Stage
             return rectOf(node);
         }
 
-        /// <summary>A pointer move at <paramref name="w"/> (window DIP): over the region it is the machine's move; the first one outside it is a leave.</summary>
+        /// <summary>Where a pointer that is over the picture in Theatre has NOT yet left its controls (window DIP): the picture's rect <paramref name="picture"/>
+        /// widened by the stage's side gutter and carried down to the stage's foot, over what belongs to the picture under it (the title and the about
+        /// block, or the bar's own overshoot). The control bar is the picture's foot, so a hand that runs along it and overshoots by a few DIP has not
+        /// left (the owner's log: hide / show six times in seconds, leaves at y 746-781 under a picture ending at 746, back 183-865 ms later). The
+        /// ENTER stays the picture's rect itself.</summary>
+        RectF LeaveRegionOf(in RectF picture)
+        {
+            var L = _ctx.Layout.Peek();
+            float gutter = L.TransportInset;
+            float x0 = MathF.Max(0f, picture.X - gutter), x1 = MathF.Min(L.W, picture.X + picture.W + gutter);
+            return new RectF(x0, picture.Y, MathF.Max(0f, x1 - x0), MathF.Max(picture.H, L.H - picture.Y));
+        }
+
+        /// <summary>A pointer move at <paramref name="w"/> (window DIP). Over the region (the picture in Theatre, else the stage) it is the machine's move.
+        /// Outside it but still in <see cref="LeaveRegionOf"/> while the pointer was over the picture it is neither (no activity, no leave): the idle
+        /// timing runs on. The first move past that is the leave. A hover the engine replays with the pointer at rest (the picture moved from under it:
+        /// Theatre's pane toggle shrinks it away) is no move: it decides nothing, and the next real move is judged against the new geometry.</summary>
         void PointerAt(Point2 w)
         {
+            if (w.X == _lastPointer.X && w.Y == _lastPointer.Y) return;
+            _lastPointer = w;
             var region = RegionOf();
             _idle.Region = region is null ? "stage" : "picture";
             if (region is not { } r || Inside(r, w))
@@ -832,6 +851,7 @@ public static partial class Stage
                 return;
             }
             if (_idle.PointerOutsideRegion) return;
+            if (Inside(LeaveRegionOf(r), w)) return;   // the overshoot under (or beside) the picture: not left yet
             _idle.PointerOutsideRegion = true;
             Leave("region");
         }
@@ -845,6 +865,7 @@ public static partial class Stage
         internal void Leave(string source)
         {
             _movedOverRegion = false;
+            _lastPointer = new(float.NaN, float.NaN);   // a move back at the same spot is a real enter
             _idle.PointerLeft(Now());
             Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=left src={source} ptr={PointerText()}");
             Sync();
@@ -855,7 +876,9 @@ public static partial class Stage
         /// carried the hover was classified by <see cref="PointerAt"/>); before any move, nothing is over the picture.</summary>
         bool PointerOverRegion()
             => RegionOf() is not { } r
-            || (_hooks?.GetPointerPosition?.Invoke() is { } p ? Inside(r, p) : _idle.Region == "picture" && !_idle.PointerOutsideRegion && _movedOverRegion);
+            || (_hooks?.GetPointerPosition?.Invoke() is { } p
+                ? Inside(r, p) || !_idle.PointerOutsideRegion && _movedOverRegion && Inside(LeaveRegionOf(r), p)
+                : _idle.Region == "picture" && !_idle.PointerOutsideRegion && _movedOverRegion);
 
         /// <summary>The pointer's window position for the `[stage.chrome]` lines ("x,y" or "none"). Edges only: it formats.</summary>
         string PointerText() => _hooks?.GetPointerPosition?.Invoke() is { } p ? $"{p.X:0},{p.Y:0}" : "none";
