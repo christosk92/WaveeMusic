@@ -100,6 +100,9 @@ internal sealed class ClassicStageAudioFace : Component
         float corners = Radii.Control;   // the stage covers' control corners (the identity card's)
         int decode = r.Cover.W > G.CoverDecodeSmallW ? G.CoverDecodeLarge : G.CoverDecodeSmall;
         var identity = v.Identity;
+        // the field decides the arm (G.FieldArm): the title, the meta line and the reading column read on the arm the field resolved to
+        var fieldArm = G.FieldArm(sc.BasePalette.Value);
+        var arm = Ink.Arm(fieldArm);
         var fade = new EnterExit(Opacity: 0f, Active: true);
         var move = ClassicStageTheatre.Move;
         // the reading column mounts a frame after the face (the staged mount): posted once, from the mount's effect
@@ -135,12 +138,12 @@ internal sealed class ClassicStageAudioFace : Component
                                 new TextEl("")
                                 {
                                     Text = Prop.Of(identity.Title), FontFamily = ClassicStageLayerGeometry.DisplayFace, Size = G.TitleSize, LineHeight = G.TitleLine,
-                                    Weight = G.TitleWeight, Color = Ink.Ink, Wrap = TextWrap.Wrap, MaxLines = G.TitleMaxLines, Trim = TextTrim.CharacterEllipsis,
+                                    Weight = G.TitleWeight, Color = arm.Ink, Wrap = TextWrap.Wrap, MaxLines = G.TitleMaxLines, Trim = TextTrim.CharacterEllipsis,
                                     MinWidth = 0f, Shrink = 1f,
                                 },
                                 new TextEl("")
                                 {
-                                    Text = Prop.Of(() => identity.Meta(0).Line), Size = G.MetaSize, LineHeight = G.MetaLine, Color = Ink.InkSecondary,
+                                    Text = Prop.Of(() => identity.Meta(0).Line), Size = G.MetaSize, LineHeight = G.MetaLine, Color = arm.InkSecondary,
                                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                                 },
                             ],
@@ -148,7 +151,7 @@ internal sealed class ClassicStageAudioFace : Component
                     ],
                 }),
                 // the synced lyrics beside the cover (not beside Theatre's own Lyrics panel), from the mount's second frame
-                Flow.Show(() => _column.Value && sc.AudioLyrics.Value && v.Layers.PictureLyrics is not null, Stage.Layer with
+                Flow.Show(() => _column.Value && sc.AudioLyrics.Value && v.Layers.PictureLyricsOn is not null, Stage.Layer with
                 {
                     Key = "stage:audioface:lyrics",
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
@@ -158,7 +161,15 @@ internal sealed class ClassicStageAudioFace : Component
                         {
                             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 1, ClipToBounds = true,
                             Margin = new Edges4(lr.X, lr.Y, 0f, 0f), Width = lr.W, Height = lr.H, Layout = move,
-                            Children = [v.Layers.PictureLyrics is { } build ? build() : new BoxEl()],
+                            // keyed by the arm: the column's ink is mount config, so a field that changes arm remounts it
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    Key = "stage:audioface:lyrics:" + (int)fieldArm, Direction = 1, Grow = 1f, MinHeight = 0f,
+                                    Children = [v.Layers.PictureLyricsOn is { } build ? build(fieldArm) : new BoxEl()],
+                                },
+                            ],
                         },
                     ],
                 }),
@@ -179,7 +190,7 @@ internal sealed class ClassicStageAudioFace : Component
             var st = v.Stage;
             var plate = ClassicStageTheatre.PictureRect(st.Layout.Value, v.ShowTheatre());
             var palette = st.BasePalette.Value;
-            var (pool, mid, deep) = G.FieldTones(palette, Ink.Floor, Ink.Ink with { A = Lyrics.Wipe.UnsungAlpha }, Ink.InkSecondary);
+            var (pool, mid, deep) = G.FieldTones(palette, G.FieldArm(palette));
             var field = new GradientSpec(GradientShape.Radial, 0f,
                 [new GradientStop(0f, pool), new GradientStop(G.FieldMidAt, mid), new GradientStop(G.FieldDeepAt, deep)])
             {

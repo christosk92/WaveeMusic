@@ -17,6 +17,8 @@
 // lower-priority controls into the "…" menu as the picture narrows.
 
 using FluentGpu.Foundation;
+using Wavee.Theming.Roles;
+using FluentGpu.Dsl;
 
 namespace Wavee.Themes.Classic;
 
@@ -214,14 +216,44 @@ internal static class ClassicStageAudioFaceGeometry
     /// lifted, a grey one stays grey.</summary>
     public static (ColorF Pool, ColorF Mid, ColorF Deep) FieldTones(in Visualizer.Palette p, ColorF floor, ColorF other, ColorF other2)
     {
-        var a = p.A with { A = 1f };
-        var pool = ColorF.Lerp(a, s_white, FieldPoolLift);
-        var deep = ColorF.Lerp(p.Deep with { A = 1f }, p.B with { A = 1f }, FieldDeepSecond);
-        var mid = ColorF.Lerp(a, deep, FieldMidDeep);
+        var (pool, mid, deep) = RawTones(p);
         return (Clamp(pool, floor, other, other2), Clamp(mid, floor, other, other2), Clamp(deep, floor, other, other2));
     }
 
+    /// <summary>The field's three tones from the palette as the cover gives them, before any veil.</summary>
+    static (ColorF Pool, ColorF Mid, ColorF Deep) RawTones(in Visualizer.Palette p)
+    {
+        var a = p.A with { A = 1f };
+        var deep = ColorF.Lerp(p.Deep with { A = 1f }, p.B with { A = 1f }, FieldDeepSecond);
+        return (ColorF.Lerp(a, s_white, FieldPoolLift), ColorF.Lerp(a, deep, FieldMidDeep), deep);
+    }
+
     static ColorF s_white => ColorF.FromRgba(0xff, 0xff, 0xff);
+
+    /// <summary>THE FIELD DECIDES THE ARM, the theme kind does not: the stage arm the field for <paramref name="p"/> is resolved on, the one on
+    /// which its resolved mid tone stays closest to the cover's own (the smaller veil; a tie keeps the dark arm). The light arm's unsung ink
+    /// (near-black at <c>Lyrics.Wipe.UnsungAlpha</c>) reads at <see cref="FieldContrast"/> only on a field close to its own floor, so a coloured
+    /// cover there washed out to near-white; on the dark arm it keeps a deep, coloured value under the light on-media ink. A near-white cover
+    /// stays light on the light arm. The face's title, meta line and reading column take the arm this returns.</summary>
+    public static ThemeKind FieldArm(in Visualizer.Palette p)
+    {
+        var raw = RawTones(p).Mid;
+        float dark = Distance(raw, FieldTones(p, ThemeKind.Dark).Mid), light = Distance(raw, FieldTones(p, ThemeKind.Light).Mid);
+        return light + FieldArmTie < dark ? ThemeKind.Light : ThemeKind.Dark;
+
+        static float Distance(ColorF a, ColorF b) => MathF.Sqrt((a.R - b.R) * (a.R - b.R) + (a.G - b.G) * (a.G - b.G) + (a.B - b.B) * (a.B - b.B));
+    }
+
+    /// <summary>How much closer to the cover the light arm's field must stay to take the face from the dark arm (an RGB distance, 0..sqrt 3).</summary>
+    public const float FieldArmTie = 0.02f;
+
+    /// <summary><see cref="FieldTones(in Visualizer.Palette, ColorF, ColorF, ColorF)"/> on <paramref name="kind"/>'s arm: its floor, the lyrics'
+    /// unsung ink and its secondary ink.</summary>
+    public static (ColorF Pool, ColorF Mid, ColorF Deep) FieldTones(in Visualizer.Palette p, ThemeKind kind)
+    {
+        var arm = StageInk.Arm(kind);
+        return FieldTones(p, arm.Floor, arm.Ink with { A = Lyrics.Wipe.UnsungAlpha }, arm.InkSecondary);
+    }
 
     /// <summary><paramref name="tone"/> veiled toward <paramref name="floor"/> until both inks read on it (see <see cref="FieldTones"/>).</summary>
     public static ColorF Clamp(ColorF tone, ColorF floor, ColorF other, ColorF other2)

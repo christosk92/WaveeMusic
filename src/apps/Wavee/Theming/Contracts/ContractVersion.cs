@@ -264,6 +264,8 @@
 // picture's place: a lines style may draw its rows there as a picture of the song, the active line in full ink and the others at their secondary
 // ink); `StageTransportProps.SeekBarWithChrome` / `.TimeTextWithChrome` (the seek rail and the time labels of a transport that idles out with the
 // stage's chrome: they hold their last state while it is hidden).
+// 1.102 (the audio face's colour field decides its arm): `StageLayers.PictureLyricsOn` (the audio face's reading column on the stage arm the
+// structure names, whatever the theme kind: a light theme's field keeps a deep, coloured value and its lyrics take the light on-media ink).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -279,7 +281,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 101;
+    public const int Minor = 102;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

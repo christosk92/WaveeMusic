@@ -38,20 +38,21 @@ public static partial class Stage
         TheatrePane = static () => Embed.Comp(static () => new PaneHost(theatre: true)),
         UpNextShelf = static () => Queue.StageShelf(),
         PictureLyrics = static () => Embed.Comp(static () => new PictureLyricsHost()),
+        PictureLyricsOn = static arm => Embed.Comp(() => new PictureLyricsHost(arm)),
         EndCard = static () => Queue.StageEndCard(),
     };
 
     /// <summary>The audio face's reading column (<see cref="StageLayers.PictureLyrics"/>): the lyrics view on the stage's accent, ticking only while
     /// the face shows lyrics (<see cref="StageCtx.AudioLyrics"/>). The gate closes over the stage's one context (stable for its life).</summary>
     [CoreHost]
-    sealed class PictureLyricsHost : Component
+    sealed class PictureLyricsHost(ThemeKind? arm = null) : Component
     {
         Element? _column;
 
         public override Element Render()
         {
             var ctx = UseContext(StageContext)!;
-            return _column ??= Lyrics.PictureLyrics(ctx.Slab.Accent, () => Shell.Ui.ImmersiveLyrics.Value && ctx.AudioLyrics.Value);
+            return _column ??= Lyrics.PictureLyrics(ctx.Slab.Accent, () => Shell.Ui.ImmersiveLyrics.Value && ctx.AudioLyrics.Value, arm);
         }
     }
 

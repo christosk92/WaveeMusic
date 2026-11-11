@@ -240,6 +240,12 @@ public sealed record StageLayers
     /// Appended (contract 1.97).</summary>
     public Func<Element>? PictureLyrics { get; init; }
 
+    /// <summary>The audio face's lyrics on a stage ARM the structure names (<see cref="PictureLyrics"/>'s column with that arm's on-media inks,
+    /// whatever the theme kind): a structure that fills the picture's place with a colour field resolves the field on the arm that keeps its colour
+    /// (the field decides the arm, the theme kind does not) and hands the column the same arm, so the lines read on the field. The arm is mount
+    /// config: key the column by it. Null where the core offers none. Appended (contract 1.102).</summary>
+    public Func<ThemeKind, Element>? PictureLyricsOn { get; init; }
+
     /// <summary>The end card over the picture (<see cref="StageRootView.ShowEndCard"/>): the core host that mounts <see cref="ViewKeys.StageEndCard"/>
     /// on this render's queue. Null where the core offers none. Appended (contract 1.98).</summary>
     public Func<Element>? EndCard { get; init; }

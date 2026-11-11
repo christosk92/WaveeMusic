@@ -92,14 +92,17 @@ public static partial class Lyrics
     /// <summary>The stage's reading column in the picture's place while Video mode holds over an audio-only track (<c>Stage.StageCtx.AudioFace</c>):
     /// the same view at the stage's type in Cinema and the Theatre panel's in Theatre (it follows <c>StageCtx.Theatre</c> in place), ticking only
     /// while <paramref name="visible"/> reads true (its own gate: the pane region's lyrics, parked in Theatre's KeepAlive, keep theirs).</summary>
-    public static Element PictureLyrics(IReadSignal<ColorF> accent, Func<bool> visible) => Embed.Comp(() => new StageColumn(accent, false, follow: true, visible));
+    /// <remarks><paramref name="arm"/>: the stage arm the column's on-media inks resolve on (<c>StageLayers.PictureLyricsOn</c>: the arm the face's
+    /// colour field resolved to); null = the theme's.</remarks>
+    public static Element PictureLyrics(IReadSignal<ColorF> accent, Func<bool> visible, ThemeKind? arm = null)
+        => Embed.Comp(() => new StageColumn(accent, false, follow: true, visible, arm));
 
     /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
     /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it (the cap and the
     /// gutter are the structure's, `Lyrics.View`). The scale reaches the view as a VALUE-GATED signal (tuned R1): a size step keeps the
     /// column MOUNTED — the rows re-render at the new type in place, the run lengths and extents are re-measured and the follow re-latches
     /// the active line at the band — instead of re-keying the view, which remounted it and made the text jump.</summary>
-    sealed class StageColumn(IReadSignal<ColorF> accent, bool theatre, bool follow, Func<bool> visible) : Component
+    sealed class StageColumn(IReadSignal<ColorF> accent, bool theatre, bool follow, Func<bool> visible, ThemeKind? arm = null) : Component
     {
         readonly Signal<float> _typeScale = new(1f);
 
@@ -110,7 +113,7 @@ public static partial class Lyrics
             float scale = stage is null ? 1f : atTheatre ? stage.Layout.Value.TheatreLyricsTypeScale : stage.Layout.Value.LyricsTypeScale;
             _typeScale.SetIfChanged(scale > 0f && float.IsFinite(scale) ? scale : 1f);
             var typeScale = _typeScale;
-            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: visible, accent: accent, onStage: true, typeScale: typeScale, onPicture: follow))
+            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: visible, accent: accent, onStage: true, typeScale: typeScale, darkArm: arm == ThemeKind.Dark, onPicture: follow, lightArm: arm == ThemeKind.Light))
                 with { Key = "lyrics:stage" };
         }
     }
@@ -155,11 +158,12 @@ public static partial class Lyrics
     /// <summary>WHICH ink a view paints with — the one seam between the two surfaces that mount the same view. A MODE,
     /// not a captured colour: every rung resolves its token at the point of consumption, so a live theme flip re-reads
     /// correctly on either surface (a <c>ColorF</c> frozen into a component would not).</summary>
-    public readonly record struct Ink(bool OnMedia, bool DarkArm = false)
+    public readonly record struct Ink(bool OnMedia, bool DarkArm = false, bool LightArm = false)
     {
         /// <summary>The stage arm the on-media rungs resolve on: the active theme's, or always the dark one (<see cref="DarkArm"/>: the mini player
-        /// draws its lyrics over a darkened cover in either mode, #197).</summary>
-        StageArmView Arm => StageInk.Arm(DarkArm ? ThemeKind.Dark : Tok.Theme);
+        /// draws its lyrics over a darkened cover in either mode, #197), or always the light one (<see cref="LightArm"/>: a picture whose colour
+        /// field resolved on the light arm, <c>StageLayers.PictureLyricsOn</c>).</summary>
+        StageArmView Arm => StageInk.Arm(DarkArm ? ThemeKind.Dark : LightArm ? ThemeKind.Light : Tok.Theme);
 
         /// <summary>A sung glyph, the active line, a lit interlude dot.</summary>
         public ColorF Primary => OnMedia ? Arm.Ink : Tok.TextPrimary;
@@ -288,7 +292,7 @@ public static partial class Lyrics
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
             IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
-            bool darkArm = false, bool onPicture = false)
+            bool darkArm = false, bool onPicture = false, bool lightArm = false)
         {
             OnPicture = onPicture;
             _bandOverride = band;
@@ -296,7 +300,7 @@ public static partial class Lyrics
             _readerEpisode = readerEpisode;
             Large = large;
             _typeScale = typeScale;
-            InkMode = new Ink(onMedia, darkArm);
+            InkMode = new Ink(onMedia, darkArm, lightArm);
             Accent = accent;
             OnStage = onStage;
             _visible = visible;
