@@ -106,7 +106,7 @@ app: MediaPlayerBuilder.WithDrm(relay)            // MediaPlayer.cs:461  → _li
   returns `0x8004110E` DRM_E_CH_BAD_KEY-shaped and the session surfaces the error).
 - **`ProtectedMediaSession.PumpVideo`** (UI thread) maps the native snapshot → `MediaSignalSink`
   (state/position/duration/natural-size/commands), binds the protected handle once, and calls
-  `binding.SetContentSize(naturalSize)` + `Place(videoRect)` + `SetVisible(true)`. The play/pause level is
+  `binding.Place(videoRect)` (and a content size, deleted 2026-11-11) + `SetVisible(true)`. The play/pause level is
   reconciled *natively* (the MTA loop re-asserts Play until the clock advances) so the managed side never
   clobbers a Seek.
 
@@ -294,7 +294,7 @@ master-audio-synced design (§3.3) satisfies this by construction.
 
 ### 4.1 The hard engine constraint (still governs the DRM surface)
 
-**Video composites only under the *primary* window's swapchain.** `DCompVideoPresenter.AttachChild` inserts
+**Video composites only under the *primary* window's swapchain.** the DirectComposition video presenter (deleted 2026-11-11)'s `AttachChild` inserts
 every video child visual under `D3D12Device.PrimarySwapchain.DcompRoot`. There is no per-popup / per-secondary
 presenter, and `VideoBinding` is inert on a non-primary/non-composited window. Consequence: anything drawn
 **inside the main window** can host video; anything in a **separate OS window cannot** (it would show no video)
@@ -378,7 +378,7 @@ Canvas through the manifest/DRM path. This proves the acquisition→UI→composi
 ## 9. File map (where each piece lands)
 
 - **Engine (reuse as-is):** `FluentGpu.WindowsApi/Media/PlayReady/*` (DRM), `FluentGpu.Engine/Media/Playback/
-  {MediaPlayer,VideoSurfaceRegistry,MediaSeams}.cs`, `FluentGpu.Windows/{Media,Pal/DCompVideoPresenter}.cs`,
+  {MediaPlayer,VideoSurfaceRegistry,MediaSeams}.cs`, `FluentGpu.Windows/Media`, the DirectComposition video presenter (deleted 2026-11-11),
   `FluentGpu.Controls/Media/MediaPlayerElement.cs`.
 - **New — `Wavee.Core` (portable, tested):** the v9-JSON→`ProtectedVideoRequest` adapter; the discovery
   resolver (assoc + NPV + manifest_id); the KID byte-swap + PSSH/PRO helpers.

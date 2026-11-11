@@ -1927,7 +1927,7 @@ public static partial class Diagnostics
                         return;
                     }
                     binding.Bind(handle);
-                    binding.SetContentSize(natural);
+                    binding.SetStreamSize(natural);
                     binding.Place(videoRect);
                     if (!_tookOver)
                     {
