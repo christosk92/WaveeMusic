@@ -42,10 +42,20 @@ internal sealed record ClassicBleedProps(NowPlayingHeroProps NowPlaying, float W
 /// <summary>The edge-to-edge canvas with its fade (a component: the ground follows the theme without re-rendering the panel).</summary>
 internal sealed class ClassicBleed : Component
 {
+    /// <summary>The stack's plates and its entrance veil (inspection reads the plates' opacity on the frames after the picker shuts).</summary>
+    public const string GroundKey = "classic-bleed-ground", FootKey = "classic-bleed-foot", VeilKey = "classic-bleed-veil";
+
     static readonly EnterExit Fade = new(Opacity: 0f, Active: true);
+    Action<NodeHandle>? _lift;
 
     public override Element Render()
     {
+        // The entrance is a veil of the ground lifting off the stack (1 -> 0 on the entrance token), never a fade of the stack itself: the
+        // window is live Mica, the rail translucent and the video a plane UNDER the UI, so a fading stack let the video show through the
+        // lower rail (where the opaque plates hide it at rest) for the first frames after the style picker shut (owner video 2026-11-11).
+        // Over the opaque ground the veil composes the same dissolve the stack's fade drew; the plates hold from the first frame.
+        var anim = Context.Anim;
+        _lift ??= node => anim?.SeedValue(node, AnimChannel.Opacity, 0f, MotionTok.StandardEnter, from: 1f);
         var p = UseProps<ClassicBleedProps>();
         var np = p.NowPlaying;
         float w = MathF.Max(1f, p.Width);
@@ -59,22 +69,24 @@ internal sealed class ClassicBleed : Component
         {
             // Shrink, no minimum and a clip: a canvas taller than the panel must not grow the panel's stack (it is cut at the panel's foot).
             ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, HitTestVisible = false,
-            Enter = Fade, Exit = Fade, Transition = MotionTok.StandardEnter,
+            Exit = Fade, Transition = MotionTok.StandardEnter,
             Children =
             [
-                new BoxEl { Grow = 1f, Fill = ground },
+                new BoxEl { Key = GroundKey, Grow = 1f, Fill = ground },
                 np.BleedVideo(w),
                 // The dissolve: the ground's alpha rises on an eased curve (slow off the picture, slow into the ground), so neither end
                 // of the fade shows an edge. Two gradients, the curve's two halves (a gradient holds four stops).
                 Half(ground, end - fade, half, ClassicHeroLayout.BleedFadeA0, ClassicHeroLayout.BleedFadeA1, ClassicHeroLayout.BleedFadeA2, ClassicHeroLayout.BleedFadeA3),
                 Half(ground, end - fade + half, fade - half, ClassicHeroLayout.BleedFadeA3, ClassicHeroLayout.BleedFadeA4, ClassicHeroLayout.BleedFadeA5, ClassicHeroLayout.BleedFadeA6),
                 // Under the fade the plain ground covers the canvas's last stretch (and the panel below it), as the panel is with the canvas off.
-                new BoxEl { AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, end, 0f, 0f), Fill = ground },
+                new BoxEl { Key = FootKey, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, end, 0f, 0f), Fill = ground },
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = ClassicHeroLayout.BleedHeadScrimH,
                     Gradient = Ui.GradientDown(new GradientStop(0f, shade with { A = ClassicHeroLayout.BleedHeadScrimA }), new GradientStop(1f, shade with { A = 0f })),
                 },
+                // The entrance veil: opaque ground on the first frame, lifted by the seed above; at rest it draws nothing.
+                new BoxEl { Key = VeilKey, Fill = ground, Opacity = 0f, HitTestVisible = false, OnRealized = _lift },
             ],
         });
     }
