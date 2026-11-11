@@ -63,6 +63,32 @@ internal sealed class ClassicBleed : Component
     static readonly EnterExit Fade = new(Opacity: 0f, Active: true);
     Action<NodeHandle>? _lift;
 
+    /// <summary>The fade gradients' ground cross-fade. The plates fade a page's new ground on their brush transition (linear over
+    /// <see cref="Design.Motion.Standard"/>, from the colour they show); a gradient has no brush channel, so the two halves carry the old
+    /// ground as <c>Gradient</c>, the new one as <c>GradientTo</c>, and a <c>GradientMix</c> on the frame clock walks the same line in
+    /// step (an opacity cross-fade of two gradient layers over the video dips their alpha and lets the picture through: never exact).</summary>
+    sealed class GroundFade
+    {
+        public ColorF From, To;
+        public long StartQpc;
+        public int Epoch;
+        public bool Fading, Light;
+        public TimerHandle Done;
+        public Action? Settle;
+        public Func<float>? MixNow;
+
+        /// <summary>The cross-fade's progress on this frame's clock: linear, as the plates' brush fade.</summary>
+        public float Mix()
+        {
+            if (!Fading) return 1f;
+            double ms = (FrameClock.FrameQpc - StartQpc) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            return Math.Clamp((float)(ms / Design.Motion.Standard), 0f, 1f);
+        }
+
+        /// <summary>The ground the gradients show now (a retarget starts from it, as the plates' fade does).</summary>
+        public ColorF Shown => Fading ? ColorF.Lerp(From, To, Mix()) : To;
+    }
+
     public override Element Render()
     {
         // The entrance is a veil of the ground lifting off the stack (1 -> 0 on the entrance token), never a fade of the stack itself: the
@@ -80,6 +106,43 @@ internal sealed class ClassicBleed : Component
         float fade = MathF.Min(end, ClassicHeroLayout.BleedFadeH), half = MathF.Round(0.5f * fade);
         var ink = ClassicBleedInk.Of(np.NowArtUrl(), ClassicBleedInk.Tint(UseContext(ClassicMaterial.StateSlot), UseContext(OptionStore.Context)));
         ColorF ground = ink.Ground, shade = Deck.BleedShade(ground);
+
+        // The gradients' cross-fade (GroundFade). A new ground starts it from the colour shown; a light/dark switch does not (the
+        // engine's theme fade carries a gradient then). The change render draws the start statically (mix 0); the render after it
+        // binds the mix (a fresh bind evaluates at once, so no frame shows a stale mix with new colours), and the bind reads the frame
+        // tick only while the fade runs. A timeout at the fade's end re-renders it static on the new ground: nothing ticks at rest.
+        bool light = R.IsLight;
+        var gfRef = UseRef<GroundFade?>(null);
+        var gf = gfRef.Value ??= new GroundFade { From = ground, To = ground, Light = light };
+        var tick = UseContextSignal(FrameClock.Tick);
+        var kick = UseSignal(0);
+        var settled = UseSignal(0);
+        int kicked = kick.Value, done = settled.Value;
+        if (gf.Fading && done == gf.Epoch) gf.Fading = false;
+        if (ground != gf.To)
+        {
+            bool cross = light == gf.Light;
+            gf.From = cross ? gf.Shown : ground;
+            gf.To = ground;
+            gf.StartQpc = FrameClock.FrameQpc;
+            gf.Epoch++;
+            gf.Fading = cross;
+        }
+        gf.Light = light;
+        gf.MixNow ??= () => { if (gf.Fading && gf.Mix() < 1f) _ = tick.Value; return gf.Mix(); };
+        gf.Settle ??= () => { if (gf.Mix() < 1f) gf.Done.Restart(); else settled.Value = gf.Epoch; };
+        int epoch = gf.Epoch;
+        UseLayoutEffect(() => { if (kick.Peek() != epoch) kick.Value = epoch; }, DepKey.From(epoch));
+        gf.Done = UseTimeout(gf.Settle, Design.Motion.Standard, DepKey.From(epoch));
+        GradientSpec? to0 = null, to1 = null;
+        Prop<float> mix = 0f;
+        if (gf.Fading)
+        {
+            to0 = HalfSpec(ground, ClassicHeroLayout.BleedFadeA0, ClassicHeroLayout.BleedFadeA1, ClassicHeroLayout.BleedFadeA2, ClassicHeroLayout.BleedFadeA3);
+            to1 = HalfSpec(ground, ClassicHeroLayout.BleedFadeA3, ClassicHeroLayout.BleedFadeA4, ClassicHeroLayout.BleedFadeA5, ClassicHeroLayout.BleedFadeA6);
+            if (kicked == epoch) mix = Prop.Of(gf.MixNow);
+        }
+        ColorF from = gf.Fading ? gf.From : ground;
         return Flow.Show(np.Bleeds, new BoxEl
         {
             // Shrink, no minimum and a clip: a canvas taller than the panel must not grow the panel's stack (it is cut at the panel's foot).
@@ -87,14 +150,14 @@ internal sealed class ClassicBleed : Component
             Exit = Fade, Transition = MotionTok.StandardEnter,
             Children =
             [
-                // The plates cross-fade a page's new tint with the material layer beside them (its own brush transition). The two fade
-                // gradients below take the new ground at once: a gradient has no brush-fade channel (only a theme switch fades one).
+                // The plates cross-fade a page's new tint with the material layer beside them (their brush transition); the two fade
+                // gradients below follow them in step on their own mix (GroundFade: a gradient has no brush-fade channel).
                 new BoxEl { Key = GroundKey, Grow = 1f, Fill = ground, BrushTransitionMs = Design.Motion.Standard },
                 np.BleedVideo(w),
                 // The dissolve: the ground's alpha rises on an eased curve (slow off the picture, slow into the ground), so neither end
                 // of the fade shows an edge. Two gradients, the curve's two halves (a gradient holds four stops).
-                Half(ground, end - fade, half, ClassicHeroLayout.BleedFadeA0, ClassicHeroLayout.BleedFadeA1, ClassicHeroLayout.BleedFadeA2, ClassicHeroLayout.BleedFadeA3),
-                Half(ground, end - fade + half, fade - half, ClassicHeroLayout.BleedFadeA3, ClassicHeroLayout.BleedFadeA4, ClassicHeroLayout.BleedFadeA5, ClassicHeroLayout.BleedFadeA6),
+                Half(end - fade, half, HalfSpec(from, ClassicHeroLayout.BleedFadeA0, ClassicHeroLayout.BleedFadeA1, ClassicHeroLayout.BleedFadeA2, ClassicHeroLayout.BleedFadeA3), to0, mix),
+                Half(end - fade + half, fade - half, HalfSpec(from, ClassicHeroLayout.BleedFadeA3, ClassicHeroLayout.BleedFadeA4, ClassicHeroLayout.BleedFadeA5, ClassicHeroLayout.BleedFadeA6), to1, mix),
                 // Under the fade the plain ground covers the canvas's last stretch (and the panel below it), as the panel is with the canvas off.
                 new BoxEl { Key = FootKey, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, end, 0f, 0f), Fill = ground, BrushTransitionMs = Design.Motion.Standard },
                 new BoxEl
@@ -108,12 +171,16 @@ internal sealed class ClassicBleed : Component
         });
     }
 
-    /// <summary>One half of the fade: <paramref name="h"/> tall from <paramref name="top"/>, the ground at four alphas a third apart.</summary>
-    static Element Half(ColorF ground, float top, float h, float a0, float a1, float a2, float a3) => new BoxEl
+    /// <summary>One half of the fade: <paramref name="h"/> tall from <paramref name="top"/>, blending from <paramref name="g"/> toward
+    /// <paramref name="to"/> by <paramref name="mix"/> while a page's ground cross-fades.</summary>
+    static Element Half(float top, float h, GradientSpec g, GradientSpec? to, Prop<float> mix) => new BoxEl
     {
         AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, top, 0f, 0f), Height = h, HitTestVisible = false,
-        Gradient = Ui.GradientDown(
-            new GradientStop(0f, ground with { A = a0 }), new GradientStop(ClassicHeroLayout.BleedFadeThird, ground with { A = a1 }),
-            new GradientStop(ClassicHeroLayout.BleedFadeTwoThirds, ground with { A = a2 }), new GradientStop(1f, ground with { A = a3 })),
+        Gradient = g, GradientTo = to, GradientMix = mix,
     };
+
+    /// <summary>A half's gradient: the ground at four alphas a third apart.</summary>
+    static GradientSpec HalfSpec(ColorF ground, float a0, float a1, float a2, float a3) => Ui.GradientDown(
+        new GradientStop(0f, ground with { A = a0 }), new GradientStop(ClassicHeroLayout.BleedFadeThird, ground with { A = a1 }),
+        new GradientStop(ClassicHeroLayout.BleedFadeTwoThirds, ground with { A = a2 }), new GradientStop(1f, ground with { A = a3 }));
 }
