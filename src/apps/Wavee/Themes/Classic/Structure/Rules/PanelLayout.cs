@@ -191,14 +191,45 @@ internal static class ClassicStylePickerLayout
         TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
 }
 
-/// <summary>The constants of Classic's on-media strip.</summary>
+/// <summary>The numbers of Classic's on-media bar (the docked, floating, pop-out and fullscreen-layer picture's controls): the stage's
+/// Video-mode bar at its own metrics (<see cref="ClassicStageVideoBarGeometry"/>: the 40 targets, the pills, the scrim, the seek row), laid
+/// out as it is (the seek rail across the foot; under it [play · previous · next · mute] [elapsed / total] ... [volume · "…"]). The picture
+/// runs from the docked cap's floor (the rail's 200 at the content-fit floor, 120 tall) to the window (the floating card from 240 x 135, the
+/// pop-out and the fullscreen layer), so the row FOLDS (<see cref="Fold"/>) as it narrows: the time shortens to the elapsed time, then the
+/// volume pair (mute, the slider's chevron) moves into "…", then previous and next do. Play and "…" never fold.</summary>
 internal static class ClassicOnMediaLayout
 {
-    /// <summary>A transport glyph button: its box, glyph and the hover and press plates.</summary>
-    public const float GlyphBox = 36f, GlyphSize = 16f, GlyphHoverAlpha = 0.14f, GlyphPressedAlpha = 0.22f;
+    /// <summary>The bar's gap to the picture's sides (its foot gap, <see cref="ClassicStageVideoBarGeometry.FootInset"/>).</summary>
+    public const float Inset = ClassicStageVideoBarGeometry.FootInset;
 
-    /// <summary>The play disc: its box, glyph and its three plates.</summary>
-    public const float PlayBox = 44f, PlayGlyph = 18f, PlayAlpha = 0.18f, PlayHoverAlpha = 0.28f, PlayPressedAlpha = 0.36f;
+    /// <summary>The width the row budgets for the time pill showing the elapsed time alone ("0:00:00" and its padding).</summary>
+    public const float TimeShortBudgetW = 64f;
+
+    /// <summary>The fold levels, in the order the row gives controls away: none, the time to the elapsed time, the volume pair into "…",
+    /// previous and next into "…".</summary>
+    public const int FoldNone = 0, FoldTime = 1, FoldVolume = 2, FoldSkip = 3;
+
+    /// <summary>The left pill at <paramref name="fold"/>: play (· previous · next) (· mute).</summary>
+    public static float LeftW(int fold)
+        => 2f * ClassicStageVideoBarGeometry.PillPad + ClassicStageVideoBarGeometry.Button * (1f + (fold < FoldSkip ? 2f : 0f) + (fold < FoldVolume ? 1f : 0f));
+
+    /// <summary>The time pill at <paramref name="fold"/>: "elapsed / total", or the elapsed time alone.</summary>
+    public static float TimeW(int fold) => fold < FoldTime ? ClassicStageVideoBarGeometry.TimeBudgetW : TimeShortBudgetW;
+
+    /// <summary>The right pill at <paramref name="fold"/>: (the volume slider's chevron ·) "…".</summary>
+    public static float RightW(int fold)
+        => 2f * ClassicStageVideoBarGeometry.PillPad + ClassicStageVideoBarGeometry.Button * (1f + (fold < FoldVolume ? 1f : 0f));
+
+    /// <summary>The row's width at <paramref name="fold"/>: the insets, the three pills and the two least gaps.</summary>
+    public static float RowW(int fold) => 2f * Inset + LeftW(fold) + TimeW(fold) + RightW(fold) + 2f * ClassicStageVideoBarGeometry.PillGap;
+
+    /// <summary>The fold for a picture <paramref name="pictureW"/> wide: the least that seats the row (408, 352, 272; under 272 the last).</summary>
+    public static int Fold(float pictureW)
+    {
+        for (int f = FoldNone; f < FoldSkip; f++)
+            if (RowW(f) <= pictureW) return f;
+        return FoldSkip;
+    }
 
     /// <summary>The volume popup: a slider card over the video hole.</summary>
     public const float VolumePopupW = 52f, VolumePopupH = 168f, VolumeSliderLength = 124f, VolumeSliderThickness = 32f;

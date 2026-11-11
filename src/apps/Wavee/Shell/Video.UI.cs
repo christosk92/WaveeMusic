@@ -724,6 +724,9 @@ public static partial class Video
                         // visual through JoinNow, so the engine's own status overlay would only animate under it (and flash a
                         // "Seeking" pill over the picture on a seek). Off: no ring, timer or tween runs for covered pixels.
                         ShowStatusOverlay = false,
+                        // The placement sizes the picture (the docked cap from 120 tall, the floating card from 135): the engine's 160 floor
+                        // made the player outgrow a shorter cap and its clip cut the on-media transport at the foot off.
+                        HostSized = true,
                         AreTransportControlsEnabled = MainWindowHole.EngineTransportEnabled,
                         SuppressTransport = true,
                         FullscreenRequested = host.FullscreenRequested,

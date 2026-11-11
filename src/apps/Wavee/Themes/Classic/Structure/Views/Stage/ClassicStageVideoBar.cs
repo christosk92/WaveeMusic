@@ -67,7 +67,7 @@ internal sealed class ClassicStageVideoBar : Component
                         new BoxEl
                         {
                             AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                            Gradient = GradientDown(new GradientStop(0f, Scrim(arm, 0f)), new GradientStop(G.ScrimSolidAt, Scrim(arm, G.ScrimA)), new GradientStop(1f, Scrim(arm, G.ScrimA))),
+                            Gradient = ScrimGradient(arm),
                         },
                         new BoxEl
                         {
@@ -100,6 +100,11 @@ internal sealed class ClassicStageVideoBar : Component
     /// <summary>The veil of <paramref name="arm"/> at alpha <paramref name="a"/> (dark on the dark arm, light on the light, as Cinema's own scrims): the
     /// pills carry the controls' contrast over any picture.</summary>
     static ColorF Scrim(in Wavee.Theming.Roles.StageArmView arm, float a) => arm.Veil with { A = a };
+
+    /// <summary>The foot scrim under the bar (and under the on-media bar, <c>ClassicOnMedia</c>): nothing at the top of the band, the veil of
+    /// <paramref name="arm"/> at <see cref="ClassicStageVideoBarGeometry.ScrimA"/> from <see cref="ClassicStageVideoBarGeometry.ScrimSolidAt"/> down.</summary>
+    internal static GradientSpec ScrimGradient(in Wavee.Theming.Roles.StageArmView arm)
+        => GradientDown(new GradientStop(0f, Scrim(arm, 0f)), new GradientStop(G.ScrimSolidAt, Scrim(arm, G.ScrimA)), new GradientStop(1f, Scrim(arm, G.ScrimA)));
 
     /// <summary>The arm the bar stands on. Over the AUDIO FACE the colour field decides it, the theme kind does not
     /// (<see cref="ClassicStageAudioFaceGeometry.FieldArm"/>, the face's title and reading column take the same): a deep field on the light theme
@@ -159,14 +164,7 @@ internal sealed class ClassicStageVideoBar : Component
 
             var row = new List<Element>(4) { Pill(left.ToArray(), overControls) with { Key = "picture:bar:transport" } };
             if (fold < G.FoldTime)
-                row.Add(Pill(
-                [
-                    new BoxEl
-                    {
-                        Height = G.Button, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Padding = new Edges4(G.TimePadX, 0f, G.TimePadX, 0f),
-                        Children = [(t.TimeTextWithChrome ?? t.TimeText)(false, ink), Caption("/") with { Color = R.OnMedia.Ink }, (t.TimeTextWithChrome ?? t.TimeText)(true, ink)],   // loc-allow: the times' own separator
-                    },
-                ], overControls) with
+                row.Add(Pill([TimeBox([(t.TimeTextWithChrome ?? t.TimeText)(false, ink), TimeSlash(), (t.TimeTextWithChrome ?? t.TimeText)(true, ink)])], overControls) with
                 {
                     Key = "picture:bar:time", Margin = new Edges4(G.PillGap, 0f, 0f, 0f),
                     Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,   // a folded slot
@@ -187,13 +185,27 @@ internal sealed class ClassicStageVideoBar : Component
 
     /// <summary>A slot the row FOLDS (<see cref="ClassicStageVideoBarGeometry.Fold"/>): it comes and goes as the picture widens or narrows (a tier
     /// crossing changes the Theatre panel's width), cross-fading as the theme's declared swap (<see cref="ClassicTierMotion.SwapFade"/>).</summary>
-    static Element Fold(string slot, Element control) => K(slot, control) with
+    static Element Fold(string slot, Element control) => Folds(K(slot, control));
+
+    /// <summary><paramref name="control"/> as a slot that comes and goes with a fold, cross-fading as the theme's declared swap
+    /// (<see cref="ClassicTierMotion.SwapFade"/>); the on-media bar's folds are the same.</summary>
+    internal static Element Folds(Element control) => control with
     {
         Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
     };
 
+    /// <summary>The time pill's content: the labels on one line at the pill's padding.</summary>
+    internal static BoxEl TimeBox(Element[] labels) => new()
+    {
+        Height = G.Button, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Padding = new Edges4(G.TimePadX, 0f, G.TimePadX, 0f),
+        Children = labels,
+    };
+
+    /// <summary>The "/" between the elapsed and the total time, in the on-media ink.</summary>
+    internal static Element TimeSlash() => Caption("/") with { Color = R.OnMedia.Ink };   // loc-allow: the times' own separator
+
     /// <summary>A group of controls on its dark pill; the pointer over it holds the chrome (the controls' hold, never the empty row's).</summary>
-    static BoxEl Pill(Element[] kids, Action<bool> overControls) => new()
+    internal static BoxEl Pill(Element[] kids, Action<bool> overControls) => new()
     {
         Height = G.PillH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = Edges4.All(G.PillPad), Corners = Radii.Circle(G.PillH),
         Fill = R.OnMedia.CoverScrim with { A = G.PillA },
