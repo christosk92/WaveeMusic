@@ -298,8 +298,8 @@ internal static class ClassicStageVideoBarGeometry
     public const float Button = 40f, Glyph = 16f, PlayGlyph = 20f, HeartGlyph = 18f;
 
     /// <summary>A pill's padding around its controls, its height, the gap between pills (and the least gap between the row's two sides), and its
-    /// ground: the on-media scrim at this alpha (the board's 0.5 black).</summary>
-    public const float PillPad = 4f, PillH = Button + 2f * PillPad, PillGap = 8f, PillA = 0.5f;
+    /// ground: the on-media scrim at this alpha (the board's 0.5 black, deepened so white reads at 4.5 : 1 over the light arm's pale veil too).</summary>
+    public const float PillPad = 4f, PillH = Button + 2f * PillPad, PillGap = 8f, PillA = 0.62f;
 
     /// <summary>The row's gap to the picture's foot, and the seek row's height over it (the seek rail's 32 hit box).</summary>
     public const float FootInset = 8f, SeekH = 32f;

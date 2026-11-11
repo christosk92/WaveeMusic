@@ -76,6 +76,7 @@ internal sealed class ClassicStageVideoBar : Component
                                 new BoxEl
                                 {
                                     Key = "picture:bar:seek", Height = G.SeekH, Direction = 0, AlignItems = FlexAlign.Center, HitTestPassThrough = true,
+                                    Layout = ClassicStageTheatre.Move,   // a tier's gutter changing moves it, never snaps it
                                     Children =
                                     [
                                         new BoxEl
@@ -123,30 +124,30 @@ internal sealed class ClassicStageVideoBar : Component
             var left = new List<Element>(4)
             {
                 Glyph(f.Playing ? Icons.Pause : Icons.Play, () => verbs.TogglePlay("stage.button"), f.PrimaryEnabled, G.PlayGlyph) with { Key = "picture:bar:play" },
-                ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, f.NextEnabled), Loc.Get(Strings.Player.Next)),
+                K("prev", ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, f.PrevEnabled), Loc.Get(Strings.Player.Previous))),
+                K("next", ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, f.NextEnabled), Loc.Get(Strings.Player.Next))),
             };
-            if (fold < G.FoldMute) left.Add(Embed.Comp(new VolumeProps(t, fold < G.FoldSlider), static () => new Volume()));
+            if (fold < G.FoldMute) left.Add(Fold("volume", Embed.Comp(new VolumeProps(t, fold < G.FoldSlider), static () => new Volume())));
 
-            var right = new List<Element>(8) { Heart(f.Saved, f.Like, lit) };
+            var right = new List<Element>(8) { K("heart", Heart(f.Saved, f.Like, lit)) };
             if (fold < G.FoldSatellites)
             {
-                right.Add(ToolTip.Wrap(Toggle(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, lit), Loc.Get(Strings.Player.Shuffle)));
-                right.Add(ToolTip.Wrap(Toggle(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, lit), Loc.Get(Strings.Player.Repeat)));
-                right.Add(Embed.Comp(new ClassicStageTransport.DeviceButton.Props(t, OnPicture: true), static () => new ClassicStageTransport.DeviceButton()));
+                right.Add(Fold("shuffle", ToolTip.Wrap(Toggle(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, lit), Loc.Get(Strings.Player.Shuffle))));
+                right.Add(Fold("repeat", ToolTip.Wrap(Toggle(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, lit), Loc.Get(Strings.Player.Repeat))));
+                right.Add(Fold("device", Embed.Comp(new ClassicStageTransport.DeviceButton.Props(t, OnPicture: true), static () => new ClassicStageTransport.DeviceButton())));
             }
-            right.Add(ToolTip.Wrap((Glyph(Icons.More, null, true) with { Key = "picture:bar:more", ClickRequestsContext = true })
+            right.Add(K("more", ToolTip.Wrap((Glyph(Icons.More, null, true) with { Key = "picture:bar:more", ClickRequestsContext = true })
                 .WithContextMenu(overlay,
                     () => { var m = Stage.NowPlayingMenu?.Invoke(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) menuOpen(true); return m; },   // the "…" menu holds the chrome (V-U22); an empty menu never opens
-                    new ContextMenuOptions { OnClosed = _ => menuOpen(false) }), Loc.Get(Strings.Common.More)));
-            if (t.VideoMenu is not null) right.Add(Embed.Comp(new MenuProps(t), static () => new VideoMenuButton()));
+                    new ContextMenuOptions { OnClosed = _ => menuOpen(false) }), Loc.Get(Strings.Common.More))));
+            if (t.VideoMenu is not null) right.Add(K("settings", Embed.Comp(new MenuProps(t), static () => new VideoMenuButton())));
             if (p.TheatreOffered)
             {
                 bool theatre = st.Theatre.Value;
-                right.Add(ToolTip.Wrap(Glyph(theatre ? Icons.FullScreen : Icons.SplitView, st.ToggleTheatre, true) with { Key = "stage:bar:theatre" },
-                    Loc.Get(theatre ? Strings.Stage.FillScreen : Strings.Stage.TheatreMode)));
+                right.Add(Fold("theatre", ToolTip.Wrap(Glyph(theatre ? Icons.FullScreen : Icons.SplitView, st.ToggleTheatre, true) with { Key = "stage:bar:theatre" },
+                    Loc.Get(theatre ? Strings.Stage.FillScreen : Strings.Stage.TheatreMode))));
             }
-            right.Add(ToolTip.Wrap(Glyph(Icons.BackToWindow, st.Exit, true) with { Key = "stage:bar:exit" }, Loc.Get(Strings.Stage.Exit)));
+            right.Add(K("exit", ToolTip.Wrap(Glyph(Icons.BackToWindow, st.Exit, true) with { Key = "stage:bar:exit" }, Loc.Get(Strings.Stage.Exit))));
 
             var row = new List<Element>(4) { Pill(left.ToArray(), overControls) with { Key = "picture:bar:transport" } };
             if (fold < G.FoldTime)
@@ -155,14 +156,33 @@ internal sealed class ClassicStageVideoBar : Component
                     new BoxEl
                     {
                         Height = G.Button, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Padding = new Edges4(G.TimePadX, 0f, G.TimePadX, 0f),
-                        Children = [t.TimeText(false, ink), Caption("/") with { Color = R.OnMedia.InkSecondary }, t.TimeText(true, ink)],   // loc-allow: the times' own separator
+                        Children = [t.TimeText(false, ink), Caption("/") with { Color = R.OnMedia.Ink }, t.TimeText(true, ink)],   // loc-allow: the times' own separator
                     },
-                ], overControls) with { Key = "picture:bar:time", Margin = new Edges4(G.PillGap, 0f, 0f, 0f) });
-            row.Add(new BoxEl { Grow = 1f, MinWidth = G.PillGap, HitTestVisible = false });
+                ], overControls) with
+                {
+                    Key = "picture:bar:time", Margin = new Edges4(G.PillGap, 0f, 0f, 0f),
+                    Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,   // a folded slot
+                });
+            row.Add(new BoxEl { Key = "picture:bar:spacer", Grow = 1f, MinWidth = G.PillGap, HitTestVisible = false });
             row.Add(Pill(right.ToArray(), overControls) with { Key = "picture:bar:actions" });
-            return new BoxEl { Key = "picture:bar:row", Height = G.PillH, Direction = 0, AlignItems = FlexAlign.Center, HitTestPassThrough = true, Children = row.ToArray() };
+            return new BoxEl
+            {
+                Key = "picture:bar:row", Height = G.PillH, Direction = 0, AlignItems = FlexAlign.Center, HitTestPassThrough = true,
+                Layout = ClassicStageTheatre.Move, Children = row.ToArray(),   // a tier's gutter or a fold moves the row, never snaps it
+            };
         }
     }
+
+    /// <summary><paramref name="control"/> keyed as its slot in the row: a fold that adds or drops a control never shifts the ones after it into
+    /// another slot (which rebuilt them).</summary>
+    static Element K(string slot, Element control) => control with { Key = "picture:bar:slot:" + slot };
+
+    /// <summary>A slot the row FOLDS (<see cref="ClassicStageVideoBarGeometry.Fold"/>): it comes and goes as the picture widens or narrows (a tier
+    /// crossing changes the Theatre panel's width), cross-fading as the theme's declared swap (<see cref="ClassicTierMotion.SwapFade"/>).</summary>
+    static Element Fold(string slot, Element control) => K(slot, control) with
+    {
+        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+    };
 
     /// <summary>A group of controls on its dark pill; the pointer over it holds the chrome (the controls' hold, never the empty row's).</summary>
     static BoxEl Pill(Element[] kids, Action<bool> overControls) => new()
@@ -233,7 +253,6 @@ internal sealed class ClassicStageVideoBar : Component
                 Key = "picture:bar:mute",
                 OnFocusChanged = got => { if (got) _open.SetIfChanged(true); },
             }, Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
-            if (!p.Slider) return mute;
             var style = Slider.DefaultStyle with
             {
                 RailFill = R.OnMedia.Ink with { A = ClassicStageGeometry.RailAlpha }, RailFillDisabled = R.OnMedia.Ink with { A = ClassicStageGeometry.RailDisabledAlpha },
@@ -250,7 +269,8 @@ internal sealed class ClassicStageVideoBar : Component
                     mute,
                     new BoxEl
                     {
-                        Key = "picture:bar:volume:slider", Width = open ? G.VolumeW : 0f, Height = G.Button, Shrink = 0f, ClipToBounds = true,
+                        // where the row has no room for it the slider stays shut (the "…" menu and the player bar keep the volume): one tree either way
+                        Key = "picture:bar:volume:slider", Width = open ? G.VolumeW : 0f, Height = G.Button, Shrink = 0f, ClipToBounds = true, HitTestVisible = p.Slider,
                         Direction = 0, AlignItems = FlexAlign.Center, Layout = s_reveal,
                         Children = [VolumeSlider.Create(_level, t.SetVolume, s_options, length: G.VolumeW, thickness: G.VolumeThickness, style: style)],
                     },

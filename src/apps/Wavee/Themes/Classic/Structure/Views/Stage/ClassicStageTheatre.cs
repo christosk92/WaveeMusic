@@ -86,6 +86,7 @@ internal static class ClassicStageTheatre
                         {
                             Key = "stage:picture:letterbox", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                             Margin = new Edges4(box.X, box.Y, 0f, 0f), Width = box.W, Height = box.H, Fill = Tok.MediaLetterbox,
+                            Layout = Move,   // still while Theatre holds; a tier crossing or a resize glides it with the reservation instead of snapping
                         }
                         : new BoxEl { Visible = false },
                     // the reservation: hollow, moving

@@ -103,6 +103,15 @@ internal static class ClassicStagePictureChrome
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
                     Children = [Embed.Comp(new GroundProps(v), static () => new EndDim())],
                 }),
+                // the control bar at the picture's foot (Cinema: the stage's; Theatre: the 16:9 box's, moving with it), idling with the chrome; under the
+                // title, the shelf and the end card, so its scrim never veils them
+                Flow.Show(barShown, Stage.Layer with
+                {
+                    Key = "picture:bar:motion",
+                    Enter = new EnterExit(Dy: ClassicStageVideoBarGeometry.EnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageVideoBarGeometry.EnterDy, Opacity: 0f, Active: true),
+                    Transition = MotionTok.ControlNormal,
+                    Children = [Embed.Comp(new ClassicStageVideoBar.Props(v), static () => new ClassicStageVideoBar())],
+                }),
                 // the title block: at the gutter, a gap above the shelf's reserved place or the control bar (Cinema)
                 Flow.Show(overPicture, Stage.Layer with
                 {
@@ -144,14 +153,6 @@ internal static class ClassicStagePictureChrome
                     Children = [ClassicStageTheatre.TheatreTitle(v, theatre.Title)],
                 }),
                 ClassicStageRoot.TopBar(v, topShown),
-                // the control bar at the picture's foot (Cinema: the stage's; Theatre: the 16:9 box's, moving with it), idling with the chrome
-                Flow.Show(barShown, Stage.Layer with
-                {
-                    Key = "picture:bar:motion",
-                    Enter = new EnterExit(Dy: ClassicStageVideoBarGeometry.EnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageVideoBarGeometry.EnterDy, Opacity: 0f, Active: true),
-                    Transition = MotionTok.ControlNormal,
-                    Children = [Embed.Comp(new ClassicStageVideoBar.Props(v), static () => new ClassicStageVideoBar())],
-                }),
                 // the hairline at the picture's foot while the bar rests
                 Flow.Show(hairline, Stage.Layer with
                 {
