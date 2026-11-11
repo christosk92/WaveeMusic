@@ -521,6 +521,30 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = queueRail;
                     return r with { Note = r.Note + " clicks=" + clicks };
                 }
+                case FrameBenchScenarios.WhatsNewMotion:
+                {
+                    // A motion highlight playing on the What's new page (needs `--whatsnew <notes folder>` with one: ImageEl.Animate), then the
+                    // page scrolled to its end so the card leaves the screen 20 s into the measured window: the engine's `[image.anim]` lines
+                    // say how many frames showed on time and late while it played, and that it paused when the card left.
+                    if (Platform.Args.WhatsNewPreview is null) return Skip("needs --fake --whatsnew <notes folder>");
+                    Base(playing: false);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(new Shell.Route(Shell.RouteKind.WhatsNew));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Settle(2.0);
+                    var s = new ScrollState(depthViewports: 50);
+                    if (!s.WaitReady(host, w, 20)) return Skip("the What's new page never became scrollable (" + s.Describe(host) + ")");
+                    double awayAt = o.WarmupSec + 20;
+                    bool away = false;
+                    return Measure(new Driver(now =>
+                    {
+                        if (away || now < awayAt) return now + 0.25;
+                        away = true;
+                        FluentGpu.Hosting.FrameTrace.Mark("step", "scroll-away");
+                        s.ScrollToEnd(host);
+                        return now + 60;
+                    }), "scroll away at " + awayAt.ToString("0", CultureInfo.InvariantCulture) + " s, viewport=" + s.Key, s);
+                }
                 case FrameBenchScenarios.Video:
                     if (Platform.Args.FakeVideo is null) return Skip("needs --fake --fake-video <path>");
                     Base(playing: true, "spotify:track:tr0");
@@ -939,6 +963,14 @@ public static partial class Diagnostics
                     if (!v.Horizontal) sb.Append(v.ScrollKey ?? "?").Append(' ').Append(v.Extent.ToString("0", CultureInfo.InvariantCulture)).Append('/')
                         .Append(v.Viewport.ToString("0", CultureInfo.InvariantCulture)).Append("; ");
                 return sb.Length > 0 ? sb.ToString() : "no vertical viewport";
+            }
+
+            /// <summary>Glide the adopted page to its end (the What's new motion scenario's scroll away).</summary>
+            public void ScrollToEnd(AppHost host)
+            {
+                if (!Adopt(host, 1.0) && _handle is null) return;
+                _handle!.ScrollTo(_handle.MaxOffset, ScrollMove.Glide);
+                Steps++;
             }
 
             /// <summary>The measured window starts: distance from here.</summary>

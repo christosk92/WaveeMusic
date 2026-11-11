@@ -33,21 +33,22 @@ public static partial class Diagnostics
     {
         // ── the argv ────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>`--inspect [--pipe name] [--profile dir] [--text dwrite|headless]`.</summary>
-        public readonly record struct Options(string Pipe, string Profile, bool HeadlessText)
+        /// <summary>`--inspect [--pipe name] [--profile dir] [--text dwrite|headless] [--whatsnew dir]`.</summary>
+        public readonly record struct Options(string Pipe, string Profile, bool HeadlessText, string WhatsNew = "")
         {
             public const string Usage =
                 "usage: Wavee.exe --inspect [--pipe <name>] [--profile <scratch dir>] [--text dwrite|headless]\n" +
                 "  --pipe     read commands from \\\\.\\pipe\\<name> and reply on it (one client); default: stdin / stdout\n" +
                 "  --profile  the scratch profile folder (default: a new folder under %TEMP%\\wavee-inspect); never the user's\n" +
                 "  --text     dwrite (default): real DirectWrite text metrics; headless: the engine's 0.55 x size model\n" +
+                "  --whatsnew a release's notes folder (ops/release/wavee/<semver>, or the release tool's output) for the What's new page\n" +
                 "Commands are JSON lines {\"cmd\",\"args\",\"id\"}; see docs/guide/agent-inspect.md.";
 
             public static bool TryParse(string[] args, out Options options, out string usage)
             {
                 options = new Options("", "", false);
                 usage = "";
-                string pipe = "", profile = "";
+                string pipe = "", profile = "", whatsNew = "";
                 bool headlessText = false;
                 for (int i = 0; i < args.Length; i++)
                 {
@@ -57,6 +58,7 @@ public static partial class Diagnostics
                         case "--inspect": break;
                         case "--pipe": if (!Value(args, ref i, a, out pipe, ref usage)) return false; break;
                         case "--profile": if (!Value(args, ref i, a, out profile, ref usage)) return false; break;
+                        case "--whatsnew": if (!Value(args, ref i, a, out whatsNew, ref usage)) return false; break;
                         case "--text":
                             {
                                 if (!Value(args, ref i, a, out string mode, ref usage)) return false;
@@ -75,7 +77,7 @@ public static partial class Diagnostics
                             return false;
                     }
                 }
-                options = new Options(pipe, profile, headlessText);
+                options = new Options(pipe, profile, headlessText, whatsNew);
                 return true;
             }
 

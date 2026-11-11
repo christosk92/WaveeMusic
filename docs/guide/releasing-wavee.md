@@ -72,8 +72,8 @@ info      0.2.0+build.7.sha.d4227b3    <- stamped by the pack script
    Bullets may carry `(#123)` / `(!123)` refs — the tool resolves each one against GitHub.
 3. **`ops/release/wavee/<semver>/whatsnew.json`** (+ an optional `media/` beside it) — the editorial layer: tagline, up
    to three hero highlights, notices. Authoring rules and the exact field-ownership table are in
-   **`ops/release/wavee/README.md`**. Budgets the validator enforces: **≤150 KB** per still, **≤600 KB** per motion
-   file, **≤1.5 MB** total, no GIFs, no duplicate basenames, and deep links must be `wavee://open?route=<known route>`.
+   **`ops/release/wavee/README.md`**. Budgets the validator enforces: **≤150 KB** per still, **≤16 MB** per motion
+   file (raised 2026-11-11 for 60 fps motion highlights), **≤17.5 MB** total, no GIFs, no duplicate basenames, and deep links must be `wavee://open?route=<known route>`.
 
 Leave `sections`, `links`, `packageVersion`, `date`, `generatedAt` and the `media` hash list empty — the tool writes
 them. Everything in that folder ships **inside the MSIX** as well as as release assets, so every byte there is a byte

@@ -127,13 +127,14 @@ internal static partial class ZuneReleaseNotes
                 new BoxEl
                 {
                     Key = "zhv:" + id + ":img", Animate = ZuneViewerMotion.For(dir.Value), ZStack = true, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                    Children = item.Poster is { Length: > 0 } poster
-                        ? [new ImageEl
+                    // The poster, and a motion highlight's WebP playing over it (the poster is its first frame).
+                    Children = ReleaseNotes.PosterAndMotion(item.Poster is { Length: > 0 } poster
+                        ? new ImageEl
                           {
                               Source = poster, Fit = ImageFit.Cover, AspectRatio = VL.PosterAspect, DecodePx = K.PosterDecodePx, Placeholder = Tok.FillSubtleSecondary,
                               RevealTransition = ImageTransition.Fade(K.PosterFadeMs), AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                          }]
-                        : [],
+                          }
+                        : null, item, default),
                 },
                 new BoxEl
                 {

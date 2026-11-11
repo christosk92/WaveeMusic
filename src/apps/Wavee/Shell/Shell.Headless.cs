@@ -45,7 +45,11 @@ public static partial class Shell
     /// <param name="ProfileDir">The temporary profile folder (documents, the credential slot, the sidebar store). Created
     /// when missing. Never the user's profile.</param>
     /// <param name="Theme">The theme the host seeds instead of the OS theme (the GUI reads the registry).</param>
-    public sealed record ShellHostOptions(string ProfileDir, ThemeKind Theme = ThemeKind.Dark);
+    public sealed record ShellHostOptions(string ProfileDir, ThemeKind Theme = ThemeKind.Dark)
+    {
+        /// <summary>A release's notes folder the What's new page plays (`--fake --whatsnew`), or "" for the canned notes.</summary>
+        public string WhatsNew { get; init; } = "";
+    }
 
     /// <summary>The devices a NON-TEST mount runs on (the `--inspect` server, Diagnostics.Inspect.cs): the platform window the
     /// host is built over (an offscreen surface's window, or a plain headless one), the headless model behind it (size, scale,
@@ -88,7 +92,7 @@ public static partial class Shell
             Platform.ProfileRoot = options.ProfileDir;
             Platform.UiThreadId = s_uiThread;
             Wire.GoOffline();   // before anything can send: the seed does not answer every page a test may open
-            Platform.Boot(["--fake"], BootProfile.HeadlessFake);
+            Platform.Boot(options.WhatsNew.Length > 0 ? ["--fake", "--whatsnew", options.WhatsNew] : ["--fake"], BootProfile.HeadlessFake);
             Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "", null, Log.SinceStartMs);
             App.BootCore(BootProfile.HeadlessFake);
             // ...and the playback host's stamps with it (BootCore set the wall clock, decision D22, for a window that keeps time while idle): the position

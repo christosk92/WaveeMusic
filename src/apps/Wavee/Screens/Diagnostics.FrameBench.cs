@@ -46,7 +46,8 @@ public static partial class Diagnostics
             SidebarDisclosure = "sidebar-disclosure", DrawerToggle = "drawer-toggle", NavGc = "nav-gc",
             PlaylistPlaying = "playlist-playing", PlaylistLyrics = "playlist-lyrics", PlaylistMinimized = "playlist-minimized",
             MotionFlow = "motion-flow", ContextSwitch = "context-switch", ArtistLyrics = "artist-lyrics", RailCanvas = "rail-canvas",
-            RailCover = "rail-cover", StageTheatre = "stage-theatre", StageCinema = "stage-cinema", StageExit = "stage-exit";
+            RailCover = "rail-cover", StageTheatre = "stage-theatre", StageCinema = "stage-cinema", StageExit = "stage-exit",
+            WhatsNewMotion = "whatsnew-motion";
 
         /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`, <see cref="GpuPassOverhead"/> only
         /// with `--bench-gpu-passes`.</summary>
@@ -67,7 +68,7 @@ public static partial class Diagnostics
         /// moving between Cinema and Theatre every 1.5 s, and Cinema at rest with its chrome idled out. <see cref="StageExit"/> opens and closes the
         /// full-screen stage every 2 s with the REAL window full screen (it takes the window's monitor over), so the exit's window restore and the page
         /// it uncovers are measured (the `[window.fullscreen]` and `[window.resize]` lines carry the window's side).</summary>
-        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc, PlaylistPlaying, PlaylistLyrics, PlaylistMinimized, MotionFlow, ContextSwitch, ArtistLyrics, RailCanvas, RailCover, StageTheatre, StageCinema, StageExit];
+        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc, PlaylistPlaying, PlaylistLyrics, PlaylistMinimized, MotionFlow, ContextSwitch, ArtistLyrics, RailCanvas, RailCover, StageTheatre, StageCinema, StageExit, WhatsNewMotion];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the

@@ -107,12 +107,12 @@ public static partial class Diagnostics
         }
 
         /// <summary>Boot the shell on a new UI thread. Once per process (<c>Shell.Headless.Boot</c>'s rule).</summary>
-        public static InspectHost Boot(string profileDir, bool ownsProfile, bool realText)
+        public static InspectHost Boot(string profileDir, bool ownsProfile, bool realText, string whatsNew = "")
         {
             var host = new InspectHost(profileDir, ownsProfile);
             host.Invoke(() =>
             {
-                Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
+                Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir) { WhatsNew = whatsNew });
                 InspectKit.InstallFixtureGrader();
                 InspectKit.InstallVideoJoinHold();
                 InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
@@ -171,7 +171,7 @@ public static partial class Diagnostics
                 return Headless.ExitCode.Usage;
             }
             InspectHost host;
-            try { host = Boot(profile, owned, realText: !o.HeadlessText); }
+            try { host = Boot(profile, owned, realText: !o.HeadlessText, o.WhatsNew); }
             catch (Exception ex)
             {
                 Console.Out.WriteLine(Inspect.Reply.Event("fault", w => w.WriteString("reason", "boot failed: " + ex.GetType().Name + ": " + ex.Message)));

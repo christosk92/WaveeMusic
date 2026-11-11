@@ -53,10 +53,17 @@ layer on top of it. Writing bullets into `sections` by hand is silently overwrit
 - **Media budgets:**
   - no GIF, ever; allowed extensions are `.webp`, `.png`, `.jpg`, `.jpeg`, `.mp4`
   - ≤ 150 KB per still (`.webp` / `.png` / `.jpg`)
-  - ≤ 600 KB per motion file (`.mp4`, or a `.webp` whose highlight declares `"kind": "video"`)
-  - ≤ 1.5 MB for every media file of the release added together
+  - ≤ 16 MB per motion file (`.mp4`, or a `.webp` whose highlight declares `"kind": "video"` or `"kind": "motion"`)
+  - ≤ 17.5 MB for every media file of the release added together
   - no two different files sharing a basename — release assets are flat, so `a/hero.webp` and `b/hero.webp` collide
   - a `video` highlight should carry a `poster` still; the What's new page shows the poster until it plays
+  - a `motion` highlight's `src` must be a `.webp` and it must carry a `poster` (see [Motion highlights](#motion-highlights))
+
+  The motion budget was 600 KB per file and 1.5 MB per release until 2026-11-11. It was raised for **smooth motion at
+  60 fps**: the owner chose an animated WebP that plays in the card at an even 60 fps over a lower frame rate or quality
+  ("no lower frame rate, ultra butter smooth. increase the file size if necessary"). Real 1440x810 app footage at
+  60 fps, lossy q75, runs about 1.1 MB a second, so a 12-15 second cut is 13-15 MB. It is still a limit: every byte ships
+  inside every package and as a release asset.
 - **Every `#n` / `!n` referenced by the changelog must exist** in the repo. The tool fetches each one and snapshots
   `title` / `state` / `state_reason` / whether it is a PR into the emitted document, so the page can show the state
   the release shipped with even offline. A 404 is an error (the changelog names something that does not exist).
@@ -92,6 +99,35 @@ is a byte in every install.
 ```
 
 Omit `media` entirely when a highlight has nothing to show — that is the normal case, and it is what `0.2.0` does.
+
+## Motion highlights
+
+`"kind": "motion"` plays an animated WebP in place: in the card, the after-update plate and the highlight viewer, in
+every theme, looping (the file's loop count; 0 = forever), muted, with no play button. The engine plays it
+(`ImageEl.Animate`): frames advance by their own durations only while the card is on screen and the window is
+painting; scrolled away or minimised it stops and frees its decoder. `0.3.9` is the first release with one.
+
+```jsonc
+"media": {
+  "kind": "motion",
+  "src": "media/video-fullscreen.webp",   // the animated WebP: 1440x810, an even 60 fps, lossy, NO alpha
+  "poster": "media/video-fullscreen.jpg", // the WebP's first frame as a 1200x675 JPEG, ≤ 150 KB
+  "alt": "What the motion shows",
+  "width": 1440, "height": 810
+}
+```
+
+- **The poster is the WebP's first frame.** It shows under the WebP until the first frame lands, alone on a machine
+  without the WebP Image Extension (Windows cannot decode WebP at all there), and reduced motion shows the WebP's first
+  frame and never plays it, so the two must be the same picture.
+- **Author it at 1440x810** (the viewer's plate at 150 %). The engine decodes frames at the file's own size (a decoder
+  side scale costs several frame budgets) and the GPU samples it down for a card. 1920 wide decodes too slowly for 60 fps.
+- **60 fps:** durations `17, 17, 16` ms repeating (WebP stores whole milliseconds; three frames are exactly 50 ms).
+- **Encode with libwebp's `WebPAnimEncoder`** (Pillow `save_all=True` or `img2webp -lossy -q 75 -m 4`) from RGB frames
+  with no alpha channel. ffmpeg's `libwebp_anim` and an alpha channel both made frames several times slower to decode in
+  the 2026-11-11 measurements. A real-window run logs every playing motion's decode times (`[image.anim]` lines: average,
+  maximum, frames over 16 ms, frames shown late): every frame must decode well under 16.7 ms (the 0.3.9 cut: p50 2.9 ms,
+  max 13.9 ms on a Snapdragon X Elite).
 
 ## Community highlights
 

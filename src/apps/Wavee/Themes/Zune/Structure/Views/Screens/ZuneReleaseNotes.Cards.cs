@@ -69,7 +69,7 @@ internal static partial class ZuneReleaseNotes
         var k = KitOf(layout);
         var body = new List<Element>(5)
         {
-            Media(item.Poster, store),
+            Media(item, store),
             KindLine(h, store),
             R.Type.TrackTitle(h.Title) with { Wrap = TextWrap.Wrap, MaxLines = K.CardTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), IgnoreLink), isTextSelectionEnabled: false)
@@ -95,7 +95,7 @@ internal static partial class ZuneReleaseNotes
             if (IsCommunity(h)) words.Insert(0, CommunityWord());   // the row form shows no kind word: the badge leads the words
             var row = new List<Element>(3)
             {
-                new BoxEl { Direction = 1, Shrink = 0f, Children = [Media(item.Poster, store)] },
+                new BoxEl { Direction = 1, Shrink = 0f, Children = [Media(item, store)] },
                 new BoxEl { Direction = 1, Gap = Spacing.XS, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = words.ToArray() },
             };
             if (action) row.Add(ZuneDiscoveryKit.Ring("zrn:card:go:" + h.Id, Icons.Forward, Loc.Get(Strings.WhatsNew.TryIt), showLabel: false, primary: false, open));
@@ -143,14 +143,19 @@ internal static partial class ZuneReleaseNotes
     static TextEl CommunityWord() => ZuneText.Hint(Loc.Get(Strings.WhatsNew.Community)) with { Color = R.Ink.AccentDecor, MaxLines = 1, Shrink = 0f };
 
     /// <summary>The panel's picture: the poster when the loader found one, else the board's swatch (a square of the accent: a card that loses its picture reads as broken).</summary>
-    static Element Media(string? poster, bool store)
+    static Element Media(HighlightItem item, bool store)
     {
-        if (poster is { Length: > 0 })
-            return new ImageEl
+        if (item.Poster is { Length: > 0 } poster)
+        {
+            var still = new ImageEl
             {
                 Source = poster, Fit = ImageFit.Cover, Height = K.PosterHeight, AlignSelf = FlexAlign.Stretch, DecodePx = K.PosterDecodePx,
                 Placeholder = Tok.FillSubtleSecondary, Corners = CornerRadius4.All(R.Shape.Cover),
             };
+            // A motion highlight plays its WebP over the poster (the poster is its first frame): the two share one band the poster sizes.
+            if (ReleaseNotes.MotionLayer(item, CornerRadius4.All(R.Shape.Cover)) is not { } motion) return still;
+            return new BoxEl { ZStack = true, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, Children = [still, motion] };
+        }
         return new BoxEl { Width = K.SwatchSize, Height = K.SwatchSize, Shrink = 0f, Fill = store ? R.Ink.AccentAction : R.Ink.AccentDecor, HitTestVisible = false };
     }
 

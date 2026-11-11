@@ -1045,6 +1045,7 @@ public static partial class Log
         || s.StartsWith("[d3d12.scratch]", StringComparison.Ordinal)
         || s.StartsWith("[evidence]", StringComparison.Ordinal)
         || s.StartsWith("[hidden]", StringComparison.Ordinal)   // the hidden-window release / restore edge lines: once per park
+        || s.StartsWith("[image.anim]", StringComparison.Ordinal)   // an animated image (ImageEl.Animate): open / pause / static edges and a 5 s playing summary (frames on time vs late, decode times)
         || s.StartsWith("[scroll.engaged", StringComparison.Ordinal);
 
     /// <summary>True for the sink-routed engine lines that name a GPU stall, loss, recovery or adapter — the evidence
