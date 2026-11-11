@@ -248,7 +248,7 @@ public static partial class Diagnostics
             Arg("layout", ArgType.Enum, "the fullscreen stage's layout", null, "card|large|centered|artist"),
             Arg("gallery", ArgType.Enum, "the fullscreen stage's gallery", null, "on|off|true|false"),
             Arg("heroLyrics", ArgType.Enum, "the Artist layout's lyrics over the photo", null, "on|off|true|false"),
-            Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
+            Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, the playing one grey, or every cover one test colour (dark navy, teal, near-white, saturated yellow)", null, "hue|grey|gray|greynow|dark|teal|white|yellow"),
             Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
             Arg("materials", ArgType.Enum, "off: no acrylic runs, every frosted surface draws its fallback plate (what Energy saver and Transparency effects off show)", "on", "on|off"),
             Arg("mini", ArgType.Bool, "mount the mini player window's content alone (#197): its shape follows w x h (Strip 6:1, Wide 12:5, Square, Tall 9:16)", null, "true|false"),
@@ -328,7 +328,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "ai", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -491,7 +491,9 @@ public static partial class Diagnostics
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons"),
                     Arg("ai", ArgType.Enum, "with kind=ai: the AI lyrics settings card's staged status (no module, no download; the next mount puts 'not started' back); lang-failed: a language added to a ready feature failed, setup-failed: a first setup stopped on a language's file, error: the whole feature failed", "ready", string.Join("|", InspectSession.AiCases)),
                     Arg("error", ArgType.Enum, "with kind=ai ai=lang-failed|setup-failed|error: the failure kind", "notfound", string.Join("|", InspectSession.AiErrors)),
-                    Arg("lang", ArgType.String, "with kind=ai: the language a language failure names (a pack language)", "ja")], s_settleArgs),
+                    Arg("lang", ArgType.String, "with kind=ai: the language a language failure names (a pack language)", "ja"),
+                    Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
+                    Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues))], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
@@ -534,7 +536,7 @@ public static partial class Diagnostics
                     Arg("gpu", ArgType.Enum, "each row's mount devices: none by default (a crossing reads rects and the scene, never a frame's pixels), hardware or warp to keep pixels for a render after", "none", "warp|hardware|none"),
                     Arg("scale", ArgType.Float, "DPI scale of each row's mount", "1"),
                     Arg("images", ArgType.Enum, "fake or real images", "fake", "fake|real"),
-                    Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow"),
+                    Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow|dark|teal|white|yellow"),
                     Arg("items", ArgType.Int, "entries per list in each crossing reply", "8"),
                     Arg("max", ArgType.Int, "the settle cap", "600"),
                 ], s_lintArgs),
@@ -570,10 +572,10 @@ public static partial class Diagnostics
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
             {
                 Positional = ["do", "value"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead"),
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration"),
                              Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
-                             Arg("ms", ArgType.Int, "the seek target", "0")], s_settleArgs),
+                             Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];

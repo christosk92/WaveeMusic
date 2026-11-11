@@ -208,7 +208,7 @@ without `theme` or `kind` keeps the active ones.
 | `scale` | DPI scale, 1 by default, at most 4. |
 | `theme` | `classic`, `zune` or `winui` (default: the active theme; a fresh server is on Classic). Zune turns Developer mode on; the others turn it off. |
 | `kind` | `dark` or `light`. |
-| `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey) or `greynow` (only the playing one grey). |
+| `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey), `greynow` (only the playing one grey), or one test colour for every cover in both halves (`InspectKit.NamedCover`): `dark` (a deep navy), `teal` (#396b7a), `white` (near-white) or `yellow` (saturated): the grounds a cover-tinted surface (the stage's palette, its caption veil, the audio face's field) must hold its inks over. |
 | `gpu` | `hardware` (default: the machine's hardware adapter, WARP when it has none; `devices` reads `offscreen (D3D12)`, or `offscreen (D3D12 (WARP))` on the fallback) or `warp` (WARP forced): the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels; motion checks that render nothing). Same lint and crossing counts on either surface, pixels within anti-aliasing, hardware 1.5-5x faster (10-24: Zune album 1440 3.4 s against 8.0 s). |
 | `images` | `fake` (default): the engine's deterministic decoder paints every image as a per-image gradient. `real`: the app's own pipeline (WIC behind the disk-first fetcher) decodes the bundled photographs as they are, so text over a photograph renders, and lints, over the real picture. The fake artist `ar9` (The Longtime) carries a bright header photograph (`assets/covers/header-bright.jpg`, a white sky over a pale ground): the worst case for text on a photograph. |
 | `motion` | `full` (default) or `reduced`: Windows' Animation effects off for this mount (`Motion.ReducedMotion`), which a headless server never reads from the OS. A structure with page motion then fades its page swaps (WinUI: ControlFaster each way) with no slide, zoom or stagger; Classic and Zune cut. |
@@ -511,6 +511,13 @@ file, the drive); `lang=` the failed language (`ja` by default; a pack language)
 mount w=1440 h=960 theme=zune route=settings arg=lyrics
 state kind=ai ai=lang-failed error=diskfull
 click key=zs:ai:details trace=40 prefix=zs:ai     # the raw detail opens in place, traced
+```
+
+**The Playback runtime card: `state kind=runtime`.** The server has no local playback runtime, so `Setup.Runtime.Status` stays `NotApplicable` and Settings > Playback only shows its "not set up" bar. `state kind=runtime runtime=<case> issue=<kind>` publishes a made-up status whole, as the host does (`Diagnostics.Inspect.Runtime.cs`): `problem` (default: the error bar with View diagnostics, Connect diagnostics and Retry setup; `issue=wrongarch|nopack|unsupported` its typed reason), `setup` (the not-set-up bar), `ready` (the facts) and `none` (the boot's status back). Nothing is installed or loaded; the next `mount` puts the boot's status back. The bars are keyed `zs:runtime:problem` (Zune) and `playback.runtime:problem` (Classic, WinUI). The app's own "Local playback setup" toast answers the staged status as it would a real one.
+
+```text
+mount w=480 h=860 theme=zune route=settings arg=playback
+state kind=runtime runtime=problem issue=wrongarch
 ```
 
 `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own

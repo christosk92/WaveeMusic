@@ -603,6 +603,8 @@ public static partial class Diagnostics
                         if (a.Has("page")) return PageState(id, name, a, kind, shell);
                         // The AI lyrics settings card in each of its states, staged without the module (Diagnostics.Inspect.AiLyrics.cs).
                         if (kind == "ai") return AiState(id, name, a);
+                        // The Playback settings' runtime card in each of its shapes, staged without a runtime (Diagnostics.Inspect.Runtime.cs).
+                        if (kind == "runtime") return RuntimeState(id, name, a);
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
@@ -832,6 +834,9 @@ public static partial class Diagnostics
                     var g = string.Equals(uri, Wavee.Rail.NowArtUrl(), StringComparison.Ordinal) ? InspectKit.GreyScheme : InspectKit.GradeOf(uri);
                     return light ? g.Light : g.Dark;
                 },
+                // `grade=dark|teal|white|yellow`: every cover is that one colour (InspectKit.NamedCover): the cover-tinted grounds at their extremes
+                "dark" or "teal" or "white" or "yellow" when InspectKit.NamedCover(a.Str("grade").ToLowerInvariant()) is { } named
+                    => (_, light) => light ? named.Light : named.Dark,
                 _ => null,
             };
             string images = a.Str("images", "fake").ToLowerInvariant();
@@ -931,6 +936,7 @@ public static partial class Diagnostics
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();
             RestoreAiLyrics();   // a `state kind=ai` staged the AI lyrics card
+            RestoreRuntime();    // a `state kind=runtime` staged the Playback runtime card
             Entities.RestoreStagedShelves();   // a `state page=<library tab>` staged the account's relations
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
