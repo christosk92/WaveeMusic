@@ -283,6 +283,8 @@ internal static class ClassicTransport
             Corners = Radii.ControlAll,
             OnClick = right ? props.ToggleRemaining : null,
             Cursor = right ? CursorId.Hand : null,
+            // the toggle's target meets the 40 DIP rule with slop above and below the line (a real hit beside it, the seek rail's, still wins)
+            HitSlop = right ? new Edges4(0f, ClassicTransportLayout.TimeSlop(caption.LineHeight), 0f, ClassicTransportLayout.TimeSlop(caption.LineHeight)) : default,
             Children =
             [
                 ink is { } inkColor
