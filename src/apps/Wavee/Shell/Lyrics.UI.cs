@@ -354,6 +354,10 @@ public static partial class Lyrics
         /// the same measurement as <see cref="_lineRunLen"/> (so it is re-measured exactly when that is); null = not measured,
         /// empty = keep the character weights.</summary>
         float[]?[] _lineWordBounds = [];
+        /// <summary>Per line: the text style and wrap width its run length and word bounds were measured at (the row's own, once
+        /// realized: <see cref="LineLayoutOf"/>).</summary>
+        TextStyle[] _lineMeasStyle = [];
+        float[] _lineMeasWrap = [];
 
         // ── scene handles (reported ONCE, at realization) ────────────────────────────────────────────────────────────
         NodeHandle _viewportNode = NodeHandle.Null;
@@ -957,57 +961,82 @@ public static partial class Lyrics
         }
 
         /// <summary>The per-line softness fraction (<see cref="Wipe.SoftnessOfLine"/> over the measured run length).</summary>
-        internal float SoftnessOfLine(int index) => Wipe.SoftnessOfLine(RunLengthOf(index, CurrentWrapWidth()), Large);
+        internal float SoftnessOfLine(int index) => Wipe.SoftnessOfLine(RunLengthOf(index), Large);
 
-        /// <summary>Lazily measured reading-order run length, cached per line per width epoch (a ≥0.5 DIP wrap move
-        /// retires every entry). Per-frame callers only ever read the array.</summary>
-        float RunLengthOf(int index, float wrapWidth)
+        /// <summary>The text style and wrap width line <paramref name="index"/> is DRAWN with: its realized text node's own
+        /// (<see cref="Wipe.DrawnLayout"/>: the face, size, weight, tracking and line width the structure's row lays it out at — Zune's
+        /// stage rows set the display face, their tracking and the active scale, and lose the side pad), else, before the row is
+        /// realized and laid out, the core metrics over the viewport. False while neither has geometry.</summary>
+        bool LineLayoutOf(int index, out TextStyle style, out float wrapWidth)
         {
-            var runLen = _lineRunLen;
-            if (float.IsNaN(wrapWidth))
+            var scene = Context.Scene;
+            var node = (uint)index < (uint)_lineNodes.Length ? _lineNodes[index] : NodeHandle.Null;
+            if (scene is not null && Wipe.DrawnLayout(scene, node, out style, out wrapWidth)) return true;
+            wrapWidth = CurrentWrapWidth();
+            if (float.IsNaN(wrapWidth)) { style = default; return false; }
+            var m = Metrics;
+            style = new TextStyle(default, m.FontSize, m.Weight, TextWrap.Wrap, TextTrim.None, 0, CharSpacing: 0f, LineHeight: m.LineHeight);
+            return true;
+        }
+
+        /// <summary>Lazily measured reading-order run length, cached per line with the style and wrap width it was measured at
+        /// (<see cref="EnsureMeasured"/>). Per-frame callers compare and read; nothing is measured or allocated unless the line's
+        /// layout changed.</summary>
+        float RunLengthOf(int index)
+        {
+            if (!LineLayoutOf(index, out var style, out float wrapWidth))
             {
                 float last = _runLenWrapW;
                 return last > 1f ? last : Metrics.FontSize * 12f;
             }
-            if (float.IsNaN(_runLenWrapW) || MathF.Abs(_runLenWrapW - wrapWidth) >= 0.5f)
-            {
-                _runLenWrapW = wrapWidth;
-                Array.Fill(runLen, float.NaN);
-            }
-            if ((uint)index >= (uint)runLen.Length) return wrapWidth;
-            float cached = runLen[index];
-            if (!float.IsNaN(cached)) return cached;
-            float measured = MeasureRunLength(index, wrapWidth);
-            runLen[index] = measured;
-            return measured;
+            if ((uint)index >= (uint)_lineRunLen.Length) return wrapWidth;
+            EnsureMeasured(index, in style, wrapWidth);
+            return _lineRunLen[index];
         }
 
         /// <summary>The syllables' glyph bounds of line <paramref name="index"/> on the wipe's reading-order axis
-        /// (<see cref="Wipe.GlyphBounds"/>), measured with the run length (one layout epoch: a text, wrap-width or type change
-        /// re-measures both); empty while the viewport has no geometry or the line cannot be measured (the wipe then keeps
-        /// the character weights). Per-frame callers only read the cache.</summary>
+        /// (<see cref="Wipe.GlyphBounds"/>), measured with the run length in the style the row draws it with (one layout
+        /// epoch: a text, wrap-width, face, size, weight or tracking change re-measures both); empty while the viewport has no
+        /// geometry or the line cannot be measured (the wipe then keeps the character weights). Per-frame callers only read the
+        /// cache.</summary>
         internal ReadOnlySpan<float> WordBoundsOf(int index)
         {
-            float wrapWidth = CurrentWrapWidth();
-            if (float.IsNaN(wrapWidth) || (uint)index >= (uint)_lineRunLen.Length) return default;
-            if (_lineWordBounds.Length != _lineRunLen.Length) _lineWordBounds = new float[]?[_lineRunLen.Length];
-            RunLengthOf(index, wrapWidth);                                  // a stale epoch re-measures both here
-            if (_lineWordBounds[index] is null) MeasureRunLength(index, wrapWidth);
+            if ((uint)index >= (uint)_lineRunLen.Length || !LineLayoutOf(index, out var style, out float wrapWidth)) return default;
+            EnsureMeasured(index, in style, wrapWidth);
             return _lineWordBounds[index];
         }
 
-        /// <summary>One seam query per line per epoch (plus one per syllable for <see cref="WordBoundsOf"/>). The style MUST
-        /// mirror <c>ClassicLyricsRow</c>'s LineText exactly — the feather and the word bounds are fractions of the extent
-        /// measured here.</summary>
-        float MeasureRunLength(int index, float wrapWidth)
+        /// <summary>Measure line <paramref name="index"/> (run length and word bounds) unless its cache was measured at exactly
+        /// this style and (within half a DIP) this wrap width. A NaN run length (a new document, a remounted row, a stage type
+        /// step) also re-measures. A re-measure of the line the render thread is wiping re-seeds its keyframes.</summary>
+        void EnsureMeasured(int index, in TextStyle style, float wrapWidth)
+        {
+            int n = _lineRunLen.Length;
+            if (_lineWordBounds.Length != n || _lineMeasStyle.Length != n)
+            {
+                _lineWordBounds = new float[]?[n];
+                _lineMeasStyle = new TextStyle[n];
+                _lineMeasWrap = new float[n];
+            }
+            bool had = !float.IsNaN(_lineRunLen[index]) && _lineWordBounds[index] is not null;
+            if (had && _lineMeasStyle[index] == style && MathF.Abs(_lineMeasWrap[index] - wrapWidth) < 0.5f) return;
+            _runLenWrapW = wrapWidth;
+            _lineMeasStyle[index] = style;
+            _lineMeasWrap[index] = wrapWidth;
+            _lineRunLen[index] = MeasureRunLength(index, in style, wrapWidth);
+            if (had && index == _wipeRowLine) _wipeReseed = true;
+        }
+
+        /// <summary>One seam query per line per layout (plus one per syllable for <see cref="WordBoundsOf"/>), in the style
+        /// <see cref="LineLayoutOf"/> resolved — the row's own, so the feather and the word bounds are fractions of the run the
+        /// glyph wipe actually sweeps.</summary>
+        float MeasureRunLength(int index, in TextStyle style, float wrapWidth)
         {
             if ((uint)index < (uint)_lineWordBounds.Length) _lineWordBounds[index] = [];
             var doc = _doc;
             if (doc is null || (uint)index >= (uint)doc.Lines.Count) return wrapWidth;
             string text = doc.Lines[index].Text;
             if (text.Length == 0 || TextSeam.Default is not { } fonts) return wrapWidth;
-            var style = new TextStyle(default, Metrics.FontSize, Metrics.Weight, TextWrap.Wrap, TextTrim.None, 0,
-                CharSpacing: 0f, LineHeight: Metrics.LineHeight);
             if ((uint)index < (uint)_lineWordBounds.Length && doc.Lines[index] is { IsWordByWord: true, Syllables.Count: > 0 } wl)
                 _lineWordBounds[index] = Wipe.GlyphBounds(fonts, wl, in style, wrapWidth) ?? [];
             Span<RectF> fragments = stackalloc RectF[8];
@@ -1642,6 +1671,7 @@ public static partial class Lyrics
             if (renderWipe)
             {
                 double rate = _clock.ContentRate > 0 ? _clock.ContentRate : 1.0;
+                RunLengthOf(voiceLine);   // a compare while the row's layout holds; a re-laid row (a tier's type, a wrap) re-measures and re-seeds
                 if (voiceLine != _wipeRowLine || _wipeReseed || rate != _wipeRowRate || mainNode != _wipeRowMain)
                     SeedWipeRows(anim!, scene, voice!, voiceLine, nowMs, rate, mainNode, glowNode);
                 MaintainGlowSigma(scene, voiceLine, glowNode, runGlow);

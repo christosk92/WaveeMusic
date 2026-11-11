@@ -703,8 +703,7 @@ public static partial class Lyrics
 
         /// <summary>DIP feather → the per-line reading-order fraction, clamped. <paramref name="runLengthDip"/> is the
         /// MEASURED reading-order length of that line's text — the measurement itself stays in the UI (it needs the
-        /// text seam and a `TextStyle` that mirrors the row's EXACTLY; the two are changed together or the feather
-        /// re-scales).</summary>
+        /// text seam and the style the row DRAWS the line with, <see cref="DrawnLayout"/>, or the feather re-scales).</summary>
         public static float SoftnessOfLine(float runLengthDip, bool large)
             => Math.Clamp(SoftnessDipFor(large) / runLengthDip, SoftnessMin, SoftnessMax);
 
@@ -765,6 +764,28 @@ public static partial class Lyrics
         /// split and the frame driver's keyframes agree.</summary>
         public static float SplitOf(Wavee.Theming.Contracts.ILyricsHost host, int index, Line line, long nowMs, bool lead)
             => SplitWithLead(line, nowMs, host is ViewCore view ? view.WordBoundsOf(index) : default, lead);
+
+        /// <summary>The text style and wrap width realized text node <paramref name="node"/> is DRAWN with: its laid style (the face,
+        /// size, weight and tracking its structure set, at the auto-fit size the measure pass chose for a <c>MinSize</c> run) and its
+        /// laid width (the width the engine's own text queries wrap at; unbounded for a single unclipped line). What a surface hands
+        /// <see cref="GlyphBounds"/> and its run measure, so the word bounds sit on the glyphs the wipe paints, whatever type the
+        /// theme's row sets. False while the node is not live or not laid out yet.</summary>
+        public static bool DrawnLayout(FluentGpu.Scene.SceneStore scene, FluentGpu.Foundation.NodeHandle node, out FluentGpu.Text.TextStyle style, out float wrapWidth)
+        {
+            style = default;
+            wrapWidth = 0f;
+            if (node.IsNull || !scene.IsLive(node)) return false;
+            float w = scene.Bounds(node).W;
+            if (!(w > 1f)) return false;
+            style = scene.Layout(node).TextStyle;
+            if (style.MinSizeDip > 0f)
+            {
+                var fit = scene.MeasureCacheRef(node).ResolveForWidth(w);
+                if (fit.Valid && fit.FitSize > 0f) style = style.AtFitSize(fit.FitSize);
+            }
+            wrapWidth = style.Wrap == FluentGpu.Foundation.TextWrap.NoWrap && style.Trim == FluentGpu.Foundation.TextTrim.None ? float.PositiveInfinity : w;
+            return true;
+        }
 
         /// <summary>Where each syllable's first glyph starts on the line as laid out, as a fraction of the line's
         /// READING-ORDER run (the axis <see cref="FluentGpu.Foundation.GlyphWipe.Split"/> sweeps: each visual line from its

@@ -501,7 +501,7 @@ internal sealed class WinUiLyricsRow : Component
         };
 
         // Wrapped, unbounded, never trimmed on BOTH surfaces; built ONCE with its wipe and its realization report (no `with` clone
-        // per layer). `ViewCore.MeasureRunLength` rebuilds this style - the two change together.
+        // per layer). `ViewCore` measures the wipe on this node's own laid style (`Lyrics.Wipe.DrawnLayout`).
         TextEl LineText(string text, ColorF color, GlyphWipe? wipe, Action<NodeHandle>? onRealized) => new(text)
         {
             Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
