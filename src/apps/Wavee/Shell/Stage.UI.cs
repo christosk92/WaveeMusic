@@ -409,6 +409,10 @@ public static partial class Stage
                 ShowTheatre = () => ctx.Theatre.Value,
                 ShowAudioFace = () => ctx.AudioFace.Value,
                 ShowEndCard = () => ctx.EndCard.Value,
+                // Theatre's about block (the Artist pane's own facts and demand; its Artist tab opens in the stage)
+                About = () => AboutFacts(ctx),
+                DemandAbout = Demand,
+                OpenArtist = () => ctx.SetMode(Mode.Artist),
                 TopBar = new StageTopBarProps { Stage = ctx },
                 Transport = TransportProps(ctx),
                 Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },

@@ -264,10 +264,31 @@ internal static class ClassicStageTheatreGeometry
     /// within half a DIP of the whole stage by then from a move of 1000 DIP, so the ground appears under the picture and never around it.</summary>
     public const float GroundReturnMs = 600f;
 
+    /// <summary>The ABOUT block under the title (YouTube's channel row and description, `ClassicStageTheatreAbout`): its gap under the title block,
+    /// the artist row (a 40 round portrait beside the name and the listeners line, the Follow toggle), the gap to the description, the facts line, up
+    /// to <see cref="BioLines"/> lines of the bio and the "Read more" line, 4 apart.</summary>
+    public const float AboutGap = 16f, ArtistRowH = 40f, ArtistImage = 40f, ArtistRowGap = 12f, DescGap = 12f, FactsLine = 20f, BioLine = 20f, MoreLine = 20f, DescLineGap = 4f;
+
+    public const int BioLines = 3;
+
+    /// <summary>The round portrait's corner (half its side) and its decode size (twice its side).</summary>
+    public const float ArtistImageRadius = ArtistImage / 2f;
+
+    public const int ArtistImageDecode = (int)(ArtistImage * 2f);
+
+    /// <summary>The block's height, reserved whole from the first frame (the skeleton, the facts landing, a track change move nothing).</summary>
+    public const float AboutH = ArtistRowH + DescGap + FactsLine + DescLineGap + BioLines * BioLine + DescLineGap + MoreLine;
+
     /// <summary>The picture's rect, its title block's and the panel's, in stage DIP, for the stage layout <paramref name="L"/>. The panel is the open
     /// list's box: from the picture's top edge to the stage's foot, <see cref="ListPad"/> outside the tier's panel width on both sides (its rows'
     /// content keeps the gutters).</summary>
-    public readonly record struct Rects(RectF Picture, RectF Title, RectF Pane);
+    /// <para>The about block (<c>About</c>) stands under the title, as wide as the picture, only where the room down to the stage's gutter holds it whole;
+    /// elsewhere it is empty (0 wide) and the title block stands alone.</para>
+    public readonly record struct Rects(RectF Picture, RectF Title, RectF Pane, RectF About)
+    {
+        /// <summary>The about block shows (it fits whole under the title).</summary>
+        public bool AboutFits => About.W > 0f;
+    }
 
     public static Rects Of(Stage.Layout L)
     {
@@ -283,8 +304,10 @@ internal static class ClassicStageTheatreGeometry
         if (picH > roomH) { picH = roomH; picW = MathF.Round(roomH * PictureAspect); }
         float x = gutter + MathF.Round((columnW - picW) * 0.5f);
         float y = top;   // the picture's top edge under the top bar (the board "B · Open list"), its title under it
+        float aboutY = y + picH + TitleGap + TitleBlockH + AboutGap;
+        var about = aboutY + AboutH <= bottom ? new RectF(x, aboutY, picW, AboutH) : default;
         return new Rects(new RectF(x, y, picW, picH), new RectF(x, y + picH + TitleGap, picW, TitleBlockH),
-            new RectF(paneX - ListPad, y, paneW + 2f * ListPad, MathF.Max(0f, L.H - y)));
+            new RectF(paneX - ListPad, y, paneW + 2f * ListPad, MathF.Max(0f, L.H - y)), about);
     }
 }
 

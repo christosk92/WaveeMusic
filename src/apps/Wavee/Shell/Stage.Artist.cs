@@ -48,9 +48,42 @@ public static partial class Stage
         };
     }
 
+    /// <summary>The ABOUT block's facts under Theatre's title (<see cref="StageRootView.About"/>): the rail's artist resolver over the playing track, the
+    /// artist's name, portrait, listeners and bio (the Artist pane's overview) and the track's facts (plays, year, album, tempo and key, as the table
+    /// and its drawer state them). Read inside the block's render: it subscribes the track key, the scope, the billed artists' edge and the tables.</summary>
+    internal static StageAboutFacts? AboutFacts(StageCtx ctx)
+    {
+        var track = ctx.RowValue();
+        _ = Entities.ScopeEpoch.Value;                                // FIRST: a scope switch re-points the table reads below
+        var scope = Entities.Current;
+        _ = scope.Edges.TrackArtists.Changed.Value;                   // the billed artists land after the row
+        _ = scope.Artists.Changed.Value;
+        _ = scope.Tracks.Changed.Value;                               // plays and tempo land after the row
+        _ = scope.Albums.Changed.Value;                               // the year with the album
+        if (!track.IsValid) return null;
+        var artist = Rail.NowPlayingArtist(track);
+        var facts = new List<string>(4);
+        if (track.PlayCount > 0) facts.Add(Strings.Detail.Row.PlaysFull(Track.Format.PlaysLabel(track.PlayCount)));
+        var album = track.Album;
+        if (album.IsValid && album.Year > 0) facts.Add(FormatCache.Int(album.Year));
+        if (album.IsValid && album.Title is { Length: > 0 } albumTitle) facts.Add(albumTitle);
+        if (track.Tempo > 0)
+        {
+            string tempo = Strings.Stage.Bpm(Track.Format.TempoLabel(track.Tempo));
+            string? key = Track.Format.CamelotLabel(track.Camelot) ?? Track.Format.KeyLabel(track.Key);
+            facts.Add(key is null ? tempo : tempo + " · " + key);   // loc-allow: the metadata joiner
+        }
+        string line = string.Join(" · ", facts);   // loc-allow: the metadata joiner
+        if (!artist.IsValid) return new StageAboutFacts(0, track.Slot, "", "", null, "", line, "", Pending: false);
+        string bio = HomeCardText.PlainText(Entities.Strings.Resolve(artist.BioId.IsEmpty ? artist.BioLeadId : artist.BioId)) ?? "";
+        string listeners = artist.MonthlyListeners > 0 ? Strings.Stage.Artist.ListenersShort(ArtistRules.ListenerCount(artist.MonthlyListeners)) : "";
+        return new StageAboutFacts(artist.Slot, track.Slot, artist.Name, artist.Uri.IsValid ? artist.Uri.Text : "", Controls.ArtUrl(artist.ImageId), listeners,
+            line, bio, Pending: artist.Name.Length == 0);
+    }
+
     /// <summary>What the pane paints, asked ONCE per key: the overview (stats, bio, header, tour — and with it the
     /// gallery and the cities), the popular and related edges while nobody has answered, the track's credits.</summary>
-    static void Demand(int artistSlot, int trackSlot)
+    internal static void Demand(int artistSlot, int trackSlot)
     {
         var e = Entities.Current.Edges;
         var artist = new Artist(artistSlot);

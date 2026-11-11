@@ -164,7 +164,31 @@ public sealed record StageRootView
     /// the chrome as it is (a paused deck pins the idle chrome) and, in Cinema, the shelf lists the tracks after the card's. A predicate.
     /// Appended (contract 1.98).</summary>
     public Func<bool> ShowEndCard { get; init; } = static () => false;
+
+    /// <summary>The ABOUT block under Theatre's title (YouTube's channel row and description): the playing track's primary artist and the track's
+    /// facts, read inside the block's render (it subscribes the track key, the artist and track tables and the billed artists' edge). Null: nothing
+    /// is playing. Built from what the stage already asks (the Artist pane's overview): no fetch of its own. Appended (contract 1.100).</summary>
+    public Func<StageAboutFacts?> About { get; init; } = static () => null;
+
+    /// <summary>Ask for what <see cref="About"/> shows (the Artist pane's own demand: the artist's overview, the track's credits), once per (artist, track).
+    /// Call it from an effect. Appended (contract 1.100).</summary>
+    public Action<int, int> DemandAbout { get; init; } = static (_, _) => { };
+
+    /// <summary>Open the stage's own Artist tab (the one home of the artist's whole story); it stays in full screen. Appended (contract 1.100).</summary>
+    public Action OpenArtist { get; init; } = static () => { };
 }
+
+/// <summary>The about block's facts (<see cref="StageRootView.About"/>). Every string is empty when its fact is missing: a block never shows a placeholder.</summary>
+/// <param name="Artist">The primary artist's slot (0: none).</param>
+/// <param name="Track">The playing track's slot.</param>
+/// <param name="Name">The artist's name.</param>
+/// <param name="Uri">The artist's uri (the Follow toggle's), "" when it has none.</param>
+/// <param name="ImageUrl">The artist's round portrait, null when it has none (the artwork's placeholder).</param>
+/// <param name="Listeners">"12.3M monthly listeners", "" when unknown.</param>
+/// <param name="Facts">The track's facts joined by " · ": plays, release year, album, tempo and key; "" when none is known.</param>
+/// <param name="Bio">The artist's biography as plain text, "" when there is none.</param>
+/// <param name="Pending">The artist's own facts have not landed yet (the block shows its skeleton at its full size).</param>
+public sealed record StageAboutFacts(int Artist, int Track, string Name, string Uri, string? ImageUrl, string Listeners, string Facts, string Bio, bool Pending);
 
 /// <summary>The props of <see cref="ViewKeys.StagePictureChrome"/>: the stage's chrome over the music video in Video mode (the top bar, the
 /// title block, the transport, the hairline, their scrims), drawn by the structure with the stage's own view (its wiring, predicates and

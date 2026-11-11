@@ -152,6 +152,13 @@ internal static class ClassicStagePictureChrome
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
                     Children = [ClassicStageTheatre.TheatreTitle(v, theatre.Title)],
                 }),
+                // the about block under it (YouTube's channel row and description), at rest, where the room under the title holds it whole
+                Flow.Show(() => v.ShowTheatre() && theatre.AboutFits, Stage.Layer with
+                {
+                    Key = "picture:theatre-about",
+                    Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
+                    Children = [Embed.Comp(new ClassicStageTheatreAbout.Props(v), static () => new ClassicStageTheatreAbout())],
+                }),
                 ClassicStageRoot.TopBar(v, topShown),
                 // the hairline at the picture's foot while the bar rests
                 Flow.Show(hairline, Stage.Layer with

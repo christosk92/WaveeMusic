@@ -84,7 +84,9 @@ versions separately under `v*` and is not tracked in this file.)
   Narrow windows fold shuffle, repeat and the device picker into "..." first.
 - **Theatre takes the song's colours.** Around the picture the page glows in the playing song's colours instead of
   plain black, and the Up next list beside it is an open list on that page rather than a framed card, with a compact
-  header (Up next, the count, Autoplay). The Lyrics panel gets the same header.
+  header (Up next, the count, Autoplay). The Lyrics panel gets the same header. Under the song's title, where there is room,
+  the artist sits as on YouTube (photo, name, monthly listeners, Follow) above the song's facts (plays, year, album, tempo
+  and key) and the start of the artist's story; "Read more" and the artist open the full screen's Artist tab.
 - **Up next cards over the full picture lose their frames.** A music video's card is its picture, an audio-only track's
   card is its square cover, with the length on the art.
 - **Full screen has a button in the Classic title bar.** It sits right beside minimise, after the bell, friends and pin; the player bar's menus keep the row for narrow windows.
