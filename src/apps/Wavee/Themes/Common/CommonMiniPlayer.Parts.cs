@@ -466,14 +466,20 @@ internal static partial class CommonMiniPlayer
     // ══ LYRICS ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The lyrics face's window: the app's own lyrics view (the side pane's rows, ink, word wipe and follow, in the theme's style) at
-    /// the theme's mini type, in a box of <paramref name="height"/> that clips it and fades its edges (the view sets none of its own here).
-    /// The active line's centre sits at <paramref name="band"/>. Not a target: the wheel stays the window's volume.</summary>
+    /// the theme's mini type, in a box of <paramref name="height"/> that clips it. The box hands the view its edge fades and gutter
+    /// (<see cref="LyricsBox"/>): the structure's view fades its reading layers with them (the lines dissolve at the top and at the AI
+    /// disclosure's edge, never cut) and the disclosure under them takes its one-line form. The active line's centre sits at
+    /// <paramref name="band"/>. Not a target: the wheel stays the window's volume.</summary>
     static Element LyricWindow(Ctx m, float height, float band, float gutter, float fadeFoot, bool onDark) => new BoxEl
     {
         Key = H.LyricsKey + ":window", Height = height, Shrink = 0f, Direction = 1, ClipToBounds = true, HitTestVisible = false,
-        EdgeFade = new EdgeFadeSpec(EdgeMask.Vertical, 0f, height * H.LyricFadeTop, 0f, MathF.Max(H.LyricFadeMin, fadeFoot)),
-        Children = [m.P.LyricsView(new MiniLyricsView(onDark, m.St.LyricScale(m.Shape), band, gutter,
-            onDark ? ColorF.Lerp(m.Accent, H.OnMediaInk, H.OnDarkLift) : default))],
+        Children =
+        [
+            FluentGpu.Hooks.Ctx.Provide(LyricsBox.Context,
+                new LyricsBox(new EdgeFadeSpec(EdgeMask.Vertical, 0f, height * H.LyricFadeTop, 0f, MathF.Max(H.LyricFadeMin, fadeFoot)), gutter),
+                m.P.LyricsView(new MiniLyricsView(onDark, m.St.LyricScale(m.Shape), band, gutter,
+                    onDark ? ColorF.Lerp(m.Accent, H.OnMediaInk, H.OnDarkLift) : default))),
+        ],
     };
 
     sealed record TickerProps(MiniLyricsFrame Frame, Ctx M, Element Fallback);

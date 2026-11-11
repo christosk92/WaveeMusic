@@ -21,6 +21,10 @@
 //                  Settings card's progress fill). Done or cached: the disclosure line alone. The clip box grows through
 //                  real layout (SizeMode.Reflow), so the list above it shrinks smoothly instead of jumping; the line
 //                  fades in under the stationary clip.
+//                  In a small box (`LyricsBox.Context`, the mini player's lyrics face) the same strip takes its COMPACT form: one
+//                  caption line on the box's gutter, the sparkle and "AI word timing" (or the progress line, cut to one line), with
+//                  tighter padding, so it never pushes the lines up by two lines of text. (No tooltip there: that face is a picture,
+//                  never a target, and on hover the transport's veil covers it.)
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -135,6 +139,8 @@ public static partial class AiLyrics
 
         public override Element Render()
         {
+            var box = UseContext(LyricsBox.Context);   // hooks first: a small box asks for the compact form
+            bool compact = box is not null;
             var track = Track.Value;
             string playing = PlayingLyricsId();
             var root = new BoxEl { Direction = 1, Shrink = 0f, MinWidth = 0f };
@@ -154,11 +160,11 @@ public static partial class AiLyrics
                     {
                         Size = GlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = color, Shrink = 0f,
                     },
-                    new TextEl(progress ? Strings.Lyrics.Ai.Footer.Progress(track.LinesReady, track.LineCount) : Loc.Get(Rules.FooterKey(track)))
+                    new TextEl(progress ? Strings.Lyrics.Ai.Footer.Progress(track.LinesReady, track.LineCount) : Loc.Get(Rules.FooterKey(track, compact)))
                     {
                         Size = TextSize, LineHeight = TextLineHeight, Color = color,
                         Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                        Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
+                        Wrap = compact ? TextWrap.NoWrap : TextWrap.Wrap, MaxLines = compact ? 1 : 2, Trim = TextTrim.CharacterEllipsis,
                     },
                 ],
             };
@@ -177,7 +183,7 @@ public static partial class AiLyrics
                             new BoxEl
                             {
                                 Direction = 1, Gap = Spacing.XS, MinWidth = 0f,
-                                Padding = new Edges4(_sidePad, Spacing.S, _sidePad, Spacing.S),
+                                Padding = compact ? new Edges4(box!.Gutter, Spacing.XS, box.Gutter, Spacing.XS) : new Edges4(_sidePad, Spacing.S, _sidePad, Spacing.S),
                                 Animate = s_fadeIn,
                                 HitTestVisible = false,
                                 Children = progress ? [line, BufferBar()] : [line],

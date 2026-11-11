@@ -4111,6 +4111,7 @@
       },
       "footer": {
         "generated": "Word timing generated on this PC by AI. It can be off by a moment.",
+        "short": "AI word timing",
         "progress": "Timing words · {ready} of {total} lines"
       }
     },

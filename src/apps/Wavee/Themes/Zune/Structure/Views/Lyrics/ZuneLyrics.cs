@@ -42,11 +42,12 @@ internal static class ZuneStageLyrics
     public static Element Template(LyricsViewProps props, in ViewContext ctx)
     {
         var tiers = ctx.Tier();   // hooks first, unconditionally
+        var box = ctx.Hooks.UseContext(LyricsBox.Context);
         var host = props.Host;
         Element content = props.Message is { } text
             ? ctx.StyleOf(StyleKeys.LyricsLines).Message(host, text)
             : Layers(props, host, ZuneStageTiers.StageOf(in tiers).TargetH,
-                host.OnStage && ZuneStageTiers.StageOf(in tiers).LyricsRhythm is { ActiveScale: > 1f } ? 0f : host.Metrics.SidePad);
+                host.OnStage && ZuneStageTiers.StageOf(in tiers).LyricsRhythm is { ActiveScale: > 1f } ? 0f : host.Metrics.SidePad, box);
         return host.OnStage ? StageColumn(host, content) : content;
     }
 
@@ -69,7 +70,7 @@ internal static class ZuneStageLyrics
         ],
     };
 
-    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH, float sidePad)
+    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH, float sidePad, LyricsBox? box)
     {
         // The frame stepper stays UNMOUNTED while the host's gate is up, so a surface that cannot step costs no frames.
         var kids = new List<Element>(6);
@@ -80,9 +81,11 @@ internal static class ZuneStageLyrics
         kids.Add(VideoNote(host));
         if (props.Debug is { } debug) kids.Add(debug);
 
+        // In a small box (the mini player's lyrics face) the box's edge fades are the LAYERS': the lines dissolve at the top and at the
+        // disclosure's edge under them, and the disclosure itself stays whole.
         var layers = new BoxEl
         {
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, EdgeFade = box?.Fade,
             Children = kids.ToArray(),
         };
         // The podcast reader never carries the on-device AI disclosure: it keeps the bare layer stack (mount config, so the

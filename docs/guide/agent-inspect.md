@@ -502,7 +502,10 @@ switch off and disabled), `setup` (needs its download), `downloading` (40 %, a s
 NPU compile, 3 of 8), `ready` (default; English and Spanish installed), `lang-failed` (a language added to a ready feature failed:
 the card stays Ready, with that language's own bar `ai:lang-failed` / `zs:ai:lang-failed`), `setup-failed` (a first setup stopped
 on a language's file: the whole card is the error, naming it), `error` (the whole feature: a shared file, the runtime, the NPU, the
-compile; the bar is `ai:error` / `zs:ai:error`) and `none` ("not started" again). `error=notfound|offline|network|hash|diskfull|unknown`
+compile; the bar is `ai:error` / `zs:ai:error`), `timed` and `timing` (ready, and the PLAYING track timed by it: a finished job, or
+one running at a third of its lines, so the lyrics surfaces draw the AI disclosure, `ai-lyrics-footer-clip`, or its progress line;
+stage it after a `play`, e.g. the mini player: `mount w=420 h=420 mini=true face=1`, `play spotify:track:tr3 30000`,
+`state kind=ai ai=timed`) and `none` ("not started" again). `error=notfound|offline|network|hash|diskfull|unknown`
 (`runtime|nonpu|compile` too, for `ai=error`) picks the failure kind, with the detail the real download writes for it (the URL, the
 file, the drive); `lang=` the failed language (`ja` by default; a pack language). The bars' buttons are keyed: `ai:details` /
 `zs:ai:details` (reveals the raw detail in place) and `ai:retry` / `zs:ai:retry`. The reply names the `phase`, `error` and

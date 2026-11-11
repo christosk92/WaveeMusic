@@ -116,6 +116,10 @@ versions separately under `v*` and is not tracked in this file.)
   titles are read too. Plain-text lyrics from lrclib were also being thrown away as fake timing; they now show (and the
   on-device AI can time them). Songs that found nothing before are searched again instead of answering from the
   remembered "no lyrics".
+- **The mini player's lyrics fade out at the edges, and the AI note is one short line.** On a song timed by the
+  on-device AI, the lines above the note were cut off flat and the note itself was faded and took two lines; the lines
+  now dissolve at the top and just above the note, and the note reads "AI word timing" on one line (the side pane and
+  full screen keep the whole sentence).
 - **Music videos showed at the wrong size for a moment.** Going full screen, changing quality or resizing the window made
   the picture too small or too large for a few frames, and a Canvas could show a black column: Windows now stretches the
   picture to its box on every frame, whatever size the video arrives in.

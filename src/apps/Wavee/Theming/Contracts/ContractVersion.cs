@@ -277,6 +277,8 @@
 // video plays as its video: the stage's Up next lists show its 16:9 still, else every row its square cover; `IQueueLane.VideoOf` is now asked by
 // every stage Up next list for the film glyph too). The string `Strings.Stage.Mode.Overview`. Core only: `TheatreRules.EscapeStepsToTheatre`
 // lost its audio-face argument (Esc in Overview's Cinema steps to Theatre as over a picture).
+// 1.106 (the mini player's lyrics face): `LyricsBox` and its `Context` (the small box a lyrics view is mounted in: a structure's view sets the
+// box's edge fade on its reading layers, above the AI disclosure, and the disclosure takes its compact one-line form on the box's gutter).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -292,7 +294,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 105;
+    public const int Minor = 106;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

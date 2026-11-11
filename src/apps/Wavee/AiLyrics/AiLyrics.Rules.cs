@@ -429,9 +429,10 @@ public static partial class AiLyrics
         public static bool FooterShowsProgress(TrackStatus track) => track.Phase == TrackPhase.Working && !track.FromCache;
 
         /// <summary>The footer's line: the progress key (placeholders {ready}, {total}) while <see cref="FooterShowsProgress"/>,
-        /// else the disclosure.</summary>
-        public static string FooterKey(TrackStatus track)
-            => FooterShowsProgress(track) ? "lyrics.ai.footer.progress" : "lyrics.ai.footer.generated";
+        /// else the disclosure: the sentence, or in a small box (<paramref name="compact"/>, the mini player's lyrics face) its short
+        /// form, one caption line.</summary>
+        public static string FooterKey(TrackStatus track, bool compact = false)
+            => FooterShowsProgress(track) ? "lyrics.ai.footer.progress" : compact ? "lyrics.ai.footer.short" : "lyrics.ai.footer.generated";
 
         /// <summary>A 0..1 share of a whole for the footer's buffer bar (the timed region, the playhead); 0 while the whole
         /// is unknown.</summary>

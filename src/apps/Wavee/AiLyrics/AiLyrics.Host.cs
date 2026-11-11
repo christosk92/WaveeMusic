@@ -134,11 +134,26 @@ public static partial class AiLyrics
 
     /// <summary>The headless inspector's `state kind=ai`: publish <paramref name="status"/> as the card's status without the module
     /// (the inspector never calls <see cref="Install"/>), or put the boot's "not started" back (<c>null</c>; the next mount does).</summary>
-    public static void Stage(Status? status)
+    public static void Stage(Status? status, TrackPhase trackPhase = TrackPhase.Idle)
     {
         Staged = status is not null;
+        // `ai=timed|timing`: the playing track's status as a finished (cached) or running job publishes it, so the lyrics surfaces draw
+        // the AI disclosure without the module. Written before Current: the driver's staged branch then keeps it.
+        s_trackStaged = Staged && trackPhase is TrackPhase.Done or TrackPhase.Working;
+        if (s_trackStaged)
+        {
+            string id = PlayingLyricsId();
+            int lines = id.Length > 0 && Lyrics.Store.Doc(id) is { } doc ? doc.Lines.Count : 0;
+            bool done = trackPhase == TrackPhase.Done;
+            Track.Value = new TrackStatus(id, trackPhase, SkipReason.None, "en", done ? lines : lines / 3, lines,
+                done ? 0 : Playback.DurationMs.Peek() / 2000.0, done);
+        }
+        else if (Track.Peek().Phase != TrackPhase.Idle) Track.Value = default;
         Current.Value = status ?? Status.Unknown;
     }
+
+    /// <summary>A <see cref="Stage"/> also stands a track status: the driver leaves it alone.</summary>
+    static bool s_trackStaged;
 
     static Action<Action> s_post = static a => a();
     static CancellationTokenSource? s_downloadCts;
@@ -578,7 +593,7 @@ public static partial class AiLyrics
         if (Staged || !st.Enabled || st.Phase != SetupPhase.Ready || !id.IsValid)
         {
             if (s_ledger.JobRunning) CancelJob();
-            if (Track.Peek().Phase != TrackPhase.Idle) Track.Value = default;
+            if (Track.Peek().Phase != TrackPhase.Idle && !(Staged && s_trackStaged)) Track.Value = default;
             return;
         }
         string trackId = "";

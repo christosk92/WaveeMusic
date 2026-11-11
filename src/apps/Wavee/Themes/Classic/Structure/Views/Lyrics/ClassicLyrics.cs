@@ -42,10 +42,11 @@ internal static class ClassicLyrics
     /// <summary>The registered template of <see cref="ViewKeys.LyricsView"/>.</summary>
     public static Element Template(LyricsViewProps props, in ViewContext ctx)
     {
+        var box = ctx.Hooks.UseContext(LyricsBox.Context);   // hooks first, unconditionally
         var host = props.Host;
         Element content = props.Message is { } text
             ? ctx.StyleOf(StyleKeys.LyricsLines).Message(host, text)
-            : Layers(props, host, ClassicStageTiers.PanelOf(ctx.Tier()).MinTarget);
+            : Layers(props, host, ClassicStageTiers.PanelOf(ctx.Tier()).MinTarget, box);
         return host.OnStage ? StageColumn(host, content) : content;
     }
 
@@ -68,7 +69,7 @@ internal static class ClassicLyrics
         ],
     };
 
-    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH)
+    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH, LyricsBox? box)
     {
         // The frame stepper stays UNMOUNTED while the host's gate is up, so a surface that cannot step costs no frames.
         var kids = new List<Element>(6);
@@ -79,9 +80,11 @@ internal static class ClassicLyrics
         kids.Add(VideoNote(host));
         if (props.Debug is { } debug) kids.Add(debug);
 
+        // In a small box (the mini player's lyrics face) the box's edge fades are the LAYERS': the lines dissolve at the top and at the
+        // disclosure's edge under them, and the disclosure itself stays whole.
         var layers = new BoxEl
         {
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, EdgeFade = box?.Fade,
             Children = kids.ToArray(),
         };
         // The podcast reader never carries the on-device AI disclosure: it keeps the bare layer stack (mount config, so the

@@ -18,7 +18,7 @@ public static partial class Diagnostics
     {
         /// <summary>The cases `state kind=ai ai=` stages, in the order `help` lists them.</summary>
         internal static readonly string[] AiCases =
-            ["off", "unavailable", "setup", "downloading", "paused", "preparing", "ready", "lang-failed", "setup-failed", "error", "none"];
+            ["off", "unavailable", "setup", "downloading", "paused", "preparing", "ready", "lang-failed", "setup-failed", "error", "timed", "timing", "none"];
 
         /// <summary>The failure kinds `error=` takes (with `ai=lang-failed|setup-failed|error`).</summary>
         internal static readonly string[] AiErrors = ["notfound", "offline", "network", "hash", "diskfull", "unknown", "runtime", "nonpu", "compile"];
@@ -36,7 +36,10 @@ public static partial class Diagnostics
             if (AiErrorOf(e) is not { } error) return Inspect.Reply.Fail(id, name, "state kind=ai wants error=" + string.Join("|", AiErrors) + ", not '" + e + "'");
             if (!AiLyrics.PackManifest.Embedded.Languages.ContainsKey(lang))
                 return Inspect.Reply.Fail(id, name, "state kind=ai wants lang= a pack language (" + string.Join("|", AiLyrics.PackManifest.Embedded.Languages.Keys) + "), not '" + lang + "'");
-            AiLyrics.Stage(c == "none" ? null : AiStatus(c, error, lang));
+            // timed / timing: the feature ready AND the playing track timed by it (a finished job, or one running: the lyrics surfaces'
+            // AI disclosure, its progress line). Stage after a `play`: the status names the track playing then.
+            var trackPhase = c switch { "timed" => AiLyrics.TrackPhase.Done, "timing" => AiLyrics.TrackPhase.Working, _ => AiLyrics.TrackPhase.Idle };
+            AiLyrics.Stage(c == "none" ? null : AiStatus(c, error, lang), trackPhase);
             _aiStaged = c != "none";
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
             return Settled(id, name, a, w =>
@@ -105,7 +108,7 @@ public static partial class Diagnostics
                 {
                     Phase = AiLyrics.SetupPhase.Preparing, Prepare = new AiLyrics.PrepareProgress(3, 8, 3, 8, false, false),
                 },
-                "ready" => ready,
+                "ready" or "timed" or "timing" => ready,
                 // a language added to a ready feature failed: the card stays Ready, that language's own bar names it
                 "lang-failed" => ready with { LanguageFailure = new AiLyrics.LanguageFailure(lang, error, detail) },
                 // a first setup that stopped on a language's file: the whole card is the error, naming the language

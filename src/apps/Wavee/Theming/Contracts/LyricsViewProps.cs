@@ -15,6 +15,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
@@ -42,6 +43,17 @@ public sealed record LyricsViewProps
 
     /// <summary>The on-device AI disclosure under the reading layers; null on the podcast reader (episodes are never timed).</summary>
     public Element? Footer { get; init; }
+}
+
+/// <summary>The small box a lyrics view is mounted in (the mini player's lyrics face, #197), provided around the mount through
+/// <see cref="Context"/>. The box's edge fades belong to the READING LAYERS, not to the box: a structure's view sets <see cref="Fade"/> on the
+/// layer stack above its AI disclosure, so the lines dissolve at the top and at the disclosure's edge (a fade on the whole box dimmed the
+/// disclosure and left the lines above it cut hard). The disclosure takes its compact form here (one caption line on the box's
+/// <see cref="Gutter"/>). Appended (contract 1.106).</summary>
+public sealed record LyricsBox(EdgeFadeSpec Fade, float Gutter)
+{
+    /// <summary>Null everywhere but inside a small box: the rail and the stage keep their own fades and the full disclosure.</summary>
+    public static readonly Context<LyricsBox?> Context = new(null);
 }
 
 /// <summary>What the podcast peek's gate needs: the quiet "length · language" line and the verb that starts the episode.</summary>
