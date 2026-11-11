@@ -765,12 +765,16 @@ public static partial class Verse
         }
 
         /// <summary>The region for a face box (<paramref name="faceW"/> × <paramref name="faceH"/>, the open gallery's inset
-        /// already excluded by the host) on a stage layout.</summary>
-        public static Region For(in Stage.Layout L, float faceW, float faceH, bool galleryOpen, bool chrome)
+        /// already excluded by the host) on a stage layout. <paramref name="safeBottom"/> is the foot of the face-safe rect the structure
+        /// publishes with the face (<c>Visualizer.FaceSpec.SafeBottom</c>: above a now-playing card it draws over the face, Zune's Card
+        /// arrangement); 0 = none. The live line and what reads under it stand above it: the anchor rises when the default would put them
+        /// under the card. <paramref name="extraTop"/> is how far the structure's rect starts below the core's own (a title it draws over the
+        /// face): the ghosts stop that much lower.</summary>
+        public static Region For(in Stage.Layout L, float faceW, float faceH, bool galleryOpen, bool chrome, float safeBottom = 0f, float extraTop = 0f)
         {
             float caption = L.CaptionFont.Size;
             float cardFoot = Stage.Layout.NowPlayingCardY + Stage.Layout.NowPlayingCardH + Stage.Layout.Pad;
-            float top = chrome ? cardFoot : Stage.Layout.TopBarH + Stage.Layout.Pad;
+            float top = (chrome ? cardFoot : Stage.Layout.TopBarH + Stage.Layout.Pad) + extraTop;
             switch (L.Aspect)
             {
                 case Stage.Aspect.Compact:
@@ -799,8 +803,17 @@ public static partial class Verse
                     float size = MathF.Round(caption * DesktopTypeK * 0.5f) * 2f;
                     float colW = Stage.Layout.Q4(MathF.Min(ColumnFrac * faceW, ColumnMaxW * L.LyricsTypeScale));
                     float colX = MathF.Round((faceW - colW) * 0.5f);
-                    return new Region(L.Aspect, colX, colW, MathF.Round(AnchorFrac * faceH), size, Emphasis.HeldScale,
-                        faceH >= TallH ? TallGhosts : DesktopGhosts, top, L.TransportTop - BottomGap,
+                    float bottom = L.TransportTop - BottomGap;
+                    float anchor = AnchorFrac * faceH;
+                    if (safeBottom > 0f && safeBottom < bottom)
+                    {
+                        // a card over the face: the live line (one row's half), its hairline and the read-ahead stand above its gutter
+                        bottom = safeBottom;
+                        float below = MathF.Round(size * LineK) * 0.5f + BlockAir + HairlineH + BlockAir + MathF.Round(size * ReadAheadK * LineK);
+                        anchor = MathF.Max(top + MathF.Round(size * LineK), MathF.Min(anchor, bottom - below));
+                    }
+                    return new Region(L.Aspect, colX, colW, MathF.Round(anchor), size, Emphasis.HeldScale,
+                        faceH >= TallH ? TallGhosts : DesktopGhosts, top, bottom,
                         ReadAhead: true, Translation: true, Cloud: true, LandBlur: true);
                 }
             }

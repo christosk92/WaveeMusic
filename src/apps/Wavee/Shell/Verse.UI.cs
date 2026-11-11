@@ -65,9 +65,15 @@ public static partial class Verse
     /// <summary>The Verse face. A gallery tile is a still word with a wipe (no lyrics read, no clock, no blur); the stage
     /// face is the host component, re-pushed (slab, size) props.</summary>
     public static Element Face(Visualizer.Slab slab, in Visualizer.Palette pal, in Visualizer.FaceSpec spec)
-        => spec.Preview ? Preview(in pal, in spec) : Embed.Comp(new HostProps(slab, spec.W, spec.H), static () => new Host());
+        => spec.Preview ? Preview(in pal, in spec) : Embed.Comp(new HostProps(slab, spec.W, spec.H, SafeHead(in spec), SafeFoot(in spec)), static () => new Host());
 
-    sealed record HostProps(Visualizer.Slab Slab, float W, float H);
+    /// <summary>The foot of the face-safe rect the structure handed the face (0 = none): what a card over the face leaves free.</summary>
+    static float SafeFoot(in Visualizer.FaceSpec spec) => spec.SafeBottom > spec.SafeTop ? spec.SafeBottom : 0f;
+
+    /// <summary>The head of that rect (0 = none): under a title the structure draws over the face (Zune's display line in its Card arrangement).</summary>
+    static float SafeHead(in Visualizer.FaceSpec spec) => spec.SafeBottom > spec.SafeTop ? spec.SafeTop : 0f;
+
+    sealed record HostProps(Visualizer.Slab Slab, float W, float H, float SafeTop, float SafeBottom);
 
     /// <summary>The gallery tile: the face's name set as a sung word — the wipe two-thirds through it in the cover's
     /// accent, the rest faint ink — over a hairline at the same point. Three nodes, nothing bound.</summary>
@@ -243,7 +249,9 @@ public static partial class Verse
             UseEffect(() => _timed.SetIfChanged(timedNow), DepKey.From(timedNow ? 1 : 0));
             UseEffect(_rearm, DepKey.From(epoch, _gen, playing ? 1 : 0, view));   // every built view re-decides the lanes
 
-            var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome);
+            // what the structure reserves over the face beyond the core's own face-safe rect (whose top Verse already follows, chrome-aware)
+            float extraTop = p.SafeTop > 0f ? MathF.Max(0f, p.SafeTop - L.FaceSafe(galleryOpen, false).Y) : 0f;
+            var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome, p.SafeBottom, extraTop);
             bool blurOn = region.LandBlur && Lyrics.Prefs.BlurStrength(onStage: false) >= Land.BlurMinStrength;
             Element[] body;
             if (song is null)
