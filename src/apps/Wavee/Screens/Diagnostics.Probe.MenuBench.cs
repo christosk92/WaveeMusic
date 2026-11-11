@@ -178,6 +178,41 @@ public static partial class Diagnostics
                     }
                 }
             }
+            // --bench-menu-cascade N: N times, the track menu, then its cascades by keyboard (posted to this window): Add to playlist
+            // opens, closes, Share opens, closes, Add to playlist, then Share again, each switch 50 ms apart so a closing cascade
+            // still fades while the next opens (root + up to three cascade windows alive); then the whole menu closes and the same is
+            // done once more. The most popup windows alive at once is reported; screen grabs show the cascades' stacking.
+            int cascades = ArgInt("--bench-menu-cascade");
+            for (int k = 0; k < cascades && !w.IsClosed; k++)
+            {
+                host.Input.RequestContextAt(point);
+                PumpPaced(host, w, 0.8);
+                int most = 0;
+                void Step(nint vk, double sec) { PostKey(w, vk); var t = Stopwatch.StartNew(); while (t.Elapsed.TotalSeconds < sec) { PumpPaced(host, w, 0.02); most = Math.Max(most, host.PopupWindows.Count); } }
+                // Down x4 lands on Add to playlist (a cascade); Down x2 from it on Share (a cascade).
+                for (int d = 0; d < 4; d++) Step(0x28 /*VK_DOWN*/, 0.05);
+                Step(0x27 /*VK_RIGHT*/, 0.6);
+                Step(0x25 /*VK_LEFT*/, 0.0); Step(0x28, 0.0); Step(0x28, 0.0); Step(0x27, 0.05);
+                Step(0x25, 0.0); Step(0x26 /*VK_UP*/, 0.0); Step(0x26, 0.0); Step(0x27, 0.05);
+                Step(0x25, 0.0); Step(0x28, 0.0); Step(0x28, 0.0); Step(0x27, 0.6);
+                Say(string.Format(CultureInfo.InvariantCulture, "[menu-bench] cascade round {0}: most popup windows alive={1} visible now={2}", k, most, PopupHwndCount(visibleOnly: true)));
+                PostEscape(w); PumpPaced(host, w, 0.3);
+                PostEscape(w); PumpPaced(host, w, 1.2);
+            }
+            // --bench-menu-move X Y: move this window to the screen point (X, Y) (another monitor, another scale) with the pairs parked,
+            // open the menu there, move back, open again: the pool key holds the scale and the monitor, so each move must release the
+            // parked pair ("pool drop reason=stale") and the menu must open with the material and corner of its new scale.
+            if (ArgPair("--bench-menu-move") is { } dest)
+            {
+                GetWindowRect(w.Handle.Value, out var home);
+                SetWindowPos(w.Handle.Value, 0, dest.X, dest.Y, 0, 0, 0x0001 | 0x0004 | 0x0010 /*NOSIZE|NOZORDER|NOACTIVATE*/);
+                PumpPaced(host, w, 3.5);
+                restyled.Add(("moved to " + dest.X + "," + dest.Y + " scale=" + w.Scale.ToString("0.##", CultureInfo.InvariantCulture), RestyleOpen(host, w)));
+                PumpPaced(host, w, 1.0);
+                SetWindowPos(w.Handle.Value, 0, home.Left, home.Top, 0, 0, 0x0001 | 0x0004 | 0x0010);
+                PumpPaced(host, w, 3.5);
+                restyled.Add(("moved back scale=" + w.Scale.ToString("0.##", CultureInfo.InvariantCulture), RestyleOpen(host, w)));
+            }
             // --bench-menu-minimize: minimise and restore the window with the pairs parked, then with a menu open; the popup windows
             // shown afterwards are counted (a parked one must stay hidden; an open menu's comes back with the window).
             if (ArgFlag("--bench-menu-minimize"))
@@ -337,6 +372,17 @@ public static partial class Diagnostics
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(nint hwnd, StringBuilder name, int max);
 
         [DllImport("user32.dll")] static extern bool IsWindowVisible(nint hwnd);
+
+        static (int X, int Y)? ArgPair(string name)
+        {
+            var args = Environment.GetCommandLineArgs();
+            int i = Array.IndexOf(args, name);
+            return i >= 0 && i + 2 < args.Length && int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int x)
+                && int.TryParse(args[i + 2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) ? (x, y) : null;
+        }
+
+        [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] static extern bool GetWindowRect(nint hwnd, out RECT rect);
 
         static bool ArgFlag(string name) => Array.IndexOf(Environment.GetCommandLineArgs(), name) >= 0;
 
