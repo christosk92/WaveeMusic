@@ -271,6 +271,12 @@
 // the part cannot hold its ghost, live line and read-ahead).
 // 1.104 (the on-media time pill folded to the elapsed time): `TimeLabelProps.Alone` (the elapsed label stands alone: reserve its own widest
 // digits and centre them) and `OnMediaTransportProps.ElapsedAlone` (its core host).
+// 1.105 (the stage's Overview tab; videos in the Up next lists): `Stage.PictureTab` (None / Video / Overview) and `Stage.StageCtx.PictureTab` (the
+// first tab is always offered where the structure draws Video mode: Video while the playing track's video plays, Overview otherwise, which is Video
+// mode's page with the audio face in the picture's place, `StageCtx.AudioFace`; it relabels in place) and `StageCtx.VideosPlay` (a track with a
+// video plays as its video: the stage's Up next lists show its 16:9 still, else every row its square cover; `IQueueLane.VideoOf` is now asked by
+// every stage Up next list for the film glyph too). The string `Strings.Stage.Mode.Overview`. Core only: `TheatreRules.EscapeStepsToTheatre`
+// lost its audio-face argument (Esc in Overview's Cinema steps to Theatre as over a picture).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -286,7 +292,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 104;
+    public const int Minor = 105;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -1013,6 +1013,9 @@ public static partial class Diagnostics
             w.WriteBoolean("picture", Stage.Picture.ShownPeek());
             // Video mode over an audio-only track: the frame stays, the picture's place shows the cover and the lyrics
             if (Stage.Picture.ShownPeek()) w.WriteString("face", Stage.Picture.AudioFacePeek() ? "audio" : "video");
+            // the first tab (none / video / overview) and whether the Up next lists show the videos' stills (contract 1.105)
+            if (open) w.WriteString("tab", Stage.Picture.TabPeek().ToString().ToLowerInvariant());
+            if (open) w.WriteBoolean("videosPlay", Stage.Picture.VideosPlayPeek());
             bool theatre = Stage.Picture.TheatrePeek();
             w.WriteBoolean("theatre", theatre);
             if (theatre) w.WriteString("panel", Stage.Picture.TheatrePanePeek().ToString());

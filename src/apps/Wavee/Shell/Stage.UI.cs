@@ -110,6 +110,14 @@ public static partial class Stage
         /// <summary>The stage offers its Video mode now (<see cref="Picture.Offered"/>: the structure draws it and a music video is on in the
         /// main window): the top bar's Video tab is there. SurfaceCore writes it.</summary>
         public readonly Signal<bool> VideoOffered = new(false);
+        /// <summary>DERIVED by SurfaceCore: the stage's first tab (<see cref="Stage.PictureTab"/>, contract 1.105): <c>None</c> where the structure
+        /// draws no Video mode, <c>Video</c> while <see cref="VideoOffered"/>, else <c>Overview</c> (Video mode's page with the audio face in the
+        /// picture's place). Always offered where the structure draws Video mode; it relabels in place on a track change, never remounts.</summary>
+        public readonly Signal<PictureTab> PictureTab = new(Stage.PictureTab.None);
+        /// <summary>DERIVED by SurfaceCore: a track with a music video plays as its video now (the video is on for the main window: the playing one,
+        /// or the next track with one, the placement being sticky across tracks). The stage's Up next lists (the Up next tab, Theatre's list,
+        /// Cinema's shelf) then show such a track's 16:9 still as its thumbnail; false: every row its square cover (contract 1.105).</summary>
+        public readonly Signal<bool> VideosPlay = new(false);
         /// <summary>Video mode's stored arrangement (<c>Prefs.Stage.Theatre</c> / <c>.TheatrePane</c>, mirrored by the epoch effect): Theatre is
         /// wanted, and the panel it shows beside the picture (Lyrics or Up next).</summary>
         public readonly Signal<bool> TheatreWanted = new(false);
@@ -121,8 +129,8 @@ public static partial class Stage
         /// <summary>DERIVED by SurfaceCore: the stage shows the picture in THEATRE now (Video mode, Theatre wanted, and the layout has room for
         /// the panel, <c>Layout.TheatreFits</c>): the picture sits in the left region and <see cref="Pane"/> is the panel beside it.</summary>
         public readonly Signal<bool> Theatre = new(false);
-        /// <summary>DERIVED by SurfaceCore: Video mode holds over an AUDIO-ONLY track (video stays on for the main window, this track has none): the
-        /// frame stays and the picture's place shows the cover and the lyrics (<see cref="Picture"/>'s audio face). The Video tab is disabled.</summary>
+        /// <summary>DERIVED by SurfaceCore: Video mode without a picture, the OVERVIEW tab (<see cref="PictureTab"/>): a track without a video, or video
+        /// off. The frame stays and the picture's place shows the cover and the lyrics (<see cref="Picture"/>'s audio face).</summary>
         public readonly Signal<bool> AudioFace = new(false);
         /// <summary>DERIVED by SurfaceCore: the audio face shows the lyrics (everywhere but beside Theatre's own Lyrics panel, which already does):
         /// the gate the face's reading column ticks on.</summary>
@@ -283,7 +291,7 @@ public static partial class Stage
         // started in Render with the host timer clock (MediaPlayerElement.cs:729-730) — never with 0 (V-U10).
         readonly ChromeIdle _idle = ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage);
         readonly IStageVerbs _verbs;
-        // Video mode: the picture was chosen (the stage OPENS on it whenever it is offered; the Video tab chooses it, another tab leaves it), and
+        // Video mode: the first tab was chosen (the stage OPENS on it whenever the picture is offered; the Video / Overview tab chooses it, another tab leaves it), and
         // the stored mode the stage shows otherwise (the preference, mirrored by the epoch effect). Mode.Video is never stored.
         readonly Signal<bool> _pictureWanted = new(Picture.OfferedNow());
         readonly Signal<Mode> _stored = new(Mode.Lyrics);
@@ -317,15 +325,12 @@ public static partial class Stage
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
             _ctx.SetMode = mode =>
             {
-                bool offered = _ctx.VideoOffered.Peek();
-                // the frame is up: the picture is offered, or Video mode holds over an audio-only track (the audio face)
-                bool frame = offered || _ctx.Mode.Peek() == Mode.Video;
-                // the audio face in Cinema stands lit on Lyrics (it shows them): pressing it again keeps the frame as it is
-                if (mode == Mode.Lyrics && _ctx.AudioFace.Peek() && !_ctx.Theatre.Peek()) { _verbs.Activity(); return; }
+                // the frame is up: the picture is offered, or Video mode shows (the Overview tab's audio face too)
+                bool frame = _ctx.VideoOffered.Peek() || _ctx.Mode.Peek() == Mode.Video;
                 if (mode == Mode.Video)
                 {
-                    // the Video tab: the picture, filling the stage (Cinema)
-                    if (offered)
+                    // the first tab (Video, or Overview without a picture): the picture or the audio face, filling the stage (Cinema)
+                    if (_ctx.PictureTab.Peek() != PictureTab.None)
                     {
                         _pictureWanted.Value = true;
                         _ctx.TheatreHeld.Value = false;
@@ -530,11 +535,15 @@ public static partial class Stage
             // ── the mode: the picture while it is offered and chosen (Video mode, never stored), else the stored mode; the picture's
             //    showing state goes to Stage.Picture (the presenter follows the stage's reservation while it holds) ──
             UseSignalEffect(() => ctx.VideoOffered.SetIfChanged(Picture.Offered()));
+            // the first tab: always there where the structure draws Video mode, labelled by whether the picture plays (it relabels in place)
+            UseSignalEffect(() => ctx.PictureTab.SetIfChanged(PictureTabs.Of(Picture.Drawn(), ctx.VideoOffered.Value)));
+            // the Up next lists' thumbnails: a track with a video plays as its video (the playing one, or the next one: the placement is sticky)
+            UseSignalEffect(() => ctx.VideosPlay.SetIfChanged(ctx.VideoOffered.Value || Picture.VideoOn()));
             UseSignalEffect(() =>
             {
-                // the picture is chosen (the stage opened on it, or the Video tab) and it is offered now, or video stays on over an audio-only
-                // track (the audio face: the frame holds until the next track brings the picture back, or the video is turned off)
-                var m = _pictureWanted.Value && (ctx.VideoOffered.Value || Picture.VideoOn()) ? Mode.Video : _stored.Value;
+                // the first tab is chosen (the stage opened on a video, or the Video / Overview tab) and the structure draws it: the picture while it
+                // is offered, else the Overview page (the audio face; the next track with a video that plays brings the picture back in place)
+                var m = _pictureWanted.Value && ctx.PictureTab.Value != PictureTab.None ? Mode.Video : _stored.Value;
                 ctx.Mode.SetIfChanged(m);
                 Diagnostics.NoteMode(m);                          // gated: logs only on a real change, keeps the card's mode truthful
                 Picture.NoteMode(m == Mode.Video);
@@ -756,7 +765,7 @@ public static partial class Stage
             {
                 e.Handled = true;
                 // Cinema → Theatre first (the same derived Theatre, so the toggle's motion; held for this opening, never stored), then out (TheatreRules.EscapeStepsToTheatre)
-                if (TheatreRules.EscapeStepsToTheatre(_ctx.Mode.Peek(), _ctx.Theatre.Peek(), _ctx.AudioFace.Peek(), _ctx.Layout.Peek().TheatreFits)) { _ctx.TheatreHeld.Value = true; _verbs.Activity(); return; }
+                if (TheatreRules.EscapeStepsToTheatre(_ctx.Mode.Peek(), _ctx.Theatre.Peek(), _ctx.Layout.Peek().TheatreFits)) { _ctx.TheatreHeld.Value = true; _verbs.Activity(); return; }
                 Close(_begin, "escape");
                 return;
             }

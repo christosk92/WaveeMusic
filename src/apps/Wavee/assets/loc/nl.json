@@ -970,7 +970,8 @@
       "visualizer": "Visualisatie",
       "queue": "Hierna",
       "artist": "Artiest",
-      "video": "Video"
+      "video": "Video",
+      "overview": "Overzicht"
     },
     "exit": "Volledig scherm afsluiten",
     "theatreMode": "Theatermodus",

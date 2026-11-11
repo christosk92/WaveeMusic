@@ -970,7 +970,8 @@
       "visualizer": "비주얼라이저",
       "queue": "다음 재생",
       "artist": "아티스트",
-      "video": "동영상"
+      "video": "동영상",
+      "overview": "개요"
     },
     "exit": "전체 화면 종료",
     "theatreMode": "극장 모드",

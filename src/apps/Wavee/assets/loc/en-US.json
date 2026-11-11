@@ -4146,7 +4146,8 @@
       "visualizer": "Visualizer",
       "queue": "Up next",
       "artist": "Artist",
-      "video": "Video"
+      "video": "Video",
+      "overview": "Overview"
     },
     "exit": "Exit full screen",
     "theatreMode": "Theatre mode",

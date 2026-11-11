@@ -33,8 +33,9 @@ public static partial class Stage
     // ── 1. the four modes ───────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>What the right-hand region shows. PERSISTED ints (Platform.Keys.StageMode) — append only. <see cref="Video"/> is the one
-    /// mode that is never stored: the stage shows the playing music video, and it is offered and chosen while a video is on
-    /// (<see cref="Picture"/>), never restored from the preference.</summary>
+    /// mode that is never stored: the stage's first tab (<see cref="PictureTab"/>: the playing music video, or the Overview page with the audio
+    /// face in the picture's place), chosen by that tab or by opening on a video that is on (<see cref="Picture"/>), never restored from the
+    /// preference.</summary>
     public enum Mode : byte { Lyrics = 0, Visualizer = 1, Queue = 2, Artist = 3, Video = 4 }
 
     public static class ModeRules
@@ -78,11 +79,25 @@ public static partial class Stage
         /// <summary>The tab that stands for a Theatre panel (the selector's highlight).</summary>
         public static Mode TabOf(PaneKind pane) => pane == PaneKind.Lyrics ? Mode.Lyrics : Mode.Queue;
 
-        /// <summary>Esc steps OUT one level (the owner, 2026-11-11): over a playing picture in CINEMA it goes to Theatre for this opening
-        /// (<c>StageCtx.TheatreHeld</c>: the toggle's arrangement and motion, the stored preference untouched), where the layout has room for Theatre's panel (the toggle's own condition); in
-        /// Theatre, in every other mode, over the audio face and where Theatre does not fit it leaves the full screen as before.</summary>
-        public static bool EscapeStepsToTheatre(Mode mode, bool theatre, bool audioFace, bool theatreFits)
-            => mode == Mode.Video && !theatre && !audioFace && theatreFits;
+        /// <summary>Esc steps OUT one level (the owner, 2026-11-11): in Video mode's CINEMA (the picture, or the Overview tab's audio face in its
+        /// place) it goes to Theatre for this opening (<c>StageCtx.TheatreHeld</c>: the toggle's arrangement and motion, the stored preference
+        /// untouched), where the layout has room for Theatre's panel (the toggle's own condition); in Theatre, in every other mode and where Theatre
+        /// does not fit it leaves the full screen as before.</summary>
+        public static bool EscapeStepsToTheatre(Mode mode, bool theatre, bool theatreFits)
+            => mode == Mode.Video && !theatre && theatreFits;
+    }
+
+    /// <summary>The stage's FIRST tab, the one that shows <see cref="Mode.Video"/> (contract 1.105): none where the structure draws no Video mode;
+    /// <see cref="Video"/> while the playing track's music video plays in the main window (the picture); <see cref="Overview"/> otherwise (a track
+    /// without a video, or video off): the same page, Cinema and Theatre, with the audio face (the cover, its colour field and the lyrics) in the
+    /// picture's place. The tab relabels in place when the next track brings a picture or takes it away; it never decides what the stage opens on.</summary>
+    public enum PictureTab : byte { None = 0, Video = 1, Overview = 2 }
+
+    public static class PictureTabs
+    {
+        /// <summary>The first tab for a structure that draws (<paramref name="drawn"/>) or does not draw Video mode, while the picture is offered
+        /// (<paramref name="videoOffered"/>: the playing track's video is on in the main window) or not.</summary>
+        public static PictureTab Of(bool drawn, bool videoOffered) => !drawn ? PictureTab.None : videoOffered ? PictureTab.Video : PictureTab.Overview;
     }
 
     // ── 2. the allocator ────────────────────────────────────────────────────────────────────────────────────────────

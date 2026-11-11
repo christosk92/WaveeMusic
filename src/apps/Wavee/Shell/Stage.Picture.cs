@@ -19,11 +19,12 @@
 // signals and verbs (the same `StageCtx`, idle machine and key map): there is one transport, the stage's; the presenter's own
 // on-media strip stands down while the picture is staged.
 //
-// THE AUDIO FACE. Video mode outlives an audio-only track: while video stays ON for the main window (`VideoOn`: the placement is sticky across
-// tracks) and the stage was in Video mode, a track without a video keeps the frame (the top bar with the Video tab disabled, Cinema's shelf or
-// Theatre's panel, the transport) and the picture's place shows the cover and the lyrics (`StageCtx.AudioFace`). No presenter is mounted for such a
-// track, so no hole is up: the face is an ordinary stage layer over the reservation, and the presenter that the next video track mounts covers
-// it (it follows the same reservation, which never left).
+// THE OVERVIEW TAB AND THE AUDIO FACE (contract 1.105). The first tab is always there where the structure draws Video mode (`StageCtx.PictureTab`):
+// labelled Video while the playing track's video plays, Overview otherwise (a track without a video, or video off). Overview IS Video mode's page
+// with the cover and the lyrics in the picture's place (`StageCtx.AudioFace`): the frame (the top bar, Cinema's shelf or Theatre's panel, the
+// transport), Cinema and Theatre, the same Esc rule. No presenter is mounted for such a track, so no hole is up: the face is an ordinary stage
+// layer over the reservation, and the presenter that the next video track mounts covers it (it follows the same reservation, which never left);
+// the tab relabels in place. Which tab the stage OPENS on is unchanged: the picture when it is offered, else the stored mode.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -65,8 +66,17 @@ public static partial class Stage
         public static bool VideoOn()
             => ShellPolicy.Tracked.Stage.VideoStage && Video.State.Surface.Value.Requested is Video.SurfacePlacement.Docked or Video.SurfacePlacement.Floating;
 
-        /// <summary>The mounted stage holds Video mode over an audio-only track (the audio face); peeked (the inspector's <c>status</c>).</summary>
+        /// <summary>The structure draws Video mode (subscribes): the stage's first tab (Video or Overview) is offered.</summary>
+        public static bool Drawn() => ShellPolicy.Tracked.Stage.VideoStage;
+
+        /// <summary>The mounted stage holds Video mode without a picture (the Overview tab's audio face); peeked (the inspector's <c>status</c>).</summary>
         public static bool AudioFacePeek() => s_view.Peek()?.Stage.AudioFace.Peek() ?? false;
+
+        /// <summary>The mounted stage's first tab (none while no stage is mounted); peeked (the inspector's <c>status</c>).</summary>
+        public static PictureTab TabPeek() => s_view.Peek()?.Stage.PictureTab.Peek() ?? PictureTab.None;
+
+        /// <summary>The mounted stage's Up next lists show the videos' stills (<c>StageCtx.VideosPlay</c>); peeked (the inspector's <c>status</c>).</summary>
+        public static bool VideosPlayPeek() => s_view.Peek()?.Stage.VideosPlay.Peek() ?? false;
 
         /// <summary>The mounted stage's controls are shown: the idle chrome the stage itself publishes (<c>StageCtx.Chrome</c>, what its views read);
         /// peeked (the frame bench's note). True while no stage is mounted.</summary>
