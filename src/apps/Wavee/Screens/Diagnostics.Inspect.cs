@@ -258,7 +258,8 @@ public static partial class Diagnostics
         bool _quit;                 // `quit` ran (set by the verb itself, so a refused `quit x=1` does not end the server)
         string? _hit;               // the key the pointer resolved to on a pointer verb, for `after.hit`
         Point2? _pointer;           // where the pointer last went on this mount (pointer verbs), for `after.hit` of the others
-        FluentGpu.Media.MediaPlayer? _fakePlayer;   // the idle player `mount video=... player=fake` bound (ClearLeaks unbinds and disposes it)
+        FluentGpu.Media.MediaPlayer? _fakePlayer;   // the idle player `mount video=... player=fake` bound, or the scripted one's (ClearLeaks unbinds and disposes it)
+        ScriptedVideo? _scriptedVideo;              // `player=scripted`: the source that follows the deck (ClearLeaks ends it)
         bool _optionsForNext;       // `option` set a value with nothing mounted: it is for the next mount, which keeps the options
 
         /// <summary>`dwrite` (real DirectWrite metrics on every mount) or `headless` (the shell tests' 0.55 x size model).</summary>
@@ -878,7 +879,16 @@ public static partial class Diagnostics
                 });
                 // `player=fake` binds an idle engine player (no source, no frames) so the presenter and its transport mount as they do while a video plays.
                 string join = a.Str("join").ToLowerInvariant();
-                if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase) || join == "poster")
+                if (string.Equals(a.Str("player"), "scripted", StringComparison.OrdinalIgnoreCase))
+                {
+                    // `player=scripted`: a real MediaPlayer over a scripted session that follows the deck: every video track the deck
+                    // lands on is a fresh open on the SAME player (an in-place switch), with metadata, a first frame and a play intent.
+                    _scriptedVideo = new ScriptedVideo(_shell!.Host, a.Int("videoOpenMs", ScriptedVideo.DefaultOpenMs));
+                    _fakePlayer = _scriptedVideo.Player;
+                    Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
+                    _scriptedVideo.Follow();
+                }
+                else if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase) || join == "poster")
                 {
                     _fakePlayer = FluentGpu.Media.MediaPlayer.Create();
                     Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
@@ -924,6 +934,8 @@ public static partial class Diagnostics
             Entities.RestoreStagedShelves();   // a `state page=<library tab>` staged the account's relations
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
+            _scriptedVideo?.Dispose();
+            _scriptedVideo = null;
             InspectKit.ResetVideo(_fakePlayer);
             _fakePlayer = null;
             InspectKit.ResetPlayback();
@@ -1717,6 +1729,216 @@ public static partial class Diagnostics
             foreach (var entry in Log.Snapshot())
                 if (entry.Category == "wire" && !entry.Message.StartsWith("wire.refused ", StringComparison.Ordinal)) n++;
             return n;
+        }
+    }
+
+    public sealed partial class InspectSession
+    {
+        /// <summary>`mount video=... player=scripted`: a video source that behaves like a real one, for the headless inspector (no
+        /// decoder, no network). A real <see cref="FluentGpu.Media.MediaPlayer"/> (so its open-time reset of the surface, the natural
+        /// size and the duration is the production one) over a scripted backend whose session publishes, on the inspector's 16 ms
+        /// frame clock, Opening and the declared size, then metadata (Buffering, a duration) at half of <c>videoOpenMs</c>, then the
+        /// first frame (the natural size: 1920x1080 for tr26, 1440x1080 for every other video track, so a held frame's geometry can
+        /// be told from its successor's; a VideoSurface; Playing) at <c>videoOpenMs</c>. It follows the deck: a deck that lands on a video track (the deck's
+        /// VideoFacts) opens that track on the SAME player, an in-place switch as the host's Switch plan does; one that leaves video
+        /// stops it. It keeps the host's resolved Source and an Attaching phase while it opens; the host's own
+        /// observer of the bound player does the FirstFrame bump and the later phases. Its geometry half binds, sizes and places the slot like the clear session, deferring a slot that shows
+        /// another picture until its own first frame. `[inspect.video]` lines say what it did.</summary>
+        sealed class ScriptedVideo : IDisposable
+        {
+            public const int DefaultOpenMs = 240;
+            const int FrameMs = 16;
+
+            readonly FluentGpu.Hosting.AppHost _host;
+            readonly Action<FluentGpu.Hosting.FrameStats> _onFrame;
+            readonly Backend _backend;
+            readonly int _openMs;
+            readonly Action<string>? _priorSink;
+            long _nowMs;
+            string _followed = "";
+            Session? _live;
+            Playback.Video.VideoSource? _liveSource;
+            int _opens;
+
+            public FluentGpu.Media.MediaPlayer Player { get; }
+
+            public ScriptedVideo(FluentGpu.Hosting.AppHost host, int openMs)
+            {
+                _host = host;
+                _openMs = Math.Clamp(openMs, FrameMs, 60_000);
+                _backend = new Backend(this);
+                Player = FluentGpu.Media.MediaPlayer.Build().WithBackend(FluentGpu.Media.MediaKind.MfVideoOrFile, _backend).Build();
+                _onFrame = OnFrame;
+                host.FrameCompleted += _onFrame;
+                // The engine's media evidence lines (the element's `[media.chrome]` show/hide edges, its settled `[video] pump`
+                // placement, `[video.surface]`) go to stderr in the headless host, out of `status log=`'s reach: while this source
+                // lives they are copied into the app log as well, so the chrome machine and the held geometry can be read back.
+                _priorSink = FluentGpu.Foundation.Diag.Sink;
+                Action<string>? prior = _priorSink;
+                FluentGpu.Foundation.Diag.Sink = line =>
+                {
+                    if (prior is not null) prior(line); else Console.Error.WriteLine(line);
+                    if (line.StartsWith("[media.chrome]", StringComparison.Ordinal) || line.StartsWith("[video]", StringComparison.Ordinal)
+                        || line.StartsWith("[video.surface]", StringComparison.Ordinal))
+                        Log.Info("engine", line);
+                };
+            }
+
+            public void Dispose()
+            {
+                _host.FrameCompleted -= _onFrame;
+                FluentGpu.Foundation.Diag.Sink = _priorSink;
+                _live = null;
+                if (Playback.Video.Source.Peek()?.Key.StartsWith("inspect:video:", StringComparison.Ordinal) == true) Playback.Video.Source.Value = null;
+            }
+
+            void OnFrame(FluentGpu.Hosting.FrameStats _)
+            {
+                _nowMs += FrameMs;
+                Follow();
+                // The host's load pipeline clears the resolved source when the deck moves and its resolver (parked by the inspector)
+                // never answers: the scripted source IS the resolution, so it stays published while it is live, and a join it is
+                // still opening reads as Attaching, as the load pipeline's own attach does.
+                if (_liveSource is { } src && !ReferenceEquals(Playback.Video.Source.Peek(), src)) Playback.Video.Source.Value = src;
+                if (_live is { IsFramed: false } && Playback.Video.Phase.Peek() == Playback.Video.SwitchPhase.Idle)
+                    Playback.Video.Phase.Value = Playback.Video.SwitchPhase.Attaching;
+                _live?.Tick(_nowMs);
+            }
+
+            /// <summary>Open the deck's track when the deck lands on a video, stop when it leaves video. UI thread.</summary>
+            public void Follow()
+            {
+                Playback.State st = Playback.Snap();
+                var facts = Playback.DeckVideo.Peek();
+                bool video = facts.OnVideo && !facts.Remote;
+                string id = st.CurrentId.IsEmpty ? "" : st.CurrentId.Text;
+                string followed = video ? id : "";
+                if (string.Equals(followed, _followed, StringComparison.Ordinal)) return;
+                _followed = followed;
+                if (!video || id.Length == 0)
+                {
+                    Log.Info("video", "[inspect.video] stop deck=" + (id.Length == 0 ? "-" : id) + " (not on video)");
+                    _live = null;
+                    _liveSource = null;
+                    Player.Stop();
+                    Playback.Video.Source.Value = null;
+                    Playback.Video.Phase.Value = Playback.Video.SwitchPhase.Idle;
+                    return;
+                }
+                FluentGpu.Media.SizeI natural = id.EndsWith(":tr26", StringComparison.Ordinal) ? new FluentGpu.Media.SizeI(1920, 1080) : new FluentGpu.Media.SizeI(1440, 1080);
+                _opens++;
+                _backend.Next = (natural, id);
+                _liveSource = new Playback.Video.VideoSource("inspect:video:" + id, NaturalWidth: natural.Width,
+                    NaturalHeight: natural.Height, PlayableUri: id);
+                Playback.Video.Source.Value = _liveSource;
+                Playback.Video.Phase.Value = Playback.Video.SwitchPhase.Attaching;
+                Log.Info("video", "[inspect.video] open #" + _opens + " deck=" + id + " natural=" + natural.Width + "x" + natural.Height +
+                    " openMs=" + _openMs + " plan=" + (_opens == 1 ? "first" : "switch"));
+                _ = Player.OpenAsync(FluentGpu.Media.MediaSource.FromUri("inspect://video/" + _opens + ".mp4"),
+                    new FluentGpu.Media.MediaOpenOptions { StartPaused = false });
+                _ = Player.PlayAsync();
+            }
+
+            void Framed(Session s)
+            {
+                // The host's own observer of the bound player bumps Playback.Video.FirstFrame and moves the phase (a non-MF clear session
+                // counts a known natural size as framed, so the natural size is published with the first frame).
+                if (!ReferenceEquals(s, _live)) return;
+                Log.Info("video", "[inspect.video] first.frame deck=" + s.Deck + " natural=" + s.Natural.Width + "x" + s.Natural.Height +
+                    " afterMs=" + (_nowMs - s.StartMs));
+            }
+
+            sealed class Backend(ScriptedVideo owner) : FluentGpu.Media.IMediaBackend
+            {
+                public (FluentGpu.Media.SizeI Natural, string Deck) Next;
+                public FluentGpu.Media.MediaCapabilities Capabilities { get; } = new(true, false, false);
+                public ValueTask<FluentGpu.Media.IMediaSession> OpenAsync(FluentGpu.Media.MediaSource source, FluentGpu.Media.MediaOpenOptions opts,
+                    CancellationToken ct)
+                {
+                    var session = new Session(owner, Next.Natural, Next.Deck, (nuint)(0x5C00 + owner._opens));
+                    owner._live = session;
+                    return ValueTask.FromResult<FluentGpu.Media.IMediaSession>(session);
+                }
+            }
+
+            sealed class Session(ScriptedVideo owner, FluentGpu.Media.SizeI natural, string deck, nuint handle)
+                : FluentGpu.Media.IMediaSession, FluentGpu.Media.IVideoSurfaceSession, FluentGpu.Media.IVideoPumpSource
+            {
+                FluentGpu.Media.MediaSignalSink? _sink;
+                bool _meta, _framed, _deferredLogged, _tookOver, _paused;
+                public long StartMs = -1;
+                public FluentGpu.Media.SizeI Natural => natural;
+                public bool IsFramed => _framed;
+                public string Deck => deck;
+                public event Action? PumpRequested;
+
+                public void ConnectSignals(FluentGpu.Media.MediaSignalSink sink)
+                {
+                    _sink = sink;
+                    sink.State(FluentGpu.Media.PlaybackState.Opening);
+                    sink.ExpectedNaturalSize(natural);
+                }
+
+                public void Tick(long nowMs)
+                {
+                    if (_sink is not { } sink) return;
+                    if (StartMs < 0) StartMs = nowMs;
+                    long t = nowMs - StartMs;
+                    if (!_meta && t >= owner._openMs / 2)
+                    {
+                        _meta = true;
+                        sink.Duration(TimeSpan.FromMinutes(4));
+                        sink.State(FluentGpu.Media.PlaybackState.Buffering);
+                        PumpRequested?.Invoke();
+                    }
+                    if (!_framed && t >= owner._openMs)
+                    {
+                        _framed = true;
+                        sink.NaturalSize(natural);
+                        sink.VideoSurface(new FluentGpu.Pal.VideoSurfaceId(1));
+                        sink.State(_paused ? FluentGpu.Media.PlaybackState.Paused : FluentGpu.Media.PlaybackState.Playing);
+                        owner.Framed(this);
+                        PumpRequested?.Invoke();
+                    }
+                }
+
+                public void PumpVideo(FluentGpu.Media.VideoBinding binding, RectF videoRect, float scale) => PumpGeometry(binding, videoRect, scale);
+                public void PumpState() { }
+                public void PumpGeometry(FluentGpu.Media.VideoBinding binding, RectF videoRect, float scale)
+                {
+                    if (!binding.IsValid || !_meta || videoRect.W <= 0f || videoRect.H <= 0f) return;
+                    // As the clear session does: a slot that shows another picture is not taken over before this source's first frame.
+                    if (!_framed && binding.ShowsOtherPicture(handle))
+                    {
+                        if (!_deferredLogged)
+                        {
+                            _deferredLogged = true;
+                            Log.Info("video", "[inspect.video] defer deck=" + deck + " token=" + binding.Token + " (the slot shows another picture)");
+                        }
+                        return;
+                    }
+                    binding.Bind(handle);
+                    binding.SetContentSize(natural);
+                    binding.Place(videoRect);
+                    if (!_tookOver)
+                    {
+                        _tookOver = true;
+                        Log.Info("video", "[inspect.video] take.over deck=" + deck + " token=" + binding.Token + " framed=" + _framed +
+                            " rect=" + (int)videoRect.W + "x" + (int)videoRect.H + " natural=" + natural.Width + "x" + natural.Height);
+                    }
+                }
+
+                public ValueTask PlayAsync() { _paused = false; if (_framed) _sink?.State(FluentGpu.Media.PlaybackState.Playing); return ValueTask.CompletedTask; }
+                public ValueTask PauseAsync() { _paused = true; if (_framed) _sink?.State(FluentGpu.Media.PlaybackState.Paused); return ValueTask.CompletedTask; }
+                public ValueTask SeekAsync(TimeSpan to, FluentGpu.Media.SeekMode mode) => ValueTask.CompletedTask;
+                public void SetRate(double rate) { }
+                public void SetVolume(double volume) { }
+                public void SetMuted(bool muted) { }
+                public FluentGpu.Media.VideoDelivery Video => _meta
+                    ? new FluentGpu.Media.VideoDelivery.CompositedSurface(new FluentGpu.Pal.VideoSurfaceId(1), natural, IsHdr: false)
+                    : FluentGpu.Media.VideoDelivery.None;
+                public ValueTask DisposeAsync() { _sink = null; return ValueTask.CompletedTask; }
+            }
         }
     }
 }
