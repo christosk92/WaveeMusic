@@ -60,6 +60,11 @@ public static partial class Diagnostics
                         global::Wavee.Queue.ClearUserQueue(in cursor);
                         break;
                     }
+                case "duration":
+                    // The decoder reports the playing row's real length (Playback.ReportDuration on the current load): the same row's duration
+                    // changes, what a music video's length replacing the song's does to the seek rail (its rescale ease).
+                    Playback.ReportDuration(Playback.Snap().LoadEpoch, Math.Max(1, a.Int("ms", 0)));
+                    break;
                 case "dead":
                     {
                         // The catalog rules a track terminally unavailable (withdrawn, region-locked), as an extended-metadata

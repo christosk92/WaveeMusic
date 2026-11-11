@@ -465,8 +465,9 @@ is on and what will play: `deck` (the track id), `cursor`, `phase`, `repeat` (of
 deck, `U` user queue, `N` next up; provider `c` context, `q` queued, `a` autoplay; a trailing `!` marks a row the deck may not land on)
 and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section `q`, `n` or `a`). `do=` is `status`, `next`, `prev`,
 `end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
-`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue) or `dead uri=` (the catalog rules that track
-unavailable, so the walk steps past it). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
+unavailable, so the walk steps past it) or `duration ms=` (the decoder reports the playing row's real length: the same row's duration
+changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 
