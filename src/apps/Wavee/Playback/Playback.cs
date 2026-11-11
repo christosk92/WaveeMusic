@@ -1917,13 +1917,22 @@ public static partial class Playback
         bool wrap = forward && s.Repeat == RepeatMode.Context && !s.MorePages;
         int from = s.Cursor.Index;
         int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), from, forward, wrap, AutoplayAllowed(in s), Queue.ContextStart);
-        if (at < 0 && !forward && s.HasCurrent && s.Phase != Phase.Idle)
+        if (at < 0 && !forward && s.HasCurrent)
         {
             // Previous on the context's first row: repeat-context goes round to its last row (librespot-java
             // StateWrapper.java:1312-1314, ncspot src/queue.rs:402-412); otherwise the row starts again (go-librespot
             // daemon/controls.go:1048-1067, librespot-java StateWrapper.java:1316, psst queue.rs:124-131).
             int last = s.Repeat == RepeatMode.Context && !s.MorePages ? Queue.LastContextRow(Queue.Rows, default(LiveRows), Queue.ContextStart) : -1;
-            if (last <= from) { Restart(ref s, in i, ref fx, why); return; }
+            if (last <= from)
+            {
+                // A deck no host holds (Idle: stopped, released, lost; Ended: the queue ran out) has nothing live to rewind:
+                // Restart would only re-park it at 0:00, which it already shows, and the press would do nothing while
+                // CanSkipPrev offers it. "Start this row again" there is the row itself, played from its start: the same
+                // load Previous makes on any other row of an idle deck (the walk below), only aimed at the current row.
+                if (s.Phase is Phase.Idle or Phase.Ended) { ReplayFromStart(ref s, in i, ref fx, why); return; }
+                Restart(ref s, in i, ref fx, why);
+                return;
+            }
             at = last;
         }
         if (at < 0)
@@ -1954,6 +1963,17 @@ public static partial class Playback
 
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
+
+    /// <summary>Previous on the first row of a deck no host holds (<see cref="Phase.Idle"/> / <see cref="Phase.Ended"/>): load the
+    /// current row and play it from 0:00 (an episode too: a restart is the start, not where it was left).</summary>
+    static void ReplayFromStart(ref State s, in Input i, ref Effects fx, PlayReason why)
+    {
+        ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
+        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), 0, paused: false);
+        s.StartReason = why;
+        EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false, explicitPosition: true);
+        fx.Snapshot = true;
+    }
 
     static void Restart(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
