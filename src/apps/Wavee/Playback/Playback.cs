@@ -1142,19 +1142,30 @@ public static partial class Playback
         public readonly bool CanTransport => HasCurrent && Error == Fault.None;
         /// <summary>May the seek bar be dragged? While LIVE this is exactly <see cref="LiveWindow.HasWindow"/> — a
         /// seekable span under 30 s is not a window, and the rail becomes the breathing line.</summary>
-        public readonly bool CanSeek => CanTransport && !NoSeek && Phase != Phase.Loading
+        public readonly bool CanSeek => CanTransport && !SeekRestricted && Phase != Phase.Loading
             && (Live.IsLive ? Live.HasWindow : DurationMs > 0);
         /// <summary>May Next fire? The FOLDED answer; the raw restriction bits are not the UI's business.</summary>
-        public readonly bool CanSkipNext => CanTransport && !NoNext;
-        /// <summary>May Previous fire?</summary>
-        public readonly bool CanSkipPrev => CanTransport && !NoPrev;
+        public readonly bool CanSkipNext => CanTransport && !NextRestricted;
+        /// <summary>May Previous fire? On the context's first row too: Previous there restarts the row (or wraps under
+        /// repeat-context), exactly what <c>Advance</c> does.</summary>
+        public readonly bool CanSkipPrev => CanTransport && !PrevRestricted;
+        /// <summary>The restriction bits are the FOREIGN OWNER's (<see cref="MirrorRemote"/> mirrors its
+        /// <c>disallow_skipping_*</c> / <c>disallow_seeking</c>), so they restrict only while one owns playback. A device
+        /// that booted mirroring a phone paused on a one-track context ("no previous") and then took over must not keep
+        /// Previous dead for the session: our own deck has no such rule (Previous restarts within its first 3 s window
+        /// or steps back, <see cref="RestartWindowMs"/>).</summary>
+        public readonly bool NextRestricted => NoNext && Own.Kind == Owner.Foreign;
+        /// <inheritdoc cref="NextRestricted"/>
+        public readonly bool PrevRestricted => NoPrev && Own.Kind == Owner.Foreign;
+        /// <inheritdoc cref="NextRestricted"/>
+        public readonly bool SeekRestricted => NoSeek && Own.Kind == Owner.Foreign;
         /// <summary>Does the CONTEXT allow Next / Previous, error or not? The player bar reads these for its own fold:
         /// a failed load parks the deck row with <see cref="Error"/> set and <see cref="CanTransport"/> false, and the
         /// one way out that does not re-play the dead row is to skip past it (<c>Advance</c> heals the error through
         /// <c>PutOnDeck</c>). <see cref="CanSkipNext"/> / <see cref="CanSkipPrev"/> stay the reducer's folded verdict.</summary>
-        public readonly bool NextAllowedByContext => HasCurrent && !NoNext;
+        public readonly bool NextAllowedByContext => HasCurrent && !NextRestricted;
         /// <inheritdoc cref="NextAllowedByContext"/>
-        public readonly bool PrevAllowedByContext => HasCurrent && !NoPrev;
+        public readonly bool PrevAllowedByContext => HasCurrent && !PrevRestricted;
         /// <summary>What the volume slider shows: the foreign owner's volume while one owns playback (dragging it is a
         /// volume PUT to that device), ours otherwise.</summary>
         public readonly float SliderVolume => Own.Kind == Owner.Foreign && MirrorVolume >= 0f ? MirrorVolume : Volume;
@@ -1762,7 +1773,23 @@ public static partial class Playback
             default: break;
         }
         if (s.Hold != EndHold.None) HoldInvariant(ref s);
+        // The restriction bits die with the foreign owner's tenure, whichever path ended it (a cluster, a takeover, a
+        // claim by a local play, a lost device): no stale bit survives in the state (CanSkipPrev & co gate on the owner too).
+        if (s.Own.Kind != Owner.Foreign && (s.NoNext | s.NoPrev | s.NoSeek))
+        {
+            s.NoNext = s.NoPrev = s.NoSeek = false;
+            LogRestrictions(false, false, false, s.Own.Kind);
+        }
     }
+
+    /// <summary>The mirrored restriction bits changed (on change only): "why is Previous grey?" is answerable from the log.</summary>
+    static void LogRestrictions(bool noPrev, bool noNext, bool noSeek, Owner owner)
+        => Log.Info("playback", "restrictions noPrev=" + (noPrev ? "1" : "0") + " noNext=" + (noNext ? "1" : "0")
+            + " noSeek=" + (noSeek ? "1" : "0") + " owner=" + owner);
+
+    /// <summary>A verb the owner's restriction refused: the verb, the bit and the owner.</summary>
+    static void LogRestricted(string verb, string bit, in State s)
+        => Log.Info("playback", "restricted " + verb + " refused: " + bit + " owner=" + s.Own.Kind);
 
     // ── 9.1 transport ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1842,6 +1869,13 @@ public static partial class Playback
     /// <see cref="Queue.SkipTarget"/>): the cursor lands THERE instead of one row on, the rows between staying behind it.</summary>
     static void Advance(ref State s, in Input i, ref Effects fx, bool forward, PlayReason why, int jumpTo = -1)
     {
+        // the owner's restriction (the cluster said so) refuses the SKIP; a natural end is never a skip
+        if (why != PlayReason.TrackDone && (forward ? s.NextRestricted : s.PrevRestricted))
+        {
+            fx.Refused = forward ? Refusal.NoNext : Refusal.NoPrev;
+            LogRestricted(forward ? "next" : "prev", forward ? "noNext" : "noPrev", in s);
+            return;
+        }
         if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
         // the end hold: the row already ENDED, so Next (no row named) is the natural end's advance it deferred; Previous and a named row
         // end the hold and run as on any paused row
@@ -1851,11 +1885,6 @@ public static partial class Playback
             if (forward && jumpTo < 0) why = PlayReason.TrackDone;
         }
         bool natural = why == PlayReason.TrackDone;
-        if (!natural && (forward ? s.NoNext : s.NoPrev))            // the context disallows the SKIP (the cluster said so)
-        {
-            fx.Refused = forward ? Refusal.NoNext : Refusal.NoPrev;
-            return;
-        }
 
         // Repeat-one re-plays the same row on its NATURAL end: the one place the cursor stands still under a transport
         // verb. A MANUAL Next moves on and turns repeat-one off, leaving repeat-context on (#215; librespot "when we skip in
@@ -2068,7 +2097,8 @@ public static partial class Playback
 
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
-        if (!s.HasCurrent || (s.NoSeek && !s.Parked && s.Error == Fault.None)) return;
+        if (!s.HasCurrent) return;
+        if (s.SeekRestricted && !s.Parked && s.Error == Fault.None) { LogRestricted("seek", "noSeek", in s); return; }
         if (!s.RoutesLocal)
         {
             // U-3: the drag's drop point is painted at once and HELD against the owner's pre-seek reports (MirrorRemote),
@@ -2111,7 +2141,7 @@ public static partial class Playback
         s.ScrubPosMs = i.IntArg;
         s.ScrubEpoch = s.LoadEpoch;
         bool audible = e.Begin && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && s.Phase == Phase.Playing
-                       && !s.Parked && s.Error == Fault.None && !s.NoSeek;
+                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted;
         // ASSIGNED on every press, true or false: `ScrubModel.Up` leaves `Audible` set (the release arm reads it after Up) and `Down` does not
         // reset it, so a stale true would leak from the last gesture into this one. `fx.ScrubBegin` follows the same verdict, so a later
         // non-audible press in one drain also withdraws an earlier audible one's begin.
@@ -2147,7 +2177,7 @@ public static partial class Playback
         var e = s.Scrub.Up(i.IntArg);
         s.Scrub.Audible = false;
         if (!e.Commit) return;
-        if (audible && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && !s.Parked && s.Error == Fault.None && !s.NoSeek)
+        if (audible && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && !s.Parked && s.Error == Fault.None && !s.SeekRestricted)
         {
             int target = SeekTarget.Clamp(i.IntArg, s.DurationMs);
             ReportSeeked(ref s, ref fx, s.Position(i.NowMs), target);
@@ -2611,6 +2641,8 @@ public static partial class Playback
         s.Context = context;
         s.Shuffle = r.Shuffling;
         s.Repeat = r.Repeat;
+        if (s.NoNext != r.NoNext || s.NoPrev != r.NoPrev || s.NoSeek != r.NoSeek)
+            LogRestrictions(r.NoPrev, r.NoNext, r.NoSeek, s.Own.Kind);
         s.NoNext = r.NoNext;
         s.NoPrev = r.NoPrev;
         s.NoSeek = r.NoSeek;
