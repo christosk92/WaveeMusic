@@ -19,6 +19,11 @@
 // (AppHost.AdvanceColdMaintenanceClock) and the next frame runs whatever fell due. The reply's `scene` says whether the slab
 // trim ran (`trimmed`) and what the next layout's subtree-dirty clear still holds (`dirty`: `pastCapacity` above 0 is the
 // crash's precondition: a recorded slot a trim cut off).
+//
+// ACTIVATION: `active=false` blurs the window (HeadlessWindow.IsActive, which queues the WindowBlur a Win32 WM_ACTIVATE sends: the
+// dispatcher drops the pointer, clears hover, and announces a pointer that was in as leaving the window before the blur itself),
+// `active=true` re-activates it (WindowFocus; the pointer is back only with the next real move, a `hover`). The fullscreen stage's
+// chrome hears the blur as a leave (`[stage.chrome] exit as=left src=window` for a pointer that was in, then `src=blur`).
 
 using System.Text.Json;
 using FluentGpu.Foundation;
@@ -31,7 +36,7 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`window {state?, advance?, floor?, frames?, + the settle and trace args (a restore)}`.</summary>
+        /// <summary>`window {state?, active?, advance?, floor?, frames?, + the settle and trace args (a restore)}`.</summary>
         string Window(int id, string name, Inspect.Args a, Shell.HeadlessShell shell)
         {
             string state = a.Str("state");
@@ -50,6 +55,7 @@ public static partial class Diagnostics
                     if (!window.IsVisible) window.Show();
                     break;
             }
+            if (a.Has("active")) window.IsActive = a.Bool("active", true);
             if (advance > 0) host.AdvanceColdMaintenanceClock(advance);
 
             bool restored = state == "restored";
@@ -84,6 +90,8 @@ public static partial class Diagnostics
             var host = shell.Host;
             SceneStore scene = host.Scene;
             w.WriteString("state", !window.IsVisible ? "hidden" : window.State == WindowState.Minimized ? "minimized" : "normal");
+            w.WriteBoolean("active", window.IsActive);
+            w.WriteBoolean("pointerInWindow", host.Input.PointerInWindow);
             w.WriteBoolean("parked", host.IsParked);
             w.WriteNumber("coldRuns", host.ColdMaintenanceRunCount - runsBefore);
             w.WriteStartObject("scene");

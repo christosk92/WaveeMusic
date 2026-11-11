@@ -337,7 +337,11 @@ public static partial class Diagnostics
                 Positional = ["verb"],
                 Args = [Arg("verb", ArgType.String, "the verb to describe (an alias works too)"), Arg("schema", ArgType.Enum, "the whole table as JSON", null, "json", excludes: "verb")],
             },
-            new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts and the video surface when mounted", "status") { Aliases = ["ping"] },
+            new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts and the video surface when mounted; log=<text>: the app log lines holding that text written since the last status that asked", "status log=\"stage.chrome\"")
+            {
+                Aliases = ["ping"],
+                Args = [Arg("log", ArgType.String, "list the app log lines (the in-memory ring) that contain this text, written since the last `status log=` (at most 64, the newest)")],
+            },
             new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, cold playlist, stage, tabs, playback, queue, video surface, theme options", "mount w=400 h=860 theme=zune kind=dark route=home")
             {
                 Positional = ["w", "h"],
@@ -550,10 +554,11 @@ public static partial class Diagnostics
                              Arg("id", ArgType.String, "the row (any case)"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
             },
-            new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
+            new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, blur or re-activate it (active=false|true), and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
             {
                 Positional = ["state"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("state", ArgType.Enum, "minimized (the caption button), hidden (close to tray) or restored (the restore edge paints the next frame; then settle)", null, "minimized|hidden|restored"),
+                             Arg("active", ArgType.Bool, "false blurs the window (the WindowBlur a deactivation sends: hover cleared, a pointer that was in leaves the window), true re-activates it (the pointer is back with the next move)"),
                              Arg("advance", ArgType.Float, "move the cold-maintenance clock this many ms ahead first (31000 makes a 30 s deadline due)", "0") with { Min = 0 },
                              Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; the app runs with 8192, an inspector mount with 0)") with { Min = 0 },
                              IntArg("frames", "frames to run after the change when not restoring (parked frames while parked)", "2", 0, 100_000)], s_settleArgs),

@@ -263,6 +263,9 @@ public static partial class Stage
         Layout? _resolved;   // the stage layout last resolved (the classifier's hysteresis)
         readonly FloatSignal _frac = new(0f);
         readonly Action _onWake;
+        // The window's own pointer edges (InputHooks): the pointer left the window (another monitor, the desktop, the OS leave's park) or the
+        // window blurred. Both are THE leave (Leave), built once so a subscription allocates nothing per event.
+        readonly Action _onWindowLeave, _onWindowBlur;
         // THE END CARD's one timer (Playback.EndHold.cs): armed from the hold's frame-clock stamp for the next whole second, so a re-render or a
         // remount re-arms it for what is left; it fires the release when the countdown is over
         readonly Action _onCountdown;
@@ -296,6 +299,10 @@ public static partial class Stage
         public SurfaceCore()
         {
             _onWake = () => { _armedDueMs = double.PositiveInfinity; Sync(); };
+            _onWindowLeave = () => Leave("window");
+            // a blur leaves too when the pointer was already out (the engine's window edge fires only for a pointer that was in): the machine
+            // hears one more leave, which only (re)schedules the leave debounce, so the chrome is free to hide whatever came before
+            _onWindowBlur = () => Leave("blur");
             _onCountdown = () => Countdown(Playback.EndHoldNow.Peek());
             // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
@@ -375,11 +382,12 @@ public static partial class Stage
                 // In THEATRE only the picture counts (RegionOf): a move over it is activity; the first move off it (onto the panel, the floor, the
                 // top bar) is a LEAVE, so the chrome goes after the leave debounce and the cursor never hides off the picture.
                 OnHoverMove = p => { PointerAt(_hooks?.GetPointerPosition?.Invoke() ?? p); Sync(); },
-                // a hover handed from one tree to the other (the stage ⇄ the chrome over the picture) or taken by an overlay is not a leave: only
-                // a pointer outside the stage (another monitor, outside the window) lets the chrome go after the leave debounce
+                // a hover handed from one tree to the other (the stage ⇄ the chrome over the picture) or taken by an overlay is not a leave: the
+                // pointer holds drop, nothing is scheduled. A hover exit never DETECTS a window leave: the window's own edges do (_onWindowLeave,
+                // _onWindowBlur, which fire after this exit), so an exit whose pointer is not at a real point over the stage does nothing here
                 OnPointerExit = () =>
                 {
-                    if (!PointerOverStage()) { Leave("exit"); return; }
+                    if (!PointerHandedOver()) return;
                     _idle.PointerCovered(Now());
                     Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=covered src=exit ptr={PointerText()}");
                     Sync();
@@ -624,6 +632,19 @@ public static partial class Stage
                 if (!StageWanted()) Playback.OfferEndHold(false); // the stage closed: a running countdown stops (a remount keeps it)
             }, DepKey.Empty);
 
+            // ── the window's pointer edges: a leave of the window and a blur are THE leave (sources `window` and `blur`). A re-entry needs no
+            //    handler: the leave forgot the pointer's point, so the next real move over the stage is the machine's ENTER (a reveal) ──
+            UseEffect(() =>
+            {
+                hooks.PointerLeftWindowObserved += _onWindowLeave;
+                hooks.WindowBlurObserved += _onWindowBlur;
+                return () =>
+                {
+                    hooks.PointerLeftWindowObserved -= _onWindowLeave;
+                    hooks.WindowBlurObserved -= _onWindowBlur;
+                };
+            }, DepKey.Empty);
+
             // ── idle: the engine machine on the HOST TIMER clock, one timer re-armed from NextWakeMs (MediaPlayerElement.cs:390-416, :726-730) ──
             _wake = UseTimeout(_onWake, 1_000f, DepKey.Empty);                           // arms once at mount — harmless (Sync re-arms)
             var idle = _idle;
@@ -764,7 +785,7 @@ public static partial class Stage
             if (vis.ChromeVisible != _loggedVisible)
             {
                 _loggedVisible = vis.ChromeVisible;
-                Log.Info(Diagnostics.Category, $"[stage.chrome] {(vis.ChromeVisible ? "show" : "hide")} cause={vis.LastCause} holds={ChromeHoldsText(vis.Holds)} menus={vis.MenuHolds} region={vis.Region} ptr={PointerText()} inside={(vis.PointerOutsideRegion ? "no" : "yes")}");
+                Log.Info(Diagnostics.Category, $"[stage.chrome] {(vis.ChromeVisible ? "show" : "hide")} cause={vis.LastCause} holds={ChromeHoldsText(vis.Holds)} menus={vis.MenuHolds} region={vis.Region} ptr={PointerText()} inside={(!vis.PointerOutsideRegion && PointerOnStage() ? "yes" : "no")}");
             }
             LogHoldEdges(vis);
             if (vis.CursorHidden != _cursorHidden)
@@ -811,11 +832,15 @@ public static partial class Stage
             Leave("region");
         }
 
-        /// <summary>THE one leave: the pointer is no longer over what counts (it went off the picture in Theatre: <c>region</c>; it left the stage:
-        /// <c>exit</c>). The machine hides the chrome after its leave debounce and the cursor stays. The window's own leave and blur edges come here
-        /// too (<paramref name="source"/> <c>window</c> / <c>blur</c>).</summary>
+        /// <summary>THE one leave: the pointer is no longer over what counts. <paramref name="source"/>: <c>region</c> (off the picture in Theatre,
+        /// still inside the window), <c>window</c> (the engine's window edge: out of the window, onto another monitor, the OS leave's park, or a
+        /// release outside after a held drag) or <c>blur</c> (the window lost activation; on a blur with the pointer in, the <c>window</c> line comes
+        /// first). The machine drops the pointer holds, shows the cursor (Sync releases the override) and hides the chrome after its leave debounce;
+        /// the counted Menu hold, a scrub and a stop still pin it. The last move's own "over the picture" answer is forgotten, so nothing decides
+        /// "still inside" from it until a real move comes back (that move is the machine's ENTER).</summary>
         internal void Leave(string source)
         {
+            _movedOverRegion = false;
             _idle.PointerLeft(Now());
             Log.Info(Diagnostics.Category, $"[stage.chrome] exit as=left src={source} ptr={PointerText()}");
             Sync();
@@ -849,9 +874,14 @@ public static partial class Stage
 
         static bool Inside(in RectF r, Point2 p) => p.X >= r.X && p.Y >= r.Y && p.X < r.X + r.W && p.Y < r.Y + r.H;
 
-        /// <summary>Is the pointer still over the stage (window DIP; the stage fills the window)? False when the platform has no trustworthy
-        /// position (outside the client area, the window blurred).</summary>
-        bool PointerOverStage()
+        /// <summary>A hover exit is an in-window HANDOVER (an overlay or the other tree took the hover): the engine still has the pointer in this
+        /// window and its position is a real point over the stage (window DIP; the stage fills the window). A missing position (a blur) or one
+        /// outside the stage (an off-window move, the OS leave's park) is never read as "still inside": the window's edges decide those.</summary>
+        bool PointerHandedOver() => _hooks?.IsPointerInWindow?.Invoke() == true && PointerOnStage();
+
+        /// <summary>The pointer's window position is a real point over the stage (window DIP; the stage fills the window). A missing position
+        /// (a blur) or one outside (an off-window move, the OS leave's park at -10000) is not.</summary>
+        bool PointerOnStage()
         {
             if (_hooks?.GetPointerPosition?.Invoke() is not { } p) return false;
             var L = _ctx.Layout.Peek();

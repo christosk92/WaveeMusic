@@ -394,7 +394,9 @@ public static partial class Diagnostics
                     _quit = true;
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Status:
-                    return Inspect.Reply.Ok(id, name, WriteStatus);
+                    if (!a.Has("log")) return Inspect.Reply.Ok(id, name, WriteStatus);
+                    string logText = a.Str("log");
+                    return Inspect.Reply.Ok(id, name, w => { WriteStatus(w); WriteLogSince(w, logText); });
                 case Inspect.Verb.Mount:
                     return Mount(id, name, a);
                 case Inspect.Verb.Unmount:
@@ -1660,6 +1662,25 @@ public static partial class Diagnostics
             foreach (var n in InspectKit.Subtree(scene, root))
                 if (scene.HasScroll(n)) return n;
             return NodeHandle.Null;
+        }
+
+        long _logSeen;   // the last log sequence a `status log=` listed
+
+        /// <summary>`log:[...]`: the app log lines (Log.Snapshot, the in-memory ring) that contain <paramref name="text"/>, written since the
+        /// last `status log=` (the newest 64), so a verb's `[stage.chrome]` lines can be read back after it.</summary>
+        void WriteLogSince(Utf8JsonWriter w, string text)
+        {
+            var lines = new List<string>();
+            long seen = _logSeen;
+            foreach (var entry in Log.Snapshot())
+            {
+                if (entry.Sequence <= seen) continue;
+                _logSeen = Math.Max(_logSeen, entry.Sequence);
+                if (entry.Message.Contains(text, StringComparison.Ordinal)) lines.Add(entry.Message);
+            }
+            w.WriteStartArray("log");
+            for (int i = Math.Max(0, lines.Count - 64); i < lines.Count; i++) w.WriteStringValue(lines[i]);
+            w.WriteEndArray();
         }
 
         void WriteStatus(Utf8JsonWriter w)

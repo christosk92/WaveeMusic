@@ -260,15 +260,16 @@ Resizes the window and settles. Use it to check a tier crossing on a live mount.
 | `max` | The settle's frame cap (600). With `trace`, the most nodes watched. |
 | `trace=N` | Traces N frames from the resize instead of settling; the `trace` args (`keys`, `prefix`, `scroll`, `every`, ...) apply. |
 
-### `window {state?, advance?, floor?, frames?}`
+### `window {state?, active?, advance?, floor?, frames?}`
 
-Parks the mounted window the way the OS does, restores it, and moves the engine's cold-maintenance clock ahead. Use it for
-what happens to a window that sits minimized or in the tray: the restore-after-minimize crash (Wavee 0.3.7) was reproduced
-with it.
+Parks the mounted window the way the OS does, restores it, blurs or re-activates it, and moves the engine's cold-maintenance
+clock ahead. Use it for what happens to a window that sits minimized or in the tray (the restore-after-minimize crash, Wavee
+0.3.7, was reproduced with it) and for a window the user switched away from (`active=false`).
 
 | Arg | Values |
 |---|---|
 | `state` | `minimized` (the caption button: the placement reads Minimized), `hidden` (close to tray: the window reads invisible) or `restored` (back to Normal and shown). Positional: `window minimized`. |
+| `active` | `false` blurs the window (`HeadlessWindow.IsActive`: the WindowBlur a Win32 deactivation sends; the dispatcher drops the pointer position, clears hover, closes light-dismiss overlays, and a pointer that was in leaves the window first: `InputHooks.PointerLeftWindowObserved`, then `WindowBlurObserved`); `true` re-activates it (WindowFocus). The pointer is back only with the next move: `hover x= y=`. Runs `frames` after the change. The fullscreen stage logs `[stage.chrome] exit as=left src=window` (a pointer that was in) and `src=blur`. A move off the window is `hover x=-50 y=-50` (`src=window`). |
 | `advance` | Moves the cold-maintenance clock this many ms ahead (`AppHost.AdvanceColdMaintenanceClock`) before the frames run, so a 30 s deadline falls due on the next frame: `advance=31000`. |
 | `floor` | Sets the scene slab's trim floor (`SceneStore.CapacityFloor`). The app runs with 8192 (`InitialSceneCapacity`); an inspector mount has none (0, the engine's own 256), so pass `floor=8192` to trim as the app does. |
 | `frames` | Frames to run after the change when not restoring (2). A restore runs one frame, then settles (`settle`, `max`, `loops` and `trace=N` apply). |
@@ -284,7 +285,7 @@ due 30 s after the slab last grew or shrank, once the host has been free of inpu
 when that much wall clock passes during the session.
 
 The reply (every `window`, also with no args, which only runs the frames) carries `state` (`normal`, `minimized`, `hidden`),
-`parked` (`AppHost.IsParked`), `coldRuns` (frames that ran a cold service during this command) and `scene`:
+`active` (the window's activation), `pointerInWindow` (`InputDispatcher.PointerInWindow`), `parked` (`AppHost.IsParked`), `coldRuns` (frames that ran a cold service during this command) and `scene`:
 
 | Field | Meaning |
 |---|---|
@@ -302,6 +303,9 @@ A frame that throws replies `ok:false` with the exception, `stack` (its frames) 
 → window advance=31000
 ← {"id":6,"ok":true,"cmd":"window","framesRun":2,"state":"minimized","parked":true,"coldRuns":1,"scene":{"capacity":8192,"capacityBefore":32768,"trimmed":true,...,"dirty":{"pending":2436,"maxSlot":19571,"pastCapacity":248}}}
 → window restored
+→ window active=false
+← {"id":7,"ok":true,"cmd":"window","framesRun":2,"state":"normal","active":false,"pointerInWindow":false,"parked":false,...}
+→ window active=true
 ```
 
 ### `frames {n}` and `settle {max?, loops?}`
@@ -331,7 +335,10 @@ Home, and makes Classic dark the active theme.
   managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start by every thread and by the UI thread alone (exact), the collections per
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
-  `animating` and `trimSource`.
+  `animating` and `trimSource`. `status log=<text>` adds `log[...]`: the app log lines (the in-memory ring; the headless boot
+  writes no log file) that contain the text, written since the last `status log=` (the newest 64). `status log="stage.chrome"`
+  (quoted: a bare `[...]` parses as a list) after a `hover`, `window active=false` or `frames` reads back the fullscreen stage's chrome edges (`exit as=left src=...`,
+  `hold OverControls=0`, `hide cause=leave`).
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
 - `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
   sends nothing after a `quit` and says how many lines it left.
