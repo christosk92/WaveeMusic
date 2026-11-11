@@ -94,20 +94,24 @@ internal static partial class ClassicReleaseNotes
     /// picture under it and feathers into it from the top, never a hard edge — with the title in it. The description opens in the band while the pointer is on
     /// the tile (the band grows up over the picture with it, nothing around it moves), and is always open where the tile has the room (the hero on every
     /// tier but Compact, every tile on Huge). The tile is one button that opens the viewer with the whole text; the Store tile is not, its accent button
-    /// goes to the Store. A component only for its hover state.</summary>
+    /// goes to the Store. Keyboard focus opens the description as the pointer does (a tile tabbed onto shows what hovering it shows); a pointer press that
+    /// focuses the tile does not (focus-visible: the engine's <see cref="NodeFlags.FocusVisual"/>). A component only for its hover and focus state.</summary>
     sealed class TileView : Component
     {
         readonly Signal<bool> _hover = new(false);
+        readonly Signal<bool> _focus = new(false);
         TileArgs _args = null!;
+        InputHooks? _input;
 
         public override Element Render()
         {
             var a = _args = UseProps<TileArgs>();
+            _input = UseContext(InputHooks.Current);
             var h = a.Item.Highlight;
             var layout = a.Layout;
             bool store = HighlightVisibility.IsStore(h);
             bool always = a.Hero ? layout.HeroDescriptionAlways : layout.DescriptionAlways;
-            bool open = always || _hover.Value;
+            bool open = always || _hover.Value || _focus.Value;
             float title = a.Hero ? layout.HeroTitleSize : K.TileTitleSize;
 
             var words = new List<Element>(3)
@@ -172,7 +176,8 @@ internal static partial class ClassicReleaseNotes
                 : frame.Interactive(Interaction.Card) with
                 {
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = a.Open,
-                    OnHoverMove = frame.OnHoverMove, OnPointerExit = frame.OnPointerExit, Children = layers.ToArray(),
+                    OnHoverMove = frame.OnHoverMove, OnPointerExit = frame.OnPointerExit, OnFocusChanged = _focusChanged,
+                    Children = layers.ToArray(),
                 };
         }
 
@@ -181,10 +186,26 @@ internal static partial class ClassicReleaseNotes
             // The hover handlers, made once per tile: a pointer move writes only when the answer changes.
             _enter = _ => { if (!_hover.Peek()) _hover.Value = true; };
             _exit = () => { if (_hover.Peek()) _hover.Value = false; };
+            // GotFocus opens the description only when the focus arrived by keyboard (the dispatcher sets FocusVisual before it fires the event); LostFocus
+            // closes it (the hover state, separate, keeps it open while the pointer is still on the tile). Wired on every tier, so a focus that leaves while
+            // the tier holds the description open (no change on screen) is still heard, and a crossing back never finds a stale open.
+            _focusChanged = got =>
+            {
+                bool keyboard = got && KeyboardFocused();
+                if (_focus.Peek() != keyboard) _focus.Value = keyboard;
+            };
+        }
+
+        /// <summary>The focused node (the tile, when its GotFocus fires) carries the engine's keyboard focus visual.</summary>
+        bool KeyboardFocused()
+        {
+            if (Context.Scene is not { } scene || _input?.GetFocus?.Invoke() is not { IsNull: false } node || !scene.IsLive(node)) return false;
+            return (scene.Flags(node) & NodeFlags.FocusVisual) != 0;
         }
 
         readonly Action<Point2> _enter;
         readonly Action _exit;
+        readonly Action<bool> _focusChanged;
     }
 
     /// <summary>The description's reveal: its height eases through real layout, so the band, which sits on the tile's foot and grows UP, carries its
