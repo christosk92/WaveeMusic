@@ -322,6 +322,40 @@ internal static class ClassicFrame
         };
         // The bar's reservation under a floating or docked panel follows the bar's own height through real layout (the 528 crossing).
         LayoutTransition? barReserve = ctx.Reduced ? null : ClassicTierMotion.HeightReflow;
+        Element panel = ctx.View(ViewKeys.ShellPanel, props.Panel);
+        // The host's row, the host animated by `motion`: what moved it decides (ClassicPanelHostRow).
+        Element Row(LayoutTransition motion) => new BoxEl
+        {
+            Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.End, HitTestPassThrough = true,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = ClassicPanelTiers.HostKey,
+                    Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
+                    OnRealized = h => drag.SheetNode = h,
+                    Width = Prop.Of(WidthNow), Corners = Prop.Of(CornersNow),
+                    Animate = motion,
+                    Children =
+                    [
+                        // The FLOATING panel's backing band (the shell ground) — paint-only, never the deepest hit.
+                        new BoxEl
+                        {
+                            Grow = 1f, HitTestPassThrough = true, Corners = Prop.Of(CornersNow),
+                            Fill = Prop.Of(() => props.RailFloats() ? R.Layer.FloatingChrome : ColorF.Transparent),
+                        },
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
+                            Corners = Prop.Of(CornersNow), IsolateLayout = true,
+                            Opacity = Prop.Of(() => props.RailFade.Value),
+                            Children = [panel],
+                        },
+                    ],
+                },
+                new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(Right) },
+            ],
+        };
         return new BoxEl
         {
             Direction = 1, Grow = 1f, HitTestPassThrough = true,
@@ -330,35 +364,8 @@ internal static class ClassicFrame
                 new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Top) },
                 new BoxEl
                 {
-                    Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.End, HitTestPassThrough = true,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Key = ClassicPanelTiers.HostKey,
-                            Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
-                            OnRealized = h => drag.SheetNode = h,
-                            Width = Prop.Of(WidthNow), Corners = Prop.Of(CornersNow),
-                            Animate = ClassicFrameRules.PanelHostAnim,
-                            Children =
-                            [
-                                // The FLOATING panel's backing band (the shell ground) — paint-only, never the deepest hit.
-                                new BoxEl
-                                {
-                                    Grow = 1f, HitTestPassThrough = true, Corners = Prop.Of(CornersNow),
-                                    Fill = Prop.Of(() => props.RailFloats() ? R.Layer.FloatingChrome : ColorF.Transparent),
-                                },
-                                new BoxEl
-                                {
-                                    Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
-                                    Corners = Prop.Of(CornersNow), IsolateLayout = true,
-                                    Opacity = Prop.Of(() => props.RailFade.Value),
-                                    Children = [ctx.View(ViewKeys.ShellPanel, props.Panel)],
-                                },
-                            ],
-                        },
-                        new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(Right) },
-                    ],
+                    Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, HitTestPassThrough = true,
+                    Children = [Embed.Comp(new ClassicPanelHostRow.Props(placement, props.RailWidth, Row, ctx.Reduced), static () => new ClassicPanelHostRow())],
                 },
                 new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Bottom), Animate = barReserve },
             ],
@@ -417,4 +424,30 @@ internal static class ClassicFrame
             },
         ],
     };
+}
+
+/// <summary>The primary panel host's row, the host's transition chosen by what moved it. The render that sees the placement change (a crossing
+/// that docks, floats or sheets the panel) keeps <see cref="ClassicFrameRules.PanelHostAnim"/>: laid out at the final size, a clip and a translate
+/// ease. Any other render of a DOCKED host (a committed width: the seam's release, the Huge floor, a policy fit) takes
+/// <see cref="ClassicFrameRules.PanelWidthAnim"/>: the width eases through real layout beside the reservation, so the panel's inside re-flows every
+/// frame instead of standing half the change off its place. Its render reads the placement and the committed width only: one render per
+/// crossing and per committed width, and the seam's drag (a guide line until the release) renders nothing.</summary>
+internal sealed class ClassicPanelHostRow : Component
+{
+    internal sealed record Props(Func<PanelPlacement> Placement, IReadSignal<float> RailWidth, Func<LayoutTransition, Element> Row, bool Reduced);
+
+    PanelPlacement _placed;
+    bool _mounted;
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        PanelPlacement placement = p.Placement();
+        _ = p.RailWidth.Value;   // a committed width re-renders here, in the flush that lays it out, so its transition is set before the commit
+        bool crossed = _mounted && placement != _placed;
+        _placed = placement;
+        _mounted = true;
+        bool widthOnly = placement == PanelPlacement.Dock && !crossed && !p.Reduced;
+        return p.Row(widthOnly ? ClassicFrameRules.PanelWidthAnim : ClassicFrameRules.PanelHostAnim);
+    }
 }
