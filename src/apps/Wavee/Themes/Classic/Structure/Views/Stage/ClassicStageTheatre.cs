@@ -66,8 +66,7 @@ internal static class ClassicStageTheatre
                 HitTestVisible = false, HitTestPassThrough = false,
                 Children =
                 [
-                    // the floor around the picture in Theatre (under it in Cinema the letterbox covers it), and the track's colour on it
-                    new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = Ink.Floor, HitTestVisible = false },
+                    // the floor around the picture in Theatre (under it in Cinema the letterbox covers it), in the track's colour
                     Embed.Comp(new PictureProps(v), static () => new Wash()),
                     // Cinema's letterbox ground, edge to edge: there at once when the stage opens in Cinema; back from Theatre once the picture has
                     // filled the stage (until then the floor shows around the growing picture, as it did around the growing box); gone at once as
@@ -103,8 +102,11 @@ internal static class ClassicStageTheatre
         }
     }
 
-    /// <summary>The page's colour: the still wash of the playing track's palette, centred on Theatre's picture box (see the file header). Its own
-    /// component: a track change (the palette) or a resize re-renders this layer alone, and the keyed glow cross-fades.</summary>
+    /// <summary>The page's colour: the floor itself, painted as the still wash of the playing track's palette, centred on Theatre's picture box (see the
+    /// file header). ONE opaque fill per pixel, exactly as the flat floor was: the wash is the floor blended toward the palette's colour, not a
+    /// translucent layer over it, so the tiles the picture's glide re-rasters cost what they did (a second full-window layer, or a slice of its own,
+    /// cost the glide about 0.35 to 0.65 ms of GPU per frame in the stage-theatre bench). Its own component: a track change (the palette) or a resize
+    /// re-renders this layer alone, and the keyed floor cross-fades.</summary>
     internal sealed class Wash : Component
     {
         static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
@@ -117,9 +119,10 @@ internal static class ClassicStageTheatre
             var palette = st.BasePalette.Value;
             var box = G.Of(L).Picture;
             float w = MathF.Max(1f, L.W), h = MathF.Max(1f, L.H);
-            var c = palette.A;
+            var floor = Ink.Floor;
+            var c = palette.A with { A = 1f };
             var glow = new GradientSpec(GradientShape.Radial, 0f,
-                [new GradientStop(0f, c with { A = G.WashCentreA }), new GradientStop(G.WashMidAt, c with { A = G.WashMidA }), new GradientStop(1f, c with { A = G.WashEdgeA })])
+                [new GradientStop(0f, ColorF.Lerp(floor, c, G.WashCentreA)), new GradientStop(G.WashMidAt, ColorF.Lerp(floor, c, G.WashMidA)), new GradientStop(1f, ColorF.Lerp(floor, c, G.WashEdgeA))])
             {
                 RadialCenter = new Point2((box.X + box.W * 0.5f) / w, (box.Y + box.H * 0.5f) / h),
                 RadialRadius = new Point2(box.W * G.WashReachX / w, box.H * G.WashReachY / h),
