@@ -614,7 +614,10 @@ public static partial class Shell
         {
             // Concealed (the on-media strip faded out): nothing paints, so no report writes the transform. The read is the
             // effect's subscription to the reveal, so showing the strip re-runs this and re-syncs the fraction first.
-            if (_reveal is { } reveal && !reveal.Value) return;
+            if (_reveal is { } reveal && !reveal.Value) { _concealedSinceReport = true; return; }
+            // the first report after the reveal rose: the rail shows the current state at once (no rescale ease for what changed while hidden)
+            bool revealed = _concealedSinceReport;
+            _concealedSinceReport = false;
             _ = Playback.PositionMs.Value;
             _ = Playback.DurationMs.Value;
             _ = Playback.Live.Value;
@@ -625,8 +628,11 @@ public static partial class Shell
             // The drop-point hold ends on a LANDING past the generation the commit saw (V-PA12), and re-derives the resting
             // fraction (`ScrubController.OnModelReport`): the same hold covers the bar, the flagship stage and the video
             // overlay (all host this rail). No landing (a foreign owner, a parked deck) -> SeekRail.CommitHoldMs ends it.
-            _scrub.OnModelReport();
+            _scrub.OnModelReport(revealed);
         }
+
+        /// <summary>The reveal fell since the last report this rail drew (see <see cref="OnReport"/>).</summary>
+        bool _concealedSinceReport;
 
         /// <summary>The gesture's edges, fanned out to the chrome-activity seams: <c>true</c> on press, <c>false</c> on commit or
         /// cancel (a scrub is chrome activity, so the rail that drives it must be able to say so).</summary>
