@@ -580,6 +580,27 @@ public static partial class Diagnostics
                     Video.State.TurnOff();
                     return r;
                 }
+                case FrameBenchScenarios.StageExit:
+                {
+                    // The full-screen stage (its lyrics mode) opened and closed every 2 s over Home with a track playing, with the window really going
+                    // full screen and back: what the exit costs (the window restore, the page the stage uncovers laid out at the restored size).
+                    Base(playing: true, play);
+                    bool keptWindowed = ImmersiveService.Shared.KeepWindowed;
+                    ImmersiveService.Shared.KeepWindowed = false;
+                    bool open = false;
+                    int exits = 0;
+                    var r = Measure(new Driver(now =>
+                    {
+                        open = !open;
+                        if (open) Stage.Open(null, "bench");
+                        else { Stage.Close(null, "bench"); exits++; }
+                        return now + 2.0;
+                    }), "stage open/close every 2 s, real full screen");
+                    if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
+                    Settle(1.0);
+                    ImmersiveService.Shared.KeepWindowed = keptWindowed;
+                    return r with { Note = r.Note + " exits=" + exits };
+                }
                 case FrameBenchScenarios.NavGc:
                 {
                     // `--bench-nav-play`: the first playlist plays, so its row's equalizer runs while the bench navigates.
