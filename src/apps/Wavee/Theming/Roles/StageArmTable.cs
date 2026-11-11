@@ -201,3 +201,63 @@ public static class StageInk
     /// <summary>The now-playing surfaces take the playing cover's colour (the active structure's <see cref="ArtworkColorPolicy.NowPlayingColors"/>). Tracked.</summary>
     public static bool NowPlayingColors => ThemeHost.Policies.Value.Artwork.NowPlayingColors;
 }
+
+/// <summary>The caption's VEIL, the ground that guarantees the caption's fixed on-media inks (the lyric over the stage: previous, live and
+/// next line). The inks never change; the veil is solved for them. Its full-strength CORE is the ellipse that encloses the whole block the
+/// caption can show (every line sits on full strength); the feather begins outside it. Its strength is the smallest alpha at which the
+/// weakest caption ink (<see cref="StageInk.InkSecondary"/>) holds the text floor (<see cref="ColorScience.TextContrast"/>) over the
+/// worst colour the ground can show under the block: the cover's palette over a still ground, white and black over moving video (an
+/// unknown ground). Never below the stage's own veil alpha (<c>Stage.Tone.CaptionVeilA</c>), so a ground that already holds the floor
+/// keeps today's veil.</summary>
+public static class StageCaptionVeil
+{
+    /// <summary>The veil's alpha for the stage the caption is in: its cover palette (the base, so the moments' rotation never moves the veil),
+    /// or any picture while the stage shows video. Reads both signals, so a caption template re-renders when the cover or the mode changes.
+    /// No stage (a preview): the stage's own veil alpha.</summary>
+    public static float For(Stage.StageCtx? stage)
+        => stage is null ? Stage.Tone.CaptionVeilA : Alpha(stage.BasePalette.Value, stage.Look.Value.Mode == Stage.Mode.Video);
+
+    /// <summary>The veil's alpha for the live arm over <paramref name="palette"/>'s colours, or over any picture while <paramref name="video"/>.</summary>
+    public static float Alpha(in Visualizer.Palette palette, bool video)
+    {
+        Span<ColorF> grounds = stackalloc ColorF[5];
+        int n;
+        if (video) { grounds[0] = ColorF.FromRgba(0xFF, 0xFF, 0xFF); grounds[1] = ColorF.FromRgba(0, 0, 0); n = 2; }
+        else { grounds[0] = palette.Accent; grounds[1] = palette.A; grounds[2] = palette.B; grounds[3] = palette.C; grounds[4] = palette.Deep; n = 5; }
+        return ColorScience.ScrimAlpha(StageInk.InkSecondary, StageInk.Veil with { A = 1f }, grounds[..n], ColorScience.TextContrast, Stage.Tone.CaptionVeilA);
+    }
+
+    /// <summary>Where the veil stands for a block <paramref name="width"/> x <paramref name="height"/> whose left edge is <paramref name="x"/>
+    /// and whose bottom sits <paramref name="bottom"/> above the layer's: the veil box (its left, bottom margin, width and height, centred on
+    /// the block) and <c>Core</c>, the radial stop where the full-strength core ends. The core is the smallest ellipse of the block's own
+    /// aspect that encloses the block (radii = half-extents x sqrt 2, so the block's corners sit ON it); the feather then runs at least
+    /// <see cref="FeatherK"/> veil pads (<c>Stage.Layout.CaptionVeilPadX/Y</c>) past it on both axes, one stop for both, so the falloff stays an ellipse.</summary>
+    public static (float Left, float Bottom, float Width, float Height, float Core) Place(float x, float bottom, float width, float height)
+    {
+        float rx0 = MathF.Max(1f, width) * HalfDiagonal, ry0 = MathF.Max(1f, height) * HalfDiagonal;
+        float core = MathF.Min(rx0 / (rx0 + FeatherK * Stage.Layout.CaptionVeilPadX), ry0 / (ry0 + FeatherK * Stage.Layout.CaptionVeilPadY));
+        float rx = rx0 / core, ry = ry0 / core;
+        return (x + width * 0.5f - rx, bottom + height * 0.5f - ry, 2f * rx, 2f * ry, core);
+    }
+
+    /// <summary>The feather's run in veil pads: twice the stage's pads, so the solved strength (often above the old 0.50 centre) falls off as
+    /// gently as the old veil did and reads as a soft ground, never a band.</summary>
+    const float FeatherK = 2f;
+
+    /// <summary>sqrt(2) / 2: the enclosing ellipse's radius over the block's FULL extent.</summary>
+    const float HalfDiagonal = 0.70710678f;
+
+    /// <summary>The veil's radial stops at <paramref name="alpha"/>: full strength to <paramref name="core"/>, then the stage's feather shape
+    /// (a middle stop <paramref name="midStop"/> of the way out at <paramref name="midAlpha"/> of the strength) to nothing at the rim.</summary>
+    public static GradientStop[] Stops(float alpha, float core, float midStop, float midAlpha)
+    {
+        ColorF veil = StageInk.Veil;
+        return
+        [
+            new GradientStop(0f, veil with { A = alpha }),
+            new GradientStop(core, veil with { A = alpha }),
+            new GradientStop(core + (1f - core) * midStop, veil with { A = alpha * midAlpha }),
+            new GradientStop(1f, veil with { A = 0f }),
+        ];
+    }
+}

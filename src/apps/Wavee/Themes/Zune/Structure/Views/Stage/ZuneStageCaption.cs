@@ -38,7 +38,9 @@ internal static class ZuneStageCaption
     {
         float bottom = props.Bottom;
         var tiers = ctx.Tier();   // hooks first, unconditionally
-        if (ctx.Hooks.UseContext(Stage.StageContext) is { } sc)
+        var stage = ctx.Hooks.UseContext(Stage.StageContext);
+        float veilA = StageCaptionVeil.For(stage);
+        if (stage is { } sc)
         {
             var a = ZuneStageKit.Arrangement(sc, tiers);
             var L = sc.Layout.Value;
@@ -56,6 +58,7 @@ internal static class ZuneStageCaption
         if (props.NextText is { } next)
             kids.Add(ContextLine(next, "cap:n:" + gen + ":" + props.NextIndex, props));
 
+        var veil = StageCaptionVeil.Place(props.X, bottom, props.Width, props.BlockMaxHeight);
         return Stage.Layer with
         {
             HitTestVisible = false, HitTestPassThrough = false,
@@ -64,13 +67,10 @@ internal static class ZuneStageCaption
                 new BoxEl
                 {
                     Key = "cap:veil", Layout = s_place,
-                    Width = props.Width + 2f * Stage.Layout.CaptionVeilPadX, Height = props.BlockMaxHeight + 2f * Stage.Layout.CaptionVeilPadY,
+                    Width = veil.Width, Height = veil.Height,
                     AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Margin = new Edges4(props.X - Stage.Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, bottom - Stage.Layout.CaptionVeilPadY)),
-                    Gradient = RadialGradient(
-                        new GradientStop(0f, Shade(Stage.Tone.CaptionVeilA)),
-                        new GradientStop(G.VeilMidStop, Shade(Stage.Tone.CaptionVeilA * G.VeilMidAlpha)),
-                        new GradientStop(1f, Shade(0f))),
+                    Margin = new Edges4(veil.Left, 0f, 0f, veil.Bottom),
+                    Gradient = RadialGradient(StageCaptionVeil.Stops(veilA, veil.Core, G.VeilMidStop, G.VeilMidAlpha)),
                 },
                 new BoxEl
                 {
@@ -83,8 +83,6 @@ internal static class ZuneStageCaption
             ],
         };
     }
-
-    static ColorF Shade(float a) => Ink.Veil with { A = a };
 
     static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl
     {

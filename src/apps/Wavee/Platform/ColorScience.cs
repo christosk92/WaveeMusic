@@ -182,6 +182,38 @@ public static class ColorScience
         return ColorContrast.MeetsAaText(ink, cardBackground) ? ink : ColorContrast.PickContrast(cardBackground);
     }
 
+    /// <summary>The SCRIM solved for a fixed ink: the smallest alpha in [<paramref name="min"/>, 1] at which <paramref name="scrim"/> laid over
+    /// each of <paramref name="grounds"/> gives <paramref name="ink"/> (straight alpha, composited over that scrimmed ground) at least
+    /// <paramref name="floor"/> : 1 against it. The ink stays what it is; the scrim is what guarantees it. 1 when even an opaque scrim cannot
+    /// (an ink that does not contrast with its own scrim). A bisection over the alpha (the ratio grows with it for an ink that contrasts with
+    /// the scrim); allocation-free.</summary>
+    public static float ScrimAlpha(ColorF ink, ColorF scrim, ReadOnlySpan<ColorF> grounds, float floor, float min)
+    {
+        min = Math.Clamp(min, 0f, 1f);
+        if (Holds(ink, scrim, grounds, floor, min)) return min;
+        if (!Holds(ink, scrim, grounds, floor, 1f)) return 1f;
+        float lo = min, hi = 1f;
+        for (int i = 0; i < ScrimSolveSteps; i++)
+        {
+            float mid = 0.5f * (lo + hi);
+            if (Holds(ink, scrim, grounds, floor, mid)) hi = mid; else lo = mid;
+        }
+        return hi;
+
+        static bool Holds(ColorF ink, ColorF scrim, ReadOnlySpan<ColorF> grounds, float floor, float a)
+        {
+            for (int i = 0; i < grounds.Length; i++)
+            {
+                var ground = ColorContrast.Over(scrim with { A = a }, grounds[i] with { A = 1f });
+                if (ColorContrast.Ratio(ColorContrast.Over(ink, ground), ground) < floor) return false;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>The bisection's steps (2^-12 of an alpha: below one 8-bit step).</summary>
+    const int ScrimSolveSteps = 12;
+
     /// <summary>Chrome fill from a raw wire colour (a pathfinder extracted colour before the plane has graded the
     /// art). Same <see cref="Lift"/> THEN THE SAME <see cref="Vivid"/> saturation floor <see cref="ChromeAccent"/>
     /// applies — this rung and the graded rung are consumed by the SAME control (<c>Detail.AccentFor</c>'s Play

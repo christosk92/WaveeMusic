@@ -38,6 +38,7 @@ internal static class ClassicStageCaption
     /// <summary>The registered template of <see cref="ViewKeys.StageCaption"/>.</summary>
     public static Element Template(StageCaptionProps props, in ViewContext ctx)
     {
+        float veilA = StageCaptionVeil.For(ctx.Hooks.UseContext(Stage.StageContext));
         string gen = props.Generation;
         var kids = new List<Element>(3);
         if (props.PreviousText is { } previous)
@@ -48,6 +49,7 @@ internal static class ClassicStageCaption
         if (props.NextText is { } next)
             kids.Add(ContextLine(next, "cap:n:" + gen + ":" + props.NextIndex, props));
 
+        var veil = StageCaptionVeil.Place(props.X, props.Bottom, props.Width, props.BlockMaxHeight);
         return Stage.Layer with
         {
             HitTestVisible = false, HitTestPassThrough = false,
@@ -58,13 +60,10 @@ internal static class ClassicStageCaption
                 new BoxEl
                 {
                     Key = "cap:veil", Layout = s_place,
-                    Width = props.Width + 2f * Stage.Layout.CaptionVeilPadX, Height = props.BlockMaxHeight + 2f * Stage.Layout.CaptionVeilPadY,
+                    Width = veil.Width, Height = veil.Height,
                     AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Margin = new Edges4(props.X - Stage.Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, props.Bottom - Stage.Layout.CaptionVeilPadY)),
-                    Gradient = RadialGradient(
-                        new GradientStop(0f, Shade(Stage.Tone.CaptionVeilA)),
-                        new GradientStop(ClassicStageCaptionGeometry.VeilMidStop, Shade(Stage.Tone.CaptionVeilA * ClassicStageCaptionGeometry.VeilMidAlpha)),
-                        new GradientStop(1f, Shade(0f))),
+                    Margin = new Edges4(veil.Left, 0f, 0f, veil.Bottom),
+                    Gradient = RadialGradient(StageCaptionVeil.Stops(veilA, veil.Core, ClassicStageCaptionGeometry.VeilMidStop, ClassicStageCaptionGeometry.VeilMidAlpha)),
                 },
                 // the block: previous · active (or the dots) · next, centred in its region, bottom-anchored above the transport
                 new BoxEl
@@ -78,8 +77,6 @@ internal static class ClassicStageCaption
             ],
         };
     }
-
-    static ColorF Shade(float a) => Ink.Veil with { A = a };
 
     /// <summary>A context line (previous / next): small, one line, the stage arm's secondary ink (at the old 0.35 / 0.45 ink alphas it read 2 : 1 over a bright visualizer), never blurred.</summary>
     static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl
