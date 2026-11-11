@@ -19,6 +19,7 @@ using FluentGpu.Localization;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 
 using Ink = Wavee.Theming.Roles.StageInk;
@@ -43,6 +44,12 @@ internal static class ClassicStageTopBar
         bool videoMode = st.Mode.Value == Stage.Mode.Video;
         bool videoTabs = st.VideoOffered.Value || videoMode;
         bool audioFace = st.AudioFace.Value;
+        // the bar's arm: where it stands over the AUDIO FACE's colour field (Cinema: the field fills the stage) the field decides it, the theme kind
+        // does not (the face's rule, as its control bar and Cinema's shelf: a deep field on the light theme reads with the dark arm's veil and
+        // light inks); in Theatre the bar stands over the page's floor, not the field (the field is the 16:9 box under it), and over a picture or
+        // the audio stage, so the theme's arm there
+        var armKind = audioFace && !st.Theatre.Value ? ClassicStageAudioFaceGeometry.FieldArm(st.BasePalette.Value) : Tok.Theme;
+        var arm = Ink.Arm(armKind);
         var modes = videoTabs ? s_videoModes : s_modes;
         var index = h.UseSignal(0);
         h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.VideoOffered.Value || st.Mode.Value == Stage.Mode.Video ? s_videoModes : s_modes, LitTab(st)))));
@@ -64,7 +71,7 @@ internal static class ClassicStageTopBar
         bool exitLabel = !videoMode && L.ExitLabelShown(modes.Length);
         var style = new SelectorBarStyle
         {
-            RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
+            RestColor = arm.InkSecondary, SelectedColor = arm.Ink, HoverColor = arm.Ink, HoverFill = arm.GlassHover, PressedFill = arm.GlassPressed,
             SelectedWeight = ClassicStageGeometry.SelectorWeight, ItemHeight = MathF.Max(ClassicStageGeometry.SelectorItemHeight, targetH), ItemGap = ClassicStageGeometry.SelectorItemGap,
         };
         bool optionsOn = st.OptionsOpen.Value;
@@ -78,7 +85,7 @@ internal static class ClassicStageTopBar
         {
             Grow = 1f, Height = Stage.Layout.TopBarH, Direction = 0, AlignItems = FlexAlign.Center,
             Padding = ClassicStageGeometry.TopBarPadding, Gap = Spacing.S,
-            Gradient = GradientDown(new GradientStop(0f, Shade(ClassicStageGeometry.TopBarVeilA)), new GradientStop(1f, Shade(0f))),
+            Gradient = GradientDown(new GradientStop(0f, Shade(arm, ClassicStageGeometry.TopBarVeilA)), new GradientStop(1f, Shade(arm, 0f))),
             // the chrome is held by the CONTROLS (the tabs, the buttons), not by the bar: a pointer resting on the brand or the empty bar
             // idles out like one resting on the picture (Held)
             Children =
@@ -92,10 +99,10 @@ internal static class ClassicStageTopBar
                     Children =
                     [
                         new BoxEl { Width = ClassicStageGeometry.BrandMark, Height = ClassicStageGeometry.BrandMark, Corners = ClassicStageGeometry.BrandMarkCorners, Fill = Prop.Bind(st.Slab.Accent), Shrink = 0f },
-                        new TextEl("Wavee") { Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Weight = ClassicStageGeometry.BrandWeight, Color = Ink.Ink, Shrink = 0f },
+                        new TextEl("Wavee") { Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Weight = ClassicStageGeometry.BrandWeight, Color = arm.Ink, Shrink = 0f },
                         new TextEl(Loc.Get(videoMode && !audioFace ? Strings.Player.VideoFullScreen : Strings.Stage.Brand))
                         {
-                            Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Color = arm.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                             MinWidth = 0f, Shrink = 1f, Visible = !L.IconOnlySelector,
                         },
                     ],
@@ -118,16 +125,17 @@ internal static class ClassicStageTopBar
                                 // visualizer's options have nothing to set over the picture); the docked video menu's "Turn off video" is this verb
                                 videoMode
                                     ? audioLabel
-                                        ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote) with { Shrink = 0f, HitSlop = ClassicStageGeometry.LabelledButtonSlop, Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
-                                        : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH), Loc.Get(Strings.Player.SwitchToAudio)) with { Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
-                                    : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
+                                        ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote,
+                                            style: armKind == Tok.Theme ? null : OnArm(arm)) with { Shrink = 0f, HitSlop = ClassicStageGeometry.LabelledButtonSlop, Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
+                                        : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH, arm), Loc.Get(Strings.Player.SwitchToAudio)) with { Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
+                                    : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH, arm), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
                                 // the audio modes' way out (Video mode's is the control bar's). Labelled only where the allocator says the column holds it
                                 // (never "Ex…"); else the glyph with the label as its tooltip.
                                 videoMode
                                     ? new BoxEl { Visible = false }
                                     : exitLabel
                                         ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
-                                        : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
+                                        : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH, arm), Loc.Get(Strings.Stage.Exit)),
                             ],
                         },
                     ],
@@ -164,17 +172,25 @@ internal static class ClassicStageTopBar
          : st.AudioFace.Value ? Stage.Mode.Lyrics : Stage.Mode.Video;
 
     /// <summary>A 40×36 glass glyph button of the top bar (the options toggle, the icon-only exit); 40×40 on a Compact window.</summary>
-    static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized, float targetH) => new()
+    static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized, float targetH, in StageArmView arm) => new()
     {
         Width = Stage.Layout.BarButtonW, Height = MathF.Max(ClassicStageGeometry.BarButtonHeight, targetH), Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-        Fill = lit ? Ink.GlassHover : Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
+        Fill = lit ? arm.GlassHover : arm.GlassRest, HoverFill = arm.GlassHover, PressedFill = arm.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
         OnClick = onClick, OnRealized = onRealized,
-        Children = [new TextEl(glyph) { Size = ClassicStageGeometry.BarGlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
+        Children = [new TextEl(glyph) { Size = ClassicStageGeometry.BarGlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = arm.Ink }],
     };
 
-    /// <summary>The stage veil at alpha <paramref name="a"/>.</summary>
-    static ColorF Shade(float a) => Ink.Veil with { A = a };
+    /// <summary>The veil of <paramref name="arm"/> at alpha <paramref name="a"/>.</summary>
+    static ColorF Shade(in StageArmView arm, float a) => arm.Veil with { A = a };
+
+    /// <summary>"Switch to audio"'s subtle style on an arm that is not the theme's (the audio face's field decided it): the label, its glyph and its
+    /// interaction plates in that arm's inks, so it reads on the field the bar stands on.</summary>
+    static Button.Style OnArm(in StageArmView arm) => Button.DefaultStyle(ButtonAppearance.Subtle, ControlSize.Small) with
+    {
+        Foreground = arm.Ink, HoverForeground = arm.Ink, PressedForeground = arm.InkSecondary, DisabledForeground = arm.InkTertiary,
+        HoverBackground = arm.GlassHover, PressedBackground = arm.GlassPressed,
+    };
 }
 
 /// <summary>The face chip under the Compact window's identity card (C-Stage-Compact, Visualizer mode): the face's name between its glyph and a
