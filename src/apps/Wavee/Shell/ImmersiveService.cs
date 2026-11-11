@@ -148,6 +148,7 @@ public sealed class ImmersiveService
     sealed class Entry
     {
         public bool WindowActive, PriorFullscreen;
+        public IImmersiveHost? WindowHost;   // the host the window was entered through (what an early exit restores it with)
         public bool FocusActive;
         public NodeHandle Root, PriorFocus;
         public ChromeIdle? Idle;
@@ -176,6 +177,7 @@ public sealed class ImmersiveService
         var e = Of(kind);
         if (e.WindowActive) return false;
         e.WindowActive = true;
+        e.WindowHost = host;
         e.PriorFullscreen = KeepWindowed || host.IsWindowFullscreen();   // kept windowed: as if it already was, so the exit restores nothing
         if (!e.PriorFullscreen) host.SetWindowFullscreen(true);
         return true;
@@ -188,11 +190,18 @@ public sealed class ImmersiveService
         var e = Of(kind);
         if (!e.WindowActive) return false;
         e.WindowActive = false;
+        e.WindowHost = null;
         if (!e.PriorFullscreen) host.SetWindowFullscreen(false);
         e.PriorFullscreen = false;
         e.Idle = null;
         return true;
     }
+
+    /// <summary>Leave through the host the window was entered with, from a VERB (outside any reactive flush), before the mode's view unmounts:
+    /// the window is back at its restored size before the page under the surface lays out, so the page lays out once, at that size (a restore
+    /// from the view's teardown ran the OS resize inside the flush, after the page had laid out at the full-screen size). The teardown's
+    /// <see cref="ReleaseWindow"/> then finds nothing to do. False when the kind was not entered.</summary>
+    public bool ExitWindowNow(ImmersiveKind kind) => Of(kind) is { WindowActive: true, WindowHost: { } host } && ExitWindow(kind, host);
 
     /// <summary>A view's teardown: exit only when the mode is no longer wanted. A REMOUNT while it is leaves the window as it is.</summary>
     public bool ReleaseWindow(ImmersiveKind kind, IImmersiveHost host, Func<bool> stillWanted)

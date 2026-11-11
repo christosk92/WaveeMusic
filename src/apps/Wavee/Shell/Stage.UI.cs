@@ -236,6 +236,10 @@ public static partial class Stage
     {
         if (!Shell.Ui.ImmersiveLyrics.Peek()) return;
         begin?.Invoke(Entry.MorphKey);
+        // the window first, outside the flush that unmounts the stage: the page under it then lays out once, at the size the window now has
+        // (the teardown's ReleaseWindow used to restore it inside that flush, after the page had laid out at the full-screen size: two
+        // page layouts and a 22-24 ms flush on every exit)
+        ImmersiveService.Shared.ExitWindowNow(ImmersiveKind.Stage);
         Shell.Ui.ImmersiveLyrics.Value = false;
         Diagnostics.NoteExit(cause);
     }
