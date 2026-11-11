@@ -57,10 +57,10 @@ public static partial class ZuneStageGeometry
     // ── the lyric caption ────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The caption's weight (Zune's lyric voice: semilight 350), the context lines' and the secondary line's line budget, the
-    /// secondary line's gap, the veil's middle stop and its share of the centre alpha, a breathing dot's corner fraction.</summary>
+    /// secondary line's gap, a breathing dot's corner fraction.</summary>
     public const int CaptionWeight = 350, ContextMaxLines = 1, SecondaryMaxLines = 2;
 
-    public const float SecondaryGap = 4f, VeilMidStop = 0.55f, VeilMidAlpha = 0.55f, DotRadiusFraction = 0.5f;
+    public const float SecondaryGap = 4f, DotRadiusFraction = 0.5f;
 
     // ── the gallery (no board: Zune's parts) ─────────────────────────────────────────────────────────────────────────────
 

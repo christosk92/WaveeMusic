@@ -16,6 +16,7 @@
 // because a ColorF frozen into a component's constructor does not follow a live theme flip: props freeze at mount).
 
 using FluentGpu.Dsl;
+using FluentGpu.Animation;
 using FluentGpu.Foundation;
 
 namespace Wavee.Theming.Roles;
@@ -203,61 +204,121 @@ public static class StageInk
 }
 
 /// <summary>The caption's VEIL, the ground that guarantees the caption's fixed on-media inks (the lyric over the stage: previous, live and
-/// next line). The inks never change; the veil is solved for them. Its full-strength CORE is the ellipse that encloses the whole block the
-/// caption can show (every line sits on full strength); the feather begins outside it. Its strength is the smallest alpha at which the
-/// weakest caption ink (<see cref="StageInk.InkSecondary"/>) holds the text floor (<see cref="ColorScience.TextContrast"/>) over the
-/// worst colour the ground can show under the block: the cover's palette over a still ground, white and black over moving video (an
-/// unknown ground). Never below the stage's own veil alpha (<c>Stage.Tone.CaptionVeilA</c>), so a ground that already holds the floor
-/// keeps today's veil.</summary>
+/// next line). The inks never change; the veil is solved for them.
+/// <para>WHERE: inside the caption's own band, never over the picture. It HUGS the text block: a box at the veil's strength exactly under the
+/// lines' laid-out rects, grown past them by <see cref="ReachX"/> on the sides and <see cref="ReachY"/> above and below, the whole growth a fade
+/// (a smoothstep ramp of gradient stops above and below, the engine's edge fade to the sides: no blur pass) so the ground dissolves outward
+/// from the text.
+/// Above and below it reaches <c>Stage.Layout.Pad</c>, the gutter every structure keeps between the caption's band and the face's safe rect above
+/// it (and the caption's own gap to the transport below), so the cover and the face are never touched; to the sides the stage's veil pad.</para>
+/// <para>HOW STRONG: the smallest alpha at which the weakest caption ink (<see cref="StageInk.InkSecondary"/>) holds the text floor
+/// (<see cref="ColorScience.TextContrast"/>) over what the stage's BACKDROP actually paints under the band: the floor (or, where the structure
+/// bakes the cover in, the cover's own pixels under the band), each of the Field's blobs at the alpha it is drawn with (its own alpha times the
+/// Field's highest opacity), all under the mode's scrim. Over moving video (an unknown ground) white and black. Never below the stage's own
+/// veil alpha (<c>Stage.Tone.CaptionVeilA</c>).</para></summary>
 public static class StageCaptionVeil
 {
-    /// <summary>The veil's alpha for the stage the caption is in: its cover palette (the base, so the moments' rotation never moves the veil),
-    /// or any picture while the stage shows video. Reads both signals, so a caption template re-renders when the cover or the mode changes.
-    /// No stage (a preview): the stage's own veil alpha.</summary>
-    public static float For(Stage.StageCtx? stage)
-        => stage is null ? Stage.Tone.CaptionVeilA : Alpha(stage.BasePalette.Value, stage.Look.Value.Mode == Stage.Mode.Video);
+    /// <summary>How far the veil reaches past the text block to each side (all of it the fade): the stage's caption veil pad.</summary>
+    public static float ReachX => Stage.Layout.CaptionVeilPadX;
 
-    /// <summary>The veil's alpha for the live arm over <paramref name="palette"/>'s colours, or over any picture while <paramref name="video"/>.</summary>
-    public static float Alpha(in Visualizer.Palette palette, bool video)
+    /// <summary>How far the veil reaches above and below the text block (all of it the fade): the stage's gutter, which the band keeps clear.</summary>
+    public static float ReachY => Stage.Layout.Pad;
+
+    /// <summary>The veil box's growth past the text block (negative margins on a layer the size of the block).</summary>
+    public static Edges4 Growth => new(-ReachX, -ReachY, -ReachX, -ReachY);
+
+    /// <summary>The veil (<see cref="StageCaptionVeil"/>), the first layer of the stack that hugs the caption's lines: grown past them by its reach,
+    /// full strength over the lines, faded to nothing over the growth. Above and below, a smoothstep ramp of stops over <see cref="ReachY"/>
+    /// (a static gradient, laid out by the column it sits in, so it follows the lines' height); to the sides the engine's edge fade over
+    /// <see cref="ReachX"/>. Its bounds ease when a hand-off changes the lines (<see cref="Move"/>).</summary>
+    public static Element Ground(float alpha)
     {
-        Span<ColorF> grounds = stackalloc ColorF[5];
-        int n;
-        if (video) { grounds[0] = ColorF.FromRgba(0xFF, 0xFF, 0xFF); grounds[1] = ColorF.FromRgba(0, 0, 0); n = 2; }
-        else { grounds[0] = palette.Accent; grounds[1] = palette.A; grounds[2] = palette.B; grounds[3] = palette.C; grounds[4] = palette.Deep; n = 5; }
+        ColorF veil = StageInk.Veil;
+        return new BoxEl
+        {
+            Key = "cap:veil", HitTestVisible = false, Layout = Move, Margin = Growth, Direction = 1,
+            EdgeFade = new EdgeFadeSpec(EdgeMask.Horizontal, ReachX, 0f, ReachX, 0f),
+            Children =
+            [
+                new BoxEl { Height = ReachY, HitTestVisible = false, Gradient = Ui.GradientDown(Ramp(veil, alpha, rising: true)) },
+                new BoxEl { Grow = 1f, HitTestVisible = false, Fill = veil with { A = alpha } },
+                new BoxEl { Height = ReachY, HitTestVisible = false, Gradient = Ui.GradientDown(Ramp(veil, alpha, rising: false)) },
+            ],
+        };
+    }
+
+    /// <summary>A smoothstep from clear to <paramref name="alpha"/> (or back) as five stops.</summary>
+    static GradientStop[] Ramp(ColorF veil, float alpha, bool rising)
+    {
+        var stops = new GradientStop[RampStops];
+        for (int i = 0; i < RampStops; i++)
+        {
+            float t = i / (float)(RampStops - 1);
+            float s = t * t * (3f - 2f * t);
+            stops[i] = new GradientStop(t, veil with { A = alpha * (rising ? s : 1f - s) });
+        }
+        return stops;
+    }
+
+    const int RampStops = 5;
+
+    /// <summary>The veil's move when the lines it hugs change (a hand-off, a wrap): its bounds ease with the hand-off's enter, so the ground
+    /// grows or shrinks under the lines instead of snapping.</summary>
+    public static LayoutTransition Move => new(TransitionChannels.Bounds, MotionTok.StandardEnter.ToDynamics(), SizeMode.Relayout);
+
+    /// <summary>The veil's alpha for the stage the caption is in, over the caption's band (<paramref name="band"/>, stage DIP: the block at its tallest).
+    /// <paramref name="artBaked"/>: the structure's backdrop bakes the cover under its Field (Classic, WinUI): its pixels under the band are
+    /// read from the cover's own luminance map (<c>Palette.Tone</c>, the measurement the photo scrims use; until it lands, the cover's graded base
+    /// colours). Reads the base palette, the playing row, the look and the map, so the template re-renders when any changes. No stage (a preview):
+    /// the stage's own veil alpha.</summary>
+    public static float For(Stage.StageCtx? stage, bool artBaked, RectF band)
+    {
+        if (stage is null) return Stage.Tone.CaptionVeilA;
+        var look = stage.Look.Value;
+        if (look.Mode == Stage.Mode.Video) return Alpha(default, default, video: true, artBaked: false, scrimA: 0f);
+        var L = stage.Layout.Value;
+        var track = stage.RowValue();
+        string? url = artBaked && track.IsValid ? Controls.ArtUrl(track.ImageId) : null;
+        float? artGrey = null;
+        if (url is { Length: > 0 } && Palette.Tone(url) is { } map)
+            artGrey = MediaScrim.GreyAt(map, MediaScrim.CoverUv(map.Aspect, L.W, L.H, band.X, band.Y, band.X + band.W, band.Y + band.H), MediaScrim.Percentile);
+        Scheme? scheme = url is { Length: > 0 } && artGrey is null ? Design.SchemeFor(url) : null;
+        return Alpha(stage.BasePalette.Value, scheme, video: false, artBaked, Stage.LayoutRules.ScrimFor(look.Mode, look.Eff, stage.Kind.Value), artGrey);
+    }
+
+    /// <summary>The solve (see the type): the grounds the backdrop paints, then <see cref="ColorScience.ScrimAlpha"/>.</summary>
+    public static float Alpha(in Visualizer.Palette palette, Scheme? scheme, bool video, bool artBaked, float scrimA, float? artGrey = null)
+    {
+        Span<ColorF> grounds = stackalloc ColorF[GroundsMax];
+        int n = 0;
+        if (video) { grounds[n++] = ColorF.FromRgba(0xFF, 0xFF, 0xFF); grounds[n++] = ColorF.FromRgba(0, 0, 0); }
+        else
+        {
+            // the bottoms the Field's blobs lie on: the floor, or the baked cover's graded base colours (its blurred average)
+            Span<ColorF> bottoms = stackalloc ColorF[2];
+            int b = 0;
+            if (artBaked && artGrey is { } g) bottoms[b++] = new ColorF(g, g, g, 1f);
+            else if (artBaked && scheme is { IsEmpty: false } sc)
+            {
+                bottoms[b++] = ColorScience.ToColor(sc.BackgroundBase) with { A = 1f };
+                bottoms[b++] = ColorScience.ToColor(sc.BackgroundTintedBase) with { A = 1f };
+            }
+            else bottoms[b++] = StageInk.Floor with { A = 1f };
+            float fieldA = MathF.Max(Stage.Tone.BaseFieldA + Stage.Tone.BaseFieldBreathA, Stage.Tone.BaseFieldVisualizerA);
+            var scrim = StageInk.Veil with { A = scrimA };
+            for (int k = 0; k < b; k++)
+            {
+                grounds[n++] = ColorContrast.Over(scrim, bottoms[k]);
+                for (int i = 0; i < Visualizer.Field.Blobs; i++)
+                {
+                    var blob = Visualizer.Field.BlobTint(in palette, i);
+                    grounds[n++] = ColorContrast.Over(scrim, ColorContrast.Over(blob with { A = Visualizer.Field.BlobAlpha(i) * fieldA }, bottoms[k]));
+                }
+            }
+        }
         return ColorScience.ScrimAlpha(StageInk.InkSecondary, StageInk.Veil with { A = 1f }, grounds[..n], ColorScience.TextContrast, Stage.Tone.CaptionVeilA);
     }
 
-    /// <summary>Where the veil stands for a block <paramref name="width"/> x <paramref name="height"/> whose left edge is <paramref name="x"/>
-    /// and whose bottom sits <paramref name="bottom"/> above the layer's: the veil box (its left, bottom margin, width and height, centred on
-    /// the block) and <c>Core</c>, the radial stop where the full-strength core ends. The core is the smallest ellipse of the block's own
-    /// aspect that encloses the block (radii = half-extents x sqrt 2, so the block's corners sit ON it); the feather then runs at least
-    /// <see cref="FeatherK"/> veil pads (<c>Stage.Layout.CaptionVeilPadX/Y</c>) past it on both axes, one stop for both, so the falloff stays an ellipse.</summary>
-    public static (float Left, float Bottom, float Width, float Height, float Core) Place(float x, float bottom, float width, float height)
-    {
-        float rx0 = MathF.Max(1f, width) * HalfDiagonal, ry0 = MathF.Max(1f, height) * HalfDiagonal;
-        float core = MathF.Min(rx0 / (rx0 + FeatherK * Stage.Layout.CaptionVeilPadX), ry0 / (ry0 + FeatherK * Stage.Layout.CaptionVeilPadY));
-        float rx = rx0 / core, ry = ry0 / core;
-        return (x + width * 0.5f - rx, bottom + height * 0.5f - ry, 2f * rx, 2f * ry, core);
-    }
-
-    /// <summary>The feather's run in veil pads: twice the stage's pads, so the solved strength (often above the old 0.50 centre) falls off as
-    /// gently as the old veil did and reads as a soft ground, never a band.</summary>
-    const float FeatherK = 2f;
-
-    /// <summary>sqrt(2) / 2: the enclosing ellipse's radius over the block's FULL extent.</summary>
-    const float HalfDiagonal = 0.70710678f;
-
-    /// <summary>The veil's radial stops at <paramref name="alpha"/>: full strength to <paramref name="core"/>, then the stage's feather shape
-    /// (a middle stop <paramref name="midStop"/> of the way out at <paramref name="midAlpha"/> of the strength) to nothing at the rim.</summary>
-    public static GradientStop[] Stops(float alpha, float core, float midStop, float midAlpha)
-    {
-        ColorF veil = StageInk.Veil;
-        return
-        [
-            new GradientStop(0f, veil with { A = alpha }),
-            new GradientStop(core, veil with { A = alpha }),
-            new GradientStop(core + (1f - core) * midStop, veil with { A = alpha * midAlpha }),
-            new GradientStop(1f, veil with { A = 0f }),
-        ];
-    }
+    /// <summary>Room for the grounds: two bottoms, each bare and under every blob.</summary>
+    const int GroundsMax = 2 * (1 + 4);
 }

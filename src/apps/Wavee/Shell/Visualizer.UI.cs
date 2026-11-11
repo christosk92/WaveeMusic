@@ -370,10 +370,8 @@ public static partial class Visualizer
             };
         }
 
-        /// <summary>The four blobs' roles: the deep tone top-left, then B, A and C — the cover's own colours, no invented hue.</summary>
-        static ColorF TintOf(in Palette pal, int i) => (i & 3) switch { 0 => pal.Deep, 1 => pal.B, 2 => pal.A, _ => pal.C };
-        /// <summary>The paint colours are brighter than the deep tone: a backdrop, not a face, so they sit a step back.</summary>
-        static float AlphaOf(int i) => (i & 3) == 0 ? 1f : 0.82f;
+        static ColorF TintOf(in Palette pal, int i) => Field.BlobTint(in pal, i);
+        static float AlphaOf(int i) => Field.BlobAlpha(i);
     }
 
     /// <summary>The stage's always-on backdrop layer (Stage.UI.cs Backdrop): four drifting blobs in the palette's roles,

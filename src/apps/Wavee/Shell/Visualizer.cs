@@ -689,6 +689,10 @@ public static partial class Visualizer
         public static readonly float[] PeriodSec = [30f, 36f, 33f, 28f];
         public static readonly (float Dx, float Dy, float Scale)[] Drift = [(0.16f, 0.12f, 1.15f), (-0.14f, 0.14f, 0.9f), (0.18f, -0.12f, 1.1f), (-0.15f, -0.13f, 1.2f)];
         public static float BaseOpacity(float low, bool visualizer) => visualizer ? Stage.Tone.BaseFieldVisualizerA : Stage.Tone.BaseFieldA + low * Stage.Tone.BaseFieldBreathA;
+        /// <summary>The four blobs' roles: the deep tone top-left, then B, A and C — the cover's own colours, no invented hue.</summary>
+        public static FluentGpu.Foundation.ColorF BlobTint(in Palette pal, int i) => (i & 3) switch { 0 => pal.Deep, 1 => pal.B, 2 => pal.A, _ => pal.C };
+        /// <summary>A blob's own alpha: the paint colours are brighter than the deep tone, a backdrop, not a face, so they sit a step back.</summary>
+        public static float BlobAlpha(int i) => (i & 3) == 0 ? 1f : 0.82f;
     }
 
     // ── 5. the fold ────────────────────────────────────────────────────────────────────────────────────────────────
