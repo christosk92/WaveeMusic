@@ -355,20 +355,23 @@ public static partial class Diagnostics
                     return r;
                 }
                 case FrameBenchScenarios.RailCanvas:
+                case FrameBenchScenarios.RailCover:
                 {
                     // The now-playing panel in the Canvas player style with a canvas playing (the edge-to-edge canvas over the panel): the
                     // real video through the compositor, which the headless inspector does not have. A shot of it lands in the output
                     // folder (`rail-canvas.png`; the video itself is a hole in the captured frame), and the canvas player's state in the note.
+                    // `rail-cover` is the same panel, track and window in the Cover style: the panel's ground to compare the canvas's with.
                     if (!Platform.Args.Fake || Entities.FakeCanvasTracks.Length == 0) return Skip("needs --fake (the seeded canvases)");
+                    bool canvas = name == FrameBenchScenarios.RailCanvas;
                     int saved = Rail.PlayerPrefs.Style();
-                    Rail.PlayerPrefs.SetStyle(Rail.PlayerCatalog.Canvas, "bench");
+                    Rail.PlayerPrefs.SetStyle(canvas ? Rail.PlayerCatalog.Canvas : Rail.PlayerCatalog.Cover, "bench");
                     string canvasTrack = "spotify:track:tr" + Entities.FakeCanvasTracks[0].ToString(CultureInfo.InvariantCulture);
                     Base(playing: true, canvasTrack);
                     Shell.Ui.Mode.Value = Shell.RailMode.NowPlaying;
                     Shell.Ui.RailOpen.Value = true;
                     Settle(4.0);
-                    if (s_benchDevice is { } shotDevice) PlayDemoShot(host, w, shotDevice, Path.Combine(OutDir(), "rail-canvas.png"));
-                    var r = Measure(null, "track=" + canvasTrack + " rail=now-playing style=canvas player=" + CanvasVideo.PlayerState()
+                    if (s_benchDevice is { } shotDevice) PlayDemoShot(host, w, shotDevice, Path.Combine(OutDir(), name + ".png"));
+                    var r = Measure(null, "track=" + canvasTrack + " rail=now-playing style=" + (canvas ? "canvas" : "cover") + " player=" + CanvasVideo.PlayerState()
                         + " natural=" + CanvasVideo.PlayerNatural().Width.ToString(CultureInfo.InvariantCulture) + "x" + CanvasVideo.PlayerNatural().Height.ToString(CultureInfo.InvariantCulture)
                         + " running=" + CanvasVideo.Running);
                     Shell.Ui.RailOpen.Value = false;

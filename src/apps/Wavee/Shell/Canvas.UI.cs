@@ -10,18 +10,28 @@
 //     box (UniformToFill) — mounted only on the surface that OWNS the one player (Canvas.cs) once the previous presenter let go;
 //   · the surface's scrim, when it has one (the stage's veil), so its text reads over the video as it reads over the art.
 // A track change keys the stack per track: the old one fades out, the new one fades in from its poster.
+//
+// A FADING FOOT (`Ramp`, provided by a surface that fades its canvas into what is under it: Classic's edge-to-edge canvas). The video fades
+// along the ramp in the compositor (the window's backdrop shows where it has gone) and the poster fades with it in its own shader (its band
+// from the ramp's start to its end, where its box stops), so neither needs an opaque ground painted over its foot.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Pal;
 using FluentGpu.Signals;
 
 namespace Wavee;
 
 public static partial class CanvasVideo
 {
+    /// <summary>The picture's alpha ramp down the layer (DIP from the layer's top; <see cref="VideoAlphaRamp"/>), for a surface that fades the
+    /// canvas into what is under it instead of painting an opaque ground over its foot. Provided around the layer by that surface; null
+    /// everywhere else, where the canvas is opaque. A stable signal: the surface writes it when its geometry changes, never per frame at rest.</summary>
+    public static readonly Context<IReadSignal<VideoAlphaRamp>?> Ramp = new(null);
+
     /// <summary>The surface's canvas layer: a ZStack child that fills its box. <paramref name="scrim"/> (alpha &gt; 0) is drawn over the
     /// video, for a surface whose own scrim sits under it.</summary>
     public static Element Layer(Surface surface, CornerRadius4 corners = default, ColorF scrim = default, bool on = true)
@@ -71,6 +81,8 @@ public static partial class CanvasVideo
             var p = UseProps<LayerProps>();
             var active = UseIsActive();
             var surface = p.Surface;
+            var rampSig = UseContext(Ramp);
+            var ramp = rampSig?.Value ?? default;   // the poster's band follows it (a re-render on a geometry change, never per frame)
             // A mounted, active surface may own the player; parked (KeepAlive) or minimized, it withdraws.
             // The claim follows (on, active) by deps: a render reads both, so a flip of either re-runs it (and its cleanup withdraws).
             bool claims = p.On && active.Value;
@@ -91,7 +103,7 @@ public static partial class CanvasVideo
             Element? park = null;
             if (_parkUri.Length > 0 && !_parkDrawn)
             {
-                park = Stack(_parkUri, _parkPoster, p, video: false);
+                park = Stack(_parkUri, _parkPoster, p, video: false, rampSig, ramp);
                 _parkDrawn = true;
             }
             else if (_parkDrawn) { _parkUri = ""; _parkPoster = ""; _parkDrawn = false; }   // dropped: its exit fade carries the still out
@@ -103,30 +115,37 @@ public static partial class CanvasVideo
 
             var stacks = new List<Element>(2);
             if (park is not null) stacks.Add(park);
-            if (shows) stacks.Add(Stack(now.Uri, now.Poster, p, video: now.File.Length > 0 && Presents(surface)));
+            if (shows) stacks.Add(Stack(now.Uri, now.Poster, p, video: now.File.Length > 0 && Presents(surface), rampSig, ramp));
             return FillBox with { HitTestVisible = false, Children = stacks.ToArray() };
         }
 
         /// <summary>One canvas's stack (keyed by its uri, fading in on entry and out on exit): its poster, its video when it presents, the
         /// surface's scrim. Without the video the poster always draws (the leaving frame); with it, the hole erases it, so it stops drawing
-        /// once a frame is presented.</summary>
-        static Element Stack(string uri, string poster, LayerProps p, bool video)
+        /// once a frame is presented. Under a <see cref="Ramp"/> (<paramref name="ramp"/>, down the layer) the poster's box stops at the ramp's
+        /// end, its top held where the full box puts it, and its own band fades it from the ramp's start, as the video fades.</summary>
+        static Element Stack(string uri, string poster, LayerProps p, bool video, IReadSignal<VideoAlphaRamp>? rampSig, VideoAlphaRamp ramp)
         {
             var surface = p.Surface;
             var kids = new List<Element>(3);
+            bool foot = !ramp.IsNone && ramp.Axis == VideoRampAxis.TopToBottom && ramp.To > ramp.From;
             if (poster.Length > 0)
                 kids.Add(new ImageEl
                 {
                     Key = "canvas-poster",
                     // The still's own height (the largest .thmb is 288x512): decoded once at its size, never at the box's.
                     Source = poster, Fit = ImageFit.Cover, Corners = p.Corners, DecodePx = PosterDecodePx,
-                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                    AlignSelf = foot ? FlexAlign.Start : FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                    // Under a ramp: the box ends where the picture has gone, the crop's top where the full box has it (a 9:16 still in the
+                    // 9:16 layer is scaled by the width in both), and the band fades it from the ramp's start.
+                    Height = foot ? ramp.To : float.NaN,
+                    FocusY = foot ? 0f : 0.5f, FocusFrameY = foot ? 0f : 0.5f,
+                    Mask = foot ? new ImageMaskSpec(EdgeMask.Bottom, 0f, 0f, 0f, ramp.To - ramp.From) : null,
                     RevealTransition = ImageTransition.Fade(Design.Motion.Fast),
                     // Under a presented frame the poster is erased by the hole every frame: stop drawing it at all.
                     Visible = video ? Prop.Of(() => Presented.Value != surface) : true,
                 });
             if (video)
-                kids.Add(Embed.Comp(new VideoProps(surface, p.Corners.TopLeft), static () => new VideoView()) with { Key = "canvas-video" });
+                kids.Add(Embed.Comp(new VideoProps(surface, p.Corners.TopLeft, rampSig), static () => new VideoView()) with { Key = "canvas-video" });
             if (p.Scrim.A > 0f)
                 kids.Add(new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Fill = p.Scrim, BrushTransitionMs = Stage.Tone.CrossFadeMs });
             return FillBox with
@@ -141,7 +160,7 @@ public static partial class CanvasVideo
         }
     }
 
-    internal sealed record VideoProps(Surface Surface, float Radius);
+    internal sealed record VideoProps(Surface Surface, float Radius, IReadSignal<VideoAlphaRamp>? Ramp);
 
     /// <summary>The element that presents the one player: binds on mount, lets go on unmount (the owner hand-off, Canvas.cs).</summary>
     sealed class VideoView : Component
@@ -158,6 +177,7 @@ public static partial class CanvasVideo
                 return () => UnbindSurface(surface);
             }, DepKey.Empty);
             float radius = p.Radius;
+            var ramp = p.Ramp;   // a stable signal per surface: the element watches it (frozen at the element's mount, as its corners)
             // A column that fills the layer; the element grows down it (its root is Grow 1, and a decorative one has no minimum).
             return FillBox with
             {
@@ -171,6 +191,7 @@ public static partial class CanvasVideo
                 ShowLetterboxBars = false,
                 Stretch = MediaStretch.UniformToFill,
                 CornerRadius = radius,
+                AlphaRamp = ramp,
                 InViewChanged = NoteInView,
                 SurfacePresented = () => Presented.Value = surface,
             })],
