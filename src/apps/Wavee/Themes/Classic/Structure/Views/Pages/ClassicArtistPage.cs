@@ -67,10 +67,13 @@ internal static class ClassicArtistPage
         var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
         var surface = latch.Surface ??= ListStyleLookup.Of(registry, StyleKeys.Surface);
         var chart = latch.Chart ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
+        // The page's LAID-OUT width, never read here: `p.Width` is its structure width (the width it lands at while a docking panel's slide
+        // resizes it), which picks the forms; the hero's two continuous rules follow this signal through a bound width and a leaf (ClassicArtistHero).
+        var live = ctx.Hooks.UseMeasuredWidth();
 
         // ONE visual swap: overview + measured width + chart settled. Snap, not FadeOnly: waiting for the bitmap then fading the whole tree from 0 hid the
         // photo again (stillwrong.mp4).
-        Element? body = p.BodyReady ? Compose(p, latch, surface, layout, form) : null;
+        Element? body = p.BodyReady ? Compose(p, latch, surface, layout, form, live) : null;
 
         // ONE region, and the shimmer is DERIVED — `Shimmer` is a ShimmerSource (a representative tree at the loaded page's geometry), never a tree to mount.
         // Rendering it directly painted its own placeholder copy as if it were data: "Artist name", "A first sentence of the biography stands in this line.",
@@ -120,7 +123,8 @@ internal static class ClassicArtistPage
     /// sections can never disagree about what the page renders. <see cref="ArtistPageProps.HeroUrl"/> is the page's LATCHED
     /// hero-art identity (ch 08 BUG E) — never re-read from the row here, so the same latch that keeps the derived shimmer's
     /// caller from unmounting the photo also decides what it paints.</summary>
-    static Element Compose(ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface, ClassicArtistLayout layout, ClassicArtistHeroForm form)
+    static Element Compose(ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface, ClassicArtistLayout layout, ClassicArtistHeroForm form,
+                           IReadSignal<float> live)
     {
         Artist a = p.Artist;
         string uri = a.Uri.Text;
@@ -151,9 +155,10 @@ internal static class ClassicArtistPage
         float collapse = ArtistHeroLayout.CollapseDistance(m.MinHeight);
         bool compact = p.Compact;
         float inset = layout.ColumnInset(width, m.Gutter);
-        Element band = BandBar(p, collapse, layout, inset);
+        Element band = BandBar(p, collapse, layout, m.Gutter);
         Element hero = ClassicArtistHero.Build(Artist.HeroText.For(a), uri, p.HeroUrl, p.PaletteUrl, width, in m, form, accent,
-            compact, p.Play, p.Shuffle, p.Radio, band, headerAccent: a.HeaderAccent, inset: inset, menu: latch.ArtistMenu(a));
+            compact, p.Play, p.Shuffle, p.Radio, band, headerAccent: a.HeaderAccent, inset: inset, menu: latch.ArtistMenu(a),
+            live: live, columnMax: layout.PageMaxWidth);
 
         // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`p.CompactEdge`, written by the engine). The
         // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two
@@ -183,8 +188,8 @@ internal static class ClassicArtistPage
             Children =
             [
                 new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
-                SectionRow(p, layout, inset),
-                Magazine(sections, inset, layout),
+                SectionRow(p, layout, m.Gutter),
+                Magazine(sections, m.Gutter, layout),
             ],
         }.StickyClip(Detail.BandLayout.ClipInset);
 
@@ -203,17 +208,26 @@ internal static class ClassicArtistPage
     /// <summary>The magazine column: the page's width, inset either side by the column inset (<see cref="ClassicArtistLayout.ColumnInset"/>: the gutter plus
     /// half of what the tier's measure, 1600 or Huge's 2400, leaves), so it is the capped, centred column the hero's copy and the band align with; a 32 section
     /// gap, the player dock's reserve under the last section (ArtistPage.cs:271-285). It glides when the section row above it comes or goes on a crossing.</summary>
-    static Element Magazine(Element[] sections, float inset, ClassicArtistLayout layout) => new BoxEl
+    static Element Magazine(Element[] sections, float gutter, ClassicArtistLayout layout) => Centred(new BoxEl
     {
         Key = "artist-magazine", Direction = 1, Gap = R.Space.SectionGap, MinWidth = 0f, Animate = ClassicArtistTiers.FollowMotion,
-        Padding = new Edges4(inset, Spacing.M, inset, R.Space.DockReserve + ClassicArtistRules.MagazineDockExtra),
+        Padding = new Edges4(gutter, Spacing.M, gutter, R.Space.DockReserve + ClassicArtistRules.MagazineDockExtra),
         Children = sections,
+    }, layout);
+
+    /// <summary><paramref name="column"/> as the page's column by LAYOUT: grown to the page's width up to the tier's measure and centred, so its
+    /// padding's gutter lands on <see cref="ClassicArtistLayout.ColumnInset"/> at every width, and a docking panel's slide moves it frame by frame
+    /// with no render.</summary>
+    static Element Centred(BoxEl column, ClassicArtistLayout layout) => new BoxEl
+    {
+        Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f,
+        Children = [column with { Grow = 1f, Basis = 0f, MaxWidth = layout.PageMaxWidth }],
     };
 
     /// <summary>The 56 section row under a Huge hero (C-Artist-Huge, C-Artist-Huge4K): the artist's name, the pivot and Play · Follow as words between two
     /// hairlines (the divider above it is the top one), on the column inset. ALWAYS mounted: its height is the record's (56 less the divider at Huge, 0
     /// elsewhere) and tweens on a crossing, its row fades in and out, and the magazine under it glides, so a crossing never jumps.</summary>
-    static Element SectionRow(ArtistPageProps p, ClassicArtistLayout layout, float inset)
+    static Element SectionRow(ArtistPageProps p, ClassicArtistLayout layout, float gutter)
     {
         float height = layout.SectionRow ? ClassicArtistTiers.SectionRowHeight - Detail.BandLayout.HairlineHeight : 0f;
         Element[] kids = layout.SectionRow
@@ -226,8 +240,12 @@ internal static class ClassicArtistPage
                     Children =
                     [
                         // The band's row at the section row's height (56 between the divider above and its own hairline below).
-                        ClassicDetailBand.Band(p.Width, inset, BandCluster(p, "artist-section-follow:", layout.Target))
-                            with { Height = height - Detail.BandLayout.HairlineHeight },
+                        Centred(new BoxEl
+                        {
+                            Direction = 1, MinWidth = 0f,
+                            Children = [ClassicDetailBand.Band(float.NaN, gutter, BandCluster(p, "artist-section-follow:", layout.Target))
+                                with { Height = height - Detail.BandLayout.HairlineHeight }],
+                        }, layout),
                         ClassicDetailBand.BandHairline(),
                     ],
                 },
@@ -283,26 +301,21 @@ internal static class ClassicArtistPage
     /// <summary>title · pivot · Play + Follow as WORDS, one hairline, no fill, no avatar, no capsules (ch 08 §0 #4).
     /// Everything geometric is the shared band's; the content sits on the page's column inset (the magazine's) and is this page's.
     /// Reveals over the last 44 DIP of the collapse with a 4-DIP settle; takes input only past the sentinel's edge.</summary>
-    static Element BandBar(ArtistPageProps p, float collapse, ClassicArtistLayout layout, float inset)
+    static Element BandBar(ArtistPageProps p, float collapse, ClassicArtistLayout layout, float gutter)
     {
-        float width = p.Width;
-        // The content sits on the page's column (the magazine's inset); the band's extent stays full-bleed.
-        Element row = ClassicDetailBand.Band(width, inset, BandCluster(p, "artist-band-follow:", layout.Target));
+        // The content sits on the page's column (the magazine's, centred by layout); the band's extent stays full-bleed, stretched with the page.
+        Element row = ClassicDetailBand.Band(float.NaN, gutter, BandCluster(p, "artist-band-follow:", layout.Target));
         return new BoxEl
         {
-            Width = width, Height = Detail.BandLayout.Height, ZStack = true,
+            Height = Detail.BandLayout.Height, ZStack = true,
             HitTestVisible = p.Compact, HitTestPassThrough = true,
             Children =
             [
-                new BoxEl
-                {
-                    Direction = 0, Width = width, Height = Detail.BandLayout.Height, Justify = FlexJustify.Center,
-                    Children = [row],
-                },
+                Centred(new BoxEl { Direction = 1, Height = Detail.BandLayout.Height, MinWidth = 0f, Children = [row] }, layout),
                 // The ONE hairline, overlaid INSIDE the 56 so the collapse arithmetic stays exact.
                 new BoxEl
                 {
-                    Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
+                    Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
                     HitTestVisible = false, Children = [ClassicDetailBand.BandHairline()],
                 },
             ],
@@ -321,7 +334,7 @@ internal static class ClassicArtistPage
         var m = p.Metrics;
         float inset = layout.ColumnInset(p.Width, m.Gutter);
         Element hero = ClassicArtistHero.Build(Artist.HeroText.Placeholder, "", null, null, p.Width, in m, form, p.AccentPeek(), false,
-            null, null, null, null, inset: inset);
+            null, null, null, null, inset: inset, columnMax: layout.PageMaxWidth);
         return new BoxEl
         {
             Direction = 1,
@@ -332,7 +345,7 @@ internal static class ClassicArtistPage
                 // The section row's height at Huge (a blank: never skeleton content), so nothing moves when the page lands. Kept blank on the derived
                 // arm too: derived, a childless box is a page-wide bar (audit B7, V42).
                 new BoxEl { Height = layout.SectionRow ? ClassicArtistTiers.SectionRowHeight - Detail.BandLayout.HairlineHeight : 0f }.Skeletonized(false),
-                MagazineShimmer(p, chart, layout, inset),
+                MagazineShimmer(p, chart, layout, m),
             ],
         };
     }
@@ -345,7 +358,7 @@ internal static class ClassicArtistPage
     /// for (<c>cell width + 50</c>) and nothing moves when the grid lands. The face IS already the bone description, so
     /// each cell hands it to the deriver as-is (<c>Skel</c>): derived, its aspect-only cover declares no extent and
     /// would collapse to nothing.</summary>
-    static Element MagazineShimmer(ArtistPageProps p, ArtistChartStyle? chart, ClassicArtistLayout layout, float inset)
+    static Element MagazineShimmer(ArtistPageProps p, ArtistChartStyle? chart, ClassicArtistLayout layout, ArtistHeroMetrics m)
     {
         var cells = new Element[ClassicArtistRules.ShimmerCells];
         for (int i = 0; i < cells.Length; i++)
@@ -373,6 +386,6 @@ internal static class ClassicArtistPage
         // The chart's skeleton at the tier's columns and rows (the chart's own, so the shimmer keeps its columns per tier).
         Element chartShape = chart is null ? new BoxEl()
             : chart.Skeleton(ArtistChartSkeletonArgs.For(0, ClassicOptions.ClassicRows(), !ClassicOptions.HideTrackArt(), layout.ChartColumns, layout.ChartRows));
-        return Magazine([chartShape, facet], inset, layout);
+        return Magazine([chartShape, facet], m.Gutter, layout);
     }
 }

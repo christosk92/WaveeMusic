@@ -474,7 +474,9 @@ internal static class ZuneArtistSections
 
         var left = new List<Element>(3);
         if (bio.Length > 0)
-            left.Add(Controls.RichText(bio, Rules.BioSize, Tok.TextSecondary, Tok.AccentTextPrimary, lay.AboutTextWidth(p.Width), Rules.BioLines, ArtistVerbs.OpenRoute));
+            // No width of its own: the paragraph stretches across its column (the bio's share beside the facts, the column stacked) and wraps at the
+            // width layout gives it, so a docking panel's slide re-wraps it frame by frame without re-rendering the page.
+            left.Add(Controls.RichText(bio, Rules.BioSize, Tok.TextSecondary, Tok.AccentTextPrimary, float.NaN, Rules.BioLines, ArtistVerbs.OpenRoute));
         if (links.Length > 0) left.Add(LinkPills(links, lay.LinkTarget));
         if (cities.Length > 0) left.Add(CityBars(cities));
         Element text = new BoxEl

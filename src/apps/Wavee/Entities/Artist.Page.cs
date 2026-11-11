@@ -102,9 +102,13 @@ public readonly partial struct Artist
         readonly object _tintOwner = new();
 
         // ── geometry: plain latched FIELDS (idempotent functions of the width — ch 08 §9 traps) ──
-        // The page's measured width (0 until the first measure: the hero ladder's seed answers until then) and the hero's sub-tier on the
-        // structure's ladder (themes plan 3.6, TC6): a crossing found after mount commits on the first frame that is not resized.
-        readonly Signal<float> _heroWidth = new(0f);
+        // The page's STRUCTURE width (0 until the first measure: the hero ladder's seed answers until then; RenderContext.UseStructureWidth: the
+        // width the page lands at while a docking panel's reflow resizes it, else its laid-out width) and the hero's sub-tier on the structure's
+        // ladder (themes plan 3.6, TC6): a crossing found after mount commits on the first frame that is not resized. A slide therefore renders
+        // this page once, on its first frame; what follows the slide frame by frame is the views' layout.
+        IReadSignal<float>? _heroWidth;
+        /// <summary>The structure width's write floor (a smaller one re-renders the page on every frame of a window resize).</summary>
+        const float StructureQuantum = 0.5f;
         readonly Signal<int> _layoutEpoch = new(0);
         IReadSignal<int>? _heroTier;
         IReadSignal<Size2>? _viewportSize;
@@ -231,18 +235,12 @@ public readonly partial struct Artist
             _radio = Radio;
             _scrollToTop = ScrollToTop;
             _captureViewport = h => _viewport = h;
+            // The first measure opens the reveal gate (the width itself is the structure-width hook's, read in render).
             _measure = r =>
             {
-                // The 0.5-DIP write floor: a smaller one writes every frame of a resize (ch 08 §9 traps).
-                if (r.W <= 0f) return;
-                if (!_measured)
-                {
-                    _measured = true;
-                    _heroWidth.Value = r.W;
-                    _layoutEpoch.Value++;
-                    return;
-                }
-                if (MathF.Abs(r.W - _heroWidth.Peek()) > 0.5f) _heroWidth.Value = r.W;
+                if (r.W <= 0f || _measured) return;
+                _measured = true;
+                _layoutEpoch.Value++;
             };
             // A COARSE key off the page's scroll handle: the 24-DIP write floor, the viewport height in 4-DIP steps and
             // the at-end edge. The watch re-runs on every moved frame and writes only when the key changes.
@@ -325,10 +323,11 @@ public readonly partial struct Artist
             // structure's record for that sub-tier in the window tier on screen (tracked: a window or height crossing re-renders the page).
             _viewportSize = UseContextSignal(Viewport.Size);
             _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
+            _heroWidth = Context.UseStructureWidth(StructureQuantum);
             _heroTier = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Hero), TierSource.Measured(_heroWidth, _heroSeed));
             var tierFacts = _facts.Value.Tiers;
             _ = _layoutEpoch.Value;
-            float measuredW = _heroWidth.Value;
+            float measuredW = _measured ? _heroWidth.Value : 0f;
             _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());
             _metrics = ShellPolicy.Tracked.ArtistTiers.Hero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
             _bandClear = ShellPolicy.Tracked.ArtistTiers.BandClearance(in tierFacts);
