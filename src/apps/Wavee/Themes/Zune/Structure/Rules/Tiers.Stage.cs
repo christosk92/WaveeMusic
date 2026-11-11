@@ -53,17 +53,36 @@ public static class ZuneStageTiers
         IdentityCard = true, GalleryOnDemand = true,
     };
 
+    /// <summary>Video mode's Theatre panel beside the picture (the open list: Up next or Lyrics) and the lyrics' type in it, per window tier:
+    /// Small 320 at 26, Standard 400 at 30, Huge 480 at 34, Huge 4K 640 at 48 (the light display voice, never below the panel's own size). A
+    /// Compact window has no Theatre: the picture keeps the stage. Declared before the metrics that read them.</summary>
+    public const float SmallTheatrePaneW = 320f, StandardTheatrePaneW = 400f, HugeTheatrePaneW = 480f, Huge4KTheatrePaneW = 640f;
+
+    public const float SmallTheatreLyricsType = 26f, StandardTheatreLyricsType = 30f, HugeTheatreLyricsType = 34f, Huge4KTheatreLyricsType = 48f;
+
     /// <summary>Small: the 96 plate (Z-Lyrics-Small), the lyrics at the board's 36 (never less: Zune's type is large).</summary>
-    public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 96f, TransportInset: 0f, LyricsTypeMin: 36f, LyricsTypeMax: 36f);
+    public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 96f, TransportInset: 0f, LyricsTypeMin: 36f, LyricsTypeMax: 36f)
+    {
+        TheatrePaneW = SmallTheatrePaneW, TheatreLyricsType = SmallTheatreLyricsType,
+    };
 
     /// <summary>Standard: the full-bleed 112 plate, the lyrics at the board's 56 (Z-Lyrics: 56/68 at 300), grown up to 64 on a tall stage.</summary>
-    public static StageTierMetrics StandardMetrics { get; } = new(TransportH: PlateH, TransportInset: 0f, LyricsTypeMin: 56f, LyricsTypeMax: 64f);
+    public static StageTierMetrics StandardMetrics { get; } = new(TransportH: PlateH, TransportInset: 0f, LyricsTypeMin: 56f, LyricsTypeMax: 64f)
+    {
+        TheatrePaneW = StandardTheatrePaneW, TheatreLyricsType = StandardTheatreLyricsType,
+    };
 
     /// <summary>Huge: the 120 plate (Z-Lyrics-Huge), the lyrics at the board's 56 (the sung line draws at 72), the 440 Up next column beside them.</summary>
-    public static StageTierMetrics HugeMetrics { get; } = new(TransportH: 120f, TransportInset: 0f, LyricsTypeMin: 56f, LyricsTypeMax: 56f) { UpNextW = 440f };
+    public static StageTierMetrics HugeMetrics { get; } = new(TransportH: 120f, TransportInset: 0f, LyricsTypeMin: 56f, LyricsTypeMax: 56f)
+    {
+        UpNextW = 440f, TheatrePaneW = HugeTheatrePaneW, TheatreLyricsType = HugeTheatreLyricsType,
+    };
 
     /// <summary>Huge 4K: the 280 plate (Z-NowPlaying-Huge4K), the lyrics at 84 (the Huge board's 56 at 1.5), the 560 Up next column.</summary>
-    public static StageTierMetrics Huge4KMetrics { get; } = new(TransportH: 280f, TransportInset: 0f, LyricsTypeMin: 84f, LyricsTypeMax: 84f) { UpNextW = 560f };
+    public static StageTierMetrics Huge4KMetrics { get; } = new(TransportH: 280f, TransportInset: 0f, LyricsTypeMin: 84f, LyricsTypeMax: 84f)
+    {
+        UpNextW = 560f, TheatrePaneW = Huge4KTheatrePaneW, TheatreLyricsType = Huge4KTheatreLyricsType,
+    };
 
     /// <summary>Zune's stage policy: the core's class edges, the metrics above (Huge 4K through the stage's own rung). One instance, so a
     /// republish is not a change. Declared after the metrics it names: initializers run in textual order.</summary>
@@ -75,6 +94,8 @@ public static class ZuneStageTiers
         Huge = HugeMetrics,
         HugeWide = Huge4KMetrics,
         HugeWideRung = ZuneTiers.StageHuge4KRung,
+        // Zune draws the stage's Video mode (Cinema and Theatre, `ZuneStagePictureChrome`): one full screen while a video is on.
+        VideoStage = true,
     };
 
     // ── the arrangements' voices and records ─────────────────────────────────────────────────────────────────────────────
@@ -174,7 +195,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.Stack, SeekRowH = 36f, PlateRowH = 68f, PlateFootH = 44f,
             GlyphBox = 44f, Glyph = 18f, PlayGlyph = 22f, Disc = 56f, VolumeW = 0f, ClusterGap = 16f, RightGap = 4f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 40f, Card = s_cardStandard, Column = s_columnStandard, Centered = null, Stack = s_stack,
-            LyricsRhythm = s_rhythmCompact,
+            LyricsRhythm = s_rhythmCompact, Video = ZuneStageVideoGeometry.Compact,
         },
         // Small (Z-NowPlaying-Small, Z-Lyrics-Small, Z-Queue-Page-Small)
         new()
@@ -184,7 +205,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.HeartLead, SeekRowH = 30f, PlateRowH = 66f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 17f, PlayGlyph = 20f, Disc = 48f, VolumeW = 96f, ClusterGap = 20f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnSmall, Centered = s_centeredSmall, Stack = null,
-            LyricsSide = s_lyricsSideSmall, QueueSide = s_queueSideSmall, LyricsRhythm = s_rhythmSmall,
+            LyricsSide = s_lyricsSideSmall, QueueSide = s_queueSideSmall, LyricsRhythm = s_rhythmSmall, Video = ZuneStageVideoGeometry.Small,
         },
         // Standard (Z-NowPlaying, -Card, -LargeArt, -Centered, Z-Lyrics, Z-Queue-Page): Z4b's frame.
         new()
@@ -194,7 +215,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.Full, SeekRowH = 36f, PlateRowH = 76f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 18f, PlayGlyph = 22f, Disc = 56f, VolumeW = 128f, ClusterGap = 24f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnStandard, Centered = s_centeredStandard, Stack = null,
-            LyricsSide = s_lyricsSideStandard, QueueSide = s_queueSideStandard, LyricsRhythm = s_rhythmStandard,
+            LyricsSide = s_lyricsSideStandard, QueueSide = s_queueSideStandard, LyricsRhythm = s_rhythmStandard, Video = ZuneStageVideoGeometry.Standard,
         },
         // Huge (Z-NowPlaying-Huge, Z-Lyrics-Huge, Z-Queue-Page-Huge)
         new()
@@ -204,7 +225,7 @@ public static class ZuneStageTiers
             WordSize = 14f, WordLine = 20f, Plate = ZunePlateKind.Full, SeekRowH = 40f, PlateRowH = 80f, PlateFootH = 0f,
             GlyphBox = 44f, Glyph = 20f, PlayGlyph = 24f, Disc = 64f, VolumeW = 160f, ClusterGap = 28f, RightGap = 8f, SourceSize = 14f, SourceLine = 20f,
             DeviceH = 44f, Card = s_cardHugeRec, Column = s_columnHuge, Centered = s_centeredHuge, Stack = null,
-            UpNextGap = 96f, LyricsSide = s_lyricsSideHuge, QueueSide = s_queueSideHuge, LyricsRhythm = s_rhythmHuge,
+            UpNextGap = 96f, LyricsSide = s_lyricsSideHuge, QueueSide = s_queueSideHuge, LyricsRhythm = s_rhythmHuge, Video = ZuneStageVideoGeometry.Huge,
         },
         // Huge 4K (Z-NowPlaying-Huge4K)
         new()
@@ -214,7 +235,7 @@ public static class ZuneStageTiers
             WordSize = 17f, WordLine = 22f, Plate = ZunePlateKind.Full, SeekRowH = 72f, PlateRowH = 160f, PlateFootH = 0f,
             GlyphBox = 56f, Glyph = 26f, PlayGlyph = 36f, Disc = 96f, VolumeW = 220f, ClusterGap = 40f, RightGap = 14f, SourceSize = 17f, SourceLine = 22f,
             DeviceH = 56f, Card = s_card4KRec, Column = s_column4K, Centered = s_centered4K, Stack = null,
-            UpNextGap = 336f, LyricsSide = s_lyricsSide4K, QueueSide = s_queueSide4K, LyricsRhythm = s_rhythmHuge,
+            UpNextGap = 336f, LyricsSide = s_lyricsSide4K, QueueSide = s_queueSide4K, LyricsRhythm = s_rhythmHuge, Video = ZuneStageVideoGeometry.Huge4K,
         },
     ];
 
@@ -359,6 +380,9 @@ public sealed record ZuneStageLayout
 
     /// <summary>The stage's lyric lines' rhythm at this tier (line height, gap, the sung line's growth, the light display voice).</summary>
     public ZuneStageLyricsRhythm? LyricsRhythm { get; init; }
+
+    /// <summary>Video mode at this tier (Cinema and Theatre: <see cref="ZuneStageVideoGeometry"/>).</summary>
+    public ZuneStageVideo Video { get; init; } = ZuneStageVideoGeometry.Standard;
 
     /// <summary>The chrome at the stage's head: the bar and the pivots' row.</summary>
     public float HeadH => BarH + PivotRowH;
