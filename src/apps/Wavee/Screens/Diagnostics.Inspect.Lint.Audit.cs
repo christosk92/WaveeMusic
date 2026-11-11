@@ -638,7 +638,9 @@ public static partial class Diagnostics
 
         /// <summary>control.required (visual.md 5): a surface without a control it must offer. A transport the inspector holds shown
         /// (`chrome=shown`) over a full-window video or the now-playing stage must show a play/pause target and a seek control (a slider or a
-        /// drag bar) on screen: Zune's fullscreen video shows only its top row.</summary>
+        /// drag bar) on screen: Zune's fullscreen video shows only its top row. A control drawn DISABLED is present: the rule is about a control
+        /// that is absent or unreachable (out of scope, covered), not one whose verb is down for now (the stage's play/pause during a load,
+        /// `Stage.Transport.PrimaryEnabled`; a seek rail over a track that cannot seek yet).</summary>
         static int ControlRequiredRule(Snapshot s, List<Finding> into)
         {
             if (!s.ChromeHeld) return 0;
@@ -654,7 +656,7 @@ public static partial class Diagnostics
             bool play = false, seek = false;
             foreach (Node n in s.Nodes)
             {
-                if (!n.InScope || n.Covered || n.Disabled) continue;
+                if (!n.InScope || n.Covered) continue;   // a disabled control is still offered (see the summary)
                 if (n.Interactive && PlayGlyph(n)) play = true;
                 if ((n.Role is "Slider" || n.Drag) && n.Rect.W >= 100f && n.Rect.W > 3f * n.Rect.H) seek = true;
             }

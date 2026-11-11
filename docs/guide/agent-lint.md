@@ -359,7 +359,9 @@ All warn, all todo; each was built from a case of the 10-23 audit and caught it;
   (Zune's device picker), or a `stage:*:source` line with no words (`stage:transport:source`, the board's "playing from").
 - **`control.required`**: with the transport held shown (`chrome=shown`, `Snapshot.ChromeHeld`), a full-window video
   (`video-area`, `media-stage`) or stage without a play/pause target and a seek control (a slider or a drag bar 100 wide) on
-  screen. Zune fullscreen video at 1440 (the top row only); Classic's black fullscreen frame too.
+  screen. Zune fullscreen video at 1440 (the top row only); Classic's black fullscreen frame too. A control drawn disabled counts as
+  present (the stage's play/pause is disabled while a track loads): the rule catches a control that is absent, out of scope or
+  covered, never one whose verb is down for now.
 - **`edge.window`**: content (words or a target) that starts inside the window and is laid out 2 DIP or more past its right
   edge, outside any rail and not cut inside the window by a clipping ancestor (a clip at the window's own edge is the window). The
   topmost such node speaks. WinUI 800 artists: `verbs:row` to x840, the reader's rows' more buttons to x808.
