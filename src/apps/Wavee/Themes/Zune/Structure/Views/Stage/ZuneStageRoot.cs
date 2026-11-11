@@ -69,14 +69,14 @@ internal static class ZuneStageRoot
                 }),
                 // the AUDIO FACE (Video mode over an audio-only track: no presenter, no hole): the flat field, the cover and the lyrics in the
                 // picture's place, fading in over the reservation and out under the picture the next video brings back
-                Flow.Show(() => v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
+                Flow.Show(() => v.Stage.In(1) && v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
                 {
                     Key = "stage:audioface",
                     Enter = s_fade, Exit = s_fade, Transition = MotionTok.StandardEnter,
                     Children = [Embed.Comp(new ZuneStageAudioFace.Props(v), static () => new ZuneStageAudioFace())],
                 }),
                 // Theatre's open list beside the picture: it slides in from the right as Theatre opens and back out as it closes
-                Flow.Show(() => v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
+                Flow.Show(() => v.Stage.Alone(2) && v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
                 {
                     Key = "stage:theatre",
                     Enter = s_theatreMotion, Exit = s_theatreMotion, Transition = MotionTok.StandardEnter,

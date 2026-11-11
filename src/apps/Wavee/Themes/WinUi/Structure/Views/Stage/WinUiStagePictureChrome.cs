@@ -33,6 +33,7 @@ using static FluentGpu.Dsl.Ui;
 using G = Wavee.Themes.WinUi.WinUiStageCinemaGeometry;
 using B = Wavee.Themes.WinUi.WinUiStageVideoBarGeometry;
 using S = Wavee.Themes.WinUi.WinUiStageShelfGeometry;
+using T = Wavee.Themes.WinUi.WinUiStageTheatreGeometry;
 using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee.Themes.WinUi;
@@ -50,12 +51,18 @@ internal static class WinUiStagePictureChrome
         var theatre = WinUiStageTheatre.Rects(L, t);
         // the command bar covers the picture in both layouts, so it idles in both; what covers no picture stays at rest in Theatre (the top bar).
         // Over the audio face the frame stays at rest: idling it out would cover nothing.
+        // THE CHOREOGRAPHY (Stage.Motion.cs): every part comes in on its beat after the picture has mostly landed (1: the title, the veils, the end
+        // card; 2: the command bar, the shelf, the about block; 3: the top bar, the hairline) and leaves first when the stage closes; a part of one
+        // arrangement only (the veils and the shelf in Cinema, the about block in Theatre) also waits out a Cinema ⇄ Theatre move
+        var sc = v.Stage;
         Func<bool> cinemaChrome = () => (v.ChromeVisible() || v.ShowAudioFace()) && !v.ShowTheatre();
         Func<bool> overPicture = () => v.ChromeVisible() && !v.ShowTheatre() && !v.ShowAudioFace() && !v.ShowEndCard();
         bool shelf = t.ShelfCardW > 0f && v.Layers.UpNextShelf is not null;
-        Func<bool> topShown = () => v.ChromeVisible() || v.ShowTheatre() || v.ShowAudioFace();
-        Func<bool> barShown = () => v.ChromeVisible() || v.ShowAudioFace();
-        Func<bool> hairline = () => !barShown();
+        Func<bool> topShown = () => sc.In(3) && (v.ChromeVisible() || v.ShowTheatre() || v.ShowAudioFace());
+        Func<bool> barShown = () => sc.In(2) && (v.ChromeVisible() || v.ShowAudioFace());
+        Func<bool> hairline = () => sc.In(Stage.Choreo.Beats) && !v.ChromeVisible() && !v.ShowAudioFace();
+        float shelfH = v.Layers.UpNextShelf is null ? 0f : S.Height(t.ShelfCardW);
+        float cinemaAbove = shelfH > 0f ? S.AboveBar + shelfH + S.TitleAbove : G.TitleAboveBar;
         var topBar = v.TopBar;
         return Stage.Layer with
         {
@@ -68,7 +75,7 @@ internal static class WinUiStagePictureChrome
             [
                 Embed.Comp(new ChromeProps(v), static () => new Ground()),
                 // the veils: under the top bar, and under the title block and the shelf (Cinema with the chrome)
-                Flow.Show(overPicture, Stage.Layer with
+                Flow.Show(() => sc.Alone(1) && overPicture(), Stage.Layer with
                 {
                     Key = "picture:scrims", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -87,7 +94,7 @@ internal static class WinUiStagePictureChrome
                     ],
                 }),
                 // the end card's veil over the last frame (Cinema: the stage; Theatre: the picture's box, moving with it)
-                Flow.Show(v.ShowEndCard, Stage.Layer with
+                Flow.Show(() => sc.In(1) && v.ShowEndCard(), Stage.Layer with
                 {
                     Key = "picture:end-dim", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -101,16 +108,17 @@ internal static class WinUiStagePictureChrome
                     Transition = MotionTok.ControlNormal,
                     Children = [Embed.Comp(new WinUiStageVideoBar.Props(v), static () => new WinUiStageVideoBar())],
                 }),
-                // the title block: a gap above the shelf's reserved place or the command bar (Cinema)
-                Flow.Show(overPicture, Stage.Layer with
+                // the title block: ONE block in both arrangements, travelling between Cinema's place (a gap above the shelf's reserved place or
+                // the command bar; with the chrome) and Theatre's (under the picture, at rest) in step with the picture
+                Flow.Show(() => sc.In(1) && (v.ShowTheatre() || overPicture()), Stage.Layer with
                 {
                     Key = "picture:title", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true),
                     Transition = MotionTok.ControlNormal,
-                    Children = [Title(v, L, t)],
+                    Children = [Embed.Comp(new TitleProps(v, cinemaAbove), static () => new TitleBlock())],
                 }),
                 // Up next: the shelf a gap above the command bar, with the chrome (Cinema, on a tier that has one)
-                Flow.Show(() => shelf && cinemaChrome(), Stage.Layer with
+                Flow.Show(() => shelf && sc.Alone(2) && cinemaChrome(), Stage.Layer with
                 {
                     Key = "picture:shelf",
                     Enter = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: G.TitleEnterDy, Opacity: 0f, Active: true),
@@ -126,7 +134,7 @@ internal static class WinUiStagePictureChrome
                     ],
                 }),
                 // the end card (centred between the top bar and the shelf's place, or in the picture's box)
-                Flow.Show(() => v.ShowEndCard() && v.Layers.EndCard is not null, Stage.Layer with
+                Flow.Show(() => sc.In(1) && v.ShowEndCard() && v.Layers.EndCard is not null, Stage.Layer with
                 {
                     Key = "picture:endcard",
                     Enter = new EnterExit(Dy: WinUiStageEndCardGeometry.EnterDy, Opacity: 0f, Active: true),
@@ -134,15 +142,8 @@ internal static class WinUiStagePictureChrome
                     Transition = MotionTok.ControlNormal,
                     Children = [v.Layers.EndCard is { } endCard ? endCard() : new BoxEl()],
                 }),
-                // Theatre's title block under the picture, at rest
-                Flow.Show(v.ShowTheatre, Stage.Layer with
-                {
-                    Key = "picture:theatre-title", HitTestVisible = false, HitTestPassThrough = false,
-                    Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
-                    Children = [WinUiStageTheatre.TheatreTitle(v, theatre.Title)],
-                }),
-                // the about block under it (the channel row and the description card), at rest, where the room under the title holds it whole
-                Flow.Show(() => v.ShowTheatre() && theatre.AboutFits, Stage.Layer with
+                // the about block under Theatre's title (the channel row and the description card), at rest, where the room under the title holds it whole
+                Flow.Show(() => sc.Alone(2) && v.ShowTheatre() && theatre.AboutFits, Stage.Layer with
                 {
                     Key = "picture:theatre-about",
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
@@ -167,34 +168,70 @@ internal static class WinUiStagePictureChrome
         };
     }
 
-    /// <summary>The title (TitleLarge, two lines at most) over "Artist · Album" (BodyLarge) and the "Playing from" line (Body), bottom-left above the
-    /// shelf's reserved place or the command bar.</summary>
-    static Element Title(StageRootView v, Stage.Layout L, WinUiStageLayout t)
+    /// <param name="CinemaAbove">Cinema's gap from the command bar's top to the block's foot (above the shelf's reserved place, or the bar).</param>
+    sealed record TitleProps(StageRootView View, float CinemaAbove);
+
+    /// <summary>THE title block of both arrangements: the title over "Artist · Album" and the "Playing from" line. In Cinema TitleLarge (two lines
+    /// at most), BodyLarge and Body, bottom-left above the shelf's reserved place or the command bar; in Theatre Title 28/36 (one line), Body and
+    /// Caption under the picture at its left edge and width. One node: a Cinema ⇄ Theatre switch moves it on the picture's spring and scales its
+    /// type from the size it had (<see cref="Stage.Traveller"/>), so it travels with the picture instead of two copies cross-fading.</summary>
+    sealed class TitleBlock : Stage.Traveller
     {
-        var identity = v.Identity;
-        float left = Left(t);
-        float shelfH = v.Layers.UpNextShelf is null ? 0f : S.Height(t.ShelfCardW);
-        float above = shelfH > 0f ? S.AboveBar + shelfH + S.TitleAbove : G.TitleAboveBar;
-        return new BoxEl
+        public override Element Render()
         {
-            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Direction = 1, Gap = G.TitleGap, HitTestVisible = false,
-            MaxWidth = MathF.Max(0f, MathF.Min(G.TitleMaxWFrac * L.W, L.W - 2f * left)),
-            Margin = new Edges4(left, 0f, 0f, B.BarH(t.BarInset) + above),
-            Children =
-            [
-                new TextEl("")
+            var p = UseProps<TitleProps>();
+            var v = p.View;
+            var t = WinUiStageTheatre.Tier(UseContext(ThemeFactsContext.Signal));
+            var L = v.Stage.Layout.Value;
+            bool theatre = v.ShowTheatre();
+            var identity = v.Identity;
+            BoxEl placed;
+            float size;
+            if (theatre)
+            {
+                var r = WinUiStageTheatre.Rects(L, t).Title;
+                size = T.TitleSize;
+                placed = new BoxEl
                 {
-                    Text = Prop.Of(identity.Title), FontFamily = WinUiStageLayerGeometry.DisplayFace, Size = G.TitleSize, LineHeight = G.TitleLine, Weight = G.TitleWeight,
-                    Color = Ink.Ink, Wrap = TextWrap.Wrap, MaxLines = G.TitleMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                new TextEl("")
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 1, Gap = T.MetaGap, HitTestVisible = false,
+                    Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H,
+                    Children = Lines(v, identity, T.TitleSize, T.TitleLine, 1, T.MetaSize, T.MetaLine, T.SourceSize, T.SourceLine, T.SourceGap - T.MetaGap),
+                };
+            }
+            else
+            {
+                float left = Left(t);
+                size = G.TitleSize;
+                placed = new BoxEl
                 {
-                    Text = Prop.Of(() => identity.Meta(0).Line), Size = G.MetaSize, LineHeight = G.MetaLine, Color = Ink.InkSecondary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                Embed.Comp(new WinUiStageSourceLine.Props(v.Transport, G.SourceSize, G.SourceLine), static () => new WinUiStageSourceLine()),
-            ],
-        };
+                    AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Direction = 1, Gap = G.TitleGap, HitTestVisible = false,
+                    MaxWidth = MathF.Max(0f, MathF.Min(G.TitleMaxWFrac * L.W, L.W - 2f * left)),
+                    Margin = new Edges4(left, 0f, 0f, B.BarH(t.BarInset) + p.CinemaAbove),
+                    Children = Lines(v, identity, G.TitleSize, G.TitleLine, G.TitleMaxLines, G.MetaSize, G.MetaLine, G.SourceSize, G.SourceLine, 0f),
+                };
+            }
+            return Stage.Layer with
+            {
+                HitTestVisible = false, HitTestPassThrough = false,
+                Children = [Travel(placed, size, WinUiStageGeometry.PaneMoveResponse, WinUiStageGeometry.PaneMoveDamping)],
+            };
+        }
+
+        static Element[] Lines(StageRootView v, StageIdentityProps identity, float titleSize, float titleLine, int titleLines, float metaSize, float metaLine,
+            float sourceSize, float sourceLine, float sourceNudge) =>
+        [
+            new TextEl("")
+            {
+                Text = Prop.Of(identity.Title), FontFamily = WinUiStageLayerGeometry.DisplayFace, Size = titleSize, LineHeight = titleLine, Weight = G.TitleWeight,
+                Color = Ink.Ink, Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            },
+            new TextEl("")
+            {
+                Text = Prop.Of(() => identity.Meta(0).Line), Size = metaSize, LineHeight = metaLine, Color = Ink.InkSecondary,
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            },
+            Embed.Comp(new WinUiStageSourceLine.Props(v.Transport, sourceSize, sourceLine, sourceNudge), static () => new WinUiStageSourceLine()),
+        ];
     }
 
     /// <summary>The left edge the title block, the shelf and the command bar share in Cinema: the bar's inset (the wordmark's).</summary>

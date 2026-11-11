@@ -121,9 +121,11 @@ public static class FrameFacts
     /// <summary>The fullscreen (immersive) stage is up.</summary>
     public static IReadSignal<bool> ImmersiveOpen => Shell.Ui.ImmersiveLyrics;
 
-    /// <summary>Is the chrome (title row, content region, player bar) mounted? False under fullscreen video or the immersive stage.</summary>
+    /// <summary>Is the chrome (title row, content region, player bar) mounted? False under fullscreen video or once the immersive stage COVERS
+    /// the page (<see cref="Stage.Choreo.Covers"/>: its ground opaque and the picture landed). While the stage fades in over it, and again from
+    /// the moment it closes, the page stays laid out and painted under it: it never vanishes in one frame.</summary>
     public static bool ChromeMounted()
-        => FrameModel.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), ImmersiveOpen.Value);
+        => FrameModel.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), Stage.Choreo.Covers.Value);
 }
 
 /// <summary>What the frame's chords and buttons do.</summary>

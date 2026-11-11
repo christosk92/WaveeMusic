@@ -49,6 +49,8 @@ internal static class WinUiStageTheatre
     /// <summary>The page, the letterbox and the reservation. Its own component: a Cinema ⇄ Theatre change re-renders this box alone.</summary>
     internal sealed class Picture : Component
     {
+        static readonly EnterExit s_letterboxFade = new(Opacity: 0f, Active: true);
+
         bool _theatre;   // the layout the last render drew: a return from Theatre is not the stage opening in Cinema
 
         public override Element Render()
@@ -75,10 +77,12 @@ internal static class WinUiStageTheatre
                             Enter = fromTheatre ? new EnterExit(Opacity: 0f, Active: true, DelayMs: G.GroundReturnMs) : default,
                             Transition = MotionTok.ControlNormal,
                         },
-                    theatre
+                    // (it waits for the content's first beat and leaves with the content: a still dark box at the picture's destination, drawn
+                    // before the gliding picture reaches it or after it has flown home, would lie bare on the page under the fading ground)
+                    theatre && v.Stage.In(1)
                         ? new BoxEl
                         {
-                            Key = "stage:picture:letterbox", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                            Key = "stage:picture:letterbox", Enter = s_letterboxFade, Exit = s_letterboxFade, Transition = MotionTok.ControlNormal, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                             Margin = new Edges4(box.X, box.Y, 0f, 0f), Width = box.W, Height = box.H, Fill = Tok.MediaLetterbox, Layout = Move,
                         }
                         : new BoxEl { Visible = false },
@@ -120,32 +124,6 @@ internal static class WinUiStageTheatre
                 ],
             };
         }
-    }
-
-    /// <summary>Theatre's title block under the picture: the title (Title 28/36 semibold, one line), "Artist · Album" (Body) and the quiet "Playing from"
-    /// line (Caption), at the picture's left edge and width, moving with it.</summary>
-    public static Element TheatreTitle(StageRootView v, in RectF title)
-    {
-        var identity = v.Identity;
-        return new BoxEl
-        {
-            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 1, Gap = G.MetaGap, HitTestVisible = false,
-            Margin = new Edges4(title.X, title.Y, 0f, 0f), Width = title.W, Height = title.H, Layout = Move,
-            Children =
-            [
-                new TextEl("")
-                {
-                    Text = Prop.Of(identity.Title), FontFamily = WinUiStageLayerGeometry.DisplayFace, Size = G.TitleSize, LineHeight = G.TitleLine, Weight = G.TitleWeight,
-                    Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                new TextEl("")
-                {
-                    Text = Prop.Of(() => identity.Meta(0).Line), Size = G.MetaSize, LineHeight = G.MetaLine, Color = Ink.InkSecondary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                Embed.Comp(new WinUiStageSourceLine.Props(v.Transport, G.SourceSize, G.SourceLine, G.SourceGap - G.MetaGap), static () => new WinUiStageSourceLine()),
-            ],
-        };
     }
 }
 

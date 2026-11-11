@@ -72,14 +72,14 @@ internal static class ClassicStageRoot
                 }),
                 // the AUDIO FACE: Video mode over an audio-only track (no presenter, no hole): the cover and the lyrics in the picture's place,
                 // fading in over the reservation and out under the picture that the next video track brings back (ClassicStageAudioFace)
-                Flow.Show(() => v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
+                Flow.Show(() => v.Stage.In(1) && v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
                 {
                     Key = "stage:audioface",
                     Enter = s_faceFade, Exit = s_faceFade, Transition = MotionTok.StandardEnter,
                     Children = [Embed.Comp(new ClassicStageAudioFace.Props(v), static () => new ClassicStageAudioFace())],
                 }),
                 // Theatre's panel (Lyrics or Up next) beside the picture: it slides in from the right as Theatre opens and back out as it closes
-                Flow.Show(() => v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
+                Flow.Show(() => v.Stage.Alone(2) && v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
                 {
                     Key = "stage:theatre",
                     Enter = s_theatreMotion, Exit = s_theatreMotion, Transition = MotionTok.StandardEnter,

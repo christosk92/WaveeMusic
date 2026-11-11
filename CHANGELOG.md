@@ -111,6 +111,11 @@ versions separately under `v*` and is not tracked in this file.)
   quiet or the next word starts, and a line's last word ends by the time the next line starts, so its last syllable is
   never cut off by the hand-off. A result full of words that short is no longer shown. Every song timed before is timed
   once more the next time it plays.
+- **Going full screen with a video is one calm motion.** The picture starts gliding from the panel at once, the page stays
+  under the full screen's background as it fades in, and the title, the controls and the top bar follow one after the
+  other once the picture has nearly arrived. Switching between the full picture and Theatre moves one title with the
+  picture instead of fading out one and fading in another, and leaving fades the controls first, then the picture flies
+  back while the page shows through. In every theme.
 
 ### Fixed
 

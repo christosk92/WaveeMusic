@@ -94,7 +94,7 @@ public static partial class Stage
     /// SurfaceCore's own renders (V-U50). Every preference is mirrored here by SurfaceCore's one epoch effect (O8); the
     /// playing track is ONE key signal (slot ≪ 32 | row version — the §2 narrowing, V-U34). The actions are set once in
     /// SurfaceCore's constructor.</summary>
-    public sealed class StageCtx
+    public sealed partial class StageCtx
     {
         /// <summary>The stage's layout: resolved from the window's size and the tiers the stage is drawn in by a MEMO SurfaceCore binds on its first
         /// render (<see cref="BindLayout"/>), so a view that reads it beside the tier reads the layout OF that tier. An effect wrote it after the
@@ -243,8 +243,18 @@ public static partial class Stage
     }
 
     /// <summary>Exit. The explicit <c>Begin</c> is REQUIRED: reverse capture is not implemented (ConnectedAnimation.cs:238-241),
-    /// so the hero is captured here and the re-mounted bar art receives the flight.</summary>
+    /// so the hero is captured here and the re-mounted bar art receives the flight. With the picture staged it leaves in two steps
+    /// (<see cref="Choreo"/>): the content fades out first, then the picture flies home while the ground fades to reveal the page.</summary>
     public static void Close(Action<string>? begin, string cause)
+    {
+        if (!Shell.Ui.ImmersiveLyrics.Peek()) return;
+        if (Choreo.TryLeave(begin, cause)) return;
+        CloseNow(begin, cause);
+    }
+
+    /// <summary>The close itself: the window first, then the page back under the stage, then the stage down (its ground fades, the picture
+    /// flies home).</summary>
+    static void CloseNow(Action<string>? begin, string cause)
     {
         if (!Shell.Ui.ImmersiveLyrics.Peek()) return;
         begin?.Invoke(Entry.MorphKey);
@@ -252,6 +262,7 @@ public static partial class Stage
         // (the teardown's ReleaseWindow used to restore it inside that flush, after the page had laid out at the full-screen size: two
         // page layouts and a 22-24 ms flush on every exit)
         ImmersiveService.Shared.ExitWindowNow(ImmersiveKind.Stage);
+        Choreo.Closed();
         Shell.Ui.ImmersiveLyrics.Value = false;
         Diagnostics.NoteExit(cause);
     }
@@ -276,6 +287,8 @@ public static partial class Stage
     sealed class SurfaceCore : Component
     {
         readonly StageCtx _ctx = new();
+        // the entrance's beats, the page's cover, the Cinema ⇄ Theatre gate and the two-step exit (Stage.Motion.cs); its timers are hooks below
+        readonly Choreo.Machine _choreo;
         Layout? _resolved;   // the stage layout last resolved (the classifier's hysteresis)
         readonly FloatSignal _frac = new(0f);
         readonly Action _onWake;
@@ -330,6 +343,7 @@ public static partial class Stage
                 Sync();
             };
             _onCountdown = () => Countdown(Playback.EndHoldNow.Peek());
+            _choreo = new Choreo.Machine(_ctx, static (begin, cause) => CloseNow(begin, cause));
             // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
             _ctx.SetMode = mode =>
@@ -559,8 +573,9 @@ public static partial class Stage
                 Picture.NoteMode(m == Mode.Video);
             });
             // Theatre as SHOWN: Video mode, wanted, and the window tier's layout has room for the panel (a crossing into a tier without one
-            // draws Cinema and keeps the choice for the way back)
-            UseSignalEffect(() => ctx.Theatre.SetIfChanged(ctx.Mode.Value == Mode.Video && (ctx.TheatreWanted.Value || ctx.TheatreHeld.Value) && ctx.Layout.Value.TheatreFits));
+            // draws Cinema and keeps the choice for the way back). The choreography shows it: at once while the stage enters, after a short lead
+            // (what one arrangement alone shows leaves first) once it has settled (Stage.Motion.cs)
+            UseSignalEffect(() => _choreo.Theatre(ctx.Mode.Value == Mode.Video && (ctx.TheatreWanted.Value || ctx.TheatreHeld.Value) && ctx.Layout.Value.TheatreFits));
             // the audio face: Video mode without a picture now; it shows the lyrics but beside Theatre's own Lyrics panel
             UseSignalEffect(() => ctx.AudioFace.SetIfChanged(ctx.Mode.Value == Mode.Video && !ctx.VideoOffered.Value));
             UseSignalEffect(() => ctx.AudioLyrics.SetIfChanged(ctx.AudioFace.Value && !(ctx.Theatre.Value && ctx.TheatrePane.Value == PaneKind.Lyrics)));
@@ -570,6 +585,16 @@ public static partial class Stage
             _countdown = UseTimeout(_onCountdown, Playback.EndHoldMs, DepKey.Empty);   // armed once at mount: a fire with no hold counting does nothing
             UseSignalEffect(() => Playback.OfferEndHold(Picture.Supported && ctx.Mode.Value == Mode.Video && !ctx.AudioFace.Value));
             UseSignalEffect(() => Countdown(Playback.EndHoldNow.Value));
+            // ── THE CHOREOGRAPHY (Stage.Motion.cs): the content's beats and the page's cover from the mount, the Cinema ⇄ Theatre gate, the
+            //    two-step exit; each timer armed by the machine, never by itself ──
+            var choreo = _choreo;
+            choreo.Bind(UseTimeout(choreo.OnBeat, 3_600_000f, DepKey.Empty), UseTimeout(choreo.OnSwap, 3_600_000f, DepKey.Empty),
+                UseTimeout(choreo.OnLead, 3_600_000f, DepKey.Empty), UseTimeout(choreo.OnLeave, 3_600_000f, DepKey.Empty));
+            UseLayoutEffect(() =>
+            {
+                choreo.Mount();
+                return choreo.Unmount;
+            }, DepKey.Empty);
             // the stage's view, for the chrome Video mode draws over the picture (in the video layer, outside this subtree)
             var view = _view;
             UseLayoutEffect(() =>

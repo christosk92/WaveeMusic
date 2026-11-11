@@ -6,7 +6,7 @@
 // 16:9 box in the left region (`ClassicStageTheatreGeometry`), the panel beside it on the right. The reservation moves between the two on a
 // Reflow bounds spring (the pane region's move): its laid-out size and its origin interpolate together, so the presenter that follows it grows
 // and shrinks with it frame by frame and nothing ever covers the picture. The title block under the picture in Theatre is the picture
-// chrome's (`ClassicStagePictureChrome`, `TheatreTitle`).
+// chrome's (`ClassicStagePictureChrome.TitleBlock`: the one block that travels between Cinema's place and Theatre's).
 //
 // THE PAGE'S COLOUR (Theatre: "why is the page just full black?"): on the floor, under everything, a STILL wash in the playing track's palette
 // (`StageCtx.BasePalette`, what the audio stage's backdrop derives), a glow around the picture's box fading to a faint tint of the whole page
@@ -50,6 +50,8 @@ internal static class ClassicStageTheatre
     /// filled the stage (<see cref="ClassicStageTheatreGeometry.GroundReturnMs"/>), so the floor shows around the moving picture either way.</para></summary>
     internal sealed class Picture : Component
     {
+        static readonly EnterExit s_letterboxFade = new(Opacity: 0f, Active: true);
+
         bool _theatre;   // the layout the last render drew: what tells a return from Theatre from the stage opening in Cinema
 
         public override Element Render()
@@ -80,10 +82,12 @@ internal static class ClassicStageTheatre
                             Transition = MotionTok.ControlNormal,
                         },
                     // Theatre's letterbox box, still at the picture's 16:9 rect (the shrinking picture covers it from the first frame)
-                    theatre
+                    // (it waits for the content's first beat and leaves with the content: a still dark box at the picture's destination, drawn
+                    // before the gliding picture reaches it or after it has flown home, would lie bare on the page under the fading ground)
+                    theatre && v.Stage.In(1)
                         ? new BoxEl
                         {
-                            Key = "stage:picture:letterbox", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                            Key = "stage:picture:letterbox", Enter = s_letterboxFade, Exit = s_letterboxFade, Transition = MotionTok.ControlNormal, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                             Margin = new Edges4(box.X, box.Y, 0f, 0f), Width = box.W, Height = box.H, Fill = Tok.MediaLetterbox,
                             Layout = Move,   // still while Theatre holds; a tier crossing or a resize glides it with the reservation instead of snapping
                         }
@@ -140,32 +144,5 @@ internal static class ClassicStageTheatre
                 ],
             };
         }
-    }
-
-    /// <summary>Theatre's title block under the picture: the title (Display 28/36 semibold, one line) over the "Artist · Album" line and the quiet
-    /// "Playing from" line, at the picture's left edge and width.</summary>
-    public static Element TheatreTitle(StageRootView v, in RectF title)
-    {
-        var identity = v.Identity;
-        return new BoxEl
-        {
-            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 1, Gap = G.MetaGap, HitTestVisible = false,
-            Margin = new Edges4(title.X, title.Y, 0f, 0f), Width = title.W, Height = title.H,
-            Layout = Move,
-            Children =
-            [
-                new TextEl("")
-                {
-                    Text = Prop.Of(identity.Title), FontFamily = ClassicStageLayerGeometry.DisplayFace, Size = G.TitleSize, LineHeight = G.TitleLine, Weight = G.TitleWeight,
-                    Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                new TextEl("")
-                {
-                    Text = Prop.Of(() => identity.Meta(0).Line), Size = G.MetaSize, LineHeight = G.MetaLine, Color = Ink.InkSecondary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                Embed.Comp(new SourceLine.Props(v.Transport, G.SourceSize, G.SourceLine), static () => new SourceLine()),   // the block's gap (MetaGap) is the source line's (SourceGap)
-            ],
-        };
     }
 }

@@ -45,19 +45,21 @@ internal static class ZuneStagePictureChrome
         var L = v.Stage.Layout.Value;
         var t = ZuneStageTiers.StageOf(ctx.Tier());
         var z = t.Video;
-        var accent = v.Stage.Accent.Value.Text;
         var fade = new EnterExit(Opacity: 0f, Active: true);
         var rise = new EnterExit(Dy: z.Px(G.RiseDy), Opacity: 0f, Active: true);
         var top = new EnterExit(Dy: -ZuneStageGeometry.BarEnterDy, Opacity: 0f, Active: true);
         var theatre = G.Theatre(in L, t);
         bool shelf = z.ShelfCardW > 0f && v.Layers.UpNextShelf is not null;
-        // the plate covers the picture in both layouts, so it idles in both; over the audio face the frame stays at rest (it covers no picture)
+        // the plate covers the picture in both layouts, so it idles in both; over the audio face the frame stays at rest (it covers no picture).
+        // THE CHOREOGRAPHY (Stage.Motion.cs): every part comes in on its beat after the picture has mostly landed (1: the title, the veils, the end
+        // card; 2: the plate, the strip, the about block; 3: the head, the line) and leaves first when the stage closes; a part of one arrangement
+        // only (the veils and the strip in Cinema, the about block in Theatre) also waits out a Cinema ⇄ Theatre move
+        var sc = v.Stage;
         Func<bool> cinemaChrome = () => (v.ChromeVisible() || v.ShowAudioFace()) && !v.ShowTheatre();
         Func<bool> overPicture = () => v.ChromeVisible() && !v.ShowTheatre() && !v.ShowAudioFace() && !v.ShowEndCard();
-        Func<bool> topShown = () => v.ChromeVisible() || v.ShowTheatre() || v.ShowAudioFace();
-        Func<bool> barShown = () => v.ChromeVisible() || v.ShowAudioFace();
-        Func<bool> hairline = () => !barShown();
-        float lower = G.LowerBlockTop(in L, t, shelf);
+        Func<bool> topShown = () => sc.In(3) && (v.ChromeVisible() || v.ShowTheatre() || v.ShowAudioFace());
+        Func<bool> barShown = () => sc.In(2) && (v.ChromeVisible() || v.ShowAudioFace());
+        Func<bool> hairline = () => sc.In(Stage.Choreo.Beats) && !v.ChromeVisible() && !v.ShowAudioFace();
         return Stage.Layer with
         {
             Key = "stage:picturechrome",
@@ -70,7 +72,7 @@ internal static class ZuneStagePictureChrome
                 // the ground over the picture: it takes the pointer (the picture under it never does), a double-click leaves full screen
                 Embed.Comp(new GroundProps(v), static () => new Ground()),
                 // the veils of Cinema's chrome over the picture: under the head, and under the title above the plate
-                Flow.Show(overPicture, Stage.Layer with
+                Flow.Show(() => sc.Alone(1) && overPicture(), Stage.Layer with
                 {
                     Key = "picture:scrims", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -89,7 +91,7 @@ internal static class ZuneStagePictureChrome
                     ],
                 }),
                 // the end card's veil over the last frame (Cinema: the stage; Theatre: the picture's box, moving with it)
-                Flow.Show(v.ShowEndCard, Stage.Layer with
+                Flow.Show(() => sc.In(1) && v.ShowEndCard(), Stage.Layer with
                 {
                     Key = "picture:end-dim", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
@@ -103,15 +105,16 @@ internal static class ZuneStagePictureChrome
                     Transition = MotionTok.ControlNormal,
                     Children = [Embed.Comp(new ZuneStageVideoBar.Props(v), static () => new ZuneStageVideoBar())],
                 }),
-                // the accent artist line and the title over the picture: at the gutter, above the strip's reserved place or the plate
-                Flow.Show(overPicture, Stage.Layer with
+                // the accent artist line, the title and "playing from": ONE block in both arrangements, travelling between Cinema's place (at the
+                // gutter, above the strip's reserved place or the plate; with the chrome) and Theatre's (under the picture, at rest) with the picture
+                Flow.Show(() => sc.In(1) && (v.ShowTheatre() || overPicture()), Stage.Layer with
                 {
                     Key = "picture:title", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = rise, Exit = rise, Transition = MotionTok.ControlNormal,
-                    Children = [Title(v, L, t, lower, accent)],
+                    Children = [Embed.Comp(new TitleProps(v, shelf), static () => new TitleBlock())],
                 }),
                 // the "up next" strip above the plate, with the chrome (Cinema, on a tier that has one)
-                Flow.Show(() => shelf && cinemaChrome(), Stage.Layer with
+                Flow.Show(() => shelf && sc.Alone(2) && cinemaChrome(), Stage.Layer with
                 {
                     Key = "picture:shelf",
                     Enter = rise, Exit = rise, Transition = MotionTok.ControlNormal,
@@ -126,20 +129,14 @@ internal static class ZuneStagePictureChrome
                     ],
                 }),
                 // the end card over the picture
-                Flow.Show(() => v.ShowEndCard() && v.Layers.EndCard is not null, Stage.Layer with
+                Flow.Show(() => sc.In(1) && v.ShowEndCard() && v.Layers.EndCard is not null, Stage.Layer with
                 {
                     Key = "picture:endcard",
                     Enter = rise, Exit = rise, Transition = MotionTok.ControlNormal,
                     Children = [v.Layers.EndCard is { } endCard ? endCard() : new BoxEl()],
                 }),
-                // Theatre: the title block under the picture and "about the artist" under it, at rest
-                Flow.Show(v.ShowTheatre, Stage.Layer with
-                {
-                    Key = "picture:theatre-title", HitTestVisible = false, HitTestPassThrough = false,
-                    Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
-                    Children = [ZuneStageTheatre.TheatreTitle(v, theatre.Title, t, accent)],
-                }),
-                Flow.Show(() => v.ShowTheatre() && theatre.AboutFits, Stage.Layer with
+                // Theatre: "about the artist" under the title block, at rest
+                Flow.Show(() => sc.Alone(2) && v.ShowTheatre() && theatre.AboutFits, Stage.Layer with
                 {
                     Key = "picture:theatre-about",
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
@@ -162,27 +159,90 @@ internal static class ZuneStagePictureChrome
         };
     }
 
-    /// <summary>The accent artist line over the title (the light display face, two lines at most), bottom-left above the strip's place or the plate.</summary>
-    static Element Title(StageRootView v, Stage.Layout L, ZuneStageLayout t, float lower, ColorF accent)
+    /// <param name="Shelf">The tier has Cinema's "up next" strip (its place is reserved under the title).</param>
+    sealed record TitleProps(StageRootView View, bool Shelf);
+
+    /// <summary>THE title block of both arrangements: the accent artist line, the title in the light display face and "playing from". In Cinema
+    /// bottom-left above the strip's place or the plate, the title two lines at most; in Theatre under the picture, the large title one line
+    /// bleeding out under a fade. One node: a Cinema ⇄ Theatre switch moves it on the picture's spring and scales its type from the size it had
+    /// (<see cref="Stage.Traveller"/>), so it travels with the picture instead of two copies cross-fading. The sizes at rest are the theme's.</summary>
+    sealed class TitleBlock : Stage.Traveller
     {
-        var identity = v.Identity;
-        var z = t.Video;
-        return new BoxEl
+        public override Element Render()
         {
-            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Direction = 1, HitTestVisible = false,
-            MaxWidth = MathF.Max(0f, MathF.Min(G.CinemaTitleMaxWFrac * L.W, L.W - 2f * t.Gutter)),
-            Margin = new Edges4(t.Gutter, 0f, 0f, L.H - lower + z.Px(G.CinemaTitleAbove)),
-            Children =
-            [
-                ZuneStageTheatre.ArtistLine(identity, z, accent),
-                new TextEl("")
+            var p = UseProps<TitleProps>();
+            var v = p.View;
+            var t = ZuneStageTiers.StageOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
+            var z = t.Video;
+            var L = v.Stage.Layout.Value;
+            var accent = v.Stage.Accent.Value.Text;
+            bool theatre = v.ShowTheatre();
+            var identity = v.Identity;
+            BoxEl placed;
+            float size;
+            if (theatre)
+            {
+                var r = G.Theatre(in L, t).Title;
+                size = z.Dx(G.TheatreTitleSize);
+                placed = new BoxEl
                 {
-                    Text = Prop.Of(identity.Title), Size = z.Dx(G.CinemaTitleSize), LineHeight = z.Dx(G.CinemaTitleLine), Weight = G.TitleWeight, FontFamily = R.Type.DisplayFace,
-                    CharSpacing = G.TitleTracking, Color = Ink.Ink, Wrap = TextWrap.Wrap, MaxLines = G.CinemaTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                },
-                Embed.Comp(new ZuneVideoSourceLine.Props(v.Transport, z.Px(G.SourceSize), z.Px(G.SourceLine), z.Px(G.SourceGap)), static () => new ZuneVideoSourceLine()),
-            ],
-        };
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 1, HitTestVisible = false,
+                    Margin = new Edges4(r.X, r.Y, 0f, 0f), Width = r.W, Height = r.H,
+                    Children =
+                    [
+                        ZuneStageTheatre.ArtistLine(identity, z, accent),
+                        new BoxEl
+                        {
+                            Height = z.Dx(G.TheatreTitleLine), Margin = new Edges4(0f, z.Px(G.TitleGap), 0f, 0f), Direction = 0,
+                            ClipToBounds = true, HitTestPassThrough = true, EdgeFade = new EdgeFadeSpec(EdgeMask.Right, z.Px(G.TitleFadeBand)),
+                            Children =
+                            [
+                                new TextEl("")
+                                {
+                                    Text = Prop.Of(identity.Title), Size = size, LineHeight = z.Dx(G.TheatreTitleLine), Weight = G.TitleWeight,
+                                    FontFamily = R.Type.DisplayFace, CharSpacing = G.TitleTracking, Color = Ink.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.None, Shrink = 0f,
+                                },
+                            ],
+                        },
+                        Embed.Comp(new ZuneVideoSourceLine.Props(v.Transport, z.Px(G.SourceSize), z.Px(G.SourceLine), z.Px(G.SourceGap)), static () => new ZuneVideoSourceLine()),
+                    ],
+                };
+            }
+            else
+            {
+                float lower = G.LowerBlockTop(in L, t, p.Shelf);
+                size = z.Dx(G.CinemaTitleSize);
+                placed = new BoxEl
+                {
+                    AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Direction = 1, HitTestVisible = false,
+                    MaxWidth = MathF.Max(0f, MathF.Min(G.CinemaTitleMaxWFrac * L.W, L.W - 2f * t.Gutter)),
+                    Margin = new Edges4(t.Gutter, 0f, 0f, L.H - lower + z.Px(G.CinemaTitleAbove)),
+                    Children =
+                    [
+                        ZuneStageTheatre.ArtistLine(identity, z, accent),
+                        // the title's line box: a plain wrapping row here, Theatre's clipped one-line bleed there (one node either way)
+                        new BoxEl
+                        {
+                            Direction = 0, MinWidth = 0f, HitTestPassThrough = true,
+                            Children =
+                            [
+                                new TextEl("")
+                                {
+                                    Text = Prop.Of(identity.Title), Size = size, LineHeight = z.Dx(G.CinemaTitleLine), Weight = G.TitleWeight, FontFamily = R.Type.DisplayFace,
+                                    CharSpacing = G.TitleTracking, Color = Ink.Ink, Wrap = TextWrap.Wrap, MaxLines = G.CinemaTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                                },
+                            ],
+                        },
+                        Embed.Comp(new ZuneVideoSourceLine.Props(v.Transport, z.Px(G.SourceSize), z.Px(G.SourceLine), z.Px(G.SourceGap)), static () => new ZuneVideoSourceLine()),
+                    ],
+                };
+            }
+            return Stage.Layer with
+            {
+                HitTestVisible = false, HitTestPassThrough = false,
+                Children = [Travel(placed, size, G.MoveResponse, G.MoveDamping)],
+            };
+        }
     }
 
     sealed record GroundProps(StageRootView View);

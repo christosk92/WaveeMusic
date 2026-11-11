@@ -39,6 +39,8 @@ internal static class ZuneStageTheatre
     /// <summary>The floor, the letterbox ground and the hollow reservation; its own component, so a Cinema ⇄ Theatre change re-renders this box alone.</summary>
     internal sealed class Picture : Component
     {
+        static readonly EnterExit s_letterboxFade = new(Opacity: 0f, Active: true);
+
         bool _theatre;   // the layout the last render drew: a return from Theatre brings Cinema's ground back late
 
         public override Element Render()
@@ -67,10 +69,12 @@ internal static class ZuneStageTheatre
                             Transition = MotionTok.ControlNormal,
                         },
                     // Theatre's letterbox box, still at the picture's 16:9 rect (the shrinking picture covers it from the first frame)
-                    theatre
+                    // (it waits for the content's first beat and leaves with the content: a still dark box at the picture's destination, drawn
+                    // before the gliding picture reaches it or after it has flown home, would lie bare on the page under the fading ground)
+                    theatre && v.Stage.In(1)
                         ? new BoxEl
                         {
-                            Key = "stage:picture:letterbox", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                            Key = "stage:picture:letterbox", Enter = s_letterboxFade, Exit = s_letterboxFade, Transition = MotionTok.ControlNormal, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                             Margin = new Edges4(box.X, box.Y, 0f, 0f), Width = box.W, Height = box.H, Fill = Tok.MediaLetterbox, Layout = Move,
                         }
                         : new BoxEl { Visible = false },
@@ -110,36 +114,6 @@ internal static class ZuneStageTheatre
                 ],
             };
         }
-    }
-
-    /// <summary>Theatre's title block under the picture: the accent artist line, the large light title bleeding out under a fade, "playing from …".</summary>
-    public static Element TheatreTitle(StageRootView v, in RectF title, ZuneStageLayout t, ColorF accent)
-    {
-        var identity = v.Identity;
-        var z = t.Video;
-        return new BoxEl
-        {
-            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 1, HitTestVisible = false,
-            Margin = new Edges4(title.X, title.Y, 0f, 0f), Width = title.W, Height = title.H, Layout = Move,
-            Children =
-            [
-                ArtistLine(identity, z, accent),
-                new BoxEl
-                {
-                    Key = "picture:theatre-title:line", Height = z.Dx(G.TheatreTitleLine), Margin = new Edges4(0f, z.Px(G.TitleGap), 0f, 0f), Direction = 0,
-                    ClipToBounds = true, HitTestPassThrough = true, EdgeFade = new EdgeFadeSpec(EdgeMask.Right, z.Px(G.TitleFadeBand)),
-                    Children =
-                    [
-                        new TextEl("")
-                        {
-                            Text = Prop.Of(identity.Title), Size = z.Dx(G.TheatreTitleSize), LineHeight = z.Dx(G.TheatreTitleLine), Weight = G.TitleWeight,
-                            FontFamily = R.Type.DisplayFace, CharSpacing = G.TitleTracking, Color = Ink.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.None, Shrink = 0f,
-                        },
-                    ],
-                },
-                Embed.Comp(new ZuneVideoSourceLine.Props(v.Transport, z.Px(G.SourceSize), z.Px(G.SourceLine), z.Px(G.SourceGap)), static () => new ZuneVideoSourceLine()),
-            ],
-        };
     }
 
     /// <summary>The accent artist line ("Artist · Album" in the display face, 600), one line.</summary>
