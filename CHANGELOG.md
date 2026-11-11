@@ -22,38 +22,37 @@ versions separately under `v*` and is not tracked in this file.)
   Ctrl+Alt+M, or from the taskbar's right-click menu; the full window hides while it is open and comes back from the art,
   the back button or any way you bring Wavee back, and the music never stops (#197).
 
-- **Full screen opens on the music video (Classic).** With a video on, the app's full screen now opens on the picture,
-  edge to edge, instead of on the cover and lyrics: Video is its first tab, Lyrics, Up next and Artist stay one click away.
-  The top bar, the title and the transport fade after 3 seconds without the pointer (the cursor too) and come back on any
-  move or key; Space, the arrows and the volume keys work as before, and Esc, F11 or a double-click on the picture leave.
-  "Switch to audio" in the top bar turns the video off and lands on today's cover and lyrics. F11 and "Video in
-  fullscreen" open this same full screen; WinUI and Zune keep their video-only full screen for now.
+- **Full screen opens on the music video, in every theme.** With a video on, the app's full screen opens on the picture,
+  edge to edge, instead of on the cover and lyrics: Video is its first tab, Lyrics, Visualizer, Up next and Artist stay one
+  click away. The top bar, the title and the controls fade after 3 seconds without the pointer (the cursor too) and come
+  back on any move or key; they also go when the mouse leaves the window. Space, the arrows and the volume keys work as
+  before; F11, "Video in fullscreen" and the title bar's full-screen button all open this one full screen. "Switch to
+  audio" in the top bar turns the video off. Each theme draws it its own way: Classic with dark pills on the picture,
+  WinUI with one floating command bar in the style of the Windows 11 Media Player, Zune with its flat plate, pivots and
+  big thin type.
 
-- **Theatre mode in the video full screen (Classic).** "Theatre mode" in the full screen's top bar slides a panel in beside
-  the music video, Up next or the lyrics: the picture moves to the left at its own shape, its title under it, and nothing
-  ever covers it; "Fill the screen" takes it back. The Lyrics and Up next tabs open Theatre on their panel and the Video tab
-  returns to the full picture; full screen remembers the choice across tracks and restarts. The transport stays up in
-  Theatre. The Visualizer tab is back while a video plays. Opening and leaving full screen glides the picture between the
-  docked card (or the mini player) and the screen instead of jumping there.
+- **Theatre mode in the video full screen.** "Theatre mode" slides a panel in beside the music video: the picture moves
+  to the left at its own shape with the title, "Playing from", the artist (photo, monthly listeners, Follow), the song's
+  facts and the start of the artist's story under it, and Up next or the lyrics beside it; nothing ever covers the
+  picture. "Fill the screen" takes it back, and full screen remembers the choice. Esc in the full picture steps to
+  Theatre; Esc in Theatre leaves full screen. The controls come and go with the mouse in Theatre too. Opening and leaving
+  full screen glides the picture between the docked card (or the mini player) and the screen.
 
-- **Up next in the video full screen (Classic).** With a video on, Up next tells videos from songs at a glance: a track
-  that has a music video shows the video's still, one that has none shows its cover on a dark plate, each tagged "Video"
-  or "Audio". The full picture has a shelf of what plays next over the bottom of the picture that comes and goes with the
-  controls (the first card is what plays next; a click plays it), and the Theatre list beside the picture leads every row
-  with the same thumbnail.
-- **Songs without a video in the video full screen (Classic).** When the queue reaches a song with no video, the full
-  screen stays as it is (the top bar, Up next and the transport): the picture's frame stays where it is and fills with
-  the song's own colour, a soft field from the cover's palette with the cover large at its left and the synced lyrics
-  beside it (the sung line in full white, the others clearly readable, on any cover in the light and dark look), and the
-  Video tab waits, greyed out. The next song with a video brings the picture back by itself, in the full picture or
-  Theatre as you left it; only the frame's inside cross-fades, the controls, the title and the about block stay put.
-- **"Up next in 5" when a music video ends in full screen (Classic).** The video's last frame stays, dimmed, and a card
-  counts down five seconds to the next track: its thumbnail (the video's still, or the cover for a song), title, artist
-  and where it plays from, with Play now and Cancel; the rest of the queue waits below it. Cancel leaves the video
-  stopped at its end, and Play starts the next track whenever you like; Next, Space and the media keys play it at once,
-  Esc leaves full screen. Only in the video full screen and only after a video: songs, a video docked or in the mini
-  player, skips and the end of the queue carry on at once as before. Turn it off in Settings, Playback, Video ("Count
-  down before the next video").
+- **An Overview tab for songs.** When the playing song has no music video, the first tab reads Overview and shows the
+  same full screen with the song's own colour in the picture's place: a soft field from the cover's palette, the cover
+  and the synced lyrics, in the full picture and in Theatre, with the same controls and the same Esc. When a song with a
+  video comes up, the tab turns into Video in place and the picture comes back by itself.
+
+- **Up next shows which songs have a music video.** In the full screen's Up next tab, the Theatre list and the shelf of
+  cards over the picture, a song with a music video carries a small film icon. While videos are on, those songs show
+  the video's still instead of the cover, so you can see what will play as video next; the rows stay the same height.
+
+- **"Up next in 5" when a music video ends in full screen.** The video's last frame stays, dimmed, and a card counts down
+  five seconds to the next track: its thumbnail, title, artist and where it plays from, with Play now and Cancel; the rest
+  of the queue waits below it. Cancel leaves the video stopped at its end, and Play starts the next track whenever you
+  like; Next, Space and the media keys play it at once. Only in the video full screen and only after a video: songs, a
+  video docked or in the mini player, skips and the end of the queue carry on at once as before. Turn it off in Settings,
+  Playback, Video ("Count down before the next video").
 
 - **Hide the queue in full screen.** The Up next column beside the lyrics has a small tab on its left edge: it slides the
   column off the right edge of the screen and back, the lyrics stay where they are, and full screen remembers whether you
@@ -67,8 +66,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
-- **Canvas in the Classic now-playing panel ends in a plain fade.** The picture now dissolves into the panel on a smooth
-  curve; the drifting waves at its foot and the coloured glow under the small cover are gone.
+- **The Canvas dissolves into the now-playing panel itself (Classic).** The picture fades out on a smooth curve and the
+  panel below it is exactly the panel the Cover style shows, in your window's own colour, instead of a flat dark ground.
+  The drifting waves at its foot and the coloured glow under the small cover are gone.
+- **The docked and floating video's controls look like the full screen's (Classic).** A seek bar along the bottom of the
+  picture with one row under it: play, previous, next and mute, the time, and the volume and "..." buttons. As the picture
+  gets narrower the time shows only how far you are, then the volume and then previous and next move into "..." as a row
+  of buttons at its top; play and "..." always stay.
 - **The Classic player bar has one button for the player views.** Now playing is the button; the mini player and full
   screen sit behind its chevron, set apart from the queue and devices by a thin rule. At the widest bar the "..." menu
   has nothing left to hold and is gone.
@@ -76,22 +80,20 @@ versions separately under `v*` and is not tracked in this file.)
   pane, the mini player a window folding into its corner. The video menu shows a docked pane, picture in picture, a
   pop-out window and a crossed-out camera, and its full-screen row reads "Video in fullscreen"; the app's own full
   screen keeps the regular arrows, and the video's is a framed screen.
-- **The video full screen's controls sit on the picture, as on YouTube (Classic).** A thin seek bar runs along the bottom
-  of the picture with one row of controls under it, on dark pills: play, previous, next, mute (the volume slider opens
-  beside it when you point at it) and the time on the left; like, shuffle, repeat, the device picker, "...", the video's
-  settings, the full picture or Theatre, and leave full screen on the right. They belong to the picture in Theatre too,
-  and come and go with the mouse there: only the picture counts, so pointing at the list beside it, the floor or the top
-  bar lets them go, and the mouse pointer hides only over the picture. The settings gear holds the docked video's own
-  menu (aspect ratio, quality, playback speed, where the video plays). "Playing from" moved under the song's title.
-  Narrow windows fold shuffle, repeat and the device picker into "..." first.
-- **Theatre takes the song's colours.** Around the picture the page glows in the playing song's colours instead of
-  plain black, and the Up next list beside it is an open list on that page rather than a framed card, with a compact
-  header (Up next, the count, Autoplay). The Lyrics panel gets the same header. Under the song's title, where there is room,
-  the artist sits as on YouTube (photo, name, monthly listeners, Follow) above the song's facts (plays, year, album, tempo
-  and key) and the start of the artist's story; "Read more" and the artist open the full screen's Artist tab.
+- **The video full screen's controls sit on the picture, as on YouTube.** A thin seek bar runs along the bottom of the
+  picture with one row of controls under it: play, previous, next, mute (with the volume) and the time on the left; like,
+  shuffle, repeat, the device picker, "...", the video's settings (aspect ratio, quality, playback speed, where the video
+  plays), the full picture or Theatre, and leave full screen on the right. Narrow windows fold shuffle, repeat and the
+  device picker into "..." first.
+- **Theatre takes the song's colours.** Around the picture the page takes the playing song's colours instead of plain
+  black, and the Up next list beside it is an open list on that page rather than a framed card.
 - **Up next cards over the full picture lose their frames.** A music video's card is its picture, an audio-only track's
   card is its square cover, with the length on the art.
 - **Full screen has a button in the Classic title bar.** It sits right beside minimise, after the bell, friends and pin; the player bar's menus keep the row for narrow windows.
+- **Music videos start faster and at the quality you picked.** With a fixed video quality, a video opens at that quality
+  instead of starting lower and switching up a moment later: in testing the first frame came after 0.7 s instead of 2.2 s.
+- **Menus open faster.** The first menu of a session appears in about 33 ms instead of 72 ms and later ones in about
+  21 ms instead of 30 ms.
 - **AI word timing on Japanese songs lands closer, and on more songs.** A Japanese line can no longer slide seconds into
   the instrumental break after it or the long intro before it: the aligner knows about how long a line's characters
   take to sing, and one short character timed at zero length no longer costs a line its word timing. In every language,
@@ -107,20 +109,43 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Music videos showed at the wrong size for a moment.** Going full screen, changing quality or resizing the window made
+  the picture too small or too large for a few frames, and a Canvas could show a black column: Windows now stretches the
+  picture to its box on every frame, whatever size the video arrives in.
+- **A music video stayed frozen on one frame.** After a seek, or when a video came back into full screen, the picture
+  could stand still while the song played on, until you pressed pause and play. It now keeps playing.
+- **The app froze for a moment during music videos.** Wavee's own drawing waited behind the video's work on the graphics
+  chip for 30 ms to half a second at a time, most often at a video switch; it now goes first. Switching tracks also no
+  longer spends a frame looking up the next song's lyrics.
+- **Entering and leaving full screen showed the old picture for a moment** (small with a border on the way in, cropped
+  on the way out): the window now changes size together with the first picture drawn at the new size. Leaving full
+  screen also lays the page out once instead of twice.
 - **Switching between music videos of different shapes no longer squeezes the old picture.** The last frame of the video you
-  leave now stays exactly where and as large as it was until the next video's first frame is actually on screen (it was let
-  go about a quarter of a second early and drawn at the new video's size), and the docked video's card keeps the old
-  picture's shape until then, easing to the new one with the new picture. A video opened from nothing still reserves its
-  shape at once, and its cover stays up until the picture is there.
+  leave now stays exactly where and as large as it was until the next video's first frame is actually on screen, and the
+  docked video's card keeps the old picture's shape until then, easing to the new one with the new picture. A video
+  opened from nothing still reserves its shape at once, and its cover stays up until the picture is there.
+- **Menus over a playing video were see-through.** A menu over a video is frosted, and closing one no longer shows the
+  video through it for a moment. Long menus, track menus included, scroll inside a short window instead of running off
+  its edge; Left closes a submenu that opened on hover.
+- **The Home daylist card and the grids under it stepped when the right panel opened or closed.** The card follows the
+  panel in one motion, its title picks its size once, and shelves and grids change their number of columns once, at the
+  start of the slide. Releasing the panel's divider no longer makes the panel's content jump.
+- **Settings descriptions ran out of their rows (Classic and WinUI)** and overlapped the row below; rows now grow to hold
+  them, and Classic's descriptions next to a switch get more room at narrow widths. In Zune's narrow settings the
+  sentence under each heading was hidden above the list; it shows again. A notice no longer pushes Zune's settings
+  rows past the edge.
+- **What's New tiles opened their description only on hover;** keyboard focus opens it too.
+- **The video full screen's controls blinked at the bottom edge of the picture in Theatre;** moving just below the picture
+  no longer counts as leaving it, and clicking the Theatre toggle no longer hides them.
 - **The video full screen (Classic): Theatre's about block was missing on big screens and "Read more" sat out of line;**
   Theatre now always leaves room for the title and the about block under the picture, and "Read more" lines up with the
   text above it. Theatre's Up next builds only the rows on screen, so a long queue opens and moves as fast as a short one.
   Skipping from a video to a song no longer hitches, and the saved heart in the full screen's controls no longer jumps
   when the window crosses 1920 pixels.
 - **The app kept working under the full screen.** With the full screen up, the window under it no longer ticks its seek
-  bar and times or re-draws the player bar, "Next up", the docked video's details or its lyrics on every track change, and
-  the full screen's hidden controls stop ticking too; closing the full screen shows everything current at once.
-
+  bar and times or re-draws the player bar, "Next up", the docked video's details, its equalizers or its lyrics on every
+  track change, and the full screen's hidden controls stop ticking too; closing the full screen shows everything current
+  at once.
 - **Switching the video full screen between the full picture and Theatre stuttered.** The picture's move no longer repaints
   the screen under it on every frame, and the Theatre panel and the transport no longer re-blur what is behind them while
   the picture moves beside them (they look the same). While the video fills the screen, the visualizer's clock stops
@@ -130,24 +155,19 @@ versions separately under `v*` and is not tracked in this file.)
   part of the top bar or the transport card lets them fade like resting on the picture (only the buttons, tabs and seek bar
   hold them); moving the mouse over the picture or over the lyrics brings them back; and the mouse leaving the window lets
   them go. Each show and hide is now written to the log with what caused it and what held it.
+- **The full screen's controls lingered after a menu closed outside the window.** Closing a menu (or ending a seek) with
+  the mouse already outside the window now lets them go after the short leave delay, not the whole idle time.
+- **The seek bar came back from hidden catching up.** When the full screen closes, the player bar's seek bar shows where
+  the song is at once instead of sliding there.
 - **Skipping in the video full screen with Up next open hitched.** Every track change rebuilt every row of the list; now
   only the rows that changed update.
 - **Esc and F11 left full screen open.** Pressing Esc (or F11) in full screen did nothing, with or without a video: the
-  keys went to a part of the screen that did not handle them. They leave full screen again; Space and the arrows keep
-  playing, seeking and setting the volume.
+  keys went to a part of the screen that did not handle them. They work again; Space and the arrows keep playing, seeking
+  and setting the volume.
 - **"Synced lyrics aren't available while a video is playing" was cut off** beside the video in Theatre: it wraps now.
 - **A Canvas that stayed a still picture.** When the looping video failed to open (its cached loop file had been
   cleaned up, for one), the still stayed over the playing music for the whole track and nothing was logged. The loop is
   rebuilt, a failed open is logged and tried once more, and the loop cache now keeps the canvases you played last.
-- **AI word timing: lines that flashed past.** A line followed by one the model could not time was squeezed to zero
-  length.
-- **AI word timing only in a language it knows.** A Japanese, Greek, Russian or French song no longer gets English word
-  timing made up for it: the language comes from the lyric's script, then the provider's tag, then a clear majority of
-  its words, and a song that matches no installed model keeps its line-by-line sync. A line the model could not hear
-  stays the provider's line instead of getting invented times, a line keeps the provider's start, and a result with too
-  few well-timed lines is thrown away instead of shown or saved. Songs timed before this update are timed again the next
-  time they play.
-
 - **Acrylic over the Canvas in full screen.** The player bar, the Up next column and the view switcher at the top were flat
   dark slabs while a Canvas played behind them. They are frosted glass again: the video shows through them blurred and
   tinted, as the album art does.
@@ -160,27 +180,32 @@ versions separately under `v*` and is not tracked in this file.)
   fade out first and the next song's fade in after them, drifting in from the side you skipped to; the lyrics fade out
   and the next ones fade in; the Canvas fades through its still into the next picture instead of cutting; and a burst of
   presses settles on the last song without stutter.
+- **A scrolling song title kept the wrong edge fade.** The first letters of a title scrolling in the player bar could
+  show cut off at full brightness instead of fading in.
+- **AI word timing: lines that flashed past.** A line followed by one the model could not time was squeezed to zero
+  length.
+- **AI word timing only in a language it knows.** A Japanese, Greek, Russian or French song no longer gets English word
+  timing made up for it: the language comes from the lyric's script, then the provider's tag, then a clear majority of
+  its words, and a song that matches no installed model keeps its line-by-line sync. A line the model could not hear
+  stays the provider's line instead of getting invented times, a line keeps the provider's start, and a result with too
+  few well-timed lines is thrown away instead of shown or saved. Songs timed before this update are timed again the next
+  time they play.
 - **A failed language download in AI lyrics.** When adding a language fails, Settings now says which language and why in
   plain words (not on the download server yet, offline, the connection dropped, a file failed its check, not enough free
   space), with Details for the raw reason and Try again for that language; the languages already installed keep timing
   songs. A first setup that stops on a language's file names that language. Every theme lists the languages in one order.
-- **The full screen's controls lingered after a menu closed outside the window.** Closing a menu (or ending a seek) with
-  the mouse already outside the window now lets them go after the short leave delay, not the whole idle time.
+- **The word highlight ran ahead of the words.** The lit edge of a word-synced line follows each word's place in the line
+  as it is drawn, so it no longer runs into the next word after short words (Korean especially), in the full screen's
+  caption or in Verse; it waits at a pause instead of lighting the next word early.
+- **A line lit before its time after a break.** During an instrumental break the next line no longer turns white seconds
+  before it is sung when it has no word timing of its own.
+- **The lyrics under the full screen's cover were hard to read on light covers;** the soft dark ground behind them now
+  adjusts to the cover and stays inside the caption, never over the cover.
+- **Verse in Zune hid its current line under the now-playing card;** it stands beside or above the card now.
 - **Previous did nothing on the first song after the queue ran out.** With the first song of the list selected and
   nothing playing (the queue ended with repeat off, or playback stopped), Previous now plays that song from its start.
 - **Previous, Next and seeking stayed disabled after taking over from another device.** The limits a phone's playback set
   (a one-song list, say) now end once Wavee plays itself, instead of lasting the whole session.
-- **The Canvas in the Classic now-playing panel faded into plain grey.** The ground under it now carries the page's colour,
-  like the player bar beside it and the panel with the Canvas off, and changes with the page in one smooth fade (the fade
-  at the foot of the picture too, with no seam). Picking the Canvas style no longer lets the video show through the lower
-  panel for a moment.
-- **The word highlight ran ahead of the words.** The lit edge of a word-synced line follows each word's place in the line
-  as it is drawn, so it no longer runs into the next word after short words (Korean especially) or in Zune's full-screen
-  lyrics, where it tinted the next word's first stroke; it waits at a pause instead of lighting the next word early.
-- **A line lit before its time after a break.** During an instrumental break the next line no longer turns white seconds
-  before it is sung when it has no word timing of its own.
-- **Full screen no longer keeps the page behind it busy.** While the full screen covers the app, the player bar, the
-  side panel and its lyrics underneath stop updating; closing full screen shows them current at once.
 - **The full screen's transport stepped when the window crossed 1920 wide (Classic).** Its controls now glide to their
   new places, the saved heart among them.
 - **Zune's switches that can't be changed showed only a grey dot.** A disabled switch (AI lyrics on a PC without an NPU,
