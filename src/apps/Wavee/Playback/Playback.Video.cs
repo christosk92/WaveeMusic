@@ -1129,14 +1129,13 @@ public static partial class Playback
         {
             int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
             QualitySelection selection = QualitySelection.Auto;
-            if (pin > 0 && source.DrmDescriptor?.Catalog is { } catalog)
-                foreach (var track in catalog.Tracks)
-                {
-                    if (track.Kind != TrackKind.Video) continue;
-                    foreach (var rep in track.Representations)
-                        if (rep.Quality.Resolution.Height == pin) { selection = QualitySelection.Pin(rep.Id); break; }
-                    break;
-                }
+            if (pin > 0 && source.DrmDescriptor?.Catalog?.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Video)?.Representations is { } reps)
+            {
+                Span<(int, int)> rungs = stackalloc (int, int)[reps.Count];
+                for (int i = 0; i < reps.Count; i++) rungs[i] = (reps[i].Quality.Resolution.Height, reps[i].Quality.Bitrate);
+                int pinned = PinnedRung(rungs, pin);   // the same lookup the opening rung uses (Opening)
+                if (pinned >= 0) selection = QualitySelection.Pin(reps[pinned].Id);
+            }
             lock (s_gate) if (s_abr is { } abr) abr.Selection = selection;
         }
 
@@ -2155,11 +2154,12 @@ public static partial class Playback
             if (video is not { Count: > 1 }) return d;
             var (kbps, prior, cap) = LinkState();
             if (prior && kbps <= ThroughputEstimator.DefaultSeedKbps) kbps = 0;   // the bare seed is not an estimate: cold rule
+            int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
             Span<(int, int)> rungs = stackalloc (int, int)[video.Count];
             for (int i = 0; i < video.Count; i++) rungs[i] = (video[i].Quality.Resolution.Height, video[i].Quality.Bitrate);
-            var rep = video[OpeningRung(rungs, kbps, prior, cap)];
+            var rep = video[OpeningRung(rungs, kbps, prior, cap, pin, out string why)];
+            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={why} cap={cap} pin={pin}");
             if (string.Equals(rep.InitUrl, d.InitUrl, StringComparison.Ordinal)) return d;
-            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={(prior ? "prior" : "measured")} cap={cap}");
             return d with { InitUrl = rep.InitUrl, SegmentBaseUrl = rep.SegmentBaseUrl, SegmentPrefix = rep.SegmentPrefix, SegmentSuffix = rep.SegmentSuffix, RepresentationId = rep.Id };
         }
 
