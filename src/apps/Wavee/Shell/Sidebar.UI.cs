@@ -1232,37 +1232,52 @@ public static partial class Sidebar
         }
 
         /// <summary>The pane's ONE read of playback on behalf of every row: the coarse active-context gate first (an idle
-        /// app never joins the identity fan-out), then a packed byte per row, bumping only the rows that flipped.</summary>
+        /// app never joins the identity fan-out), then a packed byte per row, bumping only the rows that flipped.
+        /// <para>UNDER THE STAGE: the pane is the page's, and the full-screen stage covers it. While it does, this reads nothing but the cover
+        /// (<c>Shell.PageShown</c>, the bar's and the rail's gate): the rows keep what they drew, and a track change behind the stage re-renders no
+        /// row; the close re-runs it on its first frame, current at once.</para></summary>
         void RefreshPlayState()
         {
+            if (!Shell.PageShown.Value) return;
             _ = _planVersion.Value;   // a republish re-plans which index holds which entity
             var now = Model.ReadPlaying();
             bool active = now.Active;
             bool playing = now.Playing;
 
             var play = _rowPlay;
-            for (int i = 0; i < _rowPlaySet.Count; i++)
-            {
-                int idx = _rowPlaySet[i];
-                if ((uint)idx >= (uint)play.Length || play[idx] == 0) continue;
-                play[idx] = 0;
-                BumpRowEpoch(idx);
-            }
-            _rowPlaySet.Clear();
-            if (!active) return;
-
             byte packed = playing ? (byte)3 : (byte)1;
             var rows = Plan.Rows;
             int n = Math.Min(rows.Count, play.Length);
-            for (int i = 0; i < n; i++)
+            // the rows that hold the playing state now (their byte written, bumped only where it changed)
+            int before = _rowPlaySet.Count;
+            if (active)
+                for (int i = 0; i < n; i++)
+                {
+                    string uri = RowPlayUri(i);
+                    if (uri.Length == 0 || !Model.PlayingRelatesTo(uri)) continue;
+                    _rowPlaySet.Add(i);
+                    if (play[i] == packed) continue;
+                    play[i] = packed;
+                    BumpRowEpoch(i);
+                }
+            // the rows that held it before and do not now: cleared and bumped (a row still playing is left alone, so a refresh that changes
+            // nothing re-renders nothing)
+            for (int k = 0; k < before; k++)
             {
-                string uri = RowPlayUri(i);
-                if (uri.Length == 0 || !Model.PlayingRelatesTo(uri)) continue;
-                _rowPlaySet.Add(i);
-                if (play[i] == packed) continue;
-                play[i] = packed;
-                BumpRowEpoch(i);
+                int idx = _rowPlaySet[k];
+                if ((uint)idx >= (uint)play.Length || play[idx] == 0 || StillPlaying(idx, before)) continue;
+                play[idx] = 0;
+                BumpRowEpoch(idx);
             }
+            _rowPlaySet.RemoveRange(0, before);
+        }
+
+        /// <summary>Row <paramref name="idx"/> is among the rows this refresh found playing (the set's entries past <paramref name="from"/>).</summary>
+        bool StillPlaying(int idx, int from)
+        {
+            for (int i = from; i < _rowPlaySet.Count; i++)
+                if (_rowPlaySet[i] == idx) return true;
+            return false;
         }
 
         /// <summary>The uri row <paramref name="index"/> would play, resolved EXACTLY as the slot resolves it.</summary>
