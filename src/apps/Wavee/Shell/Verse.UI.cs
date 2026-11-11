@@ -648,22 +648,35 @@ public static partial class Verse
             };
         }
 
+        /// <summary>One ghost. Its recession is the node's OPACITY, not its ink's alpha: like the lyrics rows' distance ladder, a
+        /// ghost is a faded memory of a line already sung (the depth picture, never the reading copy), and an opacity under the
+        /// readable floor is how a deliberately faded line declares itself (the lint's incidental text). The ink stays opaque
+        /// (tinted toward the cover); the echo lights it toward the accent and lifts its opacity to <see cref="Echo.Peak"/>.</summary>
         Element Ghost(string text, int line, int d, FloatSignal? echo, float baseSize, float maxW, bool dark)
         {
             var slab = _slab!;
             float size = MathF.Round(baseSize * Geometry.GhostScale(d));
             float a = Geometry.GhostAlpha(d, dark);
             var tint = d == 1 ? slab.B : d == 2 ? slab.C : slab.Deep;
-            ColorF ink = Ink.Ink;
+            ColorF ink = Ink.Ink with { A = 1f };
             Prop<ColorF> color;
+            Prop<float> fade;
             if (echo is { } lit)
+            {
+                float peak = MathF.Max(a, Echo.Peak);
                 color = Prop.Of(() =>
                 {
-                    var c = ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = a };
+                    var c = ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = 1f };
                     float e = lit.Value;
-                    return e <= 0f ? c : ColorF.Lerp(c, slab.A.Value with { A = MathF.Max(a, Echo.Peak) }, e);
+                    return e <= 0f ? c : ColorF.Lerp(c, slab.A.Value with { A = 1f }, e);
                 });
-            else color = Prop.Of(() => ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = a });
+                fade = Prop.Of(() => a + (peak - a) * MathF.Max(0f, lit.Value));
+            }
+            else
+            {
+                color = Prop.Of(() => ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = 1f });
+                fade = a;
+            }
             return new BoxEl
             {
                 Key = "v:g:" + _gen + ":" + line, Direction = 1, MaxWidth = maxW, HitTestVisible = false,
@@ -671,11 +684,19 @@ public static partial class Verse
                 Layout = _reduced ? (LayoutTransition?)null : s_glide, Enter = SlotEnter, Exit = FadeOut, Transition = MotionTok.StandardEnter,
                 Children =
                 [
-                    new TextEl(text)
+                    // the fade on an inner box: the wrapper's entrance owns its own opacity track
+                    new BoxEl
                     {
-                        Size = size, LineHeight = MathF.Round(size * Geometry.LineK), LineStacking = LineStacking.BlockLineHeight,
-                        Weight = Geometry.GhostWeight(d), FontFamily = DisplayFace, Color = color,
-                        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        Direction = 1, HitTestVisible = false, Opacity = fade,
+                        Children =
+                        [
+                            new TextEl(text)
+                            {
+                                Size = size, LineHeight = MathF.Round(size * Geometry.LineK), LineStacking = LineStacking.BlockLineHeight,
+                                Weight = Geometry.GhostWeight(d), FontFamily = DisplayFace, Color = color,
+                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                            },
+                        ],
                     },
                 ],
             };
