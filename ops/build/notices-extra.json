@@ -109,6 +109,6 @@
     "version": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese (revision cf031e02)",
     "license": "Apache-2.0",
     "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
-    "note": "Japanese kana and kanji recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1, CSS10 and JSUT (VERIFY: the JSUT corpus terms before the pack is published), converted like the English one. Optional download from models.cproducts.dev."
+    "note": "Japanese kana and kanji recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1, CSS10 and the JSUT corpus (Saruwatari-Takamichi Lab, the University of Tokyo; https://sites.google.com/site/shinnosuketakamichi/publication/jsut; its audio is free for academic, non-commercial and personal use, commercial use by arrangement with the authors), converted like the English one. Optional download from models.cproducts.dev."
   }
 ]
