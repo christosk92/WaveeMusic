@@ -574,6 +574,9 @@ public static partial class Playback
         // E5: the `[video] frames` line's pacing, per load (under s_gate): when the last one was written (0 = no baseline yet) and the
         // counters it carried, so the next one reports the change.
         static long s_statsLoggedAtMs, s_statsLoggedRendered, s_statsLoggedDropped;
+        // The engine's own read time of the counters the last line carried (Stopwatch ticks; 0 = none): the line's windowMs is the time
+        // between the two counter READS, so its deltas are rendered/dropped per that window and not per this tick's cadence.
+        static long s_statsLoggedSampleTs;
         // E5: the clear path's `switch.budget` inputs, written by `OpenOkLine` (worker thread) and read by `Observe` (UI thread):
         // how long the open call took and when it finished, counted from switch.begin. -1 = this switch has no open.ok yet.
         static long s_openCallMs = -1, s_openDoneSinceSwitchMs = -1;
@@ -2002,12 +2005,14 @@ public static partial class Playback
                 if (current is not null && s_key.Length > 0 && s_statsLoggedAtMs != 0)
                 {
                     PlaybackStatistics ended = current.Statistics.Peek();
-                    if (ended.FramesRendered + ended.FramesDropped > 0)
+                    long endedRendered = ended.FramesRendered, endedDropped = ended.FramesDropped;
+                    if (current.TryReadFrameCounters(out MediaFrameCounters endedNow)) { endedRendered = endedNow.Rendered; endedDropped = endedNow.Dropped; }
+                    if (endedRendered + endedDropped > 0)
                     {
                         logFinalStats = true;
                         finalKey = s_key;
-                        finalRendered = ended.FramesRendered;
-                        finalDropped = ended.FramesDropped;
+                        finalRendered = endedRendered;
+                        finalDropped = endedDropped;
                         finalRenderedDelta = HostRules.FrameStatsDelta(finalRendered, s_statsLoggedRendered);
                         finalDroppedDelta = HostRules.FrameStatsDelta(finalDropped, s_statsLoggedDropped);
                     }
@@ -2015,6 +2020,7 @@ public static partial class Playback
                 s_statsLoggedAtMs = 0;
                 s_statsLoggedRendered = 0;
                 s_statsLoggedDropped = 0;
+                s_statsLoggedSampleTs = 0;
                 s_faultRetryable = false;
                 s_key = req.Source.Key;
                 s_live = req.Source;
@@ -2228,7 +2234,8 @@ public static partial class Playback
             PlaybackState state = PlaybackState.Idle;
             long pos = 0, durMs = 0;
             long posAtMs = FrameNowMs();              // the frame-clock instant `pos` was true at
-            long statRendered = 0, statDropped = 0;   // E5: the session's frame counters (PlaybackStatistics), for the `[video] frames` line
+            long statRendered = 0, statDropped = 0;   // E5: the session's frame counters, for the `[video] frames` line
+            long statSampleTs = 0;                    // when the engine read them (0 = the pump's copy, no read time known)
             LiveWindow window = default;
             if (owned)
             {
@@ -2245,10 +2252,21 @@ public static partial class Playback
                 }
                 else pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
                 durMs = (long)p.Duration.Peek().TotalMilliseconds;
-                NoteStatePump(p, state, pos, session is ProtectedMediaSession);
-                PlaybackStatistics stats = p.Statistics.Peek();
-                statRendered = stats.FramesRendered;
-                statDropped = stats.FramesDropped;
+                NoteStatePump(p, state, pos, session as ProtectedMediaSession);
+                // The engine's latest counter READ, not the state pump's copy: the pump publishes whatever the counters were at its own
+                // turn, so differencing two pump copies on this tick's cadence mixed windows of different lengths.
+                if (p.TryReadFrameCounters(out MediaFrameCounters counters))
+                {
+                    statRendered = counters.Rendered;
+                    statDropped = counters.Dropped;
+                    statSampleTs = counters.SampledTimestamp;
+                }
+                else
+                {
+                    PlaybackStatistics stats = p.Statistics.Peek();
+                    statRendered = stats.FramesRendered;
+                    statDropped = stats.FramesDropped;
+                }
 
                 // (b) liveness, from the engine's timeline and NEVER from a finite duration.
                 TimelineInfo tl = p.Timeline.Peek();
@@ -2261,7 +2279,7 @@ public static partial class Playback
             bool relayLive = false, relayDur = false, fireWatchdog = false, logCut = false;
             long cutSongPos = 0, cutGap = 0;
             bool logStats = false;
-            long statRenderedDelta = 0, statDroppedDelta = 0;
+            long statRenderedDelta = 0, statDroppedDelta = 0, statWindowMs = -1;
             TickFold fold = TickFold.None;
             MediaSwitch.AttachVerdict attach = MediaSwitch.AttachVerdict.Wait;
             string key;
@@ -2322,15 +2340,26 @@ public static partial class Playback
                 if (owned && state == PlaybackState.Playing && !s_holdReports)
                 {
                     long statsNow = FrameNowMs();
-                    if (s_statsLoggedAtMs == 0) s_statsLoggedAtMs = statsNow;
+                    if (s_statsLoggedAtMs == 0)
+                    {
+                        // The baseline is these counters at their own read time, so the first line's deltas cover exactly its window.
+                        s_statsLoggedAtMs = statsNow;
+                        s_statsLoggedRendered = statRendered;
+                        s_statsLoggedDropped = statDropped;
+                        s_statsLoggedSampleTs = statSampleTs;
+                    }
                     else if (HostRules.FrameStatsDue(statsNow, s_statsLoggedAtMs, statRendered, statDropped, s_statsLoggedRendered, s_statsLoggedDropped))
                     {
                         logStats = true;
                         statRenderedDelta = HostRules.FrameStatsDelta(statRendered, s_statsLoggedRendered);
                         statDroppedDelta = HostRules.FrameStatsDelta(statDropped, s_statsLoggedDropped);
+                        statWindowMs = statSampleTs != 0 && s_statsLoggedSampleTs != 0 && statSampleTs >= s_statsLoggedSampleTs
+                            ? (long)System.Diagnostics.Stopwatch.GetElapsedTime(s_statsLoggedSampleTs, statSampleTs).TotalMilliseconds
+                            : statsNow - s_statsLoggedAtMs;
                         s_statsLoggedAtMs = statsNow;
                         s_statsLoggedRendered = statRendered;
                         s_statsLoggedDropped = statDropped;
+                        s_statsLoggedSampleTs = statSampleTs;
                     }
                 }
 
@@ -2348,7 +2377,7 @@ public static partial class Playback
             if (relayLive) ReportLiveWindow(in window);
             if (relayDur) Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             if (logCut) LogAudioCut(cutSongPos, pos, cutGap);
-            if (logStats) LogLine(new VideoLog.FrameStats(Tail(key), statRendered, statDropped, statRenderedDelta, statDroppedDelta));
+            if (logStats) LogFrameStats(new VideoLog.FrameStats(Tail(key), statRendered, statDropped, statRenderedDelta, statDroppedDelta), statWindowMs);
             if (fireWatchdog)
             {
                 ProtectedVideoPhase phase = session is ProtectedMediaSession protectedSession ? protectedSession.Player.Phase : ProtectedVideoPhase.Resolving;
@@ -2389,13 +2418,17 @@ public static partial class Playback
         /// <summary>F179: the always-on heartbeat check. The player pumps its own state (F132); a PLAYING session whose pump has not
         /// run for <see cref="HostRules.StatePumpStalled"/>'s budget has a frozen playhead and no error to explain it, so say so —
         /// once per episode, and again only after a pump has been seen. Tick thread; a read of two counters, no allocation until it fires.</summary>
-        static void NoteStatePump(MediaPlayer p, PlaybackState state, long posMs, bool protectedSession)
+        static void NoteStatePump(MediaPlayer p, PlaybackState state, long posMs, ProtectedMediaSession? protectedSession)
         {
             long idleMs = p.StatePumpAgeMs;
-            if (!HostRules.StatePumpStalled(state, idleMs, protectedSession)) { s_statePumpStallWarned = false; return; }
+            if (!HostRules.StatePumpStalled(state, idleMs, protectedSession is not null)) { s_statePumpStallWarned = false; return; }
+            // A protected session is pumped by its buffer and key events; once the feed reached the end of every track no buffer event
+            // will come, so a quiet pump then is the expected end of the feed, not a stall.
+            bool feedComplete = protectedSession?.Player.FeedComplete ?? false;
+            if (feedComplete) return;
             if (s_statePumpStallWarned) return;
             s_statePumpStallWarned = true;
-            Log.Warn("video", $"[video] state pump stalled — no pump for {idleMs}ms while {state} (pos={posMs}ms pumps={p.StatePumpCount})");
+            Log.Warn("video", $"[video] state pump stalled — no pump for {idleMs}ms while {state} (pos={posMs}ms pumps={p.StatePumpCount} feedComplete={(feedComplete ? 1 : 0)})");
         }
 
         /// <summary>F151: ask the UI thread for the cut. Its own method so the closure is allocated once per window, never by the tick.</summary>
@@ -2615,6 +2648,21 @@ public static partial class Playback
         static void LogLine(in VideoLog.FirstFrame l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.ClearBudget l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.FrameStats l) => Emit(VideoLog.Format(in l, Line()));
+
+        /// <summary>The live `[video] frames` line with the window its deltas cover: ` windowMs=` is the time between the two counter
+        /// reads the deltas difference (the engine's own read times; the tick clock when a backend gives none).</summary>
+        static void LogFrameStats(in VideoLog.FrameStats l, long windowMs)
+        {
+            char[] buffer = Line();
+            int n = VideoLog.Format(in l, buffer);
+            if (n <= 0) return;
+            if (windowMs >= 0 && " windowMs=".TryCopyTo(buffer.AsSpan(n)))
+            {
+                n += " windowMs=".Length;
+                if (windowMs.TryFormat(buffer.AsSpan(n), out int written, default, System.Globalization.CultureInfo.InvariantCulture)) n += written;
+            }
+            Emit(n);
+        }
         static void LogLine(in VideoLog.SeekPlanned l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.SeekDone l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.PrefetchPlanned l) => Emit(VideoLog.Format(in l, Line()));
