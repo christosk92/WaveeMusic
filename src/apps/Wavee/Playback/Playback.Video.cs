@@ -444,6 +444,11 @@ public static partial class Playback
                 => already || (ownsTick && (positionMs > 0
                     || state is PlaybackState.Playing or PlaybackState.Paused or PlaybackState.Ended or PlaybackState.Failed));
 
+            /// <summary>Is THIS session alive (a position, or a playing, paused or ended state)? Unlike <see cref="Progressed"/>
+            /// a Failed state does not count: it gives back no re-open budget.</summary>
+            public static bool Alive(bool ownsTick, long positionMs, PlaybackState state)
+                => ownsTick && (positionMs > 0 || state is PlaybackState.Playing or PlaybackState.Paused or PlaybackState.Ended);
+
             /// <summary>What a tick posts for the player's state, edge-triggered on <paramref name="last"/> except the
             /// position tick. Playing is an EVENT the session publishes — nothing here re-asserts Play.</summary>
             public static TickFold Fold(PlaybackState state, PlaybackState last, bool firstFrameFired) => state switch
@@ -2320,7 +2325,11 @@ public static partial class Playback
                 // (d) the watchdog. `progressed` is deliberately generous: anything that proves THIS session is alive — a
                 // paused open presenting its first frame included.
                 bool progressed = HostRules.Progressed(s_progressed, owned, pos, state);
-                if (progressed) { s_progressed = true; s_reopenedKey = null; }   // alive again: the key's re-open budget is back
+                if (progressed) s_progressed = true;
+                // The key's re-open budget comes back only when the session is alive again. A Failed state ends the watchdog
+                // (it is `progressed`), but it is no proof of life: returning the budget on it would let a source that fails on
+                // every open (e.g. a start Media Foundation fails each time) re-open in place forever.
+                if (HostRules.Alive(owned, pos, state)) s_reopenedKey = null;
                 if (s_watchdog.ShouldFault(FrameNowMs(), intent, progressed)) fireWatchdog = true;
                 else if (owned)
                 {
