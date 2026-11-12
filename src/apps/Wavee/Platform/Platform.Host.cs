@@ -1016,6 +1016,9 @@ public static partial class Log
     /// without it: a pop-out session on 2026-09-22 had two <c>[window.move] begin</c> per gesture and no way to tell
     /// whether the engine contact was ever cancelled.</item>
     /// <item><c>[detached]</c> — a detached child window's frame failed and was withdrawn; the main window survives.</item>
+    /// <item><c>[dwm.*]</c> / <c>[pr.phase]</c> — the DWM freeze probe (armed only while protected video lives) and the
+    /// protected video's start/end steps it names a stall after. They never reached the file at first (2026-11-12: the owner's
+    /// run of the probe build had none of them).</item>
     /// <item><c>[d3d12.debug]</c> — the D3D12 debug layer's own messages (Debug builds with the layer armed): the
     /// ONLY thing that names the recording call behind a <c>cmdList.Close</c> failure.</item>
     /// <item><c>[tiles.stale]</c> — a composite turn ended with a STALE tile (valid pixels the stream no longer
@@ -1046,7 +1049,9 @@ public static partial class Log
         || s.StartsWith("[evidence]", StringComparison.Ordinal)
         || s.StartsWith("[hidden]", StringComparison.Ordinal)   // the hidden-window release / restore edge lines: once per park
         || s.StartsWith("[image.anim]", StringComparison.Ordinal)   // an animated image (ImageEl.Animate): open / pause / static edges and a 5 s playing summary (frames on time vs late, decode times)
-        || s.StartsWith("[scroll.engaged", StringComparison.Ordinal);
+        || s.StartsWith("[scroll.engaged", StringComparison.Ordinal)
+        || s.StartsWith("[dwm.", StringComparison.Ordinal)        // the DWM freeze probe while protected video lives: armed / stall / park
+        || s.StartsWith("[pr.phase]", StringComparison.Ordinal);  // protected video start/end steps, to name what a [dwm.stall] followed
 
     /// <summary>True for the sink-routed engine lines that name a GPU stall, loss, recovery or adapter — the evidence
     /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks.</summary>
