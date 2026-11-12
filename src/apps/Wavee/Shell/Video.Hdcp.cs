@@ -16,11 +16,15 @@
 //   1. BEFORE engaging (passive, no handshake): the connection's own record. A display path (monitor + connection: the same monitor behind
 //      the dock and plugged in directly are two) on which protection failed before is remembered (persisted, 30 days), and a protected
 //      video never engages there again: the song plays and the warning shows. A path with no record is allowed.
-//   2. AFTER engaging (the safety net): once a protected picture is up, Media Foundation's HDCP query (`OutputProtection.QueryHdcp`) is
-//      asked every 500 ms until it settles (it may say "maybe" for up to ~10 s while HDCP 2.2 negotiates), and the engine's own reports
-//      (OPMINFO, a key going OUTPUT_RESTRICTED, MF_E_POLICY_UNSUPPORTED) are listened to. Asked then, the query reports the engagement
-//      that is already running instead of starting one. Any "not supported" drops the protected picture on that screen (the reducer moves
-//      the row to its song through the video-recovery hand-off, which STOPS the protected session), remembers the path and warns.
+//   2. WHILE engaging (the safety net): once a protected picture is opening on the video host, Media Foundation's HDCP query
+//      (`OutputProtection.QueryHdcp`) is asked right after the protected runtime's CDM is up (Firefox asks there too), then every 500 ms
+//      until it settles (it may say "maybe" for up to ~10 s while HDCP 2.2 negotiates), and the engine's own reports (OPMINFO, a key going
+//      OUTPUT_RESTRICTED, MF_E_POLICY_UNSUPPORTED) are listened to. It is never asked for a screen no protected picture is headed for,
+//      and it no longer runs on top of the picture's attach (DWM's protected entry; it used to be asked at the first frame, 172 ms).
+//      1.5 s after the picture is up it is asked once more, with the engine's OPM window placed over the picture (the OS answers from
+//      its cache unless the display changed).
+//      Any "not supported" drops the protected picture on that screen (the reducer moves the row to its song through the
+//      video-recovery hand-off, which STOPS the protected session), remembers the path and warns.
 //   3. MOVES. The renderer's monitor edge (`DisplayInfo.WindowMonitorChanged`, the `[d3d12.display] monitor=` edge) re-runs (1) for the
 //      window the video is in: a screen with no record lifts the block and the row goes back to its video at the carried position (the song
 //      plays on while the video attaches under it, then the cut); moving back to a remembered screen blocks again before engaging.
@@ -66,7 +70,7 @@ public static partial class Video
         static bool s_installed, s_loaded;
         static long s_mainHwnd;
         static string s_path = "", s_name = "";
-        static bool s_engaged;                 // a protected picture is up on the screen s_path names
+        static bool s_engaged;                 // a protected picture is opening or up on the screen s_path names
         static int s_checkGen;                 // bumps to cancel a running HDCP poll
         static bool s_inspect;                 // `state kind=hdcp`: the verdict is the inspector's (no persistence, no real screen)
 
@@ -128,18 +132,55 @@ public static partial class Video
             if (!failedBefore && s_engaged) StartQuery("moved");
         }
 
-        /// <summary>The host observer's edge: a protected picture is up (<paramref name="engaged"/>), or the video host let it go. UI thread.</summary>
-        public static void NoteEngaged(bool engaged)
+        /// <summary>How long after the protected picture is up the safety net asks once more (past its attach): by then the engine's OPM
+        /// window sits over the picture on its screen, and the OS answers from its cache unless the display changed.</summary>
+        public const int ConfirmDelayMs = 1500;
+
+        static bool s_up;                      // the engaged picture is up (presenting or playing)
+        static int s_engageGen;                // bumps at every engaged edge: a confirm scheduled for an earlier picture stands down
+
+        /// <summary>The host observer's edges: a protected picture is opening or up on the video host (<paramref name="engaged"/>), or the
+        /// video host let it go; <paramref name="up"/> = its first frame landed (presenting or playing). The first ask runs from the open
+        /// (right after the CDM is up, before the attach); a confirming ask follows <see cref="ConfirmDelayMs"/> after the picture is up,
+        /// when the OPM window is placed over it. A picture that is already up at its engaged edge (a warm switch) is asked only after
+        /// the delay: its attach is happening now. UI thread.</summary>
+        public static void NoteEngaged(bool engaged, bool up)
         {
-            if (engaged == s_engaged) return;
-            s_engaged = engaged;
-            if (!engaged) { s_checkGen++; return; }
-            if (s_inspect) return;
-            if (s_path.Length == 0) Reevaluate("engaged");
-            if (!Blocked.Peek()) StartQuery("engaged");
+            up &= engaged;
+            if (engaged != s_engaged)
+            {
+                s_engaged = engaged;
+                s_engageGen++;
+                s_up = false;
+                if (!engaged) { s_checkGen++; return; }
+                if (s_inspect) return;
+                if (s_path.Length == 0) Reevaluate("engaged");
+                if (!up && !Blocked.Peek()) StartQuery("engaged");
+            }
+            if (up == s_up) return;
+            s_up = up;
+            if (up && !s_inspect) ConfirmLater();
         }
 
-        /// <summary>Check (2), the safety net: Media Foundation's HDCP query on a pool thread every <see cref="PollMs"/> until it settles.</summary>
+        static void ConfirmLater()
+        {
+            int engageGen = s_engageGen;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(ConfirmDelayMs).ConfigureAwait(false);
+                Playback.ToUi(() =>
+                {
+                    if (engageGen == s_engageGen && s_engaged && s_up && !s_inspect && !Blocked.Peek()) StartQuery("confirm");
+                });
+            });
+        }
+
+        /// <summary>How long the safety net waits for the protected runtime's CDM before its first ask (a cold bring-up takes ~1.3 s).</summary>
+        public const int RuntimeWaitMs = 15_000;
+
+        /// <summary>Check (2), the safety net: Media Foundation's HDCP query on a pool thread every <see cref="PollMs"/> until it settles.
+        /// Asked from the open on: while the protected runtime is still coming up there is no CDM to ask, so the first ask waits for its
+        /// bring-up to finish (<see cref="OutputProtection.WaitRuntimeReadyAsync"/>) and runs right after it, before the picture attaches.</summary>
         static void StartQuery(string why)
         {
             int gen = ++s_checkGen;
@@ -147,13 +188,21 @@ public static partial class Video
             _ = Task.Run(async () =>
             {
                 long t0 = Environment.TickCount64;
+                long asked = 0;   // the first real answer: the settle budget runs from here
                 HdcpAnswer answer;
                 int hr;
                 while (true)
                 {
                     answer = OutputProtection.QueryHdcp(1, out hr);
                     if (Volatile.Read(ref s_checkGen) != gen) return;
-                    if (answer != HdcpAnswer.Pending || Environment.TickCount64 - t0 >= SettleMs) break;
+                    long now = Environment.TickCount64;
+                    if (asked == 0 && answer == HdcpAnswer.Unknown && OutputProtection.IsRuntimeNotReady(hr) && now - t0 < RuntimeWaitMs)
+                    {
+                        await OutputProtection.WaitRuntimeReadyAsync(PollMs).ConfigureAwait(false);   // no CDM yet: ask right after it is up
+                        continue;
+                    }
+                    if (asked == 0) asked = now;
+                    if (answer != HdcpAnswer.Pending || now - asked >= SettleMs) break;
                     await Task.Delay(PollMs).ConfigureAwait(false);
                 }
                 long ms = Environment.TickCount64 - t0;

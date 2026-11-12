@@ -206,15 +206,19 @@ public static partial class Video
                 Playback.Video.Observe();
             });
 
-            // The HDCP guard's engagement edge (Video.Hdcp): a protected picture is up on the video host (its first frame landed: the
-            // session presents or plays), or it is gone. Up is when the safety net asks Media Foundation whether HDCP took.
+            // The HDCP guard's engagement edges (Video.Hdcp): a protected picture is opening on the video host (licensing, buffering,
+            // attaching) or up (presenting, playing), or it is gone. From the open on, the safety net asks Media Foundation whether HDCP
+            // takes, as soon as the CDM is up: its handshake then runs before the picture attaches, not on top of the attach (DWM's
+            // protected entry), where the first-frame query used to land (172 ms). Once the picture is up it confirms, past the attach.
             UseSignalEffect(static () =>
             {
                 var source = Playback.Video.Source.Value;
                 var phase = Playback.Video.Phase.Value;
-                bool onVideo = Playback.VideoActive.Value;
-                Hdcp.NoteEngaged(onVideo && source is { IsDrm: true }
-                                 && phase is Playback.Video.SwitchPhase.Presenting or Playback.Video.SwitchPhase.Playing);
+                bool protectedOnHost = Playback.VideoActive.Value && source is { IsDrm: true };
+                bool up = phase is Playback.Video.SwitchPhase.Presenting or Playback.Video.SwitchPhase.Playing;
+                bool opening = phase is Playback.Video.SwitchPhase.Licensing or Playback.Video.SwitchPhase.Buffering
+                    or Playback.Video.SwitchPhase.Attaching;
+                Hdcp.NoteEngaged(protectedOnHost && (opening || up), protectedOnHost && up);
             });
 
             // The quality ceiling follows the network cost and the metered setting live (G-148).
