@@ -53,6 +53,7 @@
 // it was started for (C1/C4). The runtime no longer needs it for correctness; the reducer's epochs still do.
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Threading;
 
 using System.Linq;
@@ -639,6 +640,42 @@ public static partial class Playback
         {
             ProtectedVideoRuntime.LogSink = static line => Log.Info("video", line);
             ProtectedVideoRuntime.AdapterLuidProvider = static () => global::FluentGpu.Rhi.D3D12.GpuAdapterInfo.CurrentAdapterLuid;
+            // The DWM freeze probe measures the protected composition keeper's steps too (they run outside the protected runtime).
+            global::FluentGpu.Media.ProtectedVideoTrace.ProbeStarter = ProtectedVideoRuntime.StartFreezeProbe;
+            InstallKeeper();
+        }
+
+        /// <summary>The adapter (PCI <c>vendor:device</c>, hex) a run last negotiated hardware PlayReady (SL3000) on. Read before the
+        /// window exists: on that adapter the engine arms the protected composition keeper with the first present, so DWM's one
+        /// protected-composition entry hitch lands during launch instead of when a music video first appears. Written when a run
+        /// negotiates SL3000 on another adapter (or the first time).</summary>
+        public static readonly SettingKey<string> KeeperAdapterKey = new("playback.video.protectedKeeperAdapter", "");
+
+        /// <summary>The engine's protected composition keeper (<c>ProtectedKeeperPolicy</c>): what the last run learnt, and where to
+        /// keep what this one learns. Before the window exists.</summary>
+        static void InstallKeeper()
+        {
+            global::FluentGpu.Media.ProtectedKeeperPolicy.RememberedAdapter = ParseAdapter(Platform.Settings.Get(KeeperAdapterKey) ?? "");
+            global::FluentGpu.Media.ProtectedKeeperPolicy.Remember = static key =>
+            {
+                // The render thread raised it: the settings write (a file fsync under --profile) runs on the pool.
+                string text = (key >> 32).ToString("X4", CultureInfo.InvariantCulture) + ":" + (key & 0xFFFFFFFF).ToString("X4", CultureInfo.InvariantCulture);
+                ThreadPool.UnsafeQueueUserWorkItem(static t =>
+                {
+                    Platform.Settings.Set(KeeperAdapterKey, t);
+                    Log.Info("video", "[video.surface] [keeper] SL3000 negotiated on adapter " + t + ": the next launch arms the keeper at once");
+                }, text, preferLocal: false);
+            };
+        }
+
+        static ulong ParseAdapter(string text)
+        {
+            int colon = text.IndexOf(':');
+            if (colon <= 0) return 0;
+            return uint.TryParse(text.AsSpan(0, colon), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint vendor)
+                   && uint.TryParse(text.AsSpan(colon + 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint device)
+                ? global::FluentGpu.Media.ProtectedKeeperPolicy.AdapterKey(vendor, device)
+                : 0;
         }
 
         /// <summary>A local attachment failed to open: the shell quarantines the (playable uri, source key) pair for the
