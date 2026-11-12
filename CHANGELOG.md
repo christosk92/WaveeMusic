@@ -63,6 +63,8 @@ versions separately under `v*` and is not tracked in this file.)
   a small kana goes with the sound before it), and Chinese lyrics, which have no kana, are never sent to it. English
   words inside a Japanese line are placed between their timed neighbours; a line that is mostly English keeps its line
   highlight. Every song timed before is timed once more, since the language decision changed.
+- **What's New can show a feature in motion.** A highlight can carry a short looping clip of the real app instead of a
+  still; this release's video full screen highlight plays one, at 60 fps, only while it is on screen.
 
 ### Changed
 
