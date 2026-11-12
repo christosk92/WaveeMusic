@@ -996,7 +996,7 @@ public static partial class Playback
         EntityRef next = s.RoutesLocal && s.HasCurrent && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
             ? NaturalNext(in s, out nextCursor)
             : default;
-        EntityId id = !next.IsNone && s.Kind == PlayableKind.Audio && KindOfRow(next, s.VideoWanted) == PlayableKind.Audio
+        EntityId id = !next.IsNone && s.Kind == PlayableKind.Audio && GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) == PlayableKind.Audio
             ? next.Id
             : default;
         // The row after the next one is warmed too, forward only (a wrap row's successor is never past the deck row).
@@ -1010,7 +1010,7 @@ public static partial class Playback
             if (at >= 0 && at != s.Cursor.Index)
             {
                 EntityRef row = Queue.RefAt(at);
-                if (KindOfRow(row, s.VideoWanted) == PlayableKind.Audio) { next2 = row; id2 = row.Id; }
+                if (GatedKind(in s, row, KindOfRow(row, s.VideoWanted)) == PlayableKind.Audio) { next2 = row; id2 = row.Id; }
             }
         }
         // A parked deck (a restore, a stop) warms what follows it but prepares nothing: there is no voice to join.
@@ -1208,7 +1208,7 @@ public static partial class Playback
         EntityRef next = NaturalNext(in s, out QueueCursor cursor);
         // The joined row is a repeat-context wrap: the rows after it become the next lap (Advance's rule).
         if (!next.IsNone && s.Repeat == RepeatMode.Context && cursor.Index <= s.Cursor.Index) fx.Lap = true;
-        if (next.IsNone || !next.Id.Equals(i.Id) || KindOfRow(next, s.VideoWanted) != PlayableKind.Audio)
+        if (next.IsNone || !next.Id.Equals(i.Id) || GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) != PlayableKind.Audio)
         {
             // The listener hears a row the queue no longer puts next (an edit, a shuffle or a repeat change raced the
             // prepare). Hard-cut to the truth: the Load replaces the joined voice.
@@ -1249,6 +1249,8 @@ public static partial class Playback
         int fromMs, bool paused)
     {
         if (!id.Equals(s.CurrentId)) s.Video = default;   // another row: its video facts are its own (a host switch keeps them)
+        // A screen that cannot carry HDCP: a protected video never loads, whoever asked for it (the wish, a video-first play, a retry).
+        kind = GatedKind(in s, row, kind);
         s.Current = row;
         s.CurrentId = id;
         s.Kind = kind;
@@ -1364,10 +1366,44 @@ public static partial class Playback
             return;
         }
         // On video already and still wanted: nothing to re-decide (a row whose association flag has not landed would read audio).
-        PlayableKind kind = wanted && s.Kind == PlayableKind.Video ? PlayableKind.Video : KindOfRow(s.Current, wanted);
+        PlayableKind kind = GatedKind(in s, s.Current, wanted && s.Kind == PlayableKind.Video ? PlayableKind.Video : KindOfRow(s.Current, wanted));
         if (kind == s.Kind) return;
         if (s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; return; }
         ReloadHost(ref s, in i, ref fx, kind, LoadOrigin.MediaKindRefresh);
+    }
+
+    /// <summary>The screen the video is on can or cannot carry HDCP (<c>Video.Hdcp</c>, <see cref="InputKind.VideoScreen"/>). Blocked: a
+    /// row playing its protected video reloads on the AUDIO host at the carried position, through the video-recovery hand-off: the video is
+    /// STOPPED (a paused protected session would keep its picture, and its HDCP, on the screen) and the parked song resumes in place
+    /// (cold-loaded at the position when it is no longer parked). Cleared: a row the placement wants as video goes back to it through the
+    /// placement's own hand-off (the song keeps playing while the video attaches under it, then the cut). The wish itself is never
+    /// touched, so the same row and the next ones follow the screen, not a stale "off".</summary>
+    static void DoVideoScreen(ref State s, in Input i, ref Effects fx)
+    {
+        bool blocked = i.IntArg != 0;
+        if (s.VideoScreenBlocked == blocked) return;
+        s.VideoScreenBlocked = blocked;
+        if (!s.HasCurrent || !s.RoutesLocal) return;
+        PlayableKind kind;
+        if (blocked) kind = s.Kind == PlayableKind.Video && ScreenGatesVideo(s.Current) ? KindOfRow(s.Current, videoWanted: false) : s.Kind;
+        else kind = s.Kind != PlayableKind.Video && s.VideoWanted ? KindOfRow(s.Current, videoWanted: true) : s.Kind;
+        if (kind == s.Kind) return;
+        if (s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; return; }
+        ReloadHost(ref s, in i, ref fx, kind, blocked ? LoadOrigin.VideoRecovery : LoadOrigin.MediaKindRefresh);
+    }
+
+    /// <summary><paramref name="kind"/>, or the row's audio when the screen cannot carry HDCP and the row's video is protected.</summary>
+    static PlayableKind GatedKind(in State s, EntityRef row, PlayableKind kind)
+        => kind == PlayableKind.Video && s.VideoScreenBlocked && ScreenGatesVideo(row) ? KindOfRow(row, videoWanted: false) : kind;
+
+    /// <summary>Does a screen that cannot carry HDCP keep <paramref name="row"/> off its video? A catalogue music video is PlayReady-protected;
+    /// the user's own clip (<see cref="TrackFlags.VideoOverride"/>) and a podcast episode's video are not gated: they play on any screen.</summary>
+    public static bool ScreenGatesVideo(EntityRef row)
+    {
+        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
+        TrackTable t = Entities.Current.Tracks;
+        if ((uint)row.Slot >= (uint)t.Count) return false;
+        return (t.Flags[row.Slot] & (uint)TrackFlags.VideoOverride) == 0;
     }
 
     /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). A failing load spends
@@ -1410,7 +1446,7 @@ public static partial class Playback
         bool firstRuling = facts.Known && !was.Known;
         if (firstRuling && facts.HasVideo && s.VideoWanted && s.Kind != PlayableKind.Video && !s.Parked
             && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
-            && KindOfRow(s.Current, videoWanted: true) == PlayableKind.Video)
+            && GatedKind(in s, s.Current, KindOfRow(s.Current, videoWanted: true)) == PlayableKind.Video)
             ReloadHost(ref s, in i, ref fx, PlayableKind.Video, LoadOrigin.MediaKindRefresh);
     }
 

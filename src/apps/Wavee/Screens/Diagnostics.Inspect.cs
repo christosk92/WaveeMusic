@@ -605,6 +605,8 @@ public static partial class Diagnostics
                         if (kind == "ai") return AiState(id, name, a);
                         // The Playback settings' runtime card in each of its shapes, staged without a runtime (Diagnostics.Inspect.Runtime.cs).
                         if (kind == "runtime") return RuntimeState(id, name, a);
+                        // The video's screen cannot (or again can) carry HDCP: the guard's verdict without a real screen (Diagnostics.Inspect.Hdcp.cs).
+                        if (kind == "hdcp") return HdcpState(id, name, a);
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
@@ -937,6 +939,7 @@ public static partial class Diagnostics
             InspectKit.RestoreColdPlaylist();
             RestoreAiLyrics();   // a `state kind=ai` staged the AI lyrics card
             RestoreRuntime();    // a `state kind=runtime` staged the Playback runtime card
+            Wavee.Video.Hdcp.InspectReset();   // a `state kind=hdcp` blocked the video's screen
             Entities.RestoreStagedShelves();   // a `state page=<library tab>` staged the account's relations
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();

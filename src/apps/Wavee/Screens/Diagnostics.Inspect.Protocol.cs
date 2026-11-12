@@ -330,7 +330,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -495,7 +495,8 @@ public static partial class Diagnostics
                     Arg("error", ArgType.Enum, "with kind=ai ai=lang-failed|setup-failed|error: the failure kind", "notfound", string.Join("|", InspectSession.AiErrors)),
                     Arg("lang", ArgType.String, "with kind=ai: the language a language failure names (a pack language)", "ja"),
                     Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
-                    Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues))], s_settleArgs),
+                    Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues)),
+                    Arg("hdcp", ArgType.Enum, "with kind=hdcp: the video's screen as the HDCP guard would judge it (no real screen): blocked = protection did not take there (the song plays, every video surface shows the protected-video warning), clear = the window moved to a screen that carries HDCP (the block lifts, the row goes back to its video); the next mount puts the boot's guard back", "blocked", "blocked|clear")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {

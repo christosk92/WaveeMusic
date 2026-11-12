@@ -26,7 +26,8 @@ namespace Wavee.Theming.Contracts;
 public sealed record VideoJoinPosterProps
 {
     /// <summary>What the join decided (<c>Video.JoinNow</c>, folded once from the host's events): the poster alone, the poster with the ring and
-    /// "Loading…", the poster with the fault line, or the poster with "Playing on &lt;device&gt;" and "Play here" (<see cref="Video.JoinVisual.Remote"/>).
+    /// "Loading…", the poster with the fault line, the poster with "Playing on &lt;device&gt;" and "Play here" (<see cref="Video.JoinVisual.Remote"/>),
+    /// or the poster with "This screen can't show protected video" and why (<see cref="Video.JoinVisual.ScreenBlocked"/>, contract 1.107).
     /// <see cref="Video.JoinVisual.Video"/> draws the poster alone like <see cref="Video.JoinVisual.Poster"/>.</summary>
     public required Video.JoinVisual Visual { get; init; }
 

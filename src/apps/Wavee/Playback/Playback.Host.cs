@@ -1564,6 +1564,10 @@ public static partial class Playback
     /// <c>IsActive</c> edge; the reducer switches hosts at the carried position when the row has a video (G-141).</summary>
     public static void SetVideoPlacement(bool active) => Post(Input.VideoPlacement(active, FrameNowMs()));
 
+    /// <summary>The screen the video is on can or cannot carry HDCP (<c>Video.Hdcp</c> posts it on the edge): while it cannot, a protected
+    /// video plays as its song; when it can again, the row goes back to its video at the carried position.</summary>
+    public static void SetVideoScreenBlocked(bool blocked) => Post(Input.VideoScreen(blocked, FrameNowMs()));
+
     /// <summary>The user's EXPLICIT switch of the deck's mode (the bar's lit video button): like <see cref="SetVideoPlacement"/>, and while a
     /// foreign device owns playback it is the one post forwarded to it as a Connect <c>signal</c>. Our own surface opening or closing never
     /// is — closing our panel must not switch the owner to audio.</summary>

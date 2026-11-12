@@ -51,6 +51,7 @@ public static partial class Video
         Overrides.BrokenLink -= OnBrokenLink;
         Overrides.BrokenLink += OnBrokenLink;
         Playback.Video.InstallLog();   // before any warm-up, so its `[video.native]` lines land in the app's log
+        Hdcp.Install();                // before the window exists: its first monitor edge (the swapchain's) is the guard's first check
         Playback.Video.OnOverrideFailed = OnOverrideFailed;
         Playback.Video.InstallResolver();   // IN FRONT of the resolver installed before (the modules' tier), never replacing it
         Playback.OnVideoIntent = OnIntent;
@@ -203,6 +204,17 @@ public static partial class Video
                     _ = p.Buffering.Value;
                 }
                 Playback.Video.Observe();
+            });
+
+            // The HDCP guard's engagement edge (Video.Hdcp): a protected picture is up on the video host (its first frame landed: the
+            // session presents or plays), or it is gone. Up is when the safety net asks Media Foundation whether HDCP took.
+            UseSignalEffect(static () =>
+            {
+                var source = Playback.Video.Source.Value;
+                var phase = Playback.Video.Phase.Value;
+                bool onVideo = Playback.VideoActive.Value;
+                Hdcp.NoteEngaged(onVideo && source is { IsDrm: true }
+                                 && phase is Playback.Video.SwitchPhase.Presenting or Playback.Video.SwitchPhase.Playing);
             });
 
             // The quality ceiling follows the network cost and the metered setting live (G-148).

@@ -2149,6 +2149,8 @@
     "videoUpNext": "Up next",
     "playingOn": "Playing on {device}",
     "playHere": "Play here",
+    "screenNoHdcpTitle": "This screen can’t show protected video",
+    "screenNoHdcpBody": "Its connection doesn’t support HDCP copy protection, which Spotify videos need. This often happens through a dock or adapter. Move Wavee to another screen or connect this one directly. The music keeps playing.",
     "localPlaybackUnsupported": "Playback isn’t supported on this device yet",
     "chooseDevice": "Choose device",
     "noDevices": "No devices found",

@@ -601,7 +601,9 @@ public static partial class Video
                 // A presenter still showing a picture (the main window's or the pop-out's): the previous source's last frame, held
                 // across an in-place switch until the next first frame.
                 bool held = s_mainPictureShown.Value || s_popOutPictureShown.Value;
-                var shape = new JoinState(phase, binding.Player is not null, wanted, framed, hosted && !remote, remote, held);
+                // The screen the video is on cannot carry HDCP, and this row's video is the protected kind (a user's own clip is not).
+                bool screenBlocked = Hdcp.Blocked.Value && Playback.ScreenGatesVideo(Playback.Current.Value);
+                var shape = new JoinState(phase, binding.Player is not null, wanted, framed, hosted && !remote, remote, held, screenBlocked);
                 bool joining = Joining.IsJoining(in shape);
                 // The budget is earned ONCE per join, on its leading edge: a step from `Resolving` to `Licensing` is the
                 // same join and must not take the ring away again.

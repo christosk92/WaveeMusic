@@ -718,7 +718,8 @@ public static partial class Video
 
         /// <summary>…and never while another device plays the video (<see cref="JoinVisual.Remote"/>): a player left bound from this
         /// device's own earlier turn is idle there, and its stage and strip would sit over the poster's "Play here".</summary>
-        public static bool ShouldMountPlayerStage(bool playerPresent, JoinVisual join) => playerPresent && join != JoinVisual.Remote;
+        public static bool ShouldMountPlayerStage(bool playerPresent, JoinVisual join)
+            => playerPresent && join is not (JoinVisual.Remote or JoinVisual.ScreenBlocked);
 
         /// <summary>Whether the poster layer over the stage is shown. The poster is ALWAYS a child of the stage wrapper (keyed,
         /// so the wrapper's shape never changes at first frame) and is merely collapsed once the live picture is the one
@@ -1375,6 +1376,10 @@ public static partial class Video
         /// <summary>The poster PLUS "Playing on &lt;device&gt;" and "Play here", NO ring: another device plays the video (a Connect
         /// controller's surface). No local player is coming, so it is neither a join nor a fault.</summary>
         Remote = 4,
+        /// <summary>The poster PLUS "This screen can't show protected video" and why, NO ring: the screen the video is on cannot carry the
+        /// HDCP the protected picture needs (<see cref="Hdcp"/>), so the song plays instead and the picture comes back by itself on a screen
+        /// that can. The player stage is not mounted under it: no protected picture is presented on that screen.</summary>
+        ScreenBlocked = 5,
     }
 
     /// <summary>A join's SHAPE — the four facts that say what the surface is looking at, without its clock.</summary>
@@ -1392,8 +1397,10 @@ public static partial class Video
     /// <param name="PictureHeld">Is a presenter of the bound player still showing a picture (<c>MediaPlayerElement.PictureShownOut</c>)?
     /// Across an in-place video → video switch the element holds the previous source's last frame, at that frame's own size and place,
     /// until the next source's first frame; it lets go itself on a failure, a stop or an audio-only successor.</param>
+    /// <param name="ScreenBlocked">The screen the video is on cannot carry HDCP and the row's video is protected (<see cref="Hdcp"/>): the
+    /// song plays, and the surface says why instead of loading.</param>
     public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen, bool Hosted = true, bool Remote = false,
-                                            bool PictureHeld = false);
+                                            bool PictureHeld = false, bool ScreenBlocked = false);
 
     /// <summary>The loading picture, decided. The artwork shows at once and the ring only for a join that outlasts
     /// <see cref="Playback.Video.Budgets.JoiningNoSpinnerMs"/> — a spinner that flashes for 200 ms reports trouble that
@@ -1424,6 +1431,8 @@ public static partial class Video
         {
             // A controller's surface: the owner plays the video elsewhere — say where, offer to take it, never a spinner.
             if (s.Remote && s.Wanted) return JoinVisual.Remote;
+            // A screen that cannot carry HDCP: no local picture is coming here, whatever the session says; the song plays meanwhile.
+            if (s.ScreenBlocked && s.Wanted) return JoinVisual.ScreenBlocked;
             // A failure DURING a join the user asked for replaces the loading picture — that IS the ask: a slow licence
             // and a dead one must not look alike. Gated on `Wanted` so a stale failure cannot flash on the NEXT time
             // video is turned on, and on `!FrameSeen` because a failure that arrives after the video started is the

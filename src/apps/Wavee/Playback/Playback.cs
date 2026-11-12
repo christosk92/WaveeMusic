@@ -1097,6 +1097,10 @@ public static partial class Playback
         public uint HoldLoadEpoch;
         /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
         public bool VideoWanted;
+        /// <summary>The screen the video is on cannot carry HDCP (<see cref="InputKind.VideoScreen"/>): a row whose video is protected loads
+        /// on the audio host whatever <see cref="VideoWanted"/> says. <see cref="VideoWanted"/> is kept, so the row goes back to its video
+        /// the moment the screen can show it.</summary>
+        public bool VideoScreenBlocked;
         /// <summary>Re-resolves spent on the current video load (G-142).</summary>
         public byte VideoRetries;
         /// <summary>Where autoplay stands for <see cref="Context"/> (G-080) — and, while <see cref="MorePages"/>, where the
@@ -1315,6 +1319,9 @@ public static partial class Playback
         /// <summary>The end hold's countdown (<c>Playback.EndHold.cs</c>): <c>IntArg</c> 0 = cancel it, 1 = release it (<c>LongArg</c> = the
         /// hold's stamp, <see cref="State.HoldAtMs"/>), the countdown elapsing or the card's Play now.</summary>
         EndHold,
+        /// <summary>The screen the video is on can (<c>IntArg</c> 0) or cannot (1) carry the HDCP protected video needs (<c>Video.Hdcp</c>).
+        /// While it cannot, a row whose video is protected plays its song instead; when it can again, the row goes back to its video.</summary>
+        VideoScreen,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1446,6 +1453,8 @@ public static partial class Playback
         public static Input QueueChanged(long nowMs = 0) => new(InputKind.QueueChanged, nowMs: nowMs);
         public static Input VideoPlacement(bool active, long nowMs = 0, bool explicitSwitch = false)
             => new(InputKind.VideoPlacement, intArg: (active ? 1 : 0) | (explicitSwitch ? 2 : 0), nowMs: nowMs);
+        public static Input VideoScreen(bool blocked, long nowMs = 0)
+            => new(InputKind.VideoScreen, intArg: blocked ? 1 : 0, nowMs: nowMs);
         public static Input VideoFacts(EntityId row, bool known, bool hasVideo, StringId manifestId, long nowMs = 0)
             => new(InputKind.VideoFacts, id: row, intArg: (known ? 1 : 0) | (hasVideo ? 2 : 0), longArg: manifestId.Value, nowMs: nowMs);
         public static Input Restore(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, int positionMs,
@@ -1754,6 +1763,7 @@ public static partial class Playback
             case InputKind.RemoteVolume: DoRemoteVolume(ref s, in i, ref fx); break;
             case InputKind.QueueChanged: DoQueueChanged(ref s, ref fx); break;
             case InputKind.VideoPlacement: DoVideoPlacement(ref s, in i, ref fx); break;
+            case InputKind.VideoScreen: DoVideoScreen(ref s, in i, ref fx); break;
             case InputKind.VideoFacts: DoVideoFacts(ref s, in i, ref fx); break;
             case InputKind.Restore: DoRestore(ref s, in i, ref fx); break;
             case InputKind.Autoplayed: DoAutoplayed(ref s, in i, ref fx); break;
@@ -2772,7 +2782,7 @@ public static partial class Playback
                     bool on = c.Signal == VideoSignal.ToVideo;
                     if (on && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; break; }
                     VideoMode(ref s, ref fx, on);
-                    PlayableKind kind = KindOfRow(s.Current, on);
+                    PlayableKind kind = GatedKind(in s, s.Current, KindOfRow(s.Current, on));
                     if (kind == s.Kind) break;
                     if (!s.RoutesLocal || s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; break; }
                     ReloadHost(ref s, in i, ref fx, kind, LoadOrigin.MediaKindRefresh);
