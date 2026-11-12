@@ -46,8 +46,10 @@ public static partial class Video
         /// row, and the reducer plays such a row as its song. UI thread only.</summary>
         public static readonly Signal<bool> Blocked = new(false);
 
-        /// <summary>The persisted record of display paths protection failed on: one <c>path\tunixDay</c> per line.</summary>
-        public static readonly SettingKey<string> FailedPathsKey = new("video.hdcp.failedPaths", "");
+        /// <summary>The persisted record of display paths protection failed on: one <c>path\tunixDay</c> per line. Named v2 because
+        /// the first build read every OPMINFO event as a failure (a monitor move raises one with status NOT_REQUESTED) and recorded
+        /// screens that work; those records stay unread.</summary>
+        public static readonly SettingKey<string> FailedPathsKey = new("video.hdcp.failedPaths.v2", "");
 
         /// <summary>How long a failure is remembered for a display path (a fixed dock or cable is tried again after this).</summary>
         public const int RememberDays = 30;
