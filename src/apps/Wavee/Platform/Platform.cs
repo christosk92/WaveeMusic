@@ -182,6 +182,9 @@ public static partial class Platform
         // rather than migrated — one launch at the 16:9 default is the whole repair.
         public static readonly SettingKey<string> VideoPipRect = new("video.pip.rect.v2", "");     // window-DIP "x,y,w,h"
         public static readonly SettingKey<string> VideoWindowRect = new("video.window.rect", "");  // screen-px "x,y,w,h"
+        /// <summary>The main window's normal placement (Shell.Host.Placement.cs): screen-px "x,y,w,h,max", the restore outer rect
+        /// and 1 when maximized. Empty = the default size.</summary>
+        public static readonly SettingKey<string> ShellWindowPlacement = new("shell.window.placement", "");
         public static readonly SettingKey<string> VideoAspectMode = new("video.aspect.mode", "fit");
         public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", 16.0 / 9.0);
         public static readonly SettingKey<bool> VideoWindowAlwaysOnTop = new("video.window.ontop", true);
