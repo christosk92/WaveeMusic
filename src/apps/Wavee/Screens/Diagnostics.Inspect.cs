@@ -1930,7 +1930,7 @@ public static partial class Diagnostics
                         return;
                     }
                     binding.Bind(handle);
-                    binding.SetStreamSize(natural);
+                    binding.SetStreamSize(natural, pinned: true);   // as the protected session: the stream is the natural size, whatever the rect
                     binding.Place(videoRect);
                     if (!_tookOver)
                     {
