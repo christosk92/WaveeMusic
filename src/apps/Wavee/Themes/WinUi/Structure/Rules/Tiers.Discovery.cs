@@ -410,6 +410,11 @@ public static class WinUiDiscoveryMotion
     public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
+    /// <summary>A part whose SIZE steps with the tier on both axes and carries what stands beside and under it (the daylist's cover, 120 at Small and 272 at
+    /// Standard): its size eases through real layout, so its neighbours ride it frame by frame.</summary>
+    public static readonly LayoutTransition SizeReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width | SizeAxes.Height);
+
     /// <summary>A run of vertical air a tier step changes (the page's top inset, the gap between zones, the band's foot): a spacer that eases its height
     /// through real layout, since padding, margins and a Gap cannot ease. Empty space on a skeleton, never a bar.</summary>
     public static Element AirV(string key, float height)
@@ -425,6 +430,10 @@ public static class WinUiDiscoveryMotion
 
     /// <summary>The cross-fade's timing.</summary>
     public static MotionTokenDef SwapFadeMotion => MotionTok.ControlFast;
+
+    /// <summary><see cref="SwapFade"/>'s enter held for the fade-out (the opacity leg of <see cref="SwapFadeMotion"/>): a VERB the crossing moves to another
+    /// place (Following) fades out of the old place before it fades into the new one, so it never stands in two places at once.</summary>
+    public static EnterExit SwapFadeAfterExit => SwapFade with { DelayMs = SwapFadeMotion.EffectiveDurationMs(AnimChannel.Opacity) };
 }
 
 /// <summary>The body spacing of a page under the overlay masthead (the frame draws the head: `WinUiMasthead`).</summary>

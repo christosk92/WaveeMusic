@@ -386,6 +386,9 @@ internal static class ClassicHomeDaylist
         // Keyed: the hero's foot spacer precedes it in the same block, and a positional match would hand its node to the spacer.
         Key = "daylist-actions",
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = false, MinWidth = 0f,
+        // A crossing between forms (a resize, or the content tier a docking panel's slide lands in) moves the row to the new form's place while the
+        // card eases its size: it slides there (its width revealed), never stepping in one frame.
+        Layout = Design.Reduced ? null : ClassicTierMotion.Reflow,
         Margin = new Edges4(0f, dl.Form == ClassicDaylistForm.Card ? Spacing.XL : Spacing.M, 0f, 0f),
         Children = actions,
     };
