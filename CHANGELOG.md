@@ -83,7 +83,9 @@ versions separately under `v*` and is not tracked in this file.)
   motion (the cover, the copy and the clock column ease to their new places, the title cross-fades between its sizes)
   instead of jumping, and its "Following" button fades out of one place before it appears in the other instead of
   showing twice. Zune's "new" releases cross-fade between their row and the place beside the history tiles instead of
-  sliding across them (they never leave the page empty mid-slide), and Classic's daylist buttons glide to their new place. With the right panel open on Now playing, Queue,
+  sliding across them (they never leave the page empty mid-slide), Zune's daylist cross-fades between its strip and its
+  full-cover form while its height eases, its new title coming in just after the old one has gone (it went blank for a
+  moment mid-slide; the two titles never show over each other), and Classic's daylist buttons glide to their new place. With the right panel open on Now playing, Queue,
   Lyrics or Friends, the docked video card fades out (or in) while the panel's contents ease up (or down) into its place,
   and the cover takes over from the card with a cross-fade, instead of the panel jumping by the card's height. The play bar
   and the panel no longer redraw when only the page's layout changes.
@@ -140,6 +142,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Docking the music video from the mini player no longer shows a black box in the panel (every theme).** While the
+  picture glides back into the right panel, the place it lands on shows the panel itself instead of a black plate, and
+  the picture is the only thing that arrives there. The same goes for the way out to the mini player.
+- **Skipping to the next music video no longer flashes black.** The previous video's last frame stays on screen until
+  the next video's first frame is up, and the next picture arrives sooner.
 - **Lyrics found for songs whose title is in another script.** A Korean, Japanese or Chinese song listed on Spotify
   under its English title ("I loved you too much to just laugh it off") found no lyrics, though QQ Music, NetEase and
   KuGou had them under the Korean title: a title in another alphabet now counts as unknown rather than as a mismatch, so
