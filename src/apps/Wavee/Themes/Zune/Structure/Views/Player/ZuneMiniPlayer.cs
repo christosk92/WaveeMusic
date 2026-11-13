@@ -84,7 +84,8 @@ internal static class ZuneMiniPlayer
         WideDetailFrom = M.WideDetailFrom,
     };
 
-    /// <summary>A thin centred waveform: 2-DIP bars spread edge to edge, growing both ways from the middle line, pink with every third white.</summary>
+    /// <summary>A thin centred waveform: 2-DIP bars spread edge to edge, growing both ways from the middle line, pink with every third white. A silent
+    /// band rests on the resting swell (<see cref="M.VizRest"/>; a bound scale: no re-render, no frame at rest).</summary>
     static Element Waveform(MiniVisualizerFrame f, ColorF accent)
     {
         int n = f.Bands.Length;
@@ -93,10 +94,11 @@ internal static class ZuneMiniPlayer
         for (int i = 0; i < n; i++)
         {
             var band = f.Bands[i];
+            float rest = M.VizRest(i, n);
             bars[i] = new BoxEl
             {
                 Width = M.VizBar, Height = innerH, Shrink = 0f, Fill = (i + 1) % M.VizWhiteEvery == 0 ? H.OnMediaInk : accent, HitTestVisible = false,
-                TransformOriginY = 0.5f, Transform = Prop.Of(() => Affine2D.Scale(1f, M.VizMin + (1f - M.VizMin) * Math.Clamp(band.Value, 0f, 1f))),
+                TransformOriginY = 0.5f, Transform = Prop.Of(() => Affine2D.Scale(1f, rest + (1f - rest) * Math.Clamp(band.Value, 0f, 1f))),
             };
         }
         return new BoxEl

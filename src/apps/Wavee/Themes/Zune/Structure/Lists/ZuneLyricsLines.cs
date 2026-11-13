@@ -93,7 +93,11 @@ internal static class ZuneLyricsLines
     /// <summary>An untimed (or suppressed) document: a reading block, left-aligned, wrapped, never cut; no highlight, no follow.</summary>
     static Element Unsynced(ILyricsHost host, Lyrics.Doc doc)
     {
-        var m = Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
+        // A mount in a small box (the mini player's: ILyricsHost.Gutter) reads its unsynced lines at the timed rows' type on its own gutter, so
+        // the face keeps one column, one size and the timed rows' light weight whether or not the song is timed.
+        var m = host.Gutter is not null
+            ? host.Metrics with { Weight = R.Type.LyricsLine("").ResolvedWeight }
+            : Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
         var ink = host.Ink.Primary with { A = Lyrics.Surface.UnsyncedAlpha };
         var rows = new Element[doc.Lines.Count];
         for (int i = 0; i < rows.Length; i++)
@@ -278,11 +282,18 @@ internal sealed class ZuneLyricsRow : Component
         _justLeftInk = () => host.Now.Value < _nextStart ? host.Accent?.Value ?? R.Ink.AccentAction : host.Ink.Primary;
     }
 
+    /// <summary>The row's opacity rung: the mini player's flat picture (<see cref="Lyrics.MiniRows"/>: Zune's rows not sung draw the full ink), else
+    /// the theme's ladder.</summary>
+    static float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
+        => Lyrics.MiniRows.Opacity(host, podcast, ownsPlayback, emphasis, 1f) is var flat && !float.IsNaN(flat)
+            ? flat
+            : ZuneListRules.LyricRowOpacity(podcast, ownsPlayback, emphasis, R.IsLight);
+
     void RetargetOpacity()
     {
         bool podcast = _host.IsPodcast;
         bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = ZuneListRules.LyricRowOpacity(podcast, ownsPlayback, _emphasis.Value, R.IsLight);
+        float to = RowOpacity(_host, podcast, ownsPlayback, _emphasis.Value);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
@@ -309,7 +320,7 @@ internal sealed class ZuneLyricsRow : Component
         if (rhythm is not null)
             m = m with { FontSize = laid, LineHeight = MathF.Round(laid * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight, SidePad = rhythm.ActiveScale > 1f ? 0f : m.SidePad };
         float reserve = Lyrics.RowRender.HasReserve(shape) ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = ZuneListRules.LyricRowOpacity(podcast, ownsPlayback, e, R.IsLight);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
         // The active line is the accent: the stage's own accent signal where it hands one, else the style's. A neutral surface (a reader

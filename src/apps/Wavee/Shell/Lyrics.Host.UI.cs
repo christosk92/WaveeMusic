@@ -58,6 +58,8 @@ public static partial class Lyrics
         bool LyricsContracts.ILyricsHost.BoxFades => _gutter >= 0f;
         bool LyricsContracts.ILyricsHost.OnPicture => OnPicture;
         bool LyricsContracts.ILyricsHost.Inert => _gutter >= 0f;
+        bool LyricsContracts.ILyricsHost.ActiveMarker => _gutter < 0f;
+        bool LyricsContracts.ILyricsHost.FlatRows => _gutter >= 0f;
 
         // ── what is on screen ───────────────────────────────────────────────────────────────────────────────────────
 

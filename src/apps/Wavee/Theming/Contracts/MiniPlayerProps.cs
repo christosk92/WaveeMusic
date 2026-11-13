@@ -248,8 +248,9 @@ public sealed record MiniPlayerStyle
     /// <summary>The strip ticker's start bar (WinUI 2, Classic 3, Zune none) and its two lines in the theme's type.</summary>
     public required float TickerBar { get; init; }
     public required Func<MiniLyricLine, Element> LyricLine { get; init; }
-    /// <summary>The lyric windows' type per shape, as a share of the app's own lyrics view's (the view scales its rows by it).</summary>
-    public required Func<MiniShape, float> LyricScale { get; init; }
+    /// <summary>The lyric windows' type for a shape and the window's width (DIP), as a share of the app's own lyrics view's (the view scales its
+    /// rows by it). A theme whose lyric type is reading type follows the width, so a line holds four or five words at any size.</summary>
+    public required Func<MiniShape, float, float> LyricScale { get; init; }
     /// <summary>The fade under the text over a filling face, and the hover veil over it.</summary>
     public required Func<ColorF> Veil { get; init; }
     public required Func<ColorF> Shade { get; init; }

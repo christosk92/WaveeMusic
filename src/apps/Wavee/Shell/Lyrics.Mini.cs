@@ -101,4 +101,26 @@ public static partial class Lyrics
             _active.SetIfChanged(Math.Max(0, active));
         }
     }
+
+    /// <summary>The mini player's lines as a picture (<see cref="Wavee.Theming.Contracts.ILyricsHost.FlatRows"/>): the active line in full ink and
+    /// every other line at <see cref="Ink"/> of white, near or far, sung or not, so a few lines in a small window read as one calm column
+    /// instead of a ladder that leaves the line above or below half visible.</summary>
+    public static class MiniRows
+    {
+        /// <summary>The share of white every line but the active one shows.</summary>
+        public const float Ink = 0.42f;
+
+        /// <summary>The opacity a style gives a row whose own ink is <paramref name="rowInk"/> (its alpha: the secondary ink, the word wipe's unsung
+        /// alpha, or 1 for a row drawn in full ink) so it shows <see cref="Ink"/>; NaN where the mount keeps its ladder (not flat, a podcast reader
+        /// that does not play, or the active line).</summary>
+        public static float Opacity(Wavee.Theming.Contracts.ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis, float rowInk)
+            => host.FlatRows && !TranscriptPresentation.Neutral(podcast, ownsPlayback) && Emphasis.DistOf(emphasis) > 0
+                ? MathF.Min(1f, Ink / MathF.Max(rowInk, 0.01f))
+                : float.NaN;
+
+        /// <summary>The alpha of a music row's own ink in the shared styles: a word-synced line already sung shows its sung (full) ink, one not yet
+        /// sung its unsung ink (<see cref="Wipe.UnsungAlpha"/>), a line-synced row <paramref name="secondary"/>.</summary>
+        public static float RowInk(Line line, int emphasis, float secondary)
+            => line.IsWordByWord && line.Syllables.Count > 0 ? (emphasis & Emphasis.PastBit) != 0 ? 1f : Wipe.UnsungAlpha : secondary;
+    }
 }

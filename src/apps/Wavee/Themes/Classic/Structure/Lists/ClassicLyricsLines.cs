@@ -116,7 +116,9 @@ internal static class ClassicLyricsLines
     /// highlight, no follow, no wipe, no blur ladder.</summary>
     static Element Unsynced(ILyricsHost host, Lyrics.Doc doc)
     {
-        var m = Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
+        // A mount in a small box (the mini player's: ILyricsHost.Gutter) reads its unsynced lines at the timed rows' type on its own gutter, so
+        // the face keeps one column and one size whether or not the song is timed.
+        var m = host.Gutter is not null ? host.Metrics : Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
         var ink = host.Ink.Primary with { A = Lyrics.Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
         var rows = new Element[doc.Lines.Count];
         for (int i = 0; i < rows.Length; i++)
@@ -345,6 +347,8 @@ internal sealed class ClassicLyricsRow : Component
     /// sung (its glyphs are the full ink) at <see cref="ClassicLyricsRules.PicturePastOpacity"/>, so every line but the active one reads alike.</summary>
     float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
     {
+        float flat = Lyrics.MiniRows.Opacity(host, podcast, ownsPlayback, emphasis, Lyrics.MiniRows.RowInk(_line, emphasis, host.Ink.Secondary.A));
+        if (!float.IsNaN(flat)) return flat;   // the mini player's picture of the song (ILyricsHost.FlatRows)
         float rung = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
         if (!host.OnPicture || rung >= 1f) return rung;
         bool sung = (emphasis & Lyrics.Emphasis.PastBit) != 0 && _line.IsWordByWord && _line.Syllables.Count > 0;
@@ -444,9 +448,10 @@ internal sealed class ClassicLyricsRow : Component
         // node. The secondary line sits INSIDE it, so it blurs, fades and travels with its lyric.
         var textColumn = new BoxEl { Direction = 1, Children = secondaryText is null ? [textEl] : [textEl, SecondaryText(secondaryText)] };
         // THE STAGE adds the ListView-style accent PILL as a ZStack layer INSIDE dofContent (it travels with the row's σ/cascade
-        // owner). The accent is a mount-time signal INSTANCE on the host (null on the rail/reader => the plain column, unchanged),
+        // owner). The accent is a mount-time signal INSTANCE on the host (null on the rail/reader, or no marker on the mini player's mount
+        // (ILyricsHost.ActiveMarker) => the plain column, unchanged),
         // so the tree shape never flips for a mounted row.
-        Element dofContent = host.Accent is { } accentSig
+        Element dofContent = host.Accent is { } accentSig && host.ActiveMarker
             ? new BoxEl
             {
                 ZStack = true,

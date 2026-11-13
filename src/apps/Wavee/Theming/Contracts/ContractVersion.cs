@@ -282,6 +282,10 @@
 // 1.107 (a screen that cannot carry HDCP): `Video.JoinVisual.ScreenBlocked` (the video's screen cannot carry the HDCP a protected picture
 // needs: the song plays and `ViewKeys.VideoJoinPoster` draws "This screen can't show protected video" and why over the poster; the strings
 // `Strings.Player.ScreenNoHdcpTitle` / `ScreenNoHdcpBody`). A template that does not know it draws the bare poster.
+// 1.108 (the mini player's lyrics face, round 2): `ILyricsHost.ActiveMarker` (a style draws its active-line pill only where it holds; false on
+// the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
+// `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
+// (the mini player is unreleased: its three styles moved with it).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -297,7 +301,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 107;
+    public const int Minor = 108;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

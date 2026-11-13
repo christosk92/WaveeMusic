@@ -37,15 +37,22 @@ internal static class ZuneMiniRules
     // ── the seek rail ──
     public const float Track = 2f, TrackAlphaLight = 0.16f, TrackAlphaDark = 0.22f, Thumb = 10f;
 
-    // ── the visualizer: thin centred bars, every third white ──
-    public const float VizInsetX = 0.08f, VizInsetY = 0.12f, VizBar = 2f, VizMin = 0.06f;
+    // ── the visualizer: thin bars growing both ways from the box's middle line, every third white ──
+    /// <summary>The waveform's insets (shares of the box) and a bar's width (DIP).</summary>
+    public const float VizInsetX = 0.08f, VizInsetY = 0.1f, VizBar = 2f;
     public const int VizWhiteEvery = 3;
+    /// <summary>The resting shape (a bar's span with its band silent, as a share of the full span): a swell rising from the ends to the middle, so a
+    /// pause draws a calm lens of light, not a row of ticks.</summary>
+    public const float VizRestLow = 0.05f, VizRestSwell = 0.22f;
+    /// <summary>Bar <paramref name="i"/> of <paramref name="n"/> at rest (see <see cref="VizRestLow"/>).</summary>
+    public static float VizRest(int i, int n) => VizRestLow + VizRestSwell * MathF.Sin(MathF.PI * (i + 0.5f) / Math.Max(1, n));
 
     // ── lyrics ──
     public const float TickerNow = 20f, TickerNowLeading = 25f, TickerNext = 13f, TickerNextLeading = 17f, TickerBleed = 12f;
+    /// <summary>Zune's lyric type is display type: per shape, never made smaller to fit a narrow window (a long line wraps instead).</summary>
     public static float LyricSize(MiniShape shape) => shape switch { MiniShape.Square => 22.4f, MiniShape.Tall => 24.8f, _ => 16f };
     /// <summary>The lyrics view's type in the mini window: the sizes above over the side pane's own (the view scales its rows, its
-    /// rhythm and its wipe by it).</summary>
-    public static float LyricScale(MiniShape shape) => LyricSize(shape) / Wavee.Lyrics.Surface.Timed(false).FontSize;
+    /// rhythm and its wipe by it). The width does not move it.</summary>
+    public static float LyricScale(MiniShape shape, float width) => LyricSize(shape) / Wavee.Lyrics.Surface.Timed(false).FontSize;
     public const float OnDarkLift = 0.45f;
 }

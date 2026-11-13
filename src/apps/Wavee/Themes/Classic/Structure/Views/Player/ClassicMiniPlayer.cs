@@ -318,16 +318,17 @@ internal static class ClassicMiniPlayer
                 Width = f.Width, Height = f.Height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
                 Children =
                 [
-                    Wave(f, run, 2, M.Viz2Top, M.Viz2H, M.Viz2Ms, p.Accent with { A = M.Viz2Alpha }),
-                    Wave(f, run, 1, M.Viz1Top, M.Viz1H, M.Viz1Ms, H.OnMediaInk with { A = M.Viz1Alpha }),
-                    Wave(f, run, 0, M.Viz0Top, M.Viz0H, M.Viz0Ms, p.Accent),
+                    Wave(f, run, 2, M.Viz2H, M.Viz2Ms, p.Accent with { A = M.Viz2Alpha }),
+                    Wave(f, run, 1, M.Viz1H, M.Viz1Ms, H.OnMediaInk with { A = M.Viz1Alpha }),
+                    Wave(f, run, 0, M.Viz0H, M.Viz0Ms, p.Accent),
                 ],
             };
         }
 
-        static Element Wave(MiniVisualizerFrame f, bool run, int third, float top, float height, float ms, ColorF ink)
+        /// <summary>One wave in a band <paramref name="height"/> of the box tall, centred on <see cref="M.VizCentre"/>.</summary>
+        static Element Wave(MiniVisualizerFrame f, bool run, int third, float height, float ms, ColorF ink)
         {
-            float h = f.Height * height, w = f.Width + M.VizPeriod;
+            float h = f.Height * height, w = f.Width + M.VizPeriod, top = f.Height * M.VizCentre - h / 2f;
             var bands = f.Bands;
             int from = third * bands.Length / 3, to = (third + 1) * bands.Length / 3;
             Element line = new PathEl
@@ -337,7 +338,7 @@ internal static class ClassicMiniPlayer
             };
             return new BoxEl
             {
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = f.Width, Height = h, Margin = new Edges4(0f, f.Height * top, 0f, 0f),
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = f.Width, Height = h, Margin = new Edges4(0f, top, 0f, 0f),
                 ClipToBounds = true, HitTestVisible = false, TransformOriginY = 0.5f,
                 Transform = Prop.Of(() =>
                 {

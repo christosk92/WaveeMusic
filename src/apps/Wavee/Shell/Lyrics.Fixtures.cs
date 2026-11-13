@@ -8,6 +8,8 @@
 // Shape: lines start at 4 s and run to 128 s — under the shortest seeded track (138 s), so no line outlives its track.
 // Each line lasts 3.0–4.3 s (varied, never uniform), carries 5–8 words timed in reading order with short gaps, and the
 // gap after line 12 is 6 s (an interlude past Lyrics.InterludeGapMs). Built from the track index alone: no Random.
+// An acoustic counterpart (`tr<n>a`, al2/al3's versions) gets the same words UNSYNCED (no timing), the provider's other shape: the
+// surfaces' reading block (the mini player's Lyrics face renders it).
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 namespace Wavee;
@@ -25,12 +27,13 @@ public static partial class Lyrics
 
         const long FirstMs = 4_000, LastEndMs = 128_000, InterludeAfter = 12, InterludeMs = 6_000;
 
-        /// <summary>The fixture document for a seeded track id (<c>tr0</c>..<c>tr165</c>), or null for anything else.</summary>
+        /// <summary>The fixture document for a seeded track id (<c>tr0</c>..<c>tr165</c>; <c>tr&lt;n&gt;a</c> unsynced), or null for anything else.</summary>
         public static Doc? For(string trackId)
         {
-            if (trackId.Length < 3 || !trackId.StartsWith("tr", StringComparison.Ordinal)
-                || !int.TryParse(trackId.AsSpan(2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int index))
-                return null;
+            if (trackId.Length < 3 || !trackId.StartsWith("tr", StringComparison.Ordinal)) return null;
+            bool unsynced = trackId[^1] == 'a';
+            var digits = trackId.AsSpan(2, trackId.Length - (unsynced ? 3 : 2));
+            if (!int.TryParse(digits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int index)) return null;
             var lines = new List<Line>(40);
             long at = FirstMs;
             for (int k = 0; at < LastEndMs - 3_000; k++)
@@ -50,6 +53,12 @@ public static partial class Lyrics
                 long lineEnd = at + duration;
                 lines.Add(new Line(at, text.ToString(), syllables, lineEnd, IsWordByWord: true));
                 at = lineEnd + (k == InterludeAfter ? InterludeMs : 250);
+            }
+            if (unsynced)
+            {
+                var plain = new List<Line>(lines.Count);
+                foreach (var line in lines) plain.Add(new Line(0, line.Text, []));
+                return new Doc(trackId, IsSynced: false, plain, SyncKind.Unsynced, Provider: "fixture");
             }
             return new Doc(trackId, IsSynced: true, lines, SyncKind.Syllable, Provider: "fixture");
         }

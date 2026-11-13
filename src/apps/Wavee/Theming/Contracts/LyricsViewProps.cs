@@ -103,6 +103,16 @@ public interface ILyricsHost
     /// ink, no distance ladder). Default false. Appended (contract 1.101).</summary>
     bool OnPicture => false;
 
+    /// <summary>A style may mark the active line with its accent pill in the gutter (the stage's ListView bar). False on the mini player's mount:
+    /// in a window a few words wide the active line wraps, and a short bar beside a three-row line reads as a stray mark. Default true; a style
+    /// draws its pill only where this holds. Appended (#197 round 2).</summary>
+    bool ActiveMarker => true;
+
+    /// <summary>The mount reads as a picture of the song (the mini player's, #197): every line but the active one at one ink
+    /// (<c>Lyrics.MiniRows</c>), with no distance ladder and no depth blur. A style's row opacity asks <c>Lyrics.MiniRows.Opacity</c> first.
+    /// Default false. Appended (#197 round 2).</summary>
+    bool FlatRows => false;
+
     // ── what is on screen (live: reads subscribe the caller) ───────────────────────────────────────────────────────
 
     /// <summary>The row type and rhythm of the document on screen (the timed surface's, at the stage's scale).</summary>
