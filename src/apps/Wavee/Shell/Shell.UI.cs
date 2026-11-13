@@ -914,7 +914,6 @@ public static partial class Shell
             return new BoxEl
             {
                 Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-                Padding = new Edges4(0f, 0f, 0f, reserve),
                 Children =
                 [
                     Flow.Show(static () => FrameRules.ShowsOfflineStrip(Auth.Value), OfflineLane()),
@@ -937,9 +936,20 @@ public static partial class Shell
                             },
                         ],
                     },
+                    // The mini player's reservation at the page's foot: a spacer whose height eases (padding cannot), on the spring the picture
+                    // glides on, so the page's foot rises while the picture glides down into the corner and comes back as it glides out, instead
+                    // of the page cutting off (or reappearing) the frame the placement changes.
+                    new BoxEl
+                    {
+                        Height = reserve, Shrink = 0f, HitTestVisible = false,
+                        Animate = Design.Reduced ? null : s_reserveMotion,
+                    },
                 ],
             };
         }
+
+        /// <summary>The reservation's ease: its height through real layout on the glide's dynamics (<c>TransitionDynamics.Default</c>).</summary>
+        static readonly LayoutTransition s_reserveMotion = new(TransitionChannels.Size, TransitionDynamics.Default, SizeMode.Reflow, Axes: SizeAxes.Height);
     }
 
     /// <summary>Enter AND Exit (the two pages overlap for the swap). Direction by PEEK: the nav verbs write it before the

@@ -142,12 +142,12 @@ internal static class ZuneSurface
             : Prop.Of(() => ZuneListRules.ShelfSlack(liveWidth.Value, aspect));
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, Key = ZuneListRules.ShelfBodyKey,
+            Direction = 1, Grow = 1f, MinWidth = 0f, Key = ZuneListRules.ShelfBodyKey,   // the gutter's width, not the cover's (Surface.Host)
             Children =
             [
                 new BoxEl
                 {
-                    Direction = 1, Gap = ZuneListRules.ShelfCaptionGap,
+                    Direction = 1, Gap = ZuneListRules.ShelfCaptionGap, MinWidth = 0f,
                     Children = [Controls.CardCover(art, coverW, coverH, aspect, circular, fab, corner), labels ?? Labels(d, in s, float.NaN)],
                 },
                 new BoxEl { Height = slack, Shrink = 0f, HitTestVisible = false },

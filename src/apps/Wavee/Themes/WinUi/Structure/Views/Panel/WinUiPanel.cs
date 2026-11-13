@@ -209,7 +209,7 @@ internal static class WinUiPanel
     }
 
     /// <summary>The body of <paramref name="body"/>.</summary>
-    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool sheet) => body switch
+    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool sheet, bool swapIn = false) => body switch
     {
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Lyrics => new BoxEl
@@ -219,7 +219,7 @@ internal static class WinUiPanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new WinUiPanelVideoArm()),
-        _ => NowPlaying(props, view, sheet),
+        _ => NowPlaying(props, view, sheet, swapIn),
     };
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
@@ -258,12 +258,28 @@ internal static class WinUiPanel
         });
     }
 
-    /// <summary>The Now playing tab: the pinned slot (the hero, or the docked video in its place), the sheet's transport, then "Next up".</summary>
-    private static Element NowPlaying(PanelProps props, PanelView view, bool sheet)
+    /// <summary>The Now playing tab: the pinned slot (the hero, or the docked video in its place), the sheet's transport, then "Next up".
+    /// <para>A change of the slot's occupant while the tab stands (<paramref name="swapIn"/>: the docked video leaving for the mini player once its
+    /// picture has landed there, or docking back) cross-fades the two inside the slot, whose height eases between theirs, so "Next up" rides it
+    /// instead of stepping; a tab that arrives with its occupant shows it with the tab's own motion.</para></summary>
+    private static Element NowPlaying(PanelProps props, PanelView view, bool sheet, bool swapIn)
     {
-        Element pinned = view.Pinned == PanelPinned.DockedVideo
-            ? DockedCap(props, docked: true, view.Width)
-            : Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
+        bool card = view.Pinned == PanelPinned.DockedVideo;
+        Element occupant = card ? DockedCap(props, docked: true, view.Width) : Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
+        Element pinned = new BoxEl
+        {
+            Key = "np-pinned", Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+            Layout = Design.Reduced ? null : WinUiScreenMotion.HeightReflow,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = card ? "np-pinned:card" : "np-pinned:art", Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                    Enter = swapIn ? WinUiScreenMotion.SwapFade : null, Exit = WinUiScreenMotion.SwapFade, Transition = WinUiScreenMotion.SwapFadeMotion,
+                    Children = [occupant],
+                },
+            ],
+        };
         var kids = new List<Element>(3) { pinned };
         if (sheet && props.Transport is { } transport) kids.Add(Embed.Comp(transport, static () => new WinUiSheetTransport()));
         kids.Add(Embed.Comp(props.NowPlaying, static () => new WinUiNowPlayingArm()));
@@ -273,6 +289,27 @@ internal static class WinUiPanel
     /// <summary>The docked video card over its resize handle: the card binds the height cell the handle writes (a stable bind) and the column hugs
     /// both, so the content under them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card
     /// takes every press on it), its grip the sheet grabber's pill.</summary>
+    /// <summary>The docked card's place over the head of every tab but Now playing's (which pins it in the hero's place): a slot whose height eases
+    /// between the card's and none while the card cross-fades in or out (<paramref name="swapIn"/>: the tab stood on the render before; a tab that
+    /// arrives with its card shows it with the tab's own motion), so the head and the body under it ride a dock or an undock instead of stepping by the
+    /// card's height. The handle's drag writes the card's height through a bind: it never eases.</summary>
+    internal static Element DockedCapSlot(PanelProps props, bool docked, float width, bool swapIn) => new BoxEl
+    {
+        Key = "docked-cap", Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+        Layout = Design.Reduced ? null : WinUiScreenMotion.HeightReflow,
+        Children =
+        [
+            docked
+                ? new BoxEl
+                {
+                    Key = "docked-cap:card", Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                    Enter = swapIn ? WinUiScreenMotion.SwapFade : null, Exit = WinUiScreenMotion.SwapFade, Transition = WinUiScreenMotion.SwapFadeMotion,
+                    Children = [DockedCap(props, docked: true, width)],
+                }
+                : DockedCap(props, docked: false, width),
+        ],
+    };
+
     internal static Element DockedCap(PanelProps props, bool docked, float width)
     {
         Element video = props.DockedCard();
@@ -343,6 +380,8 @@ internal sealed class WinUiPaneHead : Component
 internal sealed class WinUiPanelFrame : Component
 {
     bool _motionSeeded;
+    bool _shownOpen;
+    PanelMode? _shownBody;
     float _closedAt;
     PanelPlacement _seededPlacement;
     Action<RectF>? _onBounds;
@@ -362,11 +401,16 @@ internal sealed class WinUiPanelFrame : Component
         bool sheet = placement == PanelPlacement.Sheet;
         float width = placement == PanelPlacement.Float ? WinUiFrameRules.PanelFloatW : view.Width;
         var body = view.Body;
+        // The tab stood open on the render before: a change of its docked card (or of Now playing's pinned occupant) is then a swap inside it
+        // (DockedCapSlot, NowPlaying), not its arrival.
+        bool swapIn = open && _shownOpen && _shownBody == body;
+        _shownOpen = open;
+        _shownBody = body;
         var vp = UseContextSignal(Viewport.Size);
+        // Read through memos: the frame follows the window's tier and a capability, never the content tier a docking panel's slide crosses.
         var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
-        bool friends = facts.Value.Capabilities.FriendsPanel;
-        var tiers = facts.Value.Tiers;
-        bool compact = tiers.Policy is not null && tiers.Window == WidthTier.Compact;
+        bool friends = UseComputed(() => facts.Value.Capabilities.FriendsPanel).Value;
+        bool compact = UseComputed(() => facts.Value.Tiers.Policy is not null && facts.Value.Tiers.Window == WidthTier.Compact).Value;
 
         _close = props.Close;
         _escapes = open && floating;
@@ -420,12 +464,12 @@ internal sealed class WinUiPanelFrame : Component
         Element bodySlot = new BoxEl
         {
             Key = F.BodyKey, Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
-            Children = [bodyLive ? WinUiPanel.Body(props, view, body, sheet) : new BoxEl { Grow = 1f, HitTestVisible = false }],
+            Children = [bodyLive ? WinUiPanel.Body(props, view, body, sheet, swapIn) : new BoxEl { Grow = 1f, HitTestVisible = false }],
         };
         var column = new List<Element>(4);
         if (sheet) column.Add(Grabber(props.Close, compact));
         // The docked card mounts unconditionally outside the Now playing tab (its own gate hides it); that tab pins it in place of the hero.
-        if (body != PanelMode.NowPlaying) column.Add(WinUiPanel.DockedCap(props, view.DockedHere, width));
+        if (body != PanelMode.NowPlaying) column.Add(WinUiPanel.DockedCapSlot(props, view.DockedHere, width, swapIn));
         column.Add(WinUiPanel.Head(props, view, body, friends, compact, sheet ? vp.Value.Width : width));
         column.Add(bodySlot);
 

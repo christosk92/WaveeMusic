@@ -68,6 +68,28 @@ public static class ZuneHomeRules
     /// <summary>The gap between the groups, between a group's tiles, between its head and its tiles.</summary>
     public const float QuickGap = 32f, QuickTileGap = 12f, QuickHeadGap = 10f;
 
+    /// <summary>A quickplay group's row of <paramref name="count"/> tiles <paramref name="edge"/> wide, <paramref name="gap"/> apart (0 for none).</summary>
+    public static float TilesWidth(int count, float edge, float gap) => count <= 0 ? 0f : count * edge + (count - 1) * gap;
+
+    /// <summary>The line of the strip's wrapping row the new group stands on at strip width <paramref name="width"/>: the groups break as the row wraps
+    /// them (a group goes on the line it fits on after the ones before it), <paramref name="gap"/> apart; a group of width 0 is absent. Line 0 is the
+    /// first.</summary>
+    public static int FreshLine(float width, float pinsW, float historyW, float freshW, float gap)
+    {
+        int line = 0;
+        float x = -1f;   // < 0: the line is empty
+        Place(pinsW); Place(historyW); Place(freshW);
+        return line;
+
+        void Place(float w)
+        {
+            if (w <= 0f) return;
+            if (x < 0f) { x = w; return; }
+            if (x + gap + w > width + 0.5f) { line++; x = w; }
+            else x += gap + w;
+        }
+    }
+
     /// <summary>The play disc that shows on a pin tile while it is hovered.</summary>
     public const float PinPlayDisc = 40f, PinPlayGlyph = 14f, PinPlayInset = 8f;
 

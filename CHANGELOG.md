@@ -18,10 +18,13 @@ versions separately under `v*` and is not tracked in this file.)
   reel). It looks like your theme: WinUI's acrylic card, Zune's big type and pink, Classic's album-coloured wash with its
   rippling seek line. Hovering keeps the picture and the title in view and brings the controls in at the foot. Its ⋯ button (or a
   right-click on the window) opens one panel in your theme's look that stays open while you choose (shape, face,
-  keep on top, "Colour from album art", back to Wavee): each pick shows at once in the player beside it. Its device
+  keep on top, "Colour from album art"): each pick shows at once in the player beside it. Its device
   button opens the player bar's own device picker. Scroll over it to change the volume. Open it from the new button in the player bar (or its ⋯ menu when the bar is narrow), with
   Ctrl+Alt+M, or from the taskbar's right-click menu; the full window hides while it is open and comes back from the art,
-  the back button or any way you bring Wavee back, and the music never stops (#197).
+  the back button or any way you bring Wavee back, and the music never stops. Opening it and going back are one calm motion:
+  the full window fades and settles toward the player bar's art while the mini player grows out of that side, and the reverse
+  on the way back. The mini player keeps every frame while you drag it or pick a shape, and its lyrics run at your display's full
+  rate (#197).
 
 - **Full screen opens on the music video, in every theme.** With a video on, the app's full screen opens on the picture,
   edge to edge, instead of on the cover and lyrics: Video is its first tab, Lyrics, Visualizer, Up next and Artist stay one
@@ -69,6 +72,21 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Moving a music video between the right panel and the mini player is one smooth motion (every theme).** The picture
+  glides from the panel to the mini player's corner, and back, instead of jumping there; the panel slides away (or in)
+  with its contents as they were, and the page widens or narrows once, its titles taking their new line breaks on the
+  first frame instead of rewrapping step by step as the panel moves. The page's foot makes room for the mini player as
+  the picture arrives, instead of cutting off at once, and the "Recently played" tiles change their columns in one step
+  (a narrowing page showed twice its rows for a frame).
+- **Home keeps still while the right panel opens or closes (every theme).** When the panel's slide (a music video moving
+  to the mini player and back, or a window resize) takes Home to another layout, WinUI's daylist card changes shape as one
+  motion (the cover, the copy and the clock column ease to their new places, the title cross-fades between its sizes)
+  instead of jumping, and its "Following" button fades out of one place before it appears in the other instead of
+  showing twice. Zune's "new" releases fade out of their row and back in beside the history tiles instead of sliding
+  across them, and Classic's daylist buttons glide to their new place. With the right panel open on Now playing, Queue,
+  Lyrics or Friends, the docked video card fades out (or in) while the panel's contents ease up (or down) into its place,
+  and the cover takes over from the card with a cross-fade, instead of the panel jumping by the card's height. The play bar
+  and the panel no longer redraw when only the page's layout changes.
 - **The controls over a video go the moment the pointer leaves the window, as on YouTube.** In full screen (Cinema and
   Theatre), over the docked, floating and pop-out video and in the mini player, moving the pointer out of the window (off
   any edge, onto another screen or the taskbar, under a window that comes up over Wavee) or switching away with Alt+Tab

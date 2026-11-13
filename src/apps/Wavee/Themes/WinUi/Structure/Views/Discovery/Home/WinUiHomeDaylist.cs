@@ -118,23 +118,43 @@ internal static class WinUiHomeDaylist
     internal static float ClockWidthEstimate(WinUiDaylistLayout dl, float cardW)
         => dl.Form == WinUiDaylistForm.Triple ? MathF.Max(0f, dl.ClockW - dl.Gap - 1f) : MathF.Max(0f, cardW - 2f * dl.Pad);
 
-    /// <summary>The card: a Fluent card frame (fill, border, r8) with the tier's padding, around the layers of the form. The card's height is its content's:
-    /// the cover's edge plus both paddings at Standard and Huge (320 / 336).</summary>
+    /// <summary>The card: a Fluent card frame (fill, border, r8) around the layers of the form, its padding four spacers that ease their extent (the tier's 24 /
+    /// 16: padding cannot ease). The card's height is its content's: the cover's edge plus both paddings at Standard and Huge (320 / 336).
+    /// <para>A crossing between the forms (a resize, or the content tier a docking panel's slide lands in) moves the card as ONE motion: the cover eases its
+    /// edge through real layout, so the copy beside it and the zones under the card ride it; the paddings and gaps ease; the clock column opens or closes
+    /// its width while it fades; the title's rungs cross-fade inside a slot whose height eases, and the meta line opens or closes. Nothing steps.</para></summary>
     static BoxEl CardShape(Parts parts, WinUiDaylistLayout dl)
-        => Ui.Card(Row(parts, dl)) with
+        => Ui.Card(
+            WinUiDiscoveryMotion.AirV("daylist-pad:top", dl.Pad),
+            new BoxEl
+            {
+                Key = "daylist-band", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Children =
+                [
+                    WinUiDiscoveryMotion.AirH("daylist-pad:lead", dl.Pad),
+                    Row(parts, dl) with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
+                    WinUiDiscoveryMotion.AirH("daylist-pad:end", dl.Pad),
+                ],
+            },
+            WinUiDiscoveryMotion.AirV("daylist-pad:foot", dl.Pad)) with
         {
-            Padding = new Edges4(dl.Pad, dl.Pad, dl.Pad, dl.Pad), ClipToBounds = true, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Padding = default, Gap = 0f, ClipToBounds = true, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
         };
 
-    /// <summary>The cover: a square r4 tile of the tier's edge (the board's `border-radius: 4px`).</summary>
+    /// <summary>The cover: a square r4 tile of the tier's edge (the board's `border-radius: 4px`). A crossing eases its edge through real layout (the art fills
+    /// the box, so it scales with it): the copy beside it and the card's height follow it frame by frame.</summary>
     static Element CoverTile(string? url, WinUiDaylistLayout dl)
-        => new BoxEl
+    {
+        var art = Controls.Artwork(url, dl.Cover, dl.Cover, Radii.Control, decodePx: WinUiHomeRules.DaylistArtDecodePx);
+        return new BoxEl
         {
-            Width = dl.Cover, Height = dl.Cover, Shrink = 0f,
-            Children = [Controls.Artwork(url, dl.Cover, dl.Cover, Radii.Control, decodePx: WinUiHomeRules.DaylistArtDecodePx)],
+            Key = "daylist-cover", Width = dl.Cover, Height = dl.Cover, Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,
+            Layout = Design.Reduced ? null : WinUiDiscoveryMotion.SizeReflow,
+            Children = [art is BoxEl box ? box with { Width = float.NaN, Height = float.NaN, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f } : art],
         };
+    }
 
-    static Element Row(Parts p, WinUiDaylistLayout dl) => dl.Form switch
+    static BoxEl Row(Parts p, WinUiDaylistLayout dl) => dl.Form switch
     {
         WinUiDaylistForm.Stack => Stacked(p, dl),
         WinUiDaylistForm.Pair => Pair(p, dl),
@@ -143,26 +163,42 @@ internal static class WinUiHomeDaylist
 
     /// <summary>Standard and Huge: [cover | copy | hairline + clock]. The row stretches its children to the cover's height, so the copy's spacer parts the
     /// actions to the foot.</summary>
-    static Element Triple(Parts p, WinUiDaylistLayout dl) => new BoxEl
+    static BoxEl Triple(Parts p, WinUiDaylistLayout dl) => new()
     {
-        Key = "daylist-row", Direction = 0, Gap = dl.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Key = "daylist-row", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Children =
         [
             p.Cover,
+            WinUiDiscoveryMotion.AirH("daylist-gap:cover", dl.Gap),
             Copy(p, dl, eyebrowTrail: null) with { Key = "daylist-copy", Grow = 1f, Shrink = 1f, Basis = 0f },
+            ClockColumn(p.Clock, dl),
+        ],
+    };
+
+    /// <summary>The clock column behind its hairline, the gap before it its own. A crossing re-places the clock (Small: one line at the eyebrow's end), so the
+    /// column is a swap: it fades in while its width opens from 0 (and fades out while it closes), the copy beside it giving way frame by frame. Its content
+    /// is laid out at the column's full width and revealed by the opening edge, never re-wrapped on the way. The column claims no height of its own (the
+    /// clock hangs from a 0-tall host and the column clips it), so it stands at the cover's height while that eases instead of holding the card at the
+    /// rows' height; the clock stays reachable (a hit follows clips, never a box's own extent).</summary>
+    static Element ClockColumn(Element clock, WinUiDaylistLayout dl) => new BoxEl
+    {
+        Key = "daylist-clock-col", Direction = 0, Width = dl.Gap + dl.ClockW, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+        AlignItems = FlexAlign.Stretch,
+        Layout = Design.Reduced ? null : WinUiDiscoveryMotion.WidthReflow,
+        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+        Children =
+        [
             new BoxEl
             {
-                Key = "daylist-clock-col", Direction = 0, Width = dl.ClockW, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                // A crossing re-places the clock (Small: one line at the eyebrow's end): the arriving form FADES IN. No exit fade: a leaving node's ghost
-                // keeps its layout slot until it has faded, which would hold the card at the old height and then drop the page 158 DIP at once.
-                Enter = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Direction = 0, Width = dl.Gap + dl.ClockW, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 Children =
                 [
+                    new BoxEl { Width = dl.Gap, Shrink = 0f, HitTestVisible = false },
                     new BoxEl { Width = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
                     new BoxEl
                     {
-                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                        Padding = new Edges4(dl.Gap, 0f, 0f, 0f), Children = [p.Clock],
+                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Height = 0f, AlignItems = FlexAlign.Stretch,
+                        Padding = new Edges4(dl.Gap, 0f, 0f, 0f), Children = [clock],
                     },
                 ],
             },
@@ -170,14 +206,19 @@ internal static class WinUiHomeDaylist
     };
 
     /// <summary>Small: [cover | copy], the clock a line at the eyebrow's end.</summary>
-    static Element Pair(Parts p, WinUiDaylistLayout dl) => new BoxEl
+    static BoxEl Pair(Parts p, WinUiDaylistLayout dl) => new()
     {
-        Key = "daylist-row", Direction = 0, Gap = dl.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-        Children = [p.Cover, Copy(p, dl, eyebrowTrail: p.Clock) with { Key = "daylist-copy", Grow = 1f, Shrink = 1f, Basis = 0f }],
+        Key = "daylist-row", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Children =
+        [
+            p.Cover,
+            WinUiDiscoveryMotion.AirH("daylist-gap:cover", dl.Gap),
+            Copy(p, dl, eyebrowTrail: p.Clock) with { Key = "daylist-copy", Grow = 1f, Shrink = 1f, Basis = 0f },
+        ],
     };
 
     /// <summary>Compact: the cover beside the eyebrow, title and meta, then the tags, the actions and the clock footer, each at the card's width.</summary>
-    static Element Stacked(Parts p, WinUiDaylistLayout dl) => new BoxEl
+    static BoxEl Stacked(Parts p, WinUiDaylistLayout dl) => new()
     {
         Direction = 1, Gap = Spacing.M, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Children =
@@ -206,36 +247,63 @@ internal static class WinUiHomeDaylist
     static BoxEl Copy(Parts p, WinUiDaylistLayout dl, Element? eyebrowTrail)
     {
         bool pair = dl.Form == WinUiDaylistForm.Pair;
-        // KEYED children: a Triple <-> Pair crossing drops the meta line, and position-matched children would remount the actions (and the save heart).
-        var kids = new List<Element>(6)
+        // The copy's rhythm (2 at Small, 6 at Standard) is spacers that ease, not a Gap that would step every line under the eyebrow at once.
+        float gap = pair ? WinUiHomeRules.CopyGapSmall : WinUiHomeRules.CopyGapLarge;
+        // KEYED children, one row for the eyebrow in every form: a Triple <-> Pair crossing drops the meta line and moves the clock, and position-matched
+        // children would remount the actions (and the save heart).
+        var eyebrow = Eyebrow() with { Key = "daylist-eyebrow", Grow = 1f, Shrink = 1f };
+        var kids = new List<Element>(8)
         {
-            pair
-                ? new BoxEl
-                {
-                    Key = "daylist-eyebrow-row", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Children = eyebrowTrail is null
-                        ? [Eyebrow() with { Grow = 1f, Shrink = 1f }]
-                        : [Eyebrow() with { Grow = 1f, Shrink = 1f }, ClockLine(eyebrowTrail.Value)],
-                }
-                : Eyebrow() with { Key = "daylist-eyebrow" },
-            Title(p.Title, dl) with { Key = "daylist-title" },
+            new BoxEl
+            {
+                Key = "daylist-eyebrow-row", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                // The clock line is a little taller than the eyebrow: the row's height eases when it comes or goes.
+                Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+                Children = eyebrowTrail is null ? [eyebrow] : [eyebrow, ClockLine(eyebrowTrail.Value)],
+            },
+            WinUiDiscoveryMotion.AirV("daylist-gap:eyebrow", gap),
+            TitleSlot(p.Title, dl),
+            WinUiDiscoveryMotion.AirV("daylist-gap:title", gap),
             p.Tags with { Key = "daylist-tags" },
         };
-        if (!pair) kids.Add(MetaLine(p.Meta, small: false) with { Key = "daylist-meta" });
-        kids.Add(new BoxEl { Key = "daylist-spacer", Grow = 1f, MinWidth = 0f });
+        if (!pair) kids.Add(MetaSlot(p.Meta, gap));
+        kids.Add(new BoxEl { Key = "daylist-spacer", Grow = 1f, MinWidth = 0f, MinHeight = gap });
         kids.Add(p.Actions with { Key = "daylist-actions" });
-        return new BoxEl
-        {
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Gap = pair ? WinUiHomeRules.CopyGapSmall : WinUiHomeRules.CopyGapLarge, Children = kids.ToArray(),
-        };
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 
-    /// <summary>Small's clock line at the eyebrow's end, in a host that fades in with a crossing (the Triple column's twin; no exit ghost, see there).</summary>
+    /// <summary>The title's slot: its height eases through real layout (one line of 20/28 at Small, up to three of 40/52 at Standard), so the lines under it
+    /// ride it; the two rungs are keyed alternatives that cross-fade inside it (a run's size cannot ease).</summary>
+    static Element TitleSlot(string title, WinUiDaylistLayout dl) => new BoxEl
+    {
+        Key = "daylist-title", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+        Children =
+        [
+            new BoxEl
+            {
+                Key = dl.TitleLarge ? "daylist-title:large" : "daylist-title:small", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Children = [Title(title, dl)],
+            },
+        ],
+    };
+
+    /// <summary>Standard's meta line under the tags (Small carries it on the tags' line): it opens its height (its gap above it included) while it fades in,
+    /// and closes it while it fades out, so the copy never steps.</summary>
+    static Element MetaSlot(string meta, float gap) => new BoxEl
+    {
+        Key = "daylist-meta", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = new Edges4(0f, gap, 0f, 0f),
+        Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+        Children = [MetaLine(meta, small: false)],
+    };
+
+    /// <summary>Small's clock line at the eyebrow's end: the clock column's twin in the swap, fading in and out with a crossing.</summary>
     static Element ClockLine(Element clock) => new BoxEl
     {
         Key = "daylist-clock-line", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
-        Enter = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
         Children = [clock],
     };
 

@@ -169,6 +169,10 @@ public static partial class Video
             var before = Surface.Peek();
             Surface.Value = next;
             var resolved = PlacementCore.Resolve(next);
+            // The picture glides out of the docked card to the mini player (Video.UI.cs, GlideHost): the card keeps its place in the rail until
+            // it has landed, written in the same step as the placement so no render sees the one without the other. The glide clears it.
+            if (PlacementCore.Resolve(before) == SurfacePlacement.Docked && resolved == SurfacePlacement.Floating && !Stage.Picture.ShownPeek())
+                StageGlide.HoldsDock.Value = true;
             DetachedFullscreen.Value = DetachedFullscreenRule.After(DetachedFullscreen.Peek(), resolved);
             Transport.Value = PlacementCore.TransportOwnerFor(resolved);
             MainHostFullscreen.Value = resolved == SurfacePlacement.Fullscreen;

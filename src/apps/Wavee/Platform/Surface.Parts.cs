@@ -40,6 +40,8 @@ public static class SurfaceParts
     /// <summary><see cref="Gutter(Element, float)"/> at a width that may be BOUND (the surface host's live card width).</summary>
     public static BoxEl Gutter(Element shell, Prop<float> width) => new()
     {
+        // A column: the shell takes the gutter's width across it (its own content never holds the card open), its height down it.
+        Direction = 1,
         Padding = new Edges4(0f, SurfaceGeometry.ShelfGutterTop, 0f, SurfaceGeometry.ShelfGutterBottom),
         Width = width, Shrink = 0f,
         Children = [shell],

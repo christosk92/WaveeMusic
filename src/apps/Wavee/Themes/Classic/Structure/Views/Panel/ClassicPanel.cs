@@ -209,6 +209,27 @@ internal static class ClassicPanel
     /// <summary>The rail's ONE docked card over its resize handle, reached from both arms. The card's Height is the SAME FloatSignal the handle
     /// writes — a stable bind, never a fresh thunk (that left the height NaN and collapsed the card) — and the column hugs both, so the body under
     /// them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card takes every press on it).</summary>
+    /// <summary>The docked card's place in an arm that draws it over its header (every arm but now playing's, which pins it in the hero's place): a
+    /// slot whose height eases between the card's and none while the card cross-fades in or out (<paramref name="swapIn"/>: the arm stood on the
+    /// render before; an arm that arrives with its card shows it with the arm's own motion), so the arm under it rides a dock or an undock instead of
+    /// stepping by the card's height. The handle's drag writes the card's height through a bind: it never eases.</summary>
+    internal static Element DockedCapSlot(PanelProps props, bool docked, float railWidth, bool swapIn) => new BoxEl
+    {
+        Key = "docked-cap", Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+        Layout = Design.Reduced ? null : ClassicTierMotion.HeightReflow,
+        Children =
+        [
+            docked
+                ? new BoxEl
+                {
+                    Key = "docked-cap:card", Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                    Enter = swapIn ? ClassicTierMotion.SwapFade : null, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    Children = [DockedCap(props, true, railWidth)],
+                }
+                : DockedCap(props, false, railWidth),
+        ],
+    };
+
     internal static Element DockedCap(PanelProps props, bool docked, float railWidth)
     {
         Element video = props.DockedCard();
@@ -252,15 +273,33 @@ internal static class ClassicPanel
             Children = [surface, Embed.Comp(new ClassicBleedProps(props.NowPlaying, view.Width), static () => new ClassicBleed())],
         };
 
-    /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both.</summary>
-    internal static Element PinnedHero(PanelProps props, PanelView view)
+    /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both. A change of occupant while the arm stands
+    /// (<paramref name="swapIn"/>: the docked video leaving for the mini player once its picture has landed there, or docking back) cross-fades them in
+    /// the slot, whose height eases from the one's to the other's, so the arm under it rides it instead of stepping; an arm that arrives with its
+    /// occupant (a mode switch, the panel opening) shows it with the arm's own motion.</summary>
+    internal static Element PinnedHero(PanelProps props, PanelView view, bool swapIn)
     {
         Element art = Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
-        return view.Pinned switch
+        bool card = view.Pinned == PanelPinned.DockedVideo;
+        Element occupant = view.Pinned switch
         {
             PanelPinned.DockedVideo => DockedCap(props, true, view.Width),
             PanelPinned.ArtWithVideoToggle => new BoxEl { ZStack = true, Shrink = 0f, Children = [art, ArtVideoToggle(props, sheet: false)] },
             _ => art,                                                      // the page stage owns the one surface, or nothing to dock
+        };
+        return new BoxEl
+        {
+            Key = "np-pinned", Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+            Layout = Design.Reduced ? null : ClassicTierMotion.HeightReflow,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = card ? "np-pinned:card" : "np-pinned:art", Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                    Enter = swapIn ? ClassicTierMotion.SwapFade : null, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    Children = [occupant],
+                },
+            ],
         };
     }
 
@@ -368,6 +407,8 @@ internal static class ClassicPanel
 internal sealed class ClassicPanelFrame : Component
 {
     bool _motionSeeded;
+    bool _shownOpen;
+    PanelMode? _shownBody;
     PanelPlacement _seededPlacement;
     Func<ColorF>? _surfaceFill;
     Action<RectF>? _onBounds;
@@ -389,6 +430,11 @@ internal sealed class ClassicPanelFrame : Component
         // The width the arm is laid out at: the committed width docked, the record's floating width at Small; a sheet is the window's width.
         float railWidth = placement == PanelPlacement.Float ? ClassicPanelTiers.FloatW : view.Width;
         var body = view.Body;
+        // The arm stood open on the render before: a change of its docked card (or of now playing's pinned occupant) is then a swap inside it
+        // (DockedCapSlot, PinnedHero), not its arrival.
+        bool swapIn = open && _shownOpen && _shownBody == body;
+        _shownOpen = open;
+        _shownBody = body;
         var vp = UseContextSignal(Viewport.Size);
         bool sheet = placement == PanelPlacement.Sheet;
         var hooks = UseContext(InputHooks.Current);
@@ -491,16 +537,16 @@ internal sealed class ClassicPanelFrame : Component
                     }),
                     ClassicPanel.NowPlayingSheet(props, view, vp, _ask))
                 : ClassicPanel.Arm(open, placement, ClassicPanel.WithBleed(surface, props, view), edge, null,
-                    ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
+                    ClassicPanel.PinnedHero(props, view, swapIn), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
         else
         {
             Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader) : ClassicPanel.Header(props, body);
             Element bodySlot = ClassicPanel.GrowSlot(bodyLive ? ClassicPanel.Body(props, body) : new BoxEl { Grow = 1f, HitTestVisible = false });
             arm = sheet
                 ? ClassicPanel.Arm(open, placement, surface, edge, ClassicPanel.SheetHead(drag, header),
-                    ClassicPanel.DockedCap(props, view.DockedHere, railWidth), bodySlot)
+                    ClassicPanel.DockedCapSlot(props, view.DockedHere, railWidth, swapIn), bodySlot)
                 : ClassicPanel.Arm(open, placement, surface, edge, null,
-                    ClassicPanel.DockedCap(props, view.DockedHere, railWidth), header, bodySlot);
+                    ClassicPanel.DockedCapSlot(props, view.DockedHere, railWidth, swapIn), header, bodySlot);
         }
         return sheet ? arm with { OnKeyDown = _onKey } : arm;
     }

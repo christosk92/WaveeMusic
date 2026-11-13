@@ -70,6 +70,11 @@ public static class ZuneMotion
     public static readonly LayoutTransition HeightResize = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>The side panel's docked-card slot (B10: one node at every pivot): it glides to its place when a pivot change reorders it and the head (the
+    /// pivot slide's clock), and its height eases between the card's and none when the video docks or leaves, so the head and the body ride it.</summary>
+    public static readonly LayoutTransition CardSlot = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>The slot of a panorama title whose size step changes inside a <see cref="HeightResize"/> block: its height eases with the content
     /// riding its FOOT (the trailing anchor), so the title's baseline never leaves the copy under it while the glyphs scale (<see cref="TitleScale"/>
     /// on the hugging title inside, from its bottom-left: <see cref="TitleOriginX"/>, <see cref="TitleOriginY"/>).</summary>

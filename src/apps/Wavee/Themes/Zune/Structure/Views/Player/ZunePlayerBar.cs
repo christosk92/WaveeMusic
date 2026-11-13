@@ -64,8 +64,7 @@ internal static partial class ZunePlayerBar
         // ── the core half: its hooks, then the decided view ──
         var v = props.Host.Use(rc);
         var m = v.Metrics;
-        var facts = ctx.Tier();
-        var tier = ZunePlayerTiers.BarOf(facts);
+        var tier = ZunePlayerTiers.Bar(ctx.WindowTier());   // the window's tier alone: a content-tier crossing (a docking panel's slide) re-renders nothing here
         var look = ZunePlayerTiers.LookOf(m, tier.Tier);
         bool mini = tier.Form == ZuneBarForm.Mini;
         bool ends = !mini && ZuneOptions.Times() == SeekTimes.AtSliderEnds;
