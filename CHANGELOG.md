@@ -20,7 +20,10 @@ versions separately under `v*` and is not tracked in this file.)
   keep on top, "Colour from album art", back to Wavee): each pick shows at once in the player beside it. Its device
   button opens the player bar's own device picker. Scroll over it to change the volume. Open it from the new button in the player bar (or its ⋯ menu when the bar is narrow), with
   Ctrl+Alt+M, or from the taskbar's right-click menu; the full window hides while it is open and comes back from the art,
-  the back button or any way you bring Wavee back, and the music never stops (#197).
+  the back button or any way you bring Wavee back, and the music never stops. Opening it and going back are one calm motion:
+  the full window fades and settles toward the player bar's art while the mini player grows out of that side, and the reverse
+  on the way back. The mini player keeps every frame while you drag or it settles, and its lyrics run at your display's full
+  rate (#197).
 
 - **Full screen opens on the music video, in every theme.** With a video on, the app's full screen opens on the picture,
   edge to edge, instead of on the cover and lyrics: Video is its first tab, Lyrics, Visualizer, Up next and Artist stay one

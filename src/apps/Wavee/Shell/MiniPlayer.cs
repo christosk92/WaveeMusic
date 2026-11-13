@@ -54,25 +54,71 @@ public static partial class MiniPlayer
         public const float WideColumnFloor = 214f, WideHeightFloor = 142f, SquareHeightFloor = 170f;
         /// <summary>Within this distance (DIP) of a work-area corner a released window snaps to it, inset by <see cref="EdgeDip"/>.</summary>
         public const float SnapDip = 56f, EdgeDip = 12f;
-        /// <summary>The settle animation (window bounds) and its step.</summary>
-        public const float SettleMs = 300f, SettleStepMs = 16f;
+        /// <summary>The settle animation (window bounds): its length. It steps once per frame of the mini window, its progress the frame's
+        /// present time since it began (never a count of steps: a timer's steps drift off the display's frames and every late one
+        /// stretched the motion and showed as a held frame).</summary>
+        public const float SettleMs = 300f;
+
+        // ── The open and the return: ONE gesture across the two windows, on the compositor (WindowPresentationMotion) ──
+        /// <summary>The departing window's fade and settle (the main window on the open, the mini window on the return).</summary>
+        public const float SwapOutMs = 240f;
+        /// <summary>The arriving window's fade and its growth (the mini window on the open, the main window on the return).</summary>
+        public const float SwapFadeInMs = 260f, SwapGrowMs = 420f;
+        /// <summary>How far the main window settles toward its player bar's art as it leaves (and grows back from as it returns), and the
+        /// mini window's size as it grows out of the art's side (and shrinks back toward it).</summary>
+        public const float MainSettleScale = 0.96f, MiniGrowFrom = 0.86f;
+        /// <summary>Reduced motion: the same swap as a short cross-fade with no scale.</summary>
+        public const float ReducedFadeMs = 140f;
+        /// <summary>A swap's next step (hiding the main window, closing the mini window, dropping the effect) waits this long past the
+        /// motion's landing: two frames at 60 Hz, so the compositor has shown the landed pose before the window changes under it.</summary>
+        public const int SwapLandMs = 34;
+
+        static float Scale(float scale, bool reduced) => reduced ? 1f : scale;
+        static float Fade(float ms, bool reduced) => reduced ? ReducedFadeMs : ms;
+
+        /// <summary>Where the main window's player bar art sits, as a fraction of the window: the bar's leading bottom corner in every
+        /// theme (the art is the bar's first part).</summary>
+        public const float ArtX = 0f, ArtY = 1f;
+
+        /// <summary>The main window leaving: it fades and settles toward its bar's art.</summary>
+        public static WindowPresentationMotion MainOut(bool reduced) => new(
+            1f, 0f, Fade(SwapOutMs, reduced), PresentationEase.Smooth,
+            1f, Scale(MainSettleScale, reduced), SwapOutMs, PresentationEase.Smooth, ArtX, ArtY);
+
+        /// <summary>The main window returning: it fades in and grows back from its bar's art.</summary>
+        public static WindowPresentationMotion MainIn(bool reduced) => new(
+            0f, 1f, Fade(SwapFadeInMs, reduced), PresentationEase.Smooth,
+            Scale(MainSettleScale, reduced), 1f, SwapGrowMs, PresentationEase.Decelerate, ArtX, ArtY);
+
+        /// <summary>The main window's starting hold before it is shown again (the pose <see cref="MainIn"/> starts from).</summary>
+        public static WindowPresentationMotion MainHold(bool reduced) => WindowPresentationMotion.Hold(0f, Scale(MainSettleScale, reduced), ArtX, ArtY);
+
+        /// <summary>The mini window arriving: it fades in and grows out of the side that faces the main window's bar art.</summary>
+        public static WindowPresentationMotion MiniIn(bool reduced, Point2 origin) => new(
+            0f, 1f, Fade(SwapFadeInMs, reduced), PresentationEase.Smooth,
+            Scale(MiniGrowFrom, reduced), 1f, SwapGrowMs, PresentationEase.Decelerate, origin.X, origin.Y);
+
+        /// <summary>The mini window's starting hold before its first frame is shown (the pose <see cref="MiniIn"/> starts from).</summary>
+        public static WindowPresentationMotion MiniHold(bool reduced, Point2 origin) => WindowPresentationMotion.Hold(0f, Scale(MiniGrowFrom, reduced), origin.X, origin.Y);
+
+        /// <summary>The mini window leaving: it fades and shrinks back toward the art's side.</summary>
+        public static WindowPresentationMotion MiniOut(bool reduced, Point2 origin) => new(
+            1f, 0f, Fade(SwapOutMs, reduced), PresentationEase.Smooth,
+            1f, Scale(MiniGrowFrom, reduced), SwapOutMs, PresentationEase.Smooth, origin.X, origin.Y);
+
+        /// <summary>The point of the mini window (outer rect, px) nearest the main window's bar art, as a fraction of the mini window:
+        /// the side it grows out of. The art is the main window's <see cref="ArtX"/>/<see cref="ArtY"/> corner.</summary>
+        public static Point2 TowardArt(RectF mini, RectF main)
+        {
+            if (mini.W <= 0f || mini.H <= 0f || main.W <= 0f || main.H <= 0f) return new Point2(ArtX, ArtY);
+            float ax = main.X + main.W * ArtX, ay = main.Y + main.H * ArtY;
+            return new Point2(Math.Clamp((ax - mini.X) / mini.W, 0f, 1f), Math.Clamp((ay - mini.Y) / mini.H, 0f, 1f));
+        }
         /// <summary>The main window's deep memory park while the mini player is the only surface (300 s otherwise).</summary>
         public const long DeepAfterMs = 20_000;
         /// <summary>The global hot key: Ctrl+Alt+M.</summary>
         public const int HotKeyId = 0x4D50;
         public const uint HotKeyMods = 0x0002 | 0x0001, HotKeyVk = 0x4D;
-
-        /// <summary>The mini window's motion ceiling per face (fps; 0 = the display's rate). Measured 2026-11-09 at mini sizes: a spinning
-        /// style ran its per-frame clock at the panel's 120 Hz, though what moves visibly is the label or the reels (the grooves and the
-        /// rim are rotationally even): a 33⅓ rpm label at a mini side moves about 120 px/s, so 60 steps of 2 px keep it smooth at half
-        /// the frames. The lyrics view's line sweep reads the same at 30. Cover, Canvas (the clip's own rate) and the analyser (its band
-        /// clock, ~25/s) need no cap.</summary>
-        public static int FrameCap(MiniFaceKind kind) => kind switch
-        {
-            MiniFaceKind.Object => 60,
-            MiniFaceKind.Lyrics => 30,
-            _ => 0,
-        };
 
         /// <summary>A wheel notch over the player moves the volume this much (the prototype's ±4 %).</summary>
         public const float WheelStep = 0.04f;
@@ -203,14 +249,14 @@ public static partial class MiniPlayer
                 // The theme draws the analyser (WinUI's bars, Zune's waveform, Classic's sines) over the full player's own bands: the same
                 // deck host, model, clock and spectrum lease, another picture.
                 float w = MathF.Floor(r.Width), h = MathF.Floor(r.Height);
-                return Ctx.Provide(Deck.SurfaceOpen, IsOpen,
+                return Ctx.Provide(Deck.SurfaceOpen, s_windowUp,
                     Deck.Painted(f.StyleId, w, h, sig => paint(new MiniVisualizerFrame(w, h, sig.Bands, sig.Peaks, sig.LoopsRun))));
             }
             case MiniFaceKind.Visualizer:
             case MiniFaceKind.Object:
             {
                 float side = MathF.Floor(MathF.Min(r.Width, r.Height));
-                return Ctx.Provide(Deck.SurfaceOpen, IsOpen, new BoxEl
+                return Ctx.Provide(Deck.SurfaceOpen, s_windowUp, new BoxEl
                 {
                     Width = r.Width, Height = r.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, ClipToBounds = true,
                     Children = [Deck.Face(f.StyleId, side)],
@@ -226,7 +272,10 @@ public static partial class MiniPlayer
 
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
-    static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
+    /// <summary>The mini window is up (open, or leaving on the return's fade): what its animated faces gate on, so a face keeps playing
+    /// while the window fades out instead of stopping at the start of the return.</summary>
+    static readonly Signal<bool> s_windowUp = new(false);
+    static readonly Func<bool> s_lyricsVisible = static () => s_windowUp.Value;
     /// <summary>The veil a filling lyrics face reads over: the full-screen lyrics' own (its dark arm at the lyrics scrim: the mini's lyrics read
     /// on-dark in either mode, as its other controls over imagery do), the blur and its overscan.</summary>
     static ColorF LyricsVeil() => Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark).Veil with { A = Stage.Tone.ScrimA };
@@ -463,6 +512,7 @@ public static partial class MiniPlayer
     {
         EnsurePrefs();
         if (IsOpen.Peek() != mini) IsOpen.Value = mini;
+        if (s_windowUp.Peek() != mini) s_windowUp.Value = mini;
         if (face >= 0) s_face.Value = ClampFace(face);
     }
 
@@ -484,14 +534,25 @@ public static partial class MiniPlayer
     [CoreHost]
     internal sealed class Body : Component
     {
+        bool _settleSubscribed;
+
         public override Element Render()
         {
             var vp = UseContextSignal(Viewport.Size);
             float scale = UseContext(Viewport.Scale);
             UseSignalEffect(() => Track(vp.Value, scale));
-            // The settle animation's clock: THIS window's (the owner's own interval sits in the main window's tree, which is hidden while
-            // the mini player shows, and a hidden tree's intervals pause: a shape picked from the menu moved the window one step and stopped).
-            UseInterval(s_settleTick, Rules.SettleStepMs, enabled: s_settling.Value);
+            // The settle animation's clock: THIS window's frames (the owner sits in the main window's tree, which is hidden while the mini
+            // player shows, and a hidden tree's clocks pause: a shape picked from the menu moved the window one step and stopped). One
+            // step per frame while it settles, as the house FrameTicker does it: the frame subscription exists only while settling, and
+            // the subscribing run never steps (the step that began the settle already ran in that flush).
+            var frame = UseContextSignal(FluentGpu.Hooks.FrameClock.Tick);
+            UseSignalEffect(() =>
+            {
+                if (!s_settling.Value) { _settleSubscribed = false; return; }
+                _ = frame.Value;
+                if (!_settleSubscribed) { _settleSubscribed = true; return; }
+                Reactive.Untrack(s_settleTick);
+            });
             return ViewSlots.View(ViewKeys.MiniPlayer, Props);
         }
     }
@@ -511,8 +572,16 @@ public static partial class MiniPlayer
     // ══ 5. THE WINDOW'S OWNER ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE single owner of the mini window's lifecycle, mounted once in the shell's top layer; renders nothing. It opens the window
-    /// on the <see cref="IsOpen"/> edge (posted out of the reactive flush), hides the main window, persists the rect, follows keep-on-top
-    /// and the theme's material, settles and snaps the window when a gesture ends, and holds the global hot key.</summary>
+    /// on the <see cref="IsOpen"/> edge (posted out of the reactive flush), swaps the two windows in ONE motion (the open and the return,
+    /// below), persists the rect, follows keep-on-top and the theme's material, settles and snaps the window when a gesture ends, and holds
+    /// the global hot key.
+    /// <para>THE SWAP. Both windows move as a whole on the compositor (<see cref="WindowPresentationMotion"/>), never by stepping a window
+    /// rect. Open: the mini window is created at its own rect holding invisible and small; when its first frame is on screen it fades in
+    /// and grows out of the side that faces the main window's player bar art while the main window fades and settles toward that art,
+    /// and the main window is hidden once it has faded. Return: the mini window fades and shrinks back toward the art's side while the
+    /// main window is shown holding invisible and, the moment it is on screen, fades in and grows back from its art; the mini window
+    /// closes once it has faded. What Windows draws around a window (its frame, shadow and backdrop) keeps the system's own show and hide.
+    /// Reduced motion is the same swap as a short cross-fade (<see cref="Rules.ReducedFadeMs"/>, no scale).</para></summary>
     public sealed class Owner : Component
     {
         static readonly Action<FrameStats> s_shellTick = Shell.FrameTick;
@@ -520,15 +589,28 @@ public static partial class MiniPlayer
         bool _openQueued, _unmounted;
         RectF _settleFrom, _settleTo;
         float _settleT = 1f;
+        long _settleStartMs;
         long _deepWas = -1;
         Action<int>? _onHotKey;
         Action<WindowStateChange>? _onMainState;
         bool _mainHidden;
+        Action<Action>? _post;
+        /// <summary>Bumps on every swap step: a delayed step of an earlier swap (a hide, a close, an effect cleared) finds it moved on.</summary>
+        int _swapGen;
+        /// <summary>The mini window is fading out on the return; it closes when the fade has landed.</summary>
+        bool _leaving;
+        /// <summary>The main window was asked to come back and waits for its show edge to start its arrival.</summary>
+        bool _mainArrivalPending;
+        /// <summary>The main window has left (its departure was started, it may be hidden): its return is an arrival.</summary>
+        bool _mainDeparted;
+        /// <summary>The side of the mini window that faces the main window's bar art (fractions of the mini window).</summary>
+        Point2 _artSide = new(Rules.ArtX, Rules.ArtY);
 
         public override Element Render()
         {
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
+            _post = post;
             var settling = s_settling;
             UseEffect(() =>
             {
@@ -538,10 +620,14 @@ public static partial class MiniPlayer
 
             UseEffect(() =>
             {
-                // The full window coming back by ANY route (the tray, a relaunch, a wavee:// link, a jump-list task, a toast) closes the mini
-                // player: the two never show at once. Our own hide and show pass through here too, harmlessly (closed already, or not shown).
                 _onMainState = change =>
                 {
+                    // The main window is on screen again (our return's show, or any other route): its arrival starts now, from the hold
+                    // the return gave it, so the whole of the motion is seen.
+                    if (_mainArrivalPending && change.Shown && !change.Current.Parked) StartMainArrival();
+                    // The full window coming back by ANY route (the tray, a relaunch, a wavee:// link, a jump-list task, a toast) closes the
+                    // mini player: the two never show at once. Our own hide and show pass through here too, harmlessly (closed already, or
+                    // not shown).
                     if (!_mainHidden || !IsOpen.Peek() || !(change.Shown || change.Unparked) || change.Current.Parked) return;
                     Close("main-shown");
                 };
@@ -560,7 +646,7 @@ public static partial class MiniPlayer
                     _unmounted = true;
                     Win32App.HotKeyPressed -= _onHotKey;
                     Win32App.UnregisterHotKey(Rules.HotKeyId);
-                    CloseWindow();
+                    CloseWindow(animate: false);
                 };
             }, DepKey.Empty);
 
@@ -568,8 +654,13 @@ public static partial class MiniPlayer
             {
                 bool open = IsOpen.Value;
                 bool alive = _window is { IsOpen: true };
-                if (open && !alive) QueueOpen(hooks, post, settling);
-                else if (!open && alive) CloseWindow();
+                if (open && (!alive || _leaving))
+                {
+                    // Opened again while the last return is still fading: that window goes now, the new one opens as usual.
+                    if (_leaving) FinishClose();
+                    QueueOpen(hooks, post, settling);
+                }
+                else if (!open && alive && !_leaving) CloseWindow(animate: true);
             });
             UseSignalEffect(() =>
             {
@@ -587,11 +678,6 @@ public static partial class MiniPlayer
                 if (seq == 0 || _window is not { IsOpen: true } w) return;
                 var size = Rules.SizeFor(shape, s_clientDip.Width * s_clientDip.Height);
                 StartSettle(w, size, settling);
-            });
-            UseSignalEffect(() =>
-            {
-                int face = s_face.Value;
-                if (_window is { IsOpen: true } w) w.PowerCapFps = Rules.FrameCap(s_faces[ClampFace(face)].Kind);
             });
             UseSignalEffect(() =>
             {
@@ -634,13 +720,20 @@ public static partial class MiniPlayer
             }
             _window = window;
             s_live = window;
-            window.PowerCapFps = Rules.FrameCap(s_faces[ClampFace(s_face.Peek())].Kind);
+            _leaving = false;
+            int gen = ++_swapGen;
+            // The mini window holds invisible and small from its first composed frame: its reveal is the start of the swap, not a pop.
+            _artSide = Rules.TowardArt(window.BoundsPx, FluentApp.WindowBoundsPx);
+            window.AnimatePresentation(Rules.MiniHold(Motion.ReducedMotion, _artSide));
+            s_windowUp.Value = true;
             window.SetTitle(Title());
             window.OnClosed = () =>
             {
                 // The OS closed it (Alt+F4, the taskbar): the full window comes back, exactly as "back to Wavee".
                 _window = null;
                 s_live = null;
+                _leaving = false;
+                s_windowUp.Value = false;
                 if (IsOpen.Peek()) IsOpen.Value = false;
                 ShowMain();
             };
@@ -648,18 +741,43 @@ public static partial class MiniPlayer
             window.OnRevealed = timing =>
             {
                 Log.Info(LogCategory, "revealed firstPresentMs=" + timing.FirstPresentMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
-                // Only now hide the main window: the mini player is on screen first, so there is never a moment with no Wavee window.
-                if (IsOpen.Peek()) HideMain();
+                if (gen != _swapGen || _window is not { IsOpen: true } live) return;
+                // The swap: the mini window arrives while the main window leaves; the main window is hidden once it has faded, so there is
+                // never a moment with no Wavee window and never one where the main window vanishes.
+                bool reduced = Motion.ReducedMotion;
+                var arrive = Rules.MiniIn(reduced, _artSide);
+                live.AnimatePresentation(arrive);
+                After(arrive.EndMs, () => { if (_window is { IsOpen: true } w && !_leaving) w.AnimatePresentation(WindowPresentationMotion.Identity); });
+                if (IsOpen.Peek())
+                {
+                    var leave = Rules.MainOut(reduced);
+                    _mainDeparted = true;
+                    FluentApp.AnimateWindowPresentation(leave);
+                    After(leave.EndMs, () => { if (IsOpen.Peek()) HideMain(); });
+                }
                 // A restored rect is whatever was saved: by an older build mid-drag, or at another display scale. Settle it as a drag's end.
-                if (_window is { IsOpen: true } live) OnBoundsSettled(live.BoundsPx, settling);
+                OnBoundsSettled(live.BoundsPx, settling);
             };
+        }
+
+        /// <summary>Run <paramref name="step"/> on the UI thread once <paramref name="motionMs"/> of motion time has passed (stretched by the
+        /// engine's animation scale, as the compositor stretches the motion) and the compositor has shown the landing, unless the swap moved
+        /// on meanwhile (<paramref name="ofThisSwap"/> false: a window's own landing, which no later swap step cancels).</summary>
+        void After(float motionMs, Action step, bool ofThisSwap = true)
+        {
+            int gen = _swapGen;
+            var post = _post;
+            if (post is null) { step(); return; }
+            float scale = EngineSwitches.AnimScale > 0f ? EngineSwitches.AnimScale : 1f;
+            int ms = (int)MathF.Ceiling(motionMs / scale) + Rules.SwapLandMs;
+            _ = Task.Delay(ms).ContinueWith(_ => post(() => { if ((!ofThisSwap || gen == _swapGen) && !_unmounted) step(); }), TaskScheduler.Default);
         }
 
         /// <summary>The window's rect came to rest. Our own settle's steps and landing are not gestures (the landing is recognised by
         /// where it is, never by a flag a missed report would leave set): anything else settles on the nearest shape.</summary>
         void OnBoundsSettled(RectF outer, Signal<bool> settling)
         {
-            if (_window is not { IsOpen: true } || s_clientDip.Width <= 0f) return;
+            if (_window is not { IsOpen: true } || s_clientDip.Width <= 0f || _leaving) return;
             if (settling.Peek()) return;
             if (_settleT >= 1f && Near(outer, _settleTo)) { Persist(outer); return; }
             var target = Settled(outer);
@@ -697,6 +815,7 @@ public static partial class MiniPlayer
             _settleFrom = from;
             _settleTo = to;
             _settleT = 0f;
+            _settleStartMs = FrameTime.NowMs;
             if (Motion.ReducedMotion) _settleT = 1f;
             SettleStepCore();
             settling.Value = _settleT < 1f;
@@ -708,35 +827,57 @@ public static partial class MiniPlayer
             if (_settleT >= 1f && settling.Peek()) settling.Value = false;
         }
 
+        /// <summary>One settle step, at the present time of the mini window's frame: its progress is time, never a count of steps.</summary>
         void SettleStepCore()
         {
             if (_window is not { IsOpen: true } w) { _settleT = 1f; return; }
-            _settleT = MathF.Min(1f, _settleT + Rules.SettleStepMs / Rules.SettleMs);
+            if (_settleT < 1f) _settleT = Math.Clamp((FrameTime.NowMs - _settleStartMs) / Rules.SettleMs, 0f, 1f);
             w.SetBounds(_settleT >= 1f ? _settleTo : Rules.Lerp(_settleFrom, _settleTo, _settleT));
             if (_settleT >= 1f) Persist(_settleTo);
         }
 
         static void Persist(RectF r) => Platform.Settings.Set(Platform.Keys.MiniPlayerRect, Video.PlacementPersistence.SaveRect(r.X, r.Y, r.W, r.H));
 
-        void CloseWindow()
+        /// <summary>Back to the full window. Animated: the mini window fades and shrinks toward the art's side while the main window comes
+        /// back (its arrival starts on its show edge); the mini window closes once it has faded. Not animated (the owner unmounting): at
+        /// once.</summary>
+        void CloseWindow(bool animate)
+        {
+            var w = _window;
+            if (w is null) { ShowMain(); return; }
+            // Saved settled: a close mid-drag or mid-settle must not reopen at a size no shape lays out.
+            Persist(_settleT < 1f ? _settleTo : s_clientDip.Width > 0f ? Settled(w.BoundsPx) : w.BoundsPx);
+            _settleT = 1f;
+            if (s_settling.Peek()) s_settling.Value = false;
+            if (!animate || !w.IsOpen) { FinishClose(); ShowMain(); return; }
+            _leaving = true;
+            ++_swapGen;
+            _artSide = Rules.TowardArt(w.BoundsPx, FluentApp.WindowBoundsPx);
+            var leave = Rules.MiniOut(Motion.ReducedMotion, _artSide);
+            w.AnimatePresentation(leave);
+            ShowMain();
+            After(leave.EndMs, () => { if (_leaving) FinishClose(); });
+        }
+
+        /// <summary>The mini window goes (its return's fade has landed, or at once).</summary>
+        void FinishClose()
         {
             var w = _window;
             _window = null;
             s_live = null;
-            if (w is not null)
-            {
-                // Saved settled: a close mid-drag or mid-settle must not reopen at a size no shape lays out.
-                Persist(_settleT < 1f ? _settleTo : s_clientDip.Width > 0f ? Settled(w.BoundsPx) : w.BoundsPx);
-                w.FrameCompleted = null;
-                w.OnClosed = null;
-                w.BoundsChanged = null;
-                w.Close();
-            }
-            ShowMain();
+            _leaving = false;
+            _swapGen++;
+            s_windowUp.Value = false;
+            if (w is null) return;
+            w.FrameCompleted = null;
+            w.OnClosed = null;
+            w.BoundsChanged = null;
+            w.Close();
         }
 
         void HideMain()
         {
+            if (_mainHidden) return;
             if (_deepWas < 0) { _deepWas = HiddenMemoryBudget.DeepDelayMs; HiddenMemoryBudget.DeepDelayMs = Rules.DeepAfterMs; }
             FluentApp.SetWindowVisible(false);
             _mainHidden = true;
@@ -748,13 +889,33 @@ public static partial class MiniPlayer
             Log.Info(LogCategory, "main window hidden");
         }
 
+        /// <summary>The main window comes back. After a departure: shown holding invisible and settled toward its art, then, on its show
+        /// edge, it arrives (still on screen, a return before the open's fade landed: it arrives at once). Otherwise (it never left) only
+        /// shown and brought to the front.</summary>
         void ShowMain()
         {
             if (_deepWas >= 0) { HiddenMemoryBudget.DeepDelayMs = _deepWas; _deepWas = -1; }
             if (_window is { } w) w.FrameCompleted = null;
+            bool wasHidden = _mainHidden, departed = _mainDeparted;
             _mainHidden = false;
+            _mainDeparted = false;
+            if (departed)
+            {
+                FluentApp.AnimateWindowPresentation(Rules.MainHold(Motion.ReducedMotion));
+                _mainArrivalPending = true;
+            }
             Tray.Host.ShowWindow();   // un-hide, restore and bring to the front through the engine seam (the tray's door)
+            if (departed && !wasHidden && FluentApp.WindowVisible) StartMainArrival();   // no show edge will come: it never left the screen
             Log.Info(LogCategory, "main window shown");
+        }
+
+        void StartMainArrival()
+        {
+            _mainArrivalPending = false;
+            var arrive = Rules.MainIn(Motion.ReducedMotion);
+            FluentApp.AnimateWindowPresentation(arrive);
+            // The main window's own step: the mini window closing meanwhile (which moves the swap on) must not keep it from landing clean.
+            After(arrive.EndMs, () => { if (!_mainHidden && !_mainDeparted && !_mainArrivalPending && !IsOpen.Peek()) FluentApp.AnimateWindowPresentation(WindowPresentationMotion.Identity); }, ofThisSwap: false);
         }
     }
 }
