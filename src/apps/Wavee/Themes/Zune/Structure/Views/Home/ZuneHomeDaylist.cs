@@ -279,6 +279,10 @@ internal static class ZuneHomeDaylist
             {
                 Key = "zune-daylist-text", Direction = 1, Gap = H.DaylistCopyGap, MinWidth = 0f,
                 Justify = parked ? FlexJustify.SpaceBetween : FlexJustify.Center,
+                // The words, the rings' slots and the clock slide where the strip re-flows them: a docking panel's slide breaks the rings row at the
+                // width the strip lands at on its first frame (the engine's structure width), a frame before the form crossing cross-fades the strip,
+                // and the words and the clock re-centred around the wrapped rings in one frame.
+                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
                 Grow = end ? 1f : 0f, Shrink = 1f, Basis = end ? 0f : float.NaN, Children = textKids.ToArray(),
             },
             new BoxEl
@@ -325,7 +329,8 @@ internal static class ZuneHomeDaylist
             {
                 Key = "zune-daylist-clock", Direction = 1, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center, ClipToBounds = true,
                 Width = lay.ClockW, MaxHeight = lay.ClockW > 0f ? float.NaN : 0f,   // a tier with no clock must not let its hidden face stretch the strip
-                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = lay.ClockW > 0f ? [clock] : [],
+                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f),
+                Children = lay.ClockW > 0f ? [clock with { Layout = Design.Reduced ? null : ZuneMotion.PivotSlide }] : [],
                 Enter = wordsIn, Transition = wordsMotion,
             },
         };
@@ -355,6 +360,7 @@ internal static class ZuneHomeDaylist
             AlignSelf = !bleed ? FlexAlign.Auto : i == 0 ? FlexAlign.Start : FlexAlign.End,
             JustifySelf = bleed ? FlexAlign.End : FlexAlign.Auto,
             Margin = new Edges4(0f, 0f, inset, 0f),
+            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = [ring],
         };
     }

@@ -57,7 +57,7 @@ internal static class ClassicHomeRecents
             stale.Value = measured.Value;
         }
         lastForm.Value = (layout.Tier, layout.DaylistBeside);
-        return Tree(props, layout, estimate, hooks, w =>
+        return Tree(props, layout, estimate, hooks, hooks.UseRef(-1), w =>
         {
             if (!float.IsNaN(seed.Value))
             {
@@ -77,7 +77,7 @@ internal static class ClassicHomeRecents
         return Tree(new HomeRecentsProps
         {
             Zone = zone, Cells = cells, Week = default, Playing = s_idle, RemoteDeviceName = s_noDevice,
-        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1), hooks: null, width: null);
+        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1), hooks: null, shown: null, width: null);
     }
 
     /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid when its measured width (through <paramref name="width"/>: the
@@ -86,8 +86,10 @@ internal static class ClassicHomeRecents
     /// both the template and the skeleton call.
     /// <para>Every tile is built here, once per what it shows (<see cref="ItemMemo"/> over the template's <paramref name="hooks"/>; null for the
     /// proxy), and the grid takes the count its columns keep: a re-render that changes nothing a tile shows (the tier's) hands each tile back
-    /// unchanged.</para></summary>
-    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth, RenderContext? hooks, Func<float, float>? width)
+    /// unchanged.</para>
+    /// <para><paramref name="shown"/> holds the played cells the grid showed last (the template's; null for the proxy): a count change is one motion
+    /// (<see cref="Grid"/>).</para></summary>
+    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth, RenderContext? hooks, Ref<int>? shown, Func<float, float>? width)
     {
         var cells = p.Cells;
         var shape = TileShape(Shape.RowTile, layout);
@@ -95,7 +97,7 @@ internal static class ClassicHomeRecents
         for (int i = 0; i < tiles.Length; i++)
             tiles[i] = ItemMemo.Of(hooks, new RowKey(cells[i], i, p.Playing, p.RemoteDeviceName, layout.RecentsArt, shape), s_row);
         var history = ItemMemo.Of(hooks, new HistoryKey(p.Week, DateTime.Today, layout.RecentsArt, TileShape(Shape.RowOutline, layout)), s_history);
-        return Responsive.Of("home:recents", w => ColumnsAt(width is null ? w : width(w), layout), cols => Grid(cols, tiles, history, layout),
+        return Responsive.Of("home:recents", w => ColumnsAt(width is null ? w : width(w), layout), cols => Grid(cols, tiles, history, layout, shown),
                              fallback: firstWidth);
     }
 
@@ -110,12 +112,18 @@ internal static class ClassicHomeRecents
     /// <summary>The grid at <paramref name="cols"/> columns: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).
     /// The grid lays out exactly the <paramref name="cols"/> it was built for, as equal star tracks, never a count of its own: the tiles it keeps are
     /// chosen for that count, so a grid that counted its own auto-fill columns took a docking panel's landing count on the slide's first frame
-    /// while the tiles were still the old count's, and stood a frame at twice its rows over the zone under it (2 columns of 8 tiles).</summary>
-    static Element Grid(int cols, Element[] tiles, Element history, ClassicHomeLayout layout)
+    /// while the tiles were still the old count's, and stood a frame at twice its rows over the zone under it (2 columns of 8 tiles).
+    /// <para>A count change is ONE motion (a docking panel's slide moves it from 3 to 4 columns and back): every tile that stays glides and resizes into
+    /// its new cell and a tile the new count drops fades as it leaves (<see cref="ClassicTierMotion.Refit"/> on each tile), and a tile the new count adds
+    /// fades in at its final cell (<see cref="ClassicTierMotion.RefitEnter"/>). Only a tile added after the grid's first render enters: one that
+    /// arrives with the page arrives with the page's own entrance. <paramref name="shown"/> is null for the proxy (nothing enters).</para></summary>
+    static Element Grid(int cols, Element[] tiles, Element history, ClassicHomeLayout layout, Ref<int>? shown)
     {
         int n = layout.RecentsCells(cols, tiles.Length);
+        int was = shown is null || shown.Value < 0 ? n : shown.Value;
+        if (shown is not null) shown.Value = n;
         var rows = new Element[n + 1];
-        Array.Copy(tiles, rows, n);
+        for (int i = 0; i < n; i++) rows[i] = i < was ? tiles[i] : tiles[i] with { Enter = ClassicTierMotion.RefitEnter };
         rows[n] = history;
         return new GridEl
         {
@@ -188,7 +196,7 @@ internal static class ClassicHomeRecents
         return new BoxEl
         {
             Key = c.IsBlank ? "recent-blank:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) : "recent:" + uri,
-            Direction = 1, MinWidth = 0f,
+            Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Refit,
             Children = [Controls.Surface(data, k.Shape)],
         };
     }
@@ -238,7 +246,7 @@ internal static class ClassicHomeRecents
         { Trailing = Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f } };
         return new BoxEl
         {
-            Key = "recent:history", Direction = 1, MinWidth = 0f,
+            Key = "recent:history", Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Refit,
             Children = [Controls.Surface(data, k.Shape)],
         };
     }
