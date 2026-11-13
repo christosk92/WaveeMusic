@@ -10,7 +10,9 @@
 // rung, and the modal size-move edge), never once per resized frame: the engine commits a crossing on the first frame that
 // is not resized (plan 3.3), so the template re-renders once, on the frame the crossing animates.
 
+using System.Runtime.CompilerServices;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using FluentGpu.Theming;
 
 namespace Wavee.Theming;
@@ -25,6 +27,19 @@ public static class TierContext
         var facts = ctx.Hooks.UseContext(ThemeFactsContext.Signal);
         return facts is null ? TierFacts.Unknown : facts.Value.Tiers;
     }
+
+    /// <summary>The WINDOW's width tier alone (Standard where no root resolved the tiers: a view mounted alone), for a view whose structure follows the
+    /// window and never the content region (the play bar, the side panel). It reads the facts through a memo, so the view re-renders when the window
+    /// tier crosses, never when only the content tier, a rung or the published widths move: a docking panel's slide crosses the content tier while the
+    /// window stays put, and a template subscribed to the whole facts re-rendered for nothing on the slide's commit frame.</summary>
+    public static WidthTier WindowTier(this in ViewContext ctx, [CallerFilePath] string? file = null, [CallerLineNumber] int line = 0)
+    {
+        var facts = ctx.Hooks.UseContext(ThemeFactsContext.Signal);
+        return ctx.Hooks.UseComputed(() => WindowOf(facts is null ? TierFacts.Unknown : facts.Value.Tiers), file, line).Value;
+    }
+
+    /// <summary>The window's width tier of <paramref name="tiers"/>: Standard where no policy resolved them (the records' rule for a view mounted alone).</summary>
+    public static WidthTier WindowOf(in TierFacts tiers) => tiers.Policy is null ? WidthTier.Standard : tiers.Window;
 
     /// <summary>The window tiers as a LIVE reader for a bound channel (<c>Prop.Of(() => record(tiers()).X)</c>): calling it inside a bind
     /// subscribes that bind, never the template, so a template that renders once (the frame) follows a crossing without re-rendering.

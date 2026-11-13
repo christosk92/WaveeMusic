@@ -55,8 +55,7 @@ internal static partial class WinUiPlayerBar
         // ── the core half: its hooks, then the decided view ──
         var v = props.Host.Use(rc);
         var m = v.Metrics;
-        var facts = ctx.Tier();
-        var window = facts.Policy is null ? WidthTier.Standard : facts.Window;
+        var window = ctx.WindowTier();   // the window's tier alone: a content-tier crossing (a docking panel's slide) re-renders nothing here
         var look = WinUiPlayerTiers.LookOf(m, window);
         bool mini = look.Mini;
         bool reduced = ctx.Reduced;

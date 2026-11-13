@@ -53,7 +53,7 @@ internal static partial class ClassicPlayerBar
         var v = props.Host.Use(rc);
         var m = v.Metrics;
         // The window tier's form (TC2): read every render (a hook), so a crossing re-renders the bar once, on the crossing frame.
-        var barTier = ClassicPlayerTiers.BarOf(ctx.Tier());
+        var barTier = ClassicPlayerTiers.Bar(ctx.WindowTier());   // the window's tier alone: a content-tier crossing (a docking panel's slide) re-renders nothing here
         bool huge = barTier.Form == ClassicBarForm.Huge;
         float artSize = huge ? ClassicPlayerTiers.HugeArt : m.ArtSize;
 
