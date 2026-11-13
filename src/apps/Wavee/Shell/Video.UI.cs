@@ -106,6 +106,12 @@ public static partial class Video
     static readonly RootState<NodeHandle> s_dockedReservationState = new("Video.DockedReservation");
     static NodeHandle s_dockedReservation { get => s_dockedReservationState.Value; set => s_dockedReservationState.Value = value; }
 
+    /// <summary>The docked face that last reported the docked surface live (null: none). A face's unmount reports the surface gone only while it is that
+    /// owner (or none is): a card that fades out of the rail (its swap's exit) is reclaimed a fade later, and must not report the docked surface gone
+    /// under a card that mounted and went live meanwhile (docked back at once). ROOT-LIFETIME state, as the reservation.</summary>
+    static readonly RootState<object?> s_dockedLiveOwnerState = new("Video.DockedLiveOwner");
+    static object? s_dockedLiveOwner { get => s_dockedLiveOwnerState.Value; set => s_dockedLiveOwnerState.Value = value; }
+
     /// <summary>The overlay's <c>FollowRect</c>: ONE cached delegate (a fresh closure per render would re-diff the box). It
     /// reads the placement with <c>Peek</c> because the engine runs it outside any reactive scope. While the full-screen stage shows
     /// the picture (its Video mode, <c>Stage.Picture</c>) the presenter follows the STAGE's reservation, whichever home it came from;
@@ -1089,10 +1095,19 @@ public static partial class Video
             }
 
             // Reality: the DERIVED mount, never the placement alone (a yielded rail face is not mounted).
-            UseEffect(() => State.ReportLive(SurfacePlacement.Docked, mount), DepKey.From(mount));
+            UseEffect(() =>
+            {
+                if (mount) s_dockedLiveOwner = this;
+                else if (ReferenceEquals(s_dockedLiveOwner, this)) s_dockedLiveOwner = null;
+                State.ReportLive(SurfacePlacement.Docked, mount);
+            }, DepKey.From(mount));
             UseEffect(() => () =>
             {
-                State.ReportLive(SurfacePlacement.Docked, false);
+                if (s_dockedLiveOwner is null || ReferenceEquals(s_dockedLiveOwner, this))
+                {
+                    s_dockedLiveOwner = null;
+                    State.ReportLive(SurfacePlacement.Docked, false);
+                }
                 // Release OUR reservation only if a newer face has not already registered its own. Then (and only then)
                 // is nothing left to cover, so the fallback collapses; a successor keeps the last rect (see DockedSlot).
                 // (A cleanup that runs after its root's scope ended sees the next scope's empty slot: that is "nothing registered".)

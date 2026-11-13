@@ -77,6 +77,15 @@ versions separately under `v*` and is not tracked in this file.)
   first frame instead of rewrapping step by step as the panel moves. The page's foot makes room for the mini player as
   the picture arrives, instead of cutting off at once, and the "Recently played" tiles change their columns in one step
   (a narrowing page showed twice its rows for a frame).
+- **Home keeps still while the right panel opens or closes (every theme).** When the panel's slide (a music video moving
+  to the mini player and back, or a window resize) takes Home to another layout, WinUI's daylist card changes shape as one
+  motion (the cover, the copy and the clock column ease to their new places, the title cross-fades between its sizes)
+  instead of jumping, and its "Following" button fades out of one place before it appears in the other instead of
+  showing twice. Zune's "new" releases fade out of their row and back in beside the history tiles instead of sliding
+  across them, and Classic's daylist buttons glide to their new place. With the right panel open on Now playing, Queue,
+  Lyrics or Friends, the docked video card fades out (or in) while the panel's contents ease up (or down) into its place,
+  and the cover takes over from the card with a cross-fade, instead of the panel jumping by the card's height. The play bar
+  and the panel no longer redraw when only the page's layout changes.
 - **The controls over a video go the moment the pointer leaves the window, as on YouTube.** In full screen (Cinema and
   Theatre), over the docked, floating and pop-out video and in the mini player, moving the pointer out of the window (off
   any edge, onto another screen or the taskbar, under a window that comes up over Wavee) or switching away with Alt+Tab
