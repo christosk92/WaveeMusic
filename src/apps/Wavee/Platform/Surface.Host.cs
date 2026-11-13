@@ -80,7 +80,8 @@ public static partial class Controls
     {
         SurfaceProps? _latest;
         readonly Signal<SurfaceProps?> _props = new(null);
-        // The shelf card's width, written on every re-push: the shelf body and the gutter bind their sizes to it.
+        // The shelf card's width, written on every re-push: the shelf body and the gutter bind their sizes to it, unless the shelf provides
+        // its slot's own live width (PagedShelf.CardWidth), which they bind instead.
         readonly Signal<float> _width = new(float.NaN);
         readonly Signal<bool> _hot = new(false);
         bool _pointerIn, _selfFocus, _innerFocus;
@@ -126,14 +127,19 @@ public static partial class Controls
             var overlay = UseContext(Overlay.Service);
             RowScope? row = UseContext(ItemsView.SlotRow);
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            // A shelf that binds its cards' width (PagedShelf.CardWidth) hands the live width here instead of re-rendering its slot on it.
+            IReadSignal<float>? shelfWidth = UseContext(PagedShelf.CardWidth);
             var p = _props.Value;
             if (p is null) return new BoxEl();
             var d = p.Data;
             var s = p.Shape;
+            IReadSignal<float> liveWidth = shelfWidth ?? _width;
 
             // A seed is the shape's bone face: disabled, no plate, no chrome, no handlers. In a bound slot its owner also
-            // disables the row, so the slot root dims and refuses invoke.
-            if (d.IsSeed) return SurfaceParts.Seed(in s, p.Width, d.Height, CoverShape.IsCircular(d.Circular, d.CoverAspect));
+            // disables the row, so the slot root dims and refuses invoke. Its face is built from the width itself, so it reads it.
+            if (d.IsSeed)
+                return SurfaceParts.Seed(in s, shelfWidth is null || float.IsNaN(p.Width) ? p.Width : shelfWidth.Value, d.Height,
+                                         CoverShape.IsCircular(d.Circular, d.CoverAspect));
             var style = _style ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.Surface);
             if (style is null) return new BoxEl();
 
@@ -160,7 +166,7 @@ public static partial class Controls
             }
             Element body = s.IsRow
                 ? style.RowBody(d, in s, overlayOn, chrome, hasMenu, play, _text)
-                : style.StackBody(d, in s, _width.Peek(), float.IsNaN(p.Width) ? null : _width, overlayOn, chrome, hasMenu, play, _text);
+                : style.StackBody(d, in s, liveWidth.Peek(), float.IsNaN(p.Width) ? null : liveWidth, overlayOn, chrome, hasMenu, play, _text);
             // FOCUS WITHIN, with no scene walk: the dispatcher fires OnFocusChanged on an ancestor as a ROUTED boundary
             // event (focus entering/leaving its SUBTREE), so this NON-focusable wrapper hears a Tab from the shell onto
             // the surface's own FAB as an ENTRY — the very move the shell itself reads as a loss. Layout-transparent (a
@@ -193,7 +199,7 @@ public static partial class Controls
             if (d.Selected) shell = style.Selected(shell, _latest?.Data.SelectedAccent);
             // The menu rides on the shell in BOTH modes: the right-click funnel is not a gesture owner.
             if (hasMenu) shell = ContextSheets.Attach(shell, overlay!, _menu);
-            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, _width);
+            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, Prop.Bind(liveWidth));
             return SurfaceRules.TitleTip(trimmed: false, hasLabels: s.Labels) ? LabelTip(root, d.Title) : root;
         }
 

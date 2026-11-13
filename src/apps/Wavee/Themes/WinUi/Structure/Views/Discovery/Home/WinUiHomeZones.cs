@@ -330,6 +330,7 @@ internal static class WinUiHomeZones
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open, the lead cell's too
+            cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
             cardHeight: cardHeight,
             // The header owns the pager (the controller) where the tier pages the shelf; a tier that does not shows none.
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,

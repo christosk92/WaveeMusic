@@ -79,6 +79,7 @@ internal static class ZuneHomeZones
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, 1f, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
+            cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
             cardHeight: s_coverHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
@@ -109,6 +110,7 @@ internal static class ZuneHomeZones
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, R.Space.WideTileAspect, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
+            cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
             cardHeight: s_wideHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
