@@ -57,7 +57,7 @@ internal static class ClassicHomeRecents
             stale.Value = measured.Value;
         }
         lastForm.Value = (layout.Tier, layout.DaylistBeside);
-        return Tree(props, layout, estimate, w =>
+        return Tree(props, layout, estimate, hooks, w =>
         {
             if (!float.IsNaN(seed.Value))
             {
@@ -77,15 +77,27 @@ internal static class ClassicHomeRecents
         return Tree(new HomeRecentsProps
         {
             Zone = zone, Cells = cells, Week = default, Playing = s_idle, RemoteDeviceName = s_noDevice,
-        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1), width: null);
+        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1), hooks: null, width: null);
     }
 
     /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid when its measured width (through <paramref name="width"/>: the
     /// template's form-change seed) changes its COLUMN count, the only thing the grid reads from the width (the grid fits its own tracks): a width
     /// that keeps the count re-lays the tiles out and re-renders nothing (audit B3bc: every tick of a docking pane rebuilt the grid). The ONE builder
-    /// both the template and the skeleton call.</summary>
-    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth, Func<float, float>? width)
-        => Responsive.Of("home:recents", w => ColumnsAt(width is null ? w : width(w), layout), cols => Grid(cols, p, layout), fallback: firstWidth);
+    /// both the template and the skeleton call.
+    /// <para>Every tile is built here, once per what it shows (<see cref="ItemMemo"/> over the template's <paramref name="hooks"/>; null for the
+    /// proxy), and the grid takes the count its columns keep: a re-render that changes nothing a tile shows (the tier's) hands each tile back
+    /// unchanged.</para></summary>
+    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth, RenderContext? hooks, Func<float, float>? width)
+    {
+        var cells = p.Cells;
+        var shape = TileShape(Shape.RowTile, layout);
+        var tiles = new Element[cells.Count];
+        for (int i = 0; i < tiles.Length; i++)
+            tiles[i] = ItemMemo.Of(hooks, new RowKey(cells[i], i, p.Playing, p.RemoteDeviceName, layout.RecentsArt, shape), s_row);
+        var history = ItemMemo.Of(hooks, new HistoryKey(p.Week, DateTime.Today, layout.RecentsArt, TileShape(Shape.RowOutline, layout)), s_history);
+        return Responsive.Of("home:recents", w => ColumnsAt(width is null ? w : width(w), layout), cols => Grid(cols, tiles, history, layout),
+                             fallback: firstWidth);
+    }
 
     /// <summary>The grid's column count at width <paramref name="w"/>. An auto-fill band counts its columns with the engine's own formula; a
     /// fixed band (Huge, C-Home-Huge: two columns beside the hero) lays out exactly its count as equal star tracks.</summary>
@@ -99,13 +111,12 @@ internal static class ClassicHomeRecents
     /// The grid lays out exactly the <paramref name="cols"/> it was built for, as equal star tracks, never a count of its own: the tiles it keeps are
     /// chosen for that count, so a grid that counted its own auto-fill columns took a docking panel's landing count on the slide's first frame
     /// while the tiles were still the old count's, and stood a frame at twice its rows over the zone under it (2 columns of 8 tiles).</summary>
-    static Element Grid(int cols, HomeRecentsProps p, ClassicHomeLayout layout)
+    static Element Grid(int cols, Element[] tiles, Element history, ClassicHomeLayout layout)
     {
-        var cells = p.Cells;
-        int n = layout.RecentsCells(cols, cells.Count);
+        int n = layout.RecentsCells(cols, tiles.Length);
         var rows = new Element[n + 1];
-        for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p, layout);
-        rows[n] = HistoryTile(p.Week, layout);
+        Array.Copy(tiles, rows, n);
+        rows[n] = history;
         return new GridEl
         {
             Columns = StarTracks(cols),
@@ -130,12 +141,21 @@ internal static class ClassicHomeRecents
     /// touches two node props and re-renders nothing). The equalizer box opts out of skeleton derivation: a
     /// shimmer never shows a "playing" pill. A blank seed card has no uri, so it is keyed by its
     /// <paramref name="index"/> (the shelf's <c>home-shelf-blank:{i}</c> rule) — seven blanks never share a key.</summary>
-    static Element Row(RecentsCell cell, int index, HomeRecentsProps p, ClassicHomeLayout layout)
+    /// <summary>Everything a played tile shows (its <see cref="ItemMemo"/> key): the cell, its place (a blank's key), the live facts it binds, and the
+    /// tier's art and shape.</summary>
+    readonly record struct RowKey(RecentsCell Cell, int Index, IReadSignal<bool> Playing, Func<string?> RemoteDevice, float Art, SurfaceShape Shape);
+
+    static readonly Func<RowKey, Element> s_row = static k => Row(in k);
+
+    static Element Row(in RowKey k)
     {
+        var cell = k.Cell;
+        int index = k.Index;
+        var playing = k.Playing;
         var c = cell.Card;
         string uri = c.Uri;
         string whenTail = cell.When.Length > 0 ? " · " + cell.When : "";
-        var remoteDevice = p.RemoteDeviceName;
+        var remoteDevice = k.RemoteDevice;
 
         var subtitle = new BoxEl
         {
@@ -145,7 +165,7 @@ internal static class ClassicHomeRecents
                 new BoxEl
                 {
                     Shrink = 0f, Visible = Prop.Of(() => Controls.RelatesNow(uri)),
-                    Children = [Controls.Equalizer(Controls.PlayingWhenRelates(p.Playing, uri), Tok.AccentDefault, ClassicHomeRules.EqualizerH)],
+                    Children = [Controls.Equalizer(Controls.PlayingWhenRelates(playing, uri), Tok.AccentDefault, ClassicHomeRules.EqualizerH)],
                 }.Skeletonized(false),
                 ClassicHomeZones.Meta(cell.Detail) with { Shrink = 1f },
                 // The tail wears the line's own secondary ink: the boards draw the whole subtitle in one ink ("Playlist · 6 min ago", C-Home),
@@ -163,13 +183,13 @@ internal static class ClassicHomeRecents
         var data = new Controls.CardData(uri, cell.Title, subtitle, c.ImageUrl,
             () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
             Circular: cell.Round, Drag: HomeCardNav.DragOf(in c),
-            CoverOverride: c.Kind == HomeCardKind.Liked ? Sidebar.Cover.Liked(layout.RecentsArt) : null)
+            CoverOverride: c.Kind == HomeCardKind.Liked ? Sidebar.Cover.Liked(k.Art) : null)
         { Menu = HomeCardNav.MenuOf(in c) };
         return new BoxEl
         {
             Key = c.IsBlank ? "recent-blank:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) : "recent:" + uri,
             Direction = 1, MinWidth = 0f,
-            Children = [Controls.Surface(data, TileShape(Shape.RowTile, layout))],
+            Children = [Controls.Surface(data, k.Shape)],
         };
     }
 
@@ -177,10 +197,16 @@ internal static class ClassicHomeRecents
     /// <see cref="Controls.IconPlate"/> for a cover, the stock <see cref="SparkBars"/> 7-day strip (left = six days
     /// ago, right = today in the full accent) beside "{n} plays this week", a trailing chevron, no play FAB. Opens
     /// the listening history.</summary>
-    static Element HistoryTile(RecentsWeek week, ClassicHomeLayout layout)
+    /// <summary>Everything the history tile shows (its <see cref="ItemMemo"/> key): the week, the day it ends on, the tier's art and shape.</summary>
+    readonly record struct HistoryKey(RecentsWeek Week, DateTime Today, float Art, SurfaceShape Shape);
+
+    static readonly Func<HistoryKey, Element> s_history = static k => HistoryTile(in k);
+
+    static Element HistoryTile(in HistoryKey k)
     {
+        var week = k.Week;
         var culture = System.Globalization.CultureInfo.CurrentCulture;
-        var today = DateTime.Today;
+        var today = k.Today;
         var bars = new SparkBar[7];
         for (int i = 0; i < bars.Length; i++)
         {
@@ -208,12 +234,12 @@ internal static class ClassicHomeRecents
         };
         var data = new Controls.CardData("home:history", Loc.Get(Strings.Home.ListeningHistory), subtitle, null,
             HomeVerbs.OpenRecents, OnPlay: null, ShowMenu: false,
-            CoverOverride: Controls.IconPlate(Icons.Headphones, layout.RecentsArt, Tok.AccentSubtle, Tok.AccentTextPrimary))
+            CoverOverride: Controls.IconPlate(Icons.Headphones, k.Art, Tok.AccentSubtle, Tok.AccentTextPrimary))
         { Trailing = Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f } };
         return new BoxEl
         {
             Key = "recent:history", Direction = 1, MinWidth = 0f,
-            Children = [Controls.Surface(data, TileShape(Shape.RowOutline, layout))],
+            Children = [Controls.Surface(data, k.Shape)],
         };
     }
 }

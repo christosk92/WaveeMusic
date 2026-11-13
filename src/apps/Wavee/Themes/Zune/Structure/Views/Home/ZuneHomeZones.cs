@@ -35,14 +35,16 @@ namespace Wavee.Themes.Zune;
 internal static class ZuneHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key.</summary>
-    public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx) => Tree(props.Zone, props.Overlay, ZuneHomeTiers.Of(ctx.Tier()));
+    public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
+        => Tree(props.Zone, props.Overlay, ZuneHomeTiers.Of(ctx.Tier()), ctx.Hooks);
 
-    /// <summary>The body of <paramref name="zone"/>: what the template and the page's skeleton proxy both build.</summary>
-    internal static Element Tree(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay) => zone.Kind switch
+    /// <summary>The body of <paramref name="zone"/>: what the template and the page's skeleton proxy both build. <paramref name="hooks"/> is the
+    /// template's (null for the proxy): a row that shows what it showed last render is handed back as the same element (<see cref="ItemMemo"/>).</summary>
+    internal static Element Tree(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay, RenderContext? hooks = null) => zone.Kind switch
     {
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid => CoverShelf(zone, overlay, lay),
         ZoneKind.WideTiles or ZoneKind.VideoTiles => WideShelf(zone, overlay, lay),
-        ZoneKind.ReleaseList => ReleaseList(zone, lay),
+        ZoneKind.ReleaseList => ReleaseList(zone, lay, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => Clusters(zone, lay),
         ZoneKind.BrowseTiles => BrowseTiles(zone, lay),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows or ZoneKind.ContinueEpisodes => Episodes(zone, lay),
@@ -134,7 +136,7 @@ internal static class ZuneHomeZones
     // ── the release list ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>"From artists you follow": 64 rows of 56 art, the release's kind and artist under its name, the "when" at the end.</summary>
-    static Element ReleaseList(Zone zone, ZuneHomeLayout lay)
+    static Element ReleaseList(Zone zone, ZuneHomeLayout lay, RenderContext? hooks)
     {
         var items = zone.Items;
         int n = Math.Min(items.Count, H.ReleaseRowsMax);
@@ -143,19 +145,35 @@ internal static class ZuneHomeZones
         var culture = CultureInfo.CurrentCulture;
         var rows = new Element[n];
         var shape = Shape.Row(lay.ReleaseArt) with { MinHeight = lay.ReleaseRowH };
-        for (int i = 0; i < n; i++) rows[i] = ReleaseRow(items[i], i, nowMs, tz, culture, shape, lay.ReleaseWhenW);
+        for (int i = 0; i < n; i++)
+        {
+            var c = items[i];
+            string type = ReleaseListRules.TypeLabel(c.Kind);
+            string sub = HomeCards.PlainText(c.Subtitle);
+            var key = new ReleaseRowKey(c, i, c.Uri, c.Title, type.Length > 0 && sub.Length > 0 ? type + " · " + sub : type + sub, c.ImageUrl,
+                                        ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture), shape, lay.ReleaseWhenW);
+            rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
+        }
         return K.Section(Heading(zone, lay, Loc.Get(Strings.Home.Zone.FromArtistsYouFollow)),
             new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows });
     }
 
-    static Element ReleaseRow(HomeCard c, int index, long nowMs, TimeZoneInfo tz, CultureInfo culture, SurfaceShape shape, float whenW)
+    /// <summary>Everything a release row shows: the card and its place (a blank's key), its strings and art, the tier's shape and "when" lane (the
+    /// row's <see cref="ItemMemo"/> key).</summary>
+    readonly record struct ReleaseRowKey(HomeCard Card, int Index, string Uri, string Title, string Line, string? Image, string When,
+                                         SurfaceShape Shape, float WhenW);
+
+    static readonly Func<ReleaseRowKey, Element> s_releaseRow = static k => ReleaseRow(in k);
+
+    static Element ReleaseRow(in ReleaseRowKey k)
     {
-        string type = ReleaseListRules.TypeLabel(c.Kind);
-        string sub = HomeCards.PlainText(c.Subtitle);
-        string line = type.Length > 0 && sub.Length > 0 ? type + " · " + sub : type + sub;
-        string when = ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture);
-        var data = new Controls.CardData(c.Uri, c.Title, line.Length > 0 ? K.Caption(line, cased: false) with { Color = Tok.TextSecondary } : null,
-            c.ImageUrl, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Drag: HomeCardNav.DragOf(in c))
+        var c = k.Card;
+        int index = k.Index;
+        var shape = k.Shape;
+        float whenW = k.WhenW;
+        string line = k.Line, when = k.When;
+        var data = new Controls.CardData(k.Uri, k.Title, line.Length > 0 ? K.Caption(line, cased: false) with { Color = Tok.TextSecondary } : null,
+            k.Image, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Drag: HomeCardNav.DragOf(in c))
         {
             // Compact has no "when" lane (the board gives the row's end to its "…").
             Trailing = when.Length > 0 && whenW > 0f
@@ -165,7 +183,7 @@ internal static class ZuneHomeZones
         };
         return new BoxEl
         {
-            Key = c.IsBlank ? "zune-release-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-release:" + c.Uri,
+            Key = c.IsBlank ? "zune-release-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-release:" + k.Uri,
             Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in shape), Children = [Controls.Surface(data, shape)],
         };
     }

@@ -77,7 +77,7 @@ internal static class ClassicHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key whose body needs nothing but its zone.</summary>
     public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
-        => BodyTree(props.Zone, props.Overlay, props.Controller, ClassicHomeTiers.Of(ctx.Tier()));
+        => BodyTree(props.Zone, props.Overlay, props.Controller, ClassicHomeTiers.Of(ctx.Tier()), ctx.Hooks);
 
     // ══ 1. THE COLUMN ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -264,14 +264,16 @@ internal static class ClassicHomeZones
     }
 
     /// <summary>The picture of every kind that is a pure function of its zone: what the `Home.Zone.{Kind}` template and its skeleton
-    /// proxy both build.</summary>
-    internal static Element BodyTree(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout) => zone.Kind switch
+    /// proxy both build. <paramref name="hooks"/> is the template's (null for a proxy): a row that shows what it showed last render is handed
+    /// back as the same element (<see cref="ItemMemo"/>), so a tier re-render re-renders none of its surfaces.</summary>
+    internal static Element BodyTree(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout,
+                                     RenderContext? hooks = null) => zone.Kind switch
     {
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
-        ZoneKind.ReleaseList => ReleaseList(zone, layout),
+        ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
-        ZoneKind.BrowseTiles => BrowseTiles(zone, layout),
+        ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes),
         ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue),
         ZoneKind.EmptyFacet => EmptyFacet(zone),
@@ -436,7 +438,7 @@ internal static class ClassicHomeZones
 
     // ── 2.3 release list: "From artists you follow" — a SectionHeader sub-block over a two-column Surface(Row) grid ──
 
-    static Element ReleaseList(Zone zone, ClassicHomeLayout layout)
+    static Element ReleaseList(Zone zone, ClassicHomeLayout layout, RenderContext? hooks)
     {
         var items = zone.Items;
         int n = Math.Min(items.Count, ClassicHomeRules.ReleaseRowsMax);
@@ -447,7 +449,13 @@ internal static class ClassicHomeZones
         var culture = System.Globalization.CultureInfo.CurrentCulture;
 
         var rows = new Element[n];
-        for (int i = 0; i < n; i++) rows[i] = ReleaseRow(items[i], nowMs, tz, culture);
+        for (int i = 0; i < n; i++)
+        {
+            var c = items[i];
+            var key = new ReleaseRowKey(c, c.Uri, c.Title, HomeCards.PlainText(c.Subtitle), c.ImageUrl,
+                                        ReleaseListRules.TypeLabel(c.Kind), ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture));
+            rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
+        }
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Stretch,
@@ -464,10 +472,15 @@ internal static class ClassicHomeZones
         };
     }
 
-    static Element ReleaseRow(HomeCard c, long nowMs, TimeZoneInfo tz, System.Globalization.CultureInfo culture)
+    /// <summary>Everything a release row shows: the card, its strings and its art (the row's <see cref="ItemMemo"/> key).</summary>
+    readonly record struct ReleaseRowKey(HomeCard Card, string Uri, string Title, string Sub, string? Image, string Type, string When);
+
+    static readonly Func<ReleaseRowKey, Element> s_releaseRow = static k => ReleaseRow(in k);
+
+    static Element ReleaseRow(in ReleaseRowKey k)
     {
-        string type = ReleaseListRules.TypeLabel(c.Kind);
-        string when = ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture);
+        var c = k.Card;
+        string type = k.Type, when = k.When;
         var trailingKids = new List<Element>(2);
         if (type.Length > 0) trailingKids.Add(Controls.RowChip(type));
         if (when.Length > 0) trailingKids.Add(R.Type.TrackMeta(when) with { Color = Tok.TextTertiary, MaxLines = 1 });
@@ -476,11 +489,11 @@ internal static class ClassicHomeZones
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trailingKids.ToArray(),
         };
 
-        string sub = HomeCards.PlainText(c.Subtitle);
-        var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
+        string sub = k.Sub;
+        var data = new Controls.CardData(k.Uri, k.Title, sub.Length > 0 ? Meta(sub) : null, k.Image,
             () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Drag: HomeCardNav.DragOf(in c))
             { Trailing = trailing, Menu = HomeCardNav.MenuOf(in c) };
-        return new BoxEl { Key = "release:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row())] };
+        return new BoxEl { Key = "release:" + k.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row())] };
     }
 
     // ── 2.4 clusters: "Because you like" / "Because you listen to" — Ui.Card(SectionHeader + ≤3 Surface(Row(40))) ───
@@ -536,7 +549,7 @@ internal static class ClassicHomeZones
     // Every tile here is clickable (the Browse tiles and the three chart tiles), so they take `Controls.TileCardParts`:
     // the one-line text and the hand cursor the shared rule gives an invokable surface.
 
-    static Element BrowseTiles(Zone zone, ClassicHomeLayout layout)
+    static Element BrowseTiles(Zone zone, ClassicHomeLayout layout, RenderContext? hooks)
     {
         var items = zone.Items;
         if (items.Count == 0) return new BoxEl();
@@ -544,16 +557,7 @@ internal static class ClassicHomeZones
         for (int i = 0; i < items.Count; i++)
         {
             var c = items[i];
-            string sub = HomeCards.PlainText(c.Subtitle);
-            tiles[i] = SettingsCard.Create(new SettingsCard.Options
-            {
-                Header = c.Title,
-                Description = sub.Length > 0 ? sub : null,
-                HeaderIconElement = Controls.Artwork(c.ImageUrl, ClassicHomeRules.TileArt, ClassicHomeRules.TileArt, Radii.Control),
-                IsClickEnabled = true,
-                OnClick = () => HomeCardNav.Open(in c),
-                Style = Controls.TileCardStyle, Parts = Controls.TileCardParts,
-            }) with { Key = "browse-tile:" + c.Uri };
+            tiles[i] = ItemMemo.Of(hooks, new BrowseTileKey(c, c.Uri, c.Title, HomeCards.PlainText(c.Subtitle), c.ImageUrl), s_browseTile);
         }
         return new BoxEl
         {
@@ -569,6 +573,23 @@ internal static class ClassicHomeZones
             ],
         };
     }
+
+    /// <summary>Everything a browse tile shows (its <see cref="ItemMemo"/> key).</summary>
+    readonly record struct BrowseTileKey(HomeCard Card, string Uri, string Title, string Sub, string? Image);
+
+    static readonly Func<BrowseTileKey, Element> s_browseTile = static k =>
+    {
+        var c = k.Card;
+        return SettingsCard.Create(new SettingsCard.Options
+        {
+            Header = k.Title,
+            Description = k.Sub.Length > 0 ? k.Sub : null,
+            HeaderIconElement = Controls.Artwork(k.Image, ClassicHomeRules.TileArt, ClassicHomeRules.TileArt, Radii.Control),
+            IsClickEnabled = true,
+            OnClick = () => HomeCardNav.Open(in c),
+            Style = Controls.TileCardStyle, Parts = Controls.TileCardParts,
+        }) with { Key = "browse-tile:" + k.Uri };
+    };
 
     /// <summary>The Browse facet's "Charts" sub-block (RCA 2026-09-30): the core host owns the section's demand and the derived tile model
     /// and mounts `Home.Charts`; its skeleton proxy is the same static tree over <see cref="ChartTilesModel.Fallback"/>.</summary>
