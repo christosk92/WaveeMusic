@@ -44,9 +44,10 @@ public enum MiniFaceKind : byte
     Object,
 }
 
-/// <summary>Where a face is drawn: the strip's thumbnail, the art box, the whole window behind the controls, or (lyrics only) the
-/// strip's line pair in place of the title.</summary>
-public enum MiniFaceUse : byte { Thumb, Box, Fill, Line }
+/// <summary>Where a face is drawn: the strip's thumbnail, the art box, the whole window behind the controls, (lyrics only) the
+/// strip's line pair in place of the title, or the options panel's picture tile (a still picture: a deck face held at rest, nothing
+/// that asks for frames).</summary>
+public enum MiniFaceUse : byte { Thumb, Box, Fill, Line, Tile }
 
 /// <summary>One face request: which face, the box it fills (DIP), the playing cover, the box's corner radius and where it sits.
 /// Built by the template, answered by the core (<see cref="MiniPlayerProps.FaceView"/>). <paramref name="Paint"/> draws the analyser face in
@@ -121,6 +122,8 @@ public sealed record MiniPlayerProps
     public required Func<int, bool, bool> ArtColour { get; init; }
     /// <summary>Set "Colour from album art" for a theme slot.</summary>
     public required Action<int, bool> SetArtColour { get; init; }
+    /// <summary>The playing item's cover url (null for none). A tracked read: the options panel's pictures and accent follow a track change.</summary>
+    public required Func<string?> ArtUrl { get; init; }
     /// <summary>A cover's accent, floored for text (null until its grading lands, or for no cover). A tracked read: a late grading re-runs it.</summary>
     public required Func<string?, ColorF?> AlbumAccent { get; init; }
     /// <summary>The seek rail's core host (the scrub, the pixel dwell, the commit) drawn by the template instead of the theme's player rail.</summary>

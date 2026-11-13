@@ -2,7 +2,8 @@
 //
 // Theme numbers (button boxes, radii, paddings, type) live in each theme's MiniPlayerStyle; these are the shape-independent
 // constants of the Common template, read off the approved prototype (scratchpad miniplayer/index.html): node keys, the face-flip
-// slide, the strip overlay's fade run, the square's and the tall column's insets, the lyric windows, the options panel.
+// slide, the strip overlay's fade run, the square's and the tall column's insets, the lyric windows (the options panel's are
+// CommonMiniPanelRules.cs).
 
 using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;
@@ -130,21 +131,6 @@ internal static class CommonMiniPlayerRules
     public const float HudMs = 900f, HudPadX = 12f, HudPadY = 6f, HudGap = 8f, HudCorner = 16f, HudGlyph = 16f;
     public static readonly ColorF HudPlate = new(0f, 0f, 0f, 0.72f);
 
-    // ── the options panel ──
-    /// <summary>The panel's key and the shortcut its "Back to Wavee" row shows.</summary>
-    public const string PanelKey = "mini.panel", BackAccelerator = "Ctrl+Alt+M";
-    /// <summary>The panel: its width, top and foot padding, the inset of its heads, tiles and rows, the gap under a head and under a
-    /// section, a row's height (a 44-DIP target) and gap, the Back row's inset from the card.</summary>
-    public const float PanelW = 320f, PanelPadTop = 14f, PanelPadFoot = 4f, PanelInset = 14f, PanelHeadGap = 6f, PanelSectionGap = 14f,
-        PanelRowH = 44f, PanelRowGap = 10f, PanelBackInset = 4f;
-    /// <summary>The tiles: the gap between them, a shape tile's and a face tile's height, the chosen ring, the padding, the gap between a
-    /// picture and its name; four faces to a row.</summary>
-    public const float TileGap = 4f, ShapeTileMinH = 64f, FaceTileMinH = 40f, TileRing = 1.5f, TilePadY = 6f, TileTextGap = 3f;
-    public const int FaceCols = 4;
-    /// <summary>A shape tile's picture box and stroke; each shape is drawn at the size it opens at (360, 392, 288 and 288 wide) over one
-    /// divisor, so the four read to scale.</summary>
-    public const float ShapePicW = 40f, ShapePicH = 34f, ShapeStroke = 1.5f, ShapeCorner = 2f, ShapeMinH = 5f, ShapeDivW = 12f, ShapeDivH = 16f;
-    public const float StripTileW = 360f, WideTileW = 392f, SquareTileW = 288f, TallTileW = 288f, StripRatio = 6f, WideRatio = 2.4f, TallRatio = 0.5625f;
     /// <summary>The chrome pill's hairline.</summary>
     public const float RuleW = 1f;
 }

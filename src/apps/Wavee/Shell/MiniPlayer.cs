@@ -184,6 +184,17 @@ public static partial class MiniPlayer
         var f = s_faces[ClampFace(r.Face)];
         Element Cover() => Controls.Artwork(r.ArtUrl, r.Width, r.Height, r.Corner, keepWhileHidden: true);
         if (r.Use == MiniFaceUse.Thumb) return Cover();
+        // The options panel's tile: a deck face at the tile's side under a surface gate that never opens, so it draws its resting picture
+        // and runs no clock, loop or audio lease; every other face's picture is the panel's own, over the cover.
+        if (r.Use == MiniFaceUse.Tile)
+            return f.Kind == MiniFaceKind.Object
+                ? Ctx.Provide(Deck.SurfaceOpen, s_tileSurface, new BoxEl
+                {
+                    Width = r.Width, Height = r.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, ClipToBounds = true,
+                    Corners = CornerRadius4.All(r.Corner), HitTestVisible = false,
+                    Children = [Deck.Face(f.StyleId, MathF.Floor(MathF.Min(r.Width, r.Height)))],
+                })
+                : Cover();
         switch (f.Kind)
         {
             case MiniFaceKind.Lyrics:
@@ -223,6 +234,34 @@ public static partial class MiniPlayer
 
 
     // ══ 3. STATE AND VERBS ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The options panel's deck pictures stand on a surface that is never open: the deck's clock and loops never start.</summary>
+    static readonly Signal<bool> s_tileSurface = new(false);
+
+    /// <summary>The playing item's cover url, read live (the options panel's pictures and accent).</summary>
+    static string? NowArtUrl()
+    {
+        var r = Playback.Current.Value;
+        if (r.IsNone) return null;
+        _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
+        switch (r.Kind)
+        {
+            case EntityKind.Track:
+            {
+                _ = Entities.Current.Tracks.Changed.Value;
+                var t = new Track(r.Slot);
+                return t.IsValid && t.Knows(TrackFields.Image) ? Controls.ArtUrl(t.ImageId) : null;
+            }
+            case EntityKind.Episode:
+            {
+                _ = Entities.Current.Episodes.Changed.Value;
+                var e = new Episode(r.Slot);
+                return e.IsValid && e.Knows(EpisodeFields.Image) ? Controls.ArtUrl(e.ImageId) : null;
+            }
+            default:
+                return null;
+        }
+    }
 
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
@@ -414,6 +453,7 @@ public static partial class MiniPlayer
         UseMaterial = static (m, dark) => s_material.Value = (m, dark),
         ArtColour = ArtColour,
         SetArtColour = SetArtColour,
+        ArtUrl = NowArtUrl,
         AlbumAccent = AlbumAccent,
         SeekRail = static draw => Shell.SeekBarDrawn(draw),
         Lyrics = static draw => Lyrics.Mini(draw, s_lyricsVisible),
