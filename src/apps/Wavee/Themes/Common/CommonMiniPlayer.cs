@@ -188,21 +188,35 @@ internal static partial class CommonMiniPlayer
         var st = m.St;
         bool lyrics = m.Kind == MiniFaceKind.Lyrics;
         float thumb = Math.Clamp(m.Size.Height - 2f * H.StripThumbInset, st.StripThumb, H.StripThumbMax);
+        bool viz = m.Kind == MiniFaceKind.Visualizer;
         Element meta = lyrics ? m.P.Lyrics(frame => Embed.Comp(new TickerProps(frame, m, Meta(m, detail: false)), static () => new Ticker()))
-                              : Meta(m, detail: false);
+                              : Meta(m, detail: false, hug: viz);
+        var cells = new List<Element>(4)
+        {
+            Thumb(m, thumb),
+            // beside a visualizer the text hugs its words (shrinking to its ellipsis when the strip is narrow), so the analyser keeps to the rest
+            new BoxEl { Grow = viz ? 0f : 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Children = [meta] },
+        };
+        if (viz)
+            // The analyser runs only where the text is not: a cell that takes what the text leaves (none on a narrow strip), the window-wide
+            // picture anchored to its right and clipped, fading in from the text's side. The bands stay the face's bound transforms.
+            cells.Add(new BoxEl
+            {
+                Key = H.FaceKey + ":strip", Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true,
+                Opacity = H.StripVizAlpha, HitTestVisible = false, EdgeFade = new EdgeFadeSpec(EdgeMask.Left, H.StripVizFade),
+                Children = [new BoxEl
+                {
+                    Width = m.Size.Width, Height = m.Size.Height, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.End, HitTestVisible = false,
+                    Children = [m.P.FaceView(new MiniFaceRequest(m.Face, m.Size.Width, m.Size.Height, m.V.ArtUrl, 0f, MiniFaceUse.Fill, VizPaint(m, H.VizBarsStrip)))],
+                }],
+            });
+        cells.Add(Saved(m));
         var row = new BoxEl
         {
             Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Gap = st.StripGap, Padding = new Edges4(st.StripPadStart, 0f, st.Pad, 0f),
-            Children = [Thumb(m, thumb), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, Children = [meta] }, Saved(m)],
+            Children = cells.ToArray(),
         };
-        var children = new List<Element>(4);
-        if (m.Kind == MiniFaceKind.Visualizer)
-            children.Add(new BoxEl
-            {
-                Key = H.FaceKey + ":strip", Grow = 1f, AlignSelf = FlexAlign.Stretch, Opacity = H.StripVizAlpha, HitTestVisible = false,
-                Children = [m.P.FaceView(new MiniFaceRequest(m.Face, m.Size.Width, m.Size.Height, m.V.ArtUrl, 0f, MiniFaceUse.Fill, VizPaint(m, H.VizBarsStrip)))],
-            });
-        children.Add(row);
+        var children = new List<Element>(3) { row };
         if (m.Hot)
         {
             // As many of the six as the width holds (device goes first, then save); the plate stands centred on the row at any height.
@@ -271,7 +285,8 @@ internal static partial class CommonMiniPlayer
         // The record, the disc, the cassette and the reels are the full player's own tiles: inset like the tall column's art (never against
         // the window's top edge, never under the title).
         float side = obj ? MathF.Max(0f, MathF.Min(w - 2f * st.Pad, h - H.SquareObjectFoot - st.Pad - H.SquareObjectGap)) : 0f;
-        // The window buttons stand on glass over imagery: everywhere but an object face's ground, unless its tile reaches under them.
+        // The window buttons stand on glass over imagery: everywhere but an object face's ground, unless its tile reaches under them. The
+        // short top scrim is for a face that fills the top with imagery only (an object face stands on the window's ground: no scrim there).
         bool glass = !obj || (w + side) * 0.5f > w - (H.ChromeInset + 2f * st.ChromeBox + H.ChromeGap);
         var children = new List<Element>(12);
         if (obj)
@@ -322,7 +337,7 @@ internal static partial class CommonMiniPlayer
                 Gradient = new GradientSpec(GradientShape.Linear, H.ShadeAngle,
                     [new GradientStop(0f, tone with { A = 0f }), new GradientStop(H.HoverScrimLead / MathF.Max(1f, h - scrimTop), tone), new GradientStop(1f, deep)]),
             });
-            if (glass)
+            if (!obj)
                 children.Add(new BoxEl
                 {
                     Key = H.ScrimKey + ":top", Height = H.TopScrimH, AlignSelf = FlexAlign.Start, Enter = s_fade, Exit = s_fade, HitTestVisible = false,

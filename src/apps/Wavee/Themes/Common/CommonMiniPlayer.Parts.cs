@@ -25,8 +25,9 @@ internal static partial class CommonMiniPlayer
 
     /// <summary>The title, the artist (or "Playing on …" in the accent) and, with <paramref name="detail"/>, the detail line. The title line
     /// keeps <paramref name="reserve"/> DIP clear of the window's right edge (the window buttons); a bleeding title runs to there and fades
-    /// out.</summary>
-    static Element Meta(Ctx m, bool detail, float reserve = 0f, bool column = false)
+    /// out. With <paramref name="hug"/> the block is as wide as its words (the strip beside a visualizer): a bleeding title then carries its
+    /// fade's run as padding, so it fades only where the strip cuts it.</summary>
+    static Element Meta(Ctx m, bool detail, float reserve = 0f, bool column = false, bool hug = false)
     {
         var st = m.St;
         string title = m.Bar.TitleText();
@@ -36,7 +37,7 @@ internal static partial class CommonMiniPlayer
         TextEl a = onLine
             ? st.Artist(m.P.DetailText(), m.Accent, m.Media) with { Color = m.Media ? m.Ink : m.Accent }
             : st.Artist(m.P.ArtistText(), m.Accent, m.Media);
-        var lines = new List<Element>(3) { Title(m, title, reserve), a };
+        var lines = new List<Element>(3) { Title(m, title, reserve, hug), a };
         if (detail && m.P.DetailText() is { Length: > 0 } d)
             lines.Add(st.Detail(d) with { Color = remote ? (m.Media ? m.Ink : m.Accent) : m.Ink3 });
         return new BoxEl { Key = H.MetaKey, Grow = column ? 0f : 1f, Shrink = column ? 0f : 1f, MinWidth = 0f, Direction = 1, Gap = H.LineGap, Children = lines.ToArray() };
@@ -44,7 +45,7 @@ internal static partial class CommonMiniPlayer
 
     /// <summary>The title line: ellipsized in WinUI and Classic; in Zune large, light and lowercase, running past its column to the window's
     /// edge under a fade (owner rule: Zune display type is never shrunk or cut).</summary>
-    static Element Title(Ctx m, string title, float reserve)
+    static Element Title(Ctx m, string title, float reserve, bool hug)
     {
         var st = m.St;
         var t = st.Title(title, m.Shape) with { Color = m.Ink };
@@ -52,7 +53,8 @@ internal static partial class CommonMiniPlayer
             return reserve <= st.Pad ? t : new BoxEl { Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, 0f, reserve - st.Pad, 0f), Children = [t] };
         return new BoxEl
         {
-            Direction = 0, MinWidth = 0f, ClipToBounds = true, Margin = new Edges4(0f, 0f, reserve - st.Pad, 0f),
+            Direction = 0, MinWidth = 0f, ClipToBounds = true,
+            Margin = hug ? default : new Edges4(0f, 0f, reserve - st.Pad, 0f), Padding = hug ? new Edges4(0f, 0f, st.TitleFade, 0f) : default,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Right, st.TitleFade),
             Children = [t with { Shrink = 0f, MaxLines = 1, Trim = TextTrim.None }],
         };

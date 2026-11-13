@@ -50,8 +50,8 @@ internal static class CommonMiniPlayerRules
     public const float EdgeRest = 2f, EdgeHot = 5f, EdgeHit = 10f;
     /// <summary>The resting saved heart's glyph.</summary>
     public const float SavedGlyph = 15f;
-    /// <summary>The visualizer face behind a strip, at this opacity.</summary>
-    public const float StripVizAlpha = 0.22f;
+    /// <summary>The visualizer face in a strip (in the room the text leaves), at this opacity, fading in over this run from the text's side.</summary>
+    public const float StripVizAlpha = 0.22f, StripVizFade = 32f;
     /// <summary>The ticker's rolling lines: in from this far below.</summary>
     public const float TickerRise = 8f;
     /// <summary>The badge's offset past the thumb's corner and its ring (the window's ground around it); its glyph and eq bars.</summary>

@@ -47,8 +47,10 @@ public static partial class MiniPlayer
     {
         /// <summary>The prototype's default: Wide at 392 × 163 DIP.</summary>
         public const float DefaultW = 392f, DefaultH = 163f;
-        /// <summary>The smallest client the window allows (a strip's height, a tall column's width).</summary>
-        public const float MinW = 232f, MinH = 48f;
+        /// <summary>The smallest client the window allows: a tall column's width, and a strip's height. The height holds the tallest theme's
+        /// strip with air above and below: Zune's 23-DIP display title over its artist line is 44.5 DIP (48.6 with the row's ink), never
+        /// shrunk, so 56 leaves about 4 DIP each side, and every theme's strip, ticker and hover plate stays inside the window.</summary>
+        public const float MinW = 232f, MinH = 56f;
         /// <summary>The largest client the window allows: past it a mini player is a second main window (the forms are laid out and
         /// swept up to here).</summary>
         public const float MaxW = 720f, MaxH = 900f;
@@ -92,7 +94,7 @@ public static partial class MiniPlayer
 
         public static (float Min, float Max) WidthRange(MiniShape s) => s switch
         {
-            MiniShape.Strip => (300f, 520f),
+            MiniShape.Strip => (336f, 520f),   // 336 / 6 = the floor's 56
             MiniShape.Wide => (390f, 560f),   // at 390 x 163 the card clears its floors by the hysteresis
             MiniShape.Square => (260f, 400f),
             _ => (232f, 330f),
