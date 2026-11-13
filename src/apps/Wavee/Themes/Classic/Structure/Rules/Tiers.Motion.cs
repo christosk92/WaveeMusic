@@ -15,6 +15,7 @@
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 
 namespace Wavee.Themes.Classic;
 
@@ -60,6 +61,16 @@ public static class ClassicTierMotion
 
     /// <summary>A surviving cell that only moves (a grid cell whose column changed, a card pushed along): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
+
+    /// <summary>A grid cell that keeps its item while the grid re-fits its column count (the Recently played tiles when a docking panel's slide moves
+    /// the count): it glides into its new cell on the house re-fit's clock (<see cref="MotionRecipes.CardRefit"/>) while its width runs through layout
+    /// (a re-fit beside a docking panel's reflow re-aims at the live cell every tick; the house re-fit's GPU scale cannot, and landed the width at
+    /// once), and a cell the new count drops fades as it leaves.</summary>
+    public static readonly LayoutTransition Refit = new(TransitionChannels.Position | TransitionChannels.Size, MotionRecipes.CardRefit.Dynamics,
+        SizeMode.Relayout, Exit: new EnterExit(Opacity: 0f, Active: true), Axes: SizeAxes.Width);
+
+    /// <summary>The Enter of a cell a re-fit adds: it fades in at its final cell while the others glide.</summary>
+    public static readonly EnterExit RefitEnter = new(Opacity: 0f, Active: true);
 
     /// <summary>A part the new tier draws as a different tree enters and leaves on its opacity alone (the shared tier cross-fade).</summary>
     public static readonly EnterExit SwapFade = SwapFamilies.Declare("Classic.SwapFade", new(Opacity: 0f, Active: true));
