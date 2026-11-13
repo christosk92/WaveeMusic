@@ -76,8 +76,8 @@ internal static class ZuneHomeQuickplay
 
     /// <summary>The groups: a row that wraps (Small and up) or a column (Compact), ONE node whose direction is a live prop.
     /// <para>The new group is keyed by the LINE the row's wrap puts it on (<see cref="ZuneHomeRules.FreshLine"/>, chosen at the width the strip lands
-    /// at while a docking panel's slide resizes it): a change of line is a fade-through (it fades out where it stood, then in where it lands) instead
-    /// of a slide that carried it diagonally over the history tiles between its two lines.</para></summary>
+    /// at while a docking panel's slide resizes it): a change of line is a cross-fade (it fades out where it stood while it fades in where it lands)
+    /// instead of a slide that carried it diagonally over the history tiles between its two lines.</para></summary>
     static Element Strip(Element? pins, int pinCount, Element? history, Zone? fresh, ZuneHomeLayout lay, float firstW, bool rendered)
     {
         // ONE parent at every tier (the line box), so a crossing that drops or adds the new group (Small has none) keeps the strip's nodes.
@@ -237,16 +237,16 @@ internal static class ZuneHomeQuickplay
 
     // ── new ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The new group on the strip's line <paramref name="line"/>: keyed per line, a fade-through swap between lines (none on the view's first
-    /// render: it arrives with the page).</summary>
+    /// <summary>The new group on the strip's line <paramref name="line"/>: keyed per line, a cross-fade between lines (none on the view's first
+    /// render: it arrives with the page). Its two places never overlap, so it fades in where it lands while it fades out where it stood: a
+    /// fade-through left its line empty in the same frames the daylist's own fade-through leaves the strip empty (one blank band mid-slide).</summary>
     static Element FreshGroup(Zone zone, ZuneHomeLayout lay, int line, bool rendered)
     {
         var group = FreshGroup(zone, lay);
-        var through = ZuneMotion.SwapThrough;   // the enter waits out the exit
         return group with
         {
             Key = line == 0 ? group.Key : group.Key + ":" + line.ToString(CultureInfo.InvariantCulture),
-            Enter = rendered ? through : null, Exit = through,
+            Enter = ZuneMotion.SwapEnter(rendered), Exit = ZuneMotion.SwapFade,
         };
     }
 
