@@ -100,9 +100,12 @@ internal static partial class CommonMiniPlayer
                     BorderWidth = H.Ring, BorderColor = on ? k.Accent : ColorF.Transparent, Corners = CornerRadius4.All(k.RingCorner),
                     Children = [picture],
                 },
+                // The name's box is the tile PITCH (the tile and one gap), centred under the picture: a long name may run a little past its
+                // picture's edges into the half gap on each side, never into its neighbour's, and none of the eight is ever trimmed.
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Stretch, Direction = 0, Justify = FlexJustify.Center, HitTestVisible = false,
+                    Margin = new Edges4(-H.TileGap * 0.5f, 0f, -H.TileGap * 0.5f, 0f),
                     Children = [k.St.Small(label) with
                     {
                         Color = on ? k.AccentText : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
@@ -204,8 +207,10 @@ internal static partial class CommonMiniPlayer
         };
     }
 
-    /// <summary>A labelled switch row: the theme's own ToggleSwitch, its on-state in the album's accent when the player wears one.</summary>
-    static Element SwitchRow(MiniPlayerStyle st, string key, string label, Signal<bool> on, Action<bool> set, ColorF? album)
+    /// <summary>A labelled switch row: the theme's own ToggleSwitch, its on-state in the album's accent when the player wears one. The whole
+    /// row acts (a click on the label flips the switch, under the theme's subtle hover plate); a click on the switch is the switch's own (the
+    /// engine gives a click to its nearest owner only), so one click never flips twice.</summary>
+    static Element SwitchRow(in PanelLook k, string key, string label, Signal<bool> on, Action<bool> set, ColorF? album)
     {
         var style = ToggleSwitch.DefaultStyle with { MinWidth = 0f, ContentGap = 0f };
         // The album accent is floored for text against the theme, so the theme's on-accent knob (dark in dark mode, white in light) holds.
@@ -213,10 +218,12 @@ internal static partial class CommonMiniPlayer
         return new BoxEl
         {
             Key = key, MinHeight = H.RowH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Gap = H.RowGap,
-            Padding = new Edges4(H.PanelInset, 0f, H.PanelInset, 0f),
+            Margin = new Edges4(H.RowPlateInset, 0f, H.RowPlateInset, 0f), Padding = new Edges4(H.PanelInset - H.RowPlateInset, 0f, H.PanelInset - H.RowPlateInset, 0f),
+            Corners = CornerRadius4.All(k.PlateCorner), Fill = ColorF.Transparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+            Cursor = CursorId.Hand, OnClick = () => { bool v = !on.Peek(); on.Value = v; set(v); },
             Children =
             [
-                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false, Children = [st.Label(label) with { Color = Tok.TextPrimary }] },
+                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false, Children = [k.St.Label(label) with { Color = Tok.TextPrimary }] },
                 ToggleSwitch.Create(on, set, style: style),
             ],
         };
@@ -272,8 +279,8 @@ internal static partial class CommonMiniPlayer
             rows.Add(new BoxEl { Padding = new Edges4(H.PanelInset, 0f, H.PanelInset, H.SectionGap), Direction = 1, Children = [TileRow(shapes)] });
 
             rows.Add(PanelRule());
-            rows.Add(SwitchRow(st, H.OnTopKey, Loc.Get(Strings.Mini.OnTop), onTop, v => { if (v != p.OnTop.Peek()) p.ToggleOnTop(); }, album));
-            rows.Add(SwitchRow(st, H.ArtColourKey, Loc.Get(Strings.Mini.ArtColour), art, v => p.SetArtColour(slot, v), album));
+            rows.Add(SwitchRow(k, H.OnTopKey, Loc.Get(Strings.Mini.OnTop), onTop, v => { if (v != p.OnTop.Peek()) p.ToggleOnTop(); }, album));
+            rows.Add(SwitchRow(k, H.ArtColourKey, Loc.Get(Strings.Mini.ArtColour), art, v => p.SetArtColour(slot, v), album));
             return new BoxEl
             {
                 Key = H.PanelKey, Width = H.PanelW, Direction = 1, Padding = new Edges4(0f, H.PanelPadTop, 0f, H.PanelPadFoot),

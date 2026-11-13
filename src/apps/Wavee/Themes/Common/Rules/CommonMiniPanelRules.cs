@@ -20,6 +20,8 @@ internal static class CommonMiniPanelRules
     /// <summary>The card: its inset (sides), top and foot padding, the gap under a section head and under a section, a switch row's height (a
     /// 44-DIP target) and the gap between its label and the switch.</summary>
     public const float PanelInset = 10f, PanelPadTop = 12f, PanelPadFoot = 4f, HeadGap = 6f, SectionGap = 12f, RowH = 44f, RowGap = 10f;
+    /// <summary>A switch row's hover plate stands this far in from the card's sides (its label keeps the panel's inset).</summary>
+    public const float RowPlateInset = 4f;
     /// <summary>The panel's width: four tiles and three gaps inside the inset (4 x 58 + 3 x 4 + 2 x 10).</summary>
     public const float PanelW = FaceCols * TileW + (FaceCols - 1) * TileGap + 2f * PanelInset;
     /// <summary>A switch in the album's accent: its hover and pressed fills are the accent at these alphas (the Fluent accent ladder's
@@ -28,7 +30,8 @@ internal static class CommonMiniPanelRules
     /// <summary>The hairline between the pictures and the switches.</summary>
     public const float RuleW = 1f;
 
-    /// <summary>A tile: its width, the gap between tiles (both ways), its padding above the ring and below the name, the gap between the ring
+    /// <summary>A tile: its width, the gap between tiles (both ways; a name's box spans the tile and one gap, so the longest name, Reel-to-reel
+    /// at 60 DIP in WinUI and Classic, fits untrimmed), its padding above the ring and below the name, the gap between the ring
     /// and the name; four to a row.</summary>
     public const float TileW = 58f, TileGap = 4f, TilePadTop = 0f, TilePadFoot = 4f, TileTextGap = 3f;
     public const int FaceCols = 4;
