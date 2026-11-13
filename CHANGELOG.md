@@ -139,6 +139,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Docking the music video from the mini player no longer shows a black box in the panel (every theme).** While the
+  picture glides back into the right panel, the place it lands on shows the panel itself instead of a black plate, and
+  the picture is the only thing that arrives there. The same goes for the way out to the mini player.
+- **Skipping to the next music video no longer flashes black.** The previous video's last frame stays on screen until
+  the next video's first frame is up, and the next picture arrives sooner.
 - **Lyrics found for songs whose title is in another script.** A Korean, Japanese or Chinese song listed on Spotify
   under its English title ("I loved you too much to just laugh it off") found no lyrics, though QQ Music, NetEase and
   KuGou had them under the Korean title: a title in another alphabet now counts as unknown rather than as a mismatch, so

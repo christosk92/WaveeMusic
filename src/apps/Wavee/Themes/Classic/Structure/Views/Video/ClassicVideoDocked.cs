@@ -54,16 +54,18 @@ internal static class ClassicVideoDocked
         };
 
         return props.Face == Video.DockedFace.PageStage
-            ? card with { Grow = 1f, MinHeight = 0f, Fill = Tok.MediaLetterbox }
+            ? card with { Grow = 1f, MinHeight = 0f }
             // The Cap's height eases through real layout (the reservation, so the picture following it, and the panel under it ride every frame):
             // a reset, a key step or a new track's fit. A drag on the handle holds layout transitions, so its writes land 1:1.
-            : card with { Shrink = 0f, MinWidth = 0f, Height = props.Height, Fill = Tok.MediaLetterbox, Animate = ClassicTierMotion.HeightReflow };
+            : card with { Shrink = 0f, MinWidth = 0f, Height = props.Height, Animate = ClassicTierMotion.HeightReflow };
     }
 
-    /// <summary>The hollow reservation: nothing is drawn in it and nothing hits it.</summary>
+    /// <summary>The hollow reservation: nothing is drawn in it and nothing hits it. Neither it nor the card paints a ground: the picture
+    /// covers it with its own letterbox, and while the picture glides in from the mini player (or out to it) the panel's ground shows
+    /// where it will land, never a black plate.</summary>
     static Element Reservation(VideoDockedCard props) => new BoxEl
     {
-        Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = Tok.MediaLetterbox,
+        Grow = 1f, MinHeight = 0f, ClipToBounds = true,
         HitTestVisible = false,
         OnRealized = props.ReservationRealized,
         OnBoundsChanged = props.ReservationBounds,
