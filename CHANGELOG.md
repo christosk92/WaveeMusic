@@ -24,7 +24,8 @@ versions separately under `v*` and is not tracked in this file.)
   the back button or any way you bring Wavee back, and the music never stops. Opening it and going back are one calm motion:
   the full window fades and settles toward the player bar's art while the mini player grows out of that side, and the reverse
   on the way back. The mini player keeps every frame while you drag it or pick a shape, and its lyrics run at your display's full
-  rate (#197).
+  rate (#197). Resizing it from any edge or corner, the picture moves with the window's edge in the same frame: the sides you
+  are not dragging hold still instead of wobbling.
 
 - **Full screen opens on the music video, in every theme.** With a video on, the app's full screen opens on the picture,
   edge to edge, instead of on the cover and lyrics: Video is its first tab, Lyrics, Visualizer, Up next and Artist stay one
