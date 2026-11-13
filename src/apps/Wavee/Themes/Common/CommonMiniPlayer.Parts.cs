@@ -163,8 +163,9 @@ internal static partial class CommonMiniPlayer
     // ══ SEEK ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The seek row: the elapsed time on the column's left edge, the rail, the remaining time (a toggle to the duration) ending on the
-    /// column's right edge. The digits are the style's detail type over the bar's own label text.</summary>
-    static Element SeekRow(Ctx m)
+    /// column's right edge. The digits are the style's detail type over the bar's own label text. <paramref name="lift"/> moves the right
+    /// time's reach up by that much where the row under it sits close (the wide card's transport).</summary>
+    static Element SeekRow(Ctx m, float lift = 0f)
     {
         var st = m.St;
         var req = (m.Accent, m.Media, m.Playing, m.Hot);
@@ -173,18 +174,18 @@ internal static partial class CommonMiniPlayer
             Key = H.SeekKey, Height = H.SeekRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SeekGap,
             Children =
             [
-                Time(m, remaining: false),
+                Time(m, remaining: false, 0f),
                 new BoxEl
                 {
                     Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
                     Children = [m.P.SeekRail(rail => st.SeekRail(new MiniSeekRequest(rail, req.Accent, req.Media, req.Playing, Edge: false, req.Hot)))],
                 },
-                Time(m, remaining: true),
+                Time(m, remaining: true, lift),
             ],
         };
     }
 
-    static Element Time(Ctx m, bool remaining)
+    static Element Time(Ctx m, bool remaining, float lift)
     {
         var digits = m.St.Detail("") with { Text = Prop.Of(m.P.TimeText(remaining)), Color = m.Ink2, Shrink = 0f, Trim = TextTrim.None };
         return new BoxEl
@@ -193,7 +194,7 @@ internal static partial class CommonMiniPlayer
             Justify = remaining ? FlexJustify.End : FlexJustify.Start,
             OnClick = remaining ? m.P.ToggleRemaining : null, Cursor = remaining ? CursorId.Hand : null,
             Role = remaining ? AutomationRole.Button : AutomationRole.Text, HitTestVisible = remaining,
-            HitSlop = remaining ? new Edges4(0f, H.TimeSlop, 0f, H.TimeSlop) : default, OnContextRequested = remaining ? s_noContext : null,
+            HitSlop = remaining ? new Edges4(0f, H.TimeSlop + lift, 0f, H.TimeSlop - lift) : default, OnContextRequested = remaining ? s_noContext : null,
             Children = [digits],
         };
     }

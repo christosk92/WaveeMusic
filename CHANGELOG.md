@@ -13,10 +13,11 @@ versions separately under `v*` and is not tracked in this file.)
 ### Added
 
 - **Mini player.** A small window that stays on top while you work, in any shape you drag it to: a strip, a card, a square
-  or a tall 9:16 column; on release it settles on the nearest shape and snaps into a screen corner. Pick what fills it:
+  or a tall column, its content following the size; it stays exactly where and how big you leave it. Pick what fills it:
   the cover, lyrics (a karaoke ticker in the strip), the Canvas, the visualizer or a player style (vinyl, CD, cassette,
   reel). It looks like your theme: WinUI's acrylic card, Zune's big type and pink, Classic's album-coloured wash with its
-  rippling seek line. Its ⋯ button opens one panel in your theme's look that stays open while you choose (shape, face,
+  rippling seek line. Hovering keeps the picture and the title in view and brings the controls in at the foot. Its ⋯ button (or a
+  right-click on the window) opens one panel in your theme's look that stays open while you choose (shape, face,
   keep on top, "Colour from album art", back to Wavee): each pick shows at once in the player beside it. Its device
   button opens the player bar's own device picker. Scroll over it to change the volume. Open it from the new button in the player bar (or its ⋯ menu when the bar is narrow), with
   Ctrl+Alt+M, or from the taskbar's right-click menu; the full window hides while it is open and comes back from the art,

@@ -21,8 +21,9 @@ internal static class CommonMiniPlayerRules
     // ── text ──
     /// <summary>Text line gaps, the seek row's gap and height, a time's least width (its digits grow inward from the column's edge).</summary>
     public const float LineGap = 1f, SeekGap = 8f, SeekRowH = 22f, TimeMinW = 28f;
-    /// <summary>The right time is a toggle: its hit reaches the 40-DIP floor with this slop above and below the row.</summary>
-    public const float TimeSlop = 9f;
+    /// <summary>The right time is a toggle: its hit reaches the 40-DIP floor with this slop above and below the row; in the wide card the
+    /// reach moves up by TimeLiftWide (the title block over it is no target, the transport under it sits close on a short card).</summary>
+    public const float TimeSlop = 9f, TimeLiftWide = 5f;
     /// <summary>On-media ink: white, the secondary line, the tertiary line, a hover plate and the track behind a rail.</summary>
     public static readonly ColorF OnMediaInk = new(1f, 1f, 1f, 1f);
     /// <summary>An accent mark over imagery is the accent lifted this far toward white.</summary>

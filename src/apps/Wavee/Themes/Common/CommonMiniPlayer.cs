@@ -241,7 +241,7 @@ internal static partial class CommonMiniPlayer
             Children =
             [
                 top,
-                SeekRow(m),
+                SeekRow(m, lift: H.TimeLiftWide),
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
