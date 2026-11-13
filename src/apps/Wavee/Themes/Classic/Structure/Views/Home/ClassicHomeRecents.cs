@@ -135,18 +135,18 @@ internal static class ClassicHomeRecents
     static SurfaceShape TileShape(SurfaceShape shape, ClassicHomeLayout layout)
         => layout.RecentsArt == shape.ArtEdge ? shape : shape with { ArtEdge = layout.RecentsArt, MinHeight = layout.RecentsRowH };
 
-    /// <summary>One played tile: <c>Surface(…, Shape.RowTile)</c> whose subtitle is [equalizer · detail · when], the
-    /// equalizer PRESENT and the tail swapped to "playing on {device}" / "Playing now" exactly while the
-    /// card relates to what is playing (<see cref="Controls.RelatesNow"/> — a bound prop each, so a track change
-    /// touches two node props and re-renders nothing). The equalizer box opts out of skeleton derivation: a
-    /// shimmer never shows a "playing" pill. A blank seed card has no uri, so it is keyed by its
-    /// <paramref name="index"/> (the shelf's <c>home-shelf-blank:{i}</c> rule) — seven blanks never share a key.</summary>
     /// <summary>Everything a played tile shows (its <see cref="ItemMemo"/> key): the cell, its place (a blank's key), the live facts it binds, and the
     /// tier's art and shape.</summary>
     readonly record struct RowKey(RecentsCell Cell, int Index, IReadSignal<bool> Playing, Func<string?> RemoteDevice, float Art, SurfaceShape Shape);
 
     static readonly Func<RowKey, Element> s_row = static k => Row(in k);
 
+    /// <summary>One played tile: <c>Surface(…, Shape.RowTile)</c> whose subtitle is [equalizer · detail · when], the
+    /// equalizer PRESENT and the tail swapped to "playing on {device}" / "Playing now" exactly while the
+    /// card relates to what is playing (<see cref="Controls.RelatesNow"/> — a bound prop each, so a track change
+    /// touches two node props and re-renders nothing). The equalizer box opts out of skeleton derivation: a
+    /// shimmer never shows a "playing" pill. A blank seed card has no uri, so it is keyed by its
+    /// index (<c>RowKey.Index</c>: the shelf's <c>home-shelf-blank:{i}</c> rule) — seven blanks never share a key.</summary>
     static Element Row(in RowKey k)
     {
         var cell = k.Cell;
@@ -193,15 +193,15 @@ internal static class ClassicHomeRecents
         };
     }
 
-    /// <summary>The grid's closing tile — the same row in the dashed <c>Shape.RowOutline</c>: a headphones
-    /// <see cref="Controls.IconPlate"/> for a cover, the stock <see cref="SparkBars"/> 7-day strip (left = six days
-    /// ago, right = today in the full accent) beside "{n} plays this week", a trailing chevron, no play FAB. Opens
-    /// the listening history.</summary>
     /// <summary>Everything the history tile shows (its <see cref="ItemMemo"/> key): the week, the day it ends on, the tier's art and shape.</summary>
     readonly record struct HistoryKey(RecentsWeek Week, DateTime Today, float Art, SurfaceShape Shape);
 
     static readonly Func<HistoryKey, Element> s_history = static k => HistoryTile(in k);
 
+    /// <summary>The grid's closing tile — the same row in the dashed <c>Shape.RowOutline</c>: a headphones
+    /// <see cref="Controls.IconPlate"/> for a cover, the stock <see cref="SparkBars"/> 7-day strip (left = six days
+    /// ago, right = today in the full accent) beside "{n} plays this week", a trailing chevron, no play FAB. Opens
+    /// the listening history.</summary>
     static Element HistoryTile(in HistoryKey k)
     {
         var week = k.Week;
