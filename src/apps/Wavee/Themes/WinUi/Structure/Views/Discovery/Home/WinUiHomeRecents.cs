@@ -6,7 +6,7 @@
 // with an `IconPlate` cover and a stock `SparkBars` 7-day strip.
 //
 // The body is a `Responsive.Of` box: the measured width picks the auto-fill column count through the ENGINE's own formula
-// (`GridEl.AutoFillColumnCount`, the one the grid lays out with), and `RecentsPlan.Cells` takes 2·cols − 1 played cells so the history tile
+// (`GridEl.AutoFillColumnCount`; the grid lays out exactly that count), and `RecentsPlan.Cells` takes 2·cols − 1 played cells so the history tile
 // always closes the second row flush — never a ragged third row. The Recents subscription, the when-map and the week are the core host's
 // (`RecentGrid`); this view draws what the props carry.
 //
@@ -61,18 +61,22 @@ internal static class WinUiHomeRecents
         => Responsive.Of("home:recents", w => GridEl.AutoFillColumnCount(w, layout.Recents.Floor, layout.RecentsGap, layout.Recents.MaxCols),
                          cols => Grid(cols, p, layout), fallback: firstWidth);
 
-    /// <summary>The grid at <paramref name="cols"/> columns: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
+    /// <summary>The grid at <paramref name="cols"/> columns: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).
+    /// The grid lays out exactly the <paramref name="cols"/> it was built for, as equal star tracks, never a count of its own: the tiles it keeps are
+    /// chosen for that count, so a grid that counted its own auto-fill columns took a docking panel's landing count on the slide's first frame
+    /// while the tiles were still the old count's, and stood a frame at the wrong number of rows.</summary>
     static Element Grid(int cols, HomeRecentsProps p, WinUiHomeLayout layout)
     {
         var cells = p.Cells;
-        var band = layout.Recents;
         int n = layout.RecentsCells(cols, cells.Count);
         var rows = new Element[n + 1];
         for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p, layout);
         rows[n] = HistoryTile(p.Week, layout);
+        var tracks = new TrackSize[cols];
+        for (int i = 0; i < cols; i++) tracks[i] = TrackSize.Star();
         return new GridEl
         {
-            MinColWidth = band.Floor, MaxColumns = band.MaxCols,
+            Columns = tracks,
             ColGap = layout.RecentsGap, RowGap = layout.RecentsGap, RowHeight = layout.RecentsRowH, Children = rows,
         };
     }

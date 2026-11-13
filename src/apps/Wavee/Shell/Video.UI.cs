@@ -144,7 +144,11 @@ public static partial class Video
     /// box mounts at the presenter's rect of the frame before, then moves to the target's rect (the stage's reservation, the docked card's,
     /// the mini player's) on a Reflow bounds transition with the stage's own entrance dynamics, so its laid-out size and its origin interpolate
     /// together, and the presenter follows it frame by frame. When the box lands on the target the presenter follows the target itself
-    /// again, at the same rect. A picture the stage covers (a docked video under the Visualizer) has no rect to leave from or land on: no glide.</summary>
+    /// again, at the same rect. A picture the stage covers (a docked video under the Visualizer) has no rect to leave from or land on: no glide.
+    /// <para>The SAME glide carries the picture between its two homes (the docked card and the mini player, either way): it leaves from the home
+    /// it had and lands on the other, the presenter drawing the picture alone on the way (the mini player's chrome comes with its landing), while
+    /// the card keeps its place in the rail until it has landed (<see cref="HoldsDock"/>) and the page's foot eases to the mini player's
+    /// reservation on the same spring (the content host's spacer).</para></summary>
     static class StageGlide
     {
         /// <summary>The box's rect in the glide layer's coordinates, and its generation (a new glide REMOUNTS it at its first rect, so the box
@@ -154,6 +158,12 @@ public static partial class Video
 
         /// <summary>A glide is running (subscribes): the presenter draws the picture alone while it glides.</summary>
         public static readonly Signal<bool> Active = new(false);
+
+        /// <summary>The docked card keeps its place in the rail while the picture glides out of it to the mini player (subscribes): written
+        /// with the placement itself (<see cref="State.Commit"/>), so the rail never lays out a frame without the card, and cleared when the
+        /// glide ends. The rail then slides out (or the hero comes back) with its body as it was, instead of the body under the card moving up
+        /// into the card's place the frame the picture left.</summary>
+        public static readonly Signal<bool> HoldsDock = new(false);
 
         static readonly RootState<NodeHandle> s_node = new("Video.StageGlide");
 
@@ -174,9 +184,19 @@ public static partial class Video
             => MathF.Abs(a.X - b.X) < eps && MathF.Abs(a.Y - b.Y) < eps && MathF.Abs(a.W - b.W) < eps && MathF.Abs(a.H - b.H) < eps;
     }
 
+    /// <summary>The docked card keeps its place while the picture glides out of it (subscribes; see <see cref="StageGlide.HoldsDock"/>): the rail
+    /// reads it as still docked, so its body neither swaps nor moves up until the picture has landed in the mini player.</summary>
+    internal static bool DockHeld() => StageGlide.HoldsDock.Value;
+
+    /// <summary>A move of the picture between its two homes in the main window (the docked card and the mini player): it glides between them
+    /// (the owner, 2026-11-13: moving the video between the docked panel and the floating player is one smooth motion, never a cut).</summary>
+    static bool HomeMove(SurfacePlacement from, SurfacePlacement to)
+        => (from, to) is (SurfacePlacement.Docked, SurfacePlacement.Floating) or (SurfacePlacement.Floating, SurfacePlacement.Docked);
+
     /// <summary>The glide's host (mounted once, by <see cref="PipLayer"/>): a full-bleed layer that takes no input and paints nothing, holding the
-    /// one hollow glide box, and the small machine that starts a glide on the picture's staged edge, resolves its target once the target is laid
-    /// out (the frame after the edge), keeps it on a target that still moves, and ends it when the box has landed.</summary>
+    /// one hollow glide box, and the small machine that starts a glide on the picture's staged edge or on a move between its two homes (the
+    /// docked card and the mini player), resolves its target once the target is laid out (the frame after the edge), keeps it on a target that
+    /// still moves (the rail sliding in under it), and ends it when the box has landed.</summary>
     [CoreHost]
     sealed class GlideHost : Component
     {
@@ -188,7 +208,9 @@ public static partial class Video
         readonly Action<NodeHandle> _layerRealized;
         TimerHandle _tick;
         NodeHandle _layer;
-        bool _shown, _toStage, _aimed;
+        bool _shown, _toStage, _aimed, _homeSeen, _homeGlide, _paintedSeen;
+        SurfacePlacement _home;
+        RectF _lastPainted;
         int _ticks;
 
         public GlideHost()
@@ -206,7 +228,21 @@ public static partial class Video
                 bool shown = Stage.Picture.Shown();
                 if (shown == _shown) return;
                 _shown = shown;
+                _homeGlide = false;
                 Begin(shown);
+            });
+            // the picture's move between its two homes (the docked card, the mini player), read in the same flush as its commit: the presenter's
+            // rect is still the old home's. While the stage shows the picture it follows the stage's reservation, whichever home it has.
+            UseSignalEffect(() =>
+            {
+                var home = PlacementCore.Resolve(State.Surface.Value);
+                if (!_homeSeen) { _homeSeen = true; _home = home; return; }
+                if (home == _home) return;
+                var was = _home;
+                _home = home;
+                if (Stage.Picture.ShownPeek()) return;
+                if (HomeMove(was, home)) { _homeGlide = true; Begin(toStage: false, leaving: was); }
+                else if (_homeGlide) End();   // a home glide that lost its target (the video went to the pop-out, or off)
             });
             var r = StageGlide.Rect.Value;
             int gen = StageGlide.Generation.Value;
@@ -214,8 +250,10 @@ public static partial class Video
             return HoleBoxes.GlideLayer(_layerRealized, HoleBoxes.GlideBox("video:glide:" + gen, r, StageGlide.Motion, StageGlide.Realized));
         }
 
-        /// <summary>Start a glide from where the presenter is now toward the stage (<paramref name="toStage"/>) or back to its home.</summary>
-        void Begin(bool toStage)
+        /// <summary>Start a glide from where the presenter is now toward the stage (<paramref name="toStage"/>) or back to its home; a move between
+        /// the two homes starts from the home it leaves (<paramref name="leaving"/>: the commit's flush has already written the presenter's
+        /// geometry binds for the new home, so its own rect no longer says where the picture is drawn).</summary>
+        void Begin(bool toStage, SurfacePlacement leaving = SurfacePlacement.None)
         {
             var scene = Context.Scene;
             var presenter = s_presenterState.Value;
@@ -228,10 +266,15 @@ public static partial class Video
                 End();
                 return;
             }
-            var from = scene.AbsoluteRect(presenter);
+            RectF from;
+            // a glide in flight is where the picture is drawn (the presenter follows its box): a reversal turns from there
+            if (StageGlide.Following && scene.IsLive(StageGlide.Node)) from = scene.AbsoluteRect(StageGlide.Node);
+            else if (leaving == SurfacePlacement.None) from = scene.AbsoluteRect(presenter);
+            else if (!TryHome(scene, leaving, out from)) { End(); return; }
             if (from.W < 1f || from.H < 1f) { End(); return; }
             _toStage = toStage;
             _aimed = false;
+            _paintedSeen = false;
             _ticks = 0;
             StageGlide.Rect.Value = ToLayer(scene, from);
             StageGlide.Generation.Value = StageGlide.Generation.Peek() + 1;
@@ -242,7 +285,9 @@ public static partial class Video
         void End()
         {
             StageGlide.Active.Value = false;
+            StageGlide.HoldsDock.Value = false;
             _aimed = false;
+            _homeGlide = false;
         }
 
         /// <summary>One step: aim the box at the target once it is laid out, follow a target that still moves, end once the box has landed.</summary>
@@ -251,7 +296,7 @@ public static partial class Video
             var scene = Context.Scene;
             if (!StageGlide.Active.Peek() || scene is null) return;
             if (++_ticks > MaxTicks) { End(); return; }
-            if (TryTarget(scene, out var target))
+            if (TryTarget(scene, out var target, out bool sliding))
             {
                 var local = ToLayer(scene, target);
                 if (!_aimed || !StageGlide.Near(local, StageGlide.Rect.Peek()))
@@ -259,7 +304,7 @@ public static partial class Video
                     StageGlide.Rect.Value = local;
                     _aimed = true;
                 }
-                else
+                else if (!sliding)
                 {
                     var box = StageGlide.Node;
                     if (!box.IsNull && scene.IsLive(box) && StageGlide.Near(scene.AbsoluteRect(box), target)) { End(); return; }
@@ -269,30 +314,56 @@ public static partial class Video
         }
 
         /// <summary>Where the glide lands, in window DIP: the stage's reservation, or the picture's home (the docked card's reservation, the mini
-        /// player's own rect). False while it is not laid out yet.</summary>
-        bool TryTarget(FluentGpu.Scene.SceneStore scene, out RectF target)
+        /// player's own rect). False while it is not laid out yet. A docked card whose rail is still SLIDING in (its painted rect moved since the
+        /// last step) is aimed at where it lands (its laid-out rect), so the picture travels straight there instead of chasing the rail in from
+        /// off-canvas (<paramref name="sliding"/>: the glide does not end on it); once the card holds still the picture lands on it as painted.</summary>
+        bool TryTarget(FluentGpu.Scene.SceneStore scene, out RectF target, out bool sliding)
         {
-            target = default;
-            NodeHandle node;
-            if (_toStage) node = Stage.Picture.Reservation;
-            else
+            sliding = false;
+            if (!_toStage)
             {
-                var resolved = PlacementCore.Resolve(State.Surface.Peek());
-                if (resolved == SurfacePlacement.Floating)
+                var home = PlacementCore.Resolve(State.Surface.Peek());
+                if (!TryHome(scene, home, out target)) return false;
+                if (home != SurfacePlacement.Docked) return true;
+                var landing = scene.AbsoluteLayoutRect(s_dockedReservation);
+                if (StageGlide.Near(target, landing)) return true;     // painted where it is laid out: nothing slides it
+                bool seen = _paintedSeen, moved = seen && !StageGlide.Near(target, _lastPainted);
+                _lastPainted = target;
+                _paintedSeen = true;
+                if (!seen) return false;                               // one more step tells a slide from a standing offset (a scroll)
+                if (moved)
                 {
-                    var presenter = s_presenterState.Value;
-                    if (s_floatingRect is not { } floating || presenter.IsNull || !scene.IsLive(presenter)) return false;
-                    var abs = scene.AbsoluteRect(presenter);
-                    ref var paint = ref scene.Paint(presenter);
-                    var home = floating();
-                    target = new RectF(abs.X - paint.LocalTransform.Dx + home.X, abs.Y - paint.LocalTransform.Dy + home.Y, home.W, home.H);
-                    return target.W >= 1f && target.H >= 1f;
+                    sliding = true;
+                    target = landing;
                 }
-                node = resolved == SurfacePlacement.Docked ? s_dockedReservation : default;
+                return true;
             }
+            target = default;
+            var node = Stage.Picture.Reservation;
             if (node.IsNull || !scene.IsLive(node)) return false;
             target = scene.AbsoluteRect(node);
             return target.W >= 1f && target.H >= 1f;
+        }
+
+        /// <summary>The picture's rect at <paramref name="home"/>, in window DIP: the docked card's reservation as painted (the rail's slide
+        /// included), or the mini player's own rect (the presenter's layout origin plus its floating geometry). False while it is not laid out.</summary>
+        static bool TryHome(FluentGpu.Scene.SceneStore scene, SurfacePlacement home, out RectF r)
+        {
+            r = default;
+            if (home == SurfacePlacement.Floating)
+            {
+                var presenter = s_presenterState.Value;
+                if (s_floatingRect is not { } floating || presenter.IsNull || !scene.IsLive(presenter)) return false;
+                var abs = scene.AbsoluteRect(presenter);
+                ref var paint = ref scene.Paint(presenter);
+                var at = floating();
+                r = new RectF(abs.X - paint.LocalTransform.Dx + at.X, abs.Y - paint.LocalTransform.Dy + at.Y, at.W, at.H);
+                return r.W >= 1f && r.H >= 1f;
+            }
+            var node = home == SurfacePlacement.Docked ? s_dockedReservation : default;
+            if (node.IsNull || !scene.IsLive(node)) return false;
+            r = scene.AbsoluteRect(node);
+            return r.W >= 1f && r.H >= 1f;
         }
 
         /// <summary>A window-DIP rect in the glide layer's coordinates (the box is placed by its margin inside the layer).</summary>
@@ -1004,6 +1075,9 @@ public static partial class Video
             string? playingUri = PlayingUri();
             string activeStage = Shell.Ui.ActiveStagePlayable.Value;
             bool mount = DockedHosting.ShouldMount(face, resolved, ownerStagePlayable, activeStage, playingUri);
+            // The rail's card keeps its place (hollow, not live) while the picture glides out of it to the mini player (DockHeld).
+            bool held = !mount && face == DockedFace.Cap && DockHeld()
+                && DockedHosting.ShouldMount(face, SurfacePlacement.Docked, ownerStagePlayable, activeStage, playingUri);
             // Deduplicated on the whole tuple, so it writes only when a term moves (it writes no signal).
             var hostTerms = (resolved, playingUri, activeStage, mount);
             if (hostTerms != _loggedHost)
@@ -1032,7 +1106,7 @@ public static partial class Video
             // The slot log's trailing edge: re-armed by every held line, so it fires GeometryLogGapMs after the sweep stops.
             _slotFlush = UseTimeout(FlushSlotLog, GeometryLogGapMs);
 
-            if (!mount) return HoleBoxes.Unmounted();
+            if (!mount && !held) return HoleBoxes.Unmounted();
 
             // The card is the theme's (`Video.Docked`): a hollow reservation the stay-mounted presenter follows, with the Space key.
             _onRealized ??= h => { _slot = h; s_dockedReservation = h; };

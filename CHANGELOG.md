@@ -68,6 +68,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Moving a music video between the right panel and the mini player is one smooth motion (every theme).** The picture
+  glides from the panel to the mini player's corner, and back, instead of jumping there; the panel slides away (or in)
+  with its contents as they were, and the page widens or narrows once, its titles taking their new line breaks on the
+  first frame instead of rewrapping step by step as the panel moves. The page's foot makes room for the mini player as
+  the picture arrives, instead of cutting off at once, and the "Recently played" tiles change their columns in one step
+  (a narrowing page showed twice its rows for a frame).
 - **The controls over a video go the moment the pointer leaves the window, as on YouTube.** In full screen (Cinema and
   Theatre), over the docked, floating and pop-out video and in the mini player, moving the pointer out of the window (off
   any edge, onto another screen or the taskbar, under a window that comes up over Wavee) or switching away with Alt+Tab

@@ -59,7 +59,9 @@ internal static class RailWiring
         string stagePlayable = Shell.Ui.ActiveStagePlayable.Value;
         bool stageHosts = stagePlayable.Length > 0
             && Video.DockedHosting.HostFor(resolved, stagePlayable, Playback.CurrentId.Value.Text) == Video.DockedHost.PageStage;
-        bool docked = resolved == Video.SurfacePlacement.Docked;
+        // Still docked for the rail while the picture glides out of the card to the mini player (Video.DockHeld): the rail keeps its body
+        // as it was until the picture has landed, so nothing in it moves up into the card's place.
+        bool docked = resolved == Video.SurfacePlacement.Docked || Video.DockHeld();
         var body = ModeOf(Rail.VideoCoupling.BodyModeFor(panel.Mode, stageHosts));
 
         return new PanelView
