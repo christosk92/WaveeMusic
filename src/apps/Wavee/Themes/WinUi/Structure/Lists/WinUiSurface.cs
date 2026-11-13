@@ -175,7 +175,7 @@ internal static class WinUiSurface
                                 decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx);
         return new BoxEl
         {
-            Direction = 1, Gap = SurfaceGeometry.ShelfPlatePad, Grow = 1f,
+            Direction = 1, Gap = SurfaceGeometry.ShelfPlatePad, Grow = 1f, MinWidth = 0f,   // the gutter's width, not the cover's (Surface.Host)
             Padding = new Edges4(padX, SurfaceGeometry.ShelfPlatePad, padX, SurfaceGeometry.ShelfPlatePad),
             Children = [Controls.CardCover(art, coverW, coverH, d.CoverAspect, circular, fab, corner), labels ?? Labels(d, in s, float.NaN)],
         };

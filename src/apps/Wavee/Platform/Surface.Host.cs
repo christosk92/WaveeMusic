@@ -199,7 +199,9 @@ public static partial class Controls
             if (d.Selected) shell = style.Selected(shell, _latest?.Data.SelectedAccent);
             // The menu rides on the shell in BOTH modes: the right-click funnel is not a gesture owner.
             if (hasMenu) shell = ContextSheets.Attach(shell, overlay!, _menu);
-            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, Prop.Bind(liveWidth));
+            // In the gutter the card's width is the gutter's, never its content's (MinWidth 0 here and on the body): a destination probe stands the
+            // gutter at the width the card lands at (FlexLayout.LandCellCard), and the cover bound to the live width must not hold the card open there.
+            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell with { MinWidth = 0f }, Prop.Bind(liveWidth));
             return SurfaceRules.TitleTip(trimmed: false, hasLabels: s.Labels) ? LabelTip(root, d.Title) : root;
         }
 
