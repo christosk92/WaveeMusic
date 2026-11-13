@@ -105,6 +105,10 @@ public static partial class Diagnostics
                     _ = Wavee.Theming.ThemeHost.Switch(v.Mode);
                     Evidence.Reply("theme", "ok", v.Mode);
                     break;
+                case DiagCommand.Here:
+                    Playback.TakeOver();
+                    Evidence.Reply("here", "ok", "");
+                    break;
                 case DiagCommand.Mini:
                     MiniPlayer.ApplyDiag(v.On, v.Face.Length > 0 ? int.Parse(v.Face, CultureInfo.InvariantCulture) : -1);
                     Evidence.Reply("mini", "ok", MiniPlayer.IsOpen.Peek() ? "open" : "closed");

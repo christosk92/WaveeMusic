@@ -72,7 +72,7 @@ public static partial class Diagnostics
                 case DiagCommand.Probe: SetProbe(v.Level); break;
                 case DiagCommand.Xm: QueryExtensions(v.Uris ?? [], v.Kinds ?? [], v.Tag); break;
                 case DiagCommand.Shot or DiagCommand.Present or DiagCommand.Seek or DiagCommand.Stage or DiagCommand.Rail or DiagCommand.Reveal or DiagCommand.Video
-                    or DiagCommand.Theme or DiagCommand.Mini:
+                    or DiagCommand.Theme or DiagCommand.Mini or DiagCommand.Here:
                     StoreShot.Apply(v);   // the Store screenshot capture (StoreShot.cs)
                     break;
             }

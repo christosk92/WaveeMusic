@@ -17,7 +17,7 @@ namespace Wavee;
 
 /// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
 /// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini }
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
 /// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
@@ -210,6 +210,9 @@ public static class EvidenceReport
                 verb = new DiagVerb(DiagCommand.Theme, Mode: m);
                 return true;
             }
+            case "here":
+                verb = new DiagVerb(DiagCommand.Here);   // pull playback to this device (Connect takeover)
+                return true;
             case "mini":
             {
                 int o = Flag(open);
