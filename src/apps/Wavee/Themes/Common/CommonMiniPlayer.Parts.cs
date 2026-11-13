@@ -112,7 +112,7 @@ internal static partial class CommonMiniPlayer
 
     /// <summary>The theme's visualizer for this window (null for every other face, which keep the full player's picture). Its ground fills the
     /// box; its bars stand above <paramref name="foot"/>, where a filling layout writes its title and controls.</summary>
-    static Func<MiniVisualizerFrame, Element>? VizPaint(Ctx m, int bars, float foot = 0f)
+    static Func<MiniVisualizerFrame, Element>? VizPaint(Ctx m, int bars, float foot = 0f, float head = 0f)
     {
         if (m.Kind != MiniFaceKind.Visualizer) return null;
         var st = m.St;
@@ -127,14 +127,20 @@ internal static partial class CommonMiniPlayer
                     Grow = 1f, AlignSelf = FlexAlign.Stretch, HitTestVisible = false,
                     Gradient = new GradientSpec(GradientShape.Linear, H.ShadeAngle, [new GradientStop(H.VizGlowFrom, accent with { A = 0f }), new GradientStop(1f, st.Tint2(accent))]),
                 },
+                // the drawing box: a changed foot (the filling form's hover block) eases its height as a GPU scale from the top, so the bars
+                // compress into the shorter box and lift back over the transition, keep their bound transforms and are never rebuilt
                 new BoxEl
                 {
-                    Width = f.Width, Height = MathF.Max(0f, f.Height - foot), AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Children = [st.Visualizer(f with { Height = MathF.Max(0f, f.Height - foot), Bands = Pick(f.Bands, bars), Peaks = Pick(f.Peaks, bars) }, accent)],
+                    Key = H.FaceKey + ":viz", Width = f.Width, Height = MathF.Max(0f, f.Height - foot - head), AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                    Margin = new Edges4(0f, head, 0f, 0f),
+                    HitTestVisible = false, ClipToBounds = true, TransformOriginY = 0f, Animate = s_vizFoot,
+                    Children = [st.Visualizer(f with { Height = MathF.Max(0f, f.Height - foot - head), Bands = Pick(f.Bands, bars), Peaks = Pick(f.Peaks, bars) }, accent)],
                 },
             ],
         };
     }
+
+    static readonly LayoutTransition s_vizFoot = LayoutTransition.BoundsT(SizeMode.ScaleCorrect);
 
     /// <summary><paramref name="n"/> bands spread over the deck's (the lows on the left).</summary>
     static FloatSignal[] Pick(FloatSignal[] bands, int n)

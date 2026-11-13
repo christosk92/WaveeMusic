@@ -288,6 +288,22 @@ internal static partial class CommonMiniPlayer
         // The window buttons stand on glass over imagery: everywhere but an object face's ground, unless its tile reaches under them. The
         // short top scrim is for a face that fills the top with imagery only (an object face stands on the window's ground: no scrim there).
         bool glass = !obj || (w + side) * 0.5f > w - (H.ChromeInset + 2f * st.ChromeBox + H.ChromeGap);
+
+        // The foot: the title block at rest; on hover the controls (transport row over the seek row) under it. The title rises by the
+        // controls' height where the risen title still clears the window buttons, else it cross-fades with the controls in place. Over
+        // lyrics it always gives way in place: a risen title would sit on the lines, and only the foot under the controls may darken.
+        var fm = dark ? m with { Media = true } : m;
+        float controlsH = st.PlayBigBox + H.SquareHoverRowGap + H.SeekRowH;
+        float controlsTop = h - H.SquareHoverFoot - controlsH;
+        float rise = controlsH + H.SquareHoverFoot + H.SquareTitleAir - H.SquareRestFoot;
+        float titleH = MathF.Max(TitleBlockHeight(fm), st.Badge);
+        float risenTop = h - H.SquareRestFoot - rise - titleH;
+        bool rises = !lyrics && risenTop >= H.ChromeInset + st.ChromeBox + H.SquareTitleAir;
+        // The analyser stands above the foot: the resting title at rest; while the controls show, between the window buttons and the whole
+        // hover block (the risen title, or the controls where it gives way in place). Its box eases between the two (VizPaint), so no bar ever
+        // runs through the text or under the buttons.
+        float vizFoot = m.Hot ? h - (rises ? risenTop : controlsTop) + H.SquareTitleAir : H.SquareLyricFoot;
+        float vizHead = m.Hot ? H.ChromeInset + st.ChromeBox + H.SquareTitleAir : 0f;
         var children = new List<Element>(12);
         if (obj)
         {
@@ -297,7 +313,7 @@ internal static partial class CommonMiniPlayer
         else if (groundCover)
             children.Add(FaceLayer(m, w, h - H.SquareCoverFoot, MiniFaceUse.Fill));
         else
-            children.Add(FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsSquare, H.SquareLyricFoot)));
+            children.Add(FaceLayer(m, w, h, MiniFaceUse.Fill, paint: VizPaint(m, H.VizBarsSquare, vizFoot, vizHead)));
         if (st.CoverBleed is { } bleed && m.Kind == MiniFaceKind.Cover)
             children.Add(new BoxEl
             {
@@ -316,16 +332,6 @@ internal static partial class CommonMiniPlayer
         }
         if (dark) children.Add(Shade(st));
 
-        // The foot: the title block at rest; on hover the controls (transport row over the seek row) under it. The title rises by the
-        // controls' height where the risen title still clears the window buttons, else it cross-fades with the controls in place. Over
-        // lyrics it always gives way in place: a risen title would sit on the lines, and only the foot under the controls may darken.
-        var fm = dark ? m with { Media = true } : m;
-        float controlsH = st.PlayBigBox + H.SquareHoverRowGap + H.SeekRowH;
-        float controlsTop = h - H.SquareHoverFoot - controlsH;
-        float rise = controlsH + H.SquareHoverFoot + H.SquareTitleAir - H.SquareRestFoot;
-        float titleH = MathF.Max(TitleBlockHeight(fm), st.Badge);
-        float risenTop = h - H.SquareRestFoot - rise - titleH;
-        bool rises = !lyrics && risenTop >= H.ChromeInset + st.ChromeBox + H.SquareTitleAir;
         if (m.Hot)
         {
             float scrimTop = MathF.Max(0f, (rises ? risenTop : controlsTop) - H.HoverScrimLead);
