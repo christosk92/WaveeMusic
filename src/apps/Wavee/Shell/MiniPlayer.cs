@@ -10,7 +10,8 @@
 // unpinned images after 2 s and parks the rest after <see cref="Rules.DeepAfterMs"/>, keeping what the mini window shows.
 //
 // THE SHAPE IS THE WINDOW. No layout setting: the content reads its own viewport as Strip / Wide / Square / Tall (each form by what it
-// needs, <see cref="Rules.Live"/>) and reflows live. The window is the user's: a move or a resize leaves it exactly where and how big the
+// needs, <see cref="Rules.Live"/>) and reflows live, at every step of an edge drag (the window opts in to the engine's live resize, between
+// <see cref="Rules.MinW"/> x MinH and MaxW x MaxH). The window is the user's: a move or a resize leaves it exactly where and how big the
 // user left it (only the rect is saved); the one thing that resizes it is a shape picked in the options panel, which glides it to that
 // shape's size. Never the main window's tier: the shape is this window's own.
 //
@@ -48,6 +49,9 @@ public static partial class MiniPlayer
         public const float DefaultW = 392f, DefaultH = 163f;
         /// <summary>The smallest client the window allows (a strip's height, a tall column's width).</summary>
         public const float MinW = 232f, MinH = 48f;
+        /// <summary>The largest client the window allows: past it a mini player is a second main window (the forms are laid out and
+        /// swept up to here).</summary>
+        public const float MaxW = 720f, MaxH = 900f;
         /// <summary>The form floors. Wide: the card's height (title, artist, seek, transport beside an art box of the height) and the column
         /// beside its art (the save, transport and device row). Square: the filling form's height (its window buttons, title block and hover
         /// controls). Tall: a column tall enough for its fixed rows plus a useful face.</summary>
@@ -757,7 +761,10 @@ public static partial class MiniPlayer
             var (material, dark) = s_material.Peek();
             var request = new DetachedWindowRequest("Wavee", new Size2(Rules.DefaultW, Rules.DefaultH), new Root(), AlwaysOnTop: s_onTop.Peek(),
                 InitialBoundsPx: restored, MinClientSizeDip: new Size2(Rules.MinW, Rules.MinH), NoActivate: true,
-                Material: material, MaterialDark: dark, DragAnywhere: true);
+                Material: material, MaterialDark: dark, DragAnywhere: true,
+                // The form IS the size, so the content follows an edge drag step by step (the engine's default for a composited
+                // window holds the old layout until mouse-up); the limits are a floor and a ceiling, nothing else.
+                LiveResize: true, MaxClientSizeDip: new Size2(Rules.MaxW, Rules.MaxH));
             var window = hooks.OpenDetachedWindow?.Invoke(request);
             if (window is null)
             {
