@@ -30,15 +30,24 @@ internal static class WinUiMiniRules
     // ── the seek rail ──
     public const float Track = 4f, TrackCorner = 2f, TrackAlpha = 0.24f, Thumb = 14f, ThumbDot = 7f;
 
-    // ── the visualizer: rounded accent bars, lit toward white at the top ──
-    public const float VizInsetX = 0.09f, VizInsetY = 0.16f, VizGap = 0.035f, VizMin = 0.1f, VizTopCorner = 3f, VizFootCorner = 1f;
+    // ── the visualizer: rounded accent bars rising from the box's foot, lit toward white at the top ──
+    /// <summary>The bars' insets (shares of the box: the sides, above the tallest bar, under the foot) and the gap between them (of the width).</summary>
+    public const float VizInsetX = 0.08f, VizInsetTop = 0.1f, VizInsetFoot = 0.07f, VizGap = 0.03f, VizTopCorner = 3f, VizFootCorner = 1f;
     public const float VizTopAlpha = 0.85f, VizAlpha = 0.95f;
+    /// <summary>The resting shape (a bar's height with its band silent, as a share of the full bar): a low, smooth swell across the bands, its crest
+    /// toward the lows as a music spectrum's is, from <see cref="VizRestLow"/> at the ends to that plus <see cref="VizRestSwell"/>.</summary>
+    public const float VizRestLow = 0.08f, VizRestSwell = 0.2f, VizRestSkew = 0.75f;
+    /// <summary>Bar <paramref name="i"/> of <paramref name="n"/> at rest (see <see cref="VizRestLow"/>).</summary>
+    public static float VizRest(int i, int n) => VizRestLow + VizRestSwell * MathF.Sin(MathF.PI * MathF.Pow((i + 0.5f) / Math.Max(1, n), VizRestSkew));
 
     // ── lyrics: the strip ticker (its 2-DIP accent bar and two lines); the windows' type (the app's own lyrics view) per shape ──
     public const float TickerBar = 2f;
     public const float TickerNow = 13.5f, TickerNowLeading = 19f, TickerNext = 12f, TickerNextLeading = 17f;
-    public static float LyricSize(MiniShape shape) => shape switch { MiniShape.Square => 19f, MiniShape.Tall => 21f, _ => 13.5f };
-    /// <summary>The lyrics view's type in the mini window: the sizes above over the side pane's own (the view scales its rows, its
-    /// rhythm and its wipe by it).</summary>
-    public static float LyricScale(MiniShape shape) => LyricSize(shape) / WinUiPaneLyricsRules.LineSize;
+    /// <summary>The lyrics windows' type follows the window's width (a share of it, between a floor and a ceiling), so a line holds four or five
+    /// words in the narrowest column and the type stops growing where a wide window would only make lines longer.</summary>
+    public const float LyricWidthShare = 0.074f, LyricMin = 15f, LyricMax = 22f;
+    public static float LyricSize(float width) => Math.Clamp(width * LyricWidthShare, LyricMin, LyricMax);
+    /// <summary>The lyrics view's type in the mini window: the size above over the side pane's own (the mini mount draws the pane's rows,
+    /// WinUiPaneLyrics, which scale their type, rhythm and wipe by it).</summary>
+    public static float LyricScale(MiniShape shape, float width) => LyricSize(width) / WinUiPaneLyricsRules.LineSize;
 }

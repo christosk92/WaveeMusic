@@ -503,6 +503,10 @@ public static partial class Lyrics
             }
             else if (OnRail) _band = Surface.FocalBand(Large);
             if (_bandOverride >= 0f) _band = Math.Clamp(_bandOverride, 0.05f, 0.95f);   // the layout's own clamp: a different band re-made it every read
+            // A mini mount (#197) is a picture of the song (ILyricsHost.FlatRows): its other lines are one calm ink, never depth-blurred; the
+            // active line's halo still follows the setting.
+            float miniHalo = BlurPolicy.Scale(strength) * TypeScale;
+            if (_gutter >= 0f) strength = 0;
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
             if (_gutter >= 0f) newScale *= TypeScale;   // a mini mount (#197): the depth blur and the halo scale with its type, as its rows do
@@ -514,7 +518,7 @@ public static partial class Lyrics
                 // decrease never stops part-way on a paused, tickerless surface.
                 Array.Fill(_dofCurrent, float.NaN);
             }
-            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : newScale;
+            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : _gutter >= 0f ? miniHalo : newScale;
             HaloScale.Value = _haloScale;
             // Re-arm the ramp IMMEDIATELY on a strength change — it does not ride the ticker, so it lands paused too.
             UseEffect(() => { if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs); }, DepKey.From(strength));

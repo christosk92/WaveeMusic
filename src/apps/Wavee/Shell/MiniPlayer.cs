@@ -184,7 +184,7 @@ public static partial class MiniPlayer
     static Element BuildFace(MiniFaceRequest r)
     {
         var f = s_faces[ClampFace(r.Face)];
-        Element Cover() => Controls.Artwork(r.ArtUrl, r.Width, r.Height, r.Corner, keepWhileHidden: true);
+        Element Cover() => Embed.Comp(new CoverProps(r.ArtUrl, r.Width, r.Height, r.Corner), static () => new MiniCover());
         if (r.Use == MiniFaceUse.Thumb) return Cover();
         // The options panel's tile: a deck face at the tile's side under a surface gate that never opens, so it draws its resting picture
         // and runs no clock, loop or audio lease; every other face's picture is the panel's own, over the cover.
@@ -201,8 +201,8 @@ public static partial class MiniPlayer
         {
             case MiniFaceKind.Lyrics:
                 // The lines are the template's (the app's own lyrics view); the face is what they read over: the cover in a box, and filling the
-                // window the full-screen lyrics' ground: the cover baked blurred once per track (the previous one kept under the new until it has
-                // faded in), under the stage's dark-arm veil at the lyrics scrim, so the lines read on-dark in light and dark alike.
+                // window the album's colour (`LyricsGround`): the cover baked blurred once per track (the previous one kept under the new until it
+                // has faded in), its colour lifted, under an even dark veil, so the lines read on-dark in light and dark alike.
                 if (r.Use != MiniFaceUse.Fill) return Cover();
                 return Embed.Comp(new LyricsGroundProps(r.ArtUrl ?? "", r.Width, r.Height), static () => new LyricsGround());
             case MiniFaceKind.Canvas:
@@ -233,6 +233,35 @@ public static partial class MiniPlayer
                 return Cover();
         }
     }
+
+    sealed record CoverProps(string? Url, float Width, float Height, float Corner);
+
+    /// <summary>The cover in a box, decoded for the device pixels it covers. <see cref="Controls.Artwork"/> left to itself decodes at the
+    /// box's DIP size (its hint is taken as device pixels), so on a 150 % display a 310-DIP square drew a 312-px decode over 465 px:
+    /// soft and blocky. The edge is rounded UP to a <see cref="CoverDecodeStepPx"/> rung, so a window resized live asks for a new decode
+    /// only when it crosses a rung (four or five over the whole size range), and the engine holds the old picture until the new one is in.</summary>
+    sealed class MiniCover : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<CoverProps>();
+            float scale = UseContext(Viewport.Scale);
+            return Controls.Artwork(p.Url, p.Width, p.Height, p.Corner, decodePx: CoverDecodePx(MathF.Max(p.Width, p.Height), scale),
+                keepWhileHidden: true);
+        }
+    }
+
+    /// <summary>The cover's decode edge (device px) for a box edge (DIP): rounded up to the rung, at most the shared decode ceiling.</summary>
+    static int CoverDecodePx(float edgeDip, float scale)
+    {
+        if (!(scale > 0f) || !float.IsFinite(scale)) scale = 1f;
+        int px = (int)MathF.Ceiling(MathF.Max(1f, edgeDip) * scale / CoverDecodeStepPx) * CoverDecodeStepPx;
+        return Math.Min(px, Design.ImageDecodeScale.Ceiling);
+    }
+
+    /// <summary>The cover's decode rung (device px): coarse enough that a live drag crosses few, fine enough that a rung's overshoot
+    /// (at most this much) costs little memory.</summary>
+    const int CoverDecodeStepPx = 128;
 
 
     // ══ 3. STATE AND VERBS ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -268,14 +297,15 @@ public static partial class MiniPlayer
     /// <summary>The mini player is open (the main window is hidden while it is).</summary>
     public static readonly Signal<bool> IsOpen = new(false);
     static readonly Func<bool> s_lyricsVisible = static () => IsOpen.Value;
-    /// <summary>The veil a filling lyrics face reads over: the full-screen lyrics' own (its dark arm at the lyrics scrim: the mini's lyrics read
-    /// on-dark in either mode, as its other controls over imagery do), the blur and its overscan.</summary>
-    static ColorF LyricsVeil() => Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark).Veil with { A = Stage.Tone.ScrimA };
-
     sealed record LyricsGroundProps(string Url, float Width, float Height);
 
-    /// <summary>The lyrics face's ground: the cover under a baked blur (once per cover, a cached bitmap: nothing per frame at rest), the previous
-    /// cover kept under the new one so a track change fades blur to blur (the stage backdrop's way), the veil over both.</summary>
+    /// <summary>The lyrics face's ground: the album's own colour. The cover under a baked blur (once per cover, a cached bitmap: nothing per
+    /// frame at rest), its saturation lifted so a red cover gives a deep red ground rather than brown, the previous cover kept under the new one
+    /// so a track change fades blur to blur (the stage backdrop's way), and over both an even veil, deepening toward the foot where the title
+    /// stands. The veil is light (<see cref="GroundVeilA"/>) over a dark or mid cover and only as deep as a bright one needs for the white
+    /// active line to hold 4.5:1: solved once per cover from its measured luminance (<see cref="Palette.Tone"/>), faded in when it lands.
+    /// <para>The blur is decoded at a FIXED small square (<see cref="GroundDecodePx"/>) and cover-fitted into the window, whatever its size: a
+    /// colour field needs no detail, and a window resized live re-lays the picture out each frame but never asks for a new decode or bake.</para></summary>
     sealed class LyricsGround : Component
     {
         string _shown = "", _previous = "";
@@ -287,7 +317,20 @@ public static partial class MiniPlayer
             var kids = new List<Element>(3);
             if (_previous.Length > 0) kids.Add(Art(_previous, p) with { Key = "lg:" + _previous });
             if (_shown.Length > 0) kids.Add(Art(_shown, p) with { Key = "lg:" + _shown });
-            kids.Add(new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = LyricsVeil(), HitTestVisible = false });
+            var arm = Wavee.Theming.Roles.StageInk.Arm(ThemeKind.Dark);
+            var veil = arm.Veil;
+            float veilA = VeilFor(_shown.Length > 0 ? Palette.Tone(_shown) : null);
+            kids.Add(new BoxEl
+            {
+                Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+                Fill = veil with { A = veilA }, BrushTransitionMs = MediaScrim.FadeMs,
+            });
+            kids.Add(new BoxEl
+            {
+                Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+                Gradient = new GradientSpec(GradientShape.Linear, GroundVeilAngle,
+                    [new GradientStop(GroundVeilFootFrom, veil with { A = 0f }), new GradientStop(1f, veil with { A = GroundVeilFootA })]),
+            });
             return new BoxEl
             {
                 Width = p.Width, Height = p.Height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
@@ -295,14 +338,62 @@ public static partial class MiniPlayer
             };
         }
 
-        static ImageEl Art(string url, LyricsGroundProps p) => new()
+        MediaScrim.LumaMap? _solvedMap;
+        float _solvedA = GroundVeilA;
+
+        /// <summary>The even veil's alpha for a cover: <see cref="GroundVeilA"/>, or deeper where the blurred cover's bright part
+        /// (<see cref="GroundPercentile"/> of its luminance: the blur spreads a highlight, so not the photograph's brightest tenth) would leave the
+        /// active line under 4.5:1. The line is white, or (Zune) the accent lifted toward white: the solve holds an ink as dim as
+        /// <see cref="GroundInkGrey"/>, so either reads. Solved once per measured map (the window's resizes re-render this without solving again).</summary>
+        float VeilFor(MediaScrim.LumaMap? map)
         {
-            Source = url, Width = p.Width * LyricsBlurScale, Height = p.Height * LyricsBlurScale, Fit = ImageFit.Cover,
-            AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, BakedBlur = new BakedBlurSpec(LyricsBlurSigma, 0.5f),
-            KeepWhileHidden = true, Placeholder = Wavee.Theming.Roles.StageInk.ArtStandIn(url), RevealTransition = ImageTransition.Fade(Stage.Tone.CrossFadeMs),
-        };
+            if (map is null) return GroundVeilA;
+            if (ReferenceEquals(map, _solvedMap)) return _solvedA;
+            var ink = new ColorF(GroundInkGrey, GroundInkGrey, GroundInkGrey, 1f);
+            float grey = MediaScrim.GreyAt(map, (0f, 0f, 1f, 1f), GroundPercentile);
+            float need = MediaScrim.NeedBody * MediaScrim.Headroom, lo = GroundVeilA, hi = GroundVeilMax;
+            if (MediaScrim.Contrast(ink, grey * (1f - lo)) >= need) hi = lo;
+            else
+                for (int i = 0; i < 16; i++)
+                {
+                    float mid = (lo + hi) * 0.5f;
+                    if (MediaScrim.Contrast(ink, grey * (1f - mid)) >= need) hi = mid; else lo = mid;
+                }
+            _solvedMap = map;
+            _solvedA = hi;
+            return hi;
+        }
+
+        /// <summary>The blurred cover, overscanned past the window by <see cref="GroundOverscan"/> each side so the blur's soft rim never shows.</summary>
+        static ImageEl Art(string url, LyricsGroundProps p)
+        {
+            float ox = p.Width * GroundOverscan, oy = p.Height * GroundOverscan;
+            return new ImageEl
+            {
+                Source = url, DecodePx = GroundDecodePx, Fit = ImageFit.Cover, Saturation = GroundSaturation,
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Margin = new Edges4(-ox, -oy, -ox, -oy),
+                BakedBlur = new BakedBlurSpec(GroundBlurSigma, GroundBlurResolution),
+                KeepWhileHidden = true, Placeholder = Wavee.Theming.Roles.StageInk.ArtStandIn(url), RevealTransition = ImageTransition.Fade(Stage.Tone.CrossFadeMs),
+            };
+        }
     }
-    const float LyricsBlurSigma = 22f, LyricsBlurScale = 1.3f;
+
+    /// <summary>The ground's decode (device px, square) and its bake: the blur's σ is in the bake's texels (σ × resolution), here about a
+    /// twelfth of the picture, a colour field with the cover's large shapes still felt.</summary>
+    const int GroundDecodePx = 192;
+    const float GroundBlurSigma = 18f, GroundBlurResolution = 0.5f;
+    /// <summary>How far the blurred cover reaches past each edge (a fraction of the window).</summary>
+    const float GroundOverscan = 0.12f;
+    /// <summary>The ground's colour lift (the blur averages chroma away; 1 = the cover's own).</summary>
+    const float GroundSaturation = 1.45f;
+    /// <summary>The veil: even over the lines (at least <see cref="GroundVeilA"/>, at most <see cref="GroundVeilMax"/> over the brightest cover), and
+    /// a second one from <see cref="GroundVeilFootFrom"/> of the height deepening to the foot (the title's ground).</summary>
+    const float GroundVeilA = 0.42f, GroundVeilMax = 0.82f, GroundVeilFootA = 0.4f, GroundVeilFootFrom = 0.55f, GroundVeilAngle = 90f;
+    /// <summary>The share of the cover's luminance the veil is solved against (see <c>VeilFor</c>).</summary>
+    const float GroundPercentile = 0.75f;
+    /// <summary>The dimmest active-line ink the veil is solved for (sRGB grey, a relative luminance of about 0.42: an accent lifted 45 % toward
+    /// white, Zune's sung line).</summary>
+    const float GroundInkGrey = 0.68f;
     /// <summary>The per-theme "Colour from album art" choices (<see cref="Platform.Keys.MiniPlayerArtColour"/>).</summary>
     static readonly Signal<int> s_artColour = new(-1);
     /// <summary>Bumps on every wheel step (the template's volume HUD).</summary>

@@ -36,18 +36,23 @@ internal static class ClassicMiniRules
     public const float HeadW = 4f, HeadH = 12f, HeadHotScale = 1.25f, HeadMs = 150f;
 
     // ── the visualizer: three slow sine waves (accent, white, accent faint) drifting at 2.6, 3.7 and 5.1 s per period ──
-    public const float VizPeriod = 140f, VizStroke = 2.5f, VizAmp = 0.45f;
-    public const float Viz0Top = 0.29f, Viz0H = 0.42f, Viz0Ms = 2600f;
-    public const float Viz1Top = 0.33f, Viz1H = 0.34f, Viz1Ms = 3700f, Viz1Alpha = 0.55f;
-    public const float Viz2Top = 0.24f, Viz2H = 0.52f, Viz2Ms = 5100f, Viz2Alpha = 0.35f;
-    /// <summary>A wave's swing follows its third of the bands, never below this share.</summary>
-    public const float VizMin = 0.35f;
+    /// <summary>The wavelength (DIP), the stroke and the swing (a share of a wave's band). The waves centre on the box's optical centre
+    /// (<see cref="VizCentre"/>, a little above the middle), each in a band of the box's height.</summary>
+    public const float VizPeriod = 150f, VizStroke = 3.5f, VizAmp = 0.45f, VizCentre = 0.46f;
+    public const float Viz0H = 0.5f, Viz0Ms = 2600f;
+    public const float Viz1H = 0.38f, Viz1Ms = 3700f, Viz1Alpha = 0.6f;
+    public const float Viz2H = 0.66f, Viz2Ms = 5100f, Viz2Alpha = 0.38f;
+    /// <summary>A wave's swing follows its third of the bands, never below this share: its resting swell, visible while the music is quiet or paused.</summary>
+    public const float VizMin = 0.55f;
 
     // ── lyrics: the strip ticker's 3-DIP accent bar and its two lines; the windows' type (the app's own lyrics view) per shape ──
     public const float TickerBar = 3f;
     public const float TickerNow = 15f, TickerNowLeading = 20f, TickerNext = 12f, TickerNextLeading = 17f;
-    public static float LyricSize(MiniShape shape) => shape switch { MiniShape.Square => 19f, MiniShape.Tall => 21f, _ => 13.5f };
-    /// <summary>The lyrics view's type in the mini window: the sizes above over the side pane's own (the view scales its rows, its
+    /// <summary>The lyrics windows' type follows the window's width (a share of it, between a floor and a ceiling), so a line holds four or five
+    /// words in the narrowest column and the type stops growing where a wide window would only make lines longer.</summary>
+    public const float LyricWidthShare = 0.074f, LyricMin = 15f, LyricMax = 22f;
+    public static float LyricSize(float width) => Math.Clamp(width * LyricWidthShare, LyricMin, LyricMax);
+    /// <summary>The lyrics view's type in the mini window: the size above over the side pane's own (the view scales its rows, its
     /// rhythm and its wipe by it).</summary>
-    public static float LyricScale(MiniShape shape) => LyricSize(shape) / Wavee.Lyrics.Surface.Timed(false).FontSize;
+    public static float LyricScale(MiniShape shape, float width) => LyricSize(width) / Wavee.Lyrics.Surface.Timed(false).FontSize;
 }

@@ -117,7 +117,12 @@ internal static class WinUiLyricsLines
     /// highlight, no follow, no wipe, no blur ladder.</summary>
     static Element Unsynced(ILyricsHost host, Lyrics.Doc doc)
     {
-        var m = Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
+        // A mount in a small box (the mini player's: ILyricsHost.Gutter) reads its unsynced lines at the pane rows' type (the rows it draws when
+        // the song is timed, WinUiPaneLyrics) on its own gutter, so the face keeps one column and one size whether or not the song is timed.
+        var m = host.Gutter is { } gutter
+            ? new Lyrics.RowMetrics(WinUiPaneLyricsRules.LineSize * host.TypeScale, MathF.Round(WinUiPaneLyricsRules.LineHeight * host.TypeScale),
+                MathF.Round(WinUiPaneLyricsRules.RowPad * host.TypeScale), gutter, WinUiPaneLyricsRules.LineWeight)
+            : Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
         var ink = host.Ink.Primary with { A = Lyrics.Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
         var rows = new Element[doc.Lines.Count];
         for (int i = 0; i < rows.Length; i++)

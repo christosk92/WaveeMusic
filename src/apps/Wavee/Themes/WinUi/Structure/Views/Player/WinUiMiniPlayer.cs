@@ -71,27 +71,30 @@ internal static class WinUiMiniPlayer
         WideDetailFrom = M.WideDetailFrom,
     };
 
-    /// <summary>Rounded accent bars rising from the foot, lit toward white at their tops, one per band (a bound scale: no re-render).</summary>
+    /// <summary>Rounded accent bars rising from the box's foot, lit toward white at their tops, one per band (a bound scale: no re-render, no frame
+    /// at rest). A silent band rests on the resting swell (<see cref="M.VizRest"/>), so a pause or a quiet passage is a low, smooth shape, never a
+    /// row of stubs; a band's level lifts its bar from there to the full height.</summary>
     static Element Bars(MiniVisualizerFrame f, ColorF accent)
     {
         int n = f.Bands.Length;
-        float innerH = f.Height * (1f - 2f * M.VizInsetY);
+        float innerH = f.Height * (1f - M.VizInsetTop - M.VizInsetFoot);
         var bars = new Element[n];
         var grad = new GradientSpec(GradientShape.Linear, H.ShadeAngle, [new GradientStop(0f, H.OnMediaInk with { A = M.VizTopAlpha }), new GradientStop(1f, accent)]);
         for (int i = 0; i < n; i++)
         {
             var band = f.Bands[i];
+            float rest = M.VizRest(i, n);
             bars[i] = new BoxEl
             {
                 Grow = 1f, Basis = 0f, MinWidth = 0f, Height = innerH, Opacity = M.VizAlpha, Gradient = grad, HitTestVisible = false,
                 Corners = new CornerRadius4(M.VizTopCorner, M.VizTopCorner, M.VizFootCorner, M.VizFootCorner), TransformOriginY = 1f,
-                Transform = Prop.Of(() => Affine2D.Scale(1f, M.VizMin + (1f - M.VizMin) * Math.Clamp(band.Value, 0f, 1f))),
+                Transform = Prop.Of(() => Affine2D.Scale(1f, rest + (1f - rest) * Math.Clamp(band.Value, 0f, 1f))),
             };
         }
         return new BoxEl
         {
             Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 0, AlignItems = FlexAlign.End, Gap = f.Width * M.VizGap, HitTestVisible = false,
-            Margin = new Edges4(f.Width * M.VizInsetX, f.Height * M.VizInsetY, f.Width * M.VizInsetX, f.Height * M.VizInsetY),
+            Margin = new Edges4(f.Width * M.VizInsetX, f.Height * M.VizInsetTop, f.Width * M.VizInsetX, f.Height * M.VizInsetFoot),
             Children = bars,
         };
     }

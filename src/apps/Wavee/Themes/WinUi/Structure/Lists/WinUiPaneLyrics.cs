@@ -119,7 +119,8 @@ internal sealed class WinUiPaneLyricsRow : Component
         float rowPad = MathF.Round(PR.RowPadOf(facts.Policy is null ? WidthTier.Standard : facts.Window) * k);
 
         var ink = host.Ink;   // the theme's text rungs on the pane; the stage's arm where a mount reads over imagery (the mini player's)
-        ColorF rest = neutral ? ink.Secondary : past ? ink.Tertiary : ink.Secondary;
+        // The mini player's picture of the song (ILyricsHost.FlatRows): every line but the active one at one ink, sung or not.
+        ColorF rest = neutral ? ink.Secondary : host.FlatRows ? ink.Primary with { A = Lyrics.MiniRows.Ink } : past ? ink.Tertiary : ink.Secondary;
         Element text;
         if (line.IsWordByWord && line.Syllables.Count > 0)
         {
