@@ -120,9 +120,16 @@ internal static class ClassicHomeFacetRow
         // never the cut word. The line is pulled out by the style's leading inset and padded back, so the first word's hover plate is inside
         // it. Elsewhere the same line sizes to the bar (the tuned row, unchanged): one node at every tier.
         bool yieldWords = showFriends;
+        // The two type rungs are two trees: a width that crosses the title edge (a docking panel's slide across 600) cross-fades the words in the
+        // other rung over the leaving ones (the declared tier swap), never a 152-DIP step in one frame. Each form keys its own words; the words that
+        // arrive with the page arrive with the page's entrance (no fade on the row's first build).
+        var built = ctx.Hooks.UseRef(false);
         Element row = Responsive.Of("home:facet", w =>
         {
-            var style = !compactWords && FacetForm.IsTitle(w) ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle;
+            bool title = !compactWords && FacetForm.IsTitle(w);
+            var style = title ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle;
+            var wordsIn = ClassicTierMotion.SwapEnter(built.Value);
+            built.Value = true;
             float lead = yieldWords ? MathF.Max(0f, -style.LeadingInset) : 0f;
             return new BoxEl
             {
@@ -131,7 +138,11 @@ internal static class ClassicHomeFacetRow
                 Children =
                 [
                     Embed.Comp(new FacetWordsProps(labels, p.Index(), OnWord, style, yieldWords, lead, hasFollowing, w), static () => new FacetWords())
-                        with { Key = "home:facet:words" },
+                        with
+                        {
+                            Key = title ? "home:facet:words" : "home:facet:words:compact",
+                            Enter = wordsIn, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                        },
                     // The spacer pushes the trailing buttons to the row's end; where the words yield, their own line fills that room instead.
                     new BoxEl { Grow = yieldWords ? 0f : 1f, MinWidth = 0f },
                     Flow.Show(() => hasFollowing, following),
