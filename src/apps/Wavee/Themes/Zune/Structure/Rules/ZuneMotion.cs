@@ -95,9 +95,10 @@ public static class ZuneMotion
     /// opacity cross-fade as the grid's.</summary>
     public static readonly EnterExit SwapFade = SwapFamilies.Declare("Zune.SwapFade", new(Opacity: 0f, Active: true));
 
-    /// <summary>A part whose two forms lay their words out in different places (the daylist strip ↔ its bled form): a FADE-THROUGH, the old form out
-    /// where it stands, then the new one in (its enter waits out the exit), so the two layouts never show at once. A cross-fade superimposed their
-    /// titles over the cover for its whole length. A declared swap family: each form is its own keyed tree.</summary>
+    /// <summary>A FADE-THROUGH enter: it waits out a <see cref="SwapFade"/> exit's leg, then fades in. The words of a part whose two forms lay them out in
+    /// different places (the daylist strip ↔ its bled form): the forms cross-fade (<see cref="SwapFade"/>, so the zone is never blank) while the new
+    /// form's words wait for the old ones to fade, so the two titles never show over each other (owner 2026-11-13; a whole-form fade-through left the
+    /// zone empty mid-slide). Also a form's own enter on its view's first render. A declared swap family.</summary>
     public static readonly EnterExit SwapThrough = SwapFamilies.Declare("Zune.SwapThrough", new(Opacity: 0f, Active: true, DelayMs: GridCrossFadeMs));
 
     /// <summary>Each leg of <see cref="SwapThrough"/>: the grid cross-fade's 160 ms, its fade kept under reduced motion.</summary>

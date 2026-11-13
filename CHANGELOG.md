@@ -82,7 +82,9 @@ versions separately under `v*` and is not tracked in this file.)
   motion (the cover, the copy and the clock column ease to their new places, the title cross-fades between its sizes)
   instead of jumping, and its "Following" button fades out of one place before it appears in the other instead of
   showing twice. Zune's "new" releases cross-fade between their row and the place beside the history tiles instead of
-  sliding across them (they never leave the page empty mid-slide), and Classic's daylist buttons glide to their new place. With the right panel open on Now playing, Queue,
+  sliding across them (they never leave the page empty mid-slide), Zune's daylist cross-fades between its strip and its
+  full-cover form while its height eases, its new title coming in just after the old one has gone (it went blank for a
+  moment mid-slide; the two titles never show over each other), and Classic's daylist buttons glide to their new place. With the right panel open on Now playing, Queue,
   Lyrics or Friends, the docked video card fades out (or in) while the panel's contents ease up (or down) into its place,
   and the cover takes over from the card with a cross-fade, instead of the panel jumping by the card's height. The play bar
   and the panel no longer redraw when only the page's layout changes.

@@ -108,10 +108,10 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// <summary>A playlist's description block (the key the Zune playlist hero gives it).</summary>
     private const string PlaylistReadKey = ZunePlaylistRules.EditorReadKey;
 
-    /// <summary>The rule the daylist's form key is excused from, and why (owner 2026-10-25, audit FU2b).</summary>
+    /// <summary>The rule the daylist's form key is excused from, and why (owner 2026-10-25, audit FU2b; the cross-fade owner 2026-11-13).</summary>
     private const string KeyHygieneRule = "key.hygiene",
-        DaylistFormKey = "owner 10-25: the tuned V28c fade-through wins over the form-key rule (the strip's bled and row forms are two keyed layers that fade "
-        + "through each other on the Compact crossing, Z-Home-Compact vs Z-Home; one tree would trade the tuned fade-through for a glide)";
+        DaylistFormKey = "owner 10-25 and 11-13: the strip's bled and row forms are two keyed layers that cross-fade (the words of the new one a leg "
+        + "later) on the Compact crossing, Z-Home-Compact vs Z-Home; one tree would trade the cross-fade for a glide";
 
     /// <summary>The what's-new panorama's key (the literal `ZuneReleaseNotes.Frame` keys it with).</summary>
     private const string ReleaseNotesTitleKey = "zrn:title";
@@ -129,7 +129,7 @@ public sealed class ZuneLintGuide : IThemeLintGuide
             policies.Add(new(LintIntent.TrimOk, "zune-tile:", "tile titles (two lines, then the ellipsis): " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions));
-            // The daylist strip's two forms are two keyed layers of one fade-through (ZuneHomeDaylist.Swap): an ACCEPTED exception to the key rule.
+            // The daylist strip's two forms are two keyed layers of one cross-fade (ZuneHomeDaylist.Swap): an ACCEPTED exception to the key rule.
             policies.Add(new(LintIntent.Allow, ZuneHomeRules.DaylistFormPrefix, DaylistFormKey, Rule: KeyHygieneRule));
         }
         policies.Add(new(LintIntent.TrimOk, PlaylistReadKey,
