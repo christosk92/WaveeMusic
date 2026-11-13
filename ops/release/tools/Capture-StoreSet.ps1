@@ -57,6 +57,7 @@ public delegate bool EnumProc(IntPtr h, IntPtr l);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out int p);
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
 [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
+[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
 '@ -ErrorAction SilentlyContinue
 [void][StoreSet.Win]::SetProcessDpiAwarenessContext([IntPtr](-4))
 Add-Type -AssemblyName System.Drawing
@@ -111,7 +112,7 @@ function Grab-Other([string]$name, [int]$wDip = 0, [int]$hDip = 0) {
         $r = New-Object StoreSet.Win+RECT; [void][StoreSet.Win]::GetWindowRect($h, [ref]$r)
         $mon = Monitor $h
         [void][StoreSet.Win]::MoveWindow($h, $mon.Work.L + 160, $mon.Work.T + 160, [int]($wDip * $mon.Scale), [int]($hDip * $mon.Scale), $true)
-        Wait 1500
+        Wait 3000   # the window re-forms (a shape change cross-fades) before its frame is read
     }
     if ($Clips) { return }
     Clear-Hover $h
@@ -141,8 +142,15 @@ function Monitor([IntPtr]$h) {
 }
 
 # ── clips: ddagrab of a window's rectangle while a scene plays ─────────────────────────────────────────────────────────
+# A clip records the SCREEN: the window goes topmost for the recording (no activation, the owner's focus stays where it is), so
+# nothing the owner has open on that monitor is ever in the picture; Stop-Clip puts it back.
+function Set-Topmost([IntPtr]$h, [bool]$on) {
+    [void][StoreSet.Win]::SetWindowPos($h, [IntPtr]$(if ($on) { -1 } else { -2 }), 0, 0, 0, 0, 0x0013)   # NOSIZE|NOMOVE|NOACTIVATE
+}
 function Start-Clip([string]$name, [IntPtr]$h = $main, [int]$pad = 0) {
     if (-not $Clips) { return }
+    Verb 'wavee://diag?cmd=present&on=1' | Out-Null   # presentation mode: no account name, picture or badge in the picture
+    Set-Topmost $h $true; Start-Sleep -Milliseconds 900
     Clear-Hover $h
     $mon = Monitor $h; $f = Frame $h
     $x = [Math]::Max(0, $f.L - $mon.Rect.L - $pad); $y = [Math]::Max(0, $f.T - $mon.Rect.T - $pad)
@@ -156,7 +164,7 @@ function Start-Clip([string]$name, [IntPtr]$h = $main, [int]$pad = 0) {
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.CreateNoWindow = $true
     $ff = [System.Diagnostics.Process]::Start($psi)
     Start-Sleep -Milliseconds 700   # ddagrab's first frame
-    $script:clip = [pscustomobject]@{ Name = $name; Ff = $ff; File = $file; Watch = [Diagnostics.Stopwatch]::StartNew(); Marks = New-Object System.Collections.Generic.List[string]
+    $script:clip = [pscustomobject]@{ Name = $name; Ff = $ff; Hwnd = $h; File = $file; Watch = [Diagnostics.Stopwatch]::StartNew(); Marks = New-Object System.Collections.Generic.List[string]
         Rect = "$x,$y,$w,$hh"; Scale = $mon.Scale }
     Write-Host "  clip $name  rec ${w}x${hh} @ $x,$y output $($mon.Output)"
 }
@@ -164,8 +172,9 @@ function Stop-Clip {
     if (-not $script:clip) { return }
     $c = $script:clip; $script:clip = $null
     $c.Ff.StandardInput.Write('q'); $c.Ff.StandardInput.Close()
+    if ($c.Hwnd -eq $main) { Set-Topmost $main $false }
     if (-not $c.Ff.WaitForExit(15000)) { Write-Warning "ffmpeg for $($c.Name) did not stop" }
-    $marks = ($c.Marks | ForEach-Object { '"' + ($_ -replace '\\', '\\' -replace '"', '\"') + '"' }) -join ', '
+    $marks = ($c.Marks | ForEach-Object { '"' + ($_ -replace '\\', '\\' -replace '"', '\"' -replace "`t", '\u0009') + '"' }) -join ', '
     $json = '{ "name": "' + $c.Name + '", "rect": [' + $c.Rect + '], "scale": ' + $c.Scale + ', "lead": 0.7, "marks": [' + $marks + '] }'
     [System.IO.File]::WriteAllText((Join-Path $clipDir "$($c.Name).json"), $json)
     Write-Host "  clip $($c.Name) -> $($c.File)"
@@ -186,8 +195,9 @@ function Reset-Scene([string]$theme = 'classic') {
 $scenes = [ordered]@{
     'classic-home' = {
         Reset-Scene 'classic'
-        Verb "wavee://play?ctx=$stronger" ; Wait 6000
-        Verb 'wavee://diag?cmd=seek&ms=34600&pause=1'
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=52000&pause=1'
         Verb 'wavee://diag?cmd=rail&mode=lyrics'
         Verb 'wavee://open?route=home' ; Wait 3500
         Shot 'classic-home' 'settle=1200'
@@ -215,16 +225,18 @@ $scenes = [ordered]@{
     }
     'lyrics' = {
         Reset-Scene 'classic'
-        Verb "wavee://play?ctx=$stronger" ; Wait 6000
-        Verb 'wavee://diag?cmd=seek&ms=34600&pause=1'
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=52000&pause=1'
         Verb 'wavee://diag?cmd=stage&mode=lyrics&open=1' ; Wait 6000
         Shot 'lyrics' 'settle=1500'
         Verb 'wavee://diag?cmd=stage&open=0'
     }
     'visualizer' = {
         Reset-Scene 'classic'
-        Verb "wavee://play?ctx=$stronger" ; Wait 6000
-        Verb 'wavee://diag?cmd=seek&ms=52000'
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=60000'
         Verb 'wavee://diag?cmd=stage&mode=visualizer&face=aurora&gallery=1&open=1' ; Wait 5000
         Shot 'visualizer' 'settle=300'
         Verb 'wavee://diag?cmd=stage&gallery=0' ; Wait 1500
@@ -246,21 +258,28 @@ $scenes = [ordered]@{
         Verb 'wavee://pause'
     }
     'mini' = {
+        # big enough to draw at native pixels in a 3840 image; colour from BIRDS OF A FEATHER (cover, Canvas, visualizer)
         Reset-Scene 'classic'
         Verb "wavee://play?ctx=$stronger" ; Wait 6000
         Verb 'wavee://diag?cmd=seek&ms=34600&pause=1'
-        Verb 'wavee://diag?cmd=mini&face=0&open=1' ; Wait 2500
-        Grab-Other 'mini-cover' 360 360
-        Verb 'wavee://diag?cmd=mini&face=1' ; Wait 1500
-        Grab-Other 'mini-lyrics' 520 300
-        Verb 'wavee://diag?cmd=mini&face=4' ; Wait 1500
-        Grab-Other 'mini-vinyl' 300 480
+        Verb 'wavee://diag?cmd=mini&face=1&open=1' ; Wait 2500
+        Grab-Other 'mini-lyrics' 640 360
+        Verb 'wavee://diag?cmd=mini&open=0' ; Wait 1500
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=60000'
+        Verb 'wavee://diag?cmd=mini&face=2&open=1' ; Wait 4000
+        Grab-Other 'mini-canvas' 340 600
         Verb 'wavee://diag?cmd=mini&face=0' ; Wait 1500
-        Grab-Other 'mini-strip' 460 64
-        foreach ($t in 'zune', 'winui') {
-            Verb "wavee://diag?cmd=theme&mode=$t" ; Wait 3000
-            Grab-Other "mini-$t" 520 300
-        }
+        Grab-Other 'mini-cover' 420 420
+        Verb 'wavee://diag?cmd=theme&mode=zune' ; Wait 3000
+        Verb 'wavee://diag?cmd=mini&face=3' ; Wait 2500
+        Grab-Other 'mini-zune' 640 360
+        Verb 'wavee://diag?cmd=theme&mode=winui' ; Wait 3000
+        Verb 'wavee://diag?cmd=mini&face=4' ; Wait 2500
+        Grab-Other 'mini-winui' 400 560
+        Verb 'wavee://diag?cmd=mini&face=0' ; Wait 1500
+        Grab-Other 'mini-strip' 560 64
         Verb 'wavee://diag?cmd=mini&open=0' ; Wait 1500
         Verb 'wavee://diag?cmd=theme&mode=classic' ; Wait 2500
     }
@@ -293,18 +312,20 @@ $clipScenes = [ordered]@{
     }
     'lyrics' = {
         Reset-Scene 'classic'
-        Verb "wavee://play?ctx=$stronger" ; Wait 6000
-        Verb 'wavee://diag?cmd=seek&ms=30000'
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=44000'
+        Verb 'wavee://diag?cmd=stage&mode=lyrics&open=1' ; Wait 3000   # full screen: the clip's rect is the whole monitor
         Start-Clip 'lyrics'
-        Wait 800
-        Verb 'wavee://diag?cmd=stage&mode=lyrics&open=1' ; Wait 11000
-        Verb 'wavee://diag?cmd=stage&open=0' ; Wait 1500
+        Wait 11000
         Stop-Clip
+        Verb 'wavee://diag?cmd=stage&open=0'
     }
     'visualizer' = {
         Reset-Scene 'classic'
-        Verb "wavee://play?ctx=$stronger" ; Wait 6000
-        Verb 'wavee://diag?cmd=seek&ms=52000'
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=60000'
         Verb 'wavee://diag?cmd=stage&mode=visualizer&face=aurora&gallery=0&open=1' ; Wait 3000
         Start-Clip 'visualizer'
         Wait 7000
@@ -323,15 +344,17 @@ $clipScenes = [ordered]@{
     }
     'mini' = {
         Reset-Scene 'classic'
-        Verb "wavee://play?ctx=$stronger" ; Wait 6000
-        Verb 'wavee://diag?cmd=seek&ms=30000'
+        Verb "wavee://play?ctx=$birds" ; Wait 6000
+        Verb 'wavee://diag?cmd=video&mode=off'
+        Verb 'wavee://diag?cmd=seek&ms=50000'
         Verb 'wavee://diag?cmd=mini&face=1&open=1' ; Wait 2500
-        Grab-Other 'mini' 520 300
+        Grab-Other 'mini' 640 360
         $h = Find-Other
-        Start-Clip 'mini' $h 48
-        Wait 6000
+        Start-Clip 'mini' $h 0
+        Wait 5000
+        Verb 'wavee://diag?cmd=mini&face=3' ; Wait 4000
         Verb 'wavee://diag?cmd=mini&face=4' ; Wait 4000
-        Verb 'wavee://diag?cmd=mini&face=2' ; Wait 4000
+        Verb 'wavee://diag?cmd=mini&face=0' ; Wait 3500
         Stop-Clip
         Verb 'wavee://diag?cmd=mini&open=0' ; Wait 1500
     }
