@@ -76,9 +76,11 @@ MotionKit-style scene kit) lived in `C:\WAVEE\scratch\store26\kit` for this roun
 | 8 | 08-winui-artist.png | Artist pages with their best songs, releases and videos, and Up next always at hand. |
 | 9 | 09-zune-home.png | Pivots across the top, your pins beside them, and home built from what you play. |
 
-Upload: the release run takes them. `wavee-store-submit.ps1 -ScreenshotDir <folder of NN-name.png + NN-name.caption.txt>`
-replaces every en-US screenshot in the same zip as the package. The trailer and the super hero art are not in that script:
-add them in Partner Center (or extend the script) with the release.
+Upload: the Store release run does all of it. `ops\release\wavee-store-submit.ps1 -ListingDir <deliver folder>` replaces
+the en-US screenshots with their captions, the trailer (video, 1920x1080 thumbnail, title "Wavee <semver>" or
+`trailer\title.txt`) and the 16:9 super hero art, in the same upload zip as the package, and asserts each after the
+update. The folder: `screenshots\NN-name-039.png` + `.caption.txt` (file names must differ from the ones being
+replaced), `trailer\<name>.mp4` + `<name>-thumb.png`, `super-hero\super-hero-3840x2160.png`.
 
 Trailer: `wavee-0.3.9-trailer.mp4` (38.7 s, 1920×1080, 60 fps, H.264 High, closed GOP, AAC 48 kHz stereo; real footage,
 whip cuts, a 3D theme carousel, measured page times in real time, soft UI sounds made from math) +

@@ -325,7 +325,14 @@ The Microsoft Store leg is a **separate runbook**, run from the still-checked-ou
 
 ```powershell
 powershell -File ops\release\wavee-store-submit.ps1        # -DryRun to rehearse; also -Resume / -Abort / -Status
+powershell -File ops\release\wavee-store-submit.ps1 -ListingDir <deliver>   # also refresh the en-US listing art
 ```
+
+`-ListingDir` points at a listing refresh (the store kit's `deliver` folder): `screenshots\` (NN-name.png +
+NN-name.caption.txt, names different from the ones being replaced), `trailer\` (`<name>.mp4`, `<name>-thumb.png`
+1920x1080, optional `title.txt`, else "Wavee <semver>") and `super-hero\` (16:9, 1920x1080 or 3840x2160). Everything
+is checked before the Store is touched, uploaded in the package's zip, and asserted on the Store's copy after the
+update (`ops/release/store/listing.md`).
 
 It builds one SDK `.msixbundle` containing **both** Store-channel MSIX packages, then wraps that single bundle
 in `Wavee_<storeQuad>_arm64_x64_store.msixupload`. Store quad remains `(M+1).m.(p*100+build).0`.
