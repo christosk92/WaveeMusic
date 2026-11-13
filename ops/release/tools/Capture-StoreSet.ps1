@@ -151,7 +151,21 @@ function Start-Clip([string]$name, [IntPtr]$h = $main, [int]$pad = 0) {
     if (-not $Clips) { return }
     Verb 'wavee://diag?cmd=present&on=1' | Out-Null   # presentation mode: no account name, picture or badge in the picture
     Set-Topmost $h $true; Start-Sleep -Milliseconds 900
-    Clear-Hover $h
+    if ($h -eq $main) {
+        # a clip needs the whole window on its monitor: put it back at the work area's corner and WAIT for the owner's
+        # pointer to leave it (moving the window aside would push it off the screen)
+        $mon = Monitor $h; $r = New-Object StoreSet.Win+RECT; [void][StoreSet.Win]::GetWindowRect($h, [ref]$r)
+        [void][StoreSet.Win]::MoveWindow($h, $mon.Work.L, $mon.Work.T, $r.R - $r.L, $r.B - $r.T, $true)
+        $deadline = (Get-Date).AddMinutes(5); $said = $false
+        while ((Get-Date) -lt $deadline) {
+            $p = New-Object StoreSet.Win+POINT; [void][StoreSet.Win]::GetCursorPos([ref]$p)
+            [void][StoreSet.Win]::GetWindowRect($h, [ref]$r)
+            if ($p.X -lt $r.L -or $p.X -ge $r.R -or $p.Y -lt $r.T -or $p.Y -ge $r.B) { break }
+            if (-not $said) { Write-Host '  waiting for the pointer to leave the window...'; $said = $true }
+            Start-Sleep -Milliseconds 300
+        }
+        Start-Sleep -Milliseconds 600
+    } else { Clear-Hover $h }
     $mon = Monitor $h; $f = Frame $h
     $x = [Math]::Max(0, $f.L - $mon.Rect.L - $pad); $y = [Math]::Max(0, $f.T - $mon.Rect.T - $pad)
     $w = [Math]::Min($mon.Rect.R - $mon.Rect.L - $x, $f.R - $f.L + 2 * $pad); $hh = [Math]::Min($mon.Rect.B - $mon.Rect.T - $y, $f.B - $f.T + 2 * $pad)
@@ -297,6 +311,22 @@ $clipScenes = [ordered]@{
         Verb 'wavee://diag?cmd=theme&mode=zune' ; Wait 4000
         Verb 'wavee://diag?cmd=theme&mode=winui' ; Wait 4000
         Verb 'wavee://diag?cmd=theme&mode=classic' ; Wait 3500
+        Stop-Clip
+    }
+    'speed' = {
+        # Real-time page hopping and a fling through Liked Songs: the trailer's "fast" act. Every page's time to its first
+        # frame is in the app log ([ui] nav.frames firstFrameMs); the trailer prints those numbers, so nothing is sped up.
+        Reset-Scene 'classic'
+        Verb 'wavee://diag?cmd=rail&mode=off'
+        Verb 'wavee://open?route=home' ; Wait 2500
+        Start-Clip 'speed'
+        Wait 900
+        foreach ($u in "wavee://open?route=album&arg=$hmhas", "wavee://open?route=artist&arg=$billie", 'wavee://open?route=albums',
+                       'wavee://open?route=artists', 'wavee://open?route=recents', 'wavee://open?route=browse', 'wavee://open?route=liked') {
+            Verb $u ; Wait 1100
+        }
+        Verb 'wavee://diag?cmd=scroll&vp=tab2/liked&to=20500&move=glide' ; Wait 2600
+        Verb 'wavee://diag?cmd=scroll&vp=tab2/liked&to=0&move=glide' ; Wait 2300
         Stop-Clip
     }
     'browse' = {
