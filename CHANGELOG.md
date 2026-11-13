@@ -70,6 +70,8 @@ versions separately under `v*` and is not tracked in this file.)
   highlight. Every song timed before is timed once more, since the language decision changed.
 - **What's New can show a feature in motion.** A highlight can carry a short looping clip of the real app instead of a
   still; this release's video full screen highlight plays one, at 60 fps, only while it is on screen.
+- **Wavee opens where you left it.** The window comes back on the same screen, at the same place and size, maximised
+  if you left it maximised. If that screen is gone or its resolution changed, Wavee opens on the nearest one instead.
 
 ### Changed
 
@@ -266,6 +268,16 @@ versions separately under `v*` and is not tracked in this file.)
   new places, the saved heart among them.
 - **Zune's switches that can't be changed showed only a grey dot.** A disabled switch (AI lyrics on a PC without an NPU,
   for one) now draws its track under the dimmed knob, on and off.
+- **A music video turned a whole monitor black.** On a screen that cannot carry protected video (a monitor behind some
+  USB-C docks, for one), the video now shows its cover with "This screen can't show protected video" and why, and the
+  song plays on. Move Wavee to a screen that can and the picture comes back by itself; Wavee remembers the screen
+  that failed.
+- **Wavee could close as a music video started.** Windows' media pipeline sometimes asked the audio output a question
+  before the output was ready. Wavee now waits for it, and opens the video once more if it still isn't ready.
+- **The whole screen hitched at every switch between music videos.** Skipping from one music video to the next rebuilt
+  Windows' protected video pipeline each time, which froze the desktop for about a tenth of a second on some PCs. The
+  next video now plays in the same pipeline.
+- **A music video that failed on every attempt was opened again and again.** Wavee now gives up after its retries.
 
 ## [0.3.8] - 2026-11-08
 
