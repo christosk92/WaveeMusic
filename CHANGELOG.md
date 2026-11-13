@@ -141,6 +141,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Home moves as one while the music video docks or floats (every theme).** When the right panel slides in or out,
+  Recently played no longer jumps from one grid to another: its tiles glide to their new places and the ones that come or
+  go fade (Classic). The cover shelves keep their size and let the panel's edge cover or reveal the next covers, instead
+  of ballooning and throwing a cover off the page. Classic's "All · Music · Podcasts · Audiobooks" cross-fade between
+  their two sizes instead of jumping, and Zune's daylist strip no longer re-flows its buttons and words for a frame
+  before it cross-fades.
 - **Docking the music video from the mini player no longer shows a black box in the panel (every theme).** While the
   picture glides back into the right panel, the place it lands on shows the panel itself instead of a black plate, and
   the picture is the only thing that arrives there. The same goes for the way out to the mini player.
