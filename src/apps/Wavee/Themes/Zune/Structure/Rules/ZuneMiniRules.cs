@@ -1,7 +1,7 @@
 // ── Themes/Zune/Structure/Rules/ZuneMiniRules.cs — the mini player's numbers in Zune (#197) ─────────────────────────
 //
-// From the approved prototype (scratchpad miniplayer/index.html, .tk[data-theme="zune"]): square card, art, chrome, flip pill and badge
-// (0 radius), round transport and an outlined round heart (the prototype's --br 50 %), the pink accent, thin lowercase type that bleeds off
+// From the approved prototype (scratchpad miniplayer/index.html, .tk[data-theme="zune"]): square card, art, window buttons' glass and
+// badge (0 radius), round transport and an outlined round heart (the prototype's --br 50 %), the pink accent, thin lowercase type that bleeds off
 // the edge under a fade (owner rule: never shrunk, never cut), a 2-DIP seek line with a small thumb in the ink, a thin centred waveform in
 // pink and white, the active lyric line big and pink.
 
@@ -17,7 +17,7 @@ internal static class ZuneMiniRules
     public const float ButtonCorner = 20f, PlayCorner = 24f;
     public const float ButtonBox = 40f, ButtonGlyph = 16f, PlayBox = 44f, PlayBigBox = 48f, PlayGlyph = 18f, ChromeBox = 32f, ChromeGlyph = 16f;
     public const float Pad = 14f, Gap = 14f, StripPadStart = 10f, StripThumb = 40f, StripGap = 11f, Badge = 18f;
-    public const float TintAlpha = 0.15f, Tint2Alpha = 0.28f, VeilAlpha = 0.52f, ShadeAlpha = 0.72f;
+    public const float TintAlpha = 0.15f, Tint2Alpha = 0.28f, ShadeAlpha = 0.72f;
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
     /// <summary>The wide card shows its third line (album, or "Playing on") from this art-box height: below it the title, the artist, the seek
     /// row and the transport fill the column.</summary>

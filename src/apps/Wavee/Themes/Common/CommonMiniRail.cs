@@ -4,7 +4,8 @@
 // commit per drag): a track, the played fill (a compositor scale, never a re-render), the theme's thumb, and the keyboard ladder's clock.
 // A theme passes its look (`MiniRailLook`): WinUI's 4-DIP track with the ringed accent dot, Zune's 2-DIP line with a small square-cut
 // thumb in the ink. (Classic draws its own wave rail, `ClassicMiniPlayer.WaveRail`; it uses this one for the edge line and a live stream.)
-// The EDGE form is the window's foot line (strip, square): a hairline at rest that thickens into a seek bar while the controls show.
+// The EDGE form is the window's foot line (strip, square), the same flat line in every theme: a hairline at rest that thickens into a seek
+// bar while the controls show. A rail answers a right-click with nothing (the window's own right-click opens the options panel).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -39,6 +40,9 @@ internal sealed record MiniRailLook
 
 internal static class CommonMiniRail
 {
+    /// <summary>A rail's answer to a right-click: nothing.</summary>
+    internal static readonly Action<ContextRequestEventArgs> NoContext = static _ => { };
+
     public static Element Draw(MiniSeekRequest r, MiniRailLook look)
         => Embed.Comp(new RailProps(r, look), static () => new Rail());
 
@@ -69,7 +73,7 @@ internal static class CommonMiniRail
                 return new BoxEl
                 {
                     Key = H.EdgeKey + ":rail", Grow = 1f, Height = H.EdgeHit, Direction = 1, Justify = FlexJustify.End, Role = AutomationRole.Slider,
-                    IsEnabled = enabled && !rail.Line, Cursor = enabled ? CursorId.Hand : null, OnBoundsChanged = _bounds,
+                    IsEnabled = enabled && !rail.Line, Cursor = enabled ? CursorId.Hand : null, OnBoundsChanged = _bounds, OnContextRequested = NoContext,
                     OnPointerDown = enabled ? host.PointerDown : null, OnDrag = enabled ? host.DragMove : null,
                     OnClick = enabled ? host.Commit : null, OnDragCanceled = enabled ? host.Cancel : null,
                     Children =
@@ -121,7 +125,7 @@ internal static class CommonMiniRail
             return new BoxEl
             {
                 Key = H.SeekKey + ":rail", Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = H.SeekRowH, ZStack = true, Role = AutomationRole.Slider,
-                IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null, OnBoundsChanged = _bounds,
+                IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null, OnBoundsChanged = _bounds, OnContextRequested = NoContext,
                 OnPointerDown = enabled ? host.PointerDown : null, OnDrag = enabled ? host.DragMove : null,
                 OnClick = enabled ? host.Commit : null, OnDragCanceled = enabled ? host.Cancel : null,
                 Children = kids.ToArray(),

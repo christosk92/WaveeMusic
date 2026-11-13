@@ -729,6 +729,10 @@ public static partial class Shell
     static readonly Func<string> s_goLiveLabel = static () => s_goLiveText.Get(Playback.Live.Value.BehindMs / 1000L,
         static sec => Loc.Get(Strings.Play.GoLive) + " " + Strings.Play.Behind(Playback.TimeFormat.Clock(sec * 1000L)));
 
+    /// <summary>The text one time label binds (elapsed, or remaining / duration), for a template that draws the digits in its own type: the
+    /// mini player's seek row, whose times sit flush with its column's edges.</summary>
+    internal static Func<string> TimeLabelText(bool remaining) => new BarTimeText(remaining, null).Text;
+
     /// <summary>The live slot's DECIDED edge: behind a rewindable window it offers the way back.</summary>
     static readonly Func<bool> s_offersGoLive = static () => TimeLabel.OffersGoLive(Playback.Live.Value, Playback.IsBehindLive.Value);
 
@@ -757,6 +761,9 @@ public static partial class Shell
         }
 
         readonly Func<string> _widest;
+
+        /// <summary>The label's bind thunk (<see cref="TimeLabelText"/>).</summary>
+        internal Func<string> Text => _label;
 
         /// <summary>The widest this label can read for the playing track: the duration's clock with every digit a "0" (and the remaining slot's minus).</summary>
         string Widest()

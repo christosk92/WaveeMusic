@@ -15,17 +15,17 @@ using FluentGpu.Theming;
 
 namespace Wavee.Theming.Contracts;
 
-/// <summary>The window's four shapes. The window settles on the nearest of them when a resize ends; the content follows the live
-/// size meanwhile. Values are not persisted (the rect is).</summary>
+/// <summary>The window's four forms. The content reads its form from the live size (each by what it needs: <c>MiniPlayer.Rules.Live</c>)
+/// and the window keeps whatever size the user gives it. Values are not persisted (the rect is).</summary>
 public enum MiniShape : byte
 {
-    /// <summary>6:1, a line over the taskbar: thumb, title or lyric, controls on hover.</summary>
+    /// <summary>Shorter than the other forms: thumb, title or lyric, controls on hover.</summary>
     Strip,
-    /// <summary>12:5, the default card: every core control at rest.</summary>
+    /// <summary>Clearly landscape, the default card: the art box at the height, every core control at rest beside it.</summary>
     Wide,
-    /// <summary>1:1: the face fills the window, controls on hover.</summary>
+    /// <summary>The filling form (everything else): the face fills the window, controls on hover.</summary>
     Square,
-    /// <summary>9:16: the face above (or behind) the full transport.</summary>
+    /// <summary>Clearly portrait: the face above (or behind) the full transport.</summary>
     Tall,
 }
 
@@ -93,15 +93,16 @@ public sealed record MiniPlayerProps
     public required Func<int, string> FaceName { get; init; }
     /// <summary>Builds a face for a box (the core's: deck faces, Canvas, lyrics, the cover).</summary>
     public required Func<MiniFaceRequest, Element> FaceView { get; init; }
-    /// <summary>A transport time label (the right one: remaining or duration), in an ink (null: the theme's; on-media white over a face).</summary>
-    public required Func<bool, ColorF?, Element> TimeLabel { get; init; }
+    /// <summary>A time label's text bind (true: the right one, remaining or duration): the template draws it in the style's detail type,
+    /// flush with its column's edges.</summary>
+    public required Func<bool, Func<string>> TimeText { get; init; }
+    /// <summary>Flip the right time between remaining and duration (a click on it).</summary>
+    public required Action ToggleRemaining { get; init; }
     /// <summary>The artist line of the playing item.</summary>
     public required Func<string> ArtistText { get; init; }
     /// <summary>The third line (album · year, or "Playing on …" when another device plays).</summary>
     public required Func<string> DetailText { get; init; }
-    /// <summary>Step the face by ±1 (the ‹ › flip).</summary>
-    public required Action<int> StepFace { get; init; }
-    /// <summary>Pick a face.</summary>
+    /// <summary>Pick a face (the options panel).</summary>
     public required Action<int> SetFace { get; init; }
     /// <summary>Back to the full window (the mini player closes; the music never stops).</summary>
     public required Action BackToWavee { get; init; }
@@ -202,10 +203,10 @@ public sealed record MiniPlayerStyle
     public required float PlayBox { get; init; }
     public required float PlayBigBox { get; init; }
     public required float PlayGlyph { get; init; }
-    /// <summary>A hover-only window button (options, back, face flip): 32 DIP, like caption buttons.</summary>
+    /// <summary>A hover-only window button (options, back to Wavee): 32 DIP, like caption buttons.</summary>
     public required float ChromeBox { get; init; }
     public required float ChromeGlyph { get; init; }
-    /// <summary>A button's plate corner, the play disc's, the chrome pill's and the badge's.</summary>
+    /// <summary>A button's plate corner, the play disc's, a window button's glass plate (round: half the box; square: 0) and the badge's.</summary>
     public required float ButtonCorner { get; init; }
     public required float PlayCorner { get; init; }
     public required float ChromeCorner { get; init; }
@@ -216,6 +217,7 @@ public sealed record MiniPlayerStyle
     public required float Pad { get; init; }
     public required float Gap { get; init; }
     public required float StripPadStart { get; init; }
+    /// <summary>The strip thumb's side at the strip's least height (it grows with a taller strip).</summary>
     public required float StripThumb { get; init; }
     public required float StripGap { get; init; }
     /// <summary>The play-state badge's side.</summary>
@@ -235,7 +237,7 @@ public sealed record MiniPlayerStyle
     /// <summary>Classic's ground band: the square's cover stands on a band of the window's ground (a straight join, never a wave), and a
     /// tinted band closing on a slow swell stands behind the tall column's object faces.</summary>
     public required bool GroundBand { get; init; }
-    /// <summary>A label (flyout rows, the face name, section heads).</summary>
+    /// <summary>A label (flyout rows, section heads).</summary>
     public required Func<string, TextEl> Label { get; init; }
     /// <summary>A small caption in the theme's voice (the flyouts' section heads and tile names: lowercase in Zune).</summary>
     public required Func<string, TextEl> Small { get; init; }
@@ -250,8 +252,7 @@ public sealed record MiniPlayerStyle
     public required Func<MiniLyricLine, Element> LyricLine { get; init; }
     /// <summary>The lyric windows' type per shape, as a share of the app's own lyrics view's (the view scales its rows by it).</summary>
     public required Func<MiniShape, float> LyricScale { get; init; }
-    /// <summary>The fade under the text over a filling face, and the hover veil over it.</summary>
-    public required Func<ColorF> Veil { get; init; }
+    /// <summary>The fade under the text over a filling face (its colour also deepens the foot under the hover controls).</summary>
     public required Func<ColorF> Shade { get; init; }
     /// <summary>The hover in / out timing (120 ms in, 600 ms out in the prototype).</summary>
     public required float HoverInMs { get; init; }

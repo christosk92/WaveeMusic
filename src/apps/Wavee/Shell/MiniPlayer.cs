@@ -9,10 +9,10 @@
 // (FluentApp.SetWindowVisible(false)): its loop parks (no reconcile, layout, record or present) and its memory machine releases
 // unpinned images after 2 s and parks the rest after <see cref="Rules.DeepAfterMs"/>, keeping what the mini window shows.
 //
-// THE SHAPE IS THE WINDOW. No layout setting: the content classifies its own viewport into Strip / Wide / Square / Tall and reflows
-// live; when a move or resize gesture ends the window settles on the nearest ratio (keeping roughly the area dragged and the nearest
-// screen corner) and snaps to a work-area corner within <see cref="Rules.SnapDip"/>, animated. Never the main window's tier: the shape
-// is this window's own.
+// THE SHAPE IS THE WINDOW. No layout setting: the content reads its own viewport as Strip / Wide / Square / Tall (each form by what it
+// needs, <see cref="Rules.Live"/>) and reflows live. The window is the user's: a move or a resize leaves it exactly where and how big the
+// user left it (only the rect is saved); the one thing that resizes it is a shape picked in the options panel, which glides it to that
+// shape's size. Never the main window's tier: the shape is this window's own.
 //
 // THE FACE is the mini player's own choice (default Cover): Cover, Lyrics, Canvas, Visualizer, Vinyl, CD, Cassette, Reel — the full
 // player's style faces (`Deck.Face`), its lyrics view and its Canvas layer, gated on THIS window (`Deck.SurfaceOpen`, Canvas's Mini
@@ -46,15 +46,18 @@ public static partial class MiniPlayer
     {
         /// <summary>The prototype's default: Wide at 392 × 163 DIP.</summary>
         public const float DefaultW = 392f, DefaultH = 163f;
-        /// <summary>The smallest client the window allows while dragging (a strip's height, a tall column's width).</summary>
+        /// <summary>The smallest client the window allows (a strip's height, a tall column's width).</summary>
         public const float MinW = 232f, MinH = 48f;
-        /// <summary>What the wide card needs to lay out: its text column (the save, transport and device row) and its height (title,
-        /// artist, seek, transport). A window nearest Wide by ratio but smaller than this (mid-drag, before it settles) draws as a
-        /// Square where it is tall enough for the square's hover rows, else as a Strip.</summary>
-        public const float WideColumnFloor = 214f, WideHeightFloor = 142f, SquareHeightFloor = 170f;
-        /// <summary>Within this distance (DIP) of a work-area corner a released window snaps to it, inset by <see cref="EdgeDip"/>.</summary>
-        public const float SnapDip = 56f, EdgeDip = 12f;
-        /// <summary>The settle animation (window bounds) and its step.</summary>
+        /// <summary>The form floors. Wide: the card's height (title, artist, seek, transport beside an art box of the height) and the column
+        /// beside its art (the save, transport and device row). Square: the filling form's height (its window buttons, title block and hover
+        /// controls). Tall: a column tall enough for its fixed rows plus a useful face.</summary>
+        public const float WideColumnFloor = 214f, WideHeightFloor = 142f, SquareHeightFloor = 170f, TallHeightFloor = 300f;
+        /// <summary>Clearly landscape (Wide) is at least this wide for its height; clearly portrait (Tall) at most this.</summary>
+        public const float WideAspect = 4f / 3f, TallAspect = 0.75f;
+        /// <summary>A form is entered this far (DIP) past its boundary and kept until its boundary itself (its floors) or this far back
+        /// across it (its aspect): a live drag held on a boundary never flips the form back and forth.</summary>
+        public const float Hysteresis = 8f;
+        /// <summary>The shape pick's glide (window bounds) and its step.</summary>
         public const float SettleMs = 300f, SettleStepMs = 16f;
         /// <summary>The main window's deep memory park while the mini player is the only surface (300 s otherwise).</summary>
         public const long DeepAfterMs = 20_000;
@@ -80,38 +83,43 @@ public static partial class MiniPlayer
         /// <summary>The tall column shows its volume row when there is room: 470 DIP tall or 270 wide (the prototype's rule).</summary>
         public static bool Roomy(float w, float h) => h >= 470f || w >= 270f;
 
+        /// <summary>The shape pick's sizes: each shape's ratio and width range (the window glides to the picked shape at about its area).</summary>
         public static float Ratio(MiniShape s) => s switch { MiniShape.Strip => 6f, MiniShape.Wide => 2.4f, MiniShape.Square => 1f, _ => 9f / 16f };
 
         public static (float Min, float Max) WidthRange(MiniShape s) => s switch
         {
             MiniShape.Strip => (300f, 520f),
-            MiniShape.Wide => (380f, 560f),   // 340 (the prototype's) left a Zune title, the seek and the transport no room at 142 tall
+            MiniShape.Wide => (390f, 560f),   // at 390 x 163 the card clears its floors by the hysteresis
             MiniShape.Square => (260f, 400f),
             _ => (232f, 330f),
         };
 
-        /// <summary>The nearest shape by ratio (log distance: the boundaries are the geometric means of neighbouring ratios).</summary>
-        public static MiniShape Classify(float w, float h)
+        /// <summary>The form the content draws at a live size, given the form it draws now. Each form is defined by what it needs, never
+        /// by a nearest ratio: Wide is clearly landscape with room for the card's height and its column; Tall is clearly portrait and tall
+        /// enough for its rows and a face; Square (the filling form) is everything else at its height floor; Strip is everything shorter.
+        /// The form drawn now is kept on its own floors and with <see cref="Hysteresis"/> of slack on its aspect; any other must clear its
+        /// floors and aspect by the hysteresis to take over.</summary>
+        public static MiniShape Live(float w, float h, MiniShape current)
         {
-            if (w <= 0f || h <= 0f) return MiniShape.Wide;
-            float r = w / h;
-            if (r >= MathF.Sqrt(6f * 2.4f)) return MiniShape.Strip;
-            if (r >= MathF.Sqrt(2.4f)) return MiniShape.Wide;
-            if (r >= MathF.Sqrt(9f / 16f)) return MiniShape.Square;
-            return MiniShape.Tall;
+            if (w <= 0f || h <= 0f) return current;
+            if (Holds(MiniShape.Wide, w, h, current)) return MiniShape.Wide;
+            if (Holds(MiniShape.Tall, w, h, current)) return MiniShape.Tall;
+            if (Holds(MiniShape.Square, w, h, current)) return MiniShape.Square;
+            return MiniShape.Strip;
         }
 
-        /// <summary>The shape the content draws at a size: the nearest by ratio, or, where the window is too small for the wide card (a
-        /// drag passes through every size before it settles), the shape that fits. Never a layout cut by its own window.</summary>
-        public static MiniShape Live(float w, float h)
+        static bool Holds(MiniShape form, float w, float h, MiniShape current)
         {
-            var shape = Classify(w, h);
-            if (shape != MiniShape.Wide || (w - h >= WideColumnFloor && h >= WideHeightFloor)) return shape;
-            return h >= SquareHeightFloor ? MiniShape.Square : MiniShape.Strip;
+            bool kept = form == current;
+            float floor = kept ? 0f : Hysteresis, aspect = kept ? -Hysteresis : Hysteresis;
+            return form switch
+            {
+                MiniShape.Wide => h >= WideHeightFloor + floor && w - h >= WideColumnFloor + floor && w >= h * WideAspect + aspect,
+                MiniShape.Tall => h >= TallHeightFloor + floor && w <= h * TallAspect - aspect,
+                MiniShape.Square => h >= SquareHeightFloor + floor,
+                _ => true,
+            };
         }
-
-        /// <summary>The settled client size for a dragged one: the nearest shape at roughly the same area, inside the shape's range.</summary>
-        public static Size2 Settle(float w, float h) => SizeFor(Classify(w, h), w * h);
 
         /// <summary>A shape at an area (DIP²), its width clamped to the shape's range.</summary>
         public static Size2 SizeFor(MiniShape shape, float area)
@@ -123,26 +131,20 @@ public static partial class MiniPlayer
         }
 
         /// <summary>Place a window of <paramref name="size"/> (outer px) where <paramref name="from"/> was, keeping the corner of it that is
-        /// nearest the work area's matching corner fixed, then snap to a work-area corner within <paramref name="snapPx"/>
-        /// (inset <paramref name="edgePx"/>), and keep it inside the work area.</summary>
-        public static RectF Place(RectF from, Size2 size, RectF work, float snapPx, float edgePx)
+        /// nearest the work area's matching corner fixed, and keep it inside the work area.</summary>
+        public static RectF Place(RectF from, Size2 size, RectF work)
         {
             if (work.IsInfinite || work.W <= 0f) return new RectF(from.X, from.Y, size.Width, size.Height);
             float cx = from.X + from.W * 0.5f, cy = from.Y + from.H * 0.5f;
             bool right = cx > work.X + work.W * 0.5f, bottom = cy > work.Y + work.H * 0.5f;
             float x = right ? from.X + from.W - size.Width : from.X;
             float y = bottom ? from.Y + from.H - size.Height : from.Y;
-            float left = work.X + edgePx, top = work.Y + edgePx;
-            float rightX = work.X + work.W - edgePx - size.Width, bottomY = work.Y + work.H - edgePx - size.Height;
-            bool nearH = right ? MathF.Abs(x - rightX) <= snapPx : MathF.Abs(x - left) <= snapPx;
-            bool nearV = bottom ? MathF.Abs(y - bottomY) <= snapPx : MathF.Abs(y - top) <= snapPx;
-            if (nearH && nearV) { x = right ? rightX : left; y = bottom ? bottomY : top; }
             x = Math.Clamp(x, work.X, MathF.Max(work.X, work.X + work.W - size.Width));
             y = Math.Clamp(y, work.Y, MathF.Max(work.Y, work.Y + work.H - size.Height));
             return new RectF(MathF.Round(x), MathF.Round(y), size.Width, size.Height);
         }
 
-        /// <summary>One settle step: eased (decelerate) interpolation of the outer rect.</summary>
+        /// <summary>One glide step: eased (decelerate) interpolation of the outer rect.</summary>
         public static RectF Lerp(RectF a, RectF b, float t)
         {
             float e = 1f - (1f - t) * (1f - t) * (1f - t);
@@ -274,9 +276,9 @@ public static partial class MiniPlayer
     static readonly Signal<(WindowMaterial Material, bool Dark)> s_material = new((WindowMaterial.None, true));
     /// <summary>A shape the Options asked for (the owner resizes to it), with a sequence so the same shape twice still acts.</summary>
     static readonly Signal<(MiniShape Shape, int Seq)> s_shapeRequest = new((MiniShape.Wide, 0));
-    static Size2 s_clientDip;   // the mini window's last viewport (DIP), for the settle's chrome arithmetic
+    static Size2 s_clientDip;   // the mini window's last viewport (DIP), for the shape pick's chrome arithmetic
     static IDetachedVideoWindow? s_live;   // the open mini window (its work area caps an escaping menu)
-    /// <summary>The window's settle animation is running, and its step (the owner's): ticked by the mini window's own <see cref="Body"/>.</summary>
+    /// <summary>The shape pick's glide is running, and its step (the owner's): ticked by the mini window's own <see cref="Body"/>.</summary>
     static readonly Signal<bool> s_settling = new(false);
     static Action? s_settleStep;
     static readonly Action s_settleTick = static () => s_settleStep?.Invoke();
@@ -344,8 +346,6 @@ public static partial class MiniPlayer
         IsOpen.Value = false;
     }
 
-    static void StepFace(int delta) => SetFace(((s_face.Peek() < 0 ? 0 : s_face.Peek()) + delta + s_faces.Length) % s_faces.Length);
-
     static void SetFace(int index)
     {
         index = ClampFace(index);
@@ -401,10 +401,10 @@ public static partial class MiniPlayer
         FaceKind = static i => s_faces[ClampFace(i)].Kind,
         FaceName = FaceName,
         FaceView = BuildFace,
-        TimeLabel = static (remaining, ink) => Shell.TimeText(remaining, ink),
+        TimeText = Shell.TimeLabelText,
+        ToggleRemaining = static () => PlayerVerbs.Default.ToggleRemaining(),
         ArtistText = ArtistText,
         DetailText = DetailText,
-        StepFace = StepFace,
         SetFace = SetFace,
         BackToWavee = static () => Close("back"),
         OnTop = s_onTop,
@@ -439,6 +439,8 @@ public static partial class MiniPlayer
     sealed class Desk : Component
     {
         static readonly ColorF Screen = new(0.5f, 0.5f, 0.52f, 1f);
+        /// <summary>The window's inset from the stand-in screen's corner.</summary>
+        const float Inset = 12f;
 
         public override Element Render()
         {
@@ -451,7 +453,7 @@ public static partial class MiniPlayer
                     new BoxEl
                     {
                         Width = w.Width, Height = w.Height, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Direction = 1, ClipToBounds = true,
-                        Margin = new Edges4(0f, 0f, Rules.EdgeDip, Rules.EdgeDip),
+                        Margin = new Edges4(0f, 0f, Inset, Inset),
                         Children = [Ctx.Provide(Viewport.Size, w, Embed.Comp(static () => new Body()))],
                     },
                 ],
@@ -489,8 +491,8 @@ public static partial class MiniPlayer
             var vp = UseContextSignal(Viewport.Size);
             float scale = UseContext(Viewport.Scale);
             UseSignalEffect(() => Track(vp.Value, scale));
-            // The settle animation's clock: THIS window's (the owner's own interval sits in the main window's tree, which is hidden while
-            // the mini player shows, and a hidden tree's intervals pause: a shape picked from the menu moved the window one step and stopped).
+            // The shape pick's glide clock: THIS window's (the owner's own interval sits in the main window's tree, which is hidden while
+            // the mini player shows, and a hidden tree's intervals pause: a shape picked from the panel moved the window one step and stopped).
             UseInterval(s_settleTick, Rules.SettleStepMs, enabled: s_settling.Value);
             return ViewSlots.View(ViewKeys.MiniPlayer, Props);
         }
@@ -502,7 +504,7 @@ public static partial class MiniPlayer
         if (viewport.Width <= 0f || viewport.Height <= 0f) return;
         s_clientDip = viewport;
         s_scale = scale > 0f ? scale : 1f;
-        var shape = Rules.Live(viewport.Width, viewport.Height);
+        var shape = Rules.Live(viewport.Width, viewport.Height, s_shape.Peek());
         if (s_shape.Peek() != shape) s_shape.Value = shape;
         bool roomy = Rules.Roomy(viewport.Width, viewport.Height);
         if (s_roomy.Peek() != roomy) s_roomy.Value = roomy;
@@ -511,8 +513,8 @@ public static partial class MiniPlayer
     // ══ 5. THE WINDOW'S OWNER ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE single owner of the mini window's lifecycle, mounted once in the shell's top layer; renders nothing. It opens the window
-    /// on the <see cref="IsOpen"/> edge (posted out of the reactive flush), hides the main window, persists the rect, follows keep-on-top
-    /// and the theme's material, settles and snaps the window when a gesture ends, and holds the global hot key.</summary>
+    /// on the <see cref="IsOpen"/> edge (posted out of the reactive flush), hides the main window, persists the rect where the user leaves
+    /// it, follows keep-on-top and the theme's material, glides the window to a picked shape, and holds the global hot key.</summary>
     public sealed class Owner : Component
     {
         static readonly Action<FrameStats> s_shellTick = Shell.FrameTick;
@@ -650,46 +652,25 @@ public static partial class MiniPlayer
                 Log.Info(LogCategory, "revealed firstPresentMs=" + timing.FirstPresentMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
                 // Only now hide the main window: the mini player is on screen first, so there is never a moment with no Wavee window.
                 if (IsOpen.Peek()) HideMain();
-                // A restored rect is whatever was saved: by an older build mid-drag, or at another display scale. Settle it as a drag's end.
-                if (_window is { IsOpen: true } live) OnBoundsSettled(live.BoundsPx, settling);
             };
         }
 
-        /// <summary>The window's rect came to rest. Our own settle's steps and landing are not gestures (the landing is recognised by
-        /// where it is, never by a flag a missed report would leave set): anything else settles on the nearest shape.</summary>
+        /// <summary>The window's rect came to rest after a move or a resize: it stays exactly there, and that is what reopens. The shape
+        /// pick's own glide steps are not gestures (its landing persists itself).</summary>
         void OnBoundsSettled(RectF outer, Signal<bool> settling)
         {
-            if (_window is not { IsOpen: true } || s_clientDip.Width <= 0f) return;
-            if (settling.Peek()) return;
-            if (_settleT >= 1f && Near(outer, _settleTo)) { Persist(outer); return; }
-            var target = Settled(outer);
-            if (Near(outer, target)) { Persist(outer); return; }
-            Begin(outer, target, settling);
+            if (_window is not { IsOpen: true } || settling.Peek()) return;
+            Persist(outer);
         }
 
-        static bool Near(RectF a, RectF b)
-            => MathF.Abs(a.X - b.X) < 1f && MathF.Abs(a.Y - b.Y) < 1f && MathF.Abs(a.W - b.W) < 1f && MathF.Abs(a.H - b.H) < 1f;
-
-        /// <summary>Where a window at <paramref name="outer"/> settles: the nearest shape at its area, snapped to a near corner.</summary>
-        RectF Settled(RectF outer)
-        {
-            float chromeW = MathF.Max(0f, outer.W - s_clientDip.Width * s_scale), chromeH = MathF.Max(0f, outer.H - s_clientDip.Height * s_scale);
-            float cw = (outer.W - chromeW) / s_scale, ch = (outer.H - chromeH) / s_scale;
-            return Target(outer, Rules.Settle(cw, ch), chromeW, chromeH);
-        }
-
+        /// <summary>The shape pick: glide the window to <paramref name="sizeDip"/> (client), keeping its screen-nearest corner.</summary>
         void StartSettle(IDetachedVideoWindow w, Size2 sizeDip, Signal<bool> settling)
         {
             var outer = w.BoundsPx;
             float chromeW = MathF.Max(0f, outer.W - s_clientDip.Width * s_scale), chromeH = MathF.Max(0f, outer.H - s_clientDip.Height * s_scale);
-            Begin(outer, Target(outer, sizeDip, chromeW, chromeH), settling);
-        }
-
-        RectF Target(RectF outer, Size2 sizeDip, float chromeW, float chromeH)
-        {
             var px = new Size2(sizeDip.Width * s_scale + chromeW, sizeDip.Height * s_scale + chromeH);
             var work = Win32App.WorkAreaAt(new Point2(outer.X + outer.W * 0.5f, outer.Y + outer.H * 0.5f));
-            return Rules.Place(outer, px, work, Rules.SnapDip * s_scale, Rules.EdgeDip * s_scale);
+            Begin(outer, Rules.Place(outer, px, work), settling);
         }
 
         void Begin(RectF from, RectF to, Signal<bool> settling)
@@ -725,8 +706,8 @@ public static partial class MiniPlayer
             s_live = null;
             if (w is not null)
             {
-                // Saved settled: a close mid-drag or mid-settle must not reopen at a size no shape lays out.
-                Persist(_settleT < 1f ? _settleTo : s_clientDip.Width > 0f ? Settled(w.BoundsPx) : w.BoundsPx);
+                // A close mid-glide saves where the glide was going.
+                Persist(_settleT < 1f ? _settleTo : w.BoundsPx);
                 w.FrameCompleted = null;
                 w.OnClosed = null;
                 w.BoundsChanged = null;

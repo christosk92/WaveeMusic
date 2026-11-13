@@ -65,7 +65,6 @@ internal static class WinUiMiniPlayer
         TickerBar = M.TickerBar,
         LyricScale = M.LyricScale,
         LyricLine = LyricLine,
-        Veil = static () => Tok.FillSmoke with { A = M.VeilAlpha },
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
         HoverInMs = M.HoverInMs,
         HoverOutDelayMs = M.HoverOutDelayMs,

@@ -1,8 +1,9 @@
 // ── Themes/Common/Rules/CommonMiniPlayerRules.cs — the mini player's fixed geometry and keys (#197) ─────────────────────
 //
 // Theme numbers (button boxes, radii, paddings, type) live in each theme's MiniPlayerStyle; these are the shape-independent
-// constants of the Common template, read off the approved prototype (scratchpad miniplayer/index.html): node keys, the face-flip
-// slide, the strip overlay's fade run, the square's and the tall column's insets, the lyric windows, the options panel.
+// constants of the Common template, read off the approved prototype (scratchpad miniplayer/index.html): node keys, the window
+// buttons, the strip overlay's fade run, the filling form's foot and hover layers, the tall column's insets, the lyric windows, the
+// options panel.
 
 using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;
@@ -13,16 +14,15 @@ internal static class CommonMiniPlayerRules
 {
     public const string RootKey = "mini.root", FaceKey = "mini.face", ChromeKey = "mini.chrome", TransportKey = "mini.transport",
         SeekKey = "mini.seek", HoverKey = "mini.hover", RestKey = "mini.rest", MetaKey = "mini.meta", PlayKey = "mini.play",
-        SaveKey = "mini.save", DeviceKey = "mini.device", OptionsKey = "mini.options", BackKey = "mini.back", FlipKey = "mini.flip",
+        SaveKey = "mini.save", DeviceKey = "mini.device", OptionsKey = "mini.options", BackKey = "mini.back",
         EdgeKey = "mini.edge", HudKey = "mini.hud", LyricsKey = "mini.lyrics", TickerKey = "mini.ticker", BleedKey = "mini.bleed",
-        LabelKey = "mini.label", VolumeKey = "mini.volume", ShapeKey = "mini.shape";
-
-    /// <summary>The face flip slides the new face in from this fraction of its box.</summary>
-    public const float FlipSlide = 0.18f;
+        VolumeKey = "mini.volume", ShapeKey = "mini.shape", TitleKey = "mini.title", ScrimKey = "mini.scrim", TimeKey = "mini.time";
 
     // ── text ──
-    /// <summary>Text line gaps, the seek row's gap and height, a time label's minimum width.</summary>
-    public const float LineGap = 1f, SeekGap = 8f, SeekRowH = 22f, TimeMinW = 32f;
+    /// <summary>Text line gaps, the seek row's gap and height, a time's least width (its digits grow inward from the column's edge).</summary>
+    public const float LineGap = 1f, SeekGap = 8f, SeekRowH = 22f, TimeMinW = 28f;
+    /// <summary>The right time is a toggle: its hit reaches the 40-DIP floor with this slop above and below the row.</summary>
+    public const float TimeSlop = 9f;
     /// <summary>On-media ink: white, the secondary line, the tertiary line, a hover plate and the track behind a rail.</summary>
     public static readonly ColorF OnMediaInk = new(1f, 1f, 1f, 1f);
     /// <summary>An accent mark over imagery is the accent lifted this far toward white.</summary>
@@ -39,9 +39,12 @@ internal static class CommonMiniPlayerRules
     // ── strip ──
     /// <summary>The strip's hover controls: the fade run into the solid plate (DIP), the plate's lead, the plate's end padding.</summary>
     public const float StripFade = 44f, StripFadeLead = 48f, StripOverlayEnd = 8f;
-    /// <summary>The strip shows its hover plate only where the whole plate fits the window (a drag passes through narrower strips before
-    /// the window settles on the shape's range): never a plate cut by the window's edge.</summary>
-    public static bool StripHoldsPlate(float width, float plate) => width >= plate;
+    /// <summary>How many of the strip's six hover buttons (save, previous, play, next, device, options) its plate holds at a width: all six
+    /// where they fit, else device dropped first, then save (the heart is drawn at rest; options, the panel's door, always stays).
+    /// Never a button cut by the window's edge.</summary>
+    public static int StripButtons(float width, float box) => Math.Clamp((int)((width - StripFadeLead - StripOverlayEnd) / box), 0, 6);
+    /// <summary>The strip thumb grows with the strip's height (inset this much above and below) up to this side.</summary>
+    public const float StripThumbInset = 8f, StripThumbMax = 96f;
     /// <summary>The window's edge line: a hairline at rest, thicker while the controls show, inside a taller hit box.</summary>
     public const float EdgeRest = 2f, EdgeHot = 5f, EdgeHit = 10f;
     /// <summary>The resting saved heart's glyph.</summary>
@@ -55,8 +58,8 @@ internal static class CommonMiniPlayerRules
     public const float EqBar0 = 0.5f, EqBar1 = 1f, EqBar2 = 0.7f, EqBarMax = 8f;
 
     // ── wide ──
-    /// <summary>The wide card's column gap, the transport row's bleed into the padding, the chrome's inset from the corner.</summary>
-    public const float WideColGap = 4f, CtrlBleedX = 6f, CtrlBleedBottom = 4f, ChromeInset = 6f, ChromePad = 2f, ChromeSep = 18f, ChromeSepW = 1f;
+    /// <summary>The wide card's column gap, the transport row's bleed into the padding.</summary>
+    public const float WideColGap = 4f, CtrlBleedX = 6f, CtrlBleedBottom = 4f;
     /// <summary>How far a control row's leading heart bleeds into the padding: a plain glyph by the row's bleed (its box is empty air), a
     /// ringed one until its ring meets the text's edge, a plated one not at all (a plate left of the title's edge reads as misaligned).</summary>
     public static float HeartBleed(MiniHeart heart, float bleed) => heart switch
@@ -65,27 +68,28 @@ internal static class CommonMiniPlayerRules
         MiniHeart.Ring => MathF.Min(bleed, BadgeRing),
         _ => bleed,
     };
-    /// <summary>The 32-DIP window buttons stand this far apart, so each keeps a 40-DIP reach with its slop.</summary>
-    public const float ChromeGap = 8f;
-    /// <summary>The flip pill on the wide art: its inset from the art's foot, its corner, its plate.</summary>
-    public const float FlipFoot = 6f, FlipCorner = 16f;
-    public static readonly ColorF FlipPlate = new(0f, 0f, 0f, 0.6f);
-    /// <summary>The chrome pill over imagery: a dark glass.</summary>
-    public static readonly ColorF ChromeOnDark = new(0f, 0f, 0f, 0.55f);
-    /// <summary>The face name in the flip pill: its minimum width.</summary>
-    public const float FaceNameMinW = 62f;
 
-    // ── square ──
-    /// <summary>The square's resting row (inset, foot inset), the object faces' and Classic cover's foot band, the hover layer's padding.</summary>
+    // ── the window buttons (options, back to Wavee: top right, on hover) ──
+    /// <summary>The 32-DIP window buttons stand this far apart, so each keeps a 40-DIP reach with its slop, and this far from the corner.</summary>
+    public const float ChromeGap = 8f, ChromeInset = 6f;
+    /// <summary>Over imagery each stands on its own dark glass plate.</summary>
+    public static readonly ColorF ChromeOnDark = new(0f, 0f, 0f, 0.55f);
+    /// <summary>How far from the window's right edge the wide card's title keeps clear of the two buttons, at rest too (hovering never
+    /// re-trims it): the pair, its inset and a little air.</summary>
+    public static float ChromeReserve(float box) => ChromeInset + 2f * box + ChromeGap + ChromeAir;
+    public const float ChromeAir = 4f;
+
+    // ── the filling form (square, the wide card's Lyrics face) ──
+    /// <summary>The resting title row (inset, foot inset), the object faces' and Classic cover's foot band.</summary>
     public const float SquareRestInset = 14f, SquareRestFoot = 13f, SquareObjectFoot = 62f, SquareCoverFoot = 66f;
     /// <summary>The air between an object face's tile and the band its title stands on.</summary>
     public const float SquareObjectGap = 8f;
-    /// <summary>The hover veil over a filling Lyrics face: near opaque, so the transport never sits among readable lines.</summary>
-    public const float LyricHoverVeil = 0.84f;
-    /// <summary>The square's hover bar names the face between its arrows from this width: narrower, the arrows, the device, options and back
-    /// keep their 40-DIP reach instead.</summary>
-    public static bool SquareNamesFace(float width) => width >= 300f;
-    public const float SquareHoverPadX = 10f, SquareHoverTop = 8f, SquareHoverFoot = 10f, SquareTopButton = 36f, SquareTopGap = 4f, SquareMidGap = 14f, SquareMidGlyph = 22f;
+    /// <summary>The hover controls' foot inset and the gap between the transport row and the seek row under it (the right time's 40-DIP
+    /// reach clears the device button); the risen title keeps this much air over the controls and under the window buttons.</summary>
+    public const float SquareHoverFoot = 10f, SquareHoverRowGap = 6f, SquareTitleAir = 6f;
+    /// <summary>The deeper foot scrim under the hover controls: its alpha at the foot (the shade's colour over imagery) and how far above the
+    /// title it starts; the short top scrim under the window buttons over imagery: its height and alpha.</summary>
+    public const float HoverScrimAlpha = 0.86f, HoverScrimLead = 28f, TopScrimH = 64f, TopScrimAlpha = 0.42f;
     /// <summary>The resting shade starts at this fraction of the height (its angle: top to bottom).</summary>
     public const float ShadeFrom = 0.45f, ShadeAngle = 90f;
     /// <summary>The ground's corner glow runs from the top right toward the bottom left and is gone this far along.</summary>
@@ -94,12 +98,12 @@ internal static class CommonMiniPlayerRules
     public const float BleedX = -16f, BleedY = 4f, BleedAlpha = 0.92f;
 
     // ── tall ──
-    /// <summary>The tall column's padding and gap; the transport's gap; the immersive panel's gap; the label's inset.</summary>
-    public const float TallPadTop = 14f, TallPadFoot = 12f, TallGap = 10f, TallTransportGap = 10f, TallPanelGap = 6f, TallLabelX = 14f, TallLabelY = 12f;
+    /// <summary>The tall column's padding and gap; the volume row's gap.</summary>
+    public const float TallPadTop = 14f, TallPadFoot = 12f, TallGap = 10f, TallPanelGap = 6f;
     /// <summary>What the tall column's fixed rows take (title block, seek, transport, gaps and padding), with and without the volume row: the
     /// art takes the rest.</summary>
     public const float TallFixed = 196f, TallFixedRoomy = 222f;
-    /// <summary>The immersive scrim's stops: dark at the top, clear through the middle, dark under the panel.</summary>
+    /// <summary>The immersive scrim's stops: dark at the top (under the window buttons), clear through the middle, dark under the panel.</summary>
     public const float ScrimTopAlpha = 0.38f, ScrimTopEnd = 0.18f, ScrimClearEnd = 0.36f, ScrimFootFrom = 0.62f, ScrimFootAlpha = 0.82f;
     /// <summary>Classic's tinted band behind the column's top (a share of the height).</summary>
     public const float WaveBandShare = 0.62f;
@@ -109,8 +113,8 @@ internal static class CommonMiniPlayerRules
     // ── lyrics ──
     /// <summary>Where the active line is held in each window (a share of its height) and the window's top and foot fades (shares).</summary>
     public const float LyricAnchorSquare = 0.42f, LyricAnchorTall = 0.4f, LyricFadeTop = 0.22f, LyricFadeFoot = 0.28f;
-    /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's top (under the face's name and the hover pill; its
-    /// foot is the column's own rows).</summary>
+    /// <summary>The lyric windows' insets: the square's (top, foot) and the tall column's top (clear of the window buttons; its foot is the
+    /// column's own rows).</summary>
     public const float SquareLyricTop = 14f, SquareLyricFoot = 64f, TallLyricTop = 44f;
     /// <summary>A lyric window's least soft foot (within a marked line's own padding): what shows of the next line, or of a line taller
     /// than the window, fades out and is never cut.</summary>
@@ -145,6 +149,6 @@ internal static class CommonMiniPlayerRules
     /// divisor, so the four read to scale.</summary>
     public const float ShapePicW = 40f, ShapePicH = 34f, ShapeStroke = 1.5f, ShapeCorner = 2f, ShapeMinH = 5f, ShapeDivW = 12f, ShapeDivH = 16f;
     public const float StripTileW = 360f, WideTileW = 392f, SquareTileW = 288f, TallTileW = 288f, StripRatio = 6f, WideRatio = 2.4f, TallRatio = 0.5625f;
-    /// <summary>The chrome pill's hairline.</summary>
+    /// <summary>A hairline (the panel's rules, WinUI's thumb ring).</summary>
     public const float RuleW = 1f;
 }

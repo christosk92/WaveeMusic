@@ -1,9 +1,10 @@
 // ── Themes/Common/CommonMiniPlayer.Parts.cs — the mini player's parts (#197) ───────────────────────────────────────────
 //
-// The pieces the four shapes share: the title block (a Zune title bleeds past its column under a fade, never shrunk or cut), the faces
-// and their boxes, the seek row and the edge line (drawn by the theme over the bar's own scrub host), the transport, the heart in the
-// theme's way (plain, Zune's ring, Classic's plate), the badge, the chrome pill, the lyric ticker, the lyrics window (the app's own
-// lyrics view), the volume HUD.
+// The pieces the four forms share: the title block (a Zune title bleeds past its column under a fade, never shrunk or cut), the faces
+// and their boxes, the seek row with its times flush to the column and the edge line (drawn by the theme over the bar's own scrub host),
+// the transport, the heart in the theme's way (plain, Zune's ring, Classic's plate), the badge, the window buttons, the lyric ticker,
+// the lyrics window (the app's own lyrics view), the volume HUD. A control answers a right-click with nothing, so the window's own
+// right-click (the options panel) never fires through it.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -22,8 +23,9 @@ internal static partial class CommonMiniPlayer
 {
     // ══ TEXT ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The title, the artist (or "Playing on …" in the accent) and, with <paramref name="detail"/>, the detail line. A bleeding
-    /// title runs to the window's edge (<paramref name="reserve"/> keeps it clear of the hover chrome) and fades out there.</summary>
+    /// <summary>The title, the artist (or "Playing on …" in the accent) and, with <paramref name="detail"/>, the detail line. The title line
+    /// keeps <paramref name="reserve"/> DIP clear of the window's right edge (the window buttons); a bleeding title runs to there and fades
+    /// out.</summary>
     static Element Meta(Ctx m, bool detail, float reserve = 0f, bool column = false)
     {
         var st = m.St;
@@ -46,7 +48,8 @@ internal static partial class CommonMiniPlayer
     {
         var st = m.St;
         var t = st.Title(title, m.Shape) with { Color = m.Ink };
-        if (!st.TitleBleeds) return t;
+        if (!st.TitleBleeds)
+            return reserve <= st.Pad ? t : new BoxEl { Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, 0f, reserve - st.Pad, 0f), Children = [t] };
         return new BoxEl
         {
             Direction = 0, MinWidth = 0f, ClipToBounds = true, Margin = new Edges4(0f, 0f, reserve - st.Pad, 0f),
@@ -55,11 +58,19 @@ internal static partial class CommonMiniPlayer
         };
     }
 
+    /// <summary>The title block's height without its detail line (the title's and the artist's line boxes): what a filling form lifts.</summary>
+    static float TitleBlockHeight(Ctx m)
+    {
+        var st = m.St;
+        static float Line(TextEl t) => t.LineHeight > 0f ? t.LineHeight : t.Size * 1.35f;
+        return Line(st.Title("", m.Shape)) + H.LineGap + Line(st.Artist("", m.Accent, m.Media));
+    }
+
     // ══ FACES ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Thumb(Ctx m)
+    /// <summary>The strip's thumb at <paramref name="side"/> (it grows with the strip's height), its badge, a click back to Wavee.</summary>
+    static Element Thumb(Ctx m, float side)
     {
-        float side = m.St.StripThumb;
         return new BoxEl
         {
             Width = side, Height = side, Shrink = 0f, ZStack = true, Cursor = CursorId.Hand, OnClick = m.P.BackToWavee, Role = AutomationRole.Button,
@@ -71,17 +82,12 @@ internal static partial class CommonMiniPlayer
         };
     }
 
-    /// <summary>The art box (wide, tall): the face, the flip pill on the wide art while the controls show, a click back to Wavee.</summary>
-    static Element FaceBox(Ctx m, float w, float h, bool flip)
+    /// <summary>The art box (wide, tall): the face, a click back to Wavee, and with <paramref name="chrome"/> the window buttons on glass in its
+    /// top-right corner (the tall column's boxed faces: the buttons read as the art's own, never straddling its edge).</summary>
+    static Element FaceBox(Ctx m, float w, float h, bool chrome)
     {
         var children = new List<Element>(2) { FaceLayer(m, w, h, MiniFaceUse.Box, paint: VizPaint(m, H.VizBarsWide)) };
-        if (flip && m.Hot)
-            children.Add(new BoxEl
-            {
-                Key = H.FlipKey, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Center, Margin = new Edges4(0f, 0f, 0f, H.FlipFoot),
-                Enter = s_fade, Exit = s_fade, Fill = H.FlipPlate, Corners = CornerRadius4.All(m.St.ChromeCorner > 0f ? H.FlipCorner : 0f),
-                Children = [FlipPair(m with { Media = true }, withName: false)],
-            });
+        if (chrome) children.Add(WindowButtons(m, glass: true));
         return new BoxEl
         {
             Width = w, Height = h, Shrink = 0f, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(m.St.ArtCorner),
@@ -90,23 +96,15 @@ internal static partial class CommonMiniPlayer
         };
     }
 
-    /// <summary>The face, keyed by its index so a flip slides the new one in (from the side the flip went).</summary>
+    /// <summary>The face, keyed by its index so a face change cross-fades the new one over the old.</summary>
     static BoxEl FaceLayer(Ctx m, float w, float h, MiniFaceUse use, Func<MiniVisualizerFrame, Element>? paint = null, float corner = -1f)
     {
         float c = corner >= 0f ? corner : use == MiniFaceUse.Fill ? 0f : m.St.ArtCorner;
-        var slide = m.FlipDir == 0 ? (EnterExit?)null : new EnterExit(Dx: m.FlipDir * w * H.FlipSlide, Active: true);
         return new BoxEl
         {
             Key = H.FaceKey + ":" + m.Face, Width = w, Height = h, ClipToBounds = true, Enter = s_faceSwap, Exit = s_faceSwap, HitTestVisible = false,
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = w, Height = h, Enter = slide, HitTestVisible = false,
-                    Children = [m.P.FaceView(new MiniFaceRequest(m.Face, w, h, m.V.ArtUrl, c, use, paint))],
-                },
-            ],
+            Children = [m.P.FaceView(new MiniFaceRequest(m.Face, w, h, m.V.ArtUrl, c, use, paint))],
         };
     }
 
@@ -164,24 +162,39 @@ internal static partial class CommonMiniPlayer
 
     // ══ SEEK ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The seek row: the elapsed time on the column's left edge, the rail, the remaining time (a toggle to the duration) ending on the
+    /// column's right edge. The digits are the style's detail type over the bar's own label text.</summary>
     static Element SeekRow(Ctx m)
     {
         var st = m.St;
-        ColorF? ink = m.Media ? H.OnMediaInk with { A = H.OnMediaSecondaryAlpha } : null;
         var req = (m.Accent, m.Media, m.Playing, m.Hot);
         return new BoxEl
         {
             Key = H.SeekKey, Height = H.SeekRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.SeekGap,
             Children =
             [
-                new BoxEl { MinWidth = H.TimeMinW, Children = [m.P.TimeLabel(false, ink)] },
+                Time(m, remaining: false),
                 new BoxEl
                 {
                     Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
                     Children = [m.P.SeekRail(rail => st.SeekRail(new MiniSeekRequest(rail, req.Accent, req.Media, req.Playing, Edge: false, req.Hot)))],
                 },
-                new BoxEl { MinWidth = H.TimeMinW, AlignItems = FlexAlign.End, Children = [m.P.TimeLabel(true, ink)] },
+                Time(m, remaining: true),
             ],
+        };
+    }
+
+    static Element Time(Ctx m, bool remaining)
+    {
+        var digits = m.St.Detail("") with { Text = Prop.Of(m.P.TimeText(remaining)), Color = m.Ink2, Shrink = 0f, Trim = TextTrim.None };
+        return new BoxEl
+        {
+            Key = H.TimeKey + (remaining ? ":right" : ":left"), MinWidth = H.TimeMinW, Height = H.SeekRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Justify = remaining ? FlexJustify.End : FlexJustify.Start,
+            OnClick = remaining ? m.P.ToggleRemaining : null, Cursor = remaining ? CursorId.Hand : null,
+            Role = remaining ? AutomationRole.Button : AutomationRole.Text, HitTestVisible = remaining,
+            HitSlop = remaining ? new Edges4(0f, H.TimeSlop, 0f, H.TimeSlop) : default, OnContextRequested = remaining ? s_noContext : null,
+            Children = [digits],
         };
     }
 
@@ -230,7 +243,7 @@ internal static partial class CommonMiniPlayer
         var a = m.Accent;
         return new BoxEl
         {
-            Key = H.PlayKey, Width = box, Height = box, Shrink = 0f, Corners = CornerRadius4.All(st.PlayCorner),
+            Key = H.PlayKey, Width = box, Height = box, Shrink = 0f, Corners = CornerRadius4.All(st.PlayCorner), OnContextRequested = s_noContext,
             Fill = a, HoverFill = ColorF.Lerp(a, H.OnMediaInk, H.PlayHoverMix), PressedFill = ColorF.Lerp(a, H.OnAccentDark, H.PlayPressMix),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = CursorId.Hand, OnClick = click,
             Role = AutomationRole.Button, Focusable = click is not null,
@@ -268,7 +281,7 @@ internal static partial class CommonMiniPlayer
             Key = H.SaveKey, Width = st.ButtonBox, Height = st.ButtonBox, Shrink = 0f, Corners = CornerRadius4.All(st.ButtonCorner),
             Fill = ColorF.Transparent, HoverFill = HoverPlate(m), PressedFill = HoverPlate(m),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = canSave ? CursorId.Hand : null,
-            OnClick = canSave ? () => verbs.ToggleLike() : null, Role = AutomationRole.Button, Focusable = canSave,
+            OnClick = canSave ? () => verbs.ToggleLike() : null, Role = AutomationRole.Button, Focusable = canSave, OnContextRequested = s_noContext,
             Children = [face],
         };
         return ToolTip.Wrap(b, Loc.Get(liked ? Strings.Menu.Saved : Strings.Menu.SaveToLiked));
@@ -297,46 +310,32 @@ internal static partial class CommonMiniPlayer
         var st = m.St;
         var overlay = m.Overlay;
         var a = m.A;
+        bool chrome = box < st.ButtonBox;   // a window button (else the strip plate's own)
         return Btn(m, Icons.More, () => OpenOptions(p, st, overlay, a), true, Loc.Get(Strings.Mini.Options),
-            box: box, glyph: box < st.ButtonBox ? st.ChromeGlyph : 0f) with { Key = H.OptionsKey };
+            box: box, glyph: chrome ? st.ChromeGlyph : 0f, corner: chrome ? st.ChromeCorner : -1f) with { Key = H.OptionsKey };
     }
 
     static Element BackButton(Ctx m, float box)
-        => Btn(m, Icons.BackToWindow, m.P.BackToWavee, true, Loc.Get(Strings.Mini.Back), box: box, glyph: m.St.ChromeGlyph) with { Key = H.BackKey };
+        => Btn(m, Icons.BackToWindow, m.P.BackToWavee, true, Loc.Get(Strings.Mini.Back), box: box, glyph: m.St.ChromeGlyph, corner: m.St.ChromeCorner) with { Key = H.BackKey };
 
-    /// <summary>The hover pill of window buttons (top right): the face flip (tall), options, back to Wavee.</summary>
-    static Element Chrome(Ctx m, bool withPick)
+    /// <summary>The window buttons, top right on hover (Wide, Square, Tall): options and back to Wavee, 32 DIP and 8 apart, 6 from the corner.
+    /// Over imagery (<paramref name="glass"/>) each stands on its own dark glass plate (round in WinUI and Classic, square in Zune) in on-media
+    /// ink; on the window's ground they are plain buttons.</summary>
+    static Element WindowButtons(Ctx m, bool glass)
     {
         var st = m.St;
-        var cm = m;   // over imagery (the tall immersive faces) the pill is a dark glass in on-dark ink, as the prototype's .ondark .chrome
-        var kids = new List<Element>(4);
-        if (withPick)
+        var bm = glass ? m with { Media = true } : m;
+        Element Plate(Element button) => !glass ? button : new BoxEl
         {
-            kids.Add(FlipPair(cm, withName: true));
-            kids.Add(new BoxEl { Width = H.ChromeSepW, Height = H.ChromeSep, Fill = m.Media ? H.OnMediaInk with { A = H.OnMediaPlateAlpha } : Tok.StrokeCardDefault, HitTestVisible = false });
-        }
-        kids.Add(OptionsButton(cm, st.ChromeBox));
-        kids.Add(BackButton(cm, st.ChromeBox));
+            Width = st.ChromeBox, Height = st.ChromeBox, Shrink = 0f, Corners = CornerRadius4.All(st.ChromeCorner), Fill = H.ChromeOnDark,
+            Children = [button],
+        };
         return new BoxEl
         {
-            Key = H.ChromeKey, Height = st.ChromeBox + 2f * H.ChromePad, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, H.ChromeInset, H.ChromeInset, 0f),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChromeGap, Padding = Edges4.All(H.ChromePad),
-            Fill = m.Media ? H.ChromeOnDark : st.Solid(m.Accent),
-            BorderWidth = H.RuleW, BorderColor = m.Media ? H.OnMediaInk with { A = H.OnMediaPlateAlpha } : Tok.StrokeCardDefault, Corners = CornerRadius4.All(st.ChromeCorner), Enter = s_fade, Exit = s_fade,
-            Children = kids.ToArray(),
+            Key = H.ChromeKey, Height = st.ChromeBox, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, H.ChromeInset, H.ChromeInset, 0f),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChromeGap, Enter = s_fade, Exit = s_fade,
+            Children = [Plate(OptionsButton(bm, st.ChromeBox)), Plate(BackButton(bm, st.ChromeBox))],
         };
-    }
-
-    static Element FlipPair(Ctx m, bool withName)
-    {
-        var p = m.P;
-        var st = m.St;
-        var kids = new List<Element>(3) { Btn(m, Icons.ChevronLeft, () => p.StepFace(-1), true, Loc.Get(Strings.Mini.PrevFace), box: st.ChromeBox, glyph: st.ChromeGlyph) with { Key = H.FlipKey + ".prev" } };
-        if (withName)
-            kids.Add(new BoxEl { MinWidth = H.FaceNameMinW, Justify = FlexJustify.Center, Direction = 0, HitTestVisible = false,
-                Children = [st.Label(p.FaceName(m.Face)) with { Color = m.Ink }] });
-        kids.Add(Btn(m, Icons.ChevronRight, () => p.StepFace(1), true, Loc.Get(Strings.Mini.NextFace), box: st.ChromeBox, glyph: st.ChromeGlyph) with { Key = H.FlipKey + ".next" });
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChromeGap, Children = kids.ToArray() };
     }
 
     /// <summary>The play state where no play button shows: three bars while the music moves, the pause glyph while it rests. Drawn still (a
@@ -447,7 +446,10 @@ internal static partial class CommonMiniPlayer
     static Element Glyph(string glyph, float size, ColorF ink)
         => new TextEl(glyph) { Size = size, FontFamily = Tok.Definition.Fonts.Icon, Color = ink };
 
-    static BoxEl Btn(Ctx m, string icon, Action? onClick, bool enabled, string tip, bool lit = false, float box = 0f, float glyph = 0f)
+    /// <summary>A control's answer to a right-click: nothing (the window's own right-click opens the options panel).</summary>
+    static readonly Action<ContextRequestEventArgs> s_noContext = static _ => { };
+
+    static BoxEl Btn(Ctx m, string icon, Action? onClick, bool enabled, string tip, bool lit = false, float box = 0f, float glyph = 0f, float corner = -1f)
     {
         var st = m.St;
         float b = box > 0f ? box : st.ButtonBox;
@@ -455,7 +457,7 @@ internal static partial class CommonMiniPlayer
         ColorF ink = !enabled ? m.Ink with { A = m.Ink.A * H.DisabledAlpha } : lit ? m.Accent : m.Ink;
         return new BoxEl
         {
-            Width = b, Height = b, Shrink = 0f, Corners = CornerRadius4.All(st.ButtonCorner),
+            Width = b, Height = b, Shrink = 0f, Corners = CornerRadius4.All(corner >= 0f ? corner : st.ButtonCorner), OnContextRequested = s_noContext,
             Fill = ColorF.Transparent, HoverFill = HoverPlate(m), PressedFill = HoverPlate(m),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = enabled ? CursorId.Hand : null,
             OnClick = enabled ? onClick : null, Role = AutomationRole.Button, Focusable = enabled,

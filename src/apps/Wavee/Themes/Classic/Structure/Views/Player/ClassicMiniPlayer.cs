@@ -66,12 +66,12 @@ internal static class ClassicMiniPlayer
         Label = static text => Line(R.Type.TrackMeta(text)) with { Size = M.LabelSize, Color = Tok.TextPrimary },
         Small = static text => Line(R.Type.TrackMeta(text)) with { Size = M.SmallSize, LineHeight = M.SmallLeading, Color = Tok.TextSecondary },
         Heading = static text => Line(R.Type.TrackTitle(text)) with { Size = M.HeadingSize, Color = Tok.TextPrimary, FontFamily = R.Type.DisplayFace },
-        SeekRail = static r => r.Rail.Line ? CommonMiniRail.Draw(r, s_rail) : r.Edge ? Edge(r) : Embed.Comp(new WaveRailProps(r), static () => new WaveRail()),
+        // the window's edge line (strip, square) is the flat hairline every theme draws; the wave is the seek row's
+        SeekRail = static r => r.Rail.Line || r.Edge ? CommonMiniRail.Draw(r, s_rail) : Embed.Comp(new WaveRailProps(r), static () => new WaveRail()),
         Visualizer = static (f, accent) => Embed.Comp(new SinesProps(f, accent), static () => new Sines()),
         TickerBar = M.TickerBar,
         LyricScale = M.LyricScale,
         LyricLine = LyricLine,
-        Veil = static () => Tok.FillSmoke with { A = M.VeilAlpha },
         Shade = static () => Tok.FillSmoke with { A = M.ShadeAlpha },
         HoverInMs = M.HoverInMs,
         HoverOutDelayMs = M.HoverOutDelayMs,
@@ -88,19 +88,6 @@ internal static class ClassicMiniPlayer
     // frame pace only for its 250 ms, and a resting rail asks for nothing.
 
     sealed record WaveRailProps(MiniSeekRequest R);
-
-    static readonly EnterExit s_edgeFade = new(Opacity: 0f, Active: true);
-
-    /// <summary>The window's edge line (strip, square): flat at rest as before; while the controls show it cross-fades into the wave rail (the
-    /// hover plate fades in over the same 120 ms, so the two read as one reveal).</summary>
-    static Element Edge(MiniSeekRequest r) => new BoxEl
-    {
-        Grow = 1f, Height = H.EdgeHit, ZStack = true,
-        Children = r.Hot
-            ? [new BoxEl { Key = "edge:wave", Grow = 1f, Direction = 1, Justify = FlexJustify.End, Enter = s_edgeFade, Exit = s_edgeFade,
-                Children = [Embed.Comp(new WaveRailProps(r), static () => new WaveRail())] }]
-            : [new BoxEl { Key = "edge:flat", Grow = 1f, ZStack = true, Enter = s_edgeFade, Exit = s_edgeFade, Children = [CommonMiniRail.Draw(r, s_rail)] }],
-    };
 
     sealed record HeadProps(ColorF Accent, bool Hot, float Height);
 
@@ -130,7 +117,7 @@ internal static class ClassicMiniPlayer
             bool enabled = rail.Enabled;
             bool drawn = enabled || rail.Pending;
             bool playing = r.Playing && drawn;
-            float full = r.Edge ? M.EdgeWaveAmp : M.WaveAmp;   // the strip's edge swings less: it runs under the thumb's badge
+            float full = M.WaveAmp;
             _full = full;
             if (_amp < 0f) { _amp = playing ? full : 0f; _playing = playing; }   // the first frame shows the state as it is
             if (!_wired) Wire(host);
@@ -178,16 +165,17 @@ internal static class ClassicMiniPlayer
             if (drawn)
                 kids.Add(new BoxEl
                 {
-                    Width = M.HeadW, Height = (r.Edge ? M.EdgeHeadH : M.HeadH) * M.HeadHotScale, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+                    Width = M.HeadW, Height = M.HeadH * M.HeadHotScale, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
                     AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
                     Transform = host.ThumbTransform(M.HeadW), OnRealized = host.ThumbRealized,
-                    Children = [Embed.Comp(new HeadProps(accent, r.Hot && !r.Edge, r.Edge ? M.EdgeHeadH : M.HeadH), static () => new Head())],   // the edge's head keeps its size
+                    Children = [Embed.Comp(new HeadProps(accent, r.Hot, M.HeadH), static () => new Head())],
                 });
             kids.Add(host.KeyLadderTick());
             return new BoxEl
             {
-                Key = (r.Edge ? H.EdgeKey : H.SeekKey) + ":rail", Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = r.Edge ? M.EdgeH : H.SeekRowH,
+                Key = H.SeekKey + ":rail", Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = H.SeekRowH,
                 ZStack = true, Role = AutomationRole.Slider, IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null, OnBoundsChanged = _bounds,
+                OnContextRequested = CommonMiniRail.NoContext,
                 OnPointerDown = enabled ? host.PointerDown : null, OnDrag = enabled ? host.DragMove : null,
                 OnClick = enabled ? host.Commit : null, OnDragCanceled = enabled ? host.Cancel : null,
                 Children = kids.ToArray(),

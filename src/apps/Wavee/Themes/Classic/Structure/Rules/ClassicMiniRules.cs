@@ -2,7 +2,7 @@
 //
 // From the approved prototype (scratchpad miniplayer/index.html, .tk[data-theme="classic"]): a warm wash tinted from the accent (the
 // album's, with "Colour from album art": on by default, as in the app), 14-DIP card and flyout corners, 8-DIP art (10 on the strip thumb),
-// round buttons, the heart on an album-tinted plate, the wave edge on the square's cover and behind the tall column, a 3-DIP track under a
+// round buttons, the heart on an album-tinted plate, a swell behind the tall column's object faces, a 3-DIP track under a
 // fill that ripples while the music moves, three slow sine waves for the visualizer, the active lyric line on a tinted plate.
 
 using Wavee.Theming.Contracts;
@@ -12,12 +12,12 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicMiniRules
 {
     public const int ArtColourSlot = 0;
-    public const float Radius = 14f, ArtCorner = 8f, ThumbCorner = 10f, ButtonCorner = 20f, PlayCorner = 24f, ChromeCorner = 18f, BadgeCorner = 9f;
+    public const float Radius = 14f, ArtCorner = 8f, ThumbCorner = 10f, ButtonCorner = 20f, PlayCorner = 24f, ChromeCorner = 16f, BadgeCorner = 9f;
     public const float ButtonBox = 40f, ButtonGlyph = 16f, PlayBox = 44f, PlayBigBox = 48f, PlayGlyph = 18f, ChromeBox = 32f, ChromeGlyph = 16f;
     public const float Pad = 14f, Gap = 14f, StripPadStart = 10f, StripThumb = 40f, StripGap = 11f, Badge = 18f;
     /// <summary>The wash: the window's ground toward the accent by this much (light, dark); the accent plates.</summary>
     public const float WashLight = 0.09f, WashDark = 0.11f, TintAlpha = 0.15f, Tint2Alpha = 0.28f;
-    public const float VeilAlpha = 0.52f, ShadeAlpha = 0.72f, OnDarkArtistAlpha = 0.85f;
+    public const float ShadeAlpha = 0.72f, OnDarkArtistAlpha = 0.85f;
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
     /// <summary>The wide card shows its third line (album, or "Playing on") from this art-box height: below it the title, the artist, the seek
     /// row and the transport fill the column.</summary>
@@ -34,9 +34,6 @@ internal static class ClassicMiniRules
     public const float WaveMs = 1100f, WaveTickMs = 66f, WaveStep = WavePeriod * WaveTickMs / WaveMs, EaseMs = 250f, EaseTickMs = 16f;
     /// <summary>The head: a 4 x 12 rounded pill, a quarter taller while the controls show, eased over HeadMs.</summary>
     public const float HeadW = 4f, HeadH = 12f, HeadHotScale = 1.25f, HeadMs = 150f;
-    /// <summary>The strip's edge while the controls show: an 8-DIP rail at the window's foot, a 2-DIP peak to peak swing and an 8-DIP head, clear of
-    /// the thumb's badge and the hover plate.</summary>
-    public const float EdgeH = 8f, EdgeWaveAmp = 1f, EdgeHeadH = 8f;
 
     // ── the visualizer: three slow sine waves (accent, white, accent faint) drifting at 2.6, 3.7 and 5.1 s per period ──
     public const float VizPeriod = 140f, VizStroke = 2.5f, VizAmp = 0.45f;

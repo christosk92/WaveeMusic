@@ -1,7 +1,7 @@
 // ── Themes/WinUi/Structure/Rules/WinUiMiniRules.cs — the mini player's numbers in WinUI (#197) ─────────────────────────
 //
 // From the approved prototype (scratchpad miniplayer/index.html, .tk[data-theme="winui"]): 8-DIP card, 4-DIP art, 5-DIP button plates,
-// round play disc, transport and save at 40 DIP or more, the hover window buttons at 32 like caption buttons; the 4-DIP seek track with the
+// round play disc, transport and save at 40 DIP or more, the hover window buttons at 32 like caption buttons (round glass over imagery); the 4-DIP seek track with the
 // ringed thumb and its accent dot; rounded accent bars for the visualizer; the active lyric line marked by a 2-DIP accent bar.
 
 using Wavee.Theming.Contracts;
@@ -11,12 +11,12 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiMiniRules
 {
     public const int ArtColourSlot = 1;
-    public const float Radius = 8f, ArtCorner = 4f, ThumbCorner = 4f, ButtonCorner = 5f, ChromeCorner = 7f, BadgeCorner = 9f, PlayCorner = 24f;
+    public const float Radius = 8f, ArtCorner = 4f, ThumbCorner = 4f, ButtonCorner = 5f, ChromeCorner = 16f, BadgeCorner = 9f, PlayCorner = 24f;
     public const float ButtonBox = 40f, ButtonGlyph = 16f, PlayBox = 44f, PlayBigBox = 48f, PlayGlyph = 18f, ChromeBox = 32f, ChromeGlyph = 16f;
     public const float Pad = 14f, Gap = 14f, StripPadStart = 10f, StripThumb = 40f, StripGap = 11f, Badge = 18f;
     /// <summary>The window's ground over its acrylic, the accent plates.</summary>
     public const float GroundAlpha = 0.8f, TintAlpha = 0.15f, Tint2Alpha = 0.28f;
-    public const float VeilAlpha = 0.52f, ShadeAlpha = 0.72f;
+    public const float ShadeAlpha = 0.72f;
     public const float HoverInMs = 120f, HoverOutDelayMs = 600f;
     /// <summary>The wide card shows its third line (album, or "Playing on") from this art-box height: below it the title, the artist, the seek
     /// row and the transport fill the column.</summary>
