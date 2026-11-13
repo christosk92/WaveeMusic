@@ -523,6 +523,16 @@ public static partial class MiniPlayer
         IsOpen.Value = !IsOpen.Peek();
     }
 
+    /// <summary>The capture verb (<c>wavee://diag?cmd=mini&amp;open=1&amp;face=2</c>, StoreShot.cs): the face (−1 = leave), then open (1),
+    /// close (0) or leave (−1). Developer mode only, as every diag verb.</summary>
+    internal static void ApplyDiag(int open, int face)
+    {
+        EnsurePrefs();
+        if (face >= 0) SetFace(face);
+        if (open == 1 && !IsOpen.Peek()) Toggle("diag");
+        else if (open == 0) Close("diag");
+    }
+
     /// <summary>Back to the full window: the mini player closes, the music plays on.</summary>
     public static void Close(string cause)
     {

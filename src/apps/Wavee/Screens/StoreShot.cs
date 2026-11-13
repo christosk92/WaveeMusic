@@ -101,6 +101,14 @@ public static partial class Diagnostics
                     });
                     Evidence.Reply("video", "ok", Video.State.Resolved.ToString());
                     break;
+                case DiagCommand.Theme:
+                    _ = Wavee.Theming.ThemeHost.Switch(v.Mode);
+                    Evidence.Reply("theme", "ok", v.Mode);
+                    break;
+                case DiagCommand.Mini:
+                    MiniPlayer.ApplyDiag(v.On, v.Face.Length > 0 ? int.Parse(v.Face, CultureInfo.InvariantCulture) : -1);
+                    Evidence.Reply("mini", "ok", MiniPlayer.IsOpen.Peek() ? "open" : "closed");
+                    break;
                 case DiagCommand.Reveal: Reveal(v.Viewport, v.Keys is [var key, ..] ? key : ""); break;
                 case DiagCommand.Shot: Request(v); break;
             }
