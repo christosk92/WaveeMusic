@@ -56,29 +56,36 @@ spotify client, music player, spotify, lyrics, music, playlists, podcasts
 Category: Music. Privacy policy: https://cproducts.dev/privacy. Website: https://cproducts.dev.
 Support: https://cproducts.dev/contact (hello@cproducts.dev). "This app accesses the internet": yes.
 
-## Screenshots (artifacts/store/listing, 1920×1080 PNG, made by ops/release/tools/New-StoreScreenshot.py)
+## Screenshots (0.3.9 set: 3840×2160 PNG, no headline on the image)
+
+Shot from a verify Wavee on the real account by `ops/release/tools/Capture-StoreSet.ps1` (the three themes, the mini player,
+the trailer's clips) and composed on an ambient field from each picture's own colours. Microsoft: "Don't add additional
+logos, icons, or marketing messages to your screenshots", so the selling sentence is the caption. The compositor (a
+MotionKit-style scene kit) lived in `C:\WAVEE\scratch\store26\kit` for this round; the delivered set is in
+`C:\WAVEE\scratch\store26\deliver`.
 
 | # | File | Caption (≤ 200 chars) |
 |---|---|---|
-| 1 | 01-home.png | Home — your mixes, releases and shelves, rendered natively on Windows 11. |
-| 2 | 02-artist.png | Artist pages with hero art, top tracks, discography and live lyrics. |
-| 3 | 03-liked.png | Liked Songs with weekly stats, tempo curve and top artists in a resizable rail. |
-| 4 | 04-playlist.png | Playlists show tempo, key, date added and recommendations. |
-| 5 | 05-albums.png | A three-pane library: list, selection, tracks. |
-| 6 | 06-recents.png | Recents grouped by day, every play listed. |
-| 7 | 07-album.png | Albums with play counts, credits and related music. |
-| 8 | 08-concerts.png | Concerts near you: live shows and festival dates, filtered by city and genre. |
-| 9 | 09-customize.png | Your sidebar, your layout: templates, sections, density and pins. |
-| 10 | 10-search.png | Search songs, artists, albums, playlists, podcasts and audiobooks at once. |
-| 11 | 11-lyrics.png | Synced lyrics beside the player, syllable-level where available. (Same capture as 02 today; recapture the expanded lyrics view for a distinct shot.) |
-| 12 | 12-video.png / 12b-video-miniplayer.png / 12c-video-strips.png | The official video: docked next to the queue, floating in a mini player, or in its own window. Pick one — the strips shot (New-VideoStripsShot.py) shows all three. |
-| 13 | 13-queue.png | Queue, autoplay, and Spotify Connect to your other devices. |
+| 1 | 01-hero.png | Wavee is a fast, native Windows app for your own Spotify Premium account: home, library, lyrics and a mini player that stays on top, in Windows 11's own look. |
+| 2 | 02-lyrics.png | Lyrics that follow every word, full screen or beside the player. When a song has no word timing, Wavee can make it on your PC's NPU. |
+| 3 | 03-themes.png | Three looks, one app: Wavee Classic, WinUI and a Zune-inspired theme with big type and pivots. Switch any time in Settings. |
+| 4 | 04-zune-album.png | Albums with the people behind them: who wrote, produced and played on every record, and the music videos that go with it. |
+| 5 | 05-mini.png | A mini player that stays on top in any shape you drag it to: cover, lyrics, Canvas, a visualizer or a turntable, in your theme. |
+| 6 | 06-visualizer.png | Nineteen visualizers, tinted from the album art, with the lyrics running underneath. |
+| 7 | 07-video.png | Music videos beside the queue, in a mini player or full screen, and Theatre mode with the artist, lyrics and Up next. |
+| 8 | 08-winui-artist.png | Artist pages with their best songs, releases and videos, and Up next always at hand. |
+| 9 | 09-zune-home.png | Pivots across the top, your pins beside them, and home built from what you play. |
 
-Capture at the size you want shown (`Capture-WaveeWindow.ps1 -KeepSize -Route …`, 1828×1066 today) and compose with `--side top` — at that width a side headline would crop the window. `01-home` takes no headline; `--fit` keeps the whole window under the headline for bottom-anchored flyouts (13, 12b). The Store takes at most 10 screenshots per device family — choose from the 14.
+Upload: the release run takes them. `wavee-store-submit.ps1 -ScreenshotDir <folder of NN-name.png + NN-name.caption.txt>`
+replaces every en-US screenshot in the same zip as the package. The trailer and the super hero art are not in that script:
+add them in Partner Center (or extend the script) with the release.
 
-Trailer: `listing/trailer.mp4` + `listing/trailer-thumb.png` (ops/release/tools/New-StoreTrailer.py — 29 s, H.264 1080p30, silent; needs the 16:9 super hero to be uploaded too or the Store will not show it).
+Trailer: `wavee-0.3.9-trailer.mp4` (38.7 s, 1920×1080, 60 fps, H.264 High, closed GOP, AAC 48 kHz stereo; real footage,
+whip cuts, a 3D theme carousel, measured page times in real time, soft UI sounds made from math) +
+`wavee-0.3.9-trailer-thumb.png`. Title: "Wavee 0.3.9". It shows at the top only with a 16:9 super hero art uploaded.
 
-Store logos: `tile-300.png` (1:1 app tile), `hero-1920x1080.png` (16:9 super hero, no text, no UI).
+Store logos: `tile-300.png` (1:1 app tile), super hero `super-hero-3840x2160.png` (16:9, no text, no UI; replaces
+`hero-1920x1080.png`).
 
 ## Notes for certification (Submission options)
 
