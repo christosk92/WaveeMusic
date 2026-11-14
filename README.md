@@ -43,9 +43,10 @@ out-of-process playback modules (YouTube / Twitch / radio).
 
 | | |
 |---|---|
-| ![Artist pages with live lyrics](assets/readme/promo/artist.jpg) | ![The official video — docked, mini player, or its own window](assets/readme/promo/video.jpg) |
-| ![Liked Songs with weekly stats and tempo curves](assets/readme/promo/liked.jpg) | ![Queue, autoplay and Spotify Connect](assets/readme/promo/queue.jpg) |
-| ![Playlists that show tempo, key and recommendations](assets/readme/promo/playlist.jpg) | ![Home on Windows 11 — Mica, dynamic accent, tabs](assets/readme/promo/home.jpg) |
+| ![Lyrics that follow every word, beside the player or full screen](assets/readme/promo/lyrics.jpg) | ![Three looks in one app: Classic, WinUI and a Zune-inspired theme](assets/readme/promo/themes.jpg) |
+| ![Zune album with credits, music videos and the lyrics pane](assets/readme/promo/zune-album.jpg) | ![The mini player, in any shape you drag it to](assets/readme/promo/mini-player.jpg) |
+| ![Nineteen visualizers, tinted from the album art](assets/readme/promo/visualizer.jpg) | ![Music videos beside the queue, in the mini player or full screen](assets/readme/promo/video.jpg) |
+| ![Artist pages with their best songs, releases and videos](assets/readme/promo/artist.jpg) | ![Home on Windows 11, in the Classic theme](assets/readme/promo/home.jpg) |
 
 ## Install
 
