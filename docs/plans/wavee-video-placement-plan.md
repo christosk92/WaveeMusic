@@ -93,12 +93,12 @@ fullscreen's lyrics-drop regression into a differentiator.
 ## 5. Engineering reality (FluentGpu today vs the gap)
 
 The hard constraint: **video composites only under the *primary* window's swapchain.**
-`DCompVideoPresenter.AttachChild` inserts every video child visual under
+the DirectComposition video presenter (deleted 2026-11-11)'s `AttachChild` inserts every video child visual under
 `D3D12Device.PrimarySwapchain.DcompRoot`, and `VideoBinding` is inert on a non-primary/non-composited window.
 
 | Surface | Buildable on the shipped engine? | Notes |
 |---|---|---|
-| Inline now-playing | **Yes (app code)** | `MediaPlayerElement` (`FluentGpu.Controls/Media/`) + `VideoBinding.Place/SetViewport/SetContentSize`; fit modes done. |
+| Inline now-playing | **Yes (app code)** | `MediaPlayerElement` (`FluentGpu.Controls/Media/`) + `VideoBinding.Place/SetViewport`; fit modes done. |
 | Fullscreen theatre | **Yes (app code)** | In-window modal `OverlayHost` view + OS borderless-fullscreen (`hooks.WindowSetFullscreen`); surface shared via `VideoSurfaceRegistry.TransferOwnership`. The shipped `MediaPlayerElement` already does this inline↔fullscreen. |
 | In-window movable/resizable PiP | **Yes (app code)** | A top-Z `OverlayHost` child using `BoxEl.OnDrag`/`Transform`/`OffsetX/Y` (the `SidebarResizeGrip` pattern) driving `VideoBinding.Place(rect)` each frame; the DComp child follows because it stays under the primary swapchain. Persists across nav (retained registry slot). |
 | **Detached always-on-top OS window** | **No — engine project** | Requires: a real **second top-level `Win32Window`** in hosting (today `FluentApp` is single-window by design); a **second swapchain + DComp root** in `D3D12Device`; a **per-window `IVideoPresenter`** (or one that targets a non-primary swapchain); **always-on-top** plumbing (`SetWindowPos(HWND_TOPMOST)`, state-aware); cross-monitor drag/resize + geometry persistence; and **protected-surface handling in the second window** (the native in-process handle is still valid — same process — but it must bind under the second window's DComp root, and HDCP/output-protection applies per output). Scope it as its own engine milestone. |

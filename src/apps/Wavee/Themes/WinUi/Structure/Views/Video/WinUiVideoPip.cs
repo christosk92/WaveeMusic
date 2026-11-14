@@ -41,10 +41,13 @@ internal static class WinUiVideoPip
     /// <summary>The registered template of <see cref="ViewKeys.VideoPip"/>.</summary>
     public static Element Template(VideoPipProps props, in ViewContext ctx)
     {
-        bool floating = props.Placement == Video.SurfacePlacement.Floating;
+        // Staged in the full-screen stage (its Video mode): the picture alone, following the stage's reservation; the stage draws its chrome
+        // (`WinUiStagePictureChrome`), so no card, strip or zones of the placement's own
+        bool staged = props.Staged;
+        bool floating = !staged && props.Placement == Video.SurfacePlacement.Floating;
         var tier = VR.OfFacts(ctx.Tier());
         var kids = new List<Element>(4) { props.Area() };
-        if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
+        if (!staged && props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
         if (floating)
         {
             kids.Add(Chrome(props, tier));
@@ -54,6 +57,7 @@ internal static class WinUiVideoPip
         return new BoxEl
         {
             Key = Key,
+            OnRealized = props.Realized,   // the presenter's box: the core reads its painted rect for the glide to and from the full-screen stage
             Direction = 1, ClipToBounds = true, ZStack = true,
             Visible = props.Visible,
             // Docked: the engine places this box over the reservation's painted rect in the same frame and the three binds below stand down.
@@ -110,8 +114,8 @@ internal static class WinUiVideoPip
             Strip(tier, new Edges4(Spacing.S, Video.Pip.EdgeBand, Spacing.S, 0f), default,
             [
                 new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
-                Glyph("mini", Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
-                Glyph("fullscreen", Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
+                Glyph("mini", SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
+                Glyph("fullscreen", SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
                 Glyph("off", Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.TurnOffDocked, tier),
             ]),
         ],
@@ -137,7 +141,7 @@ internal static class WinUiVideoPip
         var kids = new List<Element>(4) { drag };
         if (props.ToDocked is { } dock) kids.Add(Glyph("dock", VR.DockGlyph, Loc.Get(Strings.Player.DockInRail), dock, tier));
         else if (props.ToSeparateWindow is { } window) kids.Add(Glyph("window", Icons.OpenInNewWindow, Loc.Get(Strings.Player.VideoInSeparateWindow), window, tier));
-        kids.Add(Glyph("fullscreen", Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier));
+        kids.Add(Glyph("fullscreen", SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier));
         kids.Add(Glyph("close", Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.ClosePip, tier));
 
         float side = Video.Pip.CornerW;

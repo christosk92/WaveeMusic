@@ -94,9 +94,9 @@ internal static class WinUiStageIdentity
                 Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 MaxWidth = center ? titleW : float.NaN,
             },
-            Embed.Comp(new WinUiStageMetaLink.Props(props.Meta, props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new WinUiStageMetaLink()),
+            Embed.Comp(new WinUiStageMetaLink.Props(Stage.HoldMeta(props.Stage, props.Meta), props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new WinUiStageMetaLink()),
         });
-        if (!card && !hero && L.ShowChipsFor(in k) && t.HeroTitles && k.Eff is Stage.VizLayout.Centered or Stage.VizLayout.Artist) titleKids.Add(Embed.Comp(new WinUiStageChips.Props(props.Chips), static () => new WinUiStageChips()) with { Key = "stage:chips" });
+        if (!card && !hero && L.ShowChipsFor(in k) && t.HeroTitles && k.Eff is Stage.VizLayout.Centered or Stage.VizLayout.Artist) titleKids.Add(Embed.Comp(new WinUiStageChips.Props(Stage.HoldChips(props.Stage, props.Chips)), static () => new WinUiStageChips()) with { Key = "stage:chips" });
         return Stage.Layer with
         {
             Children =
@@ -106,7 +106,7 @@ internal static class WinUiStageIdentity
                     Key = "stage:cover", Width = size, Height = size, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(coverX, coverY, 0f, 0f), Corners = CornerRadius4.All(corners), Shadow = card ? (ShadowSpec?)null : Elevation.Dialog, ClipToBounds = true,
                     Layout = flip, HitTestVisible = false, Opacity = shown ? 1f : 0f,
-                    Children = [Controls.Artwork(url.Length > 0 ? url : null, size, size, corners, morphKey: Stage.Entry.MorphKey, decodePx: decode)],
+                    Children = [Stage.CoverSwap(url, size, corners, decode, Stage.Entry.MorphKey)],   // a skip cross-fades the art (Stage.Swap.UI.cs)
                 },
                 // The placed column fills its slot down to the stage's foot (a Start-aligned auto-height ZStack child does), so it
                 // is PASS-THROUGH; the identity block itself is the content-height inner column — title · meta · chips FLOW,
@@ -115,12 +115,14 @@ internal static class WinUiStageIdentity
                 {
                     Key = "stage:titles", Direction = 1, Width = titleW, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(titleX, titleY, 0f, 0f), Layout = move, HitTestPassThrough = true, Visible = titlesShown,
+                    // a skip cross-fades the title, the artists line and the chips as one block, drifting in from the skip's side
                     Children =
                     [
-                        new BoxEl { Direction = 1, Gap = card ? G2.CardLineGap : L.TitleGapFor(in k), MinWidth = 0f, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, Children = titleKids.ToArray() }
-                            .WithContextMenu(overlay,                                        // right-click the identity = the "…" menu, as the old stage had
-                                () => { var m = props.NowPlayingMenu(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) sc.MenuOpen(true); return m; },
-                                new ContextMenuOptions { OnClosed = _ => sc.MenuOpen(false) }),
+                        Stage.TrackSwap(Stage.SwapKey(track),
+                            new BoxEl { Direction = 1, Gap = card ? G2.CardLineGap : L.TitleGapFor(in k), MinWidth = 0f, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, Children = titleKids.ToArray() }
+                                .WithContextMenu(overlay,                                        // right-click the identity = the "…" menu, as the old stage had
+                                    () => { var m = props.NowPlayingMenu(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) sc.MenuOpen(true); return m; },
+                                    new ContextMenuOptions { OnClosed = _ => sc.MenuOpen(false) })),
                     ],
                 },
             ],

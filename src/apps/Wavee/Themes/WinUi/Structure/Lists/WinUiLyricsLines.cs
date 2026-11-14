@@ -117,7 +117,12 @@ internal static class WinUiLyricsLines
     /// highlight, no follow, no wipe, no blur ladder.</summary>
     static Element Unsynced(ILyricsHost host, Lyrics.Doc doc)
     {
-        var m = Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
+        // A mount in a small box (the mini player's: ILyricsHost.Gutter) reads its unsynced lines at the pane rows' type (the rows it draws when
+        // the song is timed, WinUiPaneLyrics) on its own gutter, so the face keeps one column and one size whether or not the song is timed.
+        var m = host.Gutter is { } gutter
+            ? new Lyrics.RowMetrics(WinUiPaneLyricsRules.LineSize * host.TypeScale, MathF.Round(WinUiPaneLyricsRules.LineHeight * host.TypeScale),
+                MathF.Round(WinUiPaneLyricsRules.RowPad * host.TypeScale), gutter, WinUiPaneLyricsRules.LineWeight)
+            : Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
         var ink = host.Ink.Primary with { A = Lyrics.Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
         var rows = new Element[doc.Lines.Count];
         for (int i = 0; i < rows.Length; i++)
@@ -139,7 +144,7 @@ internal static class WinUiLyricsLines
         float pad = Lyrics.Surface.UnsyncedBlockPad(host.Large);
         return new ScrollEl
         {
-            Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, SuppressScrollBar = true,
+            Grow = 1f, MinHeight = 0f, AutoEdgeFade = !host.BoxFades, SuppressScrollBar = true,
             ScrollKey = "lyrics:unsynced:" + doc.TrackId,
             Content = new BoxEl { Direction = 1, Padding = new Edges4(0f, pad, 0f, pad), Children = rows },
         };
@@ -170,7 +175,7 @@ internal static class WinUiLyricsLines
             MinHeight = 0f,
             // Realize the WHOLE document: every row must be measured before follow geometry is trusted.
             MeasureAll = lines.Count <= Lyrics.Surface.MeasureAllCap,
-            AutoEdgeFade = true,
+            AutoEdgeFade = !host.BoxFades,
             SuppressScrollBar = true,
             Handle = host.Scroll,
             OnRealized = host.SetViewport,
@@ -391,8 +396,7 @@ internal sealed class WinUiLyricsRow : Component
             // ALWAYS a two-child ZStack [glow, main], in every state: a line leaving the voice slot is an in-place
             // update, never a child-type swap (a re-shape + blur-cache miss = the lines-above-active flicker).
             bool highlight = Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek()) : 0f;
-            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = highlight ? Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
             float softness = host.SoftnessOfLine(index);
             // Podcasts: the role-driven rung (accent on the sung glyph, plain ink otherwise - never a translucent wash). Music
             // keeps its established alpha-faded unsung look untouched.
@@ -492,16 +496,17 @@ internal sealed class WinUiLyricsRow : Component
             AlignItems = FlexAlign.Stretch,
             TransformOriginX = 0f,
             TransformOriginY = 0.5f,
-            Cursor = CursorId.Hand,
-            OnClick = _onClick,
-            Role = AutomationRole.Button,
-            Focusable = true,
+            // A mount whose lines are a picture (the mini player's, ILyricsHost.Inert) takes no click: the window's click and wheel are its own.
+            Cursor = _host.Inert ? null : CursorId.Hand,
+            OnClick = _host.Inert ? null : _onClick,
+            Role = _host.Inert ? AutomationRole.None : AutomationRole.Button,
+            Focusable = !_host.Inert,
             AllowFocusOnInteraction = false,
             Children = [dofContent],
         };
 
         // Wrapped, unbounded, never trimmed on BOTH surfaces; built ONCE with its wipe and its realization report (no `with` clone
-        // per layer). `ViewCore.MeasureRunLength` rebuilds this style - the two change together.
+        // per layer). `ViewCore` measures the wipe on this node's own laid style (`Lyrics.Wipe.DrawnLayout`).
         TextEl LineText(string text, ColorF color, GlyphWipe? wipe, Action<NodeHandle>? onRealized) => new(text)
         {
             Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,

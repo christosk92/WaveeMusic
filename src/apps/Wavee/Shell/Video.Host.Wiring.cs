@@ -51,6 +51,7 @@ public static partial class Video
         Overrides.BrokenLink -= OnBrokenLink;
         Overrides.BrokenLink += OnBrokenLink;
         Playback.Video.InstallLog();   // before any warm-up, so its `[video.native]` lines land in the app's log
+        Hdcp.Install();                // before the window exists: its first monitor edge (the swapchain's) is the guard's first check
         Playback.Video.OnOverrideFailed = OnOverrideFailed;
         Playback.Video.InstallResolver();   // IN FRONT of the resolver installed before (the modules' tier), never replacing it
         Playback.OnVideoIntent = OnIntent;
@@ -203,6 +204,21 @@ public static partial class Video
                     _ = p.Buffering.Value;
                 }
                 Playback.Video.Observe();
+            });
+
+            // The HDCP guard's engagement edges (Video.Hdcp): a protected picture is opening on the video host (licensing, buffering,
+            // attaching) or up (presenting, playing), or it is gone. From the open on, the safety net asks Media Foundation whether HDCP
+            // takes, as soon as the CDM is up: its handshake then runs before the picture attaches, not on top of the attach (DWM's
+            // protected entry), where the first-frame query used to land (172 ms). Once the picture is up it confirms, past the attach.
+            UseSignalEffect(static () =>
+            {
+                var source = Playback.Video.Source.Value;
+                var phase = Playback.Video.Phase.Value;
+                bool protectedOnHost = Playback.VideoActive.Value && source is { IsDrm: true };
+                bool up = phase is Playback.Video.SwitchPhase.Presenting or Playback.Video.SwitchPhase.Playing;
+                bool opening = phase is Playback.Video.SwitchPhase.Licensing or Playback.Video.SwitchPhase.Buffering
+                    or Playback.Video.SwitchPhase.Attaching;
+                Hdcp.NoteEngaged(protectedOnHost && (opening || up), protectedOnHost && up);
             });
 
             // The quality ceiling follows the network cost and the metered setting live (G-148).

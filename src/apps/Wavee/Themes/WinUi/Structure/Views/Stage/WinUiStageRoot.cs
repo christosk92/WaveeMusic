@@ -14,6 +14,11 @@
 //   · the transport's LEAD column (the cover and the titles at Standard, the heart and the source elsewhere) is drawn by the placement over the
 //     card's left column: it needs the identity's facts as well as the transport's.
 //
+// VIDEO MODE (`StageRootView.ShowPicture`): the audio stack above gives way to the PICTURE's page and hollow reservation (`WinUiStageTheatre`), which
+// the one video presenter follows (it lives in the video layer); over an audio-only track the AUDIO FACE stands in the picture's place
+// (`WinUiStageAudioFace`), and in Theatre the pane slides in beside the picture. The chrome over the picture is `WinUiStagePictureChrome`
+// (`Stage.PictureChrome`, mounted by the core above the video hole); unlike the audio modes' bar and card it idles out (the owner's player rules).
+//
 // ZStack placement: vertical = AlignSelf, horizontal = JustifySelf. A Flow.Show boundary and a component are transparent anchors (flex columns),
 // so every Show's child is a full-bleed `Stage.Layer` and the placed box sits one level down (see `Stage.Layer`).
 
@@ -44,7 +49,6 @@ internal static class WinUiStageRoot
     static Element Draw(StageRootView v)
     {
         var layers = v.Layers;
-        var fade = new EnterExit(Opacity: 0f, Active: true);
         return new BoxEl
         {
             Width = v.Width, Height = v.Height, ZStack = true, ClipToBounds = true, Focusable = true,
@@ -55,6 +59,49 @@ internal static class WinUiStageRoot
             OnKeyDown = v.OnKeyDown,
             OnFocusChanged = v.OnFocusChanged,
             Children =
+            [
+                // Video mode: the page and the picture's hollow reservation (the presenter follows its painted rect), edge to edge in Cinema and in the
+                // left region in Theatre (WinUiStageTheatre); nothing of the audio stage is drawn under the picture
+                Flow.Show(v.ShowPicture, Stage.Layer with
+                {
+                    Key = "stage:picture", HitTestVisible = false, HitTestPassThrough = false,
+                    Children = [Embed.Comp(new WinUiStageTheatre.PictureProps(v), static () => new WinUiStageTheatre.Picture())],
+                }),
+                // the AUDIO FACE: Video mode over an audio-only track (no presenter, no hole): the field, the cover and the lyrics in the picture's place
+                Flow.Show(() => v.Stage.In(1) && v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
+                {
+                    Key = "stage:audioface",
+                    Enter = s_faceFade, Exit = s_faceFade, Transition = MotionTok.StandardEnter,
+                    Children = [Embed.Comp(new WinUiStageAudioFace.Props(v), static () => new WinUiStageAudioFace())],
+                }),
+                // Theatre's pane (Lyrics or Up next) beside the picture: it slides in from the right as Theatre opens and back out as it closes
+                Flow.Show(() => v.Stage.Alone(2) && v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
+                {
+                    Key = "stage:theatre",
+                    Enter = s_theatreMotion, Exit = s_theatreMotion, Transition = MotionTok.StandardEnter,
+                    Children = [layers.TheatrePane is { } theatrePane ? theatrePane() with { Key = "stage:theatre:pane" } : new BoxEl()],
+                }),
+                Flow.Show(() => !v.ShowPicture(), Stage.Layer with { Key = "stage:audio", Children = AudioStack(v) }),
+                layers.LyricFacts() with { Key = "stage:facts" },
+                Flow.Show(v.ShowHeroFacts, layers.HeroFacts() with { Key = "stage:herofacts" }),
+                layers.Clock() with { Key = "stage:clock" },
+            ],
+        };
+    }
+
+    /// <summary>The audio face's cross-fade (in over the reservation as an audio-only track starts, out under the picture that comes back).</summary>
+    static readonly EnterExit s_faceFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>Theatre's pane slide: in from the right beside the shrinking picture, and back out as the picture fills the stage.</summary>
+    static readonly EnterExit s_theatreMotion = new(Dx: WinUiStageTheatreGeometry.PaneSlide, Opacity: 0f, Active: true);
+
+    /// <summary>The stage's layers for the audio modes (Lyrics, Visualizer, Up next, Artist), bottom-up: everything but the picture and the zero-size
+    /// machinery. Video mode draws none of it (the picture's chrome is <c>WinUiStagePictureChrome</c>, in the video layer).</summary>
+    static Element[] AudioStack(StageRootView v)
+    {
+        var layers = v.Layers;
+        var fade = new EnterExit(Opacity: 0f, Active: true);
+        return
             [
                 Slots.View(ViewKeys.StageBackdrop, v.Backdrop) with { Key = "stage:backdrop" },
                 Flow.Show(v.ShowHeroLayer, Stage.Layer with
@@ -95,11 +142,7 @@ internal static class WinUiStageRoot
                     Children = [layers.Caption()],
                 }),
                 Chrome(v),
-                layers.LyricFacts() with { Key = "stage:facts" },
-                Flow.Show(v.ShowHeroFacts, layers.HeroFacts() with { Key = "stage:herofacts" }),
-                layers.Clock() with { Key = "stage:clock" },
-            ],
-        };
+            ];
     }
 
     /// <summary>The chrome: the bar, the transport card (with its lead column) and the gallery. The bar and the card are not gated on the idle
@@ -149,27 +192,28 @@ internal static class WinUiStageRoot
 
     static readonly EnterExit s_upNextMotion = new(Dx: G.UpNextSlide, Opacity: 0f, Active: true);
 
-    /// <summary>The Up next column beside the lyrics at Huge (W-Lyrics-Huge): the acrylic r8 pane at the allocator's rect, the core's queue host inside.</summary>
+    /// <summary>The Up next column beside the lyrics at Huge (W-Lyrics-Huge): the acrylic r8 pane at the allocator's rect, the core's queue host
+    /// inside, as the core's drawer (its tab collapses it off the right edge and back: <c>Stage.UpNextDrawer</c>).</summary>
     static Element UpNext(StageRootView v)
     {
         var r = v.Stage.Layout.Value.UpNextRect;
         var build = v.Layers.UpNext;
+        var column = new BoxEl
+        {
+            Width = r.W, Height = r.H, Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
+            Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Children = build is null ? [] : [build()],
+        };
         return Stage.Layer with
         {
             Key = "stage:upnext",
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
-            Children =
-            [
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
-                    Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
-                    Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
-                    Children = build is null ? [] : [build()],
-                },
-            ],
+            Children = [Stage.UpNextDrawer(v.Stage, r.X, r.Y, r.W, r.H, column, s_upNextTab, G.GalleryYieldMs)],
         };
     }
+
+    /// <summary>The drawer tab's plate: the column's acrylic and stroke.</summary>
+    static BoxEl s_upNextTab => new() { Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke };
 
     static ColorF Shade(float a) => Ink.Veil with { A = a };
 }
@@ -181,7 +225,8 @@ internal sealed class WinUiStageHead : Component
     /// <summary>The placed bar's key (the tests find it).</summary>
     public const string HeadKey = "winui-stage-head";
 
-    public sealed record Props(StageTopBarProps TopBar);
+    /// <param name="Picture">The head over the picture (Video mode): the bar without the Compact sheet's grabber (the picture is no sheet).</param>
+    public sealed record Props(StageTopBarProps TopBar, bool Picture = false);
 
     // The bar's height glides across a tier edge (52 sheet header, 48, 56 at Huge): no snap on a crossing
     static readonly LayoutTransition s_fit = new(TransitionChannels.Bounds,
@@ -199,7 +244,7 @@ internal sealed class WinUiStageHead : Component
         // one shape at every tier (a full-bleed layer: the bar placed at the top, the grabber over it in the sheet), so a crossing re-mounts nothing
         return Stage.Layer with
         {
-            Children = t.Sheet
+            Children = t.Sheet && !p.Picture
                 ? [bar, new BoxEl
                   {
                       Key = "winui-stage-grabber", Width = G.GrabberW, Height = G.GrabberH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Center, Margin = new Edges4(0f, G.GrabberTop, 0f, 0f),

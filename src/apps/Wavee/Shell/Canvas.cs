@@ -49,8 +49,9 @@ public static partial class CanvasVideo
 
     /// <summary>Where a canvas can show, by priority: the higher value owns the one player when several are mounted. The now-playing
     /// cover is not one: "Cover" is the album art alone, and a canvas in the panel is the Canvas player style's: edge to edge behind the panel
-    /// at rest (Bleed), in the picker's Canvas cell while picking (Deck).</summary>
-    public enum Surface : byte { None = 0, Bleed = 1, Deck = 2, Stage = 3 }
+    /// at rest (Bleed), in the picker's Canvas cell while picking (Deck). The mini player's Canvas face (Mini, #197) outranks them all: while it
+    /// shows, the main window is hidden.</summary>
+    public enum Surface : byte { None = 0, Bleed = 1, Deck = 2, Stage = 3, Mini = 4 }
 
     /// <summary>The playing track's canvas as the surfaces draw it. <see cref="Shows"/> false: draw nothing (the surface is exactly what it
     /// is without Canvas). <see cref="File"/> is empty until the mp4 is on disk (the poster shows meanwhile).</summary>
@@ -80,7 +81,7 @@ public static partial class CanvasVideo
     public static MediaPlayer Player => s_player ??= Build();
 
     static MediaPlayer? s_player;
-    static readonly int[] s_claims = new int[4];
+    static readonly int[] s_claims = new int[5];   // one per Surface (None unused)
 
     /// <summary>The observer asked the player to play (true) or holds it paused / stopped (false). Diagnostics.</summary>
     public static bool Running { get; private set; }
@@ -127,17 +128,29 @@ public static partial class CanvasVideo
         if (Owner.Peek() != owner) Owner.Value = owner;
     }
 
-    /// <summary>The owner's element mounted (it presents now) / unmounted.</summary>
-    internal static void BindSurface(Surface s) => Bound.Value = s;
+    /// <summary>The owner's element mounted (it presents now) / unmounted. Counted per surface, as the claims are: when a surface's
+    /// element is replaced by a new mount of the SAME surface and the new one binds before the old one's cleanup runs, that cleanup
+    /// must not clear the binding the new element just made (the element reports in-view only when it flips, so a binding cleared
+    /// under it left the player paused for good).</summary>
+    static readonly int[] s_binds = new int[5];   // one per Surface (None unused)
+    internal static void BindSurface(Surface s) { s_binds[(int)s]++; Bound.Value = s; }
     internal static void UnbindSurface(Surface s)
     {
-        if (Bound.Peek() == s) Bound.Value = Surface.None;
+        if (s_binds[(int)s] > 0 && --s_binds[(int)s] > 0) return;   // another element of this surface still presents
+        if (Bound.Peek() == s) { Bound.Value = Surface.None; s_presenterOccluded.Value = null; }
         if (Presented.Peek() == s) Presented.Value = Surface.None;
         if (Owner.Peek() == s || Owner.Peek() == Surface.None) InView.Value = false;
     }
 
     /// <summary>The owner element's in-view report.</summary>
     internal static void NoteInView(bool inView) => InView.Value = inView;
+
+    /// <summary>The occlusion of the WINDOW the presenting element is in (its host's <c>InputHooks.WindowOccluded</c>), or null while none
+    /// presents. The mini player (#197) presents in its own window while the main one is hidden, and a hidden window reads as occluded: gating
+    /// the player on the main window's occlusion held the mini's Canvas paused on its first frame.</summary>
+    static readonly Signal<Signal<bool>?> s_presenterOccluded = new(null);
+
+    internal static void BindWindow(Signal<bool>? occluded) => s_presenterOccluded.Value = occluded;
 
     /// <summary>Does this surface mount the element now: it owns the player and the previous presenter has let go.</summary>
     public static bool Presents(Surface s)
@@ -159,6 +172,10 @@ public static partial class CanvasVideo
         string _open = "";
         bool _playing;
         int _openedSeen;
+        // One open = one serial. A failure is judged only once the open it belongs to has LANDED (s_landedSerial), and once per
+        // open (_judgedSerial); a file is opened again after a failure once (_retriedFile), never in a loop.
+        int _openSerial, _judgedSerial;
+        string _retriedFile = "";
 
         public override Element Render()
         {
@@ -173,7 +190,7 @@ public static partial class CanvasVideo
             UseSignalEffect(Publish);
 
             // 3. THE PLAYER: open / play / pause / stop.
-            UseSignalEffect(() => Drive(hooks.WindowOccluded?.Value ?? false));
+            UseSignalEffect(() => Drive((s_presenterOccluded.Value ?? hooks.WindowOccluded)?.Value ?? false));
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
@@ -287,13 +304,26 @@ public static partial class CanvasVideo
                 return;
             }
             var player = Player;
+            // A FAILED open is not an open. The player says so in its state (read here, so a failure re-runs this effect); before, nothing
+            // read it: the poster stayed over the playing music for the whole track and no line was logged (2026-11-10). The failure is
+            // logged with what the player reports, and the file is opened once more: its source is prepared afresh then (a loop file
+            // that was pruned from the cache is rebuilt).
+            if (player.State.Value == PlaybackState.Failed && _open == now.File && s_landedSerial == _openSerial && _judgedSerial != _openSerial)
+            {
+                _judgedSerial = _openSerial;
+                bool retry = _retriedFile != now.File;
+                Log.Warn("canvas", "canvas.player failed track=" + now.Uri + " file=" + System.IO.Path.GetFileName(now.File)
+                    + " exists=" + System.IO.File.Exists(now.File) + " error=" + PlayerError() + " retry=" + retry);
+                if (retry) { _retriedFile = now.File; _open = ""; }
+            }
             if (_open != now.File)
             {
                 _open = now.File;
                 _playing = false;
+                int serial = ++_openSerial;
                 if (Log.IsEnabled(WaveeLogLevel.Info))
                     Log.Info("canvas", "canvas.player open track=" + now.Uri + " owner=" + owner + " file=" + System.IO.Path.GetFileName(now.File));
-                Open(player, now.File);
+                Open(player, now.File, serial);
             }
             bool run = inView && playing && !occluded && !reduced;
             int opened = Opened.Value;                 // an open landed: apply the run state to the new session
@@ -307,22 +337,30 @@ public static partial class CanvasVideo
             _ = run ? player.PlayAsync() : player.PauseAsync();
         }
 
-        static async void Open(MediaPlayer player, string file)
+        /// <summary>The serial of the last open that LANDED (its <c>OpenAsync</c> returned or threw): UI thread only.</summary>
+        static int s_landedSerial;
+
+        static async void Open(MediaPlayer player, string file, int serial)
         {
             try
             {
                 player.SetMuted(true);
                 await player.OpenAsync(MediaSource.FromFile(file).Loop(), new MediaOpenOptions { StartPaused = true });
-                Files.Post(static () =>
-                {
-                    s_player?.SetMuted(true);
-                    Opened.Value = Opened.Peek() + 1;
-                });
             }
             catch (Exception ex)
             {
                 Log.Warn("canvas", "canvas.open failed file=" + System.IO.Path.GetFileName(file) + " " + ex.GetType().Name + ": " + ex.Message);
             }
+            // Landed, whichever way: the observer applies the run state to the new session, or judges the failure. (An open that never
+            // lands logs no "opened" line after its "open": that pair missing in a log is an open stuck before its metadata.)
+            Files.Post(() =>
+            {
+                s_player?.SetMuted(true);
+                s_landedSerial = serial;
+                if (Log.IsEnabled(WaveeLogLevel.Info))
+                    Log.Info("canvas", "canvas.player opened file=" + System.IO.Path.GetFileName(file) + " state=" + PlayerState() + " natural=" + PlayerNatural());
+                Opened.Value = Opened.Peek() + 1;
+            });
         }
     }
 }

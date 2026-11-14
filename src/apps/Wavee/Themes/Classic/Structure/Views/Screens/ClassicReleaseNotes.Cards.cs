@@ -94,20 +94,24 @@ internal static partial class ClassicReleaseNotes
     /// picture under it and feathers into it from the top, never a hard edge — with the title in it. The description opens in the band while the pointer is on
     /// the tile (the band grows up over the picture with it, nothing around it moves), and is always open where the tile has the room (the hero on every
     /// tier but Compact, every tile on Huge). The tile is one button that opens the viewer with the whole text; the Store tile is not, its accent button
-    /// goes to the Store. A component only for its hover state.</summary>
+    /// goes to the Store. Keyboard focus opens the description as the pointer does (a tile tabbed onto shows what hovering it shows); a pointer press that
+    /// focuses the tile does not (focus-visible: the engine's <see cref="NodeFlags.FocusVisual"/>). A component only for its hover and focus state.</summary>
     sealed class TileView : Component
     {
         readonly Signal<bool> _hover = new(false);
+        readonly Signal<bool> _focus = new(false);
         TileArgs _args = null!;
+        InputHooks? _input;
 
         public override Element Render()
         {
             var a = _args = UseProps<TileArgs>();
+            _input = UseContext(InputHooks.Current);
             var h = a.Item.Highlight;
             var layout = a.Layout;
             bool store = HighlightVisibility.IsStore(h);
             bool always = a.Hero ? layout.HeroDescriptionAlways : layout.DescriptionAlways;
-            bool open = always || _hover.Value;
+            bool open = always || _hover.Value || _focus.Value;
             float title = a.Hero ? layout.HeroTitleSize : K.TileTitleSize;
 
             var words = new List<Element>(3)
@@ -144,6 +148,8 @@ internal static partial class ClassicReleaseNotes
                     Source = poster, Fit = ImageFit.Cover, DecodePx = K.PosterDecodePx, Placeholder = Tok.FillSubtleSecondary,
                     AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                 });
+            // A motion highlight plays its WebP over the poster (the poster is its first frame).
+            if (ReleaseNotes.MotionLayer(a.Item) is { } motion) layers.Add(motion);
             if (IsVideo(h))
                 layers.Add(new BoxEl { AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false, Children = [PlayGlyph(h)] });
             // A community pull request's badge sits on the picture's top corner, a layer of the tile (the tile keeps its size).
@@ -172,7 +178,8 @@ internal static partial class ClassicReleaseNotes
                 : frame.Interactive(Interaction.Card) with
                 {
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = a.Open,
-                    OnHoverMove = frame.OnHoverMove, OnPointerExit = frame.OnPointerExit, Children = layers.ToArray(),
+                    OnHoverMove = frame.OnHoverMove, OnPointerExit = frame.OnPointerExit, OnFocusChanged = _focusChanged,
+                    Children = layers.ToArray(),
                 };
         }
 
@@ -181,10 +188,26 @@ internal static partial class ClassicReleaseNotes
             // The hover handlers, made once per tile: a pointer move writes only when the answer changes.
             _enter = _ => { if (!_hover.Peek()) _hover.Value = true; };
             _exit = () => { if (_hover.Peek()) _hover.Value = false; };
+            // GotFocus opens the description only when the focus arrived by keyboard (the dispatcher sets FocusVisual before it fires the event); LostFocus
+            // closes it (the hover state, separate, keeps it open while the pointer is still on the tile). Wired on every tier, so a focus that leaves while
+            // the tier holds the description open (no change on screen) is still heard, and a crossing back never finds a stale open.
+            _focusChanged = got =>
+            {
+                bool keyboard = got && KeyboardFocused();
+                if (_focus.Peek() != keyboard) _focus.Value = keyboard;
+            };
+        }
+
+        /// <summary>The focused node (the tile, when its GotFocus fires) carries the engine's keyboard focus visual.</summary>
+        bool KeyboardFocused()
+        {
+            if (Context.Scene is not { } scene || _input?.GetFocus?.Invoke() is not { IsNull: false } node || !scene.IsLive(node)) return false;
+            return (scene.Flags(node) & NodeFlags.FocusVisual) != 0;
         }
 
         readonly Action<Point2> _enter;
         readonly Action _exit;
+        readonly Action<bool> _focusChanged;
     }
 
     /// <summary>The description's reveal: its height eases through real layout, so the band, which sits on the tile's foot and grows UP, carries its
@@ -271,16 +294,20 @@ internal static partial class ClassicReleaseNotes
 
     /// <summary>The poster band: 16:9 from the card's own width, and a band EVEN WITHOUT a poster (a tinted plate) — a card
     /// that loses its top third reads as broken. DecodePx 1200 is the authored width; without it the poster is a smear.</summary>
-    static Element Media(ReleaseHighlight h, string? poster, bool store)
+    static Element Media(HighlightItem item, bool store)
     {
-        var layers = new List<Element>(2);
-        if (poster is { Length: > 0 })
+        var h = item.Highlight;
+        var layers = new List<Element>(3);
+        var corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f);
+        if (item.Poster is { Length: > 0 } poster)
             layers.Add(new ImageEl
             {
                 Source = poster, Fit = ImageFit.Cover, AspectRatio = M.PosterAspect, DecodePx = K.PosterDecodePx,
-                Corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f),
+                Corners = corners,
                 Placeholder = Tok.FillSubtleSecondary, AlignSelf = FlexAlign.Stretch,
             });
+        // A motion highlight plays its WebP over the poster (the poster is its first frame).
+        if (ReleaseNotes.MotionLayer(item, corners) is { } motion) layers.Add(motion);
         layers.Add(new BoxEl
         {
             Grow = 1f, Direction = 0, AlignItems = FlexAlign.Start, Padding = Edges4.All(8f), HitTestVisible = false,
@@ -335,7 +362,7 @@ internal static partial class ClassicReleaseNotes
         };
 
     /// <summary>One card. A component only for its <c>overflows</c> signal; the ctor args are legitimately frozen
-    /// (<see cref="HighlightItem"/> is immutable, <c>open</c> captures its index). The MOTION is a poster, never live video.</summary>
+    /// (<see cref="HighlightItem"/> is immutable, <c>open</c> captures its index). A video is its poster, never live video; a motion highlight plays its animated WebP over the poster (ReleaseNotes.MotionLayer).</summary>
     sealed class CardView(HighlightItem item, Action open, Action openStore, bool compact) : Component
     {
         readonly Signal<bool> _overflows = new(false);
@@ -363,7 +390,7 @@ internal static partial class ClassicReleaseNotes
                 return frame.Interactive(Interaction.Card) with
                 {
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
-                    Children = [Media(h, item.Poster, store: false), Body(h, overflows, store: false)],
+                    Children = [Media(item, store: false), Body(h, overflows, store: false)],
                 };
 
             // Store card: the hit region and the footer are SIBLINGS — a card never nests a button in a button — and the
@@ -377,7 +404,7 @@ internal static partial class ClassicReleaseNotes
                         Direction = 1, MinWidth = 0f,
                         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
                         WhilePressed = new MotionTarget { Scale = 0.985f }, Transition = MotionTok.StandardSpring,
-                        Children = [Media(h, item.Poster, store: true), Body(h, overflows, store: true)],
+                        Children = [Media(item, store: true), Body(h, overflows, store: true)],
                     },
                     new BoxEl
                     {

@@ -53,6 +53,7 @@ internal static class ZuneHomeDaylist
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
     {
         var lay = ZuneHomeTiers.Of(ctx.Tier());
+        bool rendered = ZuneMotion.Rendered(ctx.Hooks);   // before any branch: a form crossing cross-fades, the first render arrives as before
         // The strip's own height (a wrapped title grows it): the art's width follows it, so the cover keeps its shape. Only a form with an art COLUMN
         // writes it: the bled forms' height (the art is their ground) would hand the strip, on the crossing back, an art sized for a taller strip.
         var stripH = ctx.Hooks.UseSignal(lay.DaylistH);
@@ -81,32 +82,36 @@ internal static class ZuneHomeDaylist
 
         var root = Strip(props.Eyebrow, title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
                          DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay,
-                         ArtWidth(lay, stripH), r => { if (!lay.DaylistBleed && MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; })
+                         ArtWidth(lay, stripH), r => { if (!lay.DaylistBleed && MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; },
+                         rendered ? ZuneMotion.SwapThrough : null)
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
             };
-        return Swap(menu is not null && host is not null ? root.WithContextMenu(host, menu) : root, lay);
+        return Swap(menu is not null && host is not null ? root.WithContextMenu(host, menu) : root, lay, rendered);
     }
 
     /// <summary>The strip inside its host: a z-stack whose height eases (<see cref="ZuneHomeRules.DaylistResize"/>), the strip under a layer keyed by its form's
     /// family (the strip, art | copy | clock, or the bled art). A crossing within a family keeps every node (the strip's own height glides, the rings slide);
-    /// a crossing between them (the strip's content rung, Small &lt;-&gt; Standard at a docked panel) fades the old layer out, then the new one in
-    /// (`SwapThrough`: the two forms' titles never show at once) instead of snapping the art's width, the copy's inset and the clock column, and the
-    /// host's height carries the page below.</summary>
-    static Element Swap(Element strip, ZuneHomeLayout lay) => new BoxEl
+    /// a crossing between them (the strip's content rung, Small &lt;-&gt; Standard at a docked panel) CROSS-FADES the two layers (`SwapFade`: the plate and
+    /// the art of one form fade out while the other's fade in, so the zone shows a strip in every frame) instead of snapping the art's width, the copy's
+    /// inset and the clock column, and the host's height carries the page below. The WORDS of the new form (its copy and its clock column) wait out the
+    /// old form's leg before they fade in (`SwapThrough` on them, see <see cref="Strip"/>), so the two titles never show over each other.
+    /// <paramref name="rendered"/>: false on the view's first render and on the skeleton, whose form keeps the fade-through it arrives with.</summary>
+    static Element Swap(Element strip, ZuneHomeLayout lay, bool rendered) => new BoxEl
     {
         Key = H.DaylistHostKey, Direction = 1, ZStack = true, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
         Layout = Design.Reduced ? null : H.DaylistResize,
         Children =
         [
-            // THE FORM IN THE KEY IS AN ACCEPTED EXCEPTION to the key rule (owner 2026-10-25, audit FU2b): the tuned V28c fade-through wins over the
-            // form-key rule. The two forms are two keyed layers so the old one fades out where it stands before the new one fades in; one tree would
-            // turn that into a glide. The lint knows (ZuneLintGuide: an Allow for key.hygiene on DaylistFormPrefix). Do not "fix" it.
+            // THE FORM IN THE KEY IS AN ACCEPTED EXCEPTION to the key rule (owner 2026-10-25, audit FU2b; the cross-fade owner 2026-11-13): the two forms
+            // are two keyed layers so the old one fades out where it stands while the new one fades in; one tree would turn that into a glide. The lint
+            // knows (ZuneLintGuide: an Allow for key.hygiene on DaylistFormPrefix). Do not "fix" it.
             new BoxEl
             {
                 Key = H.DaylistFormPrefix + (lay.DaylistBleed ? "bleed" : "strip"), Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Enter = ZuneMotion.SwapThrough, Exit = ZuneMotion.SwapThrough, Transition = ZuneMotion.SwapThroughMotion, Children = [strip],
+                Enter = rendered ? ZuneMotion.SwapFade : ZuneMotion.SwapThrough, Exit = ZuneMotion.SwapFade, Transition = ZuneMotion.SwapThroughMotion,
+                Children = [strip],
             },
         ],
     };
@@ -127,7 +132,7 @@ internal static class ZuneHomeDaylist
                               lay.ClockInline);
         string eyebrow = Loc.Get(Strings.Home.YourDaylist);
         return Swap(Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay,
-                     lay.DaylistBleed ? float.NaN : lay.DaylistArtW, null), lay);
+                     lay.DaylistBleed ? float.NaN : lay.DaylistArtW, null, wordsIn: null), lay, rendered: false);
     }
 
     /// <summary>The art's width: the strip's height times the tier's aspect, between the board's width and the tier's cap (a fixed width where the
@@ -217,10 +222,12 @@ internal static class ZuneHomeDaylist
     }
 
     /// <summary>The strip in the tier's form: ONE tree (art, copy, clock, and the play ring at the end where the tier puts it) whose direction
-    /// and sizes are live props.</summary>
+    /// and sizes are live props. <paramref name="wordsIn"/>: the enter of the copy and the clock column when this form mounts by a crossing (the words
+    /// wait out the leaving form's leg, so its title is gone before this one shows; the plate and the art cross-fade with the form's layer).</summary>
     static BoxEl Strip(string eyebrow, string title, string meta, Element[] rings, Element clock, string? art, ZuneHomeLayout lay,
-                       Prop<float> artWidth, Action<RectF>? onBounds)
+                       Prop<float> artWidth, Action<RectF>? onBounds, EnterExit? wordsIn)
     {
+        var wordsMotion = ZuneMotion.SwapThroughMotion;
         bool bleed = lay.DaylistBleed;
         bool parked = bleed && lay.DaylistRingsParked;   // Compact's bled form: the rings stand over the copy, at its rows' ends
         float target = MathF.Max(lay.RingSize, lay.RingTarget);
@@ -272,6 +279,10 @@ internal static class ZuneHomeDaylist
             {
                 Key = "zune-daylist-text", Direction = 1, Gap = H.DaylistCopyGap, MinWidth = 0f,
                 Justify = parked ? FlexJustify.SpaceBetween : FlexJustify.Center,
+                // The words, the rings' slots and the clock slide where the strip re-flows them: a docking panel's slide breaks the rings row at the
+                // width the strip lands at on its first frame (the engine's structure width), a frame before the form crossing cross-fades the strip,
+                // and the words and the clock re-centred around the wrapped rings in one frame.
+                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
                 Grow = end ? 1f : 0f, Shrink = 1f, Basis = end ? 0f : float.NaN, Children = textKids.ToArray(),
             },
             new BoxEl
@@ -305,6 +316,7 @@ internal static class ZuneHomeDaylist
                     new BoxEl
                     {
                         Key = "zune-daylist-copy", Direction = (byte)(end ? 0 : 1), ZStack = parked, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        Enter = wordsIn, Transition = wordsMotion,
                         Justify = end || parked ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
                         Gap = end ? lay.DaylistPad : H.DaylistCopyGap,
                         Padding = bleed ? new Edges4(0f, lay.DaylistPadY, 0f, lay.DaylistPadY) : default,
@@ -317,7 +329,9 @@ internal static class ZuneHomeDaylist
             {
                 Key = "zune-daylist-clock", Direction = 1, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center, ClipToBounds = true,
                 Width = lay.ClockW, MaxHeight = lay.ClockW > 0f ? float.NaN : 0f,   // a tier with no clock must not let its hidden face stretch the strip
-                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = lay.ClockW > 0f ? [clock] : [],
+                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f),
+                Children = lay.ClockW > 0f ? [clock with { Layout = Design.Reduced ? null : ZuneMotion.PivotSlide }] : [],
+                Enter = wordsIn, Transition = wordsMotion,
             },
         };
         return new BoxEl
@@ -346,6 +360,7 @@ internal static class ZuneHomeDaylist
             AlignSelf = !bleed ? FlexAlign.Auto : i == 0 ? FlexAlign.Start : FlexAlign.End,
             JustifySelf = bleed ? FlexAlign.End : FlexAlign.Auto,
             Margin = new Edges4(0f, 0f, inset, 0f),
+            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = [ring],
         };
     }

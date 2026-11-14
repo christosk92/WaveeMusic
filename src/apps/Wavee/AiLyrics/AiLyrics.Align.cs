@@ -1,5 +1,5 @@
 // ── AiLyrics/AiLyrics.Align.cs ───────────────────────────────────────────────────────────────────────────────────────
-// Vocab, LyricWords, Graph, OnlineViterbi, Snap, Fill, Assemble
+// Vocab, LyricWords, Graph, OnlineViterbi, Snap, Ends, Fill, Assemble
 //
 // Role: CORE (pure: no I/O, no clock, no engine)
 //
@@ -8,15 +8,22 @@
 // single best monotonic path of the lyric's letters through those frames (CTC forced alignment) and turns it into
 // word timings and a word-synced Lyrics.Doc.
 //
-//   Graph          one token per letter, a separator between words; words in parentheses are OPTIONAL (backing vocals
+//   Units          the timed units of a line: words, or for Japanese single characters (no spaces to split on)
+//   Graph          one token per letter, a separator between words (none for Japanese); words in parentheses are OPTIONAL (backing vocals
 //                  and ad-libs are often faint or missing in the separated vocals): a skip edge jumps over them.
 //   OnlineViterbi  the forward pass advances frame by frame and is exact. Tokens are COMMITTED in order; a commit
 //                  backtraces from the best state at the newest frame. The worker commits just in time (when the
 //                  playhead gets close), so each decision has heard as much of the song as possible. A line-time
-//                  prior (when the input is line-synced) keeps identical chorus lines from sliding a bar late.
-//   Snap           a word that starts after silence moves back to where the vocal level rises.
-//   Fill/Assemble  every word of the line text gets a time (skipped optional words share their gap) and the syllable
-//                  texts join back to the line text, which the karaoke wipe measures against.
+//                  prior (when the input is line-synced) keeps identical chorus lines from sliding a bar late; for
+//                  Japanese it also bounds a line by how long its text can take to sing (LinePrior), so a line
+//                  before an instrumental gap or after a long intro cannot slide seconds into it.
+//   Snap         a word that starts after silence moves back to where the vocal level rises.
+//   Ends         a word ends where the voice goes quiet after its last letter, else at the next word (EndAtVoice): the
+//                path's own end is the last letter's spike, the onset of the sound.
+//   Fill/Assemble  a line the model timed (at least half its letters) gets a time for every word: an untimed word is
+//                  interpolated between its timed neighbours or to the line's own bounds, never invented for a line
+//                  with nothing timed (TrackJob.BuildDoc keeps that line as the provider's). The syllable texts join
+//                  back to the line text, which the karaoke wipe measures against.
 
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -33,12 +40,17 @@ public static partial class AiLyrics
         // ── vocabulary ──────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The aligner's letter vocabulary (the model's vocab.json): letter -> class id. The blank is
-        /// &lt;pad&gt;; "|" separates words. Upper-case vocabularies (the English model) get upper-cased text.</summary>
+        /// &lt;pad&gt;; "|" separates words. Upper-case vocabularies (the English model) get upper-cased text.
+        /// A vocabulary with kana (the Japanese model) is <see cref="Japanese"/>: text is NFKC-normalised (half- and
+        /// full-width forms to the vocabulary's), never case-folded, and only kana and Han yield tokens — its few Latin
+        /// letters and digits are not trusted (it was trained on Japanese text), so a Latin word in a Japanese lyric is
+        /// untimed and interpolated between its timed neighbours (Fill). A second pass with a Latin model over those
+        /// words would go in TrackJob; it is not built.</summary>
         public sealed class Vocab
         {
             readonly Dictionary<string, int> _ids;
             public readonly int Blank, Separator, Classes;
-            public readonly bool Upper;
+            public readonly bool Upper, Japanese;
 
             public Vocab(Dictionary<string, int> ids)
             {
@@ -47,6 +59,7 @@ public static partial class AiLyrics
                 Separator = ids["|"];
                 Classes = ids.Values.Max() + 1;
                 Upper = ids.ContainsKey("E");
+                Japanese = ids.ContainsKey("あ");
             }
 
             public static Vocab Parse(string json)
@@ -61,20 +74,46 @@ public static partial class AiLyrics
             /// accent, then dropped. Empty when nothing is left (digits, symbols).</summary>
             public void Tokens(string word, List<int> into)
             {
-                // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed
-                string w = (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
-                foreach (char c in w)
+                foreach (char c in Prepare(word)) if (TryId(c, out int id)) into.Add(id);
+            }
+
+            /// <summary>Whether every LETTER of a word yields a token (<see cref="Tokens"/> drops the ones that do not:
+            /// that word is then timed only in part, or not at all). <paramref name="hasLetter"/>: the word has any.</summary>
+            public bool Spells(string word, out bool hasLetter)
+            {
+                hasLetter = false;
+                bool all = true;
+                foreach (char c in Prepare(word))
                 {
-                    string ch = c.ToString();
-                    if (!_ids.ContainsKey(ch))
-                    {
-                        string bare = c is >= '가' and <= '힣' ? WithoutFinal(c) : StripAccent(ch);
-                        if (!_ids.ContainsKey(bare)) continue;
-                        ch = bare;
-                    }
-                    if (ch == "|") continue;
-                    into.Add(_ids[ch]);
+                    if (!char.IsLetter(c)) continue;
+                    hasLetter = true;
+                    if (!TryId(c, out _)) all = false;
                 }
+                return all;
+            }
+
+            // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed.
+            // Japanese: NFKC (half-width katakana and their voicing marks compose to the full-width kana), no case.
+            string Prepare(string word)
+                => Japanese
+                    ? word.Normalize(System.Text.NormalizationForm.FormKC)
+                    : (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
+
+            /// <summary>A character's class id: itself, else without its accent (a Hangul syllable without its final
+            /// consonant; a voiced kana the model lacks, ぢ → ち, without its voicing mark); false when the model has
+            /// neither, for the word separator, and (Japanese) for anything but kana and Han.</summary>
+            bool TryId(char c, out int id)
+            {
+                id = 0;
+                if (Japanese && !IsKana(c) && !IsHan(c)) return false;
+                string ch = c.ToString();
+                if (!_ids.TryGetValue(ch, out id))
+                {
+                    string bare = c is >= '가' and <= '힣' ? WithoutFinal(c) : StripAccent(ch);
+                    if (!_ids.TryGetValue(bare, out id)) return false;
+                    ch = bare;
+                }
+                return ch != "|";
             }
 
             /// <summary>A Hangul syllable without its final consonant (랗 → 라, 꽉 → 꽈): the Korean model knows 1,202 of
@@ -119,13 +158,131 @@ public static partial class AiLyrics
             return list;
         }
 
+        // ── the timed units of a line ───────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Whether a language is timed character by character (<see cref="Characters"/>) and aligned without
+        /// the word separator (<see cref="Graph.Build"/>): Japanese, which is written without spaces (a whole phrase is
+        /// one regex "word") and whose model was trained on text without "|".</summary>
+        public static bool IsCharacterTimed(string? language) => language == "ja";
+
+        // ── the line-time prior ─────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A language's own shape of the line-time prior (<see cref="LineWindows"/>). A line's window ends at
+        /// the next line's start, or <see cref="CapSeconds"/> + <see cref="CapSecondsPerToken"/> per token after its
+        /// own start if that is sooner; and the blanks before the first line and after the last are free (an intro or an
+        /// outro costs nothing, so the first and last lines are not pulled into them).</summary>
+        public readonly record struct LinePrior(double CapSeconds, double CapSecondsPerToken);
+
+        /// <summary>The sung-length prior of <paramref name="language"/>, or null for the plain one (a line's window runs
+        /// to the next line's start). Japanese only: measured with the offline harness on 34 Japanese songs against
+        /// human per-character timing (12,386 scored characters), it moved the p90 start error from 735 to 587 ms and the
+        /// lines more than 1 s off from 58 to 29; 1 s + 0.8 s per token (+ the pad) still covers where the last character
+        /// starts in all but 13 of the 1,145 human-timed lines, and only 3 lines got worse by more than 300 ms. English, Dutch and Korean have no audio to measure it on, so they keep the plain prior
+        /// (their alignment is unchanged).</summary>
+        /// <remarks>Kept apart from the word-end cap (<see cref="EndRuleOf"/>, Japanese 1.3 s per character) on purpose:
+        /// this prior bounds where a line's tokens may be PLACED and was measured on starts (changing it moves starts); the
+        /// end cap bounds how long a placed unit LASTS and was measured on human ends. Neither reads the other.</remarks>
+        public static LinePrior? LinePriorOf(string? language) => language == "ja" ? new LinePrior(1.0, 0.8) : null;
+
+        /// <summary>Per token of <paramref name="g"/>: the time range (s) its line is expected in, for a line-synced
+        /// source with these line starts. A line's range is [its start - pad, the next line's start + pad] (after the
+        /// last line: 30 s), its upper end bounded by the language's <see cref="LinePriorOf"/> when it has one; a
+        /// separator takes the range of the token before it.</summary>
+        public static (double Lo, double Hi)[] LineWindows(Graph g, IReadOnlyList<long> lineStartsMs, string? language, double padSeconds)
+        {
+            int n = lineStartsMs.Count;
+            var w = new (double Lo, double Hi)[g.Length];
+            if (n == 0) return w;
+            var starts = new double[n + 1];
+            for (int i = 0; i < n; i++) starts[i] = lineStartsMs[i] / 1000.0;
+            starts[n] = starts[n - 1] + 30;                                    // after the last line: open-ended
+            var hi = new double[n];
+            for (int i = 0; i < n; i++) hi[i] = starts[i + 1];
+            if (LinePriorOf(language) is { } prior)
+            {
+                var tokens = new int[n];
+                for (int k = 0; k < g.Length; k++) if (g.OwnerLine[k] >= 0) tokens[g.OwnerLine[k]]++;
+                for (int i = 0; i < n; i++)
+                    if (tokens[i] > 0) hi[i] = Math.Min(hi[i], starts[i] + prior.CapSeconds + prior.CapSecondsPerToken * tokens[i]);
+            }
+            for (int k = 0; k < g.Length; k++)
+            {
+                int li = g.OwnerLine[k];
+                if (li < 0) { w[k] = k > 0 ? w[k - 1] : (starts[0] - padSeconds, hi[0] + padSeconds); continue; }
+                w[k] = (starts[li] - padSeconds, hi[li] + padSeconds);
+            }
+            return w;
+        }
+
+        /// <summary>The units a line is timed in for <paramref name="language"/>: its <see cref="Words"/>, or for a
+        /// character-timed language its <see cref="Characters"/>. Every caller that cuts or replays timing uses this,
+        /// so the units of a fresh result and of its replay are the same.</summary>
+        public static List<LyricWord> Units(string text, string? language)
+            => IsCharacterTimed(language) ? Characters(text) : Words(text);
+
+        /// <summary>Japanese units: each kana and each Han character starts one; a prolonged-sound mark (ー), a small
+        /// kana (ゃ, っ, ...) and a combining voicing mark attach to the unit before them (they lengthen or modify that
+        /// sound); a run of other word characters (a Latin word, digits) is one unit, as are apostrophes inside it.
+        /// Units never span a space or punctuation, and the text between units (spaces, punctuation, symbols) belongs
+        /// to the unit before it when the line is cut (<see cref="WordSyncedLine"/>), so the cut texts join back to the
+        /// line. Parentheses, ASCII or full-width, make the units inside optional.</summary>
+        public static List<LyricWord> Characters(string text)
+        {
+            var list = new List<LyricWord>();
+            int depth = 0, pos = 0;
+            foreach (Match m in s_word.Matches(text))
+            {
+                for (int i = pos; i < m.Index; i++)
+                {
+                    if (text[i] is '(' or '（') depth++;
+                    else if (text[i] is ')' or '）') depth = Math.Max(0, depth - 1);
+                }
+                pos = m.Index + m.Length;
+                bool optional = depth > 0;
+                int start = m.Index;
+                bool runJa = IsJapaneseUnitChar(text[start]);
+                for (int i = m.Index + 1; i < pos; i++)
+                {
+                    char c = text[i];
+                    bool ja = IsJapaneseUnitChar(c);
+                    bool joins = ja ? runJa && AttachesToPrevious(c)          // a mark joins the kana before it
+                                    : !runJa || c is '\'' or '’';            // a Latin run goes on; an apostrophe joins anything
+                    if (joins) continue;
+                    list.Add(new LyricWord(text[start..i], start, optional));
+                    start = i; runJa = ja;
+                }
+                list.Add(new LyricWord(text[start..pos], start, optional));
+            }
+            return list;
+        }
+
+        /// <summary>A character that is (part of) a Japanese unit: kana, Han, or a combining voicing mark.</summary>
+        static bool IsJapaneseUnitChar(char c) => IsKana(c) || IsHan(c) || c is '゙' or '゚';
+
+        /// <summary>Marks that lengthen or modify the sound before them: ー (and its half-width form), the small kana
+        /// (sokuon, small vowels, ya/yu/yo/wa), the combining and half-width voicing marks.</summary>
+        static bool AttachesToPrevious(char c) => c is 'ー' or 'ｰ' or '゙' or '゚' or 'ﾞ' or 'ﾟ'
+            or 'ぁ' or 'ぃ' or 'ぅ' or 'ぇ' or 'ぉ' or 'っ' or 'ゃ' or 'ゅ' or 'ょ' or 'ゎ'
+            or 'ァ' or 'ィ' or 'ゥ' or 'ェ' or 'ォ' or 'ッ' or 'ャ' or 'ュ' or 'ョ' or 'ヮ'
+            or (>= 'ㇰ' and <= 'ㇿ') or (>= 'ｧ' and <= 'ｯ');
+
+        /// <summary>Hiragana, katakana (with ー and the phonetic extensions) and half-width katakana.</summary>
+        public static bool IsKana(char c) => c is (>= 'ぁ' and <= 'ゟ') or (>= '゠' and <= 'ヿ')
+            or (>= 'ㇰ' and <= 'ㇿ') or (>= 'ｦ' and <= 'ﾟ');
+
+        /// <summary>Han ideographs of the BMP (unified, extension A, compatibility) and the marks 々 and 〆.</summary>
+        public static bool IsHan(char c) => c is (>= '一' and <= '鿿') or (>= '㐀' and <= '䶿')
+            or (>= '豈' and <= '﫿') or '々' or '〆';
+
         // ── the graph ───────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The lyric as CTC tokens. <see cref="OwnerLine"/>/<see cref="OwnerWord"/> are -1 on separators.
         /// Skip edges (<see cref="SkipSrc"/> -> <see cref="SkipDst"/>, both STATE indices) jump over an optional word
         /// and the separator before it: from the blank before that separator (before its first letter for the first
         /// word) to the blank after its last letter. Consecutive optional words chain (one's target is the next's
-        /// source).</summary>
+        /// source). Without <c>wordSeparator</c> (a character-timed language, <see cref="IsCharacterTimed"/>) no "|"
+        /// goes between units: the letters follow each other with only CTC blanks between them, and a skip edge runs
+        /// from the blank before an optional unit's first letter to the blank after its last.</summary>
         public sealed class Graph
         {
             public readonly int[] Tokens, OwnerLine, OwnerWord, SkipSrc, SkipDst;
@@ -133,7 +290,7 @@ public static partial class AiLyrics
 
             Graph(int[] tokens, int[] ol, int[] ow, int[] ss, int[] sd) { Tokens = tokens; OwnerLine = ol; OwnerWord = ow; SkipSrc = ss; SkipDst = sd; }
 
-            public static Graph Build(IReadOnlyList<IReadOnlyList<LyricWord>> lines, Vocab vocab)
+            public static Graph Build(IReadOnlyList<IReadOnlyList<LyricWord>> lines, Vocab vocab, bool wordSeparator = true)
             {
                 var tokens = new List<int>(); var ol = new List<int>(); var ow = new List<int>();
                 var ss = new List<int>(); var sd = new List<int>();
@@ -147,7 +304,7 @@ public static partial class AiLyrics
                         vocab.Tokens(words[wi].Text, buf);
                         if (buf.Count == 0) continue;
                         int sep = -1;
-                        if (tokens.Count > 0) { sep = tokens.Count; tokens.Add(vocab.Separator); ol.Add(-1); ow.Add(-1); }
+                        if (wordSeparator && tokens.Count > 0) { sep = tokens.Count; tokens.Add(vocab.Separator); ol.Add(-1); ow.Add(-1); }
                         int k0 = tokens.Count;
                         foreach (int t in buf) { tokens.Add(t); ol.Add(li); ow.Add(wi); }
                         int k1 = tokens.Count - 1;
@@ -186,8 +343,10 @@ public static partial class AiLyrics
             public int Committed => _committed;
 
             /// <param name="windows">Per token: the time range (s) its line is expected in, or null for no prior.</param>
+            /// <param name="freeEdges">The blank before the first token has no lower bound and the blank after the last
+            /// token no upper bound (<see cref="LinePrior"/>): an intro or an outro of any length costs nothing.</param>
             public OnlineViterbi(Graph g, int blank, IReadOnlyList<(double Lo, double Hi)>? windows = null,
-                double priorPerS = 0.5, double skipCost = 2.0)
+                double priorPerS = 0.5, double skipCost = 2.0, bool freeEdges = false)
             {
                 _l = g.Length; _s = 2 * _l + 1;
                 _lab = new int[_s];
@@ -208,6 +367,7 @@ public static partial class AiLyrics
                         _winLo[2 * k] = Math.Min(windows[k - 1].Lo, windows[k].Lo);
                         _winHi[2 * k] = Math.Max(windows[k - 1].Hi, windows[k].Hi);
                     }
+                    if (freeEdges) { _winLo[0] = double.NegativeInfinity; _winHi[_s - 1] = double.PositiveInfinity; }
                 }
                 _dp = new double[_s]; _next = new double[_s];
                 _rowBytes = (_s + 3) / 4;
@@ -391,6 +551,98 @@ public static partial class AiLyrics
             }
         }
 
+        // ── word ends ───────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A language's word-end rule (<see cref="EndAtVoice"/>). <see cref="CapSecondsPerUnit"/>: the longest a
+        /// word lasts per sung unit (<see cref="SungUnits"/>) when the voice never goes quiet before the next word;
+        /// <see cref="QuietFrames"/> 10 ms envelope frames in a row below the silence threshold, or <see cref="DropDb"/>
+        /// under the loudest level since the word's start, end it there.</summary>
+        public readonly record struct EndRule(double CapSecondsPerUnit, int QuietFrames, float DropDb);
+
+        /// <summary>The word-end rule of <paramref name="language"/>. The cap is the language's 95th percentile of the human
+        /// duration per sung unit (provider word-synced lyrics in the lyric cache): Korean 937 ms per syllable block
+        /// (19 songs, 3,195 words), Japanese 1,300 ms per character (39 songs, 15,343 units), English 739 ms per vowel group
+        /// (8 songs, 2,301 words; Dutch has no human word timing and shares the Latin-script cap), rounded. The quiet test (12
+        /// frames, 15 dB under the word's peak) was chosen on the offline harness (34 Japanese songs, audio): it moved the
+        /// median end error of units before a human pause from +180 ms (next start only) to +70 ms.</summary>
+        public static EndRule EndRuleOf(string? language) => language switch
+        {
+            "ko" => new EndRule(0.95, 12, 15f),
+            "ja" => new EndRule(1.30, 12, 15f),
+            _ => new EndRule(0.75, 12, 15f),
+        };
+
+        /// <summary>The sung units of a word the end cap counts: Hangul syllable blocks for Korean, one per character unit
+        /// for a character-timed language (<see cref="IsCharacterTimed"/>), else vowel groups (a run of vowels is one); at
+        /// least 1.</summary>
+        public static int SungUnits(string word, string? language)
+        {
+            if (IsCharacterTimed(language)) return 1;
+            int n = 0;
+            if (language == "ko")
+            {
+                foreach (char c in word) if (c is >= '가' and <= '힣') n++;
+                if (n > 0) return n;
+            }
+            bool prev = false;
+            foreach (char c in word)
+            {
+                bool v = IsVowel(c);
+                if (v && !prev) n++;
+                prev = v;
+            }
+            return Math.Max(1, n);
+        }
+
+        static bool IsVowel(char c) => "aeiouyàáâäèéêëìíîïòóôöùúûüAEIOUYÀÁÂÄÈÉÊËÌÍÎÏÒÓÔÖÙÚÛÜ".Contains(c);
+
+        /// <summary>Word ends that follow the voice. The CTC path puts a word's end at its last letter's spike, the onset
+        /// of the sound, never its end: a one-syllable word lasted 20 ms and the wipe then stood still until the next word
+        /// (Korean: a fifth of all words). A word now ends where the separated vocals go quiet after its last token
+        /// (<see cref="EndRule.QuietFrames"/> frames below <paramref name="quiet"/> or <see cref="EndRule.DropDb"/> under
+        /// the word's own peak), else at the next word's start, and never more than
+        /// <see cref="EndRule.CapSecondsPerUnit"/> per <see cref="SungUnits"/> after its own start. The next word's start
+        /// bounds it (nothing overlaps or reorders). These bounds limit the extension only: a word never ends before its
+        /// last token. The line's last word ends by <paramref name="boundS"/> (the next line's start) whenever it starts
+        /// before it, even inside its last token: the view hands the wipe to the next line there, and a word still sweeping
+        /// was cut with its last syllable unlit. Starts are never moved. <paramref name="env"/>: the level in dB per 10 ms frame, as
+        /// <see cref="SnapToOnsets"/>; only its first <paramref name="envFrames"/> frames are known.</summary>
+        public static void EndAtVoice(WordTime[] words, IReadOnlyList<LyricWord> units, double? boundS, Func<int, float> env, int envFrames,
+            float quiet, EndRule rule, string? language)
+        {
+            const double hop = 0.01;
+            int n = words.Length;
+            for (int i = 0; i < n; i++)
+            {
+                var w = words[i];
+                if (!w.IsSet) continue;
+                double s = w.Start, e = w.End;
+                double? nb = i + 1 < n ? (words[i + 1].IsSet ? words[i + 1].Start : null) : boundS;
+                double hi = Math.Max(e, s + rule.CapSecondsPerUnit * SungUnits(units[i].Text, language));
+                if (nb is double b) hi = Math.Min(hi, b);
+                hi = Math.Max(hi, e);
+                double end = hi;
+                int f0 = (int)(e / hop), f1 = Math.Min((int)(hi / hop), envFrames - 1), run = 0;
+                float peak = float.MinValue;
+                for (int f = (int)(s / hop); f <= Math.Min(f0, envFrames - 1); f++) peak = Math.Max(peak, env(f));
+                for (int f = f0; f <= f1; f++)
+                {
+                    float lv = env(f);
+                    peak = Math.Max(peak, lv);
+                    if (lv < quiet || (rule.DropDb > 0 && lv < peak - rule.DropDb))
+                    {
+                        if (++run >= rule.QuietFrames) { end = (f - rule.QuietFrames + 1) * hop; break; }
+                    }
+                    else run = 0;
+                }
+                end = Math.Max(end, e);
+                // the line's last word is done when the next line starts (its wipe is never cut by the hand-off), whenever it
+                // starts before that; one that starts after keeps its time (acceptance judges it)
+                if (i + 1 == n && boundS is double ls && s < ls && ls < end) end = ls;
+                words[i] = new WordTime(s, end);
+            }
+        }
+
         // ── fill and assemble ───────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Gives every word of a line a time: runs of skipped words share the gap between their timed
@@ -433,9 +685,11 @@ public static partial class AiLyrics
         /// <summary>A word-synced line from the provider's line and the word times: syllable texts are the line text cut
         /// at word starts, so they join back to <see cref="Lyrics.Line.Text"/> exactly (the wipe measures against it).
         /// No word starts before <paramref name="prevStartMs"/> (the previous line's start): line starts stay in order,
-        /// which the line resolve's binary search relies on.</summary>
+        /// which the line resolve's binary search relies on. <paramref name="keepLineStart"/> (a line-synced source):
+        /// the line keeps the provider's start unless its first word starts earlier (the provider's line times are
+        /// right far more often than a word the aligner placed late); otherwise it starts with its first word.</summary>
         public static Lyrics.Line WordSyncedLine(Lyrics.Line src, IReadOnlyList<LyricWord> words, WordTime[] times, double? nextStartS,
-            long? prevStartMs = null)
+            long? prevStartMs = null, bool keepLineStart = false)
         {
             string text = src.Text;
             var syl = new List<Lyrics.Syllable>(words.Count);
@@ -449,9 +703,11 @@ public static partial class AiLyrics
                 e = Math.Max(e, s);
                 syl.Add(new Lyrics.Syllable(s, e, text.Substring(from, to - from)));
             }
+            long start = keepLineStart ? Math.Min(src.StartMs, syl[0].StartMs) : syl[0].StartMs;
+            if (prevStartMs is long p) start = Math.Max(start, p);
             return src with
             {
-                StartMs = syl[0].StartMs,
+                StartMs = start,
                 Syllables = syl,
                 EndMs = src.EndMs ?? syl[^1].EndMs,
                 IsWordByWord = true,

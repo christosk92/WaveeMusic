@@ -76,6 +76,11 @@ public static class WinUiScreenMotion
     /// <summary>A surviving cell that only moves.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 
+    /// <summary>A part whose height steps with what it holds (the side panel's pinned slot between the docked video and the hero): its height eases
+    /// through real layout, so what follows it rides it.</summary>
+    public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>A part the new tier draws as a different tree enters and leaves on its opacity alone.</summary>
     public static readonly EnterExit SwapFade = SwapFamilies.Declare("WinUi.Screens.SwapFade", new(Opacity: 0f, Active: true));
 

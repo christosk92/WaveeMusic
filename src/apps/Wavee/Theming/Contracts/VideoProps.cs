@@ -26,7 +26,8 @@ namespace Wavee.Theming.Contracts;
 public sealed record VideoJoinPosterProps
 {
     /// <summary>What the join decided (<c>Video.JoinNow</c>, folded once from the host's events): the poster alone, the poster with the ring and
-    /// "Loading…", the poster with the fault line, or the poster with "Playing on &lt;device&gt;" and "Play here" (<see cref="Video.JoinVisual.Remote"/>).
+    /// "Loading…", the poster with the fault line, the poster with "Playing on &lt;device&gt;" and "Play here" (<see cref="Video.JoinVisual.Remote"/>),
+    /// or the poster with "This screen can't show protected video" and why (<see cref="Video.JoinVisual.ScreenBlocked"/>, contract 1.107).
     /// <see cref="Video.JoinVisual.Video"/> draws the poster alone like <see cref="Video.JoinVisual.Poster"/>.</summary>
     public required Video.JoinVisual Visual { get; init; }
 
@@ -148,6 +149,15 @@ public sealed record VideoPipProps
     /// <summary>The mini player's "Play in a separate window" button: announce and pop the video out. Null where the host cannot open a
     /// second window. Appended (contract 1.54).</summary>
     public Action? ToSeparateWindow { get; init; }
+
+    /// <summary>The picture is staged in the full-screen stage's Video mode: the box follows the stage's reservation (<see cref="FollowRect"/>)
+    /// and the template draws the picture ALONE, whatever <see cref="Placement"/> says (no card, no strip, no zones): the stage draws its own
+    /// chrome over it. Appended (contract 1.95).</summary>
+    public bool Staged { get; init; }
+
+    /// <summary>Put it on the box (its <c>OnRealized</c>): the core reads the presenter's painted rect where the picture glides between its home
+    /// (the docked card, the mini player) and the full-screen stage. Appended (contract 1.96).</summary>
+    public Action<NodeHandle>? Realized { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.VideoPopOut"/>. Built per render of the core's pop-out content (the join, the fullscreen mode and

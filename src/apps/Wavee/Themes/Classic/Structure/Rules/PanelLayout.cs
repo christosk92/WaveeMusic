@@ -57,29 +57,26 @@ internal static class ClassicPanelLayout
 /// <summary>The constants of Classic's now-playing hero and body.</summary>
 internal static class ClassicHeroLayout
 {
-    // ── the edge-to-edge canvas, "Tideline" (canvas-design/project/BleedClassic.dc.html) ───────────────────────────────
+    // ── the edge-to-edge canvas ──────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It ends in a slowly moving wave whose crest sits at
-    /// min(canvas foot - 110, panel height - 300): a 220 band darkens the canvas toward it (the media scope's shade at 35 %: the ground in the
-    /// dark kind, the media stage in the light kind, `Deck.BleedShade`), three swells (H 140, centred on the crest) drift at 33, 21 and 14 s a
-    /// panel's width: two in the art's colours (the dominant hue behind the second one) and the front one in the plain panel ground with a 1.5
-    /// crest line in the art's hue (55 %): the front swell is where the canvas gives way to the ground. Under the crest the panel is plain (its
-    /// own ground, as with the canvas off); a 150 band of the shade (75 %) keeps the header readable. The meta's top sits 24 under the crest.
-    /// Reduced motion: the swells stand still.</summary>
-    public const float BleedAspect = 16f / 9f, BleedCrestLift = 110f, BleedCrestRoom = 300f, BleedDarkBand = 220f, BleedDarkA = 0.35f,
-        BleedWaveH = 140f, BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f, BleedCrestLine = 1.5f, BleedCrestA = 0.55f;
+    /// <summary>The canvas is the panel's width x 16/9 from the panel's top. It dissolves into the panel's plain ground (its own, as with the
+    /// canvas off): the picture has fully given way at min(canvas foot - 110, panel height - 300) (<see cref="BleedEnd"/>), after a 200 fade
+    /// whose alpha follows an eased curve (the seven alphas below: slow off the picture, slow into the ground, so neither end shows an
+    /// edge). Nothing moves and nothing is tinted by the art (the owner, 2026-11-10). A 150 band of the media scope's shade (75 %,
+    /// `Deck.BleedShade`) keeps the header readable. The meta's top sits 24 under the fade's end.</summary>
+    public const float BleedAspect = 16f / 9f, BleedEndLift = 110f, BleedEndRoom = 300f, BleedFadeH = 200f,
+        BleedHeadScrimH = 150f, BleedHeadScrimA = 0.75f, BleedMetaDrop = 24f;
 
-    /// <summary>The swells, back to front: amplitude, baseline (inside the 140 band), periods per panel width, and the drift (a panel's width
-    /// per period, ms); the art-coloured swells' alpha (the back one in the dominant hue, the middle one in the second).</summary>
-    public const float WaveBackAmp = 16f, WaveBackBase = 46f, WaveBackPeriods = 1f, WaveBackMs = 33000f,
-        WaveMidAmp = 12f, WaveMidBase = 58f, WaveMidPeriods = 2f, WaveMidMs = 21000f,
-        WaveFrontAmp = 10f, WaveFrontBase = 70f, WaveFrontPeriods = 2f, WaveFrontMs = 14000f,
-        WaveBackA = 0.85f, WaveMidA = 0.9f;
+    /// <summary>The fade's curve: the ground's alpha at every sixth of the fade (a smootherstep). A gradient holds four stops, so the fade
+    /// is two gradients, one over the other, of three sixths each (<see cref="BleedFadeThird"/>, <see cref="BleedFadeTwoThirds"/> inside
+    /// each): the upper one runs A0..A3, the lower one A3..A6.</summary>
+    public const float BleedFadeA0 = 0f, BleedFadeA1 = 0.035f, BleedFadeA2 = 0.21f, BleedFadeA3 = 0.5f, BleedFadeA4 = 0.79f, BleedFadeA5 = 0.965f,
+        BleedFadeA6 = 1f, BleedFadeThird = 1f / 3f, BleedFadeTwoThirds = 2f / 3f;
 
-    /// <summary>The art-coloured swells' HSL lightness, per kind (the back swell deeper, the middle one a step toward the plain ground, so the
-    /// tide steps down to the panel), the cap on their saturation (the art's own below it), and how far apart (degrees) a role's hue must stand to
-    /// be the art's second colour.</summary>
-    public const float WaveBackLightL = 0.58f, WaveMidLightL = 0.74f, WaveBackDarkL = 0.46f, WaveMidDarkL = 0.32f, WaveSatMax = 0.6f, WaveHueApart = 30f;
+    /// <summary>Where the canvas has fully given way to the ground, from the panel's top: <paramref name="canvasH"/> is the canvas's height,
+    /// <paramref name="panelH"/> the panel's (0 before it is measured).</summary>
+    public static float BleedEnd(float canvasH, float panelH)
+        => MathF.Min(canvasH - BleedEndLift, (panelH > 0f ? panelH : canvasH) - BleedEndRoom);
 
     /// <summary>The ratio the meta's accent text (the art's hue) is solved to on the plain ground: AA's 4.5 with a little headroom.</summary>
     public const float ArtTextContrast = 4.8f;
@@ -91,10 +88,10 @@ internal static class ClassicHeroLayout
 
     public const ushort BleedSourceWeight = 600, BleedTitleWeight = 600;
 
-    /// <summary>The meta under the crest: the 64 cover (r10) with a soft glow in the art's dominant colour (28 blur, 10 down, 35 %), 14 to the
-    /// title (22/26 semibold) over the artist in the art's hue as text (14/20) and "album · year" (12/16, the primary ink at 70 %), 3 apart; the
-    /// saved heart in that hue on a 40 circle of it at 14 %.</summary>
-    public const float BleedCover = 64f, BleedCoverRadius = 10f, BleedGlowBlur = 28f, BleedGlowY = 10f, BleedGlowA = 0.35f, BleedMetaGap = 14f,
+    /// <summary>The meta under the fade: the 64 cover (r10, flat on the ground: no glow, the owner, 2026-11-10), 14 to the title (22/26
+    /// semibold) over the artist in the art's hue as text (14/20) and "album · year" (12/16, the primary ink at 70 %), 3 apart; the saved
+    /// heart in that hue on a 40 circle of it at 14 %.</summary>
+    public const float BleedCover = 64f, BleedCoverRadius = 10f, BleedMetaGap = 14f,
         BleedTitleSize = 22f, BleedTitleLine = 26f, BleedLinesGap = 3f, BleedYearA = 0.70f, BleedHeart = 40f, BleedHeartA = 0.14f;
 
     // ── the track meta ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -194,14 +191,45 @@ internal static class ClassicStylePickerLayout
         TransitionDynamics.Tween(Design.Motion.Standard, Easing.EaseInOut), SizeMode.Reflow, Axes: SizeAxes.Height);
 }
 
-/// <summary>The constants of Classic's on-media strip.</summary>
+/// <summary>The numbers of Classic's on-media bar (the docked, floating, pop-out and fullscreen-layer picture's controls): the stage's
+/// Video-mode bar at its own metrics (<see cref="ClassicStageVideoBarGeometry"/>: the 40 targets, the pills, the scrim, the seek row), laid
+/// out as it is (the seek rail across the foot; under it [play · previous · next · mute] [elapsed / total] ... [volume · "…"]). The picture
+/// runs from the docked cap's floor (the rail's 200 at the content-fit floor, 120 tall) to the window (the floating card from 240 x 135, the
+/// pop-out and the fullscreen layer), so the row FOLDS (<see cref="Fold"/>) as it narrows: the time shortens to the elapsed time, then the
+/// volume pair (mute, the slider's chevron) moves into "…", then previous and next do. Play and "…" never fold.</summary>
 internal static class ClassicOnMediaLayout
 {
-    /// <summary>A transport glyph button: its box, glyph and the hover and press plates.</summary>
-    public const float GlyphBox = 36f, GlyphSize = 16f, GlyphHoverAlpha = 0.14f, GlyphPressedAlpha = 0.22f;
+    /// <summary>The bar's gap to the picture's sides (its foot gap, <see cref="ClassicStageVideoBarGeometry.FootInset"/>).</summary>
+    public const float Inset = ClassicStageVideoBarGeometry.FootInset;
 
-    /// <summary>The play disc: its box, glyph and its three plates.</summary>
-    public const float PlayBox = 44f, PlayGlyph = 18f, PlayAlpha = 0.18f, PlayHoverAlpha = 0.28f, PlayPressedAlpha = 0.36f;
+    /// <summary>The width the row budgets for the time pill showing the elapsed time alone ("0:00:00" and its padding).</summary>
+    public const float TimeShortBudgetW = 64f;
+
+    /// <summary>The fold levels, in the order the row gives controls away: none, the time to the elapsed time, the volume pair into "…",
+    /// previous and next into "…".</summary>
+    public const int FoldNone = 0, FoldTime = 1, FoldVolume = 2, FoldSkip = 3;
+
+    /// <summary>The left pill at <paramref name="fold"/>: play (· previous · next) (· mute).</summary>
+    public static float LeftW(int fold)
+        => 2f * ClassicStageVideoBarGeometry.PillPad + ClassicStageVideoBarGeometry.Button * (1f + (fold < FoldSkip ? 2f : 0f) + (fold < FoldVolume ? 1f : 0f));
+
+    /// <summary>The time pill at <paramref name="fold"/>: "elapsed / total", or the elapsed time alone.</summary>
+    public static float TimeW(int fold) => fold < FoldTime ? ClassicStageVideoBarGeometry.TimeBudgetW : TimeShortBudgetW;
+
+    /// <summary>The right pill at <paramref name="fold"/>: (the volume slider's chevron ·) "…".</summary>
+    public static float RightW(int fold)
+        => 2f * ClassicStageVideoBarGeometry.PillPad + ClassicStageVideoBarGeometry.Button * (1f + (fold < FoldVolume ? 1f : 0f));
+
+    /// <summary>The row's width at <paramref name="fold"/>: the insets, the three pills and the two least gaps.</summary>
+    public static float RowW(int fold) => 2f * Inset + LeftW(fold) + TimeW(fold) + RightW(fold) + 2f * ClassicStageVideoBarGeometry.PillGap;
+
+    /// <summary>The fold for a picture <paramref name="pictureW"/> wide: the least that seats the row (408, 352, 272; under 272 the last).</summary>
+    public static int Fold(float pictureW)
+    {
+        for (int f = FoldNone; f < FoldSkip; f++)
+            if (RowW(f) <= pictureW) return f;
+        return FoldSkip;
+    }
 
     /// <summary>The volume popup: a slider card over the video hole.</summary>
     public const float VolumePopupW = 52f, VolumePopupH = 168f, VolumeSliderLength = 124f, VolumeSliderThickness = 32f;

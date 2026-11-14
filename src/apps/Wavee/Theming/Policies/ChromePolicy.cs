@@ -59,6 +59,11 @@ public sealed record ChromeBudget(
         SearchFocusGrowW = Shell.Layout.ChromeSearchFocusGrowW, SearchFocusClearW = Shell.Layout.ChromeSearchFocusClearW,
     };
 
+    /// <summary>How many nav-button-wide actions the trailing island shows while its actions are in the row: three (the bell, friends
+    /// and the pin) unless the structure states more (contract 1.94: Classic's fourth is the app's full screen). The row is priced with
+    /// this count, so a structure draws exactly as many.</summary>
+    public int RowActions { get; init; } = 3;
+
     /// <summary>What the search field GROWS by while it has focus (or its suggestions are open): the focused field is
     /// <c>min(rest + this, room − <see cref="SearchFocusClearW"/>)</c>, where the room is the span between the tabs island and the
     /// trailing island. 0 (the default) keeps the field at its rest width.</summary>

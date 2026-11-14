@@ -175,9 +175,11 @@ internal static class ClassicHomeDaylist
     /// carried by the layers (the copy's floor, the layered forms' height) and never declared on the card: a crossing between forms (the content tier a
     /// docked panel or a window resize changes) eases the card's size through real layout (<see cref="ClassicTierMotion.SizeReflow"/>), the layers
     /// filling it, so its fill shrinks or grows and the zones under it ride it. A declared height would be mirrored by the view's anchor and hold the
-    /// zone at the new height while the card eased inside it.</summary>
+    /// zone at the new height while the card eased inside it.
+    /// <para>The box is FORM-gated (<see cref="CopyForm"/>): it re-renders only when the copy's form changes, chosen at the width the card lands at
+    /// while a docking panel's reflow resizes it, and the copy's width follows the card on every frame through layout.</para></summary>
     static BoxEl CardShape(Parts parts, ClassicDaylistLayout dl, float firstWidth)
-        => Ui.Card(Responsive.Of("home:daylist", w => Row(parts, w, dl), fallback: firstWidth, grow: 1f))
+        => Ui.Card(Responsive.Of("home:daylist", w => FormOf(w, dl), f => Row(parts, f, dl), fallback: firstWidth, grow: 1f))
             with
             {
                 Padding = default, ClipToBounds = true,
@@ -191,58 +193,89 @@ internal static class ClassicHomeDaylist
     static Element ArtLayer(string? url)
         => Controls.CoverFill(url, 0f, ClassicHomeRules.DaylistArtDecodePx, focusY: ClassicHomeRules.DaylistArtFocusY);
 
-    /// <summary>The card's layers at card width <paramref name="w"/> (the card has no padding, so this is its whole width), in the tier's form.</summary>
-    static Element Row(Parts p, float w, ClassicDaylistLayout dl) => dl.Form switch
+    /// <summary>What the card's width decides: the tuned card's copy takes the WHOLE card (its content narrower than <see cref="DaylistForm.SplitMin"/>),
+    /// and whether the title keeps the 40/52 hero rung (<see cref="DaylistForm.UseHeroTitle"/> at the copy's text width).</summary>
+    readonly record struct CopyForm(bool Whole, bool HeroTitle);
+
+    /// <summary>The copy's form at card width <paramref name="w"/> (the card has no padding, so this is its whole width): the tuned card's text width
+    /// is <see cref="DaylistForm.CopyWidth"/> of its content, a layered form's its copy column (<see cref="ClassicDaylistLayout.CopyW"/>, never past
+    /// the card) inside the padding; the stack's title never takes the hero rung.</summary>
+    static CopyForm FormOf(float w, ClassicDaylistLayout dl)
+    {
+        float pad = dl.CopyPad.Horizontal;
+        switch (dl.Form)
+        {
+            case ClassicDaylistForm.Stacked: return default;
+            case ClassicDaylistForm.Card:
+                float inner = MathF.Max(0f, w - pad);
+                return new CopyForm(inner < DaylistForm.SplitMin, DaylistForm.UseHeroTitle(DaylistForm.CopyWidth(inner)));
+            default:
+                return new CopyForm(false, DaylistForm.UseHeroTitle(MathF.Max(0f, MathF.Min(dl.CopyW, MathF.Max(0f, w)) - pad)));
+        }
+    }
+
+    /// <summary>The card's layers in the tier's form and the copy's form <paramref name="f"/>.</summary>
+    static Element Row(Parts p, CopyForm f, ClassicDaylistLayout dl) => dl.Form switch
     {
         ClassicDaylistForm.Stacked => Stacked(p, dl),
-        ClassicDaylistForm.Card => CardRow(p, w, dl),
-        _ => Layered(p, w, dl),
+        ClassicDaylistForm.Card => CardRow(p, f, dl),
+        _ => Layered(p, f, dl),
     };
 
     /// <summary>The tuned card (Standard): the art, its veil, then the copy over the veil's opaque side —
     /// <see cref="DaylistForm.CopyWidth"/> of the content width inside the copy padding, plus that
-    /// padding. Neither layer measures anything, so the copy alone decides the card's height above its 320 floor, and
+    /// padding, as flex: the copy grows by <see cref="DaylistForm.CopyShare"/> of the content width over its padding, held between the floor and the
+    /// ceiling, beside a spacer that takes the rest (the whole card in the <see cref="CopyForm.Whole"/> form), so its width follows the card on every
+    /// frame with no re-render. Neither layer measures anything, so the copy alone decides the card's height above its 320 floor, and
     /// the stack stretches both layers over the whole card and the copy over its full height (SpaceBetween pins the
     /// clock to the foot). The three slots never move — an absent layer is an empty, hit-test-free box — and the copy
     /// is keyed, so art arriving late mounts the layers without remounting the copy and its clock.</summary>
-    static Element CardRow(Parts p, float w, ClassicDaylistLayout dl)
+    static Element CardRow(Parts p, CopyForm f, ClassicDaylistLayout dl)
     {
         var pad = dl.CopyPad;
-        float text = DaylistForm.CopyWidth(MathF.Max(0f, w - pad.Horizontal));
         var copy = new BoxEl
         {
             Key = "daylist-copy",
-            Direction = 1, Width = text + pad.Horizontal, MinWidth = 0f, MinHeight = ClassicHomeRules.DaylistCardMinHeight,
+            Direction = 1, Basis = pad.Horizontal, Grow = f.Whole ? 1f : DaylistForm.CopyShare,
+            MinWidth = f.Whole ? 0f : DaylistForm.TextMin + pad.Horizontal, MaxWidth = f.Whole ? float.NaN : DaylistForm.CopyMax + pad.Horizontal,
+            MinHeight = ClassicHomeRules.DaylistCardMinHeight,
             // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card. The card's 320 floor is this
             // column's (the card's own height eases between forms).
             Justify = FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.XL,
-            Children = [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
+            Children = [Top(p, f.HeroTitle, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
+        var copyRow = CopyRow(
+            // The spacer's basis offsets the copy's floor (its basis is clamped up to the floor before the share is handed out), so the copy is
+            // exactly its padding plus CopyShare of the content width; below the floor the spacer gives way (Shrink) and the copy holds it.
+            f.Whole ? [copy] : [copy, new BoxEl
+            {
+                Grow = 1f - DaylistForm.CopyShare, Basis = DaylistForm.TextMin * (1f - DaylistForm.CopyShare) / DaylistForm.CopyShare,
+                Shrink = 1f, MinWidth = 0f, HitTestVisible = false,
+            }]);
         return new BoxEl
         {
             ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy],
+            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copyRow],
         };
     }
 
     /// <summary>The fixed-height forms over a horizontal veil: Small's 216 banner (364 of copy, the clock a line), Short's 126 strip (the eyebrow and the title
     /// only) and Huge's 400 hero (760 of copy, the actions pinned to the foot, the clock a plate in the corner).</summary>
-    static Element Layered(Parts p, float w, ClassicDaylistLayout dl)
+    static Element Layered(Parts p, CopyForm f, ClassicDaylistLayout dl)
     {
         var pad = dl.CopyPad;
-        float copyW = MathF.Min(dl.CopyW, MathF.Max(0f, w));
-        float text = MathF.Max(0f, copyW - pad.Horizontal);
         bool hero = dl.Form == ClassicDaylistForm.Hero;
         bool strip = dl.Form == ClassicDaylistForm.Strip;
         // The hero pins its actions to the foot inside the same top block every form draws them in, so the action row keeps its parent (and its
         // buttons their nodes) across the 1920 crossing.
-        Element[] copyKids = strip ? [Top(p, text, dl, withActions: false)]
-            : hero ? [Top(p, text, dl, withActions: true, pinActions: true)]
-            : [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)];
+        Element[] copyKids = strip ? [Top(p, f.HeroTitle, dl, withActions: false)]
+            : hero ? [Top(p, f.HeroTitle, dl, withActions: true, pinActions: true)]
+            : [Top(p, f.HeroTitle, dl, withActions: true), ClockSlot(p.Clock, plate: false)];
         var copy = new BoxEl
         {
             Key = "daylist-copy",
-            Direction = 1, Width = copyW, MinWidth = 0f,
+            // The form's copy column, never past the card: the layer fills the stack up to it, so its width follows the card through layout.
+            Direction = 1, Grow = 1f, Basis = 0f, MaxWidth = dl.CopyW, MinWidth = 0f,
             Justify = strip ? FlexJustify.Start : FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.S,
             Children = copyKids,
         };
@@ -258,7 +291,7 @@ internal static class ClassicHomeDaylist
         {
             // The form's fixed height (216 / 400 / 126) is the layers', not the card's (CardShape): they fill the card while its height eases.
             ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, MinHeight = dl.CardH,
-            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy, plate],
+            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), CopyRow([copy]), plate],
         };
     }
 
@@ -274,16 +307,24 @@ internal static class ClassicHomeDaylist
         var copy = new BoxEl
         {
             Key = "daylist-copy",
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = Spacing.S,
+            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = Spacing.S,
             Padding = hasArt ? pad with { Top = pad.Top + MathF.Max(0f, dl.ArtH - ClassicHomeRules.StackedOverlap) } : pad,
-            Children = [Top(p, float.NaN, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
+            Children = [Top(p, heroTitle: false, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
         return new BoxEl
         {
             ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy],
+            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), CopyRow([copy])],
         };
     }
+
+    /// <summary>The copy's layer: a row filling the card that sizes the copy through flex, the same parent in every form, so a crossing between forms
+    /// keeps the copy's node (and its actions and clock) instead of remounting it.</summary>
+    static BoxEl CopyRow(Element[] children) => new()
+    {
+        Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Children = children,
+    };
 
     /// <summary>The clock in its place: in the copy (every form but the hero) or on the hero's corner plate. The two places are two trees (a crossing
     /// between the hero and another form re-parents the clock), so each is keyed and swaps under the tier cross-fade instead of the clock rebuilding
@@ -298,16 +339,16 @@ internal static class ClassicHomeDaylist
     /// <summary>An absent layer's slot: empty and hit-test free.</summary>
     static BoxEl NoLayer() => new() { HitTestVisible = false };
 
-    /// <summary>The copy's top block at text width <paramref name="text"/> (NaN: the column's own): eyebrow · title · tags · meta · the ONE
+    /// <summary>The copy's top block, its title on the hero rung when <paramref name="heroTitle"/> (the tuned card's form): eyebrow · title · tags · meta · the ONE
     /// action row (the strip keeps the eyebrow and the title; the hero parts its actions to the foot).</summary>
-    static BoxEl Top(Parts p, float text, ClassicDaylistLayout dl, bool withActions, bool pinActions = false)
+    static BoxEl Top(Parts p, bool heroTitle, ClassicDaylistLayout dl, bool withActions, bool pinActions = false)
     {
         var kids = new List<Element>(5)
         {
             // Compact's stack rises the eyebrow over the art's foot: primary there (secondary read 4 : 1 on the veil), secondary on the plate forms.
             (dl.Form == ClassicDaylistForm.Stacked ? Ui.Body(p.Eyebrow).Primary() : Ui.Body(p.Eyebrow).Secondary())
                 with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-            TitleRung(p.Title, text, dl) with
+            TitleRung(p.Title, heroTitle, dl) with
             {
                 MaxLines = dl.TitleLines, Wrap = dl.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
@@ -332,11 +373,11 @@ internal static class ClassicHomeDaylist
     /// <summary>The title's rung: the tuned card's 40/52 <c>HeroTitle</c> while the copy is at least
     /// <see cref="DaylistForm.HeroTitleMinText"/> wide, else the 28/36 display rung at 600 (<see cref="DaylistForm.UseHeroTitle"/>);
     /// the compact forms hold the 28/36 and the Huge hero the 68/92 display size.</summary>
-    static TextEl TitleRung(string title, float text, ClassicDaylistLayout dl) => dl.Title switch
+    static TextEl TitleRung(string title, bool heroTitle, ClassicDaylistLayout dl) => dl.Title switch
     {
         ClassicDaylistTitle.Display68 => Ui.Display(title) with { Weight = 600 },
         ClassicDaylistTitle.Display28 => R.Type.DetailHero(title) with { Weight = 600 },
-        _ => DaylistForm.UseHeroTitle(text) ? R.Type.HeroTitle(title) : R.Type.DetailHero(title) with { Weight = 600 },
+        _ => heroTitle ? R.Type.HeroTitle(title) : R.Type.DetailHero(title) with { Weight = 600 },
     };
 
     /// <summary>The ONE action row: 20 below the meta (12 in the compact forms), 8 apart, never wrapping (the copy's floor fits it).</summary>
@@ -345,6 +386,9 @@ internal static class ClassicHomeDaylist
         // Keyed: the hero's foot spacer precedes it in the same block, and a positional match would hand its node to the spacer.
         Key = "daylist-actions",
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = false, MinWidth = 0f,
+        // A crossing between forms (a resize, or the content tier a docking panel's slide lands in) moves the row to the new form's place while the
+        // card eases its size: it slides there (its width revealed), never stepping in one frame.
+        Layout = Design.Reduced ? null : ClassicTierMotion.Reflow,
         Margin = new Edges4(0f, dl.Form == ClassicDaylistForm.Card ? Spacing.XL : Spacing.M, 0f, 0f),
         Children = actions,
     };

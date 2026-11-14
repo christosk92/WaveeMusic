@@ -23,8 +23,11 @@ internal static partial class ZuneSettings
 {
     // ══ the area composer ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The groups of <paramref name="area"/>, in the area's order: each tab's groups are built once, and every part the area names picks its group(s) out.</summary>
-    static Element[] AreaGroups(ZuneKit k, Settings.Area area, SettingsPageProps props)
+    /// <summary>The groups of <paramref name="area"/>, in the area's order: each tab's groups are built once, and every part the area names picks its group(s) out.
+    /// <paramref name="headingGap"/> is the space the layout leaves between the area's heading and the first group (the column's section gap where the heading
+    /// heads the column, the lane's top air where the heading is the title above the lane): a sentence that leads the area is pulled up by all of it but
+    /// <see cref="ZuneSettingsRules.SentenceGap"/>.</summary>
+    static Element[] AreaGroups(ZuneKit k, Settings.Area area, SettingsPageProps props, float headingGap)
     {
         var parts = Settings.PartsOf(area);
         var built = new Dictionary<Tab, Named[]>(4);
@@ -36,7 +39,7 @@ internal static partial class ZuneSettings
                 if (string.Equals(named.Section, part.Section, StringComparison.Ordinal))
                     // A sentence that leads the area sits 4 under the heading, not a section gap (Z-Feedback).
                     groups.Add(groups.Count == 0 && named.Sentence && named.El.Is(out BoxEl lead)
-                        ? lead with { Margin = new Edges4(0f, -(Z.SectionGap - Z.SentenceGap), 0f, 0f) }
+                        ? lead with { Margin = new Edges4(0f, -(headingGap - Z.SentenceGap), 0f, 0f) }
                         : named.El);
         }
         return groups.ToArray();

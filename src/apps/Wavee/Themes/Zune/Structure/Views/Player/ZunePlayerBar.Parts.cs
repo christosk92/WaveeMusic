@@ -214,6 +214,10 @@ internal static partial class ZunePlayerBar
                 return Slot("queue", lit, Word(Loc.Get(Strings.Player.Queue), props.OpenQueue, true, v.QueueOpen, box, look.WordSize));
             case RightSlot.Devices:
                 return Slot("devices", lit, Embed.Comp(new ToolProps(props, box, glyph, look.WordSize, Popup: false), static () => new ZuneDevicesWord()));
+            case RightSlot.Mini:
+                return Slot("mini", lit, ToolTip.Wrap(
+                    Glyph(SegoeGlyphs.MiniPlayer, props.OpenMiniPlayer ?? (static () => { }), props.OpenMiniPlayer is not null, Tok.TextSecondary, box, glyph),
+                    Loc.Get(Strings.Mini.Title)));
             case RightSlot.Expand:
                 return Slot("expand", lit, ToolTip.Wrap(
                     Glyph(Icons.FullScreen, () => verbs.OpenStage(begin, "bar-expand"), true, Tok.TextSecondary, box, glyph),

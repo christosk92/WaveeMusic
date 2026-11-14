@@ -362,8 +362,8 @@ internal static class ZuneStageTransport
             v.SourceSize, v.SourceLine, v.SeekH, v.RowH, v.AsideH, MathF.Max(v.AsideH, t.TargetH), t.WordSize, t.WordLine);
     }
 
-    /// <summary>The pieces every arrangement draws, over one render's facts.</summary>
-    sealed class Kit(StageTransportProps props, StageTransportFacts facts, AccentSet set, IOverlayService overlay, Sizes size)
+    /// <summary>The pieces every arrangement draws, over one render's facts (Video mode's plate over the picture draws them too, `ZuneStageVideoBar`).</summary>
+    internal sealed class Kit(StageTransportProps props, StageTransportFacts facts, AccentSet set, IOverlayService overlay, Sizes size)
     {
         public Sizes Size => size;
 
@@ -486,7 +486,7 @@ internal static class ZuneStageTransport
         };
 
         /// <summary>A plateless glyph: the ink lifts on hover, the tertiary ink when disabled.</summary>
-        BoxEl Glyph(string glyph, Action? onClick, bool enabled, ColorF ink) => new()
+        public BoxEl Glyph(string glyph, Action? onClick, bool enabled, ColorF ink) => new()
         {
             Width = size.Box, Height = size.Box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             PressScale = R.Motion.ScaleSubtle.PressIf(enabled),

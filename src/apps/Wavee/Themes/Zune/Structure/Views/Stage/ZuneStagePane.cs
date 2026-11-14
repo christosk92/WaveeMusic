@@ -10,10 +10,12 @@
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
 
 using G = Wavee.Themes.Zune.ZuneStageGeometry;
 
@@ -35,6 +37,7 @@ internal static class ZuneStagePane
         var L = sc.Layout.Value;
         var k = sc.Look.Value;
         var tiers = ctx.Tier();   // hooks first, unconditionally
+        if (props.Theatre) return Theatre(props, in L, ZuneStageTiers.StageOf(in tiers));
         var a = ZuneStageKit.Arrangement(sc, in tiers);
         // the plate's pane sits on the tier's gutter (the lyrics' text starts there), under the tier's taller head (the Compact pivot row, 56, 72),
         // and stops short of the Up next column (`ZuneStageGeometry.PlatePane`)
@@ -51,6 +54,44 @@ internal static class ZuneStagePane
             Children = [props.Panes(s_frame, s_empty)],
         };
     }
+
+    /// <summary>Video mode's Theatre panel beside the picture as an OPEN LIST on the page: no plate, no card; its top on the picture's top edge,
+    /// its foot running to the stage's foot. Up next draws its own section headings (the display face); the lyrics take a "lyrics" heading in the
+    /// same voice here, so switching the panel swaps no frame. Shown for as long as the root keeps it mounted (its slide is the root's).</summary>
+    static Element Theatre(StagePaneProps props, in Stage.Layout L, ZuneStageLayout t)
+    {
+        var pane = ZuneStageVideoGeometry.Theatre(in L, t).Pane;
+        var st = props.Stage;
+        var z = t.Video;
+        return new BoxEl
+        {
+            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, Margin = new Edges4(pane.X, pane.Y, 0f, 0f),
+            Direction = 1, ClipToBounds = true, Layout = s_move,
+            Children = [props.Panes(body => st.TheatrePane.Peek() == Stage.PaneKind.Lyrics ? Frame(LyricsHeaded(body, z)) : Frame(body), s_empty)],
+        };
+    }
+
+    /// <summary>The Theatre lyrics: "lyrics" in the display face (light, lowercase through the heading case) over the lines.</summary>
+    static Element LyricsHeaded(Element body, ZuneStageVideo z) => new BoxEl
+    {
+        Grow = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
+        Children =
+        [
+            new BoxEl
+            {
+                Height = z.Px(ZuneStageVideoGeometry.ListHeadH), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    new TextEl(Loc.Get(Strings.Stage.Mode.Lyrics))
+                    {
+                        Size = z.Dx(ZuneStageVideoGeometry.ListHeadSize), LineHeight = z.Dx(ZuneStageVideoGeometry.ListHeadLine), Weight = ZuneStageVideoGeometry.TitleWeight,
+                        FontFamily = R.Type.DisplayFace, Color = StageInk.Ink, Case = R.Case.For(LabelKind.Heading), MaxLines = 1,
+                    },
+                ],
+            },
+            new BoxEl { Grow = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f, Children = [body] },
+        ],
+    };
 
     /// <summary>The frame a pane's body enters in: it rises and fades in, and fades out in place.</summary>
     static Element Frame(Element body) => new BoxEl

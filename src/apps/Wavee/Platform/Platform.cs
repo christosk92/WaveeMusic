@@ -182,9 +182,19 @@ public static partial class Platform
         // rather than migrated — one launch at the 16:9 default is the whole repair.
         public static readonly SettingKey<string> VideoPipRect = new("video.pip.rect.v2", "");     // window-DIP "x,y,w,h"
         public static readonly SettingKey<string> VideoWindowRect = new("video.window.rect", "");  // screen-px "x,y,w,h"
+        /// <summary>The main window's normal placement (Shell.Host.Placement.cs): screen-px "x,y,w,h,max", the restore outer rect
+        /// and 1 when maximized. Empty = the default size.</summary>
+        public static readonly SettingKey<string> ShellWindowPlacement = new("shell.window.placement", "");
         public static readonly SettingKey<string> VideoAspectMode = new("video.aspect.mode", "fit");
         public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", 16.0 / 9.0);
         public static readonly SettingKey<bool> VideoWindowAlwaysOnTop = new("video.window.ontop", true);
+        /// <summary>The mini player window (#197): where it was (screen-px "x,y,w,h", outer rect), its face, and whether it stays on top.</summary>
+        public static readonly SettingKey<string> MiniPlayerRect = new("mini.window.rect", "");
+        public static readonly SettingKey<int> MiniPlayerFace = new("mini.face", 0);
+        public static readonly SettingKey<bool> MiniPlayerOnTop = new("mini.window.ontop", true);
+        /// <summary>The mini player's "Colour from album art" per theme slot (#197): bit <c>slot</c> set = chosen on, bit <c>slot + 8</c> set =
+        /// chosen off, neither = the theme's default (Classic on, WinUI and Zune off).</summary>
+        public static readonly SettingKey<int> MiniPlayerArtColour = new("mini.artcolour", 0);
 
         // ── local playback runtime (the provisioning card; RuntimePhase below). Path, pack and catalog are read and written by the
         // private PlayPlay module's provisioner, which is not in this repository. ──
@@ -212,6 +222,8 @@ public static partial class Platform
         public static readonly SettingKey<bool> CrossfadeEnabled = new("playback.crossfade.enabled", false);
         public static readonly SettingKey<int> CrossfadeMs = new("playback.crossfade.ms", 5000);
         public static readonly SettingKey<bool> AutoplayEnabled = new("playback.autoplay", true);
+        /// <summary>A music video that ends in full screen counts down ("Up next in 5") before the next one plays (Playback.EndHold.cs).</summary>
+        public static readonly SettingKey<bool> VideoEndCountdown = new("playback.video.endCountdown", true);
         public static readonly SettingKey<bool> NormalizationEnabled = new("playback.normalization", true);
 
         // ── notifications (levels are NotifyLevel: 0 Off · 1 InApp · 2 Windows) ──
@@ -804,7 +816,7 @@ public static partial class Log
 // ── 8. glyphs (the font faces, set BEFORE the harness runs) ──────────────────────────────────────────────────────────
 
 /// <summary>The custom WaveeIcons font — Spotify's real "Play next" / "Add to queue" marks the Segoe Fluent set does
-/// not carry (the engine's generated Icons.* superset carries every other Wavee glyph; only these three custom-font
+/// not carry (the engine's generated Icons.* superset carries every other Wavee glyph; only these custom-font
 /// marks stay app-local). ASCII-safe <c>Of(0x____)</c> convention: built from hex codepoints at runtime so the SOURCE
 /// stays pure-ASCII, because raw PUA chars and escapes get mangled by the edit/encoding chain.</summary>
 public static class WaveeIcons
@@ -814,6 +826,8 @@ public static class WaveeIcons
     public static readonly string PlayNext = Of(0xE900);    // play-on-top mark (front of queue)
     public static readonly string PlayAfter = Of(0xE901);   // play-on-bottom / add-to-queue mark (end of queue)
     public static readonly string Lyrics = Of(0xE902);      // lyrics / chat bubble
+    public static readonly string NowPlaying = Of(0xE903);  // the now-playing panel: a window whose right pane holds a play mark
+    public static readonly string VideoOff = Of(0xE904);    // a crossed-out camera: turn the video off
 
     /// <summary>Absolute path + #family. The engine loads by PATH; the #suffix is a stable cache key only.</summary>
     public static readonly string Font =
@@ -829,6 +843,23 @@ public static class SegoeGlyphs
 
     /// <summary>A person with a plus (Segoe "AddFriend"): the Follow toggle at rest (tuned Classic D21).</summary>
     public static readonly string AddFriend = Of(0xE8FA);
+
+    /// <summary>Lines beside a music note: the queue, wherever a queue door is drawn (the engine's <c>Icons.Queue</c> is the
+    /// album disc).</summary>
+    public static readonly string Queue = Of(0xE90B);
+    /// <summary>A window with a pane on its right: the video docked in the panel.</summary>
+    public static readonly string DockRight = Of(0xE90D);
+    /// <summary>A screen with a small filled picture in its corner: the video's mini player (picture in picture).</summary>
+    public static readonly string PictureInPicture = Of(0xED73);
+    /// <summary>A window with an arrow leaving a second one: the video in a window of its own.</summary>
+    public static readonly string PopOut = Of(0xED6B);
+    /// <summary>A window folding down into its corner: the app's mini player (<c>BackToWindow</c>, the arrows pointing inward,
+    /// is Windows' "leave full screen").</summary>
+    public static readonly string MiniPlayer = Of(0xEE47);
+    /// <summary>A screen framed by four corner marks: the VIDEO's full screen. The regular full-screen glyph, the diagonal arrows
+    /// (<c>Icons.FullScreen</c>), is the APP's (the stage: the title bar's button, the player bar's rows), so the two never share
+    /// a glyph (the owner, 2026-11-10).</summary>
+    public static readonly string VideoFullScreen = Of(0xE9A6);
 }
 
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content

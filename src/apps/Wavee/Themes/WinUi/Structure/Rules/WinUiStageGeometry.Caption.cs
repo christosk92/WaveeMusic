@@ -20,8 +20,6 @@ internal static class WinUiStageCaptionGeometry
     /// <summary>The gap between the active line and its secondary line.</summary>
     public const float SecondaryGap = 4f;
 
-    /// <summary>The veil's radial gradient: where the middle stop sits and the share of the centre alpha it carries.</summary>
-    public const float VeilMidStop = 0.55f, VeilMidAlpha = 0.55f;
 
     /// <summary>A breathing dot is a circle: its corner radius is this fraction of its size.</summary>
     public const float DotRadiusFraction = 0.5f;

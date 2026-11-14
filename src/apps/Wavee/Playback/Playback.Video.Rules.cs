@@ -547,20 +547,60 @@ public static partial class Playback
 
         // ── 6c. the opening rung — chosen at OPEN time from the estimate the link carries (video stutter fix) ──────────
 
-        /// <summary>The rung a source OPENS on. With a usable estimate (a measurement, or last launch's remembered one):
-        /// the highest rung whose bitrate fits 0.85 × the estimate under the height cap — bounded at 720p while the
-        /// estimate is still a PRIOR, so a remembered fast link never opens a cold connection at 1080p (the first sample
-        /// decides that, one measured switch later). No estimate: the highest rung ≤ 480p (the descriptor's own pick).
-        /// Nothing fits: index 0.</summary>
-        public static int OpeningRung(ReadOnlySpan<(int Height, int Bitrate)> rungsAscending, double estimateKbps, bool estimateIsPrior, int capHeight)
+        /// <summary>The rung the stored quality pin names in this ladder: the FIRST rung whose height is exactly
+        /// <paramref name="pinnedHeight"/>, no cap check (the session requests that rung regardless of the cap). -1 when
+        /// there is no pin (≤ 0) or the ladder does not list that height. The one lookup both the session's pin
+        /// (SeedQualitySelection) and the opening rung use, so the two can never disagree.</summary>
+        public static int PinnedRung(ReadOnlySpan<(int Height, int Bitrate)> rungs, int pinnedHeight)
+        {
+            if (pinnedHeight <= 0) return -1;
+            for (int i = 0; i < rungs.Length; i++)
+                if (rungs[i].Height == pinnedHeight) return i;
+            return -1;
+        }
+
+        /// <summary>The rung a source OPENS on, and why (<paramref name="why"/>, the `open.rung` line's reason).
+        /// <para>Pin: under a quality pin the source opens on the pinned rung whenever the ladder lists that height
+        /// (<see cref="PinnedRung"/>), whatever the estimate, because the session downloads that rung from segment 0 either
+        /// way (why=pin).</para>
+        /// <para>Remembered estimate (a prior, last launch's measurement): a rung up to 720p fits when its bitrate is within
+        /// 0.85 × the estimate (why=prior); a rung above 720p fits only when the estimate covers its bitrate at least
+        /// <c>PriorTrust</c> (8) times over (why=prior-trusted), so a link slower today than remembered still opens fast.</para>
+        /// <para>Measured estimate: the highest rung under the cap within 0.85 × the estimate (why=measured). No estimate:
+        /// the highest rung ≤ 480p (why=cold).</para>
+        /// Every rule stays under the height cap except the pin; the highest fitting rung wins; nothing fits: index 0.</summary>
+        public static int OpeningRung(ReadOnlySpan<(int Height, int Bitrate)> rungsAscending, double estimateKbps, bool estimateIsPrior, int capHeight,
+                                      int pinnedHeight, out string why)
         {
             const double Headroom = 0.85; const int PriorCeiling = 720; const int ColdCeiling = 480;
+            // A rung above 720p opens on a remembered (unmeasured) estimate only when that estimate covers its bitrate this many
+            // times over. Where 8 comes from: the 720 ceiling exists because the first sample on a COLD connection reads far below a
+            // remembered steady-state estimate, and the controller downswitches at once from a rung above 0.95 x a measured
+            // estimate (AdaptiveBitrateController.DownSwitchFactor, rule 1 of Choose); an open the first sample reverses is the
+            // open-then-switch this ceiling prevents. Measured on the owner's link (log 2026-11-11, first video of the process):
+            // remembered 569,024 kbps, first sample (a 2.7 MB 1080p segment 0 on a cold connection) 76,885 kbps, 7.4 times lower.
+            // A rung survives that first sample when bitrate <= 0.95 x (estimate / 7.4), i.e. when the estimate covers it
+            // 7.4 / 0.95 = 7.8 times over; rounded up, ceil(7.4 / 0.95) = 8. So above 720p this opens only a rung the controller
+            // would still hold after the first cold sample. (Read as time: at 8x a 4 s segment arrives in 0.5 s at the remembered
+            // rate, and still in real time on a link 8x slower.)
+            const double PriorTrust = 8.0;
+            int pinned = PinnedRung(rungsAscending, pinnedHeight);
+            if (pinned >= 0) { why = "pin"; return pinned; }
             bool haveEstimate = estimateKbps > 0;
-            int ceiling = !haveEstimate ? Math.Min(ColdCeiling, capHeight) : estimateIsPrior ? Math.Min(PriorCeiling, capHeight) : capHeight;
-            double budgetBps = haveEstimate ? estimateKbps * 1000.0 * Headroom : double.MaxValue;
+            double estimateBps = estimateKbps * 1000.0;
+            double budgetBps = haveEstimate ? estimateBps * Headroom : double.MaxValue;
             int pick = -1;
             for (int i = 0; i < rungsAscending.Length; i++)
-                if (rungsAscending[i].Height <= ceiling && rungsAscending[i].Bitrate <= budgetBps) pick = i;   // ascending ⇒ last fit is highest
+            {
+                var (h, b) = rungsAscending[i];
+                bool fits = h <= capHeight && (!haveEstimate ? h <= ColdCeiling
+                    : !estimateIsPrior ? b <= budgetBps
+                    : h <= PriorCeiling ? b <= budgetBps
+                    : b * PriorTrust <= estimateBps);
+                if (fits) pick = i;   // ascending ⇒ last fit is highest
+            }
+            why = !haveEstimate ? "cold" : !estimateIsPrior ? "measured"
+                : pick >= 0 && rungsAscending[pick].Height > PriorCeiling ? "prior-trusted" : "prior";
             return pick >= 0 ? pick : 0;
         }
 

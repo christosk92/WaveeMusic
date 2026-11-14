@@ -20,4 +20,9 @@ public static partial class ViewKeys
     /// <summary>The stage's Up next column: the title and the Autoplay switch over the scrolling lane, in the stage's ink at the stage's
     /// queue scale. Mounted by <c>Queue.StagePaneHost</c> (the core host). Props: <see cref="QueueStagePaneProps"/>.</summary>
     public static readonly ViewKey<QueueStagePaneProps> QueueStagePane = new("Queue.StagePane");
+
+    /// <summary>The stage's Up next shelf over the music video (Video mode, Cinema): the next tracks as 16:9 cards (a video's still, or an
+    /// audio-only track's cover on a plate), riding in and out with the stage's idle chrome. Mounted by <c>Queue.StageShelfHost</c> (the core
+    /// host), which the structure places through <c>StageLayers.UpNextShelf</c>. Props: <see cref="QueueStageShelfProps"/>. Appended (contract 1.97).</summary>
+    public static readonly ViewKey<QueueStageShelfProps> QueueStageShelf = new("Queue.StageShelf");
 }

@@ -65,9 +65,17 @@ public static partial class Verse
     /// <summary>The Verse face. A gallery tile is a still word with a wipe (no lyrics read, no clock, no blur); the stage
     /// face is the host component, re-pushed (slab, size) props.</summary>
     public static Element Face(Visualizer.Slab slab, in Visualizer.Palette pal, in Visualizer.FaceSpec spec)
-        => spec.Preview ? Preview(in pal, in spec) : Embed.Comp(new HostProps(slab, spec.W, spec.H), static () => new Host());
+        => spec.Preview ? Preview(in pal, in spec)
+            : Embed.Comp(new HostProps(slab, spec.W, spec.H, SafeHead(in spec), SafeFoot(in spec),
+                spec.HasSide ? new Geometry.Side(spec.SideLeft, spec.SideTop, spec.SideRight, spec.SideBottom) : default), static () => new Host());
 
-    sealed record HostProps(Visualizer.Slab Slab, float W, float H);
+    /// <summary>The foot of the face-safe rect the structure handed the face (0 = none): what a card over the face leaves free.</summary>
+    static float SafeFoot(in Visualizer.FaceSpec spec) => spec.SafeBottom > spec.SafeTop ? spec.SafeBottom : 0f;
+
+    /// <summary>The head of that rect (0 = none): under a title the structure draws over the face (Zune's display line in its Card arrangement).</summary>
+    static float SafeHead(in Visualizer.FaceSpec spec) => spec.SafeBottom > spec.SafeTop ? spec.SafeTop : 0f;
+
+    sealed record HostProps(Visualizer.Slab Slab, float W, float H, float SafeTop, float SafeBottom, Geometry.Side Side);
 
     /// <summary>The gallery tile: the face's name set as a sung word — the wipe two-thirds through it in the cover's
     /// accent, the rest faint ink — over a hairline at the same point. Three nodes, nothing bound.</summary>
@@ -101,6 +109,9 @@ public static partial class Verse
     static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
     static EnterExit FadeOut => new(Opacity: 0f, Active: true);
     static readonly LayoutTransition s_glide = new(TransitionChannels.Position, TransitionDynamics.Tween(480f, Easing.FluentDecelerate));
+    /// <summary>The ghost stack's and the lower parts' move when the region moves (a resize, the band above a card giving way to the column beside
+    /// it): their bounds glide on the ghosts' own tween instead of snapping to the new place.</summary>
+    static readonly LayoutTransition s_region = new(TransitionChannels.Bounds, TransitionDynamics.Tween(480f, Easing.FluentDecelerate), SizeMode.Relayout);
 
     // ══ 2. THE PER-LINE RIG ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -130,6 +141,11 @@ public static partial class Verse
         public NodeHandle[] Nodes = [], Text = [], BloomText = [], Halo = [];
         public readonly FloatSignal BlockAlpha = new(1f), BlockDy = new(0f), Progress = new(0f), Echo = new(0f);
         public NodeHandle BlockNode, WholeText;
+        /// <summary>Per wiping word, its syllables' glyph bounds on the word node as drawn (<see cref="Lyrics.Wipe.GlyphBounds"/>), and the
+        /// whole run's over its line; measured once per rig (a rig is one line at one type size and column) the first time the driver finds
+        /// the node laid out. Null = not measured yet (the character weights meanwhile).</summary>
+        public float[]?[] WordBounds = [];
+        public float[]? WholeBounds;
         public Signal<int>? Lit;
         /// <summary>The ghost depth the live line echoes (0 = none in the stack — the echo lane never runs).</summary>
         public int EchoD;
@@ -168,7 +184,9 @@ public static partial class Verse
         float _beatMs;
         int _lastBeat = int.MinValue;
         long _lastBeatWallMs;
-        readonly Action _tick, _tickCore, _onBeat, _onPausedSeek, _rearm;
+        readonly Action _tick, _tickCore, _onBeat, _onPausedSeek, _rearm, _settle;
+        /// <summary>Bumped by every <see cref="BuildRig"/>: the key of the one post-layout settle a new rig gets.</summary>
+        int _rigSeq;
 
         public Host()
         {
@@ -177,6 +195,7 @@ public static partial class Verse
             _onBeat = OnBeat;
             _onPausedSeek = OnPausedSeek;
             _rearm = () => _live.Value = true;
+            _settle = () => Reactive.Untrack(SettleRig);
         }
 
         public override Element Render()
@@ -235,7 +254,9 @@ public static partial class Verse
             UseEffect(() => _timed.SetIfChanged(timedNow), DepKey.From(timedNow ? 1 : 0));
             UseEffect(_rearm, DepKey.From(epoch, _gen, playing ? 1 : 0, view));   // every built view re-decides the lanes
 
-            var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome);
+            // what the structure reserves over the face beyond the core's own face-safe rect (whose top Verse already follows, chrome-aware)
+            float extraTop = p.SafeTop > 0f ? MathF.Max(0f, p.SafeTop - L.FaceSafe(galleryOpen, false).Y) : 0f;
+            var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome, p.SafeBottom, extraTop, p.Side);
             bool blurOn = region.LandBlur && Lyrics.Prefs.BlurStrength(onStage: false) >= Land.BlurMinStrength;
             Element[] body;
             if (song is null)
@@ -246,6 +267,9 @@ public static partial class Verse
             }
             else if (!timed) { _rig = null; body = [Poem(song.Doc, in region)]; }
             else body = Timed(song!, in region, view, now, gapStart, playing, p.W, p.H, blurOn, dark);
+            // a new rig's words were seeded on the character weights (their nodes were not laid out yet): once they are, the
+            // measured split lands in the same frame — a paused face gets no tick to do it
+            UseLayoutEffect(_settle, DepKey.From(_rigSeq));
 
             return new BoxEl
             {
@@ -350,6 +374,7 @@ public static partial class Verse
         {
             var lines = song.Doc.Lines;
             var rig = new Rig(key, live);
+            _rigSeq++;
             if (next >= 0) rig.NextStartMs = lines[next].StartMs;
             if (dots && next >= 0) rig.Lit = new Signal<int>(CountIn.Lit(now, rig.NextStartMs, _beatMs));
             if (live < 0) return rig;
@@ -410,7 +435,7 @@ public static partial class Verse
             bool playing = Playback.IsPlaying.Peek();
             rig.Alpha = new FloatSignal[n]; rig.Dy = new FloatSignal[n]; rig.State = new Signal<int>[n];
             rig.Swell = new FloatSignal?[n]; rig.Bloom = new FloatSignal?[n];
-            rig.Nodes = new NodeHandle[n]; rig.Text = new NodeHandle[n]; rig.BloomText = new NodeHandle[n]; rig.Halo = new NodeHandle[n];
+            rig.Nodes = new NodeHandle[n]; rig.Text = new NodeHandle[n]; rig.WordBounds = new float[]?[n]; rig.BloomText = new NodeHandle[n]; rig.Halo = new NodeHandle[n];
             bool still = _reduced || rig.Dense;
             for (int i = 0; i < n; i++)
             {
@@ -477,10 +502,11 @@ public static partial class Verse
             return rig.HairW > 1f ? MathF.Round(p * rig.HairW) / rig.HairW : p;
         }
 
-        static float WipeSplit(in Word w, long now, float width)
+        /// <summary>A wiping word's split: the lyrics rows' (<see cref="Lyrics.Wipe.SplitWithLead"/>) over the word's own syllables, on
+        /// their glyph bounds once measured (<see cref="WordBoundsOf"/>), stepped in whole DIPs of the word.</summary>
+        static float WipeSplit(in Word w, long now, float width, ReadOnlySpan<float> bounds)
         {
-            float split = Words.Split(in w, now);
-            if (split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = w.Timed is { } timed ? Lyrics.Wipe.SplitWithLead(timed, now, bounds, lead: true) : Words.Split(in w, now);
             if (width > 1f && split > 0f && split < 1f) split = MathF.Round(split * width) / width;
             return split;
         }
@@ -503,8 +529,7 @@ public static partial class Verse
                 };
                 if (rig.WholeWipe)
                 {
-                    float split = Lyrics.Wipe.ComputeSplit(line, now);
-                    if (split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+                    float split = Lyrics.Wipe.SplitWithLead(line, now, rig.WholeBounds, lead: true);
                     run = run with
                     {
                         Wipe = new GlyphWipe(ink, ink with { A = Lyrics.Wipe.UnsungAlpha }, split, Lyrics.Wipe.SoftnessOfLine(rig.Widths[0], large: true)),
@@ -569,7 +594,7 @@ public static partial class Verse
             float split = 0f, soft = 0f;
             if (wipe)
             {
-                split = WipeSplit(in w, now, rig.Widths[i]);
+                split = WipeSplit(in w, now, rig.Widths[i], rig.WordBounds[i]);
                 soft = Lyrics.Wipe.SoftnessOfLine(MathF.Max(1f, rig.Widths[i]), large: true);
                 ColorF before = st.Peek() == 2 ? ink : slab.A.Peek();
                 main = main with { Wipe = new GlyphWipe(before, ink with { A = Lyrics.Wipe.UnsungAlpha }, split, soft), OnRealized = h => rig.Text[i] = h };
@@ -630,28 +655,41 @@ public static partial class Verse
             return new BoxEl
             {
                 Key = "v:ghosts", Direction = 1, Width = r.ColumnW, Gap = Geometry.GhostGap, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start,
-                Margin = new Edges4(r.ColumnX, 0f, 0f, MathF.Max(0f, H - bottomY)), HitTestVisible = false,
+                Margin = new Edges4(r.ColumnX, 0f, 0f, MathF.Max(0f, H - bottomY)), HitTestVisible = false, Layout = reduced ? (LayoutTransition?)null : s_region,
                 Transform = Prop.Of(() => Affine2D.Translation(0f, Coupling.BassSink(slab.Low.Value, calm, reduced))),
                 Children = kids.ToArray(),
             };
         }
 
+        /// <summary>One ghost. Its recession is the node's OPACITY, not its ink's alpha: like the lyrics rows' distance ladder, a
+        /// ghost is a faded memory of a line already sung (the depth picture, never the reading copy), and an opacity under the
+        /// readable floor is how a deliberately faded line declares itself (the lint's incidental text). The ink stays opaque
+        /// (tinted toward the cover); the echo lights it toward the accent and lifts its opacity to <see cref="Echo.Peak"/>.</summary>
         Element Ghost(string text, int line, int d, FloatSignal? echo, float baseSize, float maxW, bool dark)
         {
             var slab = _slab!;
             float size = MathF.Round(baseSize * Geometry.GhostScale(d));
             float a = Geometry.GhostAlpha(d, dark);
             var tint = d == 1 ? slab.B : d == 2 ? slab.C : slab.Deep;
-            ColorF ink = Ink.Ink;
+            ColorF ink = Ink.Ink with { A = 1f };
             Prop<ColorF> color;
+            Prop<float> fade;
             if (echo is { } lit)
+            {
+                float peak = MathF.Max(a, Echo.Peak);
                 color = Prop.Of(() =>
                 {
-                    var c = ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = a };
+                    var c = ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = 1f };
                     float e = lit.Value;
-                    return e <= 0f ? c : ColorF.Lerp(c, slab.A.Value with { A = MathF.Max(a, Echo.Peak) }, e);
+                    return e <= 0f ? c : ColorF.Lerp(c, slab.A.Value with { A = 1f }, e);
                 });
-            else color = Prop.Of(() => ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = a });
+                fade = Prop.Of(() => a + (peak - a) * MathF.Max(0f, lit.Value));
+            }
+            else
+            {
+                color = Prop.Of(() => ColorF.Lerp(ink, tint.Value, Geometry.GhostTint) with { A = 1f });
+                fade = a;
+            }
             return new BoxEl
             {
                 Key = "v:g:" + _gen + ":" + line, Direction = 1, MaxWidth = maxW, HitTestVisible = false,
@@ -659,11 +697,19 @@ public static partial class Verse
                 Layout = _reduced ? (LayoutTransition?)null : s_glide, Enter = SlotEnter, Exit = FadeOut, Transition = MotionTok.StandardEnter,
                 Children =
                 [
-                    new TextEl(text)
+                    // the fade on an inner box: the wrapper's entrance owns its own opacity track
+                    new BoxEl
                     {
-                        Size = size, LineHeight = MathF.Round(size * Geometry.LineK), LineStacking = LineStacking.BlockLineHeight,
-                        Weight = Geometry.GhostWeight(d), FontFamily = DisplayFace, Color = color,
-                        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        Direction = 1, HitTestVisible = false, Opacity = fade,
+                        Children =
+                        [
+                            new TextEl(text)
+                            {
+                                Size = size, LineHeight = MathF.Round(size * Geometry.LineK), LineStacking = LineStacking.BlockLineHeight,
+                                Weight = Geometry.GhostWeight(d), FontFamily = DisplayFace, Color = color,
+                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                            },
+                        ],
                     },
                 ],
             };
@@ -688,7 +734,7 @@ public static partial class Verse
                 if (secondary is { Length: > 0 })
                     kids.Add(new TextEl(secondary)
                     {
-                        Key = "v:t:" + _gen + ":" + live, Size = small, LineHeight = MathF.Round(small * 1.3f), Weight = 500, FontFamily = DisplayFace,
+                        Key = "v:t:" + _gen + ":" + live, Size = small, LineHeight = MathF.Round(small * Geometry.SmallLineK), Weight = 500, FontFamily = DisplayFace,
                         Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                         Enter = SlotEnter, Exit = FadeOut, Transition = MotionTok.StandardEnter,
                     });
@@ -711,16 +757,17 @@ public static partial class Verse
                     });
                 kids.Add(new TextEl(lines[next].Text)
                 {
-                    Key = "v:n:" + _gen + ":" + next, Size = small, LineHeight = MathF.Round(small * 1.3f), Weight = 600, FontFamily = DisplayFace,
+                    Key = "v:n:" + _gen + ":" + next, Size = small, LineHeight = MathF.Round(small * Geometry.SmallLineK), Weight = 600, FontFamily = DisplayFace,
                     Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     Enter = SlotEnter, Exit = FadeOut, Transition = MotionTok.StandardEnter,
                 });
             }
             return new BoxEl
             {
-                Key = "v:lower", Direction = 1, Width = r.ColumnW, Gap = 8f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Key = "v:lower", Direction = 1, Width = r.ColumnW, Gap = Geometry.LowerGap, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 AlignItems = rig.Rtl ? FlexAlign.End : FlexAlign.Start,
                 Margin = new Edges4(r.ColumnX, top, 0f, 0f), MaxHeight = MathF.Max(0f, r.Bottom - top), ClipToBounds = true, HitTestVisible = false,
+                Layout = _reduced ? (LayoutTransition?)null : s_region,
                 Children = kids.ToArray(),
             };
         }
@@ -962,7 +1009,7 @@ public static partial class Verse
                     rig.State[i].SetIfChanged(st);
                     if (rig.Wipes(i) && (st == 1 || p > 0f))
                     {
-                        float split = WipeSplit(in w, now, rig.Widths[i]);
+                        float split = WipeSplit(in w, now, rig.Widths[i], WordBoundsOf(scene, rig, i));
                         WriteWipe(scene, rig.Text[i], split, st == 2 ? ink : accent, recolour: true);
                         WriteWipe(scene, rig.BloomText[i], split, default, recolour: false);
                     }
@@ -986,8 +1033,7 @@ public static partial class Verse
                 if (rig.WholeWipe)
                 {
                     var line = song.Doc.Lines[rig.Line];
-                    float split = Lyrics.Wipe.ComputeSplit(line, now);
-                    if (split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+                    float split = Lyrics.Wipe.SplitWithLead(line, now, WholeBoundsOf(scene, rig, line), lead: true);
                     WriteWipe(scene, rig.WholeText, split, default, recolour: false);
                 }
             }
@@ -1014,6 +1060,25 @@ public static partial class Verse
 
         /// <summary>A landing σ straight onto the node's paint column (no bound channel for blur), PaintDirty on that node only;
         /// the landed 0 is exact so the recorder drops the layer.</summary>
+        /// <summary>Word <paramref name="i"/>'s glyph bounds, measured on its text node as drawn (<see cref="Lyrics.Wipe.DrawnLayout"/>) the
+        /// first time the node is laid out, then read; empty until then (the character weights).</summary>
+        static ReadOnlySpan<float> WordBoundsOf(SceneStore scene, Rig rig, int i)
+        {
+            if ((uint)i >= (uint)rig.WordBounds.Length) return default;
+            if (rig.WordBounds[i] is { } known) return known;
+            if (rig.Words[i].Timed is not { } timed || TextSeam.Default is not { } fonts
+                || !Lyrics.Wipe.DrawnLayout(scene, rig.Text[i], out var style, out float wrap)) return default;
+            return rig.WordBounds[i] = Lyrics.Wipe.GlyphBounds(fonts, timed, in style, wrap) ?? [];
+        }
+
+        /// <summary>The whole run's glyph bounds over its line (<see cref="WordBoundsOf"/>'s rule, on the run's node at its auto-fit size).</summary>
+        static ReadOnlySpan<float> WholeBoundsOf(SceneStore scene, Rig rig, Lyrics.Line line)
+        {
+            if (rig.WholeBounds is { } known) return known;
+            if (TextSeam.Default is not { } fonts || !Lyrics.Wipe.DrawnLayout(scene, rig.WholeText, out var style, out float wrap)) return default;
+            return rig.WholeBounds = Lyrics.Wipe.GlyphBounds(fonts, line, in style, wrap) ?? [];
+        }
+
         static void WriteBlur(SceneStore scene, NodeHandle h, float sigma)
         {
             if (h.IsNull || !scene.IsLive(h)) return;
@@ -1034,6 +1099,35 @@ public static partial class Verse
             if (!moved && !tinted) return;
             scene.SetGlyphWipe(h, recolour ? w with { Split = split, Before = before } : w with { Split = split });
             scene.Mark(h, NodeFlags.PaintDirty);
+        }
+
+        /// <summary>The post-layout settle of a NEW rig (once per rig, never per frame): its wiping words' glyph bounds are measured
+        /// on their laid-out nodes and the split written on that axis at the clock's present, as the tick's <see cref="Drive"/> does
+        /// (same gates and inks). Playing, the next tick would do the same a frame later; paused, nothing else would.</summary>
+        void SettleRig()
+        {
+            if (_rig is not { Line: >= 0 } rig || _song is not { } song || _slab is not { } slab || Context.Scene is not { } scene) return;
+            long now = ClockNow();
+            if (rig.Mode == TimingMode.Word)
+            {
+                bool playing = _clock.Playing;
+                ColorF ink = Ink.Ink, accent = slab.A.Peek();
+                for (int i = 0; i < rig.Words.Length; i++)
+                {
+                    if (!rig.Wipes(i)) continue;
+                    ref readonly var w = ref rig.Words[i];
+                    int st = rig.State[i].Peek();
+                    if (st != 1 && !(LandAt(rig, i, now, playing) > 0f)) continue;
+                    float split = WipeSplit(in w, now, rig.Widths[i], WordBoundsOf(scene, rig, i));
+                    WriteWipe(scene, rig.Text[i], split, st == 2 ? ink : accent, recolour: true);
+                    WriteWipe(scene, rig.BloomText[i], split, default, recolour: false);
+                }
+            }
+            else if (rig.WholeWipe)
+            {
+                var line = song.Doc.Lines[rig.Line];
+                WriteWipe(scene, rig.WholeText, Lyrics.Wipe.SplitWithLead(line, now, WholeBoundsOf(scene, rig, line), lead: true), default, recolour: false);
+            }
         }
 
         void Apply(in Lyrics.MotionDecision d, long now)

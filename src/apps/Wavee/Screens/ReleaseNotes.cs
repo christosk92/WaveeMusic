@@ -862,11 +862,16 @@ public static partial class ReleaseNotes
         /// <summary>Per-file cap for a still (webp/png/jpg).</summary>
         public const long MaxStillBytes = 150_000;
 
-        /// <summary>Per-file cap for motion (mp4, or a webp declared <c>kind: "video"</c>).</summary>
-        public const long MaxMotionBytes = 600_000;
+        /// <summary>Per-file cap for motion (mp4, a webp declared <c>kind: "video"</c>, or the animated webp of a <c>kind: "motion"</c>
+        /// highlight). Raised from 600 KB on 2026-11-11 for smooth motion at 60 fps: the owner chose an animated WebP that plays in
+        /// the card at an even 60 fps over a lower frame rate or quality ("no lower frame rate, ultra butter smooth. increase the
+        /// file size if necessary"): real 1440x810 app footage at 60 fps, lossy q75, runs about 1.1 MB a second, so a 12-15 second
+        /// cut is 13-15 MB. Still a limit: the notes ship inside every package and as release assets.</summary>
+        public const long MaxMotionBytes = 16_000_000;
 
-        /// <summary>Cap on every media file of one release added together.</summary>
-        public const long MaxTotalBytes = 1_500_000;
+        /// <summary>Cap on every media file of one release added together (raised with <see cref="MaxMotionBytes"/>: one 60 fps
+        /// motion file plus the release's stills).</summary>
+        public const long MaxTotalBytes = 17_500_000;
 
         /// <summary>How many releases <c>whatsnew-index.json</c> carries (newest first).</summary>
         public const int MaxIndexEntries = 12;
@@ -885,10 +890,18 @@ public static partial class ReleaseNotes
         /// <summary>One media file referenced by the document, and whether it is billed against the motion budget.</summary>
         public readonly record struct ReleaseMediaEntry(string Src, bool Motion);
 
-        /// <summary>`.mp4`, or anything a highlight declares as <c>kind: "video"</c> (an animated webp).</summary>
+        /// <summary>`.mp4`, or anything a highlight declares as <c>kind: "video"</c> or <c>kind: "motion"</c> (an animated webp).</summary>
         public static bool IsMotionMedia(string? kind, string src)
-            => string.Equals(kind, "video", StringComparison.OrdinalIgnoreCase)
+            => IsVideoKind(kind) || IsMotionKind(kind)
                || src.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary><c>kind: "video"</c>: a clip shown as its <c>poster</c> with a play glyph and a link to watch it.</summary>
+        public static bool IsVideoKind(string? kind) => string.Equals(kind, "video", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary><c>kind: "motion"</c>: an animated WebP (<c>src</c>) that plays in place, looping, in the cards and the viewer, over its
+        /// still <c>poster</c>, which shows until the first frame lands and alone where WebP cannot be decoded. The poster is the
+        /// WebP's first frame: reduced motion shows that frame and never plays.</summary>
+        public static bool IsMotionKind(string? kind) => string.Equals(kind, "motion", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The per-file budget an entry is measured against.</summary>
         public static long MaxBytesFor(bool motion) => motion ? MaxMotionBytes : MaxStillBytes;
@@ -939,8 +952,8 @@ public static partial class ReleaseNotes
 
         /// <summary>
         /// The media rules: every reference is exactly <c>media/&lt;basename&gt;</c> and resolves inside
-        /// <paramref name="notesDir"/>, no GIF, only webp/png/jpg/mp4, ≤150 KB per still, ≤600 KB per motion file,
-        /// ≤1.5 MB in total, and no two distinct sources sharing a basename (release assets are flat, so a shared
+        /// <paramref name="notesDir"/>, no GIF, only webp/png/jpg/mp4, ≤150 KB per still, ≤16 MB per motion file,
+        /// ≤17.5 MB in total, and no two distinct sources sharing a basename (release assets are flat, so a shared
         /// basename would collide).
         /// </summary>
         /// <returns>Human-readable errors; empty when the document passes.</returns>
@@ -949,6 +962,16 @@ public static partial class ReleaseNotes
             var errors = new List<string>();
             var basenames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             long total = 0;
+
+            // A motion highlight plays its src in place, so the src must be the animated WebP and the still under it must exist.
+            foreach (var h in doc.Highlights)
+            {
+                if (h.Media is not { } m || !IsMotionKind(m.Kind)) continue;
+                if (!string.IsNullOrWhiteSpace(m.Src) && !m.Src.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
+                    errors.Add($"a motion highlight plays an animated webp, not '{Path.GetExtension(m.Src)}': {m.Src}");
+                if (string.IsNullOrWhiteSpace(m.Poster))
+                    errors.Add($"a motion highlight needs a poster (the still shown until the first frame and where WebP cannot decode): {h.Id}");
+            }
 
             foreach (var (src, motion) in MediaEntries(doc))
             {

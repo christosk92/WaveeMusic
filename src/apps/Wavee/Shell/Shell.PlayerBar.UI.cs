@@ -70,18 +70,65 @@ public static partial class Shell
     /// effect instead of moving a transform nobody can see (each tick is a recorded and presented main-window frame);
     /// the reveal re-syncs the fraction before the fade-in. Null = always live (the bar, the stage).</summary>
     public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
-        => Embed.Comp(() => new BarSeekRail(feed, onScrubbing, reveal));
+        => Embed.Comp(() => onScrubbing is null ? new BarSeekRail(feed, onScrubbing, reveal) : new StageSeekRail(feed, onScrubbing, reveal));
+
+    /// <summary>The full-screen stage's seek rail (the one host that reports a scrub through <c>onScrubbing</c>): the same rail under its own type
+    /// name, so the render census tells the stage's rail from the bar's and the strips' (the census names a component by its type).</summary>
+    sealed class StageSeekRail(PlayerChromeFeed? feed, Action<bool>? onScrubbing, IReadSignal<bool>? reveal) : BarSeekRail(feed, onScrubbing, reveal);
 
     /// <summary>The mini player bar's progress hairline (TC2): the same rail host, drawn as a line with no thumb and no hit test.</summary>
-    public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true));
+    public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true, reveal: PageShown));
+
+    // ── THE PAGE UNDER THE STAGE ─────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The main window's page is on screen: no full-screen stage covers it (<see cref="Ui.ImmersiveLyrics"/> is down). A reveal signal
+    /// like the on-media strip's chrome-visible one (<see cref="SeekBar"/>, <see cref="TimeText"/>): what the page shows under the stage holds
+    /// its last state and does no work while the stage covers it (no seek-rail pixel steps, no 1 Hz time text, no Next up re-render, no lyrics
+    /// peek tick), and the stage's close brings it current on its first frame, before the stage's exit shows it (no catch-up).</summary>
+    public static readonly IReadSignal<bool> PageShown = new NotSignal(Ui.ImmersiveLyrics);
+
+    /// <summary><paramref name="reveal"/> and <see cref="PageShown"/> both (a strip's own reveal on a page the stage can cover).</summary>
+    public static IReadSignal<bool> PageShownAnd(IReadSignal<bool>? reveal) => reveal is null ? PageShown : new AndSignal(reveal, PageShown);
+
+    /// <summary>A reveal computed by <paramref name="value"/> (its reads subscribe the reader) and peeked by <paramref name="peek"/>.</summary>
+    public static IReadSignal<bool> Reveal(Func<bool> value, Func<bool> peek) => new FuncSignal(value, peek);
+
+    sealed class FuncSignal(Func<bool> value, Func<bool> peek) : IReadSignal<bool>
+    {
+        public bool Value => value();
+        public bool Peek() => peek();
+    }
+
+    /// <summary>A signal's negation, read through it (the read subscribes to the source).</summary>
+    sealed class NotSignal(IReadSignal<bool> source) : IReadSignal<bool>
+    {
+        public bool Value => !source.Value;
+        public bool Peek() => !source.Peek();
+    }
+
+    /// <summary>Two signals both true, read through them (both reads subscribe, in order, every time).</summary>
+    sealed class AndSignal(IReadSignal<bool> a, IReadSignal<bool> b) : IReadSignal<bool>
+    {
+        public bool Value { get { bool x = a.Value; bool y = b.Value; return x && y; } }
+        public bool Peek() => a.Peek() && b.Peek();
+    }
+
+    /// <summary>The same rail host drawn by its caller instead of the theme's `Player.SeekRail` (the mini player draws its own rail and edge
+    /// line, #197). The drawing is RE-PUSHED (the caller's ink, accent and hover change it); the scrub machinery is the bar's.</summary>
+    public static Element SeekBarDrawn(Func<SeekRailProps, Element> draw)
+        => Embed.Comp(new SeekRailDraw(draw), static () => new BarSeekRail(drawn: true));
+
+    /// <summary>The caller's drawing of a <see cref="SeekBarDrawn"/> rail.</summary>
+    sealed record SeekRailDraw(Func<SeekRailProps, Element> Draw);
 
     /// <summary>A transport time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>). <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
     /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
     /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
-    /// position, and the reveal brings it current.</summary>
-    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null)
-        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal));
+    /// position, and the reveal brings it current. <paramref name="alone"/>: the elapsed label with no "/ total" beside it
+    /// (<see cref="TimeLabelProps.Alone"/>).</summary>
+    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool alone = false)
+        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal, alone));
 
     /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model
     /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarHost"/> mirrors model → rail with an equality gate, and the
@@ -317,12 +364,15 @@ public static partial class Shell
                 return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
                     static () => PlayerVerbs.Default.OpenPanel(RailMode.Lyrics), new IconRef { Glyph = WaveeIcons.Lyrics, Font = WaveeIcons.Font });
             case OverflowCommand.Queue:
-                return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), Icons.Queue, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.Queue));
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), SegoeGlyphs.Queue, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.Queue));
             case OverflowCommand.NowPlaying:
-                return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), Icons.ChevronUp, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying));
+                return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), new IconRef { Glyph = WaveeIcons.NowPlaying, Font = WaveeIcons.Font }, true, static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying));
             case OverflowCommand.FullScreen:
                 // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
                 return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => PlayerVerbs.Default.OpenStage(begin, "bar-overflow"));
+            case OverflowCommand.Mini:
+                // The mini player's door at the tiers without the row's button (PlayerBarRules.Overflow, #197).
+                return new MenuFlyoutItem(Loc.Get(Strings.Mini.Title), SegoeGlyphs.MiniPlayer, true, static () => MiniPlayer.Toggle("bar-overflow"));
             case OverflowCommand.Video:
             {
                 bool live = Video.PlacementCore.IsActive(Video.State.Surface.Peek());
@@ -351,18 +401,28 @@ public static partial class Shell
     /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window. The body re-renders WHILE OPEN
     /// (a transfer landing swaps the checks in place, parity 79).</summary>
     internal static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
+        => ToggleDevicePicker(overlay, anchor, handle, escapeRoomDip: 0f);
+
+    /// <summary>The same picker from a window too small to hold it (the mini player, #197): it escapes into a popup window over the screen,
+    /// its roster capped by <paramref name="screenRoomDip"/> (the work area's height at that window, DIP) instead of its own window's.</summary>
+    internal static void EscapedToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle, float screenRoomDip)
+        => ToggleDevicePicker(overlay, anchor, handle, MathF.Max(1f, screenRoomDip));
+
+    static void ToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle, float escapeRoomDip)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
         PlayerVerbs.Default.OpenDevicePicker();                                // the cluster hears it, as the official client's picker does
         var props = RailWiring.DevicePicker(() => handle.Value?.Close());      // built once per open: the content builder may run again
+        bool escape = escapeRoomDip > 0f;
+        if (escape) props = props with { MaxHeight = _ => DeviceRoster.PickerMaxHeight(escapeRoomDip) };
         handle.Value = overlay.Open(
             () => anchor.Value,
             () => ViewSlots.View(ViewKeys.DevicePicker, props),
             FlyoutPlacement.TopEdgeAlignedRight,
-            // The roster already caps itself to the window (PickerMaxHeight = height - 96), so it never needs to
+            // The roster already caps itself to the window (PickerMaxHeight = height - 96), so in the main window it never needs to
             // escape the root bounds -- and NOT escaping is what keeps it on the engine's in-window acrylic path
-            // instead of leasing a popup window, whose flat plate the owner rejected.
-            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
+            // instead of leasing a popup window, whose flat plate the owner rejected. A window smaller than the roster escapes.
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = !escape });
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 
@@ -413,7 +473,7 @@ public static partial class Shell
     /// <see cref="ViewKeys.SeekRail"/> with what to draw. The fill and thumb are compositor binds on
     /// <see cref="ScrubController.Display"/> (built once here); the host re-renders only on enablement / mode / advancing edges.</summary>
     [CoreHost]
-    sealed class BarSeekRail : Component, ISeekRailHost
+    class BarSeekRail : Component, ISeekRailHost
     {
         readonly PlayerChromeFeed? _chromeFeed;
         readonly Action<bool>? _onScrubbing;   // the fullscreen stage's scrub seam (its idle machine's SetScrubbing); null on the bar
@@ -447,9 +507,13 @@ public static partial class Shell
 
         readonly bool _hairline;   // the mini bar's progress line (TC2): no thumb, no hit test, never a scrub
 
-        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false)
+        readonly bool _drawn;   // the caller draws (SeekBarDrawn): the props carry its drawing
+
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false,
+            bool drawn = false)
         {
             _hairline = hairline;
+            _drawn = drawn;
             _chromeFeed = chromeFeed;
             _onScrubbing = onScrubbing;
             _reveal = reveal;
@@ -460,8 +524,10 @@ public static partial class Shell
             _readoutContent = () => ViewSlots.View(ViewKeys.SeekReadout, readout);
             _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_scrub.Display.Value, 0f, 1f), 1e-4f), 1f));
             _recompute = _scrub.Recompute;
-            _modeNow = _scrub.Mode;
-            _dwellNow = _scrub.DwellMs;
+            // the shape and dwell memos read the model only while the rail shows: concealed they answer what they read last and depend on the
+            // reveal alone, so a duration or window change behind it recomputes nothing and re-renders no rail
+            _modeNow = () => Concealed() ? _lastMode : _lastMode = _scrub.Mode();
+            _dwellNow = () => Concealed() ? _lastDwell : _lastDwell = _scrub.DwellMs();
             _onReport = OnReport;
             _onCommit = OnCommit;
             _onCancel = OnCancel;
@@ -472,8 +538,28 @@ public static partial class Shell
             _onBounds = b => _scrub.SetRailWidth(b.W);
         }
 
+        /// <summary>What the last render drew: what a CONCEALED rail answers (see <see cref="Render"/>).</summary>
+        Element? _held;
+
+        SeekRailMode _lastMode;
+        float _lastDwell;
+
+        /// <summary>The rail's reveal is down (subscribes the reader to it).</summary>
+        bool Concealed() => _reveal is { } reveal && !reveal.Value;
+
+        /// <summary>CONCEALED (its reveal down: the bar's page under the full-screen stage, an idled-out strip or stage chrome), the rail answers
+        /// what it drew last and reads nothing but the reveal, so a track change, a load or a duration change behind it re-renders nothing (its
+        /// gate, its shape and dwell memos, its report effect and steppers are already parked by the same reveal); the reveal's rise re-renders it
+        /// on that frame, current at once (the hooks this skips keep their state: they are keyed by call site).</summary>
         public override Element Render()
         {
+            if (_held is { } held && _reveal is { } concealedBy && !concealedBy.Value) return held;
+            return _held = RenderLive();
+        }
+
+        Element RenderLive()
+        {
+            var draw = _drawn ? UseProps<SeekRailDraw>().Draw : null;
             var gate = _scrub.Gate();
             bool enabled = gate.Enabled;
             bool pending = gate.Pending;
@@ -501,6 +587,8 @@ public static partial class Shell
 
             // NOTHING TO REWIND: the rail stops pretending to be one (the view draws the live line). After every hook, so the hook
             // order never varies.
+            if (draw is not null)
+                return draw(new SeekRailProps { Host = this, Enabled = enabled, Pending = pending, Line = mode == SeekRailMode.Line, Dvr = mode == SeekRailMode.Dvr });
             if (mode == SeekRailMode.Line)
                 return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Line = true });
             if (_hairline)
@@ -552,7 +640,10 @@ public static partial class Shell
         {
             // Concealed (the on-media strip faded out): nothing paints, so no report writes the transform. The read is the
             // effect's subscription to the reveal, so showing the strip re-runs this and re-syncs the fraction first.
-            if (_reveal is { } reveal && !reveal.Value) return;
+            if (_reveal is { } reveal && !reveal.Value) { _concealedSinceReport = true; return; }
+            // the first report after the reveal rose: the rail shows the current state at once (no rescale ease for what changed while hidden)
+            bool revealed = _concealedSinceReport;
+            _concealedSinceReport = false;
             _ = Playback.PositionMs.Value;
             _ = Playback.DurationMs.Value;
             _ = Playback.Live.Value;
@@ -563,8 +654,11 @@ public static partial class Shell
             // The drop-point hold ends on a LANDING past the generation the commit saw (V-PA12), and re-derives the resting
             // fraction (`ScrubController.OnModelReport`): the same hold covers the bar, the flagship stage and the video
             // overlay (all host this rail). No landing (a foreign owner, a parked deck) -> SeekRail.CommitHoldMs ends it.
-            _scrub.OnModelReport();
+            _scrub.OnModelReport(revealed);
         }
+
+        /// <summary>The reveal fell since the last report this rail drew (see <see cref="OnReport"/>).</summary>
+        bool _concealedSinceReport;
 
         /// <summary>The gesture's edges, fanned out to the chrome-activity seams: <c>true</c> on press, <c>false</c> on commit or
         /// cancel (a scrub is chrome activity, so the rail that drives it must be able to say so).</summary>
@@ -635,6 +729,10 @@ public static partial class Shell
     static readonly Func<string> s_goLiveLabel = static () => s_goLiveText.Get(Playback.Live.Value.BehindMs / 1000L,
         static sec => Loc.Get(Strings.Play.GoLive) + " " + Strings.Play.Behind(Playback.TimeFormat.Clock(sec * 1000L)));
 
+    /// <summary>The text one time label binds (elapsed, or remaining / duration), for a template that draws the digits in its own type: the
+    /// mini player's seek row, whose times sit flush with its column's edges.</summary>
+    internal static Func<string> TimeLabelText(bool remaining) => new BarTimeText(remaining, null).Text;
+
     /// <summary>The live slot's DECIDED edge: behind a rewindable window it offers the way back.</summary>
     static readonly Func<bool> s_offersGoLive = static () => TimeLabel.OffersGoLive(Playback.Live.Value, Playback.IsBehindLive.Value);
 
@@ -650,9 +748,12 @@ public static partial class Shell
         string _shown = "";                    // the last text the bind produced: what a concealed label keeps holding
         readonly Func<string> _label;
 
-        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null)
+        readonly bool _alone;
+
+        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool alone = false)
         {
             _remaining = remaining;
+            _alone = alone && !remaining;
             _ink = ink;
             _reveal = reveal;
             _label = Label;
@@ -660,6 +761,9 @@ public static partial class Shell
         }
 
         readonly Func<string> _widest;
+
+        /// <summary>The label's bind thunk (<see cref="TimeLabelText"/>).</summary>
+        internal Func<string> Text => _label;
 
         /// <summary>The widest this label can read for the playing track: the duration's clock with every digit a "0" (and the remaining slot's minus).</summary>
         string Widest()
@@ -708,6 +812,7 @@ public static partial class Shell
             return ViewSlots.View(ViewKeys.TimeLabel, new TimeLabelProps
             {
                 Remaining = _remaining,
+                Alone = _alone,
                 Ink = _ink,
                 IsLive = isLive,
                 // The right slot while live is the LIVE word-mark or the GO LIVE action: there is no duration to count.

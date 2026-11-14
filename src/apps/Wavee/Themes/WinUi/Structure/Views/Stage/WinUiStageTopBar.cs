@@ -34,11 +34,31 @@ internal static class WinUiStageTopBar
         var set = st.Accent.Value;
         var mode = st.Mode.Value;
         var t = WinUiStageTiers.StageOf(ctx.Tier());
+        // The tabs: the stage's FIRST tab wherever WinUI draws Video mode (contract 1.105: "Video" while the playing track's music video plays,
+        // "Overview" otherwise: Video mode's page with the audio face in the picture's place), then today's four. The first tab relabels in place on a
+        // track change (one item key, its width reserved for the wider label: nothing beside it moves). In Video mode the lit tab is the first in
+        // Cinema and the pane's own in Theatre.
+        bool videoMode = mode == Stage.Mode.Video;
+        var first = st.PictureTab.Value;
+        bool videoTabs = first != Stage.PictureTab.None || videoMode;
+        bool overview = first == Stage.PictureTab.Overview;
+        var modes = videoTabs ? s_videoModes : s_modes;
         var index = h.UseSignal(0);
-        h.UseSignalEffect(() => index.SetIfChanged((int)st.Mode.Value));
-        var parts = h.UseMemo(() => { var p = new TemplateParts(); p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill }); return p; }, DepKey.From(set.GetHashCode()));
-        string[] items = t.PillIcons ? ["", "", "", ""] : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
-        string?[]? icons = t.PillIcons ? [Icons.Document, Icons.Equalizer, Icons.Queue, Icons.Contact] : null;
+        h.UseSignalEffect(() => index.SetIfChanged(Math.Max(0, Array.IndexOf(st.PictureTab.Value != Stage.PictureTab.None || st.Mode.Value == Stage.Mode.Video ? s_videoModes : s_modes, LitTab(st)))));
+        float firstMinW = t.PillIcons ? 0f : G.FirstTabMinW;
+        var parts = h.UseMemo(() =>
+        {
+            var p = new TemplateParts();
+            p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill });
+            if (firstMinW > 0f) p.Set<BoxEl>(SelectorBar.PartItem, b => b.Key == FirstTabKey ? b with { MinWidth = firstMinW, Justify = FlexJustify.Center } : b);
+            return p;
+        }, DepKey.From(set.GetHashCode(), firstMinW));
+        string[] items = t.PillIcons
+            ? (videoTabs ? ["", "", "", "", ""] : ["", "", "", ""])
+            : videoTabs ? [Loc.Get(overview ? Strings.Stage.Mode.Overview : Strings.Stage.Mode.Video), Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)]
+            : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
+        string?[]? icons = t.PillIcons ? (videoTabs ? [overview ? Icons.Album : Icons.Video, Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact] : [Icons.Document, Icons.Equalizer, SegoeGlyphs.Queue, Icons.Contact]) : null;
+        bool audioFace = st.AudioFace.Value;
         var style = new SelectorBarStyle
         {
             LabelSize = t.PillTextSize, RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
@@ -49,33 +69,43 @@ internal static class WinUiStageTopBar
         var galleryButton = st.GalleryButton;
         bool optionsOn = st.OptionsOpen.Value;
 
+        // In Video mode the pill stands over the picture, a video hole no acrylic can sample: it takes the smoke plate (the acrylic's fallback) instead
         var pill = new BoxEl
         {
             Key = G.PillKey, Height = G.PillH, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(G.PillPadX, 0f, G.PillPadX, 0f), Shrink = 0f,
-            Corners = Radii.CardAll, Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
-            Children = [SelectorBar.Create(items, index, onChange: i => setMode((Stage.Mode)Math.Clamp(i, 0, Stage.ModeRules.Count - 1)), parts: parts, icons: icons, style: style)],
+            Corners = Radii.CardAll, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Children = [SelectorBar.Create(items, index, onChange: i => setMode(modes[Math.Clamp(i, 0, modes.Length - 1)]), parts: parts, icons: icons, style: style,
+                itemKeys: videoTabs ? s_videoTabKeys : null)],
         };
+        pill = videoMode ? pill with { Fill = WinUiStageVideoBar.Plate() } : pill with { Acrylic = Ink.Card };
 
-        // the right cluster: the look's words, Romanization, options, exit (the sheet: "..." only)
+        // the right cluster: the look's words, Romanization, options, exit (the sheet: "..." only). Video mode: "Switch to audio" alone (Cinema ⇄ Theatre
+        // and exit are the command bar's over the picture: one home per verb)
         var right = new List<Element>(5);
-        if (t.LookWords && mode == Stage.Mode.Visualizer)
+        // ("Switch to audio" only while a video plays as video: Overview with video off has no video to switch from, and the column stays empty)
+        if (videoMode && st.VideosPlay.Value)
+            right.Add(t.PillIcons || t.Sheet
+                ? ToolTip.Wrap(Glyph(Icons.MusicNote, st.SwitchToAudio, false, null, t) with { Fill = WinUiStageVideoBar.Plate() }, Loc.Get(Strings.Player.SwitchToAudio)) with { Key = "stage:bar:audio" }
+                : Word(Icons.MusicNote, Loc.Get(Strings.Player.SwitchToAudio), st.SwitchToAudio, chevron: false, lit: false, t) with { Key = "stage:bar:audio", Fill = WinUiStageVideoBar.Plate() });
+        else if (t.LookWords && mode == Stage.Mode.Visualizer)
         {
             right.Add(Word(Icons.Design, Loc.Get(Visualizer.NameKey(st.Kind.Value)), st.OpenOptions, chevron: true, lit: false, t));
             right.Add(Word(Icons.SplitView, Loc.Get(WinUiStageText.LayoutName(st.Effective.Value)), st.OpenOptions, chevron: true, lit: false, t));
         }
-        if (t.RomanizationWord && mode == Stage.Mode.Lyrics && st.HasSecondLine())
+        if (!videoMode && t.RomanizationWord && mode == Stage.Mode.Lyrics && st.HasSecondLine())
             right.Add(Word(Icons.Globe, Loc.Get(Strings.Theme.Winui.Stage.Romanization), st.ToggleSecondLine, chevron: false, lit: st.SecondLineOn(), t));
-        if (t.Sheet)
+        if (!videoMode && t.Sheet)
             right.Add(ToolTip.Wrap(Glyph(Icons.More, st.OpenOptions, optionsOn, n => galleryButton.SetIfChanged(n), t) with { Key = G.OptionsKey }, Loc.Get(Strings.Stage.Options.Button)));
-        else
+        else if (!videoMode)
         {
             right.Add(ToolTip.Wrap(Glyph(Icons.Equalizer, st.OpenOptions, optionsOn, n => galleryButton.SetIfChanged(n), t) with { Key = G.OptionsKey }, Loc.Get(Strings.Stage.Options.Button)));   // the TeachingTip's anchor SIGNAL (V-U16)
             right.Add(ToolTip.Wrap(Glyph(Icons.BackToWindow, st.Exit, false, null, t), Loc.Get(Strings.Stage.Exit)));
         }
 
+        // the sheet's exit chevron leads the audio modes; over the picture exit is the command bar's (and the picture is no sheet)
         Element lead = t.Sheet
-            ? ToolTip.Wrap(Glyph(Icons.ChevronDown, st.Exit, false, null, t), Loc.Get(Strings.Stage.Exit))
-            : Wordmark(st, t);
+            ? videoMode ? new BoxEl { HitTestVisible = false } : ToolTip.Wrap(Glyph(Icons.ChevronDown, st.Exit, false, null, t), Loc.Get(Strings.Stage.Exit))
+            : Wordmark(st, t, videoMode && !audioFace);
 
         return new BoxEl
         {
@@ -94,8 +124,24 @@ internal static class WinUiStageTopBar
         };
     }
 
+    /// <summary>The selector's modes, tab by tab: today's, and the Video set.</summary>
+    static readonly Stage.Mode[] s_modes = [Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
+    static readonly Stage.Mode[] s_videoModes = [Stage.Mode.Video, Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
+
+    /// <summary>The Video set's tab keys: the first tab keeps ONE key under both labels (Video, Overview), so a relabel remounts nothing; the parts
+    /// find it by it to reserve the wider label's width.</summary>
+    const string FirstTabKey = "stage:tab:video";
+    static readonly string?[] s_videoTabKeys = [FirstTabKey, "stage:tab:lyrics", "stage:tab:visualizer", "stage:tab:queue", "stage:tab:artist"];
+
+    /// <summary>The tab that stands lit (subscribes): the mode, or in Video mode's Theatre the tab of the pane beside the picture; Video mode's Cinema
+    /// lights the first tab (Video or Overview).</summary>
+    static Stage.Mode LitTab(Stage.StageCtx st)
+        => st.Mode.Value != Stage.Mode.Video ? st.Mode.Value
+         : st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value)
+         : Stage.Mode.Video;
+
     /// <summary>The wordmark: the 16 accent tile, "Wavee", and (Standard, Huge) "Now playing · full screen", which gives way first.</summary>
-    static Element Wordmark(Stage.StageCtx st, WinUiStageLayout t)
+    static Element Wordmark(Stage.StageCtx st, WinUiStageLayout t, bool video)
     {
         var kids = new List<Element>(3)
         {
@@ -103,7 +149,7 @@ internal static class WinUiStageTopBar
             new TextEl("Wavee") { Size = G.BrandSize, LineHeight = G.BrandLine, Weight = G.BrandWeight, Color = Ink.Ink, Shrink = 0f },
         };
         if (t.Subtitle)
-            kids.Add(new TextEl(Loc.Get(Strings.Stage.Brand)) { Size = G.BrandSize, LineHeight = G.BrandLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
+            kids.Add(new TextEl(Loc.Get(video ? Strings.Player.VideoFullScreen : Strings.Stage.Brand)) { Size = G.BrandSize, LineHeight = G.BrandLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = G.BrandGap, MinWidth = 0f, Shrink = 1f, Children = kids.ToArray() };
     }
 

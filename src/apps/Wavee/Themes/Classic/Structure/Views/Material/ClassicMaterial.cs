@@ -31,6 +31,17 @@ internal static class ClassicMaterial
     /// <c>ShellFrameProps.SidebarPaneDocked</c>). Null where no frame provides it (a view mounted alone): read as undocked.</summary>
     internal static readonly Context<Func<bool>?> PaneDockedSlot = new(null);
 
+    /// <summary>The material as of the page on screen (the core's <c>MaterialProps.State</c>), provided by <see cref="ClassicFrame"/> to its
+    /// whole subtree, so an opaque surface over the material (the canvas bleed) can paint what the translucent chrome shows there. Null where
+    /// no frame provides it (a view mounted alone): read as the neutral ground. A stable reference: providing it never re-renders a page.</summary>
+    internal static readonly Context<IReadSignal<ShellMaterialState>?> StateSlot = new(null);
+
+    /// <summary>The colour the layer paints for <paramref name="state"/> at Surfaces <paramref name="level"/>: the page's flat tint, or the
+    /// neutral ground with none or with Surfaces Off. THE one rule, shared by <see cref="Template"/> and the canvas bleed's ground
+    /// (<see cref="ClassicBleedInk"/>), so the two cannot drift. Home's radial washes are not in it (an opaque colour cannot carry them).</summary>
+    internal static ColorF TintFill(in ShellMaterialState state, SurfaceWash level)
+        => ClassicStructure.WashesOn(level) && state.Tint is { } tint ? tint : R.Wash.NeutralGround;
+
     /// <summary>Colour washes are drawn: Classic's Surfaces option is anything but Off (Subtle with no store, as a bare unit test
     /// reads it). A tracked read: the caller re-renders when the option changes.</summary>
     internal static bool WashesOn(IOptionReader? options) => ClassicStructure.WashesOn(Level(options));
@@ -55,7 +66,7 @@ internal static class ClassicMaterial
         Element tint = new BoxEl
         {
             Key = "shell.material.tint", Grow = 1f, HitTestVisible = false,
-            Fill = state.Tint ?? R.Wash.NeutralGround,
+            Fill = TintFill(state, level),
             BrushTransitionMs = Design.Motion.Standard,
         };
         if (state.Wash is not { } wash)

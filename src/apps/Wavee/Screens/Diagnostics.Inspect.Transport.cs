@@ -60,6 +60,11 @@ public static partial class Diagnostics
                         global::Wavee.Queue.ClearUserQueue(in cursor);
                         break;
                     }
+                case "duration":
+                    // The decoder reports the playing row's real length (Playback.ReportDuration on the current load): the same row's duration
+                    // changes, what a music video's length replacing the song's does to the seek rail (its rescale ease).
+                    Playback.ReportDuration(Playback.Snap().LoadEpoch, Math.Max(1, a.Int("ms", 0)));
+                    break;
                 case "dead":
                     {
                         // The catalog rules a track terminally unavailable (withdrawn, region-locked), as an extended-metadata
@@ -71,8 +76,10 @@ public static partial class Diagnostics
                 default:
                     return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead, not '" + verb + "'");
             }
-            RunFrames(2);
-            string phase = AwaitPlaybackLoad(PlayLoadBudgetMs);
+            // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
+            bool traced = a.Has("trace");
+            if (!traced) RunFrames(2);
+            string phase = traced ? "traced" : AwaitPlaybackLoad(PlayLoadBudgetMs);
             return Settled(id, name, a, w =>
             {
                 w.WriteString("do", verb);

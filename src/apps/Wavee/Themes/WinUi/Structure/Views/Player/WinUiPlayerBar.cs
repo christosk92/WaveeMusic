@@ -55,8 +55,7 @@ internal static partial class WinUiPlayerBar
         // ── the core half: its hooks, then the decided view ──
         var v = props.Host.Use(rc);
         var m = v.Metrics;
-        var facts = ctx.Tier();
-        var window = facts.Policy is null ? WidthTier.Standard : facts.Window;
+        var window = ctx.WindowTier();   // the window's tier alone: a content-tier crossing (a docking panel's slide) re-renders nothing here
         var look = WinUiPlayerTiers.LookOf(m, window);
         bool mini = look.Mini;
         bool reduced = ctx.Reduced;
@@ -373,7 +372,7 @@ internal static partial class WinUiPlayerBar
     /// <summary>The tools in the board's order (the core's slot bits are the presence; shuffle and repeat ride the transport).</summary>
     private static readonly RightSlot[] s_toolOrder =
     [
-        RightSlot.Lyrics, RightSlot.Queue, RightSlot.Devices, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Video, RightSlot.Expand, RightSlot.More,
+        RightSlot.Lyrics, RightSlot.Queue, RightSlot.Devices, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Video, RightSlot.Mini, RightSlot.Expand, RightSlot.More,
     ];
 
     /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).

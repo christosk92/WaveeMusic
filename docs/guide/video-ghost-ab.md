@@ -2,7 +2,7 @@
 
 Every video the owner has watched so far was PlayReady (Spotify music and podcast video are both DRM), so "only DRM
 ghosts" is a sampling artefact, not evidence about the protected pipeline (audit F257). From the bind onward both paths
-share `VideoBinding`, `VideoSurfaceRegistry`, `DCompVideoPresenter` and the DestOut hole; they differ in the source (MF MP4
+share `VideoBinding`, `VideoSurfaceRegistry`, the DirectComposition video presenter (deleted 2026-11-11) and the DestOut hole; they differ in the source (MF MP4
 vs CencMediaSource + PMP) and in who sizes the stream. This is the cheapest experiment that separates the two (F259).
 It needs no build flags: a local file attached to a track is the clear arm.
 
@@ -45,14 +45,15 @@ quarantined and the original plays (toast "Couldn't play the attached video"): t
 
 `[video.mount]` (the app, once per source at its first frame) carries the tier, the natural size, the content size the
 stream is worth and `dev`, the device rect of the FITTED picture (the natural size fitted uniformly inside the stage box and
-centred; `box=(...)` is the raw stage box). `content` is computed from that same rect, so `content` vs `dev` reads exactly as
-in the engine's `[video.surface] place ... dev=(x,y,w,h) content=WxH` line (written when the surface is created or bound).
-It is still an estimate under a non-Uniform aspect mode, where the engine's place line is the exact pair.
+centred; `box=(...)` is the raw stage box). `content` is computed from that same rect, and `dev` is the rect of the engine's
+`[video.surface] place ... dev=(x,y,w,h)` line (written when the surface is created or bound). It is an estimate under a
+non-Uniform aspect mode.
 
-- `content == dev` (same width and height): the stream is rendered at the rect size and DirectComposition scales by 1.0.
-  Nearest-neighbour upscaling cannot be the cause. At 912x513 in the old logs this held (`dev=(-41,0,912,513) content=912x513`).
-- `content < dev`: the stream is smaller than its rect and DComp scales it up with the default bitmap interpolation (nearest
-  neighbour; nothing in FluentGpu.Windows calls `SetBitmapInterpolationMode`). A 1280x720 stream in a 1600x900 rect is this.
+- `content == dev` (same width and height): the stream is rendered at the rect size and the compositor stretches by 1.0.
+  At 912x513 in the old logs this held (`dev=(-41,0,912,513) content=912x513`).
+- `content < dev`: the stream is smaller than its rect and the compositor stretches it up. Since 2026-11-11 the only presenter
+  (`CompositionVideoPresenter`) samples LINEAR; the nearest-neighbour rows below describe the deleted DirectComposition
+  presenter, which used the default bitmap interpolation. A 1280x720 stream in a 1600x900 rect is this.
 
 | Observation | Reading |
 |---|---|

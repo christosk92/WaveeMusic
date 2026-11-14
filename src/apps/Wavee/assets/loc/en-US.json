@@ -1395,6 +1395,7 @@
           "es": "Spanish",
           "nl": "Dutch",
           "ko": "Korean",
+          "ja": "Japanese",
           "installed": "Installed",
           "download": "Download",
           "remove": "Remove"
@@ -1410,7 +1411,17 @@
         "removeDeferred": "Some files are in use and will be removed the next time Wavee starts.",
         "toast": {
           "ready": "AI lyrics are ready",
-          "failed": "AI lyrics setup failed: {reason}"
+          "failed": "AI lyrics setup failed: {reason}",
+          "languageFailed": "Couldn’t download {language} for AI lyrics. {reason}"
+        },
+        "langError": {
+          "title": "Couldn’t download {language}",
+          "notFound": "It isn't on the download server yet. Try again later.",
+          "offline": "You're offline. Connect and try again.",
+          "network": "The connection dropped. Wavee kept what it already downloaded.",
+          "hash": "A file didn't pass its check and was removed. Try again.",
+          "diskFull": "There isn't enough free space on this PC.",
+          "unknown": "Something went wrong. Try again."
         },
         "error": {
           "offline": "You're offline. Connect and try again.",
@@ -1550,6 +1561,8 @@
       "videoPrepareAheadSub": "Fetch video licences before you switch, so opening a music video is near-instant. Uses a little extra data for videos you may not watch.",
       "showCanvas": "Show Canvas",
       "showCanvasSub": "Play the short looping visuals artists add to their tracks in Now playing and full screen. Silent, and only for the song that is playing.",
+      "videoEndCountdown": "Count down before the next video",
+      "videoEndCountdownSub": "When a music video ends in full screen, show what plays next for 5 seconds, with Play now and Cancel. Off, the next track starts at once.",
       "qualityNormal": "Normal",
       "qualityNormalSub": "96 kbps - about 0.04 GB/hour",
       "qualityHigh": "High",
@@ -2036,6 +2049,24 @@
     "genericError": "Something went wrong signing in.",
     "browserFailed": "Browser sign-in failed: {error}"
   },
+  "mini": {
+    "$comment": "The mini player window (#197): the always-on-top player in four shapes.",
+    "title": "Mini player",
+    "back": "Back to Wavee",
+    "options": "Options",
+    "onTop": "Keep on top",
+    "shape": "Shape",
+    "face": "Face",
+    "strip": "Strip",
+    "wide": "Wide",
+    "square": "Square",
+    "tall": "Tall",
+    "lyrics": "Lyrics",
+    "artColour": "Colour from album art",
+    "playOn": "Play on",
+    "instrumental": "Instrumental · no lyrics",
+    "noLyrics": "No synced lyrics for this song"
+  },
   "player": {
     "seekBack10": "Back 10 seconds",
     "seekForward10": "Forward 10 seconds",
@@ -2087,10 +2118,11 @@
     "turnOffVideo": "Turn off video",
     "videoAlwaysOnTop": "Always on top",
     "videoOptions": "Where to play the video",
+    "viewOptions": "Mini player and full screen",
     "dockInRail": "Dock in rail",
     "video": "Video",
     "videoMiniPlayer": "Play in a mini player",
-    "videoFullScreen": "Full screen",
+    "videoFullScreen": "Video in fullscreen",
     "videoExitFullScreen": "Exit full screen",
     "videoHeight": "Video height {height}",
     "fullscreen": "Full screen",
@@ -2115,6 +2147,8 @@
     "videoUpNext": "Up next",
     "playingOn": "Playing on {device}",
     "playHere": "Play here",
+    "screenNoHdcpTitle": "This screen can’t show protected video",
+    "screenNoHdcpBody": "Its connection doesn’t support HDCP copy protection, which Spotify videos need. This often happens through a dock or adapter. Move Wavee to another screen or connect this one directly. The music keeps playing.",
     "localPlaybackUnsupported": "Playback isn’t supported on this device yet",
     "chooseDevice": "Choose device",
     "noDevices": "No devices found",
@@ -4077,6 +4111,7 @@
       },
       "footer": {
         "generated": "Word timing generated on this PC by AI. It can be off by a moment.",
+        "short": "AI word timing",
         "progress": "Timing words · {ready} of {total} lines"
       }
     },
@@ -4111,9 +4146,21 @@
       "lyrics": "Lyrics",
       "visualizer": "Visualizer",
       "queue": "Up next",
-      "artist": "Artist"
+      "artist": "Artist",
+      "video": "Video",
+      "overview": "Overview"
     },
     "exit": "Exit full screen",
+    "theatreMode": "Theatre mode",
+    "fillScreen": "Fill the screen",
+    "audioTag": "Audio",
+    "endCard": {
+      "upNextIn": "Up next in {seconds}",
+      "from": "From {context}",
+      "playNow": "Play now",
+      "cancel": "Cancel",
+      "then": "Then"
+    },
     "gallery": "Visualizer gallery and settings",
     "galleryTitle": "Visualizer",
     "closePanel": "Close panel",
@@ -4124,6 +4171,8 @@
     "moments": "Change with the music",
     "syncOffset": "Sync offset",
     "upNext": "Up next",
+    "upNextHide": "Hide Up next",
+    "upNextShow": "Show Up next",
     "nextTrack": "Next",
     "nextFrom": "Next from {context}",
     "playingFrom": "Playing from {kind}",

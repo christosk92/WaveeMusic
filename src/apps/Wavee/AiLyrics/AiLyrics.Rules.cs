@@ -33,13 +33,18 @@ public static partial class AiLyrics
     /// <param name="NpuDriver">Its driver version ("31.0.210.5").</param>
     /// <param name="Languages">The installed aligner languages (ISO 639-1).</param>
     /// <param name="PendingDownloadBytes">What <see cref="SetupPhase.NeedsSetup"/> would fetch.</param>
+    /// <param name="LanguageFailure">The last download that failed on ONE language's files (<see cref="Rules.FailedLanguage"/>).
+    /// While <see cref="SetupPhase.Ready"/> it is that language's failure only: the installed languages keep working and
+    /// the card offers Try again for that language. Under <see cref="SetupPhase.Error"/> (a first setup that stopped on a
+    /// language's file) it names the language in the error. Cleared when a download starts, the feature goes off or the
+    /// files are removed.</param>
     public readonly record struct Status(
         SetupPhase Phase, Availability Availability, bool Enabled,
         string NpuName, string NpuDriver,
         DownloadProgress Download, PrepareProgress Prepare,
         SetupError Error, string ErrorDetail,
         long InstalledBytes, IReadOnlyList<string> Languages,
-        long PendingDownloadBytes)
+        long PendingDownloadBytes, LanguageFailure LanguageFailure = default)
     {
         /// <summary>Before the boot probe answered: nothing is clickable (<see cref="SetupPhase.Unavailable"/>) and the
         /// card can test <c>== Status.Unknown</c> to show no reason yet.</summary>
@@ -47,6 +52,17 @@ public static partial class AiLyrics
             SetupPhase.Unavailable, AiLyrics.Availability.NoNpu, false, "", "",
             new DownloadProgress(DownloadPhase.Checking, 0, 0, 0, ""), default,
             SetupError.None, "", 0, Array.Empty<string>(), 0);
+    }
+
+    /// <summary>A download that failed on one language's files: the language (ISO 639-1), why, and the raw detail (the
+    /// URL, the file, the drive) for "Details". <c>default</c> = none; reads as empty strings, never null.</summary>
+    public readonly record struct LanguageFailure(string Language, SetupError Kind, string Detail)
+    {
+        readonly string? _language = Language;
+        readonly string? _detail = Detail;
+        public string Language { get => _language ?? ""; init => _language = value; }
+        public string Detail { get => _detail ?? ""; init => _detail = value; }
+        public bool IsSet => Language.Length > 0;
     }
 
     /// <summary>The current track's AI state, for the header button, the footer strip and the inspector.</summary>
@@ -167,7 +183,7 @@ public static partial class AiLyrics
             if (HasWordTiming(doc.Lines)) return SkipReason.AlreadyWordByWord;
             bool plain = doc.Sync == Lyrics.SyncKind.Unsynced || !doc.IsSynced;
             if (plain ? !plainText : !wordSync) return plain ? SkipReason.PlainTextOff : SkipReason.WordSyncOff;
-            if (!Contains(languages, LanguageOf(doc))) return SkipReason.LanguageNotInstalled;
+            if (!Contains(languages, LanguageOf(doc))) return SkipReason.LanguageNotInstalled;   // "" = no model may time it (AiLyrics.Language.cs)
             if (durationMs > MaxDurationMs) return SkipReason.TooLong;
             if (energySaver && !keepOnSaver) return SkipReason.BatterySaver;
             return SkipReason.None;
@@ -191,114 +207,6 @@ public static partial class AiLyrics
         {
             for (int i = 0; i < list.Count; i++) if (string.Equals(list[i], value, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
-        }
-
-        /// <summary>The aligner language for a document: the source's own tag (primary subtag, lower case) when it names
-        /// one, else a heuristic between the two aligners: Spanish when the text has ñ/¿/¡ or Spanish function words
-        /// make up a real share of it, else "en". (Portuguese also reads as Spanish here; only en/es aligners exist.)</summary>
-        public static string LanguageOf(Lyrics.Doc doc)
-        {
-            // The words decide when they clearly read as a language we have a model for: a provider's tag can be wrong
-            // (an English song tagged with another language would otherwise be skipped as "no model installed").
-            if (MostlyHangul(doc.Lines)) return "ko";
-            if (LooksSpanish(doc.Lines)) return "es";
-            if (Looks(doc.Lines, DutchWords, ratio: 6)) return "nl";
-            if (LooksEnglish(doc.Lines)) return "en";
-            string? tag = doc.Language;
-            if (!string.IsNullOrWhiteSpace(tag))
-            {
-                int cut = tag.IndexOfAny(['-', '_']);
-                string primary = (cut > 0 ? tag[..cut] : tag).Trim().ToLowerInvariant();
-                if (primary.Length > 0 && primary != "und" && primary != "zxx") return primary;
-            }
-            return "en";
-        }
-
-        static readonly HashSet<string> EnglishWords = new(StringComparer.Ordinal)
-        {
-            "the", "and", "you", "your", "i", "me", "my", "a", "to", "of", "in", "on", "it", "is", "that", "this", "with",
-            "for", "be", "are", "was", "we", "our", "they", "she", "he", "her", "his", "but", "not", "so", "all", "just",
-            "what", "when", "can", "do", "don", "t", "s", "m", "ll", "re", "ve", "im", "ive", "dont", "cant", "like", "love",
-            "know", "baby", "oh", "yeah", "if", "at", "up", "down", "out", "no", "now", "never", "because", "again", "around",
-        };
-
-        static readonly HashSet<string> DutchWords = new(StringComparer.Ordinal)
-        {
-            "de", "het", "een", "ik", "je", "jij", "jou", "niet", "van", "dat", "die", "op", "met", "voor", "zijn", "maar",
-            "als", "wat", "mijn", "wij", "we", "ze", "er", "nog", "ook", "naar", "bij", "door", "om", "te", "heb", "ben",
-            "kan", "zo", "nu", "hier", "waar", "alles", "liefde", "hart", "nooit", "altijd", "wil", "weet", "jouw", "mij",
-            "zij", "geen", "meer", "dan", "nacht", "dag", "laat", "gaan", "komt", "zonder", "samen",
-        };
-
-        /// <summary>Korean lyrics: at least a quarter of the letters are Hangul syllables (K-pop mixes in English, which
-        /// the Korean model cannot align; those words get interpolated timing).</summary>
-        static bool MostlyHangul(IReadOnlyList<Lyrics.Line> lines)
-        {
-            int letters = 0, hangul = 0;
-            for (int li = 0; li < lines.Count; li++)
-                foreach (char ch in (lines[li].Text ?? "").Normalize(System.Text.NormalizationForm.FormC))
-                {
-                    if (!char.IsLetter(ch)) continue;
-                    letters++;
-                    if (ch is >= '\uAC00' and <= '\uD7A3') hangul++;
-                }
-            return hangul >= 4 && hangul * 4 >= letters;
-        }
-
-        static bool LooksEnglish(IReadOnlyList<Lyrics.Line> lines) => Looks(lines, EnglishWords, ratio: 5);
-
-        /// <summary>At least three hits on <paramref name="words"/>, two of them different, and one in
-        /// <paramref name="ratio"/> words a hit.</summary>
-        static bool Looks(IReadOnlyList<Lyrics.Line> lines, HashSet<string> words, int ratio)
-        {
-            int tokens = 0, hits = 0;
-            var distinct = new HashSet<string>(StringComparer.Ordinal);
-            for (int li = 0; li < lines.Count; li++)
-            {
-                string text = lines[li].Text ?? "";
-                int start = -1;
-                for (int i = 0; i <= text.Length; i++)
-                {
-                    char c = i < text.Length ? text[i] : ' ';
-                    if (char.IsLetter(c)) { if (start < 0) start = i; continue; }
-                    if (start < 0) continue;
-                    string word = text[start..i].ToLowerInvariant();
-                    start = -1;
-                    tokens++;
-                    if (words.Contains(word)) { hits++; distinct.Add(word); }
-                }
-            }
-            return hits >= 3 && distinct.Count >= 2 && hits * ratio >= tokens;
-        }
-
-        static readonly HashSet<string> SpanishWords = new(StringComparer.Ordinal)
-        {
-            "el", "la", "los", "las", "que", "y", "un", "una", "es", "de", "en", "del", "al", "por", "con", "para", "mi",
-            "tu", "yo", "se", "lo", "te", "como", "pero", "más", "mas", "muy", "porque", "estoy", "eres", "soy", "está",
-            "esta", "todo", "nada", "cuando", "sin", "quiero", "tengo", "contigo", "amor", "corazón",
-        };
-
-        static bool LooksSpanish(IReadOnlyList<Lyrics.Line> lines)
-        {
-            int tokens = 0, hits = 0;
-            var distinct = new HashSet<string>(StringComparer.Ordinal);
-            for (int li = 0; li < lines.Count; li++)
-            {
-                string text = lines[li].Text ?? "";
-                int start = -1;
-                for (int i = 0; i <= text.Length; i++)
-                {
-                    char c = i < text.Length ? text[i] : ' ';
-                    if (c is 'ñ' or 'Ñ' or '¿' or '¡') return true;
-                    if (char.IsLetter(c)) { if (start < 0) start = i; continue; }
-                    if (start < 0) continue;
-                    string word = text[start..i].ToLowerInvariant();
-                    start = -1;
-                    tokens++;
-                    if (SpanishWords.Contains(word)) { hits++; distinct.Add(word); }
-                }
-            }
-            return hits >= 3 && distinct.Count >= 2 && hits * 8 >= tokens;
         }
 
         /// <summary>The results cache's file-name-safe key for a track: its id with every character outside
@@ -416,6 +324,48 @@ public static partial class AiLyrics
             _ => "settings.lyrics.ai.error.unknown",
         };
 
+        /// <summary>Why ONE language's download failed, in plain words (the InfoBar message under "Couldn't download
+        /// {language}"). Unlike <see cref="ErrorKey"/> it never speaks of "the AI models": the other languages are fine.</summary>
+        public static string LanguageErrorKey(SetupError error) => error switch
+        {
+            SetupError.Offline => "settings.lyrics.ai.langError.offline",
+            SetupError.Network => "settings.lyrics.ai.langError.network",
+            SetupError.NotFound => "settings.lyrics.ai.langError.notFound",
+            SetupError.HashMismatch => "settings.lyrics.ai.langError.hash",
+            SetupError.DiskFull => "settings.lyrics.ai.langError.diskFull",
+            _ => "settings.lyrics.ai.langError.unknown",
+        };
+
+        /// <summary>A pack language's display name key; "" for a code the loc pack has no name for (show the code).</summary>
+        public static string LanguageNameKey(string language) => language switch
+        {
+            "en" => "settings.lyrics.ai.lang.en",
+            "es" => "settings.lyrics.ai.lang.es",
+            "nl" => "settings.lyrics.ai.lang.nl",
+            "ko" => "settings.lyrics.ai.lang.ko",
+            "ja" => "settings.lyrics.ai.lang.ja",
+            _ => "",
+        };
+
+        /// <summary>Whose failure a failed download is. The failed file's language when it belongs to one; before any file
+        /// was fetched (offline, no room on the disk) the language being added, when the download was for nothing else.
+        /// "" = the shared files every language needs (the runtime, the separator) or a first setup: the whole feature.</summary>
+        /// <param name="fileLanguage">The language of the file that failed ("" = a shared file, or no file yet).</param>
+        /// <param name="addLanguage">The language the download was adding (null = a setup or resume of everything).</param>
+        /// <param name="onlyAddLanguageMissing">Every file the download fetched belongs to <paramref name="addLanguage"/>.</param>
+        public static string FailedLanguage(string fileLanguage, bool beforeAnyFile, string? addLanguage, bool onlyAddLanguageMissing)
+        {
+            if (fileLanguage.Length > 0) return fileLanguage;
+            if (beforeAnyFile && addLanguage is { Length: > 0 } && onlyAddLanguageMissing) return addLanguage;
+            return "";
+        }
+
+        /// <summary>A language's failure stays that language's (the card stays Ready, the installed languages keep timing
+        /// songs) only when the feature was ready before the download and the download was adding that language. A first
+        /// setup that fails on a language's file still has nothing working: the whole card shows the error, naming it.</summary>
+        public static bool LanguageFailureKeepsReady(string failedLanguage, string? addLanguage, SetupPhase phaseBefore)
+            => failedLanguage.Length > 0 && failedLanguage == addLanguage && phaseBefore == SetupPhase.Ready;
+
         /// <summary>Every real error offers "Try again" (Network resumes from the partial); Cancelled goes back to
         /// NeedsSetup silently.</summary>
         public static bool ErrorOffersRetry(SetupError error) => error is not (SetupError.None or SetupError.Cancelled);
@@ -479,9 +429,10 @@ public static partial class AiLyrics
         public static bool FooterShowsProgress(TrackStatus track) => track.Phase == TrackPhase.Working && !track.FromCache;
 
         /// <summary>The footer's line: the progress key (placeholders {ready}, {total}) while <see cref="FooterShowsProgress"/>,
-        /// else the disclosure.</summary>
-        public static string FooterKey(TrackStatus track)
-            => FooterShowsProgress(track) ? "lyrics.ai.footer.progress" : "lyrics.ai.footer.generated";
+        /// else the disclosure: the sentence, or in a small box (<paramref name="compact"/>, the mini player's lyrics face) its short
+        /// form, one caption line.</summary>
+        public static string FooterKey(TrackStatus track, bool compact = false)
+            => FooterShowsProgress(track) ? "lyrics.ai.footer.progress" : compact ? "lyrics.ai.footer.short" : "lyrics.ai.footer.generated";
 
         /// <summary>A 0..1 share of a whole for the footer's buffer bar (the timed region, the playhead); 0 while the whole
         /// is unknown.</summary>

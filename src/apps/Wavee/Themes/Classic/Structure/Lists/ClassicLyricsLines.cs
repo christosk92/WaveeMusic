@@ -116,7 +116,9 @@ internal static class ClassicLyricsLines
     /// highlight, no follow, no wipe, no blur ladder.</summary>
     static Element Unsynced(ILyricsHost host, Lyrics.Doc doc)
     {
-        var m = Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
+        // A mount in a small box (the mini player's: ILyricsHost.Gutter) reads its unsynced lines at the timed rows' type on its own gutter, so
+        // the face keeps one column and one size whether or not the song is timed.
+        var m = host.Gutter is not null ? host.Metrics : Lyrics.Surface.Unsynced(host.Large, host.IsPodcast).Scaled(host.TypeScale);
         var ink = host.Ink.Primary with { A = Lyrics.Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
         var rows = new Element[doc.Lines.Count];
         for (int i = 0; i < rows.Length; i++)
@@ -138,7 +140,7 @@ internal static class ClassicLyricsLines
         float pad = Lyrics.Surface.UnsyncedBlockPad(host.Large);
         return new ScrollEl
         {
-            Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, SuppressScrollBar = true,
+            Grow = 1f, MinHeight = 0f, AutoEdgeFade = !host.BoxFades, SuppressScrollBar = true,
             AutoEdgeFadeBand = Lyrics.Surface.StageEdgeFade(host.OnStage, host.Large, host.IsPodcast, host.TypeScale),
             ScrollKey = "lyrics:unsynced:" + doc.TrackId,
             Content = new BoxEl { Direction = 1, Padding = new Edges4(0f, pad, 0f, pad), Children = rows },
@@ -169,7 +171,7 @@ internal static class ClassicLyricsLines
             MinHeight = 0f,
             // Realize the WHOLE document: every row must be measured before follow geometry is trusted.
             MeasureAll = lines.Count <= Lyrics.Surface.MeasureAllCap,
-            AutoEdgeFade = true,
+            AutoEdgeFade = !host.BoxFades,
             AutoEdgeFadeBand = Lyrics.Surface.StageEdgeFade(host.OnStage, host.Large, host.IsPodcast, host.TypeScale),
             SuppressScrollBar = true,
             Handle = host.Scroll,
@@ -334,10 +336,23 @@ internal sealed class ClassicLyricsRow : Component
     {
         bool podcast = _host.IsPodcast;
         bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, _emphasis.Value);
+        float to = RowOpacity(_host, podcast, ownsPlayback, _emphasis.Value);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
+    }
+
+    /// <summary>The row's opacity rung: the distance ladder, or in the picture's place (<see cref="ILyricsHost.OnPicture"/>) no ladder: an
+    /// upcoming row at <see cref="ClassicLyricsRules.PictureRowOpacity"/> (its own ink is the unsung or the secondary one), a word-synced row already
+    /// sung (its glyphs are the full ink) at <see cref="ClassicLyricsRules.PicturePastOpacity"/>, so every line but the active one reads alike.</summary>
+    float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
+    {
+        float flat = Lyrics.MiniRows.Opacity(host, podcast, ownsPlayback, emphasis, Lyrics.MiniRows.RowInk(_line, emphasis, host.Ink.Secondary.A));
+        if (!float.IsNaN(flat)) return flat;   // the mini player's picture of the song (ILyricsHost.FlatRows)
+        float rung = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
+        if (!host.OnPicture || rung >= 1f) return rung;
+        bool sung = (emphasis & Lyrics.Emphasis.PastBit) != 0 && _line.IsWordByWord && _line.Syllables.Count > 0;
+        return sung ? ClassicLyricsRules.PicturePastOpacity : ClassicLyricsRules.PictureRowOpacity;
     }
 
     public override Element Render()
@@ -363,7 +378,7 @@ internal sealed class ClassicLyricsRow : Component
         // spring key, so the first render after an OS flip retargets.
         bool reduce = Design.Reduced;
         float scale = neutral ? 1f : Lyrics.Surface.ScaleFor(isActive, reduce);
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
         // The scale springs retarget on the active flip (the only input of the scale rest), never per rung.
@@ -378,8 +393,7 @@ internal sealed class ClassicLyricsRow : Component
             // ALWAYS a two-child ZStack [glow, main], in every state: a line leaving the voice slot is an in-place
             // update, never a child-type swap (a re-shape + blur-cache miss = the lines-above-active flicker).
             bool highlight = Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek()) : 0f;
-            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            float split = highlight ? Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
             float softness = host.SoftnessOfLine(index);
             // Podcasts: the role-driven rung (accent on the sung glyph, plain ink otherwise - never a translucent wash). Music
             // keeps its established alpha-faded unsung look untouched.
@@ -434,9 +448,10 @@ internal sealed class ClassicLyricsRow : Component
         // node. The secondary line sits INSIDE it, so it blurs, fades and travels with its lyric.
         var textColumn = new BoxEl { Direction = 1, Children = secondaryText is null ? [textEl] : [textEl, SecondaryText(secondaryText)] };
         // THE STAGE adds the ListView-style accent PILL as a ZStack layer INSIDE dofContent (it travels with the row's σ/cascade
-        // owner). The accent is a mount-time signal INSTANCE on the host (null on the rail/reader => the plain column, unchanged),
+        // owner). The accent is a mount-time signal INSTANCE on the host (null on the rail/reader, or no marker on the mini player's mount
+        // (ILyricsHost.ActiveMarker) => the plain column, unchanged),
         // so the tree shape never flips for a mounted row.
-        Element dofContent = host.Accent is { } accentSig
+        Element dofContent = host.Accent is { } accentSig && host.ActiveMarker
             ? new BoxEl
             {
                 ZStack = true,
@@ -478,16 +493,17 @@ internal sealed class ClassicLyricsRow : Component
             AlignItems = FlexAlign.Stretch,
             TransformOriginX = 0f,
             TransformOriginY = 0.5f,
-            Cursor = CursorId.Hand,
-            OnClick = _onClick,
-            Role = AutomationRole.Button,
-            Focusable = true,
+            // A mount whose lines are a picture (the mini player's, ILyricsHost.Inert) takes no click: the window's click and wheel are its own.
+            Cursor = _host.Inert ? null : CursorId.Hand,
+            OnClick = _host.Inert ? null : _onClick,
+            Role = _host.Inert ? AutomationRole.None : AutomationRole.Button,
+            Focusable = !_host.Inert,
             AllowFocusOnInteraction = false,
             Children = [dofContent],
         };
 
         // Wrapped, unbounded, never trimmed on BOTH surfaces; built ONCE with its wipe and its realization report (no `with` clone
-        // per layer). `ViewCore.MeasureRunLength` rebuilds this style - the two change together.
+        // per layer). `ViewCore` measures the wipe on this node's own laid style (`Lyrics.Wipe.DrawnLayout`).
         TextEl LineText(string text, ColorF color, GlyphWipe? wipe, Action<NodeHandle>? onRealized) => new(text)
         {
             Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,

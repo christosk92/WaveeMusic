@@ -236,6 +236,56 @@
 // 1.92 (the docked video handle): `PanelProps.DockedVideoHandle` and its `DockedVideoGrip` (the core's resize band under the docked card, in the
 // theme's grip look: the old splitter overlaid the card's foot, where the presenter's transport took every press). `PanelProps.DockedVideoMin`,
 // `DockedVideoMax` and `CommitDockedVideo` went with it (the handle owns the clamp and the commit), removed before any external theme existed.
+// 1.93 (the view split): `PlayerBarSlots.ViewSplit` and its slot `RightSlot.View`: the player's three views in one control (the panel on now
+// playing as the main half, the mini player and full screen behind a chevron), for a level that states it instead of `Expand`. With it
+// `PlayerBarMetrics.ViewLeadW`, `PlayerBarView.NowPlayingOpen` and `ViewMenu`, `PlayerBarProps.ToggleNowPlaying`.
+// 1.94 (full screen in the title bar): `ShellTitleBarProps.OpenFullScreen` (the app's full screen, a window-level verb, beside the
+// other title-bar actions) and `ChromeBudget.RowActions` (how many actions the trailing island is priced for: 3, or 4 with it).
+// 1.95 (video full screen, Cinema): `StagePolicy.VideoStage` (the structure draws the stage's Video mode; then the app has one full screen),
+// `StageRootView.ShowPicture` / `.PictureRealized` (the reservation the video presenter follows), the key `ViewKeys.StagePictureChrome`
+// (`StagePictureChromeProps`: the stage's chrome over the picture, mounted by the core above the video hole) and `VideoPipProps.Staged`.
+// 1.96 (video full screen, Theatre): `StageRootView.ShowTheatre` (the picture in the left region, a panel beside it), `StageLayers.TheatrePane`
+// and `StagePaneProps.Theatre` (the panel's own pane host), `StageTierMetrics.TheatrePaneW` / `.TheatreLyricsType` (a tier's Theatre panel and
+// its lyrics' type; 0: no Theatre on that tier) and `VideoPipProps.Realized` (the presenter's node: the picture glides between its home and the stage).
+// 1.97 (video full screen, Up next and the audio face): `QueueRowVideo` and `IQueueLane.VideoOf` (a queue row's music video and its 16:9 still,
+// asked only where the stage shows the picture), `QueueStagePaneProps.Video` (the Theatre list's thumbnail rows), the key `ViewKeys.QueueStageShelf`
+// (`QueueStageShelfProps`: Cinema's Up next shelf), `StageLayers.UpNextShelf` / `.PictureLyrics` and `StageRootView.ShowAudioFace` (Video mode
+// holds over an audio-only track: the frame stays, the picture's place shows the cover and the lyrics).
+// 1.98 (video full screen, the end card): the key `ViewKeys.StageEndCard` (`StageEndCardProps`: "Up next in 5" when a music video ends in full
+// screen), `StageLayers.EndCard`, `StageRootView.ShowEndCard`, and on `Stage.StageCtx` the card's `EndCard` / `EndSeconds` / `EndAtMs` signals,
+// `EndRemainingMs` and the verbs `EndPlayNow` / `EndCancel` (while the card is up Cinema's shelf lists the tracks after the card's).
+// 1.99 (video full screen, the control bar over the picture): `StageTransportProps.VideoMenu` (the docked video's own settings menu, placement,
+// aspect ratio, quality and speed, for the full screen's gear; while the stage shows the picture its placement rows leave full screen and
+// "Video in fullscreen" reads as the current place); in Theatre only the picture counts for the idle chrome (`StageRootView.ShowTheatre`).
+// `Stage.Layout.VideoBarLabels` gives way to `VideoAudioLabelShown` (the top bar keeps "Switch to audio" alone in Video mode); no external theme exists.
+// 1.100 (video full screen, Theatre's about block): `StageRootView.About` / `.DemandAbout` / `.OpenArtist` and `StageAboutFacts` (the playing
+// track's primary artist and the track's facts under Theatre's title, from what the Artist pane already asks; the Artist tab opens in the stage).
+// 1.101 (video full screen, the audio face as a colour field; idle under and inside the stage): `ILyricsHost.OnPicture` (the lyrics mount in the
+// picture's place: a lines style may draw its rows there as a picture of the song, the active line in full ink and the others at their secondary
+// ink); `StageTransportProps.SeekBarWithChrome` / `.TimeTextWithChrome` (the seek rail and the time labels of a transport that idles out with the
+// stage's chrome: they hold their last state while it is hidden).
+// 1.102 (the audio face's colour field decides its arm): `StageLayers.PictureLyricsOn` (the audio face's reading column on the stage arm the
+// structure names, whatever the theme kind: a light theme's field keeps a deep, coloured value and its lyrics take the light on-media ink).
+// 1.103 (a face's free region beside a part): `Visualizer.FaceSpec.SideLeft/SideTop/SideRight/SideBottom` (a second safe region a structure
+// publishes beside a part it draws over the face, Zune's Card arrangement's column right of the card; Verse stands there when the room above
+// the part cannot hold its ghost, live line and read-ahead).
+// 1.104 (the on-media time pill folded to the elapsed time): `TimeLabelProps.Alone` (the elapsed label stands alone: reserve its own widest
+// digits and centre them) and `OnMediaTransportProps.ElapsedAlone` (its core host).
+// 1.105 (the stage's Overview tab; videos in the Up next lists): `Stage.PictureTab` (None / Video / Overview) and `Stage.StageCtx.PictureTab` (the
+// first tab is always offered where the structure draws Video mode: Video while the playing track's video plays, Overview otherwise, which is Video
+// mode's page with the audio face in the picture's place, `StageCtx.AudioFace`; it relabels in place) and `StageCtx.VideosPlay` (a track with a
+// video plays as its video: the stage's Up next lists show its 16:9 still, else every row its square cover; `IQueueLane.VideoOf` is now asked by
+// every stage Up next list for the film glyph too). The string `Strings.Stage.Mode.Overview`. Core only: `TheatreRules.EscapeStepsToTheatre`
+// lost its audio-face argument (Esc in Overview's Cinema steps to Theatre as over a picture).
+// 1.106 (the mini player's lyrics face): `LyricsBox` and its `Context` (the small box a lyrics view is mounted in: a structure's view sets the
+// box's edge fade on its reading layers, above the AI disclosure, and the disclosure takes its compact one-line form on the box's gutter).
+// 1.107 (a screen that cannot carry HDCP): `Video.JoinVisual.ScreenBlocked` (the video's screen cannot carry the HDCP a protected picture
+// needs: the song plays and `ViewKeys.VideoJoinPoster` draws "This screen can't show protected video" and why over the poster; the strings
+// `Strings.Player.ScreenNoHdcpTitle` / `ScreenNoHdcpBody`). A template that does not know it draws the bare poster.
+// 1.108 (the mini player's lyrics face, round 2): `ILyricsHost.ActiveMarker` (a style draws its active-line pill only where it holds; false on
+// the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
+// `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
+// (the mini player is unreleased: its three styles moved with it).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -251,7 +301,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 92;
+    public const int Minor = 108;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

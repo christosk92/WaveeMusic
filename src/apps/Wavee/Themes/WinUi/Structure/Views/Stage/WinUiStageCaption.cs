@@ -40,6 +40,8 @@ internal static class WinUiStageCaption
     /// <summary>The registered template of <see cref="ViewKeys.StageCaption"/>.</summary>
     public static Element Template(StageCaptionProps props, in ViewContext ctx)
     {
+        var stage = ctx.Hooks.UseContext(Stage.StageContext);
+        float veilA = StageCaptionVeil.For(stage, artBaked: true, Band(stage, props, props.Bottom));
         string gen = props.Generation;
         var kids = new List<Element>(3);
         if (props.PreviousText is { } previous)
@@ -55,31 +57,37 @@ internal static class WinUiStageCaption
             HitTestVisible = false, HitTestPassThrough = false,
             Children =
             [
-                // the veil: a wide ELLIPSE behind the block at its tallest, feathered to nothing (radial) — legibility over a
-                // bright face without a plate; BOTTOM-anchored around the block (vertical = AlignSelf, horizontal = JustifySelf)
-                new BoxEl
-                {
-                    Width = props.Width + 2f * Stage.Layout.CaptionVeilPadX, Height = props.BlockMaxHeight + 2f * Stage.Layout.CaptionVeilPadY,
-                    AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Margin = new Edges4(props.X - Stage.Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, props.Bottom - Stage.Layout.CaptionVeilPadY)),
-                    Gradient = RadialGradient(
-                        new GradientStop(0f, Shade(Stage.Tone.CaptionVeilA)),
-                        new GradientStop(WinUiStageCaptionGeometry.VeilMidStop, Shade(Stage.Tone.CaptionVeilA * WinUiStageCaptionGeometry.VeilMidAlpha)),
-                        new GradientStop(1f, Shade(0f))),
-                },
                 // the block: previous · active (or the dots) · next, centred in its region, bottom-anchored above the transport
                 new BoxEl
                 {
                     Width = props.Width, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(props.X, 0f, 0f, props.Bottom),
                     Direction = 1, AlignItems = FlexAlign.Center, Gap = Stage.Layout.CaptionLineGap, HitTestVisible = false, Layout = s_fit,
-                    Children = kids.ToArray(),
+                    Children = [Hugged(kids.ToArray(), veilA)],
                 },
                 .. props.Ticker,
             ],
         };
     }
 
-    static ColorF Shade(float a) => Ink.Veil with { A = a };
+    /// <summary>The block's lines over their VEIL (<see cref="StageCaptionVeil"/>): a stack that hugs the lines (the block centres it), its
+    /// first layer the veil, the stack's size grown by its reach and edge-faded over that growth, so the ground follows the lines' laid-out
+    /// rects and eases with them (its own bounds move) when a hand-off changes them; nothing reaches past the caption's band.</summary>
+    /// <summary>The caption's band in stage DIP: the block at its tallest, bottom-anchored <paramref name="bottom"/> above the stage's foot.</summary>
+    static RectF Band(Stage.StageCtx? stage, StageCaptionProps props, float bottom)
+    {
+        float h = stage?.Layout.Value.H ?? 0f;
+        return new RectF(props.X, h - bottom - props.BlockMaxHeight, props.Width, props.BlockMaxHeight);
+    }
+
+    static Element Hugged(Element[] lines, float veilA) => new BoxEl
+    {
+        ZStack = true, HitTestVisible = false,
+        Children =
+        [
+            StageCaptionVeil.Ground(veilA),
+            new BoxEl { Direction = 1, AlignItems = FlexAlign.Center, Gap = Stage.Layout.CaptionLineGap, HitTestVisible = false, Children = lines },
+        ],
+    };
 
     /// <summary>A context line (previous / next): small, one line, the stage arm's secondary ink (at the old 0.35 / 0.45 ink alphas it read 2 : 1 over a bright visualizer), never blurred.</summary>
     static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl

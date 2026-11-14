@@ -379,10 +379,19 @@ public static partial class Shell
         /// it (the committing drain's own publish is a report, and releasing there repaints the PRE-seek position for the
         /// whole flight of the seek), then re-derive the resting fraction. No landing (a foreign owner, a parked deck) →
         /// <see cref="SeekRail.CommitHoldMs"/> ends it.</summary>
-        public void OnModelReport()
+        /// <param name="revealed">The rail comes back from hidden (its reveal rose: under the full-screen stage, an idled-out strip): it shows the
+        /// current state at once, so a duration change it did not see while hidden starts no rescale ease (a hidden rail has no catch-up motion).</param>
+        public void OnModelReport(bool revealed = false)
         {
             if (_committedAtMs > 0L && !Scrubbing.Peek()
                 && Playback.SeekLandedAfter(_committedGen, _src.LastSeekLandedGen())) _committedAtMs = 0L;
+            if (revealed)
+            {
+                // the length the rail draws against is the one it comes back to: nothing of an ease from the hidden time carries over
+                _drawnRow = _src.CurrentId();
+                _drawnDurMs = _src.DurationMs(false);
+                _rescaleFrom = 0f;
+            }
             Recompute();
         }
 
@@ -427,6 +436,8 @@ public static partial class Shell
                     _rescaleFrom = SeekRail.ModelFraction(mode, position, _drawnDurMs, live, behind) + offset - model;
                     _rescaleAtMs = now;
                     offset = _rescaleFrom;
+                    // one line per rescale EDGE (a row's length changed under a shown rail: never per frame)
+                    Log.Info("seek", "[seek.rescale] fromMs=" + _drawnDurMs + " toMs=" + duration + " ease=" + _rescaleFrom.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
                 }
                 model = Math.Clamp(model + offset, 0f, 1f);
             }

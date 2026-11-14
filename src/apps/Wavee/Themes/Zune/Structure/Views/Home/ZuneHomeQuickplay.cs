@@ -44,16 +44,21 @@ internal static class ZuneHomeQuickplay
     /// <summary>The registered template of <see cref="ViewKeys.HomeQuickplay"/>.</summary>
     public static Element Template(HomeQuickplayProps props, in ViewContext ctx)
     {
-        var lay = ZuneHomeTiers.Of(ctx.Tier());
+        bool rendered = ZuneMotion.Rendered(ctx.Hooks);   // before any branch: the hook runs on every render
+        var facts = ctx.Tier();
+        var lay = ZuneHomeTiers.Of(facts);
         var pins = props.Pins();   // tracked: a pin, an unpin or a move re-renders the strip
-        return Strip(pins.Count > 0 && lay.QuickPins > 0 ? PinsGroup(pins, props.EditPins, lay) : null, props.History,
-                     lay.QuickFresh > 0 && props.Fresh is { Items.Count: > 0 } fresh ? FreshGroup(fresh, lay) : null, lay);
+        int pinCount = Math.Min(pins.Count, lay.QuickPins);
+        // The strip's first-frame width: the content region less the page's gutters (the line the new group starts on).
+        float firstW = MathF.Max(0f, facts.ContentWidth - 2f * lay.Gutter);
+        return Strip(pinCount > 0 ? PinsGroup(pins, props.EditPins, lay) : null, pinCount, props.History,
+                     lay.QuickFresh > 0 && props.Fresh is { Items.Count: > 0 } fresh ? fresh : null, lay, firstW, rendered);
     }
 
     /// <summary>The strip's skeleton: the same tree with no pins and the history at neutral live facts.</summary>
     internal static Element Skeleton(Zone? history, Zone? fresh, ZuneHomeLayout lay)
-        => Strip(null, history is null ? null : HistorySkeleton(history, lay),
-                 lay.QuickFresh > 0 && fresh is { Items.Count: > 0 } f ? FreshGroup(f, lay) : null, lay);
+        => Strip(null, 0, history is null ? null : HistorySkeleton(history, lay),
+                 lay.QuickFresh > 0 && fresh is { Items.Count: > 0 } f ? f : null, lay, 0f, rendered: false);
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeZoneRecentGrid"/>: the history group.</summary>
     public static Element HistoryTemplate(HomeRecentsProps props, in ViewContext ctx)
@@ -69,8 +74,24 @@ internal static class ZuneHomeQuickplay
 
     // ── the strip ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The groups: a row that wraps (Small and up) or a column (Compact), ONE node whose direction is a live prop.</summary>
-    static Element Strip(Element? pins, Element? history, Element? fresh, ZuneHomeLayout lay)
+    /// <summary>The groups: a row that wraps (Small and up) or a column (Compact), ONE node whose direction is a live prop.
+    /// <para>The new group is keyed by the LINE the row's wrap puts it on (<see cref="ZuneHomeRules.FreshLine"/>, chosen at the width the strip lands
+    /// at while a docking panel's slide resizes it): a change of line is a cross-fade (it fades out where it stood while it fades in where it lands)
+    /// instead of a slide that carried it diagonally over the history tiles between its two lines.</para></summary>
+    static Element Strip(Element? pins, int pinCount, Element? history, Zone? fresh, ZuneHomeLayout lay, float firstW, bool rendered)
+    {
+        // ONE parent at every tier (the line box), so a crossing that drops or adds the new group (Small has none) keeps the strip's nodes.
+        float gap = lay.QuickTileGap;
+        bool lines = fresh is not null && !lay.QuickStacked;
+        float pinsW = pins is null ? 0f : H.TilesWidth(pinCount, lay.PinTileW, gap);
+        float historyW = history is null ? 0f : H.TilesWidth(lay.QuickTiles, lay.QuickTileW, gap);
+        float freshW = fresh is { } f ? H.TilesWidth(Math.Min(f.Items.Count, lay.QuickFresh), lay.QuickTileW, gap) : 0f;
+        return Responsive.Of(H.QuickplayKey + ":lines", w => lines ? H.FreshLine(w, pinsW, historyW, freshW, lay.QuickGroupGap) : 0,
+                             line => Row(pins, history, fresh is { } zone ? FreshGroup(zone, lay, line, rendered) : null, lay), fallback: firstW);
+    }
+
+    /// <summary>The strip's row (or Compact's column) of groups.</summary>
+    static Element Row(Element? pins, Element? history, Element? fresh, ZuneHomeLayout lay)
     {
         var kids = new List<Element>(3);
         if (pins is not null) kids.Add(pins.Value);
@@ -87,7 +108,7 @@ internal static class ZuneHomeQuickplay
     }
 
     /// <summary>A group: its head (the quickplay voice) and link word over its <paramref name="body"/>.</summary>
-    static Element Group(string id, string head, Element? link, Element body) => new BoxEl
+    static BoxEl Group(string id, string head, Element? link, Element body) => new()
     {
         Key = H.QuickGroupPrefix + id, Direction = 1, Gap = H.QuickHeadGap, Shrink = 0f, MinWidth = 0f,
         // A group that wraps to the next line or back (the page narrowing beside a docking panel, a crossing) slides there; its box follows its tiles.
@@ -216,7 +237,20 @@ internal static class ZuneHomeQuickplay
 
     // ── new ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element FreshGroup(Zone zone, ZuneHomeLayout lay)
+    /// <summary>The new group on the strip's line <paramref name="line"/>: keyed per line, a cross-fade between lines (none on the view's first
+    /// render: it arrives with the page). Its two places never overlap, so it fades in where it lands while it fades out where it stood: a
+    /// fade-through left its line empty in the same frames the daylist's own fade-through leaves the strip empty (one blank band mid-slide).</summary>
+    static Element FreshGroup(Zone zone, ZuneHomeLayout lay, int line, bool rendered)
+    {
+        var group = FreshGroup(zone, lay);
+        return group with
+        {
+            Key = line == 0 ? group.Key : group.Key + ":" + line.ToString(CultureInfo.InvariantCulture),
+            Enter = ZuneMotion.SwapEnter(rendered), Exit = ZuneMotion.SwapFade,
+        };
+    }
+
+    static BoxEl FreshGroup(Zone zone, ZuneHomeLayout lay)
     {
         int n = Math.Min(zone.Items.Count, lay.QuickFresh);
         float edge = lay.QuickTileW;

@@ -466,7 +466,28 @@
     },
     "lyrics": {
       "title": "가사",
-      "subtitle": "동기화된 가사를 읽는 화면"
+      "subtitle": "동기화된 가사를 읽는 화면",
+      "ai": {
+        "lang": {
+          "en": "영어",
+          "es": "스페인어",
+          "nl": "네덜란드어",
+          "ko": "한국어",
+          "ja": "일본어"
+        },
+        "toast": {
+          "languageFailed": "AI 가사용 {language}을(를) 다운로드하지 못했어요. {reason}"
+        },
+        "langError": {
+          "title": "{language}을(를) 다운로드하지 못했어요",
+          "notFound": "아직 다운로드 서버에 없어요. 나중에 다시 시도하세요.",
+          "offline": "오프라인 상태예요. 연결한 후 다시 시도하세요.",
+          "network": "연결이 끊겼어요. 이미 다운로드한 부분은 Wavee가 보관했어요.",
+          "hash": "파일이 확인을 통과하지 못해 삭제했어요. 다시 시도하세요.",
+          "diskFull": "이 PC에 여유 공간이 부족해요.",
+          "unknown": "문제가 발생했어요. 다시 시도하세요."
+        }
+      }
     },
     "nowPlaying": {
       "title": "재생 중",
@@ -760,7 +781,7 @@
     "dockInRail": "레일에 도킹",
     "video": "비디오",
     "videoMiniPlayer": "미니 플레이어에서 재생",
-    "videoFullScreen": "전체 화면",
+    "videoFullScreen": "동영상 전체 화면",
     "videoExitFullScreen": "전체 화면 종료",
     "videoHeight": "비디오 높이 {height}",
     "fullscreen": "전체 화면",
@@ -948,9 +969,21 @@
       "lyrics": "가사",
       "visualizer": "비주얼라이저",
       "queue": "다음 재생",
-      "artist": "아티스트"
+      "artist": "아티스트",
+      "video": "동영상",
+      "overview": "개요"
     },
     "exit": "전체 화면 종료",
+    "theatreMode": "극장 모드",
+    "fillScreen": "화면 채우기",
+    "audioTag": "오디오",
+    "endCard": {
+      "upNextIn": "{seconds}초 후 다음 곡",
+      "from": "{context}에서",
+      "playNow": "지금 재생",
+      "cancel": "취소",
+      "then": "그다음"
+    },
     "gallery": "비주얼라이저 갤러리 및 설정",
     "galleryTitle": "비주얼라이저",
     "closePanel": "패널 닫기",
@@ -961,6 +994,8 @@
     "moments": "음악에 맞춰 변화",
     "syncOffset": "동기화 오프셋",
     "upNext": "다음 재생",
+    "upNextHide": "다음 재생 숨기기",
+    "upNextShow": "다음 재생 표시",
     "nextTrack": "다음",
     "nextFrom": "{context}의 다음 곡",
     "playingFrom": "{kind}에서 재생 중",

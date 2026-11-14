@@ -41,7 +41,7 @@ public static partial class Visualizer
         InputHooks? _hooks;                           // captured in Render (V-U42), read by the lease effect
         Action<Action>? _batch;                       // the runtime's Batch, bound by the component (null headless: the write runs inline)
         Deck.PositionInterpolator _pos;
-        bool _anchored, _advancing, _run;
+        bool _anchored, _advancing, _run, _wouldRun, _shown = true;
         long _lastTickMs;
         int _lastReportMs = int.MinValue;
         Frame _pending;
@@ -85,15 +85,27 @@ public static partial class Visualizer
         /// <summary>Is the per-frame tick running (the ticker is mounted)? Set by the component's Render.</summary>
         internal bool Run { set => _run = value; }
 
+        /// <summary>Would the tick run were its output on screen (<see cref="Demand.Ticks"/> with <c>shown</c>)? A fade starts exactly where it
+        /// always did (else it snaps), and wakes a clock that stands down under the picture until the fade lands. Set by the component's Render.</summary>
+        internal bool WouldRun { set => _wouldRun = value; }
+
+        /// <summary>Is anything the tick drives frame by frame on screen (<see cref="Demand.Shown"/>)? Without it the clock settles as soon as its
+        /// fades have landed. Set by the component's Render.</summary>
+        internal bool Shown { set => _shown = value; }
+
+        /// <summary>A fade began while the clock stands down (the picture covers the stage): unsettle it, so it ticks until the fade lands.</summary>
+        void WakeForFade() { if (!_run && _settled.Peek()) _settled.Value = false; }
+
         /// <summary>The accent TARGET moved: seed the slab on the first run; afterwards capture the fade's start colour and time (V-U17).</summary>
         internal void OnAccentTarget(ColorF target)
         {
             var ctx = _ctx!;
             if (target.Equals(_accentTarget)) return;
             _accentTarget = target;
-            if (_fadeStartMs < 0 || !_run) { ctx.Slab.Accent.Value = target; _fadeStartMs = 0; return; }   // mount, or the clock is not running: snap
+            if (_fadeStartMs < 0 || !_wouldRun) { ctx.Slab.Accent.Value = target; _fadeStartMs = 0; return; }   // mount, or the clock is not running: snap
             _fadeFrom = ctx.Slab.Accent.Peek();
             _fadeStartMs = FrameTime.NowMs;
+            WakeForFade();
         }
 
         /// <summary>The clock stopped mid-fade (settled / occluded / reduced): land both fades on their targets.</summary>
@@ -201,8 +213,9 @@ public static partial class Visualizer
             if (_paletteSeeded && b.Equals(_base)) return;
             _base = b;
             _moments.Reset();
-            if (!_paletteSeeded || !_run) { _paletteSeeded = true; SnapPalette(b); return; }
+            if (!_paletteSeeded || !_wouldRun) { _paletteSeeded = true; SnapPalette(b); return; }
             BeginFade(b, Stage.Tone.CrossFadeMs, moment: false);
+            WakeForFade();
         }
 
         void SnapPalette(in Palette p)
@@ -380,7 +393,7 @@ public static partial class Visualizer
                     if (_fade.Moment) Set(s.MomentMix, Q(p, 1f / 256f));
                 }
             }
-            bool settled = m.IsSettled && !_fade.Active && _fadeStartMs <= 0;
+            bool settled = (m.IsSettled || !_shown) && !_fade.Active && _fadeStartMs <= 0;   // under the picture only the fades keep it awake
             if (_settled.Peek() != settled) _settled.Value = settled;   // the gate's mirror (Deck.UI.cs's `_settled`)
         }
 

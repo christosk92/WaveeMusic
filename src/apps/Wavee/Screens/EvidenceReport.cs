@@ -17,7 +17,7 @@ namespace Wavee;
 
 /// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
 /// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video }
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
 /// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
@@ -29,7 +29,9 @@ public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, 
 /// lyrics/queue/off), <see cref="Face"/> (stage: a visualizer face name), <see cref="Gallery"/> (stage: 1/0, −1 leave).
 /// <c>reveal</c>: <see cref="Viewport"/> (a scroll key prefix) scrolled so the keyed element <see cref="Keys"/>[0] sits
 /// at its top; <c>video</c>: <see cref="Mode"/> the video surface's placement (docked/floating/detached/fullscreen/off);
-/// on <c>shot</c>, <see cref="Viewport"/> + <see cref="Reveal"/> do the same after the zoom reflowed the page.</para></summary>
+/// on <c>shot</c>, <see cref="Viewport"/> + <see cref="Reveal"/> do the same after the zoom reflowed the page.
+/// <c>theme</c>: <see cref="Mode"/> the theme id to switch to (classic/winui/zune); <c>mini</c>: <see cref="On"/> 1 open, 0 close, −1
+/// leave, and <see cref="Face"/> the mini player's face index (empty = leave).</para></summary>
 public readonly record struct DiagVerb(DiagCommand Command, string Tag = "", int X = 0, int Y = 0, bool Dip = false,
     string Viewport = "", double To = 0.0, bool Glide = false, int Level = -1, string[]? Uris = null, int[]? Kinds = null,
     int Zoom = 0, int SettleMs = 0, bool Alpha = false, string[]? Keys = null, int On = -1, int Ms = -1, string Mode = "",
@@ -199,6 +201,24 @@ public static class EvidenceReport
                 string m = mode.ToLowerInvariant();
                 if (m is not ("lyrics" or "queue" or "off")) return false;
                 verb = new DiagVerb(DiagCommand.Rail, Mode: m);
+                return true;
+            }
+            case "theme":
+            {
+                string m = mode.ToLowerInvariant();
+                if (m is not ("classic" or "winui" or "zune")) return false;
+                verb = new DiagVerb(DiagCommand.Theme, Mode: m);
+                return true;
+            }
+            case "here":
+                verb = new DiagVerb(DiagCommand.Here);   // pull playback to this device (Connect takeover)
+                return true;
+            case "mini":
+            {
+                int o = Flag(open);
+                if (face.Length > 0 && !int.TryParse(face, NumberStyles.None, CultureInfo.InvariantCulture, out _)) return false;
+                if (o < 0 && face.Length == 0) return false;   // a mini verb that changes nothing
+                verb = new DiagVerb(DiagCommand.Mini, On: o, Face: face);
                 return true;
             }
             default:
@@ -386,16 +406,27 @@ public static class EvidenceReport
         1 => "kind", 2 => "origin", 3 => "phase", 4 => "identity", 5 => "residual", 6 => "extent", _ => "-",
     };
 
+    static string More(int node, uint gen, byte bits, Func<int, uint, string> nodeName)
+        => node > 0 ? nodeName(node, gen) + "(0x" + bits.ToString("x", Inv) + ")" : "-";
+
     /// <summary>walks.tsv: the walk ledger tail (every slice re-record and why), oldest first.</summary>
     public static string WalksTsv(ReadOnlySpan<WalkEntry> walks, Func<int, uint, string> nodeName)
     {
         var sb = new StringBuilder(64 + walks.Length * 72);
-        sb.Append("frame\tnode\tnodeKey\trole\twhy\tdetail\tbytes\n");
+        sb.Append("frame\tnode\tnodeKey\trole\twhy\tdetail\tbytes\tculprit\tculpritKey\tculpritBits\tculpritCount\tmore\n");
         foreach (ref readonly WalkEntry w in walks)
             sb.Append(I(w.Frame)).Append('\t').Append(I(w.NodeIndex)).Append(':').Append(I(w.Gen)).Append('\t')
               .Append(w.NodeIndex > 0 ? nodeName(w.NodeIndex, w.Gen) : "-").Append('\t')
               .Append(I(w.Role)).Append('\t').Append(((WalkWhy)w.Why).ToString()).Append('\t')
-              .Append("0x").Append(w.Detail.ToString("x", Inv)).Append('\t').Append(I(w.Bytes)).Append('\n');
+              .Append("0x").Append(w.Detail.ToString("x", Inv)).Append('\t').Append(I(w.Bytes)).Append('\t')
+              // RecordDirty: the first node down the dirty trail whose OWN bits are set (the node that dirtied the walk)
+              .Append(w.Culprit > 0 ? I(w.Culprit) + ":" + I(w.CulpritGen) : "-").Append('\t')
+              .Append(w.Culprit > 0 ? nodeName(w.Culprit, w.CulpritGen) : "-").Append('\t')
+              .Append("0x").Append(w.CulpritBits.ToString("x", Inv)).Append('\t').Append(I(w.CulpritCount)).Append('\t')
+              // the next three self-dirty nodes of the trail: key(bits) each
+              .Append(More(w.Culprit2, w.Culprit2Gen, w.Culprit2Bits, nodeName)).Append(' ')
+              .Append(More(w.Culprit3, w.Culprit3Gen, w.Culprit3Bits, nodeName)).Append(' ')
+              .Append(More(w.Culprit4, w.Culprit4Gen, w.Culprit4Bits, nodeName)).Append('\n');
         return sb.ToString();
     }
 

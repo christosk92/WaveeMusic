@@ -466,7 +466,28 @@
     },
     "lyrics": {
       "title": "Songtekst",
-      "subtitle": "Het leesoppervlak voor gesynchroniseerde songteksten"
+      "subtitle": "Het leesoppervlak voor gesynchroniseerde songteksten",
+      "ai": {
+        "lang": {
+          "en": "Engels",
+          "es": "Spaans",
+          "nl": "Nederlands",
+          "ko": "Koreaans",
+          "ja": "Japans"
+        },
+        "toast": {
+          "languageFailed": "Kan {language} niet downloaden voor AI-songteksten. {reason}"
+        },
+        "langError": {
+          "title": "Kan {language} niet downloaden",
+          "notFound": "Het staat nog niet op de downloadserver. Probeer het later opnieuw.",
+          "offline": "Je bent offline. Maak verbinding en probeer het opnieuw.",
+          "network": "De verbinding viel weg. Wavee heeft bewaard wat al was gedownload.",
+          "hash": "Een bestand kwam niet door de controle en is verwijderd. Probeer het opnieuw.",
+          "diskFull": "Er is niet genoeg vrije ruimte op deze pc.",
+          "unknown": "Er ging iets mis. Probeer het opnieuw."
+        }
+      }
     },
     "nowPlaying": {
       "title": "Nu speelt",
@@ -760,7 +781,7 @@
     "dockInRail": "Vastzetten in zijbalk",
     "video": "Video",
     "videoMiniPlayer": "Afspelen in minispeler",
-    "videoFullScreen": "Volledig scherm",
+    "videoFullScreen": "Video op volledig scherm",
     "videoExitFullScreen": "Volledig scherm afsluiten",
     "videoHeight": "Videohoogte {height}",
     "fullscreen": "Volledig scherm",
@@ -948,9 +969,21 @@
       "lyrics": "Songtekst",
       "visualizer": "Visualisatie",
       "queue": "Hierna",
-      "artist": "Artiest"
+      "artist": "Artiest",
+      "video": "Video",
+      "overview": "Overzicht"
     },
     "exit": "Volledig scherm afsluiten",
+    "theatreMode": "Theatermodus",
+    "fillScreen": "Scherm vullen",
+    "audioTag": "Audio",
+    "endCard": {
+      "upNextIn": "Hierna over {seconds}",
+      "from": "Uit {context}",
+      "playNow": "Nu afspelen",
+      "cancel": "Annuleren",
+      "then": "Daarna"
+    },
     "gallery": "Visualisatiegalerij en instellingen",
     "galleryTitle": "Visualisatie",
     "closePanel": "Paneel sluiten",
@@ -961,6 +994,8 @@
     "moments": "Veranderen met de muziek",
     "syncOffset": "Synchronisatie-offset",
     "upNext": "Hierna",
+    "upNextHide": "Hierna verbergen",
+    "upNextShow": "Hierna tonen",
     "nextTrack": "Volgende",
     "nextFrom": "Hierna uit {context}",
     "playingFrom": "Afspelen uit {kind}",

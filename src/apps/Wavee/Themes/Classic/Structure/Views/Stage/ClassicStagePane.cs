@@ -10,9 +10,12 @@
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee.Themes.Classic;
 
@@ -31,6 +34,7 @@ internal static class ClassicStagePane
     {
         var sc = props.Stage;
         var L = sc.Layout.Value;
+        if (props.Theatre) return Theatre(props, L);
         var k = sc.Look.Value;
         var pane = L.PaneRect(in k);
         return new BoxEl
@@ -41,6 +45,41 @@ internal static class ClassicStagePane
             Children = [props.Panes(s_frame, s_empty)],
         };
     }
+
+    /// <summary>Video mode's Theatre panel beside the picture as an OPEN LIST (the board "B · Open list"): no card (no fill, stroke, corners or
+    /// padding box), the list standing on the page so the page's colour shows behind it, its header row on the picture's top edge and its foot
+    /// running to the stage's foot (the Up next list fades into the page there). Shown for as long as the root keeps it mounted (its slide in and
+    /// out is the root's); a tier crossing moves it with the pane region's move. Up next draws its own header (the count, Autoplay); the Lyrics
+    /// panel takes the same header row here, so switching the panel swaps no frame.</summary>
+    static Element Theatre(StagePaneProps props, Stage.Layout L)
+    {
+        var pane = ClassicStageTheatreGeometry.Of(L).Pane;
+        var st = props.Stage;
+        return new BoxEl
+        {
+            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, Margin = new Edges4(pane.X, pane.Y, 0f, 0f),
+            Direction = 1, ClipToBounds = true, Layout = s_move,
+            // the frame is called as the KeepAlive builds a panel's body, for the panel shown now: the Lyrics body is headed here
+            Children = [props.Panes(body => st.TheatrePane.Peek() == Stage.PaneKind.Lyrics ? Frame(LyricsHeaded(body)) : Frame(body), s_empty)],
+        };
+    }
+
+    /// <summary>The Theatre Lyrics panel: the open list's header row ("Lyrics", BodyStrong) over the lyrics.</summary>
+    static Element LyricsHeaded(Element body) => new BoxEl
+    {
+        Grow = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
+        Children =
+        [
+            new BoxEl
+            {
+                Height = ClassicStageTheatreGeometry.HeaderH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Padding = new Edges4(ClassicStageTheatreGeometry.ListPad, 0f, ClassicStageTheatreGeometry.ListPad, 0f),
+                Margin = new Edges4(0f, 0f, 0f, ClassicStageTheatreGeometry.HeaderGap),
+                Children = [Ui.BodyStrong(Loc.Get(Strings.Stage.Mode.Lyrics)) with { Color = Ink.Ink, MaxLines = 1, Wrap = TextWrap.NoWrap }],
+            },
+            new BoxEl { Grow = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f, Children = [body] },
+        ],
+    };
 
     /// <summary>The frame a pane's body enters in: it rises and fades in, and fades out in place.</summary>
     static Element Frame(Element body) => new BoxEl

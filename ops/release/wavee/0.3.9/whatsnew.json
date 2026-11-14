@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.9",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Music videos open full screen in every theme, a mini player that stays on top, and AI word timing for Japanese lyrics.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "video-fullscreen",
+      "title": "Full screen opens on the music video",
+      "body": "With a video on, full screen now opens on the picture, edge to edge, in every theme, and the video glides there from where it was docked. The controls fade after three seconds and come back when you move. Theatre mode slides the artist, the lyrics or Up next in beside the picture, and a song without a video gets an Overview in its own colours.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "motion",
+        "src": "media/video-fullscreen.webp",
+        "poster": "media/video-fullscreen.jpg",
+        "alt": "The docked music video gliding into full screen, then Theatre mode with Up next beside the picture, then back to the home page",
+        "width": 1440,
+        "height": 810
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

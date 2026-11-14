@@ -204,8 +204,13 @@ public static partial class Visualizer
             core.Bind(ctx, hooks, Context.Runtime is { } rt ? (Action<Action>)rt.Batch : null);
             bool playing = Playback.IsPlaying.Value;
             bool occluded = hooks.WindowOccluded?.Value ?? false;
-            bool run = Demand.Ticks(Shell.Ui.ImmersiveLyrics.Value, playing, core._settled.Value, occluded, Design.Reduced);
+            bool stageUp = Shell.Ui.ImmersiveLyrics.Value, reduced = Design.Reduced, settled = core._settled.Value;
+            // nothing it drives per frame is on screen while the picture covers the stage: it runs there only to land a fade
+            bool shown = Demand.Shown(ctx.Mode.Value, ctx.AudioFace.Value);
+            bool run = Demand.Ticks(stageUp, playing, shown, settled, occluded, reduced);
             core.Run = run;
+            core.WouldRun = Demand.Ticks(stageUp, playing, shown: true, settled, occluded, reduced);
+            core.Shown = shown;
             UseEffect(core._lease);
             UseEffect(core._onPosition);
             UseEffect(core._demandEdges);
@@ -234,10 +239,17 @@ public static partial class Visualizer
     /// per-frame sim if avoidable); <see cref="Poster"/>: a FROZEN tile bound to the poster slab — mount no sim, no ticker.
     /// The SAFE rect (stage coordinates, <c>Stage.Layout.FaceSafe</c>) is where a stage face centres its subject: clear of
     /// the now-playing card, the caption and the transport; 0/0/0/0 (a preview) means the whole box. <see cref="Ambient"/>: the
-    /// face runs BEHIND a layout that owns the cover and titles, so it drops its own now-playing parts (<see cref="Catalog.HasAmbient"/>).</summary>
+    /// face runs BEHIND a layout that owns the cover and titles, so it drops its own now-playing parts (<see cref="Catalog.HasAmbient"/>).
+    /// The SIDE rect (<c>SideLeft..SideBottom</c>, stage coordinates; 0/0/0/0 = none) is a second free region a structure publishes where a part
+    /// it draws over the face leaves room BESIDE it rather than above it (Zune's Card arrangement: the column right of the now-playing card): a
+    /// face that lays out words (Verse) may stand there when the safe rect above the part cannot hold them. Appended (contract 1.103).</summary>
     public readonly record struct FaceSpec(float W, float H, bool Preview, string? CoverUrl,
-        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false)
+        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false,
+        float SideLeft = 0f, float SideTop = 0f, float SideRight = 0f, float SideBottom = 0f)
     {
+        /// <summary>The structure published a side region (<see cref="SideLeft"/>..<see cref="SideBottom"/>).</summary>
+        public bool HasSide => SideRight > SideLeft && SideBottom > SideTop;
+
         /// <summary>Where a face's square subject of side <paramref name="size"/> sits (audit B3, V2): no larger than the SAFE rect, centred
         /// on it and lifted <paramref name="lift"/> of its height above that centre, then held inside it. Without a safe rect (a preview) the
         /// rect is the face's whole box, so the subject sits where the face has always put it.</summary>
@@ -358,10 +370,8 @@ public static partial class Visualizer
             };
         }
 
-        /// <summary>The four blobs' roles: the deep tone top-left, then B, A and C — the cover's own colours, no invented hue.</summary>
-        static ColorF TintOf(in Palette pal, int i) => (i & 3) switch { 0 => pal.Deep, 1 => pal.B, 2 => pal.A, _ => pal.C };
-        /// <summary>The paint colours are brighter than the deep tone: a backdrop, not a face, so they sit a step back.</summary>
-        static float AlphaOf(int i) => (i & 3) == 0 ? 1f : 0.82f;
+        static ColorF TintOf(in Palette pal, int i) => Field.BlobTint(in pal, i);
+        static float AlphaOf(int i) => Field.BlobAlpha(i);
     }
 
     /// <summary>The stage's always-on backdrop layer (Stage.UI.cs Backdrop): four drifting blobs in the palette's roles,

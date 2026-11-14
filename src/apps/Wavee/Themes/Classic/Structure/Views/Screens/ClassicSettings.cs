@@ -343,12 +343,25 @@ internal static partial class ClassicSettings
     static Element Item(string label, string? sub, Element? control = null,
                         SettingsCard.ContentAlignment align = SettingsCard.ContentAlignment.Right,
                         bool isEnabled = true, bool isClickEnabled = false, Action? onClick = null, string? icon = null)
-        => SettingsExpander.Item(label, sub, control, Aligned(align, control), isEnabled, isClickEnabled, onClick, icon);
+        => SettingsExpander.Item(label, sub, control, Aligned(align, control), isEnabled, isClickEnabled, onClick, icon, InlineItemStyle(control));
 
     /// <summary>A toggle's row at a tier that stacks the other controls keeps the board's label | switch row: the card's own wrap thresholds (it moves a control under
-    /// its label when it measures narrower than 476) are switched off for it. Null elsewhere: the stock card.</summary>
+    /// its label when it measures narrower than 476) are switched off for it, and its control column is the switch's own cell instead of the stock 120 (which left
+    /// 72 DIP empty beside a 48 switch while the text wrapped at 80). Null elsewhere: the stock card.</summary>
     static SettingsCard.Style? InlineStyle(Element? control)
-        => s_layout.StacksControls && IsToggle(control) ? SettingsCard.DefaultStyle with { WrapThreshold = 0f, WrapNoIconThreshold = 0f } : null;
+        => s_layout.StacksControls && IsToggle(control)
+            ? SettingsCard.DefaultStyle with { WrapThreshold = 0f, WrapNoIconThreshold = 0f, ContentMinWidth = s_layout.ToggleMinWidth }
+            : null;
+
+    /// <summary>The expander item's twin of <see cref="InlineStyle"/>: an item never wraps, so only its control column changes, to the switch's own cell, where
+    /// the tier stacks the other controls. Null elsewhere: the stock item.</summary>
+    static SettingsExpander.Style? InlineItemStyle(Element? control)
+    {
+        if (!(s_layout.StacksControls && IsToggle(control))) return null;
+        var s = SettingsExpander.DefaultStyle;
+        float w = s_layout.ToggleMinWidth;
+        return s with { ItemCardStyle = s.ItemCardStyle with { ContentMinWidth = w }, ClickableItemCardStyle = s.ClickableItemCardStyle with { ContentMinWidth = w } };
+    }
 
     /// <summary>The alignment a row's control gets in this tier: where the tier stacks its controls (Compact) a control sits UNDER its label, full width, instead of
     /// squeezing beside it — except a toggle, which keeps the label | state | switch row of the board. Asked for explicitly, not left to the card's own measured

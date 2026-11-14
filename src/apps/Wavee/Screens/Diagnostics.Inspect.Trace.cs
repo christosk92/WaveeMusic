@@ -338,6 +338,16 @@ public static partial class Diagnostics
                         bool parts = clip && !Empty(p.Vis) && !Empty(cur.Vis);
                         RectF a = parts ? p.Vis : p.Pres, b = parts ? cur.Vis : cur.Pres;
                         float dx = b.X - a.X, dy = b.Y - a.Y, dw = b.W - a.W, dh = b.H - a.H;
+                        // A part that stands still while a clip's edge covers the last of it (a card's sliver under a page whose foot rises) or
+                        // uncovers its first sliver: what was drawn of it changed by that sliver, though its rect did not. Counted, so the frames a
+                        // moving edge spreads it over stay one run (the sliver's frame carried only its share), never one frame of an edge's glide.
+                        if (clip && Empty(p.Vis) != Empty(cur.Vis) && Same(p.Pres, cur.Pres))
+                        {
+                            RectF sliver = Empty(p.Vis) ? cur.Vis : p.Vis;
+                            float lost = MathF.Min(sliver.W, sliver.H), sign = Empty(p.Vis) ? 1f : -1f;
+                            if (sliver.W <= sliver.H) { dx = 0f; dy = 0f; dw = sign * lost; dh = 0f; }
+                            else { dx = 0f; dy = 0f; dw = 0f; dh = sign * lost; }
+                        }
                         float mag = MathF.Max(MathF.Max(MathF.Abs(dx), MathF.Abs(dy)), MathF.Max(MathF.Abs(dw), MathF.Abs(dh)));
                         float lay = MathF.Max(MathF.Max(MathF.Abs(cur.Laid.X - p.Laid.X), MathF.Abs(cur.Laid.Y - p.Laid.Y)),
                                               MathF.Max(MathF.Abs(cur.Laid.W - p.Laid.W), MathF.Abs(cur.Laid.H - p.Laid.H)));
@@ -361,6 +371,10 @@ public static partial class Diagnostics
 
         /// <summary>Nothing of the rect is drawn.</summary>
         static bool Empty(RectF r) => r.W <= 0f || r.H <= 0f;
+
+        /// <summary>The same rect, to half a DIP on every edge.</summary>
+        static bool Same(RectF a, RectF b)
+            => MathF.Abs(a.X - b.X) < 0.5f && MathF.Abs(a.Y - b.Y) < 0.5f && MathF.Abs(a.Right - b.Right) < 0.5f && MathF.Abs(a.Bottom - b.Bottom) < 0.5f;
 
         /// <summary>Did the drawn part of a rect change (by half a DIP or more on any edge)? Two empty parts (nothing of it drawn either frame) did not.</summary>
         static bool VisibleChange(RectF a, RectF b)

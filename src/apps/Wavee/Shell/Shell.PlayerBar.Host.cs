@@ -62,9 +62,10 @@ public static partial class Shell
         {
             Host = Instance,
             Verbs = PlayerVerbs.Default,
-            TitleText = static () => BarTitleText(),
-            TitleInk = static () => PlayerBarRules.InkOf(BarStateNow()),
-            TitleHasRoute = static () => !BarTitleRoute().IsNone,
+            // the bound title channels hold under the full-screen stage (HeldUnderStage), as the render does (Use)
+            TitleText = HeldUnderStage(static () => BarTitleText()),
+            TitleInk = HeldUnderStage(static () => PlayerBarRules.InkOf(BarStateNow())),
+            TitleHasRoute = HeldUnderStage(static () => !BarTitleRoute().IsNone),
             DragPayload = static () => BarDragPayload(),
             DeviceIsRemote = static () =>
             {
@@ -96,19 +97,46 @@ public static partial class Shell
             ArtMorphKey = Stage.Entry.MorphKey,
             VolumeText = PlayerBarRules.VolumePercent,
             RateText = EpisodeRateText,
-            SeekBar = static () => SeekBar(),
-            TimeText = static remaining => TimeText(remaining),
-            CreditsStamp = static () => BarCreditsStamp(),
+            // the bar is the page's: under the full-screen stage it holds its last state and does no work (PageShown)
+            SeekBar = static () => SeekBar(reveal: PageShown),
+            TimeText = static remaining => TimeText(remaining, reveal: PageShown),
+            // the credits line's stamp holds under the full-screen stage too (a track change behind it re-renders no credits row)
+            CreditsStamp = HeldUnderStage(static () => BarCreditsStamp()),
             Credits = static () => BarCredits(),
             OverflowRow = OverflowItem,
             VideoPlacementMenu = static () => Video.PlacementMenu(includeFullscreen: true),
             ProgressLine = static () => ProgressLine(),
             OpenNowPlaying = static () => PanelHost.Shared.SetMode(RailMode.NowPlaying),
+            OpenMiniPlayer = static () => MiniPlayer.Toggle("bar"),
+            ToggleNowPlaying = static () => PlayerVerbs.Default.OpenPanel(RailMode.NowPlaying),
         };
+
+        /// <summary>The view the last render drew: what the bar answers while the full-screen stage covers it (see <see cref="Use"/>).</summary>
+        PlayerBarView? _held;
+
+        /// <summary><paramref name="read"/>, held under the full-screen stage: while the stage covers the page it answers what it answered last and
+        /// subscribes to nothing but the cover (<see cref="PageShown"/>), so a bound channel of the bar does no work behind the stage; the close re-runs it.</summary>
+        static Func<T> HeldUnderStage<T>(Func<T> read)
+        {
+            T held = default!;
+            bool has = false;
+            return () =>
+            {
+                if (has && !PageShown.Value) return held;
+                held = read();
+                has = true;
+                return held;
+            };
+        }
 
         /// <inheritdoc />
         public PlayerBarView Use(RenderContext hooks)
         {
+            // UNDER THE STAGE: the bar is the page's, and the full-screen stage covers it. While it does, the bar answers the view it drew last and
+            // reads nothing but the cover, so a track change, a load or a video placement behind the stage re-renders no bar; the stage's close
+            // re-renders it on the close's first frame (the hooks this skips keep their state: they are keyed by call site).
+            if (_held is { } held && !PageShown.Value) return held;
+
             // ── 1. the level machine (was PlayerBarRoot) ──
             // The window width walks the structure's level sub-ladder with its hold (the RAW level, kept apart so the hold never sees a
             // clamp), and the committed WINDOW TIER clamps it to the levels the tier may use (the policy's `Windows`, TC2): a level that
@@ -247,9 +275,8 @@ public static partial class Shell
 
             var slots = PlayerBarRules.RightSlots(in L);
             var lit = RightSlot.None;
-            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            foreach (var slot in RightSlotOrder.All)
             {
-                var slot = (RightSlot)bit;
                 if ((slots & slot) != 0 && PlayerBarRules.SlotFaceVisible(slot, facts.State)) lit |= slot;
             }
             var widths = L;   // a copy the width function closes over (an `in` parameter cannot be captured)
@@ -263,7 +290,7 @@ public static partial class Shell
             // The podcast step buttons' enablement is read only for an episode that owns the transport (the read subscribes).
             bool seekStepEnabled = isEpisode && ownsTransport && PlaybackScrubSource.Instance.Gate(track: true).Enabled;
 
-            return new PlayerBarView
+            return _held = new PlayerBarView
             {
                 Metrics = new PlayerBarMetrics
                 {
@@ -271,7 +298,7 @@ public static partial class Shell
                     LeftW = L.LeftW, ArtSize = L.ArtSize, RowGap = L.RowGap, RowPad = L.RowPad, ClusterGap = L.ClusterGap,
                     LeftGap = L.LeftGap, SeekGap = L.SeekGap, RightGap = L.RightGap, TopEdgeWidth = L.TopEdgeWidth,
                     Height = policy.Height,
-                    VolumeSliderW = PlayerBarLayout.VolumeSliderW, SplitChevronW = PlayerBarLayout.SplitChevronW,
+                    VolumeSliderW = PlayerBarLayout.VolumeSliderW, SplitChevronW = PlayerBarLayout.SplitChevronW, ViewLeadW = PlayerBarLayout.ViewLeadW,
                     EpisodeSpeedButtonW = EpisodeSpeedButtonWidth, MinButtonBox = PlayerBarLayout.MinButtonBox,
                 },
                 Episode = isEpisode,
@@ -314,6 +341,8 @@ public static partial class Shell
                 VideoLive = videoLive,
                 LyricsOpen = railOpen && railMode == RailMode.Lyrics,
                 QueueOpen = railOpen && railMode == RailMode.Queue || PanelHost.Shared.SecondOpen(),
+                NowPlayingOpen = railOpen && railMode == RailMode.NowPlaying,
+                ViewMenu = PlayerBarRules.ViewMenu,
             };
         }
 

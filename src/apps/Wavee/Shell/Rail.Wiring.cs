@@ -59,7 +59,9 @@ internal static class RailWiring
         string stagePlayable = Shell.Ui.ActiveStagePlayable.Value;
         bool stageHosts = stagePlayable.Length > 0
             && Video.DockedHosting.HostFor(resolved, stagePlayable, Playback.CurrentId.Value.Text) == Video.DockedHost.PageStage;
-        bool docked = resolved == Video.SurfacePlacement.Docked;
+        // Still docked for the rail while the picture glides out of the card to the mini player (Video.DockHeld): the rail keeps its body
+        // as it was until the picture has landed, so nothing in it moves up into the card's place.
+        bool docked = resolved == Video.SurfacePlacement.Docked || Video.DockHeld();
         var body = ModeOf(Rail.VideoCoupling.BodyModeFor(panel.Mode, stageHosts));
 
         return new PanelView
@@ -146,7 +148,7 @@ internal static class RailWiring
             _ = Entities.Current.Edges.Queue.Changed.Value;
         },
         DemandNowPlaying = static (trackSlot, artistSlot) => Shell.PanelHost.Shared.DemandNowPlaying(trackSlot, artistSlot),
-        HasNextUp = static () => Shell.NextUpWindow.Any(),
+        HasNextUp = static () => Rail.HasNextUp(),
         NextUp = new NextUpProps { Read = static () => Rail.NextUpRows() },
         LyricsPeek = static () => Lyrics.NpvPeek(),
         ResolveString = static id => Entities.Strings.Resolve(id),
@@ -160,6 +162,8 @@ internal static class RailWiring
     /// expand button shows in both arms (a track with no lyrics still opens a full stage).</summary>
     static LyricsHeaderFacts ReadLyricsHeader()
     {
+        // the rail's: under the full-screen stage it holds what it read last (Shell.PageShown, as the rail's reads do)
+        if (!Shell.PageShown.Value && s_heldLyricsHeader is { } held) return held;
         int available = Prefs.Lyrics.Available.Value;
         int secondary = Prefs.Lyrics.SecondaryLine();
         string title = Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.Lyrics);
@@ -173,8 +177,10 @@ internal static class RailWiring
         string trackTitle = track.IsValid ? track.Title : "";
         _ = Lyrics.Store.Changed.Value;
         string syncLine = SyncLineOf(track.IsValid ? Lyrics.Store.Doc(track) : null);
-        return new LyricsHeaderFacts(title, second, secondActive, secondTip, expandTip, trackTitle, syncLine);
+        return (s_heldLyricsHeader = new LyricsHeaderFacts(title, second, secondActive, secondTip, expandTip, trackTitle, syncLine)).Value;
     }
+
+    static LyricsHeaderFacts? s_heldLyricsHeader;
 
     /// <summary>How a document is timed, in the header's words ("" without one).</summary>
     internal static string SyncLineOf(Lyrics.Doc? doc)
@@ -302,8 +308,10 @@ internal static class RailWiring
         ToggleMute = static () => Playback.ToggleMute(),
         SetVolume = static v => Playback.SetVolume(v),
         MoreMenu = static () => OnMedia.MoreMenu(),
-        SeekBar = static (chromeFeed, reveal) => Shell.SeekBar(chromeFeed, reveal: reveal),
-        TimeText = static (remaining, ink, reveal) => Shell.TimeText(remaining, ink, reveal),
+        // the docked strip's own reveal, and the page's: the stage covers the rail (Shell.PageShown)
+        SeekBar = static (chromeFeed, reveal) => Shell.SeekBar(chromeFeed, reveal: Shell.PageShownAnd(reveal)),
+        TimeText = static (remaining, ink, reveal) => Shell.TimeText(remaining, ink, Shell.PageShownAnd(reveal)),
+        ElapsedAlone = static (ink, reveal) => Shell.TimeText(false, ink, Shell.PageShownAnd(reveal), alone: true),
         FadeChrome = static (ctx, node, show) => OnMedia.FadeChrome(ctx, node, show),
     };
 
@@ -316,8 +324,8 @@ internal static class RailWiring
     {
         Facts = ReadSheetTransport,
         Verbs = PlayerVerbs.Default,
-        SeekBar = static () => Shell.SeekBar(),
-        TimeText = static remaining => Shell.TimeText(remaining),
+        SeekBar = static () => Shell.SeekBar(reveal: Shell.PageShown),
+        TimeText = static remaining => Shell.TimeText(remaining, reveal: Shell.PageShown),
         Source = ReadSheetSource,
         Device = ReadSheetDevice,
         ToggleDevicePicker = Shell.BarToggleDevicePicker,

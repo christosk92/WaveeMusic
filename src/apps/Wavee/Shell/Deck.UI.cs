@@ -61,6 +61,21 @@ public static partial class Deck
         return Embed.Comp(new HostSide(side), () => new Host { Style = style }) with { Key = "deck:" + style.Slug };
     }
 
+    /// <summary>One style's deck DRAWN BY ITS CALLER in a <paramref name="width"/> × <paramref name="height"/> box: the same host, model, clock
+    /// and audio lease (the analyser bands reach <paramref name="paint"/> through the slab), another picture (the mini player's per-theme
+    /// visualizer, #197). The painter is re-pushed with the box.</summary>
+    internal static Element Painted(int styleId, float width, float height, Func<Slab, Element> paint)
+    {
+        var style = Rail.PlayerCatalog.ById(styleId);
+        return Embed.Comp(new HostSide(width, height, paint), () => new Host { Style = style }) with { Key = "deck-painted:" + style.Slug };
+    }
+
+    /// <summary>Whether the surface a deck is mounted on can be seen: the gate its clock, its loops and its audio lease run on. Unset
+    /// (null), a deck answers to the right panel (<c>Shell.Ui.RailOpen</c>), where the now-playing stage mounts it; a surface of
+    /// its own (the mini player's window) provides its own signal, so a deck there runs while the panel is closed or the main
+    /// window is hidden, and stops when the mini player is.</summary>
+    public static readonly Context<IReadSignal<bool>?> SurfaceOpen = new(null);
+
     // ══ 2. THE SLAB ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The ONE channel between the physics and the pixels: a fixed slab the faces bind at build and the clock
@@ -101,7 +116,8 @@ public static partial class Deck
     // ══ 3. THE HOST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The deck's edge, re-pushed by the stage on a column quantum (the deck keeps its node, its model and its clock).</summary>
-    sealed record HostSide(float Side);
+    /// <summary>A painted deck (<see cref="Painted"/>) adds its box height and its painter.</summary>
+    sealed record HostSide(float Side, float Height = 0f, Func<Slab, Element>? Paint = null);
 
     /// <summary>The square that IS a deck. Re-renders on the prefs epoch (a finish pick restyles the face IN PLACE) and
     /// never on the transport. The model is created from the CURRENT transport (<see cref="Seed"/>), so a deck mounted
@@ -165,7 +181,8 @@ public static partial class Deck
         public override Element Render()
         {
             _ = Rail.PlayerPrefs.Epoch.Value;
-            Side = UseProps<HostSide>().Side;
+            var hs = UseProps<HostSide>();
+            Side = hs.Side;
             float side = SideDip;
             if (!_built)
             {
@@ -175,6 +192,15 @@ public static partial class Deck
             }
 
             var host = this;
+            if (hs.Paint is { } paint)
+            {
+                float h = hs.Height > 0f ? hs.Height : side;
+                return new BoxEl
+                {
+                    Width = side, Height = h, Shrink = 0f, ClipToBounds = true, IsolateLayout = true, ZStack = true, Animate = Entrance,
+                    Children = [paint(Sig), Embed.Comp(() => new Clock { Host = host }) with { Key = "deck-clock" }],
+                };
+            }
             return new BoxEl
             {
                 Width = side, Height = side, Shrink = 0f,
@@ -284,6 +310,8 @@ public static partial class Deck
         /// <summary>The user's band gain (<c>Visualizer.Bands.Gain(Prefs.Stage.Sensitivity(), calm: false)</c>), cached ONCE per
         /// prefs epoch by <see cref="ReadGain"/> — the tick never reads the prefs registry (O8, V-U18).</summary>
         float _gain = 1f;
+        /// <summary>The surface gate (<see cref="SurfaceOpen"/>, else the panel's), read at render and by every effect.</summary>
+        IReadSignal<bool> _open = Shell.Ui.RailOpen;
 
         public Clock()
         {
@@ -304,7 +332,8 @@ public static partial class Deck
             bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
             bool buffering = Playback.Buffering.Value || loading;
             bool settled = _settled.Value;
-            bool railOpen = Shell.Ui.RailOpen.Value;
+            _open = UseContext(SurfaceOpen) ?? Shell.Ui.RailOpen;
+            bool railOpen = _open.Value;
             bool run = ClockRules.ShouldTick(Design.Reduced, railOpen, playing, playing || loading, buffering, settled);
             _active = UseIsActive();
             UseEffect(_transport);
@@ -341,7 +370,7 @@ public static partial class Deck
             var sig = Host.Sig;
             bool seekPending = sig.SeekTargetMs.Value is not null;
             _ = sig.ScrubTargetMs.Value;                   // a drag starting on a still deck must wake it
-            bool railOpen = Shell.Ui.RailOpen.Value;
+            bool railOpen = _open.Value;
             bool settled = _settled.Value;
             bool active = _active?.Value ?? true;
             long now = FrameTime.NowMs;
@@ -441,14 +470,14 @@ public static partial class Deck
         void PublishLoops()
         {
             bool active = _active?.Value ?? true;
-            Host.Sig.LoopsRun.Value = ClockRules.LoopsMayRun(Design.Reduced, Shell.Ui.RailOpen.Value, active, Playback.IsPlaying.Value);
+            Host.Sig.LoopsRun.Value = ClockRules.LoopsMayRun(Design.Reduced, _open.Value, active, Playback.IsPlaying.Value);
         }
 
         /// <summary>The audio taps do no work until somebody holds a lease — only a visible, moving analyser deck does: the VU
         /// holds the level tier, Winamp and WMP the spectrum tier (which implies the level tap).</summary>
         Action? LeaseLevels()
         {
-            bool needs = (Host.UsesLevels || Host.UsesSpectrum) && (_active?.Value ?? true) && !Design.Reduced && Shell.Ui.RailOpen.Value
+            bool needs = (Host.UsesLevels || Host.UsesSpectrum) && (_active?.Value ?? true) && !Design.Reduced && _open.Value
                          && (Playback.IsPlaying.Value || Playback.Buffering.Value || !_settled.Value)
                          && Playback.Audio.Supported.Value && Playback.OwnerSignal.Value == Playback.Owner.Us;
             if (!needs) return null;

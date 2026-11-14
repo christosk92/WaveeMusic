@@ -85,6 +85,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNavEdit, ClassicNavEdit.Template, "classic.shell.nav-edit");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
+        ClassicMiniPlayer.Register(views);   // Player.Mini (#197)
         // Leftovers P3: the transport pieces the bar, the stage's transport card and the on-media strip share (`Views\Player\ClassicTransport.cs`).
         views.Add(ViewKeys.SeekRail, ClassicTransport.SeekRail, "classic.player.seek-rail");
         views.Add(ViewKeys.SeekChapters, ClassicTransport.SeekChapters, "classic.player.seek-chapters");
@@ -132,6 +133,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
         // P3: the stage's pane region (its rect, move, clip and the frame each pane enters in); the KeepAlive and which pane is shown stay core (`Stage.PaneHost`).
         views.Add(ViewKeys.StagePane, ClassicStagePane.Template, "classic.stage.pane");
+        // Video mode (Cinema, contract 1.95): the stage's chrome over the picture, mounted by the core above the video hole.
+        views.Add(ViewKeys.StagePictureChrome, ClassicStagePictureChrome.Template, "classic.stage.picture-chrome");
         // T7b: the lyrics reading surface (the layer stack, the overlays, the stage's reading column) and its lines style (the state line, the
         // loading bars, the unsynced block, the synced list and its rows, the podcast peek). The document, the clock, the follow, the cascade,
         // the depth-of-field ramp and the word wipe stay core (`Lyrics.ViewCore`).
@@ -143,6 +146,9 @@ public sealed class ClassicStructure : IStructureLayer
         // `Queue.StagePaneHost`).
         views.Add(ViewKeys.QueuePanel, ClassicQueue.PanelTemplate, "classic.queue.panel");
         views.Add(ViewKeys.QueueStagePane, ClassicQueue.StagePaneTemplate, "classic.queue.stage-pane");
+        // Video mode's Up next shelf over the picture (Cinema): the next tracks' 16:9 cards (contract 1.97).
+        views.Add(ViewKeys.QueueStageShelf, ClassicStageShelf.Template, "classic.queue.stage-shelf");
+        views.Add(ViewKeys.StageEndCard, ClassicStageEndCard.Template, "classic.stage.end-card");
         // T7c: the video surfaces' pictures: the docked card (and the watch page's stage frame), the in-window overlay and its chrome, the pop-out's
         // content, the fullscreen exit chrome, the poster with the join notice and the placement flyout. The media pipeline stays core.
         views.Add(ViewKeys.VideoDocked, ClassicVideoDocked.Template, "classic.video.docked");

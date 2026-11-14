@@ -68,23 +68,25 @@ internal static class ClassicStageTransport
                 Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Height = rowH,
                 Children =
                 [
-                    Heart(f.Saved, f.Like, set.Fill),
-                    ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                    Play(f.Playing, f.PrimaryEnabled, disc, set, verbs),
-                    ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-                    more,
+                    ClassicStageTopBar.Held(Heart(f.Saved, f.Like, set.Fill), overControls),
+                    ClassicStageTopBar.Held(ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)), overControls),
+                    ClassicStageTopBar.Held(Play(f.Playing, f.PrimaryEnabled, disc, set, verbs), overControls),
+                    ClassicStageTopBar.Held(ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)), overControls),
+                    ClassicStageTopBar.Held(more, overControls),
                 ],
             };
         }
         else
         {
-            var right = new List<Element>(5) { Heart(f.Saved, f.Like, set.Fill), Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph()) };
-            if (L.VolumeFits) right.Add(Embed.Comp(new VolumeRow.Props(set, tier.VolumeW, props), static () => new VolumeRow()));   // only where the cluster still fits the card
-            right.Add(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton()));
-            right.Add(more);
+            // A TIER CROSSING (Huge's wider padding and gaps) moves every control of the row: each glides to its new place on the tier's shove
+            // (a position FLIP; padding and gaps cannot ease themselves), so the saved heart and its neighbours never step
+            var right = new List<Element>(5) { Glide(Heart(f.Saved, f.Like, set.Fill)), Glide(Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph())) };
+            if (L.VolumeFits) right.Add(Glide(Embed.Comp(new VolumeRow.Props(set, tier.VolumeW, props), static () => new VolumeRow())));   // only where the cluster still fits the card
+            right.Add(Glide(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton())));
+            right.Add(Glide(more));
             row = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Height = rowH,
+                Direction = 0, AlignItems = FlexAlign.Center, Height = rowH, Layout = ClassicTierMotion.Shove,
                 Children =
                 [
                     new BoxEl
@@ -99,38 +101,50 @@ internal static class ClassicStageTransport
                     },
                     new BoxEl
                     {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.ClusterGap ?? Spacing.S, Shrink = 0f,
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.ClusterGap ?? Spacing.S, Shrink = 0f, Layout = ClassicTierMotion.Shove,
+                        OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
                         Children =
                         [
-                            ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)),
-                            ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                            Play(f.Playing, f.PrimaryEnabled, disc, set, verbs),
-                            ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-                            ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)),
+                            Glide(ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle))),
+                            Glide(ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous))),
+                            Glide(Play(f.Playing, f.PrimaryEnabled, disc, set, verbs)),
+                            Glide(ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next))),
+                            Glide(ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat))),
                         ],
                     },
-                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = tier.RightGap, Children = right.ToArray() },
+                    // the right cluster's buttons hug their own row: the column's empty lead holds nothing
+                    new BoxEl
+                    {
+                        Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                        Children = [new BoxEl { Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.RightGap, Layout = ClassicTierMotion.Shove, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = right.ToArray() }],
+                    },
                 ],
             };
         }
 
+        // the audio modes' card (Video mode's transport is the control bar over the picture, `ClassicStageVideoBar`)
         return new BoxEl
         {
             Grow = 1f, Height = L.TransportH, Direction = 1, Padding = stacked ? ClassicStageTiers.StackedTransportPadding : tier.TransportPadding, Corners = Radii.CardAll,
             Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
-            OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
+            // the chrome is held by the controls (the seek bar, the buttons), not by the card: a pointer resting on "Playing from" or the
+            // card's padding idles out like one resting on the picture
             Children =
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Layout = ClassicTierMotion.Shove,
                     // the bar's own seek; its scrub edge holds the chrome through the new onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
-                    Children = [props.TimeText(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [props.SeekBar(st.Scrubbing)] }, props.TimeText(true, Ink.InkSecondary)],
+                    // the card idles out with the chrome: its seek and times hold while it is hidden (the props' WithChrome hosts)
+                    Children = [(props.TimeTextWithChrome ?? props.TimeText)(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false), Children = [(props.SeekBarWithChrome ?? props.SeekBar)(st.Scrubbing)] }, (props.TimeTextWithChrome ?? props.TimeText)(true, Ink.InkSecondary)],
                 },
                 row,
             ],
         };
     }
+
+    /// <summary><paramref name="control"/> gliding to its new place when a tier crossing moves it (<see cref="ClassicTierMotion.Shove"/>).</summary>
+    static Element Glide(Element control) => control with { Layout = ClassicTierMotion.Shove };
 
     /// <summary>The 56-DIP filled play disc: a hand-built circular BoxEl on the surface's AccentSet (Button.Create has no circular
     /// variant, so <c>ButtonPalette.ForAccent</c> is not used — V-U46).</summary>
@@ -213,14 +227,16 @@ internal static class ClassicStageTransport
         }
     }
 
-    /// <summary>"This PC ▾" — the two-section device picker over the SAME items the player bar builds.</summary>
-    sealed class DeviceButton : Component
+    /// <summary>"This PC ▾" — the two-section device picker over the SAME items the player bar builds. Over the picture (<see cref="Props.OnPicture"/>,
+    /// the control bar `ClassicStageVideoBar`) it is the device glyph alone on the on-media ink, the same flyout.</summary>
+    internal sealed class DeviceButton : Component
     {
-        public sealed record Props(StageTransportProps T);
+        public sealed record Props(StageTransportProps T, bool OnPicture = false);
 
         public override Element Render()
         {
-            var t = UseProps<Props>().T;
+            var p = UseProps<Props>();
+            var t = p.T;
             var st = t.Stage;
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
@@ -236,6 +252,8 @@ internal static class ClassicStageTransport
                 opened.ClosedAction = () => { handle.Value = null; st.MenuOpen(false); };
                 handle.Value = opened;
             }
+            if (p.OnPicture)
+                return ToolTip.Wrap(ClassicStageVideoBar.Glyph(device.Glyph, Toggle, true, onRealized: h => anchor.Value = h) with { Key = "picture:bar:device" }, device.Name);
             return new BoxEl
             {
                 Height = ClassicStageGeometry.DeviceHeight, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = ClassicStageGeometry.DevicePadding, Corners = Radii.ControlAll,

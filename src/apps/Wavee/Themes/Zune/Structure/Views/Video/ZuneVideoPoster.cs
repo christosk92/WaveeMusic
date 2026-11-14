@@ -39,8 +39,50 @@ internal static class ZuneStageVideoPoster
         Visible = props.Shown,
         Children = props.Visual is Video.JoinVisual.Working or Video.JoinVisual.Failed or Video.JoinVisual.Remote
             ? [LivePoster.Make(props.ArtUrl), Notice(props)]
-            : [LivePoster.Make(props.ArtUrl)],
+            : props.Visual == Video.JoinVisual.ScreenBlocked
+                ? [LivePoster.Make(props.ArtUrl), ScreenNotice()]
+                : [LivePoster.Make(props.ArtUrl)],
     };
+
+    /// <summary>"this screen can't show protected video" (<see cref="Video.JoinVisual.ScreenBlocked"/>): the failure's warning glyph beside a
+    /// lowercase title, and why in a short paragraph under it (sentence case: it is prose), in on-media ink. No ring and no button: moving the
+    /// window is the way out, and the picture comes back by itself.</summary>
+    static Element ScreenNotice()
+    {
+        var stack = new BoxEl
+        {
+            Key = "join:screen", Direction = 1, AlignItems = FlexAlign.Center, Gap = VR.ScreenNoticeGap,
+            MaxWidth = VR.ScreenNoticeMaxW, MinWidth = 0f, Shrink = 1f, HitTestVisible = false,
+            Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = VR.ScreenNoticeGap, MinWidth = 0f, Shrink = 1f,
+                    Children =
+                    [
+                        new TextEl(Icons.StatusWarning) { Size = VR.NoticeGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.OnMediaPrimary },
+                        new TextEl(Loc.Get(Strings.Player.ScreenNoHdcpTitle))
+                        {
+                            Size = VR.ScreenNoticeTitle, Weight = VR.NoticeWeight, Color = Tok.OnMediaPrimary, Case = R.Case.For(LabelKind.Label),
+                            Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f,
+                        },
+                    ],
+                },
+                new TextEl(Loc.Get(Strings.Player.ScreenNoHdcpBody))
+                {
+                    Size = VR.ScreenNoticeBody, Color = Tok.OnMediaSecondary, TextAlign = TextAlign.Center,
+                    Wrap = TextWrap.Wrap, MinWidth = 0f, Shrink = 1f,
+                },
+            ],
+        };
+        return new BoxEl
+        {
+            Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Padding = Edges4.All(VR.ScreenNoticeInset), HitTestPassThrough = true,
+            Children = [stack],
+        };
+    }
 
     /// <summary>The poster's GROUND alone: dimmed artwork FILLING the video box and imposing no shape of its own. The watch page draws this
     /// byte-identical layer under its stage so the idle -> live hand-over is ONE cross-fade. A track with no art is the bare letterbox.</summary>

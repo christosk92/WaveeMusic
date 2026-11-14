@@ -45,7 +45,9 @@ public static partial class Diagnostics
             LedgerOverhead = "ledger-overhead", GpuPassOverhead = "gpu-pass-overhead", HideRestore = "hide-restore",
             SidebarDisclosure = "sidebar-disclosure", DrawerToggle = "drawer-toggle", NavGc = "nav-gc",
             PlaylistPlaying = "playlist-playing", PlaylistLyrics = "playlist-lyrics", PlaylistMinimized = "playlist-minimized",
-            MotionFlow = "motion-flow", ContextSwitch = "context-switch";
+            MotionFlow = "motion-flow", ContextSwitch = "context-switch", ArtistLyrics = "artist-lyrics", RailCanvas = "rail-canvas",
+            RailCover = "rail-cover", StageTheatre = "stage-theatre", StageCinema = "stage-cinema", StageExit = "stage-exit",
+            WhatsNewMotion = "whatsnew-motion";
 
         /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`, <see cref="GpuPassOverhead"/> only
         /// with `--bench-gpu-passes`.</summary>
@@ -61,8 +63,12 @@ public static partial class Diagnostics
     /// a playing app costs while nothing of it can present: UI wakes, UI/render cycles). <see cref="HideRestore"/> minimizes and hides the
         /// window for tens of seconds per cycle, so a default run never does it. <see cref="SidebarDisclosure"/> (the Classic sidebar's
         /// Playlists section collapsing and expanding every 0.6 s) and <see cref="DrawerToggle"/> (a playlist row's drawer opening and
-        /// closing every 0.6 s) measure the reveal motion; with `--bench-shots` they also capture every frame of two toggles as PNGs.</summary>
-        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc, PlaylistPlaying, PlaylistLyrics, PlaylistMinimized, MotionFlow, ContextSwitch];
+        /// closing every 0.6 s) measure the reveal motion; with `--bench-shots` they also capture every frame of two toggles as PNGs.
+        /// <see cref="StageTheatre"/> and <see cref="StageCinema"/> (need `--fake-video`) are the full screen on the music video: the picture
+        /// moving between Cinema and Theatre every 1.5 s, and Cinema at rest with its chrome idled out. <see cref="StageExit"/> opens and closes the
+        /// full-screen stage every 2 s with the REAL window full screen (it takes the window's monitor over), so the exit's window restore and the page
+        /// it uncovers are measured (the `[window.fullscreen]` and `[window.resize]` lines carry the window's side).</summary>
+        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc, PlaylistPlaying, PlaylistLyrics, PlaylistMinimized, MotionFlow, ContextSwitch, ArtistLyrics, RailCanvas, RailCover, StageTheatre, StageCinema, StageExit, WhatsNewMotion];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the

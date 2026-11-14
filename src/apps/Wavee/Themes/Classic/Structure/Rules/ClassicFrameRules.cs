@@ -46,6 +46,15 @@ internal static class ClassicFrameRules
         TransitionDynamics.Tween(ClassicPanelLayout.SlideMs, ClassicPanelLayout.SlideEasing), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading,
         Axes: SizeAxes.Width);
 
+    /// <summary>The DOCKED panel host's transition after a committed width change (the seam's release, the Huge floor, a policy fit): the width
+    /// eases THROUGH REAL LAYOUT on the reservation's own slide (<see cref="PanelReserveAnim"/>'s dynamics), so host, reservation and the panel's
+    /// inside agree on every frame, the right edge fixed. Under <see cref="PanelHostAnim"/>'s Reveal the inside was laid out at the final width on
+    /// the release frame and slid in under the clip: whatever sits centred in the rail stood half the change off its place, easing back. A move
+    /// (the second pane opening beside it) still FLIPs on the position channel, on <see cref="PanelHostAnim"/>'s dynamics.</summary>
+    public static readonly LayoutTransition PanelWidthAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ClassicPanelLayout.SlideMs, ClassicPanelLayout.SlideEasing), SizeMode.Reflow,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width, SuppressDescendantTransitions: true);
+
     /// <summary>The panel host's transition (TC2): a crossing that docks, floats or sheets the panel, or opens the second pane beside it,
     /// moves and resizes the host on the content card's dynamics, laid out at the final size (a clip and a translate ease).</summary>
     public static readonly LayoutTransition PanelHostAnim = new(TransitionChannels.Position | TransitionChannels.Size,

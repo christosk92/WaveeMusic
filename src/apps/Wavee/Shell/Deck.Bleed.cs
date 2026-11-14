@@ -215,7 +215,7 @@ public static partial class Deck
         }
     }
 
-    /// <summary>A slow horizontal drift for the ambient layers over the edge-to-edge canvas (Zune's giant artist name, Classic's waves): the
+    /// <summary>A slow horizontal drift for the ambient layers over the edge-to-edge canvas (Zune's giant artist name, the Classic mini player's visualizer lines): the
     /// child moves <paramref name="travel"/> DIP left over <paramref name="periodMs"/>, then back (<paramref name="pingPong"/>) or on round a
     /// seamless loop (a child that repeats every <paramref name="travel"/> DIP). The motion is one engine track per leg (render-thread motion: no
     /// UI frame and no allocation while it runs), re-armed each period while the layer is active; reduced motion holds it still.</summary>

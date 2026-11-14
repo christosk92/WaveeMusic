@@ -11,6 +11,14 @@
 //     backdrop · hero layer (Artist) · face · smoke (Card) · face scrim · spectrum · now-playing card · identity (the morphing cover
 //     and titles) · artist name · pane · caption · chrome (top bar · transport · gallery) · hairline · lyric facts · hero facts · clock
 //
+//   VIDEO MODE (Cinema, `StageRootView.ShowPicture`): the audio stack above (backdrop to hairline) gives way to the PICTURE's hollow
+//   reservation, full-bleed on the letterbox ground; the ONE video presenter follows it (it lives in the video layer: the stage wrapper's
+//   entrance may not be its ancestor). The chrome over the picture is `ClassicStagePictureChrome` (`Stage.PictureChrome`, mounted by the
+//   core above the hole) and builds its top bar with this file's builder, so both draw one top bar (its transport is the control bar over the
+//   picture, `ClassicStageVideoBar`, and its hairline sits at the picture's foot). Over an audio-only
+//   track Video mode holds and the AUDIO FACE (`ClassicStageAudioFace`: the cover and the lyrics) stands in the picture's place, an ordinary layer
+//   right after the reservation (no presenter is up, so no hole erases it).
+//
 //   ZStack placement: vertical = AlignSelf, horizontal = JustifySelf (FlexLayout.cs:1279-1286). A Flow.Show boundary and a component are
 //   transparent ANCHORS (default flex COLUMNS), so every Show's child is a full-bleed `Stage.Layer` and the placed box sits one level
 //   down; see `Stage.Layer` for why.
@@ -44,17 +52,54 @@ internal static class ClassicStageRoot
     static Element Draw(StageRootView v)
     {
         var layers = v.Layers;
-        var fade = new EnterExit(Opacity: 0f, Active: true);
         return new BoxEl
         {
             Width = v.Width, Height = v.Height, ZStack = true, ClipToBounds = true, Focusable = true,   // explicit size (V-U49); the floor is the Backdrop's
             OnRealized = v.OnRealized,
-            OnHoverMove = v.OnHoverMove,
+            OnPointerMoveWithin = v.OnHoverMove,   // a move anywhere within the stage is idle activity (over a lyric line, a pane, the chrome)
             OnPointerExit = v.OnPointerExit,
             OnPointerWheel = v.OnPointerWheel,
             OnKeyDown = v.OnKeyDown,
             OnFocusChanged = v.OnFocusChanged,
             Children =
+            [
+                // Video mode: the picture's hollow reservation (the presenter follows its painted rect) on the stage's floor, edge to edge in
+                // Cinema and in the left region in Theatre (ClassicStageTheatre); nothing else of the stage is drawn under the picture
+                Flow.Show(v.ShowPicture, Stage.Layer with
+                {
+                    Key = "stage:picture", HitTestVisible = false, HitTestPassThrough = false,
+                    Children = [Embed.Comp(new ClassicStageTheatre.PictureProps(v), static () => new ClassicStageTheatre.Picture())],
+                }),
+                // the AUDIO FACE: Video mode over an audio-only track (no presenter, no hole): the cover and the lyrics in the picture's place,
+                // fading in over the reservation and out under the picture that the next video track brings back (ClassicStageAudioFace)
+                Flow.Show(() => v.Stage.In(1) && v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
+                {
+                    Key = "stage:audioface",
+                    Enter = s_faceFade, Exit = s_faceFade, Transition = MotionTok.StandardEnter,
+                    Children = [Embed.Comp(new ClassicStageAudioFace.Props(v), static () => new ClassicStageAudioFace())],
+                }),
+                // Theatre's panel (Lyrics or Up next) beside the picture: it slides in from the right as Theatre opens and back out as it closes
+                Flow.Show(() => v.Stage.Alone(2) && v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
+                {
+                    Key = "stage:theatre",
+                    Enter = s_theatreMotion, Exit = s_theatreMotion, Transition = MotionTok.StandardEnter,
+                    Children = [layers.TheatrePane is { } theatrePane ? theatrePane() with { Key = "stage:theatre:pane" } : new BoxEl()],
+                }),
+                Flow.Show(() => !v.ShowPicture(), Stage.Layer with { Key = "stage:audio", Children = AudioStack(v) }),
+                layers.LyricFacts() with { Key = "stage:facts" },
+                Flow.Show(v.ShowHeroFacts, layers.HeroFacts() with { Key = "stage:herofacts" }),
+                layers.Clock() with { Key = "stage:clock" },
+            ],
+        };
+    }
+
+    /// <summary>The stage's layers for the audio modes (Lyrics, Visualizer, Up next, Artist), bottom-up, from the backdrop to the hairline:
+    /// everything the stage draws but the picture and the zero-size machinery.</summary>
+    static Element[] AudioStack(StageRootView v)
+    {
+        var layers = v.Layers;
+        var fade = new EnterExit(Opacity: 0f, Active: true);
+        return
             [
                 Slots.View(ViewKeys.StageBackdrop, v.Backdrop) with { Key = "stage:backdrop" },
                 // the Artist layout's photo + scrims (the backdrop is hidden under an opaque header, see Backdrop)
@@ -108,27 +153,29 @@ internal static class ClassicStageRoot
                     Children = [layers.Caption()],
                 }),
                 Chrome(v),
-                // the hairline while the chrome is hidden: BOTTOM edge (AlignSelf), full width (JustifySelf) as a direct child of
-                // the Show's layer — directly under the Show anchor its AlignSelf End read horizontally and left it 0 wide (V-U49)
-                Flow.Show(() => !v.ChromeVisible(), Stage.Layer with
+                Hairline(v),
+            ];
+    }
+
+    /// <summary>The hairline while the chrome is hidden: BOTTOM edge (AlignSelf), full width (JustifySelf) as a direct child of the Show's
+    /// layer — directly under the Show anchor its AlignSelf End read horizontally and left it 0 wide (V-U49).</summary>
+    static Element Hairline(StageRootView v)
+    {
+        var fade = new EnterExit(Opacity: 0f, Active: true);
+        return Flow.Show(() => !v.ChromeVisible(), Stage.Layer with
+        {
+            Key = "stage:hairline", HitTestVisible = false, HitTestPassThrough = false,
+            Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
+            Children =
+            [
+                new BoxEl
                 {
-                    Key = "stage:hairline", HitTestVisible = false, HitTestPassThrough = false,
-                    Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Height = Stage.Layout.HairlineH, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0, HitTestVisible = false,
-                            Children = [new BoxEl { Grow = 1f, Height = Stage.Layout.HairlineH, Fill = Prop.Bind(v.Stage.Slab.Accent), TransformOriginX = 0f, TransformOriginY = ClassicStageGeometry.HairlineOriginY,
-                                                    Transform = Prop.Of(() => Affine2D.Scale(v.HairlineFraction(), 1f)) }],
-                        },
-                    ],
-                }),
-                layers.LyricFacts() with { Key = "stage:facts" },
-                Flow.Show(v.ShowHeroFacts, layers.HeroFacts() with { Key = "stage:herofacts" }),
-                layers.Clock() with { Key = "stage:clock" },
+                    Height = Stage.Layout.HairlineH, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0, HitTestVisible = false,
+                    Children = [new BoxEl { Grow = 1f, Height = Stage.Layout.HairlineH, Fill = Prop.Bind(v.Stage.Slab.Accent), TransformOriginX = 0f, TransformOriginY = ClassicStageGeometry.HairlineOriginY,
+                                            Transform = Prop.Of(() => Affine2D.Scale(v.HairlineFraction(), 1f)) }],
+                },
             ],
-        };
+        });
     }
 
     /// <summary>The chrome: the top bar, the transport card and the gallery pane, each under its OWN Flow.Show whose child is a
@@ -148,31 +195,8 @@ internal static class ClassicStageRoot
             Key = "stage:chrome",
             Children =
             [
-                // TOP bar: top edge (AlignSelf Start), full width (JustifySelf Stretch)
-                Flow.Show(v.ChromeVisible, Stage.Layer with
-                {
-                    Key = "chrome:top",
-                    Enter = new EnterExit(Dy: -ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: -ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Height = Stage.Layout.TopBarH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Direction = 0,
-                            Children = [Slots.View(ViewKeys.StageTopBar, v.TopBar)],
-                        },
-                    ],
-                }),
-                // TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own height, the window tier's), full width at the
-                // tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23), or beside a gallery that runs to the foot
-                // (C-Stage-Huge); its own component places it, so a gallery toggle re-renders the placement and not this surface. This
-                // layer carries only the Enter/Exit: "chrome:transport" sits on the placement's own layer, whose FIRST CHILD is the card
-                // (the contract every chrome key keeps: the keyed layer's first child is the bar, the card or the pane).
-                Flow.Show(v.ChromeVisible, Stage.Layer with
-                {
-                    Key = "chrome:transport:motion",
-                    Enter = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
-                    Children = [Embed.Comp(new ClassicStageTransportPlace.Props(v.Stage, v.Transport), static () => new ClassicStageTransportPlace())],
-                }),
+                TopBar(v),
+                Transport(v),
                 // the FACE CHIP under the identity card (C-Stage-Compact, Visualizer mode in the Card layout): the face's name, and the door to the gallery sheet
                 Flow.Show(() => v.ChromeVisible() && v.Stage.Layout.Value.FaceChipShown(v.Stage.Mode.Value) && Stage.LayoutRules.ShowsNowPlayingCard(v.Stage.Look.Value.Eff), Stage.Layer with
                 {
@@ -202,6 +226,35 @@ internal static class ClassicStageRoot
         };
     }
 
+    /// <summary>The TOP bar: top edge (AlignSelf Start), full width (JustifySelf Stretch), under its own Show on the idle chrome (or on
+    /// <paramref name="shown"/>: the picture chrome keeps it at rest in Theatre). The audio stack's chrome and the picture chrome's.</summary>
+    internal static Element TopBar(StageRootView v, Func<bool>? shown = null) => Flow.Show(shown ?? v.ChromeVisible, Stage.Layer with
+    {
+        Key = "chrome:top",
+        Enter = new EnterExit(Dy: -ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: -ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
+        Children =
+        [
+            new BoxEl
+            {
+                Height = Stage.Layout.TopBarH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Direction = 0,
+                Children = [Slots.View(ViewKeys.StageTopBar, v.TopBar)],
+            },
+        ],
+    });
+
+    /// <summary>The TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own height, the window tier's), full width at the
+    /// tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23), or beside a gallery that runs to the foot (C-Stage-Huge);
+    /// its own component places it, so a gallery toggle re-renders the placement and not this surface. This layer carries only the
+    /// Enter/Exit: "chrome:transport" sits on the placement's own layer, whose FIRST CHILD is the card (the contract every chrome key keeps:
+    /// the keyed layer's first child is the bar, the card or the pane). The audio stack's chrome (Video mode's transport is the control bar over the
+    /// picture, `ClassicStageVideoBar`).</summary>
+    static Element Transport(StageRootView v) => Flow.Show(v.ChromeVisible, Stage.Layer with
+    {
+        Key = "chrome:transport:motion",
+        Enter = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
+        Children = [Embed.Comp(new ClassicStageTransportPlace.Props(v.Stage, v.Transport), static () => new ClassicStageTransportPlace())],
+    });
+
     /// <summary>The gallery's slide: in from the right (or up from the foot on Portrait's sheet) and back out the same way.</summary>
     static EnterExit GalleryMotion(bool sheet) => new(Dx: sheet ? 0f : ClassicStageGeometry.GallerySlide, Dy: sheet ? ClassicStageGeometry.GallerySlide : 0f, Opacity: 0f, Active: true);
 
@@ -211,6 +264,12 @@ internal static class ClassicStageRoot
     /// <summary>The Up next column's slide: in from the right and back out the same way.</summary>
     static readonly EnterExit s_upNextMotion = new(Dx: ClassicStageGeometry.UpNextSlide, Opacity: 0f, Active: true);
 
+    /// <summary>The audio face's cross-fade (in over the reservation as an audio-only track starts, out under the picture that comes back).</summary>
+    static readonly EnterExit s_faceFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>Theatre's panel slide: in from the right beside the shrinking picture, and back out the same way as the picture fills the stage.</summary>
+    static readonly EnterExit s_theatreMotion = new(Dx: ClassicStageTheatreGeometry.PaneSlide, Opacity: 0f, Active: true);
+
     /// <summary>The Huge 4K stage's Up next column (C-Stage-Huge4K): a full-bleed layer carrying the slide, the acrylic frame placed at the
     /// allocator's rect (<c>Layout.UpNextRect</c>) as its direct ZStack child, the core's stage-queue host inside it.</summary>
     static Element UpNext(StageRootView v)
@@ -218,20 +277,19 @@ internal static class ClassicStageRoot
         var L = v.Stage.Layout.Value;
         var r = L.UpNextRect;
         var build = v.Layers.UpNext;
+        var column = new BoxEl
+        {
+            Width = r.W, Height = r.H, Direction = 1, Padding = Edges4.All(ClassicStageGeometry.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
+            Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Children = build is null ? [] : [build()],
+        };
+        // the core's drawer: its tab collapses the column off the right edge and back (Stage.UpNextDrawer)
         return Stage.Layer with
         {
             Key = "stage:upnext",
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
-            Children =
-            [
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
-                    Direction = 1, Padding = Edges4.All(ClassicStageGeometry.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
-                    Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
-                    Children = build is null ? [] : [build()],
-                },
-            ],
+            Children = [Stage.UpNextDrawer(v.Stage, r.X, r.Y, r.W, r.H, column, new BoxEl { Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke },
+                ClassicStageGeometry.GalleryYieldMs)],
         };
     }
 

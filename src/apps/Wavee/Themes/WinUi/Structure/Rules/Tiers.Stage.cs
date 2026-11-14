@@ -40,16 +40,25 @@ public static class WinUiStageTiers
         IdentityCard = true, GalleryOnDemand = true, Layouts = StageLayouts.Card,
     };
 
+    /// <summary>Video mode's Theatre panel beside the picture (the Media Player app's play-queue pane: 360 at the 1440 stage) and the lyrics' type in it,
+    /// per window tier: Small 320 at 20, Standard 360 at 22, Huge 440 at 26 (the stage's own ramp a step down, the panel's measure). A Compact window
+    /// has no Theatre (the picture keeps the whole stage). Declared before the records that read them: static initializers run in textual order.</summary>
+    public const float SmallTheatrePaneW = 320f, StandardTheatrePaneW = 360f, HugeTheatrePaneW = 440f;
+
+    public const float SmallTheatreLyricsType = 20f, StandardTheatreLyricsType = 22f, HugeTheatreLyricsType = 26f;
+
     /// <summary>Small (W-Stage-Small, W-Lyrics-Small): the 104 card at 16, the lyrics at 22; Card or Large art (W-Tiers).</summary>
     public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 104f, TransportInset: 16f, LyricsTypeMin: 22f, LyricsTypeMax: 22f)
     {
         GalleryOnDemand = true, Layouts = StageLayouts.Card | StageLayouts.LargeArt,
+        TheatrePaneW = SmallTheatrePaneW, TheatreLyricsType = SmallTheatreLyricsType,
     };
 
     /// <summary>Standard (W-Stage, W-Lyrics): the 112 card at 24, the lyrics at 28 (32 on a tall stage).</summary>
     public static StageTierMetrics StandardMetrics { get; } = new(TransportH: 112f, TransportInset: 24f, LyricsTypeMin: 28f, LyricsTypeMax: 32f)
     {
         GalleryOnDemand = true,
+        TheatrePaneW = StandardTheatrePaneW, TheatreLyricsType = StandardTheatreLyricsType,
     };
 
     /// <summary>The Up next column beside the lyrics at Huge (W-Lyrics-Huge draws 648 at 2560; 560 leaves the lyrics a reading measure beside it, the core keeps a 336 gap between them).</summary>
@@ -60,17 +69,29 @@ public static class WinUiStageTiers
     public static StageTierMetrics HugeMetrics { get; } = new(TransportH: 128f, TransportInset: 32f, LyricsTypeMin: 36f, LyricsTypeMax: 52f)
     {
         GalleryOnDemand = true, UpNextW = UpNextW,
+        TheatrePaneW = HugeTheatrePaneW, TheatreLyricsType = HugeTheatreLyricsType,
     };
 
     /// <summary>WinUI's stage policy: the core's class edges and the metrics above. One instance, so a republish is not a change. Declared after
-    /// the metrics it names: initializers run in textual order.</summary>
+    /// the metrics it names: initializers run in textual order. WinUI draws the stage's Video mode (Cinema and Theatre, `Views\Stage\WinUiStage
+    /// PictureChrome.cs`): one full screen while a video is on (F11 and "Video in fullscreen" open the stage on the picture).</summary>
     public static StagePolicy Policy { get; } = new(AspectThresholds.Default)
     {
         Metrics = StandardMetrics,
         Compact = CompactMetrics,
         Small = SmallMetrics,
         Huge = HugeMetrics,
+        VideoStage = true,
     };
+
+    /// <summary>Video mode per window tier (the stage views' record below): the Up next shelf's card width over the picture (Cinema; 0 = none, Compact),
+    /// the end card's 16:9 thumbnail and its buttons' height (40 at Compact: the target rule; WinUI's 32 buttons above), and the command bar's inset
+    /// from the picture's edges (the transport card's gutter a step in: the bar belongs to the picture). Declared before the records that read them.</summary>
+    public const float SmallShelfCardW = 176f, StandardShelfCardW = 208f, HugeShelfCardW = 256f;
+
+    public const float CompactEndThumbW = 240f, SmallEndThumbW = 288f, StandardEndThumbW = 384f, HugeEndThumbW = 480f, EndButtonH = 32f, CompactEndButtonH = 40f;
+
+    public const float CompactBarInset = 8f, SmallBarInset = 16f, StandardBarInset = 16f, HugeBarInset = 24f;   // the wordmark's own inset (the bar's left padding): one left edge
 
     // ── the stage views' record (per window tier) ────────────────────────────────────────────────────────────────────────
 
@@ -88,6 +109,7 @@ public static class WinUiStageTiers
             VolumeW = 0f, DeviceH = 40f, DevicePadX = 12f, Glyph = 18f, PlayGlyph = 24f,
             LeadArtVisualizer = 0f, LeadArtOther = 0f, ChipH = 0f, ChipPadX = 0f, StackRowH = 96f, StackFootH = 40f,
             Card = null, HeroTitles = true, HeroTitle = 0f, HeroTitleLine = 0f, HeroMeta = 0f, HeroMetaLine = 0f,
+            ShelfCardW = 0f, EndThumbW = CompactEndThumbW, EndButtonH = CompactEndButtonH, BarInset = CompactBarInset,   // no shelf: no Theatre either
         },
         // Small (W-Stage-Small, W-Lyrics-Small)
         new()
@@ -102,6 +124,7 @@ public static class WinUiStageTiers
             LeadArtVisualizer = 0f, LeadArtOther = 0f, ChipH = 0f, ChipPadX = 0f, StackRowH = 0f, StackFootH = 0f,
             Card = new WinUiStageCard(X: 16f, Y: 60f, W: 340f, Pad: 8f, Art: 96f, Gap: 12f, Eyebrow: false),
             HeroTitles = true, HeroTitle = 34f, HeroTitleLine = 40f, HeroMeta = 14f, HeroMetaLine = 20f,
+            ShelfCardW = SmallShelfCardW, EndThumbW = SmallEndThumbW, EndButtonH = EndButtonH, BarInset = SmallBarInset,
         },
         // Standard (W-Stage, W-Lyrics)
         new()
@@ -115,6 +138,7 @@ public static class WinUiStageTiers
             VolumeW = 96f, DeviceH = 32f, DevicePadX = 10f, Glyph = 16f, PlayGlyph = 20f,
             LeadArtVisualizer = 80f, LeadArtOther = 56f, ChipH = 20f, ChipPadX = 6f, StackRowH = 0f, StackFootH = 0f,
             Card = null, HeroTitles = false, HeroTitle = 0f, HeroTitleLine = 0f, HeroMeta = 0f, HeroMetaLine = 0f,
+            ShelfCardW = StandardShelfCardW, EndThumbW = StandardEndThumbW, EndButtonH = EndButtonH, BarInset = StandardBarInset,
         },
         // Huge (W-Stage-Huge, W-Lyrics-Huge, W-Stage-Huge4K: 3840 is Huge with more room)
         new()
@@ -129,6 +153,7 @@ public static class WinUiStageTiers
             LeadArtVisualizer = 0f, LeadArtOther = 0f, ChipH = 24f, ChipPadX = 8f, StackRowH = 0f, StackFootH = 0f,
             Card = new WinUiStageCard(X: 32f, Y: 72f, W: 420f, Pad: 12f, Art: 96f, Gap: 16f, Eyebrow: true),
             HeroTitles = true, HeroTitle = 40f, HeroTitleLine = 52f, HeroMeta = 20f, HeroMetaLine = 28f,
+            ShelfCardW = HugeShelfCardW, EndThumbW = HugeEndThumbW, EndButtonH = EndButtonH, BarInset = HugeBarInset,
         },
     ];
 
@@ -278,4 +303,18 @@ public sealed record WinUiStageLayout
     public required float HeroMeta { get; init; }
 
     public required float HeroMetaLine { get; init; }
+
+    // ── Video mode (Cinema and Theatre) ──
+
+    /// <summary>The Up next shelf over the picture (Cinema): one card's width (a video's 16:9 still); 0 where the tier has no shelf (Compact).</summary>
+    public required float ShelfCardW { get; init; }
+
+    /// <summary>The end card's 16:9 thumbnail (Cinema; Theatre fits it to the picture's box) and its buttons' height.</summary>
+    public required float EndThumbW { get; init; }
+
+    public required float EndButtonH { get; init; }
+
+    /// <summary>The command bar's inset from the picture's sides and foot (Cinema: the stage's; Theatre takes the smaller of this and
+    /// <c>WinUiStageVideoBarGeometry.TheatreInset</c>).</summary>
+    public required float BarInset { get; init; }
 }

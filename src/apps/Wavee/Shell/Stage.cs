@@ -19,8 +19,8 @@
 //   • `Stage.Transport` the three predicates the transport card keeps (byte-identical to the previous stage).
 //   • `Stage.Tone`      the accent cross-fade and scrim constants (alphas live here, colours in StageInk — ch 00 §4.4;
 //                       named Tone because the UI files alias `Ink = Wavee.Theming.Roles.StageInk`, V-U1).
-//   • `Stage.Entry`     who may enter (not over fullscreen video — an EMPTY stage is allowed, as the rail ⛶ does today) and
-//                       the morph key the bar art and the hero share.
+//   • `Stage.Entry`     the morph key the bar art and the hero share (an EMPTY stage is allowed, as the rail ⛶ does today; a
+//                       video full screen that is up gives way to the stage, `Stage.Open`).
 //   • `Stage.Caption`   the lyric caption's clock view (which line it hangs on, when the break dots stand in) and its slots.
 //
 // Rules: `System`-only — no Element, no signal, no entity read — so Wavee.Tests drives the real arithmetic. No
@@ -32,11 +32,15 @@ public static partial class Stage
 {
     // ── 1. the four modes ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>What the right-hand region shows. PERSISTED ints (Platform.Keys.StageMode) — append only.</summary>
-    public enum Mode : byte { Lyrics = 0, Visualizer = 1, Queue = 2, Artist = 3 }
+    /// <summary>What the right-hand region shows. PERSISTED ints (Platform.Keys.StageMode) — append only. <see cref="Video"/> is the one
+    /// mode that is never stored: the stage's first tab (<see cref="PictureTab"/>: the playing music video, or the Overview page with the audio
+    /// face in the picture's place), chosen by that tab or by opening on a video that is on (<see cref="Picture"/>), never restored from the
+    /// preference.</summary>
+    public enum Mode : byte { Lyrics = 0, Visualizer = 1, Queue = 2, Artist = 3, Video = 4 }
 
     public static class ModeRules
     {
+        /// <summary>The STORED modes (Lyrics through Artist): <see cref="Mode.Video"/> is not one.</summary>
         public const int Count = 4;
         /// <summary>A stored/hand-edited int → a real mode; anything else is Lyrics.</summary>
         public static int Coerce(int stored) => (uint)stored < (uint)Count ? stored : (int)Mode.Lyrics;
@@ -56,6 +60,44 @@ public static partial class Stage
         public const int PreviousFaceKey = 219, NextFaceKey = 221;
         /// <summary>−1 for <c>[</c>, +1 for <c>]</c>, 0 for any other key.</summary>
         public static int FaceStep(int keyCode) => keyCode == PreviousFaceKey ? -1 : keyCode == NextFaceKey ? 1 : 0;
+    }
+
+    /// <summary>Video mode's two arrangements (the board "Classic · Theatre"): CINEMA, the picture fills the stage; THEATRE, a panel (Lyrics or
+    /// Up next) slides in beside the picture, which gets smaller and is never covered. The Lyrics and Up next tabs open Theatre on their panel,
+    /// the Video tab and "Fill the screen" return to Cinema; the choice is a stored preference (<c>Prefs.Stage.Theatre</c>).</summary>
+    public static class TheatreRules
+    {
+        /// <summary>A stored or hand-edited pane int → a panel Theatre can show (Lyrics or Up next); anything else is Up next.</summary>
+        public static int CoercePane(int stored) => stored == (int)PaneKind.Lyrics ? (int)PaneKind.Lyrics : (int)PaneKind.Queue;
+
+        /// <summary>The tabs that open Theatre on their own panel instead of leaving the picture.</summary>
+        public static bool OpensTheatre(Mode mode) => mode is Mode.Lyrics or Mode.Queue;
+
+        /// <summary>The panel a tab opens.</summary>
+        public static PaneKind PaneOf(Mode mode) => mode == Mode.Lyrics ? PaneKind.Lyrics : PaneKind.Queue;
+
+        /// <summary>The tab that stands for a Theatre panel (the selector's highlight).</summary>
+        public static Mode TabOf(PaneKind pane) => pane == PaneKind.Lyrics ? Mode.Lyrics : Mode.Queue;
+
+        /// <summary>Esc steps OUT one level (the owner, 2026-11-11): in Video mode's CINEMA (the picture, or the Overview tab's audio face in its
+        /// place) it goes to Theatre for this opening (<c>StageCtx.TheatreHeld</c>: the toggle's arrangement and motion, the stored preference
+        /// untouched), where the layout has room for Theatre's panel (the toggle's own condition); in Theatre, in every other mode and where Theatre
+        /// does not fit it leaves the full screen as before.</summary>
+        public static bool EscapeStepsToTheatre(Mode mode, bool theatre, bool theatreFits)
+            => mode == Mode.Video && !theatre && theatreFits;
+    }
+
+    /// <summary>The stage's FIRST tab, the one that shows <see cref="Mode.Video"/> (contract 1.105): none where the structure draws no Video mode;
+    /// <see cref="Video"/> while the playing track's music video plays in the main window (the picture); <see cref="Overview"/> otherwise (a track
+    /// without a video, or video off): the same page, Cinema and Theatre, with the audio face (the cover, its colour field and the lyrics) in the
+    /// picture's place. The tab relabels in place when the next track brings a picture or takes it away; it never decides what the stage opens on.</summary>
+    public enum PictureTab : byte { None = 0, Video = 1, Overview = 2 }
+
+    public static class PictureTabs
+    {
+        /// <summary>The first tab for a structure that draws (<paramref name="drawn"/>) or does not draw Video mode, while the picture is offered
+        /// (<paramref name="videoOffered"/>: the playing track's video is on in the main window) or not.</summary>
+        public static PictureTab Of(bool drawn, bool videoOffered) => !drawn ? PictureTab.None : videoOffered ? PictureTab.Video : PictureTab.Overview;
     }
 
     // ── 2. the allocator ────────────────────────────────────────────────────────────────────────────────────────────
@@ -243,6 +285,10 @@ public static partial class Stage
         /// <summary>The Up next column's gap to the lyrics pane (C-Stage-Huge4K: the 1600 lyrics column stops 336 short of the column).</summary>
         public const float UpNextGap = 336f;
 
+        /// <summary>The narrowest the gap gets, and the measure the lyrics pane keeps beside the column before the gap gives way
+        /// (<see cref="LyricsPaneW"/>): about two dozen characters of the lyric type, so a line wraps at phrases, never word by word.</summary>
+        public const float UpNextGapMin = 48f, LyricsMeasureMin = 600f;
+
         /// <summary>Lyrics mode docks the Up next column beside the lyrics (C-Stage-Huge4K): the tier has one and the stage is a wide class with its pane.</summary>
         public bool UpNextShown(Mode mode) => M.UpNextW > 0f && mode == Mode.Lyrics && ShowPane && Aspect is Aspect.Desktop or Aspect.Ultrawide;
 
@@ -250,8 +296,30 @@ public static partial class Stage
         public (float X, float Y, float W, float H) UpNextRect
             => (MathF.Max(0f, W - TransportInset - M.UpNextW), GalleryTop, M.UpNextW, MathF.Max(0f, TransportTop - Pad - GalleryTop));
 
-        /// <summary>The lyrics pane's width beside the Up next column (never wider than the pane).</summary>
-        public float LyricsPaneW(Mode mode) => UpNextShown(mode) ? MathF.Max(0f, MathF.Min(PaneW, UpNextRect.X - UpNextGap - PaneX)) : PaneW;
+        // ── Video mode's Theatre (the picture with a panel beside it) ──
+
+        /// <summary>The window tier has a Theatre (<see cref="Theming.StageTierMetrics.TheatrePaneW"/>) and the stage is a wide class: the
+        /// panel docks beside the picture. Elsewhere Video mode is Cinema only and the Lyrics and Up next tabs leave the picture.</summary>
+        public bool TheatreFits => M.TheatrePaneW > 0f && Aspect is Aspect.Desktop or Aspect.Ultrawide;
+
+        /// <summary>Theatre's panel width (the window tier's).</summary>
+        public float TheatrePaneW => M.TheatrePaneW;
+
+        /// <summary>The lyrics' scale in Theatre's panel over the authored size (<see cref="LyricsTypeMin"/>); the stage's own where the tier
+        /// states none.</summary>
+        public float TheatreLyricsTypeScale => M.TheatreLyricsType > 0f ? M.TheatreLyricsType / LyricsTypeMin : LyricsTypeScale;
+
+        /// <summary>The lyrics pane's width beside the Up next column (never wider than the pane). The board's gap (<see cref="UpNextGap"/>) is
+        /// a 3840 stage's: at 1920 the same 336 DIP left the lyrics about 250 wide and they fell to one word per line. So the GAP gives way
+        /// first, down to <see cref="UpNextGapMin"/>, while the room beside the column is short of <see cref="LyricsMeasureMin"/>; a 4K stage
+        /// keeps the board's gap and column exactly.</summary>
+        public float LyricsPaneW(Mode mode)
+        {
+            if (!UpNextShown(mode)) return PaneW;
+            float room = UpNextRect.X - PaneX;
+            float gap = Math.Clamp(room - LyricsMeasureMin, UpNextGapMin, UpNextGap);
+            return MathF.Max(0f, MathF.Min(PaneW, room - gap));
+        }
 
         /// <summary>The gap between the stacked identity block (two title lines' worth, so a title change never moves them) and the bars.</summary>
         public const float ArtBarsGap = 48f;
@@ -346,15 +414,22 @@ public static partial class Stage
         /// button, and the labelled exit button's budget (glyph + "Exit full screen" in the longest shipped locale).</summary>
         public const float TopBarPadL = 16f, TopBarPadR = 8f, TopBarGap = 8f, SelectorGap = 4f;
         public const float BarButtonW = 40f, BarButtonGap = 4f, ExitLabelW = 220f;
-        /// <summary>The SelectorBar's four items, labelled or icon-only.</summary>
-        public float SelectorW => 4f * (IconOnlySelector ? SelectorIconOnlyW : SelectorItemW) + 3f * SelectorGap;
+        /// <summary>The SelectorBar's items (four; five with a music video on: Video leads), labelled or icon-only.</summary>
+        public float SelectorW(int tabs) => tabs * (IconOnlySelector ? SelectorIconOnlyW : SelectorItemW) + (tabs - 1) * SelectorGap;
         /// <summary>Each side column of the top bar: the brand and the button cluster split what the SelectorBar leaves
         /// (both Grow 1 · Basis 0), so the selector stays centred.</summary>
-        public float TopBarSideW => MathF.Max(0f, (W - TopBarPadL - TopBarPadR - SelectorW - 2f * TopBarGap) * 0.5f);
+        public float TopBarSideW(int tabs) => MathF.Max(0f, (W - TopBarPadL - TopBarPadR - SelectorW(tabs) - 2f * TopBarGap) * 0.5f);
         /// <summary>The exit button carries its label only beside a labelled selector AND when its column holds the gallery
         /// toggle plus the labelled button; otherwise it is the glyph alone with the label as its tooltip — it never
         /// truncates to "Ex…" (the icon-only classes show "⤢" alone, §3.5).</summary>
-        public bool ExitLabelShown => !IconOnlySelector && TopBarSideW >= BarButtonW + BarButtonGap + ExitLabelW;
+        public bool ExitLabelShown(int tabs) => !IconOnlySelector && TopBarSideW(tabs) >= BarButtonW + BarButtonGap + ExitLabelW;
+
+        /// <summary>Video mode's "Switch to audio" button's budget (its glyph and its label in the longest shipped locale).</summary>
+        public const float AudioLabelW = 168f;
+
+        /// <summary>Video mode's top bar holds one button, "Switch to audio" (Cinema ⇄ Theatre and Exit live in the control bar over the picture):
+        /// it carries its label where the column has room for it, else it is the glyph with the label as its tooltip (never truncated).</summary>
+        public bool VideoAudioLabelShown(int tabs) => !IconOnlySelector && TopBarSideW(tabs) >= AudioLabelW;
 
         // ── the transport card's clusters ───────────────────────────────────────────────────────────────────────────
 
@@ -572,8 +647,5 @@ public static partial class Stage
         /// <summary>The shared-element key the player bar's art and the stage hero both carry (an IMAGE node — the
         /// engine captures only image nodes, ConnectedAnimation.cs:246-250).</summary>
         public const string MorphKey = "stage:art";
-        /// <summary>Never over a fullscreen VIDEO (F11 owns that). Nothing playing is NOT a bar: the rail ⛶ opens an empty
-        /// stage today (the rail's ⛶: "a track with no lyrics still opens a full stage") and so does every door here (V-U53).</summary>
-        public static bool CanEnter(bool videoFullscreen) => !videoFullscreen;
     }
 }

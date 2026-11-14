@@ -214,7 +214,7 @@ internal static class WinUiStageTransport
     };
 
     /// <summary>Shuffle / repeat: the accent glyph while latched (WinUI's toggled AppBarButton keeps no plate).</summary>
-    static BoxEl Satellite(string glyph, Action onClick, bool enabled, bool latched, ColorF accent, float box, float glyphSize) => new()
+    internal static BoxEl Satellite(string glyph, Action onClick, bool enabled, bool latched, ColorF accent, float box, float glyphSize) => new()
     {
         Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
         Fill = ColorF.Transparent, HoverFill = enabled ? Ink.GlassHover : ColorF.Transparent, PressedFill = enabled ? Ink.GlassPressed : ColorF.Transparent, BrushTransitionMs = Design.Motion.Faster,
@@ -270,9 +270,10 @@ internal static class WinUiStageTransport
     }
 
     /// <summary>"This PC ▾" (labelled) or the device glyph (Small): the two-section device picker over the same items the player bar builds.</summary>
-    sealed class DeviceButton : Component
+    internal sealed class DeviceButton : Component
     {
-        public sealed record Props(StageTransportProps T, WinUiStageLayout Tier, bool Labelled);
+        /// <param name="Box">The glyph form's box and glyph (the command bar over the picture: its 40 commands); 0: the tier's.</param>
+        public sealed record Props(StageTransportProps T, WinUiStageLayout Tier, bool Labelled, float Box = 0f, float GlyphSize = 0f);
 
         public override Element Render()
         {
@@ -294,13 +295,14 @@ internal static class WinUiStageTransport
                 opened.ClosedAction = () => { handle.Value = null; st.MenuOpen(false); };
                 handle.Value = opened;
             }
+            float box = p.Box > 0f ? p.Box : tier.ButtonBox;
             if (!p.Labelled)
                 return ToolTip.Wrap(new BoxEl
                 {
-                    Width = tier.ButtonBox, Height = tier.ButtonBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                    Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
                     Fill = ColorF.Transparent, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
                     Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = Toggle, OnRealized = h => anchor.Value = h,
-                    Children = [new TextEl(device.Glyph) { Size = tier.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
+                    Children = [new TextEl(device.Glyph) { Size = p.GlyphSize > 0f ? p.GlyphSize : tier.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
                 }, device.Name);
             return new BoxEl
             {

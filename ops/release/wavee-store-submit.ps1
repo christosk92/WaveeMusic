@@ -33,8 +33,10 @@
 
   -DryRun stops after phase 3 and prints the exact msstore commands a real run would issue next. An API-created
   submission must NEVER be opened or edited in Partner Center: a hand-edit desyncs the API's view and the next
-  update call would clobber it. Screenshots, description and trailer stay manual (Partner Center, between
-  submissions); each automated submission updates the two packages and the en-US release notes only.
+  update call would clobber it. Each automated submission updates the two packages and the en-US release notes;
+  with -ListingDir (or -ScreenshotDir / -TrailerFile / -SuperHeroFile) it also replaces the en-US screenshots with
+  their captions, the trailer and the 16:9 super hero art, uploaded in the package's zip and asserted after the
+  update. The description stays manual (Partner Center, between submissions).
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-store-submit.ps1 -DryRun -SkipTests
@@ -97,6 +99,16 @@ param(
     # The en-US listing screenshots: a folder of NN-name.png + NN-name.caption.txt (New-StoreSet.py's output). They
     # replace every current screenshot, uploaded in the same zip as the package. Empty: the listing is untouched.
     [string]$ScreenshotDir = '',
+    # The rest of the listing refresh: the trailer (video + 1920x1080 PNG thumbnail + title, replacing the current
+    # trailer) and the 16:9 super hero art (replacing the current one; a trailer shows at the top only with one). All of
+    # it travels in the same upload zip as the package. Empty: that part of the listing is untouched.
+    [string]$TrailerFile = '',
+    [string]$TrailerThumbnail = '',
+    [string]$TrailerTitle = '',
+    [string]$SuperHeroFile = '',
+    # One folder with the whole refresh (the store kit's deliver folder): screenshots\, trailer\ (<name>.mp4,
+    # <name>-thumb.png, optional title.txt; the title defaults to "Wavee <semver>"), super-hero\. Explicit parameters win.
+    [string]$ListingDir = '',
     # Stop after the metadata phase with the draft complete but uncommitted, to be finished in Partner Center (a
     # declaration the API cannot set). The API never touches the draft after that.
     [switch]$StopBeforeCommit)
@@ -912,8 +924,22 @@ else {
 }
 
 $releaseNotes = Get-StoreReleaseNotesText -Path $listingPath
+if ($ListingDir) {
+    $ld = Resolve-WaveeStoreListingDir -Dir $ListingDir -DefaultTitle "Wavee $semver"
+    if (-not $ScreenshotDir) { $ScreenshotDir = $ld.ScreenshotDir }
+    if (-not $TrailerFile) { $TrailerFile = $ld.TrailerFile; $TrailerThumbnail = $ld.TrailerThumbnail }
+    if (-not $TrailerTitle) { $TrailerTitle = $ld.TrailerTitle }
+    if (-not $SuperHeroFile) { $SuperHeroFile = $ld.SuperHeroFile }
+}
+if ($TrailerFile -and -not $TrailerTitle) { $TrailerTitle = "Wavee $semver" }
 $shots = if ($ScreenshotDir) { @(Get-WaveeStoreShotSet -Dir $ScreenshotDir) } else { @() }
 if ($shots) { Note "$($shots.Count) screenshots from $ScreenshotDir" }
+$media = Get-WaveeStoreListingMedia -TrailerFile $TrailerFile -TrailerThumbnail $TrailerThumbnail -TrailerTitle $TrailerTitle -SuperHeroFile $SuperHeroFile
+if ($media.Trailer) { Note "trailer $($media.Trailer.FileName) ($([math]::Round((Get-Item -LiteralPath $media.Trailer.Path).Length / 1MB, 1)) MB), title '$($media.Trailer.Title)', thumbnail $($media.Trailer.Thumb.FileName)" }
+if ($media.SuperHero) { Note "16:9 super hero art $($media.SuperHero.FileName)" }
+$listingFiles = @($shots | ForEach-Object { [pscustomobject]@{ FileName = $_.FileName; Path = $_.Path } }) + @($media.Files)
+$dupes = @($listingFiles | Group-Object FileName | Where-Object Count -gt 1)
+if ($dupes) { throw "Listing files share a name in the upload zip: $(($dupes | ForEach-Object Name) -join ', ')" }
 
 function Send-StoreUploadZip {
     # Zip the files flat (by FileName) and PUT the zip to the submission's Azure blob SAS URL. The URL is a credential:
@@ -950,7 +976,8 @@ if ($DryRun) {
     Write-Host "   msstore publish `"$upload`" -id $ProductId --noCommit --uploadTimeout $UploadTimeoutSeconds -v"
     Write-Host "   msstore submission get $ProductId                     # record the draft's submissionId (via Status/Id in the JSON)"
     Write-Host "   msstore submission get $ProductId                     # redacted inventory saved as submission-before.json"
-    Write-Host "   msstore submission update $ProductId `"<full metadata with explicit package retirement and verified release notes>`""
+    if ($listingFiles) { Write-Host "   PUT <the draft's FileUploadUrl>                       # one zip: the package + $($listingFiles.Count) listing files" }
+    Write-Host "   msstore submission update $ProductId `"<full metadata with explicit package retirement and verified release notes$(if ($shots) { ', screenshots' })$(if ($media.Trailer) { ', trailer' })$(if ($media.SuperHero) { ', super hero' })>`""
     Write-Host "   msstore submission publish $ProductId                 # the point of no return"
     Write-Host "   msstore submission get $ProductId                     # then poll every 30 s, up to $PollMinutes min"
     Write-Host ''
@@ -1025,14 +1052,16 @@ function Invoke-Metadata {
     if (-not $sub) { throw "'msstore submission get $ProductId' returned no JSON" }
 
     $sub = Set-WaveeStorePackageSet -Submission $sub -SubmissionId $script:State.submissionId -UploadName (Split-Path -Leaf $upload) -Quad $storeQuad
-    if ($shots) {
+    if ($listingFiles) {
         # The submission has ONE upload blob, and msstore filled it with the package alone: replace it with a zip that
-        # holds the package AND the screenshots, then name the screenshots in the listing.
+        # holds the package AND the listing files (screenshots, trailer + thumbnail, super hero), then name them in the
+        # submission.
         $uploadUrl = [string](Get-JsonProperty $sub 'fileUploadUrl')
-        if (-not $uploadUrl.StartsWith('https://')) { throw 'the draft carries no https FileUploadUrl; cannot upload screenshots' }
-        Send-StoreUploadZip -Url $uploadUrl -Files (@([pscustomobject]@{ FileName = (Split-Path -Leaf $upload); Path = $upload }) + $shots)
-        $sub = Set-WaveeStoreScreenshots -Submission $sub -Shots $shots
-        Good "uploaded the package and $($shots.Count) screenshots in one zip"
+        if (-not $uploadUrl.StartsWith('https://')) { throw 'the draft carries no https FileUploadUrl; cannot upload the listing files' }
+        Send-StoreUploadZip -Url $uploadUrl -Files (@([pscustomobject]@{ FileName = (Split-Path -Leaf $upload); Path = $upload }) + $listingFiles)
+        if ($shots) { $sub = Set-WaveeStoreScreenshots -Submission $sub -Shots $shots }
+        if ($media.Trailer -or $media.SuperHero) { $sub = Set-WaveeStoreListingMedia -Submission $sub -Media $media }
+        Good "uploaded the package and $($listingFiles.Count) listing files in one zip"
     }
     $updated = Set-StoreSubmissionReleaseNotes -Submission $sub -ReleaseNotes $releaseNotes
     Get-OwnedSubmission | Out-Null
@@ -1053,6 +1082,11 @@ function Invoke-Metadata {
         Assert-WaveeStoreScreenshots -Submission $verify -Shots $shots
         Good "$($shots.Count) en-US screenshots round-tripped with their captions"
     }
+    if ($media.Trailer -or $media.SuperHero) {
+        Assert-WaveeStoreListingMedia -Submission $verify -Media $media
+        $parts = @(); if ($media.Trailer) { $parts += 'the trailer' }; if ($media.SuperHero) { $parts += 'the 16:9 super hero art' }
+        Good "$($parts -join ' and ') round-tripped"
+    }
 }
 
 if (-not (Test-PhaseDone 'metadata')) {
@@ -1065,7 +1099,7 @@ else {
 
 if ($StopBeforeCommit) {
     Step 'Stopping before the commit'
-    Good "draft $($script:State.submissionId) is complete: package, release notes$(if ($shots) { ', screenshots' })"
+    Good "draft $($script:State.submissionId) is complete: package, release notes$(if ($shots) { ', screenshots' })$(if ($media.Trailer) { ', trailer' })$(if ($media.SuperHero) { ', super hero art' })"
     Warn 'finish it in Partner Center and submit it there; never run this script against it again'
     return
 }

@@ -13,7 +13,8 @@
 //   · the page title's x is the page column's ink line (`Column`): align.inset measures the page's leads against it;
 //   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album), and the settings
 //     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings), the what's-new panorama by `ZuneReleaseNotesRules.PanoramaBleed`
-//     (Z-ReleaseNotes), the artist name by `ZuneArtistRules.NameNudge` (Z-Artist) (`Hang`);
+//     (Z-ReleaseNotes), the artist name by `ZuneArtistRules.NameNudge` (Z-Artist), the lyrics peek's spine by `ZunePanelBodies.PeekSpineHang`
+//     (`Hang`);
 //   · THE BOARD SCALE: the boards space on a 2-DIP step to 24, so 6, 10, 14, 18 and 22 are on Zune's scale (`BoardScale`: space.scale).
 
 using FluentGpu.Foundation;
@@ -107,10 +108,10 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// <summary>A playlist's description block (the key the Zune playlist hero gives it).</summary>
     private const string PlaylistReadKey = ZunePlaylistRules.EditorReadKey;
 
-    /// <summary>The rule the daylist's form key is excused from, and why (owner 2026-10-25, audit FU2b).</summary>
+    /// <summary>The rule the daylist's form key is excused from, and why (owner 2026-10-25, audit FU2b; the cross-fade owner 2026-11-13).</summary>
     private const string KeyHygieneRule = "key.hygiene",
-        DaylistFormKey = "owner 10-25: the tuned V28c fade-through wins over the form-key rule (the strip's bled and row forms are two keyed layers that fade "
-        + "through each other on the Compact crossing, Z-Home-Compact vs Z-Home; one tree would trade the tuned fade-through for a glide)";
+        DaylistFormKey = "owner 10-25 and 11-13: the strip's bled and row forms are two keyed layers that cross-fade (the words of the new one a leg "
+        + "later) on the Compact crossing, Z-Home-Compact vs Z-Home; one tree would trade the cross-fade for a glide";
 
     /// <summary>The what's-new panorama's key (the literal `ZuneReleaseNotes.Frame` keys it with).</summary>
     private const string ReleaseNotesTitleKey = "zrn:title";
@@ -128,7 +129,7 @@ public sealed class ZuneLintGuide : IThemeLintGuide
             policies.Add(new(LintIntent.TrimOk, "zune-tile:", "tile titles (two lines, then the ellipsis): " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions));
-            // The daylist strip's two forms are two keyed layers of one fade-through (ZuneHomeDaylist.Swap): an ACCEPTED exception to the key rule.
+            // The daylist strip's two forms are two keyed layers of one cross-fade (ZuneHomeDaylist.Swap): an ACCEPTED exception to the key rule.
             policies.Add(new(LintIntent.Allow, ZuneHomeRules.DaylistFormPrefix, DaylistFormKey, Rule: KeyHygieneRule));
         }
         policies.Add(new(LintIntent.TrimOk, PlaylistReadKey,
@@ -145,6 +146,9 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         if (ZuneOptions.Fit() == PanoramaFit.Bleed)
             policies.Add(new(LintIntent.Bleed, ZuneSettings.PreviewTitleKey,
                 "the theme options preview bleeds its panorama off the frame's edge, as the panorama option does on the pages (Z-Theme-Options)"));
+        policies.Add(new(LintIntent.Hang, ZunePanelBodies.PeekSpineKey,
+            "the lyrics peek's accent spine and its gap hang in the panel's gutter so its words stand on the bodies' column, as a quote mark hangs",
+            Value: ZunePanelBodies.PeekSpineHang));
         policies.Add(new(LintIntent.Hang, ZuneSettings.TitleKey,
             "the settings panorama bleeds left of the gutter (ZuneSettingsRules.PanoramaBleed: Z-Settings draws it at 40 over a 48 gutter)",
             Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneSettingsRules.PanoramaBleed)));

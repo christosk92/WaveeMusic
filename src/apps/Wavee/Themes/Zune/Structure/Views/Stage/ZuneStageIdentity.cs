@@ -127,7 +127,7 @@ internal static class ZuneStageIdentity
                 var head = Title(title, ls.TitleSize, ls.TitleLine, G.TitleLight, 0f) with { Margin = new Edges4(0f, ls.TitleTop, 0f, 0f) };
                 kids.Add(head);
                 kids.Add(Meta(props, ls.ArtistSize, ls.ArtistLine, G.TitleRegular, ls.ArtistDisplay ? R.Type.DisplayFace : null, set.Text, Ink.Ink, false, heroArtist));
-                if (ls.TagLine > 0f && L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(props.Chips, ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
+                if (ls.TagLine > 0f && L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(Stage.HoldChips(props.Stage, props.Chips), ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
                 break;
             }
             default:
@@ -156,7 +156,7 @@ internal static class ZuneStageIdentity
                 // Lyrics mode's identity card (Z-Lyrics-Compact): the artist line rests in the accent
                 bool lyricsCard = k.Mode == Stage.Mode.Lyrics && L.IdentityCardOn(k.Mode);
                 kids.Add(Meta(props, meta.Size, meta.Line, G.TitleRegular, null, lyricsCard ? set.Text : Ink.InkSecondary, lyricsCard ? Ink.Ink : set.Text, center, heroArtist));
-                if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageChips.Props(props.Chips), static () => new ZuneStageChips()) with { Key = "stage:chips" });
+                if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageChips.Props(Stage.HoldChips(props.Stage, props.Chips)), static () => new ZuneStageChips()) with { Key = "stage:chips" });
                 break;
             }
         }
@@ -176,7 +176,7 @@ internal static class ZuneStageIdentity
                     Key = "stage:cover", Width = size, Height = size, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(coverX, coverY, 0f, 0f), Corners = CornerRadius4.All(corners), ClipToBounds = true,
                     Layout = s_flip, HitTestVisible = false,
-                    Children = [Controls.Artwork(url.Length > 0 ? url : null, size, size, corners, morphKey: Stage.Entry.MorphKey, decodePx: decode)],
+                    Children = [Stage.CoverSwap(url, size, corners, decode, Stage.Entry.MorphKey)],   // a skip cross-fades the art (Stage.Swap.UI.cs)
                 },
                 // the placed column: pass-through; the block inside is content-height (bottom-aligned in the Card and Large art columns)
                 new BoxEl
@@ -184,7 +184,7 @@ internal static class ZuneStageIdentity
                     Key = "stage:titles", Direction = 1, Width = titlesW, Height = titlesH, Justify = bottom ? FlexJustify.End : middle ? FlexJustify.Center : FlexJustify.Start,
                     AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(titlesX, titlesY, 0f, 0f), Layout = s_move, HitTestPassThrough = true,
-                    Children = [block],
+                    Children = [Stage.TrackSwap(Stage.SwapKey(track), block)],   // a skip cross-fades the block, drifting in from the skip's side
                 },
                 .. (display is null ? s_none : [display.Value]),
             ],
@@ -250,7 +250,7 @@ internal static class ZuneStageIdentity
     }
 
     static Element Meta(StageIdentityProps props, float size, float line, ushort weight, string? face, ColorF rest, ColorF hover, bool center, int heroArtist)
-        => Embed.Comp(new ZuneStageMetaLink.Props(props.Meta, props.OpenArtist, size, line, weight, face, rest, hover, center, heroArtist), static () => new ZuneStageMetaLink());
+        => Embed.Comp(new ZuneStageMetaLink.Props(Stage.HoldMeta(props.Stage, props.Meta), props.OpenArtist, size, line, weight, face, rest, hover, center, heroArtist), static () => new ZuneStageMetaLink());
 }
 
 /// <summary>The Artist layout's identity plate (Z-NowPlaying-Artist): the board's flat veil (0.6), darker where the photo under it is bright, so the

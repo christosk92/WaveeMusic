@@ -28,10 +28,29 @@ public enum RightSlot : ushort
     Devices = 1 << 7,
     Expand = 1 << 8,
     More = 1 << 9,
+    /// <summary>The mini player (#197): between the queue / devices and full screen, wherever full screen is.</summary>
+    Mini = 1 << 10,
+    /// <summary>The view split (contract 1.93): the panel on now playing, with the mini player and full screen behind its chevron. It
+    /// follows the devices, set apart from the panel toggles before it; a level has it INSTEAD of <see cref="Mini"/> and
+    /// <see cref="Expand"/>.</summary>
+    View = 1 << 11,
+}
+
+/// <summary>The right cluster's ROW order (the bits are presence, not order: <see cref="RightSlot.Mini"/> is the newest bit and sits
+/// before full screen).</summary>
+public static class RightSlotOrder
+{
+    public static readonly RightSlot[] All =
+    [
+        RightSlot.Shuffle, RightSlot.Repeat, RightSlot.Volume, RightSlot.VolumeSlider, RightSlot.Lyrics, RightSlot.Video, RightSlot.Queue,
+        RightSlot.Devices, RightSlot.View, RightSlot.Mini, RightSlot.Expand, RightSlot.More,
+    ];
 }
 
 /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>
-public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute }
+/// <remarks><see cref="Mini"/> (#197) is appended: it is BUILT right after <see cref="FullScreen"/>, at the tiers that drop the row's mini
+/// player and full screen buttons.</remarks>
+public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute, Mini }
 
 /// <summary>What the primary transport button does when clicked.</summary>
 public enum PrimaryVerb : byte { None, TogglePlay, Retry }

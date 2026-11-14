@@ -60,6 +60,10 @@ public enum PlayerBarSlots : ushort
     /// <summary>The video split button (the video toggle and its placement chevron), present only while the track has a video. A
     /// level without it carries the video verb in the overflow menu. Contract 1.1: it used to ride the <see cref="Queue"/> bit.</summary>
     VideoSplit = 1 << 14,
+    /// <summary>The view split button (contract 1.93): the panel on now playing as its main half, the mini player and full screen behind
+    /// its chevron. A level that carries it has the player's three views in that one control: it draws no separate <see cref="Expand"/>
+    /// buttons and its overflow menu drops the now-playing, full-screen and mini-player rows.</summary>
+    ViewSplit = 1 << 15,
 }
 
 /// <summary>One pressure level of the player bar: where it starts, what it carries and how it spaces it.</summary>

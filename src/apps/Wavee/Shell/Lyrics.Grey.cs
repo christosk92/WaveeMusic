@@ -199,7 +199,8 @@ public static partial class Lyrics
     /// <summary>Every grey source's remembered misses, keyed by (source, track). With a path it is persisted to one small
     /// JSON file; without one it lives in memory only.
     /// <para>LOAD: lazily, once, on first use; expired entries (per <see cref="SourceGuard.Ttl"/>) are dropped on the
-    /// way in, and an unreadable file is an empty ledger — a cache never fails a read. CAP: <see cref="Cap"/> entries;
+    /// way in, and an unreadable file is an empty ledger — a cache never fails a read — as is one written under another
+    /// <see cref="MetadataMatch.Version"/> (a matcher change re-asks every remembered miss). CAP: <see cref="Cap"/> entries;
     /// past it the oldest go, down to 90 %. WRITE: debounced (<see cref="DefaultDebounceMs"/>) and off the caller's
     /// thread, temp-file + move so a crash never leaves a torn file; every failure is swallowed (logged once).</para></summary>
     public sealed class MissLedger
@@ -304,7 +305,7 @@ public static partial class Lyrics
                     var rows = new SourceMissDto[_entries.Count];
                     int i = 0;
                     foreach (var (key, e) in _entries) rows[i++] = new SourceMissDto(key.Source, key.Track, (byte)e.Kind, e.AtMs);
-                    file = new SourceMissFile(SchemaVersion, rows);
+                    file = new SourceMissFile(SchemaVersion, rows, MetadataMatch.Version);
                 }
 
                 string tmp = _path + "." + Environment.ProcessId + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -356,6 +357,20 @@ public static partial class Lyrics
             catch { file = null; }   // unreadable / unparseable → an empty ledger, rewritten on the next change
 
             if (file is null || file.V != SchemaVersion || file.Misses is null) return entries;
+
+            // Misses decided by ANOTHER matcher (MetadataMatch.Version; a file from before the field existed reads 0)
+            // are not trusted: the rule that turned the song down may be the rule that changed. All of them go, and the
+            // file is rewritten under this version.
+            if (file.M != MetadataMatch.Version)
+            {
+                if (file.Misses.Length > 0)
+                {
+                    Log.Info(Diag.Category, $"lyrics source-miss ledger: dropped {file.Misses.Length} miss(es) recorded under matcher "
+                        + $"v{file.M} (now v{MetadataMatch.Version})");
+                    ScheduleWrite();
+                }
+                return entries;
+            }
 
             long now = _nowMs();
             int pruned = 0;
@@ -530,7 +545,8 @@ public static partial class Lyrics
 
 internal sealed record SourceMissFile(
     [property: JsonPropertyName("v")] int V,
-    [property: JsonPropertyName("misses")] SourceMissDto[]? Misses);
+    [property: JsonPropertyName("misses")] SourceMissDto[]? Misses,
+    [property: JsonPropertyName("m")] int M = 0);
 
 internal sealed record SourceMissDto(
     [property: JsonPropertyName("s")] string? S,

@@ -95,8 +95,8 @@ does anything (`MfMediaPlayer.cs:161-167`).
 |---|---|---|
 | **Which MF API?** | `IMFMediaEngineEx` in **windowless swap-chain mode** for both paths — never `IMFSourceReader`, never a hand-built `IMFMediaSession` topology. Frame-server mode (`TransferVideoFrame`) is not used | `VideoMediaEngine.cs:16-32, 239-244`; native N:2695-2708 |
 | Hardware decode | A D3D11 device with `D3D11_CREATE_DEVICE_VIDEO_SUPPORT` on the SAME adapter as the D3D12 renderer (LUID-pinned, fallback default), `ID3D10Multithread::SetMultithreadProtected` (vtable slot 5 — "an earlier version wrongly called slot 3"), `MFCreateDXGIDeviceManager` + `ResetDevice`, attached as `MF_MEDIA_ENGINE_DXGI_MANAGER`; output format `DXGI_FORMAT_B8G8R8A8_UNORM` | `VideoMediaEngine.cs:262-327, 216-219` |
-| How a frame reaches the UI | `GetVideoSwapchainHandle` (queried once per presentation epoch after LOADEDMETADATA) → snapshot → `MfMediaSession.PumpVideo` → `VideoBinding.Bind(handle)` → `VideoSurfaceRegistry.Drain` at phase 11 on the render thread → `DCompVideoPresenter.BindSurfaceHandle` = `IDCompositionDevice::CreateSurfaceFromHandle` → `IDCompositionVisual::SetContent`; the child visual sits z-BELOW the UI swapchain and is revealed through the `DrawVideoCmd` hole-punch. **FluentGpu never sees a decoded pixel**; MF presents into its own swap chain and DWM composites | `VideoMediaEngine.cs:531-538`; `MfMediaSession.cs:473-508`; `VideoSurfaceRegistry.cs:379-430`; `DCompVideoPresenter.cs:91-110, 206-223`; `DrawList.cs:353-358`; `media-pipeline.md` §8.1, §8.4 |
-| The stream is sized to the natural frame capped to what the destination can show (`ContentSizeFor`), and DComp performs the fit (`SetTransform(scale)`); a 4K frame in a 640-px card does not allocate 4K buffers | `MfMediaSession.cs:561-580`; `DCompVideoPresenter.cs:244-254` |
+| How a frame reaches the UI | `GetVideoSwapchainHandle` (queried once per presentation epoch after LOADEDMETADATA) → snapshot → `MfMediaSession.PumpVideo` → `VideoBinding.Bind(handle)` → `VideoSurfaceRegistry.Drain` at phase 11 on the render thread → the DirectComposition video presenter (deleted 2026-11-11)'s `BindSurfaceHandle` = `IDCompositionDevice::CreateSurfaceFromHandle` → `IDCompositionVisual::SetContent`; the child visual sits z-BELOW the UI swapchain and is revealed through the `DrawVideoCmd` hole-punch. **FluentGpu never sees a decoded pixel**; MF presents into its own swap chain and DWM composites | `VideoMediaEngine.cs:531-538`; `MfMediaSession.cs:473-508`; `VideoSurfaceRegistry.cs:379-430`; the DirectComposition video presenter (deleted 2026-11-11); `DrawList.cs:353-358`; `media-pipeline.md` §8.1, §8.4 |
+| The stream is sized to the natural frame capped to what the destination can show (a content-size rule since deleted), and DComp performs the fit (`SetTransform(scale)`); a 4K frame in a 640-px card does not allocate 4K buffers | `MfMediaSession.cs:561-580`; the DirectComposition video presenter (deleted 2026-11-11) |
 | Threading (clear) | "Snapshot out, commands in": one MTA engine thread is the sole COM toucher and sole writer of a seqlock'd POD `VideoEngineSnapshot`; the UI pump reads one snapshot per turn and POSTS coalesced last-wins commands; the old blocking `Invoke<T>` (up to 7 × 50 ms per pump) is gone | `VideoEngineSeam.cs` (whole); `VideoMediaEngine.cs:34-52, 170-197` |
 | Warm engine (clear) | `MfMediaPlayer.LeaseEngine/ReturnEngine`: ONE `VideoMediaEngine` survives many `OpenAsync`s (`PostSetSource` on the live engine); returned engines are paused + detached and disposed after `WarmIdleDisposeMs = 30_000` because "tens to well over a hundred megabytes stayed resident … nothing in the census able to name it" | `MfMediaPlayer.cs:18-32, 53-63, 98-154` |
 | Sequencing of a switch | `MediaPlayer.OpenAsync`: sniff → resolve backend → **await the OLD session's `DisposeAsync`** → publish Opening → `backend.OpenAsync` → marshal `ConnectSignals` to the UI thread | `MediaPlayer.cs:319-393` |
@@ -142,7 +142,7 @@ Read: `PlayReadyNative.cpp` (3,428 lines, **N:**), `CencMediaSource.h` (1,435 li
 | The video's AAC track is a second `IMFMediaStream` (same key, wrapped Protected) rendered by the Media Engine's own audio path (SAR); `SetVolume`/`SetPlaybackRate` go to `IMFMediaEngine` | C:1222-1246, 1355-1366; N:555, 563 |
 | The frame reaches the app as the DComp swap-chain HANDLE published in the snapshot after `UpdateVideoStream` with a non-zero rect; the 80 ms tick then calls `OnVideoStreamTick` + `UpdateVideoStream(nullptr, …)` — unnecessary in windowless-swapchain mode (the engine auto-presents; the clear `VideoMediaEngine` never does this) | N:2746-2763, 2797-2800; `VideoMediaEngine.cs:30-32` |
 | Admitted defects: "Downloading the whole track first (~50 serial requests for a 3.5-minute video, doubled once audio joins) is what made 'watch video' sit on a spinner for tens of seconds" (the burst is the mitigation); presentation duration "extrapolated from the burst … accurate to within one segment"; the ITA cache "keyed by stream id … the re-created authority is rejected as DRM_E_LOGICERR"; "passing the same PSSH again creates a second content binding whose ITA proxy is rejected" | N:2196-2198, 2288-2293, 2609-2611; C:1143-1146 |
-| **Environment A/B switches still in production native code** (`FG_CENC_BAKED_AXINOM`, `FG_PLAYREADY_LICENSE_URL`, `FG_CENC_PERSIST_SESSION`, `FG_CENC_FORCE_SW_LAYER`, `FG_CENC_LEGACY_ENGINE_WIRING`, `FG_CENC_MARK_SD_PROTECTED`, `FG_CENC_NO_PROTECTED_WRAP`) — against CLAUDE.md's rule; and `FG_VIDEO_ZABOVE` in the presenter | N:1031-1037, 2078, 1504, 2682; C:1276-1281; `DCompVideoPresenter.cs:57` |
+| **Environment A/B switches still in production native code** (`FG_CENC_BAKED_AXINOM`, `FG_PLAYREADY_LICENSE_URL`, `FG_CENC_PERSIST_SESSION`, `FG_CENC_FORCE_SW_LAYER`, `FG_CENC_LEGACY_ENGINE_WIRING`, `FG_CENC_MARK_SD_PROTECTED`, `FG_CENC_NO_PROTECTED_WRAP`) — against CLAUDE.md's rule; and `FG_VIDEO_ZABOVE` in the presenter | N:1031-1037, 2078, 1504, 2682; C:1276-1281; the DirectComposition video presenter (deleted 2026-11-11) |
 | `DashManifestParser.cs` (WindowsApi): `SegmentTemplate` + `$Number$` only (`SegmentBase`/`SegmentList`/`$Time$` throw), first H.264 representation only, no audio adaptation set — the Spotify path does not use it (Wavee builds the descriptor itself, §1.1) | `DashManifestParser.cs:114-116, 156-186, 267-352` |
 
 ### 1.4 How 0.2.9 did it, and where the five seconds go
@@ -354,7 +354,7 @@ missing piece is the keyframe table INSIDE a segment, which the demuxer already 
 | Plays Spotify (PlayReady) | Yes — it is the proven path (`media-pipeline.md` §8.4: "on-box proven"); only the LIFETIME changes | Undocumented for Win32 ("expected to only be called by web browsers"; attachment to an engine not documented; §1.5.3) — a spike, not a plan | **No.** The Source Reader has no PMP; D3D12 video decode has no CDM. Clear local files only | Disproven: `MF_E_TOPOLOGY_VERIFICATION_FAILED 0xC00D715B` (`video-drm-layer-design.md` §12 Q1) |
 | Warm switch cost | `SetSource` on a live engine: topology + decoder init ≈ 100-250 ms with data in memory; CDM, PMP, D3D device, engine, swapchain all survive | Best in theory (append a new init segment, no topology rebuild) | Best in theory for clear content | — |
 | Seek | `CencMediaSource::Start` already repositions to the keyframe ≤ target without recreating anything (C:668-713); needs the tick/fetch/retention fixes of §3.2 | The engine seeks inside `buffered` ranges | We own it entirely | — |
-| Rendering | The DComp child + hole-punch already built and gated (`DCompVideoPresenter`, `VideoSurfaceRegistry`, `DrawVideoCmd`) | Same | Frame-server-style into our textures — but not for protected content (§3.3) | — |
+| Rendering | The DComp child + hole-punch already built and gated (the DirectComposition video presenter (deleted 2026-11-11), `VideoSurfaceRegistry`, `DrawVideoCmd`) | Same | Frame-server-style into our textures — but not for protected content (§3.3) | — |
 | Risk | Moderate: ~1,200 lines of C++ restructured around the code that already works; ABI change in one managed file | High: two undocumented seams (MSE attach, MSE + `IMFContentDecryptionModule`) | Very high and useless for the feature | Known-dead |
 | Testable | Session/runtime state machine via the managed fake; native via the Axinom single-key vector already baked in (N:2988-2995) + a clear fMP4 vector (§4) | — | — | — |
 
@@ -907,7 +907,7 @@ The bug map:
 
 **Protected content.** The frame's path today is: H.264 MFT (hardware, DXVA on the runtime's D3D11 video device) →
 NV12 decoder texture-array slice → the Media Engine's own video processor (one GPU pass to BGRA8 in its windowless
-swap chain, sized to `ContentSizeFor` so a 4K stream in a 640-px card allocates 640-px buffers — `MfMediaSession.cs:561-580`)
+swap chain, sized by a content-size rule (since deleted) so a 4K stream in a 640-px card allocates 640-px buffers — `MfMediaSession.cs:561-580`)
 → `GetVideoSwapchainHandle` → `IDCompositionDevice::CreateSurfaceFromHandle` → the child visual z-below the UI swap
 chain, revealed through the `DrawVideoCmd` hole (§1.2). No CPU byte is touched, no copy is ours, and the visual is
 composited by DWM at vsync. **This stays.** The documented alternative — frame-server mode with
@@ -926,7 +926,7 @@ screen one host frame after MF presents it instead of up to 250 + 200 ms later; 
 … presents video frames to the swap chain" on its own (§1.5.3), which is exactly how the clear `VideoMediaEngine`
 already runs (it repaints only on `Repaint` commands, `VideoMediaEngine.cs:442-445`); and the `StreamRect` /
 content-size discipline of the clear session (`MfMediaSession.cs:485-500`) is applied to the protected one (today
-`ProtectedMediaSession` hands `SetContentSize` the surface size and never sizes the stream — `:455-464`), so the
+`ProtectedMediaSession` hands the binding a content size (deleted 2026-11-11) of the surface size and never sizes the stream — `:455-464`), so the
 protected swap chain is also capped to what the destination can show.
 
 **Clear content (local `.mp4` overrides, module streams — `MediaKind.MfVideoOrFile` without `DrmConfig`).** Here a
@@ -1194,7 +1194,7 @@ Christos with the log lines quoted back in the closing report. The CHANGELOG bul
    private repo but not this DLL's freshness. Who builds arm64, and should `wavee-release.ps1` gain a gate that the
    shipped `FluentGpu.PlayReady.Native.dll` hash matches the source tree's `build.cmd` output (and which host builds it)?
 9. **`FG_VIDEO_ZABOVE` and the `FG_CENC_*` switches.** The plan deletes the native ones (CLAUDE.md). `FG_VIDEO_ZABOVE`
-   in `DCompVideoPresenter.cs:57` is the engine's diagnostic — delete it in the same pass, or leave it to the engine's
+   in the DirectComposition video presenter (deleted 2026-11-11) is the engine's diagnostic — delete it in the same pass, or leave it to the engine's
    own hygiene?
 10. **Issue numbers.** Which GitHub issues do "switching to video is super slow" and "seeking is buggy and slow" carry
     (or should be opened — `github-triage`)? The CHANGELOG bullets and the commit bodies need them.

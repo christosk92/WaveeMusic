@@ -469,17 +469,20 @@ public static partial class Diagnostics
             }
         }
 
-        // Fence wait and present are inside SubmitMs; "unaccounted" subtracts the disjoint phases once.
+        // Fence wait and present are inside SubmitMs; post-submit work (video drain, passive effects, settle/tx) is its own
+        // phase after the submit stamp. "unaccounted" subtracts the disjoint phases once.
         static string Describe(in FrameStats s) =>
             "frameMs=" + F(s.FrameMs) + " flush=" + F(s.FlushMs) + " reactive=" + F(s.ReactiveFlushMs) + " realize=" + F(s.VirtualRealizeMs)
             + " layout=" + F(s.LayoutMs) + " layoutSolve=" + F(s.LayoutSolveMs) + " layoutEffects=" + F(s.LayoutEffectsMs)
-            + " anim=" + F(s.AnimMs) + " record=" + F(s.RecordMs) + " imagePump=" + F(s.ImagePumpMs) + " realizeCatchup=" + F(s.RealizeCatchupMs)
+            + " anim=" + F(s.AnimMs) + " animTick=" + F(s.AnimTickMs) + " videoPump=" + F(s.VideoPumpMs) + " record=" + F(s.RecordMs) + " imagePump=" + F(s.ImagePumpMs) + " realizeCatchup=" + F(s.RealizeCatchupMs)
             + " submit=" + F(s.SubmitMs) + " (hash=" + F(s.SubmitHashMs) + " capture=" + F(s.SubmitCaptureMs)
             + (s.CaptureIncremental ? "/inc" : "/full") + ":" + s.CapturedNodes + "[scene=" + F(s.CaptureSceneMs)
             + " cfg=" + F(s.CaptureConfigMs) + " img=" + F(s.CaptureImagesMs) + " anim=" + F(s.CaptureAnimMs) + "]"
             + " tail=" + F(s.SubmitTailMs) + ")"
             + " fenceWait=" + F(s.FenceWaitMs) + " present=" + F(s.PresentMs) + " gpu=" + F(s.GpuRenderMs)
-            + " unaccounted=" + F(s.FrameMs - s.FlushMs - s.LayoutMs - s.AnimMs - s.RecordMs - s.SubmitMs)
+            + " postSubmit=" + F(s.PostSubmitMs) + " effects=" + F(s.PassiveEffectsMs)
+            + " slowEffect=" + (s.SlowestEffectOwnerType?.Name ?? "-") + ":" + F(s.SlowestEffectMs)
+            + " unaccounted=" + F(s.FrameMs - s.FlushMs - s.LayoutMs - s.AnimMs - s.RecordMs - s.SubmitMs - s.PostSubmitMs)
             + " comps=" + s.ComponentsRendered + " nodes=" + s.NodesVisited + " draw=" + s.DrawNodeCount + " cmds=" + s.DrawCommandCount
             + " hotAlloc=" + s.HotPhaseAllocBytes + " measures=" + s.MeasureCount + " shapes=" + s.TextShapes + " textMiss=" + s.TextShapeMisses
             + " bindFires=" + s.BindingFires + " bindWrites=" + s.BindingWrites + " gc=" + s.Gc0Delta + "/" + s.Gc1Delta + "/" + s.Gc2Delta

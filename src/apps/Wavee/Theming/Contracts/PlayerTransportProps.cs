@@ -136,6 +136,10 @@ public sealed record TimeLabelProps
     /// <summary>The right-hand slot (−remaining ⇄ duration; the click toggles which), else the elapsed one.</summary>
     public bool Remaining { get; init; }
 
+    /// <summary>(1.104) The elapsed time stands ALONE (a time pill folded to the elapsed time, no "/ total" beside it): a theme reserves the
+    /// width of <see cref="Widest"/> alone and centres the digits, instead of a slot sized for the two-label line.</summary>
+    public bool Alone { get; init; }
+
     /// <summary>The surface's theme-invariant on-media ink (the stage, the on-media strip); null is the bar's own caption ink.</summary>
     public ColorF? Ink { get; init; }
 

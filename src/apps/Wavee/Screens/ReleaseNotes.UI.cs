@@ -286,4 +286,40 @@ public static partial class ReleaseNotes
             FlyoutPlacement.BottomCenter,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal) { ScrimVisual = true });
     }
+
+    // ══ 5. THE MOTION LAYER ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The width a <c>kind: "motion"</c> highlight's WebP is authored at (1440x810: the viewer's plate at 150 %). The engine
+    /// plays frames at the file's own size; every card and the viewer ask for this one decode size, so one playback (one decoder)
+    /// serves the card and the viewer over it.</summary>
+    public const float MotionDecodePx = 1440f;
+
+    /// <summary>A <c>kind: "motion"</c> highlight's animated WebP as a layer over its poster (null for every other highlight, and
+    /// when the file is missing): <c>ImageEl.Animate</c>, looping while the card or the viewer is in view, the first frame
+    /// fading in over the poster (the poster IS that frame), a transparent placeholder so the poster shows until then and on
+    /// a machine without a WebP decoder, the first frame only with reduced motion. Each theme places it in its poster's
+    /// ZStack, right above the poster, with the poster's corners: the layer has no size of its own (it stretches over the band the
+    /// poster sizes) and so asks for the same decode everywhere (<see cref="MotionDecodePx"/> square, fit within), whatever the
+    /// band's shape.</summary>
+    public static ImageEl? MotionLayer(HighlightItem item, CornerRadius4 corners = default)
+        => item.Motion is not { Length: > 0 } src ? null : new ImageEl
+        {
+            Source = src, Animate = true, Fit = ImageFit.Cover, DecodePx = MotionDecodePx,
+            Corners = corners, Placeholder = ColorF.Transparent,
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+        };
+
+    /// <summary>A poster band's ZStack layers: the poster (when there is one), then the motion layer over it (when the highlight
+    /// has one).</summary>
+    public static Element[] PosterAndMotion(ImageEl? poster, HighlightItem item, CornerRadius4 corners)
+    {
+        var motion = MotionLayer(item, corners);
+        return (poster, motion) switch
+        {
+            ({ } p, { } m) => [p, m],
+            ({ } p, null) => [p],
+            (null, { } m) => [m],
+            _ => [],
+        };
+    }
 }

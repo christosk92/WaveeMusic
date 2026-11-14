@@ -136,14 +136,15 @@ internal static partial class WinUiReleaseNotes
                 {
                     Key = "hv:" + id + ":img", Animate = HighlightViewerMotion.For(dir.Value),
                     ZStack = true, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                    Children = item.Poster is { Length: > 0 } poster
-                        ? [new ImageEl
+                    // The poster, and a motion highlight's WebP playing over it (the poster is its first frame).
+                    Children = ReleaseNotes.PosterAndMotion(item.Poster is { Length: > 0 } poster
+                        ? new ImageEl
                           {
                               Source = poster, Fit = ImageFit.Cover, AspectRatio = VL.PosterAspect, DecodePx = K.PosterDecodePx,
                               Corners = new CornerRadius4(Radii.Overlay, Radii.Overlay, 0f, 0f), Placeholder = Tok.FillSubtleSecondary,
                               RevealTransition = ImageTransition.Fade(140f), AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                          }]
-                        : [],
+                          }
+                        : null, item, new CornerRadius4(Radii.Overlay, Radii.Overlay, 0f, 0f)),
                 },
                 new BoxEl
                 {

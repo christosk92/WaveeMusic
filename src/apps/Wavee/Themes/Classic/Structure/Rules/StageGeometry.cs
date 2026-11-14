@@ -11,6 +11,7 @@
 // here: the core allocator budgets the face-safe rect, the caption and the pane from them (`Stage.Layout`), so the view reads the
 // constants by name. What this file adds is the look of the parts inside those extents.
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
@@ -86,6 +87,17 @@ internal static class ClassicStageGeometry
 
     /// <summary>A glass glyph button of the bar (the options toggle, the icon-only exit): 40 wide (the allocator's) by this tall, with this glyph.</summary>
     public const float BarButtonHeight = 36f, BarGlyphSize = 16f;
+
+    /// <summary>The vertical hit slop of a labelled small button of the bar (Video mode's "Switch to audio", drawn at the small size's 24): above and
+    /// below its box up to the 40 DIP target rule at every tier, so its look and the bar's row do not change (a real hit beside it still wins).</summary>
+    public static Edges4 LabelledButtonSlop
+    {
+        get
+        {
+            float reach = MathF.Max(0f, (Wavee.Theming.TouchTargetPolicy.CompactFloor - ControlMetrics.For(ControlSize.Small).MinHeight) * 0.5f);
+            return new Edges4(0f, reach, 0f, reach);
+        }
+    }
 
     // ── the transport card ───────────────────────────────────────────────────────────────────────────────────────────
 

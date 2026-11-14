@@ -15,6 +15,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
@@ -42,6 +43,17 @@ public sealed record LyricsViewProps
 
     /// <summary>The on-device AI disclosure under the reading layers; null on the podcast reader (episodes are never timed).</summary>
     public Element? Footer { get; init; }
+}
+
+/// <summary>The small box a lyrics view is mounted in (the mini player's lyrics face, #197), provided around the mount through
+/// <see cref="Context"/>. The box's edge fades belong to the READING LAYERS, not to the box: a structure's view sets <see cref="Fade"/> on the
+/// layer stack above its AI disclosure, so the lines dissolve at the top and at the disclosure's edge (a fade on the whole box dimmed the
+/// disclosure and left the lines above it cut hard). The disclosure takes its compact form here (one caption line on the box's
+/// <see cref="Gutter"/>). Appended (contract 1.106).</summary>
+public sealed record LyricsBox(EdgeFadeSpec Fade, float Gutter)
+{
+    /// <summary>Null everywhere but inside a small box: the rail and the stage keep their own fades and the full disclosure.</summary>
+    public static readonly Context<LyricsBox?> Context = new(null);
 }
 
 /// <summary>What the podcast peek's gate needs: the quiet "length · language" line and the verb that starts the episode.</summary>
@@ -73,6 +85,33 @@ public interface ILyricsHost
     /// <summary>P6 fix: this mount is the side pane's (the rail's: neither the stage nor the podcast reader). A style with a
     /// <see cref="LyricsLinesStyle.Rail"/> form draws the pane's rows here. Default false.</summary>
     bool OnRail => false;
+
+    /// <summary>The side gutter of a mount in a box narrower than the rail (the mini player's lyrics face, #197), or null for the surface's
+    /// own. A frame, not type: a style that lays its rows on its own gutter takes this one when it is set.</summary>
+    float? Gutter => null;
+
+    /// <summary>The mount's box draws the edge fades itself (the mini player's, sized to its short window): a style's list then sets no edge
+    /// feather of its own (the standard 40-DIP band would fade the active line of a 50-DIP window). Default false.</summary>
+    bool BoxFades => false;
+
+    /// <summary>The lines are a picture, not targets (the mini player's: a click there goes back to Wavee, the wheel is the volume): a
+    /// style's rows take no click, focus or button role. Default false.</summary>
+    bool Inert => false;
+
+    /// <summary>The mount stands in the picture's place on the stage's Video mode (the audio face over an audio-only track): a style may read its
+    /// rows as a picture of the song there (the board "Audio player as a colour field": the active line in full ink, the others at the secondary
+    /// ink, no distance ladder). Default false. Appended (contract 1.101).</summary>
+    bool OnPicture => false;
+
+    /// <summary>A style may mark the active line with its accent pill in the gutter (the stage's ListView bar). False on the mini player's mount:
+    /// in a window a few words wide the active line wraps, and a short bar beside a three-row line reads as a stray mark. Default true; a style
+    /// draws its pill only where this holds. Appended (#197 round 2).</summary>
+    bool ActiveMarker => true;
+
+    /// <summary>The mount reads as a picture of the song (the mini player's, #197): every line but the active one at one ink
+    /// (<c>Lyrics.MiniRows</c>), with no distance ladder and no depth blur. A style's row opacity asks <c>Lyrics.MiniRows.Opacity</c> first.
+    /// Default false. Appended (#197 round 2).</summary>
+    bool FlatRows => false;
 
     // ── what is on screen (live: reads subscribe the caller) ───────────────────────────────────────────────────────
 

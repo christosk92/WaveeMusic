@@ -43,19 +43,23 @@ internal static class ZuneStageVideoPip
     /// <summary>The registered template of <see cref="ViewKeys.VideoPip"/>.</summary>
     public static Element Template(VideoPipProps props, in ViewContext ctx)
     {
-        bool floating = props.Placement == Video.SurfacePlacement.Floating;
+        // Staged in the full-screen stage (its Video mode): the picture alone, following the stage's reservation; the stage draws its chrome.
+        bool staged = props.Staged;
+        bool floating = !staged && props.Placement == Video.SurfacePlacement.Floating;
         // The chrome's targets are the window tier's: a Compact window shows 40 x 40 buttons at rest on a 40 strip.
         var tier = VR.OfFacts(ctx.Tier());
         // Fullscreen's PAGE form (Z-Video-Compact): the picture is the page's 16:9 head under the bar, not the whole window.
-        bool page = props.Placement == Video.SurfacePlacement.Fullscreen && tier.PageForm;
+        bool page = !staged && props.Placement == Video.SurfacePlacement.Fullscreen && tier.PageForm;
         var viewport = ctx.Hooks.UseContextSignal(Viewport.Size);
         float barH = tier.BarH;
         var kids = new List<Element>(4) { props.Area() };
-        if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
+        if (!staged && props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
         if (floating) { kids.Add(Chrome(props, tier)); kids.Add(ResizeBands(props.Gestures)); }
 
         return new BoxEl
         {
+            // the presenter's box: where the picture is (the core reads its painted rect for the glide to and from the full-screen stage)
+            Key = "video:presenter", OnRealized = props.Realized,
             Direction = 1, ClipToBounds = true, ZStack = true,
             // A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes inactive, the element
             // hides its DComp visual and pumps with an inert binding (nothing is placed or shown from this slot; the player's own state pump
@@ -150,7 +154,7 @@ internal static class ZuneStageVideoPip
             Opacity = tier.ChromeAtRest ? 1f : 0f, HoverOpacity = 1f,
             HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
             Children = tier.ChromeAtRest
-                ? [Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier), dragSurface, close]
+                ? [Glyph(SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier), dragSurface, close]
                 : [dragSurface, close],
         };
         return new BoxEl { Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [strip] };

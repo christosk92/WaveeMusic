@@ -69,6 +69,13 @@ internal static class ClassicTransportLayout
     /// <summary>The track slot: wide enough for "-59:59", so 0:09 → 0:10 moves nothing (a reservation at rest, a FLOOR while live).</summary>
     public const float TimeSlotWidth = 44f;
 
+    /// <summary>The clickable slot's (the remaining time: it toggles to the duration) hit target: the 40 DIP rule, reached with vertical slop
+    /// around the one caption line, so the label's look and the row's height do not change.</summary>
+    public const float TimeTargetH = 40f;
+
+    /// <summary>The vertical slop that lifts a <paramref name="lineHeight"/> tall slot to <see cref="TimeTargetH"/>.</summary>
+    public static float TimeSlop(float lineHeight) => MathF.Max(0f, (TimeTargetH - lineHeight) * 0.5f);
+
     /// <summary>The live slot, sized once for "GO LIVE −99:59", so the mark ↔ action swap moves nothing.</summary>
     public const float LiveSlotWidth = 104f;
 

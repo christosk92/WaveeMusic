@@ -53,6 +53,7 @@
 // it was started for (C1/C4). The runtime no longer needs it for correctness; the reducer's epochs still do.
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Threading;
 
 using System.Linq;
@@ -444,6 +445,11 @@ public static partial class Playback
                 => already || (ownsTick && (positionMs > 0
                     || state is PlaybackState.Playing or PlaybackState.Paused or PlaybackState.Ended or PlaybackState.Failed));
 
+            /// <summary>Is THIS session alive (a position, or a playing, paused or ended state)? Unlike <see cref="Progressed"/>
+            /// a Failed state does not count: it gives back no re-open budget.</summary>
+            public static bool Alive(bool ownsTick, long positionMs, PlaybackState state)
+                => ownsTick && (positionMs > 0 || state is PlaybackState.Playing or PlaybackState.Paused or PlaybackState.Ended);
+
             /// <summary>What a tick posts for the player's state, edge-triggered on <paramref name="last"/> except the
             /// position tick. Playing is an EVENT the session publishes — nothing here re-asserts Play.</summary>
             public static TickFold Fold(PlaybackState state, PlaybackState last, bool firstFrameFired) => state switch
@@ -574,6 +580,9 @@ public static partial class Playback
         // E5: the `[video] frames` line's pacing, per load (under s_gate): when the last one was written (0 = no baseline yet) and the
         // counters it carried, so the next one reports the change.
         static long s_statsLoggedAtMs, s_statsLoggedRendered, s_statsLoggedDropped;
+        // The engine's own read time of the counters the last line carried (Stopwatch ticks; 0 = none): the line's windowMs is the time
+        // between the two counter READS, so its deltas are rendered/dropped per that window and not per this tick's cadence.
+        static long s_statsLoggedSampleTs;
         // E5: the clear path's `switch.budget` inputs, written by `OpenOkLine` (worker thread) and read by `Observe` (UI thread):
         // how long the open call took and when it finished, counted from switch.begin. -1 = this switch has no open.ok yet.
         static long s_openCallMs = -1, s_openDoneSinceSwitchMs = -1;
@@ -631,6 +640,42 @@ public static partial class Playback
         {
             ProtectedVideoRuntime.LogSink = static line => Log.Info("video", line);
             ProtectedVideoRuntime.AdapterLuidProvider = static () => global::FluentGpu.Rhi.D3D12.GpuAdapterInfo.CurrentAdapterLuid;
+            // The DWM freeze probe measures the protected composition keeper's steps too (they run outside the protected runtime).
+            global::FluentGpu.Media.ProtectedVideoTrace.ProbeStarter = ProtectedVideoRuntime.StartFreezeProbe;
+            InstallKeeper();
+        }
+
+        /// <summary>The adapter (PCI <c>vendor:device</c>, hex) a run last negotiated hardware PlayReady (SL3000) on. Read before the
+        /// window exists: on that adapter the engine arms the protected composition keeper with the first present, so DWM's one
+        /// protected-composition entry hitch lands during launch instead of when a music video first appears. Written when a run
+        /// negotiates SL3000 on another adapter (or the first time).</summary>
+        public static readonly SettingKey<string> KeeperAdapterKey = new("playback.video.protectedKeeperAdapter", "");
+
+        /// <summary>The engine's protected composition keeper (<c>ProtectedKeeperPolicy</c>): what the last run learnt, and where to
+        /// keep what this one learns. Before the window exists.</summary>
+        static void InstallKeeper()
+        {
+            global::FluentGpu.Media.ProtectedKeeperPolicy.RememberedAdapter = ParseAdapter(Platform.Settings.Get(KeeperAdapterKey) ?? "");
+            global::FluentGpu.Media.ProtectedKeeperPolicy.Remember = static key =>
+            {
+                // The render thread raised it: the settings write (a file fsync under --profile) runs on the pool.
+                string text = (key >> 32).ToString("X4", CultureInfo.InvariantCulture) + ":" + (key & 0xFFFFFFFF).ToString("X4", CultureInfo.InvariantCulture);
+                ThreadPool.UnsafeQueueUserWorkItem(static t =>
+                {
+                    Platform.Settings.Set(KeeperAdapterKey, t);
+                    Log.Info("video", "[video.surface] [keeper] SL3000 negotiated on adapter " + t + ": the next launch arms the keeper at once");
+                }, text, preferLocal: false);
+            };
+        }
+
+        static ulong ParseAdapter(string text)
+        {
+            int colon = text.IndexOf(':');
+            if (colon <= 0) return 0;
+            return uint.TryParse(text.AsSpan(0, colon), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint vendor)
+                   && uint.TryParse(text.AsSpan(colon + 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint device)
+                ? global::FluentGpu.Media.ProtectedKeeperPolicy.AdapterKey(vendor, device)
+                : 0;
         }
 
         /// <summary>A local attachment failed to open: the shell quarantines the (playable uri, source key) pair for the
@@ -1126,14 +1171,13 @@ public static partial class Playback
         {
             int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
             QualitySelection selection = QualitySelection.Auto;
-            if (pin > 0 && source.DrmDescriptor?.Catalog is { } catalog)
-                foreach (var track in catalog.Tracks)
-                {
-                    if (track.Kind != TrackKind.Video) continue;
-                    foreach (var rep in track.Representations)
-                        if (rep.Quality.Resolution.Height == pin) { selection = QualitySelection.Pin(rep.Id); break; }
-                    break;
-                }
+            if (pin > 0 && source.DrmDescriptor?.Catalog?.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Video)?.Representations is { } reps)
+            {
+                Span<(int, int)> rungs = stackalloc (int, int)[reps.Count];
+                for (int i = 0; i < reps.Count; i++) rungs[i] = (reps[i].Quality.Resolution.Height, reps[i].Quality.Bitrate);
+                int pinned = PinnedRung(rungs, pin);   // the same lookup the opening rung uses (Opening)
+                if (pinned >= 0) selection = QualitySelection.Pin(reps[pinned].Id);
+            }
             lock (s_gate) if (s_abr is { } abr) abr.Selection = selection;
         }
 
@@ -2002,12 +2046,14 @@ public static partial class Playback
                 if (current is not null && s_key.Length > 0 && s_statsLoggedAtMs != 0)
                 {
                     PlaybackStatistics ended = current.Statistics.Peek();
-                    if (ended.FramesRendered + ended.FramesDropped > 0)
+                    long endedRendered = ended.FramesRendered, endedDropped = ended.FramesDropped;
+                    if (current.TryReadFrameCounters(out MediaFrameCounters endedNow)) { endedRendered = endedNow.Rendered; endedDropped = endedNow.Dropped; }
+                    if (endedRendered + endedDropped > 0)
                     {
                         logFinalStats = true;
                         finalKey = s_key;
-                        finalRendered = ended.FramesRendered;
-                        finalDropped = ended.FramesDropped;
+                        finalRendered = endedRendered;
+                        finalDropped = endedDropped;
                         finalRenderedDelta = HostRules.FrameStatsDelta(finalRendered, s_statsLoggedRendered);
                         finalDroppedDelta = HostRules.FrameStatsDelta(finalDropped, s_statsLoggedDropped);
                     }
@@ -2015,6 +2061,7 @@ public static partial class Playback
                 s_statsLoggedAtMs = 0;
                 s_statsLoggedRendered = 0;
                 s_statsLoggedDropped = 0;
+                s_statsLoggedSampleTs = 0;
                 s_faultRetryable = false;
                 s_key = req.Source.Key;
                 s_live = req.Source;
@@ -2106,7 +2153,8 @@ public static partial class Playback
         /// <summary>The link state an OPEN reasons from: the live controller's, or — before the first player exists —
         /// what BuildPlayer is about to seed it with (the remembered estimate under the policy cap), so a prepare and the
         /// open that adopts it compute the same rung. The cap is the last session's effective (viewport-clamped) one —
-        /// see BuildPlayer.</summary>
+        /// see BuildPlayer; once a surface has asked for a height, Opening replaces it with the cap the new session will
+        /// commit on its first pump (A4).</summary>
         static (double Kbps, bool Prior, int Cap) LinkState()
         {
             lock (s_gate)
@@ -2149,11 +2197,22 @@ public static partial class Playback
             if (video is not { Count: > 1 }) return d;
             var (kbps, prior, cap) = LinkState();
             if (prior && kbps <= ThroughputEstimator.DefaultSeedKbps) kbps = 0;   // the bare seed is not an estimate: cold rule
+            int pin = Platform.Settings.Get(Platform.Keys.VideoQuality);
             Span<(int, int)> rungs = stackalloc (int, int)[video.Count];
             for (int i = 0; i < video.Count; i++) rungs[i] = (video[i].Quality.Resolution.Height, video[i].Quality.Bitrate);
-            var rep = video[OpeningRung(rungs, kbps, prior, cap)];
+            // A4: the opening cap is the cap the new session commits on its first pump: the policy cap and the ladder rung at or
+            // above the height the video surface last asked for (floored at 720), not the previous session's settled cap.
+            int requestedPx, policyCap;
+            lock (s_gate) { requestedPx = s_abr?.ViewportRequestedHeight ?? 0; policyCap = s_abr?.PolicyMaxHeight ?? int.MaxValue; }
+            if (requestedPx > 0)
+            {
+                Span<int> heights = stackalloc int[video.Count];
+                for (int i = 0; i < heights.Length; i++) heights[i] = rungs[i].Item1;
+                cap = Math.Min(policyCap, AdaptiveBitrateController.ViewportCapFor(requestedPx, heights));
+            }
+            var rep = video[OpeningRung(rungs, kbps, prior, cap, pin, out string why)];
+            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={why} cap={cap} pin={pin} viewport={requestedPx}");
             if (string.Equals(rep.InitUrl, d.InitUrl, StringComparison.Ordinal)) return d;
-            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={(prior ? "prior" : "measured")} cap={cap}");
             return d with { InitUrl = rep.InitUrl, SegmentBaseUrl = rep.SegmentBaseUrl, SegmentPrefix = rep.SegmentPrefix, SegmentSuffix = rep.SegmentSuffix, RepresentationId = rep.Id };
         }
 
@@ -2228,7 +2287,8 @@ public static partial class Playback
             PlaybackState state = PlaybackState.Idle;
             long pos = 0, durMs = 0;
             long posAtMs = FrameNowMs();              // the frame-clock instant `pos` was true at
-            long statRendered = 0, statDropped = 0;   // E5: the session's frame counters (PlaybackStatistics), for the `[video] frames` line
+            long statRendered = 0, statDropped = 0;   // E5: the session's frame counters, for the `[video] frames` line
+            long statSampleTs = 0;                    // when the engine read them (0 = the pump's copy, no read time known)
             LiveWindow window = default;
             if (owned)
             {
@@ -2245,10 +2305,21 @@ public static partial class Playback
                 }
                 else pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
                 durMs = (long)p.Duration.Peek().TotalMilliseconds;
-                NoteStatePump(p, state, pos, session is ProtectedMediaSession);
-                PlaybackStatistics stats = p.Statistics.Peek();
-                statRendered = stats.FramesRendered;
-                statDropped = stats.FramesDropped;
+                NoteStatePump(p, state, pos, session as ProtectedMediaSession);
+                // The engine's latest counter READ, not the state pump's copy: the pump publishes whatever the counters were at its own
+                // turn, so differencing two pump copies on this tick's cadence mixed windows of different lengths.
+                if (p.TryReadFrameCounters(out MediaFrameCounters counters))
+                {
+                    statRendered = counters.Rendered;
+                    statDropped = counters.Dropped;
+                    statSampleTs = counters.SampledTimestamp;
+                }
+                else
+                {
+                    PlaybackStatistics stats = p.Statistics.Peek();
+                    statRendered = stats.FramesRendered;
+                    statDropped = stats.FramesDropped;
+                }
 
                 // (b) liveness, from the engine's timeline and NEVER from a finite duration.
                 TimelineInfo tl = p.Timeline.Peek();
@@ -2261,7 +2332,7 @@ public static partial class Playback
             bool relayLive = false, relayDur = false, fireWatchdog = false, logCut = false;
             long cutSongPos = 0, cutGap = 0;
             bool logStats = false;
-            long statRenderedDelta = 0, statDroppedDelta = 0;
+            long statRenderedDelta = 0, statDroppedDelta = 0, statWindowMs = -1;
             TickFold fold = TickFold.None;
             MediaSwitch.AttachVerdict attach = MediaSwitch.AttachVerdict.Wait;
             string key;
@@ -2291,7 +2362,11 @@ public static partial class Playback
                 // (d) the watchdog. `progressed` is deliberately generous: anything that proves THIS session is alive — a
                 // paused open presenting its first frame included.
                 bool progressed = HostRules.Progressed(s_progressed, owned, pos, state);
-                if (progressed) { s_progressed = true; s_reopenedKey = null; }   // alive again: the key's re-open budget is back
+                if (progressed) s_progressed = true;
+                // The key's re-open budget comes back only when the session is alive again. A Failed state ends the watchdog
+                // (it is `progressed`), but it is no proof of life: returning the budget on it would let a source that fails on
+                // every open (e.g. a start Media Foundation fails each time) re-open in place forever.
+                if (HostRules.Alive(owned, pos, state)) s_reopenedKey = null;
                 if (s_watchdog.ShouldFault(FrameNowMs(), intent, progressed)) fireWatchdog = true;
                 else if (owned)
                 {
@@ -2322,15 +2397,26 @@ public static partial class Playback
                 if (owned && state == PlaybackState.Playing && !s_holdReports)
                 {
                     long statsNow = FrameNowMs();
-                    if (s_statsLoggedAtMs == 0) s_statsLoggedAtMs = statsNow;
+                    if (s_statsLoggedAtMs == 0)
+                    {
+                        // The baseline is these counters at their own read time, so the first line's deltas cover exactly its window.
+                        s_statsLoggedAtMs = statsNow;
+                        s_statsLoggedRendered = statRendered;
+                        s_statsLoggedDropped = statDropped;
+                        s_statsLoggedSampleTs = statSampleTs;
+                    }
                     else if (HostRules.FrameStatsDue(statsNow, s_statsLoggedAtMs, statRendered, statDropped, s_statsLoggedRendered, s_statsLoggedDropped))
                     {
                         logStats = true;
                         statRenderedDelta = HostRules.FrameStatsDelta(statRendered, s_statsLoggedRendered);
                         statDroppedDelta = HostRules.FrameStatsDelta(statDropped, s_statsLoggedDropped);
+                        statWindowMs = statSampleTs != 0 && s_statsLoggedSampleTs != 0 && statSampleTs >= s_statsLoggedSampleTs
+                            ? (long)System.Diagnostics.Stopwatch.GetElapsedTime(s_statsLoggedSampleTs, statSampleTs).TotalMilliseconds
+                            : statsNow - s_statsLoggedAtMs;
                         s_statsLoggedAtMs = statsNow;
                         s_statsLoggedRendered = statRendered;
                         s_statsLoggedDropped = statDropped;
+                        s_statsLoggedSampleTs = statSampleTs;
                     }
                 }
 
@@ -2348,7 +2434,7 @@ public static partial class Playback
             if (relayLive) ReportLiveWindow(in window);
             if (relayDur) Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             if (logCut) LogAudioCut(cutSongPos, pos, cutGap);
-            if (logStats) LogLine(new VideoLog.FrameStats(Tail(key), statRendered, statDropped, statRenderedDelta, statDroppedDelta));
+            if (logStats) LogFrameStats(new VideoLog.FrameStats(Tail(key), statRendered, statDropped, statRenderedDelta, statDroppedDelta), statWindowMs);
             if (fireWatchdog)
             {
                 ProtectedVideoPhase phase = session is ProtectedMediaSession protectedSession ? protectedSession.Player.Phase : ProtectedVideoPhase.Resolving;
@@ -2389,13 +2475,17 @@ public static partial class Playback
         /// <summary>F179: the always-on heartbeat check. The player pumps its own state (F132); a PLAYING session whose pump has not
         /// run for <see cref="HostRules.StatePumpStalled"/>'s budget has a frozen playhead and no error to explain it, so say so —
         /// once per episode, and again only after a pump has been seen. Tick thread; a read of two counters, no allocation until it fires.</summary>
-        static void NoteStatePump(MediaPlayer p, PlaybackState state, long posMs, bool protectedSession)
+        static void NoteStatePump(MediaPlayer p, PlaybackState state, long posMs, ProtectedMediaSession? protectedSession)
         {
             long idleMs = p.StatePumpAgeMs;
-            if (!HostRules.StatePumpStalled(state, idleMs, protectedSession)) { s_statePumpStallWarned = false; return; }
+            if (!HostRules.StatePumpStalled(state, idleMs, protectedSession is not null)) { s_statePumpStallWarned = false; return; }
+            // A protected session is pumped by its buffer and key events; once the feed reached the end of every track no buffer event
+            // will come, so a quiet pump then is the expected end of the feed, not a stall.
+            bool feedComplete = protectedSession?.Player.FeedComplete ?? false;
+            if (feedComplete) return;
             if (s_statePumpStallWarned) return;
             s_statePumpStallWarned = true;
-            Log.Warn("video", $"[video] state pump stalled — no pump for {idleMs}ms while {state} (pos={posMs}ms pumps={p.StatePumpCount})");
+            Log.Warn("video", $"[video] state pump stalled — no pump for {idleMs}ms while {state} (pos={posMs}ms pumps={p.StatePumpCount} feedComplete={(feedComplete ? 1 : 0)})");
         }
 
         /// <summary>F151: ask the UI thread for the cut. Its own method so the closure is allocated once per window, never by the tick.</summary>
@@ -2615,6 +2705,21 @@ public static partial class Playback
         static void LogLine(in VideoLog.FirstFrame l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.ClearBudget l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.FrameStats l) => Emit(VideoLog.Format(in l, Line()));
+
+        /// <summary>The live `[video] frames` line with the window its deltas cover: ` windowMs=` is the time between the two counter
+        /// reads the deltas difference (the engine's own read times; the tick clock when a backend gives none).</summary>
+        static void LogFrameStats(in VideoLog.FrameStats l, long windowMs)
+        {
+            char[] buffer = Line();
+            int n = VideoLog.Format(in l, buffer);
+            if (n <= 0) return;
+            if (windowMs >= 0 && " windowMs=".TryCopyTo(buffer.AsSpan(n)))
+            {
+                n += " windowMs=".Length;
+                if (windowMs.TryFormat(buffer.AsSpan(n), out int written, default, System.Globalization.CultureInfo.InvariantCulture)) n += written;
+            }
+            Emit(n);
+        }
         static void LogLine(in VideoLog.SeekPlanned l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.SeekDone l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.PrefetchPlanned l) => Emit(VideoLog.Format(in l, Line()));

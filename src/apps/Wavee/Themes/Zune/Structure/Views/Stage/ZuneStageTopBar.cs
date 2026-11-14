@@ -39,8 +39,6 @@ namespace Wavee.Themes.Zune;
 /// <summary>Zune's stage top bar.</summary>
 internal static class ZuneStageTopBar
 {
-    static readonly string[] s_modes = [Strings.Stage.Mode.Lyrics, Strings.Stage.Mode.Visualizer, Strings.Stage.Mode.Queue, Strings.Stage.Mode.Artist];
-
     /// <summary>The key of the pivots' run (at every tier: their own row at Compact, a run in the bar above it).</summary>
     public const string PivotRowKey = "stage:pivots:row";
 
@@ -60,7 +58,20 @@ internal static class ZuneStageTopBar
         var galleryButton = st.GalleryButton;
         float target = t.TargetH;
 
+        // The first pivot is always offered where Zune draws Video mode (contract 1.105): "video" while the track's music video plays, "overview"
+        // otherwise (Video mode's page with the audio face in the picture's place). In Video mode the right side is "switch to audio" alone (over a
+        // picture): Cinema ⇄ Theatre and the way out are the plate's (one home per verb, ZuneStageVideoBar)
+        bool videoMode = mode == Stage.Mode.Video;
+        var tab = st.PictureTab.Value;
+        bool videoTabs = tab != Stage.PictureTab.None;
+        bool audioFace = st.AudioFace.Value;
         var actions = new List<Element>(5);
+        if (videoMode && st.VideosPlay.Value)
+        {
+            actions.Add(glyphs
+                ? Form("stage:audio:glyph", ToolTip.Wrap(Glyph(Icons.MusicNote, st.SwitchToAudio, false, null, target, "stage:bar:audio"), Loc.Get(Strings.Theme.Zune.Stage.VideoSwitchToAudio)), enter)
+                : Form("stage:audio:word", Word(Loc.Get(Strings.Theme.Zune.Stage.VideoSwitchToAudio), st.SwitchToAudio, Ink.InkSecondary, t, null, "stage:bar:audio"), enter));
+        }
         if (lookWords)
         {
             string layout = Loc.Get(LayoutName(st.LayoutPref.Value));
@@ -78,13 +89,14 @@ internal static class ZuneStageTopBar
         }
         // the options and the exit change form with the tier (a glyph, a word; Compact's exit is the chevron leading the bar): each form is
         // its own keyed tree that cross-fades into the next on the declared swap family; a form both tiers draw keeps its node and slides
-        if (glyphs)
+        if (videoMode) { }
+        else if (glyphs)
             actions.Add(Form("stage:options:glyph", ToolTip.Wrap(Glyph(Icons.More, st.OpenOptions, optionsOn, n => galleryButton.SetIfChanged(n), target, "stage:glyph:options"),
                 Loc.Get(Strings.Theme.Zune.Stage.Options)), enter));
         else
             actions.Add(Form("stage:options:word", Word(Loc.Get(Strings.Theme.Zune.Stage.Options), st.OpenOptions, optionsOn ? Ink.Ink : Ink.InkSecondary, t,
                 n => galleryButton.SetIfChanged(n), "stage:word:options"), enter));
-        if (!own)
+        if (!own && !videoMode)
             actions.Add(glyphs
                 ? Form("stage:exit:glyph", ToolTip.Wrap(Glyph(Icons.BackToWindow, st.Exit, false, null, target, "stage:glyph:exit"), Loc.Get(Strings.Stage.Exit)), enter)
                 : Form("stage:exit:word", Word(Loc.Get(Strings.Stage.Exit), st.Exit, Ink.Ink, t, null, "stage:word:exit"), enter));
@@ -99,7 +111,7 @@ internal static class ZuneStageTopBar
             // paints over the pivots); Small: the air between the pivots and the actions
             Key = "stage:bar:label", Height = t.BarH, Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true,
             Margin = own ? new Edges4(G.BarGlyphGap, 0f, G.BarGlyphGap, 0f) : default, Layout = slide,
-            Children = t.BarLabel && (own || !L.IconOnlySelector) ? [Label(Loc.Get(own ? Strings.Stage.NowPlayingEyebrow : Strings.Stage.Brand), t)] : [],
+            Children = t.BarLabel && (own || !L.IconOnlySelector) ? [Label(Loc.Get(videoMode && !audioFace ? (own ? Strings.Player.Video : Strings.Theme.Zune.Stage.VideoFullScreen) : own ? Strings.Stage.NowPlayingEyebrow : Strings.Stage.Brand), t)] : [],
         };
         var right = new BoxEl
         {
@@ -109,10 +121,10 @@ internal static class ZuneStageTopBar
             Gap = glyphs ? G.BarGlyphGap : t.BarGap,
             Children = actions.ToArray(),
         };
-        var pivots = PivotRow(st, mode, t, L.W, own, slide);
-        Element[] parts = own
+        var pivots = PivotRow(st, videoTabs ? s_videoModes : s_audioModes, LitTab(st), tab, t, L.W, own, slide);
+        Element[] parts = own && !videoMode
             ? [Form("stage:exit:lead", ToolTip.Wrap(Glyph(Icons.ChevronDown, st.Exit, false, null, target, "stage:glyph:exit"), Loc.Get(Strings.Stage.Exit)), enter), label, right, pivots]
-            : t.PivotsLead ? [pivots, label, right] : [label, pivots, right];
+            : own ? [label, right, pivots] : t.PivotsLead ? [pivots, label, right] : [label, pivots, right];
 
         var bar = new BoxEl
         {
@@ -126,7 +138,7 @@ internal static class ZuneStageTopBar
         {
             // fills the head slot, whose height eases across a crossing (ZuneStageHead): the veil follows it
             Grow = 1f, Direction = 1,
-            Gradient = mode == Stage.Mode.Visualizer ? GradientDown(new GradientStop(0f, Shade(G.TopBarVeilA)), new GradientStop(1f, Shade(0f))) : null,
+            Gradient = mode == Stage.Mode.Visualizer || (videoMode && !st.Theatre.Value && !audioFace) ? GradientDown(new GradientStop(0f, Shade(G.TopBarVeilA)), new GradientStop(1f, Shade(0f))) : null,
             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
             Children = [bar],
         };
@@ -144,7 +156,7 @@ internal static class ZuneStageTopBar
     /// <summary>The pivots' run, the same nodes at every tier: their own row at Compact (the stage's width, bled over the bar's padding, the
     /// words inset by the gutter and scrolling under an edge fade, so a pivot never clips at 300 wide); sized to its words in the bar above it
     /// (where the bar runs short it scrolls under the fade, never clips). The box carries the slide (a scroller takes no layout transition).</summary>
-    static BoxEl PivotRow(Stage.StageCtx st, Stage.Mode mode, ZuneStageLayout t, float stageW, bool own, LayoutTransition? slide) => new()
+    static BoxEl PivotRow(Stage.StageCtx st, Stage.Mode[] modes, Stage.Mode lit, Stage.PictureTab tab, ZuneStageLayout t, float stageW, bool own, LayoutTransition? slide) => new()
     {
         Key = PivotRowKey, Direction = 0, Shrink = own ? 0f : 1f, MinWidth = 0f, Layout = slide,
         Width = own ? stageW : float.NaN, Height = own ? t.PivotRowH : float.NaN,
@@ -158,40 +170,54 @@ internal static class ZuneStageTopBar
                 Content = new BoxEl
                 {
                     Padding = own ? new Edges4(t.Gutter, 0f, t.Gutter, 0f) : default, Direction = 0, Shrink = 0f,
-                    Children = [Pivots(st, mode, t, rotate: own)],
+                    Children = [Pivots(st, modes, lit, tab, t, rotate: own)],
                 },
             },
         ],
     };
-
     static Element Label(string text, ZuneStageLayout t) => new TextEl(text)
     {
         Size = t.WordSize, LineHeight = t.WordLine, Color = Ink.InkSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
         MinWidth = 0f, Shrink = 1f,
     };
 
-    /// <summary>The four pivots: words, not a pill. Each is a tab (one tab stop: the selected word); Left / Right / Home / End move the mode.
-    /// Rotated (Compact): the lit word leads and the others follow in order, sliding to their places.</summary>
-    static Element Pivots(Stage.StageCtx st, Stage.Mode mode, ZuneStageLayout t, bool rotate)
+    /// <summary>The pivots: words, not a pill (the first pivot, "video" or "overview", leading the four audio modes where Zune draws Video mode).
+    /// Each is a tab (one tab stop: the lit word); Left / Right / Home / End move along them. Rotated (Compact): the lit word leads and the others
+    /// follow in order, sliding to their places. Keyed by the mode, so the first pivot keeps ONE node through a relabel (it reserves its wider
+    /// word: the other one stands under it, transparent, so "video" ⇄ "overview" shifts nothing).</summary>
+    static Element Pivots(Stage.StageCtx st, Stage.Mode[] modes, Stage.Mode lit, Stage.PictureTab tab, ZuneStageLayout t, bool rotate)
     {
         var facet = R.Type.FacetTitleStyle;
         ushort rest = (ushort)facet.RestWeight, selected = (ushort)facet.SelectedWeight;
         var setMode = st.SetMode;
-        int count = Stage.ModeRules.Count;
-        int current = (int)mode;
+        int count = modes.Length;
+        int current = Math.Max(0, Array.IndexOf(modes, lit));
         var order = ZuneBandRules.PivotOrder(count, current, rotate);
         var words = new Element[order.Length];
         float h = MathF.Max(t.PivotLine, MathF.Max(t.TargetH, t.PivotRowH));
         for (int slot = 0; slot < order.Length; slot++)
         {
             int index = order[slot];
+            var m = modes[index];
             bool on = index == current;
+            ushort weight = on ? selected : rest;
+            Element word = m == Stage.Mode.Video
+                ? new BoxEl
+                {
+                    ZStack = true, Direction = 0, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        PivotWord(Strings.Stage.Mode.Video, t, weight, on, tab != Stage.PictureTab.Overview) with { Key = "stage:pivot:4:video" },
+                        PivotWord(Strings.Stage.Mode.Overview, t, weight, on, tab == Stage.PictureTab.Overview) with { Key = "stage:pivot:4:overview" },
+                    ],
+                }
+                : PivotWord(NameOf(m), t, weight, on, true);
             words[slot] = new BoxEl
             {
-                Key = "stage:pivot:" + index, Height = h, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Key = "stage:pivot:" + (int)m, Height = h, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Role = AutomationRole.Tab, Focusable = true, TabStop = on, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
                 Animate = rotate && !Design.Reduced ? ZuneMotion.PivotSlide : null,
-                OnClick = () => setMode((Stage.Mode)index),
+                OnClick = () => setMode(m),
                 OnKeyDown = e =>
                 {
                     if (e.Handled || e.Ctrl || e.Alt) return;
@@ -201,16 +227,9 @@ internal static class ZuneStageTopBar
                     };
                     if (next == int.MinValue) return;
                     e.Handled = true;
-                    if ((uint)next < (uint)count && next != current) setMode((Stage.Mode)next);
+                    if ((uint)next < (uint)count && next != current) setMode(modes[next]);
                 },
-                Children =
-                [
-                    new TextEl(Loc.Get(s_modes[index]))
-                    {
-                        Size = t.PivotSize, LineHeight = t.PivotLine, FontFamily = R.Type.DisplayFace, Weight = on ? selected : rest,
-                        Color = on ? Ink.Ink : Ink.InkSecondary, HoverColor = Ink.Ink, Case = R.Case.For(LabelKind.Navigation), MaxLines = 1,
-                    },
-                ],
+                Children = [word],
             };
         }
         return new BoxEl
@@ -222,6 +241,32 @@ internal static class ZuneStageTopBar
         };
     }
 
+    /// <summary>The pivots' modes: the four audio modes, and the Video set ("video" leading them) while a music video is on.</summary>
+    static readonly Stage.Mode[] s_audioModes = [Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
+    static readonly Stage.Mode[] s_videoModes = [Stage.Mode.Video, Stage.Mode.Lyrics, Stage.Mode.Visualizer, Stage.Mode.Queue, Stage.Mode.Artist];
+
+    /// <summary>One pivot's word in the display face (transparent and inert where it only reserves the first pivot's width).</summary>
+    static TextEl PivotWord(string key, ZuneStageLayout t, ushort weight, bool on, bool shown) => new(Loc.Get(key))
+    {
+        Size = t.PivotSize, LineHeight = t.PivotLine, FontFamily = R.Type.DisplayFace, Weight = weight,
+        Color = !shown ? ColorF.Transparent : on ? Ink.Ink : Ink.InkSecondary, HoverColor = shown ? Ink.Ink : ColorF.Transparent,
+        Case = R.Case.For(LabelKind.Navigation), MaxLines = 1,
+    };
+
+    static string NameOf(Stage.Mode m) => m switch
+    {
+        Stage.Mode.Visualizer => Strings.Stage.Mode.Visualizer,
+        Stage.Mode.Queue => Strings.Stage.Mode.Queue,
+        Stage.Mode.Artist => Strings.Stage.Mode.Artist,
+        _ => Strings.Stage.Mode.Lyrics,
+    };
+
+    /// <summary>The lit pivot (subscribes): the mode; Video mode's Cinema lights the first pivot ("video" or "overview"), its Theatre the pivot of
+    /// the list beside the picture.</summary>
+    static Stage.Mode LitTab(Stage.StageCtx st)
+        => st.Mode.Value != Stage.Mode.Video ? st.Mode.Value
+         : st.Theatre.Value ? Stage.TheatreRules.TabOf(st.TheatrePane.Value)
+         : Stage.Mode.Video;
     /// <summary>A word action: lowercase through the command case, the secondary ink lifting to the ink on hover, no plate.</summary>
     static BoxEl Word(string text, Action onClick, ColorF color, ZuneStageLayout t, Action<NodeHandle>? onRealized, string key) => new()
     {

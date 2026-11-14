@@ -49,6 +49,7 @@ internal sealed class ZuneStageUpNextColumn : Component
     float _s = 1f;
     float _hs = 1f;     // the "played before this" section's tier factor (1.5 at Huge 4K)
     float _target;
+    bool _videosPlay;   // StageCtx.VideosPlay: a track with a video shows its 16:9 still
     ZuneStageQueueRow _q = ZuneStageUpNextRules.Of(WidthTier.Standard);
 
     float ExtentOf(QueueSlot slot) => slot.Kind switch
@@ -68,15 +69,17 @@ internal sealed class ZuneStageUpNextColumn : Component
         var lane = props.Lane;
         _props = props;
         _queue = props.Queue;
+        _videosPlay = ctx.VideosPlay.Value;
         _target = ZuneStageTiers.StageOf(in tiers).TargetH;
         var window = tiers.Policy is null ? WidthTier.Standard : tiers.Window;
-        _q = props.Aside ? UR.Docked(UR.Of(window)) : UR.Of(window);   // the docked column (audit B3, Vr): the board's three columns, not the page's five
+        // the docked column (audit B3, Vr) and Theatre's open list beside the picture: the board's three columns, not the page's five
+        _q = props.Aside || props.Video ? UR.Docked(UR.Of(window)) : UR.Of(window);
         _hs = UR.HistoryScale(window);
         var set = ctx.Accent.Value;
         var layout = ctx.Layout.Value;
         // the Huge 4K stage's Up next column beside the lyrics stands in its own frame: the board's 1x rows across that frame's width, not the
         // pane region's scale and list cap
-        _s = props.Aside ? 1f : layout.QueueScale;
+        _s = props.Aside || props.Video ? 1f : layout.QueueScale;
         lane.SetMetrics(Px(_q.RowH), _extentOf ??= ExtentOf);
 
         var kids = new List<Element>(2);
@@ -108,13 +111,13 @@ internal sealed class ZuneStageUpNextColumn : Component
                 ModesRow(props, set),
                 new ScrollEl
                 {
-                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = props.Aside ? "stagequeue:aside" : "stagequeue",
+                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = props.Video ? "stagequeue:theatre" : props.Aside ? "stagequeue:aside" : "stagequeue",
                     Content = rows,
                 },
             ],
         };
         // Huge: the list and, right of it, the autoplay panel
-        if (_q.SidePanelW <= 0f || props.Aside) return column;
+        if (_q.SidePanelW <= 0f || props.Aside || props.Video) return column;
         return new BoxEl
         {
             Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Gap = Px(UR.SideGap),
@@ -314,8 +317,14 @@ internal sealed class ZuneStageUpNextColumn : Component
                     },
                 ],
             });
-        kids.Add(ArtTile(text.Art, Px(_q.ArtEdge), (int)Px(UR.ArtDecode)));
-        kids.Add(TitleBlock(text, _q.Album ? 3f : 1f));
+        // a track with a music video: the film glyph after its title on every stage list (contract 1.105); while videos play (StageCtx.VideosPlay)
+        // its thumbnail is the video's 16:9 still. The slot never changes size: beside the music video (Theatre) it is 16:9 wide on every row (an
+        // audio-only cover stands square at its left), on the Up next pivot it is the page's square and the still sits letterboxed in it
+        var video = lane.VideoOf(r);
+        bool still = _videosPlay && video.HasVideo;
+        kids.Add(props.Video ? VideoTile(text.Art, video, still, Px(_q.ArtEdge), (int)Px(UR.ArtDecode))
+            : still ? SquareStill(text.Art, video, Px(_q.ArtEdge), (int)Px(UR.ArtDecode)) : ArtTile(text.Art, Px(_q.ArtEdge), (int)Px(UR.ArtDecode)));
+        kids.Add(TitleBlock(text, _q.Album ? 3f : 1f, video.HasVideo));
         // Huge: the album column (the board's 2fr beside the 3fr title)
         if (_q.Album)
             kids.Add(new BoxEl
@@ -352,20 +361,54 @@ internal sealed class ZuneStageUpNextColumn : Component
     }
 
     /// <summary>Title over artists (an explicit badge before the artists when the track is explicit). A THIN row (title unknown) keeps the slot empty.</summary>
-    Element TitleBlock(QueueRowText text, float grow = 1f)
+    Element TitleBlock(QueueRowText text, float grow = 1f, bool video = false)
     {
         if (text.Thin) return new BoxEl { Grow = grow, Basis = 0f, MinWidth = 0f };
-        var title = new TextEl(text.Title)
+        Element title = new TextEl(text.Title)
         {
             Size = Px(_q.TitleSize), LineHeight = Px(_q.TitleLine), Weight = UR.TitleWeight, Color = Ink.Ink,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
         };
+        // a track with a music video carries the track lists' film glyph after its title
+        if (video)
+            title = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
+                Children = [title, new TextEl(Icons.Movie) { Size = Px(_q.ArtistSize), FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkTertiary, Shrink = 0f }],
+            };
         Element artists = new TextEl(text.Artists) { Size = Px(_q.ArtistSize), LineHeight = Px(_q.ArtistLine), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         Element sub = text.Explicit
             ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
                           Children = [Controls.ExplicitBadge(Px(UR.ExplicitBadge), Ink.InkTertiary), artists] }
             : artists;
         return new BoxEl { Direction = 1, Grow = grow, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = [title, sub] };
+    }
+
+    /// <summary>Theatre's art slot: 16:9 at the row's art height; a video's still fills it, an audio-only track's cover stands square at its left.</summary>
+    static Element VideoTile(string? cover, in QueueRowVideo video, bool still, float edge, int decode)
+    {
+        float w = MathF.Round(edge * ZuneStageVideoGeometry.ThumbAspect);
+        return new BoxEl
+        {
+            Width = w, Height = edge, Shrink = 0f, Direction = 0, HitTestVisible = false,
+            Children =
+            [
+                still
+                    ? new BoxEl { Width = w, Height = edge, ClipToBounds = true, Corners = CornerRadius4.All(R.Shape.Cover), Children = [Controls.Artwork(video.Still ?? cover, w, edge, R.Shape.Cover, decodePx: decode * 2)] }
+                    : ArtTile(cover, edge, decode),
+            ],
+        };
+    }
+
+    /// <summary>The Up next pivot's square slot holding a video's 16:9 still, letterboxed (centred at the slot's width).</summary>
+    static Element SquareStill(string? cover, in QueueRowVideo video, float edge, int decode)
+    {
+        float h = MathF.Round(edge / ZuneStageVideoGeometry.ThumbAspect);
+        return new BoxEl
+        {
+            Width = edge, Height = edge, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, HitTestVisible = false,
+            Children = [new BoxEl { Width = edge, Height = h, ClipToBounds = true, Corners = CornerRadius4.All(R.Shape.Cover), Children = [Controls.Artwork(video.Still ?? cover, edge, h, R.Shape.Cover, decodePx: decode)] }],
+        };
     }
 
     /// <summary>A square cover; the row's click plays.</summary>

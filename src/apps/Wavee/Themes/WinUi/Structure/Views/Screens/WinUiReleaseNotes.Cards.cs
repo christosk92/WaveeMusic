@@ -100,16 +100,20 @@ internal static partial class WinUiReleaseNotes
 
     /// <summary>The poster band: 16:9 from the card's own width, and a band EVEN WITHOUT a poster (a tinted plate) — a card
     /// that loses its top third reads as broken. DecodePx 1200 is the authored width; without it the poster is a smear.</summary>
-    static Element Media(ReleaseHighlight h, string? poster, bool store)
+    static Element Media(HighlightItem item, bool store)
     {
-        var layers = new List<Element>(2);
-        if (poster is { Length: > 0 })
+        var h = item.Highlight;
+        var layers = new List<Element>(3);
+        var corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f);
+        if (item.Poster is { Length: > 0 } poster)
             layers.Add(new ImageEl
             {
                 Source = poster, Fit = ImageFit.Cover, AspectRatio = M.PosterAspect, DecodePx = K.PosterDecodePx,
-                Corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f),
+                Corners = corners,
                 Placeholder = Tok.FillSubtleSecondary, AlignSelf = FlexAlign.Stretch,
             });
+        // A motion highlight plays its WebP over the poster (the poster is its first frame).
+        if (ReleaseNotes.MotionLayer(item, corners) is { } motion) layers.Add(motion);
         layers.Add(new BoxEl
         {
             Grow = 1f, Direction = 0, AlignItems = FlexAlign.Start, Padding = Edges4.All(8f), HitTestVisible = false,
@@ -164,7 +168,7 @@ internal static partial class WinUiReleaseNotes
         };
 
     /// <summary>One card. A component only for its <c>overflows</c> signal; the ctor args are legitimately frozen
-    /// (<see cref="HighlightItem"/> is immutable, <c>open</c> captures its index). The MOTION is a poster, never live video.</summary>
+    /// (<see cref="HighlightItem"/> is immutable, <c>open</c> captures its index). A video is its poster, never live video; a motion highlight plays its animated WebP over the poster (ReleaseNotes.MotionLayer).</summary>
     sealed class CardView(HighlightItem item, Action open, Action openStore, bool compact) : Component
     {
         readonly Signal<bool> _overflows = new(false);
@@ -192,7 +196,7 @@ internal static partial class WinUiReleaseNotes
                 return frame.Interactive(Interaction.Card) with
                 {
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
-                    Children = [Media(h, item.Poster, store: false), Body(h, overflows, store: false)],
+                    Children = [Media(item, store: false), Body(h, overflows, store: false)],
                 };
 
             // Store card: the hit region and the footer are SIBLINGS — a card never nests a button in a button — and the
@@ -206,7 +210,7 @@ internal static partial class WinUiReleaseNotes
                         Direction = 1, MinWidth = 0f,
                         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
                         WhilePressed = new MotionTarget { Scale = 0.985f }, Transition = MotionTok.StandardSpring,
-                        Children = [Media(h, item.Poster, store: true), Body(h, overflows, store: true)],
+                        Children = [Media(item, store: true), Body(h, overflows, store: true)],
                     },
                     new BoxEl
                     {

@@ -33,21 +33,22 @@ public static partial class Diagnostics
     {
         // ── the argv ────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>`--inspect [--pipe name] [--profile dir] [--text dwrite|headless]`.</summary>
-        public readonly record struct Options(string Pipe, string Profile, bool HeadlessText)
+        /// <summary>`--inspect [--pipe name] [--profile dir] [--text dwrite|headless] [--whatsnew dir]`.</summary>
+        public readonly record struct Options(string Pipe, string Profile, bool HeadlessText, string WhatsNew = "")
         {
             public const string Usage =
                 "usage: Wavee.exe --inspect [--pipe <name>] [--profile <scratch dir>] [--text dwrite|headless]\n" +
                 "  --pipe     read commands from \\\\.\\pipe\\<name> and reply on it (one client); default: stdin / stdout\n" +
                 "  --profile  the scratch profile folder (default: a new folder under %TEMP%\\wavee-inspect); never the user's\n" +
                 "  --text     dwrite (default): real DirectWrite text metrics; headless: the engine's 0.55 x size model\n" +
+                "  --whatsnew a release's notes folder (ops/release/wavee/<semver>, or the release tool's output) for the What's new page\n" +
                 "Commands are JSON lines {\"cmd\",\"args\",\"id\"}; see docs/guide/agent-inspect.md.";
 
             public static bool TryParse(string[] args, out Options options, out string usage)
             {
                 options = new Options("", "", false);
                 usage = "";
-                string pipe = "", profile = "";
+                string pipe = "", profile = "", whatsNew = "";
                 bool headlessText = false;
                 for (int i = 0; i < args.Length; i++)
                 {
@@ -57,6 +58,7 @@ public static partial class Diagnostics
                         case "--inspect": break;
                         case "--pipe": if (!Value(args, ref i, a, out pipe, ref usage)) return false; break;
                         case "--profile": if (!Value(args, ref i, a, out profile, ref usage)) return false; break;
+                        case "--whatsnew": if (!Value(args, ref i, a, out whatsNew, ref usage)) return false; break;
                         case "--text":
                             {
                                 if (!Value(args, ref i, a, out string mode, ref usage)) return false;
@@ -75,7 +77,7 @@ public static partial class Diagnostics
                             return false;
                     }
                 }
-                options = new Options(pipe, profile, headlessText);
+                options = new Options(pipe, profile, headlessText, whatsNew);
                 return true;
             }
 
@@ -239,17 +241,22 @@ public static partial class Diagnostics
             Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
-            Arg("player", ArgType.Enum, "bind an idle engine player to the video surface", null, "fake", requires: "video"),
+            Arg("player", ArgType.Enum, "fake: bind an idle engine player to the video surface (no frames); scripted: a player whose scripted source follows the deck (metadata, a first frame, a play intent; every video track an in-place switch)", null, "fake|scripted", requires: "video"),
+            Arg("videoOpenMs", ArgType.Int, "player=scripted: how long each open takes to its first frame on the 16 ms frame clock (metadata at half of it)", "240", requires: "video"),
             Arg("chrome", ArgType.Enum, "shown: the chrome at rest with no auto-hide (Zune's hover band, the video presenter's transport, the fullscreen stage's controls)", null, "shown|hidden"),
             Arg("join", ArgType.Enum, "the video join poster's state: poster (the artwork alone: a player bound, no picture yet), working (the ring and Loading..., the default offline), failed (the fault line)", null, "poster|working|failed", requires: "video"),
             Arg("fromMs", ArgType.Int, "the fake video track's position", "74000", requires: "video"),
-            Arg("stage", ArgType.Enum, "the fullscreen stage's mode (key f11 opens it)", null, "lyrics|visualizer|queue|artist"),
+            Arg("stage", ArgType.Enum, "the fullscreen stage's mode (key f11 opens it); video: open the stage at the mount, on the picture (Video mode, Cinema) when a video is up (with video=docked|floating) and the theme draws it", null, "lyrics|visualizer|queue|artist|video"),
             Arg("layout", ArgType.Enum, "the fullscreen stage's layout", null, "card|large|centered|artist"),
             Arg("gallery", ArgType.Enum, "the fullscreen stage's gallery", null, "on|off|true|false"),
             Arg("heroLyrics", ArgType.Enum, "the Artist layout's lyrics over the photo", null, "on|off|true|false"),
-            Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
+            Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, the playing one grey, or every cover one test colour (dark navy, teal, near-white, saturated yellow)", null, "hue|grey|gray|greynow|dark|teal|white|yellow"),
             Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
             Arg("materials", ArgType.Enum, "off: no acrylic runs, every frosted surface draws its fallback plate (what Energy saver and Transparency effects off show)", "on", "on|off"),
+            Arg("mini", ArgType.Bool, "mount the mini player window's content alone (#197): its shape follows w x h (Strip 6:1, Wide 12:5, Square, Tall 9:16)", null, "true|false"),
+            Arg("face", ArgType.Int, "with mini: the face (0 Cover, 1 Lyrics, 2 Canvas, 3 Visualizer, 4 Vinyl, 5 CD, 6 Cassette, 7 Reel)", "0", "0..7"),
+            Arg("deskW", ArgType.Float, "with mini: draw a screen of deskW x deskH around the w x h window (snapped to its bottom-right corner), so its menus show where they escape to"),
+            Arg("deskH", ArgType.Float, "with mini: the screen's height (see deskW)"),
             Arg("motion", ArgType.Enum, "reduced: Windows' Animation effects off for this mount (page swaps fade, nothing slides, zooms or staggers)", "full", "full|reduced"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
@@ -323,7 +330,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -333,7 +340,11 @@ public static partial class Diagnostics
                 Positional = ["verb"],
                 Args = [Arg("verb", ArgType.String, "the verb to describe (an alias works too)"), Arg("schema", ArgType.Enum, "the whole table as JSON", null, "json", excludes: "verb")],
             },
-            new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts and the video surface when mounted", "status") { Aliases = ["ping"] },
+            new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts and the video surface when mounted; log=<text>: the app log lines holding that text written since the last status that asked", "status log=\"stage.chrome\"")
+            {
+                Aliases = ["ping"],
+                Args = [Arg("log", ArgType.String, "list the app log lines (the in-memory ring) that contain this text, written since the last `status log=` (at most 64, the newest)")],
+            },
             new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, cold playlist, stage, tabs, playback, queue, video surface, theme options", "mount w=400 h=860 theme=zune kind=dark route=home")
             {
                 Positional = ["w", "h"],
@@ -479,7 +490,13 @@ public static partial class Diagnostics
                     Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's or Liked Songs' relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|liked|show|episode"),
                     Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown, or the artist whose charted rows are staged in flight (it opens); kind=head-land puts it back in place"),
                     Arg("answer", ArgType.Enum, "with kind=head: hold (an artist: its overview instead of its late chart; the page's own ask for its head goes through the real fetch layer and is held by a scripted transport); with kind=head-land: how the held ask settles (fill: the head lands; omit: answered without it, the miss retries omitted too; unfilled: a route that did not answer; fail: a terminal 404; cancel: a transport failure, re-queued in flight)", null, "hold|fill|omit|unfilled|fail|cancel"),
-                    Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
+                    Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons"),
+                    Arg("ai", ArgType.Enum, "with kind=ai: the AI lyrics settings card's staged status (no module, no download; the next mount puts 'not started' back); lang-failed: a language added to a ready feature failed, setup-failed: a first setup stopped on a language's file, error: the whole feature failed; timed|timing: ready, and the playing track timed by it (done, or a job running), so the lyrics surfaces draw the AI disclosure (stage after a play)", "ready", string.Join("|", InspectSession.AiCases)),
+                    Arg("error", ArgType.Enum, "with kind=ai ai=lang-failed|setup-failed|error: the failure kind", "notfound", string.Join("|", InspectSession.AiErrors)),
+                    Arg("lang", ArgType.String, "with kind=ai: the language a language failure names (a pack language)", "ja"),
+                    Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
+                    Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues)),
+                    Arg("hdcp", ArgType.Enum, "with kind=hdcp: the video's screen as the HDCP guard would judge it (no real screen): blocked = protection did not take there (the song plays, every video surface shows the protected-video warning), clear = the window moved to a screen that carries HDCP (the block lifts, the row goes back to its video); the next mount puts the boot's guard back", "blocked", "blocked|clear")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
@@ -522,7 +539,7 @@ public static partial class Diagnostics
                     Arg("gpu", ArgType.Enum, "each row's mount devices: none by default (a crossing reads rects and the scene, never a frame's pixels), hardware or warp to keep pixels for a render after", "none", "warp|hardware|none"),
                     Arg("scale", ArgType.Float, "DPI scale of each row's mount", "1"),
                     Arg("images", ArgType.Enum, "fake or real images", "fake", "fake|real"),
-                    Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow"),
+                    Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow|dark|teal|white|yellow"),
                     Arg("items", ArgType.Int, "entries per list in each crossing reply", "8"),
                     Arg("max", ArgType.Int, "the settle cap", "600"),
                 ], s_lintArgs),
@@ -546,10 +563,11 @@ public static partial class Diagnostics
                              Arg("id", ArgType.String, "the row (any case)"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
             },
-            new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
+            new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, blur or re-activate it (active=false|true), and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
             {
                 Positional = ["state"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("state", ArgType.Enum, "minimized (the caption button), hidden (close to tray) or restored (the restore edge paints the next frame; then settle)", null, "minimized|hidden|restored"),
+                             Arg("active", ArgType.Bool, "false blurs the window (the WindowBlur a deactivation sends: hover cleared, a pointer that was in leaves the window), true re-activates it (the pointer is back with the next move)"),
                              Arg("advance", ArgType.Float, "move the cold-maintenance clock this many ms ahead first (31000 makes a 30 s deadline due)", "0") with { Min = 0 },
                              Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; the app runs with 8192, an inspector mount with 0)") with { Min = 0 },
                              IntArg("frames", "frames to run after the change when not restoring (parked frames while parked)", "2", 0, 100_000)], s_settleArgs),
@@ -557,10 +575,10 @@ public static partial class Diagnostics
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
             {
                 Positional = ["do", "value"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead"),
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration"),
                              Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
-                             Arg("ms", ArgType.Int, "the seek target", "0")], s_settleArgs),
+                             Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];

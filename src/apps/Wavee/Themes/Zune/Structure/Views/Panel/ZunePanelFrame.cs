@@ -194,7 +194,7 @@ internal static class ZunePanel
     }, Loc.Get(Strings.Theme.Zune.Frame.ClosePanel));
 
     /// <summary>The body of <paramref name="body"/> (never the docked video card: the column holds the one card in every mode).</summary>
-    internal static Element Body(PanelProps props, PanelView view, PanelMode body) => body switch
+    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool swapIn = false) => body switch
     {
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Lyrics => new BoxEl
@@ -204,26 +204,62 @@ internal static class ZunePanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new ZunePanelVideoArm()),
-        _ => NowPlaying(props, view),
+        _ => NowPlaying(props, view, swapIn),
     };
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
     /// <summary>The now-playing arm: the pinned hero over "up next"; where the docked video takes the hero's place, the column pins the card over
-    /// this arm (under the head), so the arm is "up next" alone.</summary>
-    private static Element NowPlaying(PanelProps props, PanelView view)
+    /// this arm (under the head), so the arm is "up next" alone. A change between the two while the pivot stands (<paramref name="swapIn"/>: the
+    /// docked video leaving for the mini player once its picture has landed there, or docking back) is one motion: the hero opens its height while
+    /// it fades in as the card's slot closes and the card fades out (and back), so "up next" rides them instead of stepping.</summary>
+    private static Element NowPlaying(PanelProps props, PanelView view, bool swapIn)
     {
         var arm = Embed.Comp(props.NowPlaying, static () => new ZuneNowPlayingArm());
-        return ScrollView(new BoxEl
+        // The hero's slot stands in both cases (empty where the card holds the hero's place): its height eases between none and the hero's, also as
+        // the hero's own content settles after it mounts.
+        Element heroSlot = new BoxEl
         {
-            Direction = 1,
-            Children = view.Pinned != PanelPinned.DockedVideo ? [Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying), arm] : [arm],
-        }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+            Key = "np-pinned", Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+            Layout = Design.Reduced ? null : ZuneMotion.HeightResize,
+            Children = view.Pinned != PanelPinned.DockedVideo
+                ?
+                [
+                    new BoxEl
+                    {
+                        Key = "np-pinned:art", Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                        Enter = swapIn ? ZuneMotion.SwapFade : null, Exit = ZuneMotion.SwapFade,
+                        Children = [Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying)],
+                    },
+                ]
+                : [],
+        };
+        return ScrollView(new BoxEl { Direction = 1, Children = [heroSlot, arm] }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
     /// <summary>The docked video card over its resize handle: the card binds the height cell the handle writes (a stable bind) and the column hugs
     /// both, so what lies under them rides every height frame by frame. The handle's band sits UNDER the picture (the presenter over the card
     /// takes every press on it), its grip a flat square rule in the tertiary ink.</summary>
+    /// <summary>The docked card's ONE place in the column (B10): a slot whose height eases between the card's and none while the card cross-fades in or out
+    /// (<paramref name="swapIn"/>: the panel stood open on the render before; a panel that arrives with its card shows it with its own motion), so the
+    /// head and the body ride a dock or an undock instead of stepping by the card's height. The handle's drag writes the card's height through a bind:
+    /// it never eases.</summary>
+    internal static Element DockedCapSlot(PanelProps props, bool docked, float width, bool swapIn) => new BoxEl
+    {
+        Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+        Children =
+        [
+            docked
+                ? new BoxEl
+                {
+                    Key = "docked-cap:card", Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                    Enter = swapIn ? ZuneMotion.SwapFade : null, Exit = ZuneMotion.SwapFade,
+                    Children = [DockedCap(props, true, width)],
+                }
+                : DockedCap(props, false, width),
+        ],
+    };
+
     internal static Element DockedCap(PanelProps props, bool docked, float width)
     {
         Element video = props.DockedCard();
@@ -255,6 +291,8 @@ internal static class ZunePanel
 internal sealed class ZunePanelFrame : Component
 {
     bool _motionSeeded;
+    bool _shownOpen, _swapIn;
+    PanelMode? _shownBody;
     PanelPlacement _seededPlacement;
     static readonly Element[] s_noLayers = [];
     static readonly Element s_noBleed = new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
@@ -308,7 +346,7 @@ internal sealed class ZunePanelFrame : Component
     {
         Key = ZuneFrameRules.PanelPaneKeyPrefix + mode, Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, HitTestVisible = !leaving,
         OnRealized = PaneRealized(mode),
-        Children = [ZunePanel.Body(props, view, mode)],
+        Children = [ZunePanel.Body(props, view, mode, swapIn: !leaving && _swapIn)],
     };
 
     public override Element Render()
@@ -320,9 +358,17 @@ internal sealed class ZunePanelFrame : Component
         bool floating = placement != PanelPlacement.Dock;
         float width = placement == PanelPlacement.Float ? ZuneFrameRules.PanelFloatW : view.Width;
         var body = view.Body;
+        // The panel stood open at this pivot on the render before: a change of its docked card (or of now playing's hero) is then a swap inside it
+        // (DockedCapSlot, NowPlaying), not its arrival.
+        bool swapIn = open && _shownOpen && _shownBody == body;
+        _swapIn = swapIn;
+        _shownOpen = open;
+        _shownBody = body;
         var vp = UseContextSignal(Viewport.Size);
+        // Read through memos: the frame follows the window's tier and a capability, never the content tier a docking panel's slide crosses.
         var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
-        bool friends = facts.Value.Capabilities.FriendsPanel;
+        bool friends = UseComputed(() => facts.Value.Capabilities.FriendsPanel).Value;
+        var windowTier = UseComputed(() => facts.Value.Tiers.Window).Value;
         bool sheet = placement == PanelPlacement.Sheet;
 
         _close = props.Close;
@@ -396,7 +442,7 @@ internal sealed class ZunePanelFrame : Component
         // edge; a card (floating, the sheet) paints its own plate: the page wash below its top edge, the scrim, the glow, the edge.
         bool inline = open && placement == PanelPlacement.Dock;
         var pageWash = UseContext(ZuneFrameContext.Material) is { } material
-            ? ZunePageWash.Of(material.Value, UseContext(ZuneFrameContext.PageChrome)?.Value?.Backdrop ?? PageBackdrop.None, facts.Value.Tiers.Window)
+            ? ZunePageWash.Of(material.Value, UseContext(ZuneFrameContext.PageChrome)?.Value?.Backdrop ?? PageBackdrop.None, windowTier)
             : null;
         var panelTop = UseContext(ZuneFrameContext.PanelTop);
         float top = inline ? 0f : panelTop?.Invoke() ?? 0f;
@@ -421,7 +467,10 @@ internal sealed class ZunePanelFrame : Component
         // playing pins it in the hero's place. A mode switch only reorders the card and the head (the body's top is their sum either way): both keep
         // their nodes and glide to their new places on the pivot slide.
         LayoutTransition? slide = Design.Reduced ? null : ZuneMotion.PivotSlide;
-        Element card = ZunePanel.DockedCap(props, view.DockedHere, width) with { Key = ZuneFrameRules.PanelCardKey, Layout = slide };
+        Element card = ZunePanel.DockedCapSlot(props, view.DockedHere, width, swapIn) with
+        {
+            Key = ZuneFrameRules.PanelCardKey, Layout = Design.Reduced ? null : ZuneMotion.CardSlot,
+        };
         // Over the edge-to-edge canvas (laid under the now playing pivot unless the docked video holds it) the head paints in the media scope's ink;
         // the memo re-renders the frame only when that answer flips.
         _bleeds = props.NowPlaying.Bleeds;

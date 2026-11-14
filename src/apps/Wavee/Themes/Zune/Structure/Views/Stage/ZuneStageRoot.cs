@@ -13,6 +13,11 @@
 //   · the SMOKE under a Card face is the Card arrangement's diagonal veil (Z-NowPlaying-Card), or the core's bottom smoke under the plate.
 //   · the HAIRLINE while the chrome rests is Zune's 2-px line.
 //
+// VIDEO MODE (`StageRootView.ShowPicture`: Cinema and Theatre, and the Overview tab): the audio stack above gives way to the picture's hollow
+// reservation (`ZuneStageTheatre`: the presenter follows it, no ancestor here carries an opacity, a scale or a layout transition over it), the
+// audio face in the picture's place over an audio-only track (`ZuneStageAudioFace`), and Theatre's open list sliding in from the right. The chrome
+// over the picture is `ZuneStagePictureChrome`, which the core mounts in the video layer.
+//
 // ZStack placement: vertical = AlignSelf, horizontal = JustifySelf. A Flow.Show boundary and a component are transparent anchors (flex
 // columns), so every Show's child is a full-bleed `Stage.Layer` and the placed box sits one level down (see `Stage.Layer`).
 
@@ -43,17 +48,59 @@ internal static class ZuneStageRoot
     static Element Draw(StageRootView v)
     {
         var layers = v.Layers;
-        var fade = new EnterExit(Opacity: 0f, Active: true);
         return new BoxEl
         {
             Width = v.Width, Height = v.Height, ZStack = true, ClipToBounds = true, Focusable = true,
             OnRealized = v.OnRealized,
-            OnHoverMove = v.OnHoverMove,
+            // a move ANYWHERE within the stage is idle activity (over a lyric line, the open list, the chrome), as the contract asks
+            OnPointerMoveWithin = v.OnHoverMove,
             OnPointerExit = v.OnPointerExit,
             OnPointerWheel = v.OnPointerWheel,
             OnKeyDown = v.OnKeyDown,
             OnFocusChanged = v.OnFocusChanged,
             Children =
+            [
+                // Video mode: the picture's hollow reservation (the presenter follows its painted rect) on the stage's floor: the whole stage in
+                // Cinema, the left column's 16:9 box in Theatre (ZuneStageTheatre); nothing of the audio stage is drawn under the picture
+                Flow.Show(v.ShowPicture, Stage.Layer with
+                {
+                    Key = "stage:picture", HitTestVisible = false, HitTestPassThrough = false,
+                    Children = [Embed.Comp(new ZuneStageTheatre.PictureProps(v), static () => new ZuneStageTheatre.Picture())],
+                }),
+                // the AUDIO FACE (Video mode over an audio-only track: no presenter, no hole): the flat field, the cover and the lyrics in the
+                // picture's place, fading in over the reservation and out under the picture the next video brings back
+                Flow.Show(() => v.Stage.In(1) && v.ShowPicture() && v.ShowAudioFace(), Stage.Layer with
+                {
+                    Key = "stage:audioface",
+                    Enter = s_fade, Exit = s_fade, Transition = MotionTok.StandardEnter,
+                    Children = [Embed.Comp(new ZuneStageAudioFace.Props(v), static () => new ZuneStageAudioFace())],
+                }),
+                // Theatre's open list beside the picture: it slides in from the right as Theatre opens and back out as it closes
+                Flow.Show(() => v.Stage.Alone(2) && v.ShowPicture() && v.ShowTheatre() && layers.TheatrePane is not null, Stage.Layer with
+                {
+                    Key = "stage:theatre",
+                    Enter = s_theatreMotion, Exit = s_theatreMotion, Transition = MotionTok.StandardEnter,
+                    Children = [layers.TheatrePane is { } theatrePane ? theatrePane() with { Key = "stage:theatre:pane" } : new BoxEl()],
+                }),
+                Flow.Show(() => !v.ShowPicture(), Stage.Layer with { Key = "stage:audio", Children = AudioStack(v) }),
+                layers.LyricFacts() with { Key = "stage:facts" },
+                Flow.Show(v.ShowHeroFacts, layers.HeroFacts() with { Key = "stage:herofacts" }),
+                layers.Clock() with { Key = "stage:clock" },
+            ],
+        };
+    }
+
+    static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>Theatre's list slide: in from the right beside the shrinking picture, back out as the picture fills the stage.</summary>
+    static readonly EnterExit s_theatreMotion = new(Dx: ZuneStageVideoGeometry.PaneSlide, Opacity: 0f, Active: true);
+
+    /// <summary>The stage's layers for the audio modes (Lyrics, Visualizer, Up next, Artist), bottom-up, from the backdrop to the hairline.</summary>
+    static Element[] AudioStack(StageRootView v)
+    {
+        var layers = v.Layers;
+        var fade = s_fade;
+        return
             [
                 Slots.View(ViewKeys.StageBackdrop, v.Backdrop) with { Key = "stage:backdrop" },
                 // the Artist layout's photo (Z4c's view; the slot keeps its place in the stack)
@@ -107,11 +154,7 @@ internal static class ZuneStageRoot
                         },
                     ],
                 }),
-                layers.LyricFacts() with { Key = "stage:facts" },
-                Flow.Show(v.ShowHeroFacts, layers.HeroFacts() with { Key = "stage:herofacts" }),
-                layers.Clock() with { Key = "stage:clock" },
-            ],
-        };
+            ];
     }
 
     /// <summary>The chrome: the top bar, the transport, the face chip and the gallery, each under its own Show whose child is a full-bleed
@@ -222,19 +265,15 @@ internal sealed class ZuneStageUpNextFrame : Component
         var t = ZuneStageTiers.StageOf(in tiers);
         var r = p.Stage.Layout.Value.UpNextRect;
         float x = G.UpNextPaneX(p.Stage.Layout.Value, t), y = r.Y + t.Drop, h = MathF.Max(0f, r.H - t.Drop);
-        return Stage.Layer with
+        var pane = new BoxEl
         {
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = "stage:upnext:pane", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = h, Margin = new Edges4(x, y, 0f, 0f),
-                    Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = R.Shape.All(ShapeRole.Overlay), ClipToBounds = true,
-                    Fill = R.Layer.FloatingPane,
-                    Children = p.Build is null ? [] : [p.Build()],
-                },
-            ],
+            Key = "stage:upnext:pane", Width = r.W, Height = h,
+            Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = R.Shape.All(ShapeRole.Overlay), ClipToBounds = true,
+            Fill = R.Layer.FloatingPane,
+            Children = p.Build is null ? [] : [p.Build()],
         };
+        // the core's drawer: its tab (the pane's flat fill) collapses the pane off the right edge and back (Stage.UpNextDrawer)
+        return Stage.UpNextDrawer(p.Stage, x, y, r.W, h, pane, new BoxEl { Fill = R.Layer.FloatingPane }, G.GalleryYieldMs);
     }
 }
 

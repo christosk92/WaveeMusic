@@ -1209,6 +1209,7 @@ public static partial class Playback
         VideoFacts facts = VideoFacts.Of(in s_state);
         DeckVideo.Value = facts;
         VideoActive.Value = facts.OnVideo && !facts.Remote && s_state.Phase is Phase.Playing or Phase.Paused;
+        EndHoldNow.Value = new EndHoldFacts(s_state.Hold, s_state.Hold == EndHold.None ? 0L : s_state.HoldAtMs);
 
         // The in-flight bits retire on the state that ends the flight, not on a timer: the deck is audible, so the
         // load is over; someone else owns playback, so the transfer is over.
@@ -1461,7 +1462,21 @@ public static partial class Playback
     }
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
-    public static void Previous() => Post(Input.Prev(FrameNowMs()));
+    public static void Previous()
+    {
+        s_previousPressedMs = Environment.TickCount64;
+        Post(Input.Prev(FrameNowMs()));
+    }
+
+    static long s_previousPressedMs = long.MinValue / 2;
+
+    /// <summary>The direction of the last track change as the user caused it, for motion only: -1 when Previous was pressed in the last
+    /// <see cref="SkipSenseWindowMs"/> (the change it caused goes back), +1 otherwise (Next, a natural end, a row picked from the queue,
+    /// autoplay all go forward). The full-screen stage's track swap drifts the incoming part in from this side (<c>Stage.TrackSwap</c>).</summary>
+    public static int SkipSense => Environment.TickCount64 - s_previousPressedMs < SkipSenseWindowMs ? -1 : 1;
+
+    /// <summary>How long a Previous press decides the direction of the change it causes.</summary>
+    public const long SkipSenseWindowMs = 2000;
     /// <summary>Diagnostics (the inspector's <c>transport do=end</c>): the row on the deck ran out with nothing prepared, as the
     /// pump's Ended reports it, so a case can walk the natural-end path without waiting out a track.</summary>
     public static void EndNow() => Post(Input.Ended(s_state.LoadEpoch, FrameNowMs()));
@@ -1548,6 +1563,10 @@ public static partial class Playback
     /// <summary>The video placement turned on or off. Owner K's `Video.Host.cs` posts it on the surface's
     /// <c>IsActive</c> edge; the reducer switches hosts at the carried position when the row has a video (G-141).</summary>
     public static void SetVideoPlacement(bool active) => Post(Input.VideoPlacement(active, FrameNowMs()));
+
+    /// <summary>The screen the video is on can or cannot carry HDCP (<c>Video.Hdcp</c> posts it on the edge): while it cannot, a protected
+    /// video plays as its song; when it can again, the row goes back to its video at the carried position.</summary>
+    public static void SetVideoScreenBlocked(bool blocked) => Post(Input.VideoScreen(blocked, FrameNowMs()));
 
     /// <summary>The user's EXPLICIT switch of the deck's mode (the bar's lit video button): like <see cref="SetVideoPlacement"/>, and while a
     /// foreign device owns playback it is the one post forwarded to it as a Connect <c>signal</c>. Our own surface opening or closing never

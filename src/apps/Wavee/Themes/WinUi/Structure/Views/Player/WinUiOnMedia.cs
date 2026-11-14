@@ -120,7 +120,7 @@ internal sealed class WinUiOverlayChrome : Component
                 // material. `Chrome: PopupChrome.Popup` mapped to PopupWindowMaterial.None, which fails the second
                 // conjunct of OverlayHost's `wantWindowed` and pinned this popup IN-APP despite the
                 // ConstrainToRootBounds=false right here asking it to escape. In-app over a VIDEO HOLE is the one
-                // place acrylic cannot work - the hole is a DestOut erase and the video is a sibling DComp visual
+                // place acrylic cannot work - the hole is a DestOut erase and the video is a compositor visual
                 // below the UI swapchain, so the layer samples premultiplied zero - so OverlayHost fell back to
                 // FlatAcrylicFill(), #FCFCFC at .85: the flat opaque slab. Windowed, the plate paints only the
                 // presenter's residual tint over the window's real DWM backdrop, and the video blurs through.

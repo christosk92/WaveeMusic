@@ -42,7 +42,7 @@ names what the lint could not decide, and the `todo` rules report the spacing an
 
 | Arg | Default | Meaning |
 |---|---|---|
-| `rules` | all | Comma list or JSON array of strings. Takes ids (`text.trim`), today's names (`trim`; `clip` = text.clip + overlap.sibling, `type` = type.floor + type.scale), families (`align`, `align.*`) and `all`. Any case. An unknown word, a non-string entry or an empty list fails and lists the names. |
+| `rules` | all | Comma list or JSON array of strings. Takes ids (`text.trim`), today's names (`trim`; `clip` = text.clip + overlap.sibling + overlap.text, `type` = type.floor + type.scale), families (`align`, `align.*`) and `all`. Any case. An unknown word, a non-string entry or an empty list fails and lists the names. |
 | `scope` | `screen` | `screen`: what is on screen (below). `content`: what scrolling reaches (below a scroller nothing cuts along its axis; the window still cuts across it, so a panel parked past the edge stays out). `all`: everything captured (the lint before scopes). |
 | `root`, `nth` | tree + overlays | Lint only the subtree of the node keyed exactly so (`nth` picks among copies). The subtree starts from the cut its live ancestors put on it, so it is judged as the page shows it. Not with `replay`. |
 | `min` | `info` | `info`, `warn` (`warning`), `error`: findings below it are neither listed nor counted in `summary` (`fails` still counts them). |
@@ -213,14 +213,56 @@ guide `Bleed` makes it intended. Under the headless text model: review.
 ZStack and no scroller: warn. FP classes: an overlay drawn without a ZStack. (A bar collapsed to no height under a clip no
 longer counts: the capture keeps the collapsed clip, so the bar is off screen.)
 
-**`text.trim` (trim).** Text the engine reports trimmed, by class (first match wins; the class is the fingerprint's cause). One unwrapped
+**`overlap.text` (clip).** Two different in-scope word runs drawn into each other ANYWHERE in the tree, not only siblings: a
+settings card's description wrapped to a line its row did not reserve, its text column ran out of the row, and the next card's
+title "Reset this layout" was drawn against its last line ("rows."), two cousins several levels apart whose cards' own boxes
+never overlapped. Two tiers, one id:
+
+- **ink** (error): their **glyph ink** (`inkTop`..`inkRight`; without it the box, and a vertical overlap within a quarter em of
+  the line box's leading is allowed) overlaps past 0.5 on both axes: "text 'B' is drawn over text 'A'". Cause: the two runs'
+  patterns.
+- **crowd** (warn, cause `crowd:` + the two runs' patterns, so its fingerprint differs from the ink tier's): their BOXES overlap
+  by more than 2 DIP on both axes AND at least one of them runs out of an ancestor below their common ancestor (it left the
+  box that reserves its room), while the ink only touches: "text 'Reset this layout' crowds text 'Artwork beside...': their
+  boxes overlap by 80 x 6.95 in ...; 'Artwork beside...' runs out of ...". A designed tight stack (a display title on a block
+  line height over its artist line, both inside the parent that holds them) runs out of nothing and stays silent. The ink tier
+  wins when both hold.
+
+Each rect is cut by what the run's ancestors clip (text scrolled or clipped away does not count; ink spilling past its own box
+does). **Scroll spaces:** two runs under the same nearest scrolling ancestor (the same scroll content, or both outside every
+scroller) are compared in the lint scope's space, so `scope=content` still finds a collision below the fold of one page (the
+reproducer's cards sit at y 2,640 of the settings page); runs in DIFFERENT scroll spaces (a list row against the player bar or
+a pinned sidebar footer, two scrollers) are compared only by what is on SCREEN for both, whatever the scope: a row's
+below-the-fold position is not where it is drawn against fixed chrome. The message names both texts (the later-painted one
+is "drawn over" or "crowds" the earlier), their nearest common ancestor and the boxes each runs out of; the fingerprint's
+pattern is the common ancestor's. All the exclusions below apply to both tiers. Not a finding: two runs in different
+children of a **ZStack** (their nearest common ancestor is one: a designed overlay); a run mid-animation (it or an ancestor) or
+under a sticky header; runs in different roots (overlay layers); a run under a tenth of opacity; a pair an opaque plate painted
+between them separates (the later run sits on a card drawn over the earlier); and siblings whose boxes overlap
+(`overlap.sibling` reports those). Candidates are swept in y order. Under the headless text model: review. FP classes: a
+designed text-over-text layering built without a ZStack (a watermark word behind content); a multi-line run's ink box is the
+union of its lines, so a text set beside the short last line of a paragraph can read as an overlap.
+
+**`text.trim` (trim).** Text the engine reports trimmed, by class (first match wins; the class is the fingerprint's cause). Two
+readings feed it: `trimmed` (the uncut run against its box) and, on DirectWrite, `drawn` (what the draw's own layout did: its line
+count, whether it cut content, whether it drew an ellipsis, and the uncut run's line count and whole-word overhang at the same
+width). A run the draw CUT is looked at even when it is not `trimmed`. One unwrapped
 line whose words fit its width is no trim, whatever the engine reports for its height (a display title on its exact line: Zune's 130 line in
-a 122 box draws no ellipsis; its ink is `text.clip`'s; audit B8):
+a 122 box draws no ellipsis; its ink is `text.clip`'s; audit B8). A wrapped run the draw did NOT cut shows every word, so with
+`drawn` known it is judged by its DRAWN block (`drawn.lines` x the line height, `natural.h / naturalLines`) against its box, never
+by its uncut block: a drawn block that fits the box is **no finding at all**, whatever `trimmed` says (the Zune artist
+`zune-artist-about:text` and the Classic/WinUI stage artist bio end in "\n\n": the uncut block counts the two empty lines the
+line cap drops, the four or six drawn lines fit the box; before `drawn` they read as a lone `single` ellipsis, now they are
+silent). A trimmed (ellipsis or clip) run whose drawn block outgrows its box by less than one line spills only line box and is
+no finding either. Without `drawn` (the headless model, a snapshot saved before it) the classes are judged as before it
+existed: no `fits`, and an ellipsis run is never called `overflow`:
 
 | Class | When | Severity, outcome |
 |---|---|---|
+| `fits` | a WRAPPING run the draw cut (`drawn.cut`) although its uncut words fit its box within 0.5 and its MaxLines, and lay no word past its width: "text '…' is ellipsised although its words fit its box" (the shipped "Daily Song Char…"). Its trim must agree with its wrap test, so this is an engine regression | error; a verdict, never a designed ellipsis |
+| `fits:nowrap` | the same on a NO-WRAP run: its words fit its box within 0.5 but the draw ellipsised them ("Wavee Sessions Vol. 1" at 136.17 in 136), "(a no-wrap run trims at its exact width: under a half DIP short)". A no-wrap run trims strictly by design today; whether it takes the wrap slack is an open engine decision | warn; a verdict (fail), never a designed ellipsis |
 | `never` | a guide `NeverTrim` covers it | error |
-| `overflow` | `Trim=None` and the words spill their box | error |
+| `overflow` | `Trim=None` and the words spill their box; or a wrapped ellipsis (or clip) run the draw did NOT cut whose DRAWN block outgrows its box by a line or more: every line is drawn and spills ("draws N lines taller than its box and is spilling: every line is drawn, its trim never cut it") | error |
 | `near-miss` | a no-wrap run short by at most max(2 DIP, 1.5 % of its natural width) | warn (checked before any intent) |
 | `hard-clip` | `Trim=Clip` (whatever the family or a guide says: the boards draw an ellipsis) | warn |
 | `designed` | an ELLIPSIS under a guide `TrimOk`, an `allowTrim` prefix, or MaxLines >= 1 in a REPEATED CELL (the same cell in 3 instances of a key family: a caption per card; not any text under a page section that repeats) | warn, suppressed (counted in `suppressed.intent` at `min=warn`); one report line counts them all ("N designed ellipses: zune-surface-shelf x8, ...") |
@@ -305,6 +347,14 @@ the theme's `PanelPolicy.Pip`; the snapshot's `reserved`) is the layout's design
 lists it as `info` suppressed (cause `reserved`). Classic's 0.2.9 design ends the page above the parked card on purpose (kept by owner
 decision); a theme whose card floats over the page (`PipBounds.OverlaysContent`: WinUI since C0, Zune) reserves nothing, so the same
 band there stays an error. The scene cannot tell a wrong declaration from a right one: pre-C0 WinUI inherited Classic's reservation.
+The full-screen stage's transport band is the same kind of design WHILE ITS IDLE CHROME HIDES THE CARD: every theme unmounts the
+card when its chrome idles out, and the lyrics pane ends at the card's top (Zune: `Layout.TransportH` plus its inset, 112 DIP at
+1440 x 960) or at the pane's gap above it (Classic: `Layout.PaneBottom`, 168), so only the backdrop shows there (growing the viewport
+into it would move the active line on every idle cycle). A band at the window's foot between those two heights while the stage's
+chrome is hidden (`Stage.Picture.IdleTransportBandPeek`, the snapshot's `stageIdleCard` and `stageIdleBand`, 0 while the chrome
+shows) is listed as `info` suppressed
+(cause `stage-idle`). With the chrome shown (`chrome=shown`, or before it idles out) the card must paint the band: an empty one is
+an error, as is any band of another height or place.
 
 **`text.ruled`** (warn; promoted 10-24). A rule or line primitive (a fill at most 2.5 DIP thick and 16 long, not a slider's,
 progress bar's or scroll bar's track, nor a thin drag bar) crosses a text's glyph box: horizontal, inside the run's ink from a
@@ -359,7 +409,9 @@ All warn, all todo; each was built from a case of the 10-23 audit and caught it;
   (Zune's device picker), or a `stage:*:source` line with no words (`stage:transport:source`, the board's "playing from").
 - **`control.required`**: with the transport held shown (`chrome=shown`, `Snapshot.ChromeHeld`), a full-window video
   (`video-area`, `media-stage`) or stage without a play/pause target and a seek control (a slider or a drag bar 100 wide) on
-  screen. Zune fullscreen video at 1440 (the top row only); Classic's black fullscreen frame too.
+  screen. Zune fullscreen video at 1440 (the top row only); Classic's black fullscreen frame too. A control drawn disabled counts as
+  present (the stage's play/pause is disabled while a track loads): the rule catches a control that is absent, out of scope or
+  covered, never one whose verb is down for now.
 - **`edge.window`**: content (words or a target) that starts inside the window and is laid out 2 DIP or more past its right
   edge, outside any rail and not cut inside the window by a clipping ancestor (a clip at the window's own edge is the window). The
   topmost such node speaks. WinUI 800 artists: `verbs:row` to x840, the reader's rows' more buttons to x808.

@@ -215,6 +215,20 @@ public static partial class Shell
         // the run, and a wavee:// deep link. All of them are inert without `--screenshot`.
         var capture = Diagnostics.CaptureOptions.Parse(args);
         ZoomService.RunZoom = capture.RunZoom;
+        // Where the user left the main window (Shell.Host.Placement.cs). The harness, capture and explicit-size launches keep
+        // their own size and never read or write it. Restored, the first frame's size (and the zoom seeded from it) is the
+        // restored client at the target monitor's DPI, so nothing re-lays out once the window is shown.
+        bool followPlacement = frames < 0 && screenshot is null && !capture.Offscreen && !HasExplicitSize(args);
+        var restore = followPlacement ? WindowPlacementStore.ResolveForLaunch() : null;
+        var zoomMonitor = ZoomService.PrimaryMonitor();
+        if (restore is { Plan: var plan })
+        {
+            winW = (int)MathF.Round(plan.ClientSizeDip.Width);
+            winH = (int)MathF.Round(plan.ClientSizeDip.Height);
+            if (!plan.WorkAreaPx.IsInfinite)
+                zoomMonitor = new ZoomMonitor(plan.WorkAreaPx.W / plan.DpiScale, plan.WorkAreaPx.H / plan.DpiScale);
+        }
+        if (followPlacement) WindowPlacementStore.Arm();
 
         InstallCrashNet();
         if (!Platform.Args.Headless && !Platform.Args.RelaunchBroker)
@@ -270,6 +284,10 @@ public static partial class Shell
                     // split. MinHeight 330 (DIP, tuned Classic F8, #197): before it the window could be dragged down to a
                     // title-bar strip; 330 keeps the title row, a 210-DIP page and the player bar on screen.
                     Title = "Wavee Music", Width = winW, Height = winH,
+                    // The saved placement (null = the default size at the OS default position): the window is created AT it,
+                    // maximized when it was, clamped into the nearest work area by the engine (Shell.Host.Placement.cs).
+                    InitialBoundsPx = restore?.Saved ?? default,
+                    InitialMaximized = restore?.Plan.Maximized ?? false,
                     MinWidth = 300, MinHeight = (int)Theming.TierPolicy.WindowMinHeight, CustomFrame = true,
                     // Always base Mica, never Mica Alt: Alt's stronger tint reads as an over-saturated navy chrome
                     // next to apps that default to base Mica on the same wallpaper. The material is visible through
@@ -290,7 +308,7 @@ public static partial class Shell
                     // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump). Not the
                     // persisted level as it stands: the Auto zoom the 500 ms loop would settle this window on, so the first
                     // frame is final and nothing re-zooms half a second later.
-                    Zoom = ZoomService.InitialZoom(ZoomService.Mode, ZoomService.PersistedLevel, winW, winH, ZoomService.PrimaryMonitor()),
+                    Zoom = ZoomService.InitialZoom(ZoomService.Mode, ZoomService.PersistedLevel, winW, winH, zoomMonitor),
                     // The engine's decoded-image disk cache lands under Wavee's own app data, next to logs/ and the
                     // library — ONE folder for "everything Wavee wrote", which is what the Storage tab measures and
                     // what factory reset wipes.
@@ -333,6 +351,8 @@ public static partial class Shell
                 Tray.Host.Shutdown();
                 // The deck's last word goes into the session document BEFORE its flush writes it (G-078).
                 CaptureDeckForExit();
+                // A main-window placement still inside its debounce (a drag just before the quit) is written now.
+                WindowPlacementStore.Flush();
                 // The shell's unmount cleanup never runs on shutdown (the host does not unmount the tree), so a pending
                 // debounced save would be LOST. These three are the only documents that can be mid-debounce.
                 Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.SessionFlush);
@@ -886,6 +906,9 @@ public static partial class Shell
                 break;
             case DeepLinkKind.Quit:
                 Tray.Host.Quit();   // the latch first: a quit is never turned into a hide by close-to-tray
+                break;
+            case DeepLinkKind.Mini:
+                MiniPlayer.Toggle("jumplist");   // the mini player opens (or closes back to the full window); the main window is its business
                 break;
             case DeepLinkKind.Diag:
                 Diagnostics.Evidence.Apply(verb.Diag);   // the evidence harness (EvidenceBundle.cs); replies are files

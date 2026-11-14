@@ -39,8 +39,50 @@ internal static class ClassicVideoPoster
         Visible = props.Shown,
         Children = props.Visual is Video.JoinVisual.Working or Video.JoinVisual.Failed or Video.JoinVisual.Remote
             ? [LivePoster.Make(props.ArtUrl), Notice(props)]
-            : [LivePoster.Make(props.ArtUrl)],
+            : props.Visual == Video.JoinVisual.ScreenBlocked
+                ? [LivePoster.Make(props.ArtUrl), ScreenNotice()]
+                : [LivePoster.Make(props.ArtUrl)],
     };
+
+    /// <summary>"This screen can't show protected video" (<see cref="Video.JoinVisual.ScreenBlocked"/>): the failure's warning glyph beside a
+    /// title, and why in a short paragraph under it, in on-media ink. No ring (nothing is loading here) and no button (moving the window is the
+    /// way out, and the picture comes back by itself). The same fade-in and keyed entrance as the other notices.</summary>
+    static Element ScreenNotice()
+    {
+        var stack = new BoxEl
+        {
+            Key = "join:screen", Direction = 1, AlignItems = FlexAlign.Center, Gap = ClassicVideoRules.ScreenNoticeGap,
+            MaxWidth = ClassicVideoRules.ScreenNoticeMaxW, MinWidth = 0f, Shrink = 1f, HitTestVisible = false,
+            Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicVideoRules.ScreenNoticeGap, MinWidth = 0f, Shrink = 1f,
+                    Children =
+                    [
+                        new TextEl(Icons.StatusWarning) { Size = ClassicVideoRules.NoticeGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.OnMediaPrimary },
+                        new TextEl(Loc.Get(Strings.Player.ScreenNoHdcpTitle))
+                        {
+                            Size = ClassicVideoRules.ScreenNoticeTitle, Weight = 600, Color = Tok.OnMediaPrimary,
+                            Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f,
+                        },
+                    ],
+                },
+                new TextEl(Loc.Get(Strings.Player.ScreenNoHdcpBody))
+                {
+                    Size = ClassicVideoRules.ScreenNoticeBody, Color = Tok.OnMediaSecondary, TextAlign = TextAlign.Center,
+                    Wrap = TextWrap.Wrap, MinWidth = 0f, Shrink = 1f,
+                },
+            ],
+        };
+        return new BoxEl
+        {
+            Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Padding = Edges4.All(ClassicVideoRules.ScreenNoticeInset), HitTestPassThrough = true,
+            Children = [stack],
+        };
+    }
 
     /// <summary>The poster's GROUND alone: dimmed artwork FILLING the video box and imposing no shape of its own. The watch page draws this
     /// byte-identical layer under its stage so the idle -> live hand-over is ONE cross-fade. A track with no art is the bare letterbox.</summary>

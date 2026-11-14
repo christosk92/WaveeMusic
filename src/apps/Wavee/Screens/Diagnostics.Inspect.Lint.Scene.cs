@@ -291,6 +291,12 @@ public static partial class Diagnostics
                 Wraps = style.Wrap != TextWrap.NoWrap,
                 Trim = style.Trim.ToString(),
                 Trimmed = overflow.Trimmed,
+                HasDrawn = overflow.HasDrawn,
+                DrawnLines = overflow.DrawnLines,
+                DrawnCut = overflow.DrawnCut,
+                DrawnEllipsis = overflow.DrawnEllipsis,
+                NaturalLines = overflow.NaturalLines,
+                NaturalOverhang = overflow.NaturalOverhang,
                 NaturalW = overflow.IsText ? overflow.NaturalSize.Width : 0f,
                 NaturalH = overflow.IsText ? overflow.NaturalSize.Height : 0f,
                 InkTop = inked ? ink.Y : float.NaN,
@@ -517,11 +523,17 @@ public static partial class Diagnostics
         /// <c>deck:winamp@&lt;side&gt;</c>) is a scale model of the 275 x 116 Winamp 2 window: its title bars, LCD title and status letters are the
         /// skin's pixel type at a fixed fraction of the deck's side (6-7 DIP at the rail's 324), part of the device's look and never reading copy
         /// (the same title and time read at full size in the rail beside it). Enlarging them would break the skin's proportions, so the type floor
-        /// allows them there (B11, audit B8). A key starting <c>deco:</c> is an illustration, allowed by the contrast rule; a title-bar tab's title may ellipsise (audit B8).</summary>
+        /// allows them there (B11, audit B8); so does a deck held still as the mini player options panel's picture tile. A key starting <c>deco:</c> is an illustration, allowed by the contrast rule; a title-bar tab's title may ellipsise (audit B8).</summary>
         static readonly IReadOnlyList<LintPolicy> CorePolicies =
         [
             new(LintIntent.Allow, "deck:winamp@", "the Winamp deck's pixel type is the skin's (a scale model of the 275 x 116 window), never reading copy",
                 Rule: InspectLint.Rules.TypeFloor),
+            // The mini player's options panel shows each deck face as a 52-DIP picture tile (`CommonMiniPlayer.Flyouts.cs`, key
+            // `mini.panel.deck:<face>`): the cassette's label and the reel's counter shrink with the deck, a picture of the device, never copy
+            // (the tile's name under it is the reading text, at the theme's small size).
+            new(LintIntent.Allow, "mini.panel.deck:", "a deck face drawn as the options panel's picture tile: its label type is part of the picture, never reading copy",
+                Rule: InspectLint.Rules.TypeFloor),
+            new(LintIntent.TrimOk, "mini.panel.deck:", "the options panel's deck picture ellipsises the cassette label as the full-size deck does"),
             // A `deco:` key marks an illustration: a glyph that stands in for art (an event's calendar where it has no photograph, the concerts
             // browse-all tile's pictogram). It carries no information the page does not say in words beside it, so it is not held to text contrast.
             new(LintIntent.Allow, "deco:", "a decorative illustration (a glyph standing in for art), never information",
@@ -772,6 +784,8 @@ public static partial class Diagnostics
                 PlayingFromContext = PlayingFromContext(),
                 ChromeHeld = InspectSwitches.HoverChromeAtRest,
                 Reserved = Video.FloatingSurfaceReserve.Peek(),
+                StageIdleBand = Stage.Picture.IdleTransportBandPeek().Max,
+                StageIdleCard = Stage.Picture.IdleTransportBandPeek().Min,
                 ExitingText = exiting,
             };
         }

@@ -1089,8 +1089,18 @@ public static partial class Playback
         /// <summary>The deck shows a row NO host holds — a launch restore, a stop, a lost ownership, the end of the queue.
         /// The next Resume loads it at <see cref="PosMs"/> instead of resuming a session that does not exist.</summary>
         public bool Parked;
+        /// <summary>The end hold (<c>Playback.EndHold.cs</c>): a music video ended in full screen and the advance waits for the stage's
+        /// countdown (Counting) or for Play once it was cancelled (Waiting). <see cref="EndHold.None"/> on every other deck.</summary>
+        public EndHold Hold;
+        /// <summary>The frame-clock stamp the hold's countdown started at (its release carries it back), and the load epoch it holds.</summary>
+        public long HoldAtMs;
+        public uint HoldLoadEpoch;
         /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
         public bool VideoWanted;
+        /// <summary>The screen the video is on cannot carry HDCP (<see cref="InputKind.VideoScreen"/>): a row whose video is protected loads
+        /// on the audio host whatever <see cref="VideoWanted"/> says. <see cref="VideoWanted"/> is kept, so the row goes back to its video
+        /// the moment the screen can show it.</summary>
+        public bool VideoScreenBlocked;
         /// <summary>Re-resolves spent on the current video load (G-142).</summary>
         public byte VideoRetries;
         /// <summary>Where autoplay stands for <see cref="Context"/> (G-080) — and, while <see cref="MorePages"/>, where the
@@ -1136,19 +1146,30 @@ public static partial class Playback
         public readonly bool CanTransport => HasCurrent && Error == Fault.None;
         /// <summary>May the seek bar be dragged? While LIVE this is exactly <see cref="LiveWindow.HasWindow"/> — a
         /// seekable span under 30 s is not a window, and the rail becomes the breathing line.</summary>
-        public readonly bool CanSeek => CanTransport && !NoSeek && Phase != Phase.Loading
+        public readonly bool CanSeek => CanTransport && !SeekRestricted && Phase != Phase.Loading
             && (Live.IsLive ? Live.HasWindow : DurationMs > 0);
         /// <summary>May Next fire? The FOLDED answer; the raw restriction bits are not the UI's business.</summary>
-        public readonly bool CanSkipNext => CanTransport && !NoNext;
-        /// <summary>May Previous fire?</summary>
-        public readonly bool CanSkipPrev => CanTransport && !NoPrev;
+        public readonly bool CanSkipNext => CanTransport && !NextRestricted;
+        /// <summary>May Previous fire? On the context's first row too: Previous there restarts the row (or wraps under
+        /// repeat-context), exactly what <c>Advance</c> does.</summary>
+        public readonly bool CanSkipPrev => CanTransport && !PrevRestricted;
+        /// <summary>The restriction bits are the FOREIGN OWNER's (<see cref="MirrorRemote"/> mirrors its
+        /// <c>disallow_skipping_*</c> / <c>disallow_seeking</c>), so they restrict only while one owns playback. A device
+        /// that booted mirroring a phone paused on a one-track context ("no previous") and then took over must not keep
+        /// Previous dead for the session: our own deck has no such rule (Previous restarts within its first 3 s window
+        /// or steps back, <see cref="RestartWindowMs"/>).</summary>
+        public readonly bool NextRestricted => NoNext && Own.Kind == Owner.Foreign;
+        /// <inheritdoc cref="NextRestricted"/>
+        public readonly bool PrevRestricted => NoPrev && Own.Kind == Owner.Foreign;
+        /// <inheritdoc cref="NextRestricted"/>
+        public readonly bool SeekRestricted => NoSeek && Own.Kind == Owner.Foreign;
         /// <summary>Does the CONTEXT allow Next / Previous, error or not? The player bar reads these for its own fold:
         /// a failed load parks the deck row with <see cref="Error"/> set and <see cref="CanTransport"/> false, and the
         /// one way out that does not re-play the dead row is to skip past it (<c>Advance</c> heals the error through
         /// <c>PutOnDeck</c>). <see cref="CanSkipNext"/> / <see cref="CanSkipPrev"/> stay the reducer's folded verdict.</summary>
-        public readonly bool NextAllowedByContext => HasCurrent && !NoNext;
+        public readonly bool NextAllowedByContext => HasCurrent && !NextRestricted;
         /// <inheritdoc cref="NextAllowedByContext"/>
-        public readonly bool PrevAllowedByContext => HasCurrent && !NoPrev;
+        public readonly bool PrevAllowedByContext => HasCurrent && !PrevRestricted;
         /// <summary>What the volume slider shows: the foreign owner's volume while one owns playback (dragging it is a
         /// volume PUT to that device), ours otherwise.</summary>
         public readonly float SliderVolume => Own.Kind == Owner.Foreign && MirrorVolume >= 0f ? MirrorVolume : Volume;
@@ -1295,6 +1316,12 @@ public static partial class Playback
         ScrubEnd,
         /// <summary>The gesture was abandoned (a lost capture, an unmount): nothing is committed and the held voice resumes.</summary>
         ScrubCancel,
+        /// <summary>The end hold's countdown (<c>Playback.EndHold.cs</c>): <c>IntArg</c> 0 = cancel it, 1 = release it (<c>LongArg</c> = the
+        /// hold's stamp, <see cref="State.HoldAtMs"/>), the countdown elapsing or the card's Play now.</summary>
+        EndHold,
+        /// <summary>The screen the video is on can (<c>IntArg</c> 0) or cannot (1) carry the HDCP protected video needs (<c>Video.Hdcp</c>).
+        /// While it cannot, a row whose video is protected plays its song instead; when it can again, the row goes back to its video.</summary>
+        VideoScreen,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1399,6 +1426,8 @@ public static partial class Playback
         public static Input ScrubMove(int ms, long nowMs = 0) => new(InputKind.ScrubMove, intArg: ms, nowMs: nowMs);
         public static Input ScrubEnd(int ms, long nowMs = 0) => new(InputKind.ScrubEnd, intArg: ms, nowMs: nowMs);
         public static Input ScrubCancel() => new(InputKind.ScrubCancel);
+        public static Input EndHoldCancel(long nowMs = 0) => new(InputKind.EndHold, intArg: 0, nowMs: nowMs);
+        public static Input EndHoldRelease(long atMs, long nowMs = 0) => new(InputKind.EndHold, intArg: 1, longArg: atMs, nowMs: nowMs);
         public static Input Ended(uint epoch, long nowMs = 0) => new(InputKind.Ended, epoch: epoch, nowMs: nowMs);
         public static Input TransferDone(uint epoch, bool ok) => new(InputKind.TransferDone, intArg: ok ? 1 : 0, epoch: epoch);
         public static Input PutSent(uint messageId, bool isActive)
@@ -1424,6 +1453,8 @@ public static partial class Playback
         public static Input QueueChanged(long nowMs = 0) => new(InputKind.QueueChanged, nowMs: nowMs);
         public static Input VideoPlacement(bool active, long nowMs = 0, bool explicitSwitch = false)
             => new(InputKind.VideoPlacement, intArg: (active ? 1 : 0) | (explicitSwitch ? 2 : 0), nowMs: nowMs);
+        public static Input VideoScreen(bool blocked, long nowMs = 0)
+            => new(InputKind.VideoScreen, intArg: blocked ? 1 : 0, nowMs: nowMs);
         public static Input VideoFacts(EntityId row, bool known, bool hasVideo, StringId manifestId, long nowMs = 0)
             => new(InputKind.VideoFacts, id: row, intArg: (known ? 1 : 0) | (hasVideo ? 2 : 0), longArg: manifestId.Value, nowMs: nowMs);
         public static Input Restore(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, int positionMs,
@@ -1689,6 +1720,7 @@ public static partial class Playback
     /// <param name="fx">The effect slots for THIS drain; the last write to a slot wins.</param>
     public static void Step(ref State s, in Input i, ref Effects fx)
     {
+        if (s.Hold != EndHold.None && HoldSwallows(ref s, in i)) return;   // the end hold's own filter; no hold: never taken
         switch (i.Kind)
         {
             case InputKind.Play: DoPlay(ref s, in i, ref fx); break;
@@ -1731,6 +1763,7 @@ public static partial class Playback
             case InputKind.RemoteVolume: DoRemoteVolume(ref s, in i, ref fx); break;
             case InputKind.QueueChanged: DoQueueChanged(ref s, ref fx); break;
             case InputKind.VideoPlacement: DoVideoPlacement(ref s, in i, ref fx); break;
+            case InputKind.VideoScreen: DoVideoScreen(ref s, in i, ref fx); break;
             case InputKind.VideoFacts: DoVideoFacts(ref s, in i, ref fx); break;
             case InputKind.Restore: DoRestore(ref s, in i, ref fx); break;
             case InputKind.Autoplayed: DoAutoplayed(ref s, in i, ref fx); break;
@@ -1746,9 +1779,27 @@ public static partial class Playback
             case InputKind.ScrubMove: DoScrubMove(ref s, in i, ref fx); break;
             case InputKind.ScrubEnd: DoScrubEnd(ref s, in i, ref fx); break;
             case InputKind.ScrubCancel: DoScrubCancel(ref s, ref fx); break;
+            case InputKind.EndHold: DoEndHold(ref s, in i, ref fx); break;
             default: break;
         }
+        if (s.Hold != EndHold.None) HoldInvariant(ref s);
+        // The restriction bits die with the foreign owner's tenure, whichever path ended it (a cluster, a takeover, a
+        // claim by a local play, a lost device): no stale bit survives in the state (CanSkipPrev & co gate on the owner too).
+        if (s.Own.Kind != Owner.Foreign && (s.NoNext | s.NoPrev | s.NoSeek))
+        {
+            s.NoNext = s.NoPrev = s.NoSeek = false;
+            LogRestrictions(false, false, false, s.Own.Kind);
+        }
     }
+
+    /// <summary>The mirrored restriction bits changed (on change only): "why is Previous grey?" is answerable from the log.</summary>
+    static void LogRestrictions(bool noPrev, bool noNext, bool noSeek, Owner owner)
+        => Log.Info("playback", "restrictions noPrev=" + (noPrev ? "1" : "0") + " noNext=" + (noNext ? "1" : "0")
+            + " noSeek=" + (noSeek ? "1" : "0") + " owner=" + owner);
+
+    /// <summary>A verb the owner's restriction refused: the verb, the bit and the owner.</summary>
+    static void LogRestricted(string verb, string bit, in State s)
+        => Log.Info("playback", "restricted " + verb + " refused: " + bit + " owner=" + s.Own.Kind);
 
     // ── 9.1 transport ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1828,13 +1879,22 @@ public static partial class Playback
     /// <see cref="Queue.SkipTarget"/>): the cursor lands THERE instead of one row on, the rows between staying behind it.</summary>
     static void Advance(ref State s, in Input i, ref Effects fx, bool forward, PlayReason why, int jumpTo = -1)
     {
-        if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
-        bool natural = why == PlayReason.TrackDone;
-        if (!natural && (forward ? s.NoNext : s.NoPrev))            // the context disallows the SKIP (the cluster said so)
+        // the owner's restriction (the cluster said so) refuses the SKIP; a natural end is never a skip
+        if (why != PlayReason.TrackDone && (forward ? s.NextRestricted : s.PrevRestricted))
         {
             fx.Refused = forward ? Refusal.NoNext : Refusal.NoPrev;
+            LogRestricted(forward ? "next" : "prev", forward ? "noNext" : "noPrev", in s);
             return;
         }
+        if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
+        // the end hold: the row already ENDED, so Next (no row named) is the natural end's advance it deferred; Previous and a named row
+        // end the hold and run as on any paused row
+        if (s.Hold != EndHold.None)
+        {
+            s.Hold = EndHold.None;
+            if (forward && jumpTo < 0) why = PlayReason.TrackDone;
+        }
+        bool natural = why == PlayReason.TrackDone;
 
         // Repeat-one re-plays the same row on its NATURAL end: the one place the cursor stands still under a transport
         // verb. A MANUAL Next moves on and turns repeat-one off, leaving repeat-context on (#215; librespot "when we skip in
@@ -1867,13 +1927,22 @@ public static partial class Playback
         bool wrap = forward && s.Repeat == RepeatMode.Context && !s.MorePages;
         int from = s.Cursor.Index;
         int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), from, forward, wrap, AutoplayAllowed(in s), Queue.ContextStart);
-        if (at < 0 && !forward && s.HasCurrent && s.Phase != Phase.Idle)
+        if (at < 0 && !forward && s.HasCurrent)
         {
             // Previous on the context's first row: repeat-context goes round to its last row (librespot-java
             // StateWrapper.java:1312-1314, ncspot src/queue.rs:402-412); otherwise the row starts again (go-librespot
             // daemon/controls.go:1048-1067, librespot-java StateWrapper.java:1316, psst queue.rs:124-131).
             int last = s.Repeat == RepeatMode.Context && !s.MorePages ? Queue.LastContextRow(Queue.Rows, default(LiveRows), Queue.ContextStart) : -1;
-            if (last <= from) { Restart(ref s, in i, ref fx, why); return; }
+            if (last <= from)
+            {
+                // A deck no host holds (Idle: stopped, released, lost; Ended: the queue ran out) has nothing live to rewind:
+                // Restart would only re-park it at 0:00, which it already shows, and the press would do nothing while
+                // CanSkipPrev offers it. "Start this row again" there is the row itself, played from its start: the same
+                // load Previous makes on any other row of an idle deck (the walk below), only aimed at the current row.
+                if (s.Phase is Phase.Idle or Phase.Ended) { ReplayFromStart(ref s, in i, ref fx, why); return; }
+                Restart(ref s, in i, ref fx, why);
+                return;
+            }
             at = last;
         }
         if (at < 0)
@@ -1905,6 +1974,17 @@ public static partial class Playback
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
 
+    /// <summary>Previous on the first row of a deck no host holds (<see cref="Phase.Idle"/> / <see cref="Phase.Ended"/>): load the
+    /// current row and play it from 0:00 (an episode too: a restart is the start, not where it was left).</summary>
+    static void ReplayFromStart(ref State s, in Input i, ref Effects fx, PlayReason why)
+    {
+        ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
+        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), 0, paused: false);
+        s.StartReason = why;
+        EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false, explicitPosition: true);
+        fx.Snapshot = true;
+    }
+
     static void Restart(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
         if (s.Parked) { s.PosMs = 0; s.PosQpc = i.NowMs; fx.SmtcTimeline = true; return; }   // nothing live to seek
@@ -1922,6 +2002,7 @@ public static partial class Playback
     /// superseded by the very generation this one mints), and both read the same target / epoch / generation slots.</param>
     static void EmitSeek(ref State s, ref Effects fx, int ms, long nowMs, bool scrubRelease = false)
     {
+        s.Hold = EndHold.None;                           // a seek ends the end hold: the row plays on from where it landed, as any paused row
         s.PosMs = ms;
         s.PosQpc = nowMs;
         s.SeekGen++;
@@ -1965,6 +2046,7 @@ public static partial class Playback
     static void DoPause(ref State s, in Input i, ref Effects fx)
     {
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Pause, ref fx, 0, false); return; }
+        if (s.Hold == EndHold.Counting) { s.Hold = EndHold.Waiting; return; }   // the end hold: already paused at the end; the countdown stops
         if (s.Phase is not (Phase.Playing or Phase.Loading)) return;
         s.PosMs = s.Position(i.NowMs);                   // freeze the extrapolation BEFORE the phase changes
         s.PosQpc = i.NowMs;
@@ -1984,6 +2066,7 @@ public static partial class Playback
     {
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Resume, ref fx, 0, false); return; }
         if (!s.HasCurrent) return;
+        if (s.Hold != EndHold.None) { ReleaseHold(ref s, in i, ref fx); return; }   // the end hold: play = the next row, now
         if (s.Parked || s.Phase == Phase.Ended || s.Error != Fault.None)
         {
             // No host holds this row (a restore, a stop, a lost ownership, the end): resuming it is LOADING it — a
@@ -2044,7 +2127,8 @@ public static partial class Playback
 
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
-        if (!s.HasCurrent || (s.NoSeek && !s.Parked && s.Error == Fault.None)) return;
+        if (!s.HasCurrent) return;
+        if (s.SeekRestricted && !s.Parked && s.Error == Fault.None) { LogRestricted("seek", "noSeek", in s); return; }
         if (!s.RoutesLocal)
         {
             // U-3: the drag's drop point is painted at once and HELD against the owner's pre-seek reports (MirrorRemote),
@@ -2087,7 +2171,7 @@ public static partial class Playback
         s.ScrubPosMs = i.IntArg;
         s.ScrubEpoch = s.LoadEpoch;
         bool audible = e.Begin && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && s.Phase == Phase.Playing
-                       && !s.Parked && s.Error == Fault.None && !s.NoSeek;
+                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted;
         // ASSIGNED on every press, true or false: `ScrubModel.Up` leaves `Audible` set (the release arm reads it after Up) and `Down` does not
         // reset it, so a stale true would leak from the last gesture into this one. `fx.ScrubBegin` follows the same verdict, so a later
         // non-audible press in one drain also withdraws an earlier audible one's begin.
@@ -2123,7 +2207,7 @@ public static partial class Playback
         var e = s.Scrub.Up(i.IntArg);
         s.Scrub.Audible = false;
         if (!e.Commit) return;
-        if (audible && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && !s.Parked && s.Error == Fault.None && !s.NoSeek)
+        if (audible && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && !s.Parked && s.Error == Fault.None && !s.SeekRestricted)
         {
             int target = SeekTarget.Clamp(i.IntArg, s.DurationMs);
             ReportSeeked(ref s, ref fx, s.Position(i.NowMs), target);
@@ -2392,6 +2476,9 @@ public static partial class Playback
     {
         if (i.Epoch != s.LoadEpoch) return;
         s.HasBeenPlayingForMs += Math.Max(0, i.NowMs - s.PosQpc);
+        // THE END HOLD'S ONE BRANCH (Playback.EndHold.cs): a music video's natural end in full screen waits for the card's countdown.
+        // Every other end (audio, a video outside full screen, the last row, the setting off) is today's advance, unchanged.
+        if (HoldsEnd(in s)) { TakeHold(ref s, in i, ref fx); return; }
         Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
     }
 
@@ -2584,6 +2671,8 @@ public static partial class Playback
         s.Context = context;
         s.Shuffle = r.Shuffling;
         s.Repeat = r.Repeat;
+        if (s.NoNext != r.NoNext || s.NoPrev != r.NoPrev || s.NoSeek != r.NoSeek)
+            LogRestrictions(r.NoPrev, r.NoNext, r.NoSeek, s.Own.Kind);
         s.NoNext = r.NoNext;
         s.NoPrev = r.NoPrev;
         s.NoSeek = r.NoSeek;
@@ -2693,7 +2782,7 @@ public static partial class Playback
                     bool on = c.Signal == VideoSignal.ToVideo;
                     if (on && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; break; }
                     VideoMode(ref s, ref fx, on);
-                    PlayableKind kind = KindOfRow(s.Current, on);
+                    PlayableKind kind = GatedKind(in s, s.Current, KindOfRow(s.Current, on));
                     if (kind == s.Kind) break;
                     if (!s.RoutesLocal || s.Parked || s.Phase is Phase.Idle or Phase.Ended) { s.Kind = kind; break; }
                     ReloadHost(ref s, in i, ref fx, kind, LoadOrigin.MediaKindRefresh);

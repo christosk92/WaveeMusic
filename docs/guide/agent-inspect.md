@@ -208,7 +208,7 @@ without `theme` or `kind` keeps the active ones.
 | `scale` | DPI scale, 1 by default, at most 4. |
 | `theme` | `classic`, `zune` or `winui` (default: the active theme; a fresh server is on Classic). Zune turns Developer mode on; the others turn it off. |
 | `kind` | `dark` or `light`. |
-| `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey) or `greynow` (only the playing one grey). |
+| `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey), `greynow` (only the playing one grey), or one test colour for every cover in both halves (`InspectKit.NamedCover`): `dark` (a deep navy), `teal` (#396b7a), `white` (near-white) or `yellow` (saturated): the grounds a cover-tinted surface (the stage's palette, its caption veil, the audio face's field) must hold its inks over. |
 | `gpu` | `hardware` (default: the machine's hardware adapter, WARP when it has none; `devices` reads `offscreen (D3D12)`, or `offscreen (D3D12 (WARP))` on the fallback) or `warp` (WARP forced): the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels; motion checks that render nothing). Same lint and crossing counts on either surface, pixels within anti-aliasing, hardware 1.5-5x faster (10-24: Zune album 1440 3.4 s against 8.0 s). |
 | `images` | `fake` (default): the engine's deterministic decoder paints every image as a per-image gradient. `real`: the app's own pipeline (WIC behind the disk-first fetcher) decodes the bundled photographs as they are, so text over a photograph renders, and lints, over the real picture. The fake artist `ar9` (The Longtime) carries a bright header photograph (`assets/covers/header-bright.jpg`, a white sky over a pale ground): the worst case for text on a photograph. |
 | `motion` | `full` (default) or `reduced`: Windows' Animation effects off for this mount (`Motion.ReducedMotion`), which a headless server never reads from the OS. A structure with page motion then fades its page swaps (WinUI: ControlFaster each way) with no slide, zoom or stagger; Classic and Zune cut. |
@@ -218,8 +218,9 @@ without `theme` or `kind` keeps the active ones.
 | `marquee=on` or `off` | Sets the app's marquee setting (Settings > Appearance) before the mount. |
 | `remote=<name>` | The play bar says it is playing on a remote output of that name (`--fake` has no Connect cluster). To turn the output remote on a live mount, use `play remote=<name>`. |
 | `panelW=<dip>` | The side panel's stored width (clamped to the theme's drag range when it opens), e.g. `panelW=280` for WinUI's narrowest pane. |
-| `video=fullscreen`, `docked`, `floating` or `pip` | Puts the video surface up (`pip` is `floating`) with `spotify:track:tr26` playing: the rich album's first row, which has a music video (`HasVideo`), so the play bar shows its video split and the placement menu opens from it (WinUI: the split's chevron is unkeyed, `click x=1324 y=924` at 1440x960 opens "Where to play the video"). No frames decode offline: the inspector's video resolver never answers while the mount lives, so the join stays in flight (the poster, then the ring and "Loading...") instead of failing to audio; the next mount lets it go. Beside it, `fromMs` sets the track's position (74000), `player=fake` binds an idle engine player, and `join=` picks the join poster's state; without `video` all three are refused. |
+| `video=fullscreen`, `docked`, `floating` or `pip` | Puts the video surface up (`pip` is `floating`) with `spotify:track:tr26` playing: the rich album's first row, which has a music video (`HasVideo`), so the play bar shows its video split and the placement menu opens from it (WinUI: the split's chevron is unkeyed, `click x=1324 y=924` at 1440x960 opens "Where to play the video"). No frames decode offline: the inspector's video resolver never answers while the mount lives, so the join stays in flight (the poster, then the ring and "Loading...") instead of failing to audio; the next mount lets it go. Beside it, `fromMs` sets the track's position (74000), `player=fake` binds an idle engine player (`player=scripted` a source that plays, below), and `join=` picks the join poster's state; without `video` all three are refused. |
 | `join=poster`, `working` or `failed` | The join poster as the host's switch events would leave it (`Playback.Video.Phase`, folded into `Video.JoinNow`): `working` the ring and "Loading..." (the default offline), `failed` the fault line ("Can't play this track"), `poster` the artwork alone (a player bound, nothing in flight; it binds the fake player). |
+| `player=scripted` (`videoOpenMs=`) | A video source that behaves like a real one, for the video joins and switches: a real engine `MediaPlayer` over a scripted session that follows the deck. Every video track the deck lands on (the deck's video facts) is a fresh open on the SAME player, an in-place switch as the host's Switch plan does: Opening and the declared size at once, metadata (Buffering) at half of `videoOpenMs` (default 240, on the 16 ms frame clock), then the first frame (the natural size, the surface, Playing) at `videoOpenMs`; a deck that leaves video stops it. tr26 is 1920x1080 and every other video track 1440x1080, so a held frame's geometry can be told from its successor's. It carries a play intent, so the presenter's chrome idles and hides; it keeps the resolved source published while it opens (the inspector's resolver never answers); its geometry half binds, sizes and places the slot like the clear session, deferring a slot that shows another picture until its own first frame. `[inspect.video] open|defer|take.over|first.frame|stop` lines say what it did, and while it lives the engine's `[media.chrome]`, `[video] pump` and `[video.surface]` lines are copied into the app log, so `status log=` reads them. `status log=` reads the lines since the LAST `status log=`, whatever its text: read one filter per step (`status log="video"` takes the join, pump and source lines together). Example: `mount gpu=none w=1440 h=960 theme=classic route=home video=docked player=scripted`, `transport do=add uri=spotify:track:tr39`, `transport do=next trace=60 prefix=media`, `status log="video"`. |
 | `chrome=shown` | The chrome at rest with no auto-hide: Zune's hover-revealed video band, the video presenter's transport (`AutoHideTransportControls` off; the transport mounts only with a player: add `player=fake`) and the fullscreen stage's controls (its idle machine is off, so the card, Huge and 4K stage keep their chrome however long you wait: `mount ... stage=lyrics layout=card chrome=shown`, `play ...`, `key f11`). |
 
 The navigation args are the ones `goto` takes.
@@ -260,15 +261,16 @@ Resizes the window and settles. Use it to check a tier crossing on a live mount.
 | `max` | The settle's frame cap (600). With `trace`, the most nodes watched. |
 | `trace=N` | Traces N frames from the resize instead of settling; the `trace` args (`keys`, `prefix`, `scroll`, `every`, ...) apply. |
 
-### `window {state?, advance?, floor?, frames?}`
+### `window {state?, active?, advance?, floor?, frames?}`
 
-Parks the mounted window the way the OS does, restores it, and moves the engine's cold-maintenance clock ahead. Use it for
-what happens to a window that sits minimized or in the tray: the restore-after-minimize crash (Wavee 0.3.7) was reproduced
-with it.
+Parks the mounted window the way the OS does, restores it, blurs or re-activates it, and moves the engine's cold-maintenance
+clock ahead. Use it for what happens to a window that sits minimized or in the tray (the restore-after-minimize crash, Wavee
+0.3.7, was reproduced with it) and for a window the user switched away from (`active=false`).
 
 | Arg | Values |
 |---|---|
 | `state` | `minimized` (the caption button: the placement reads Minimized), `hidden` (close to tray: the window reads invisible) or `restored` (back to Normal and shown). Positional: `window minimized`. |
+| `active` | `false` blurs the window (`HeadlessWindow.IsActive`: the WindowBlur a Win32 deactivation sends; the dispatcher drops the pointer position, clears hover, closes light-dismiss overlays, and a pointer that was in leaves the window first: `InputHooks.PointerLeftWindowObserved`, then `WindowBlurObserved`); `true` re-activates it (WindowFocus). The pointer is back only with the next move: `hover x= y=`. Runs `frames` after the change. The fullscreen stage logs `[stage.chrome] exit as=left src=window` (a pointer that was in) and `src=blur`. A move off the window is `hover x=-50 y=-50` (`src=window`). |
 | `advance` | Moves the cold-maintenance clock this many ms ahead (`AppHost.AdvanceColdMaintenanceClock`) before the frames run, so a 30 s deadline falls due on the next frame: `advance=31000`. |
 | `floor` | Sets the scene slab's trim floor (`SceneStore.CapacityFloor`). The app runs with 8192 (`InitialSceneCapacity`); an inspector mount has none (0, the engine's own 256), so pass `floor=8192` to trim as the app does. |
 | `frames` | Frames to run after the change when not restoring (2). A restore runs one frame, then settles (`settle`, `max`, `loops` and `trace=N` apply). |
@@ -284,7 +286,7 @@ due 30 s after the slab last grew or shrank, once the host has been free of inpu
 when that much wall clock passes during the session.
 
 The reply (every `window`, also with no args, which only runs the frames) carries `state` (`normal`, `minimized`, `hidden`),
-`parked` (`AppHost.IsParked`), `coldRuns` (frames that ran a cold service during this command) and `scene`:
+`active` (the window's activation), `pointerInWindow` (`InputDispatcher.PointerInWindow`), `parked` (`AppHost.IsParked`), `coldRuns` (frames that ran a cold service during this command) and `scene`:
 
 | Field | Meaning |
 |---|---|
@@ -302,6 +304,9 @@ A frame that throws replies `ok:false` with the exception, `stack` (its frames) 
 → window advance=31000
 ← {"id":6,"ok":true,"cmd":"window","framesRun":2,"state":"minimized","parked":true,"coldRuns":1,"scene":{"capacity":8192,"capacityBefore":32768,"trimmed":true,...,"dirty":{"pending":2436,"maxSlot":19571,"pastCapacity":248}}}
 → window restored
+→ window active=false
+← {"id":7,"ok":true,"cmd":"window","framesRun":2,"state":"normal","active":false,"pointerInWindow":false,"parked":false,...}
+→ window active=true
 ```
 
 ### `frames {n}` and `settle {max?, loops?}`
@@ -331,7 +336,10 @@ Home, and makes Classic dark the active theme.
   managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start by every thread and by the UI thread alone (exact), the collections per
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
-  `animating` and `trimSource`.
+  `animating` and `trimSource`. `status log=<text>` adds `log[...]`: the app log lines (the in-memory ring; the headless boot
+  writes no log file) that contain the text, written since the last `status log=` (the newest 64). `status log="stage.chrome"`
+  (quoted: a bare `[...]` parses as a list) after a `hover`, `window active=false` or `frames` reads back the fullscreen stage's chrome edges (`exit as=left src=...`,
+  `hold OverControls=0`, `hide cause=leave`).
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
 - `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
   sends nothing after a `quit` and says how many lines it left.
@@ -457,8 +465,9 @@ is on and what will play: `deck` (the track id), `cursor`, `phase`, `repeat` (of
 deck, `U` user queue, `N` next up; provider `c` context, `q` queued, `a` autoplay; a trailing `!` marks a row the deck may not land on)
 and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section `q`, `n` or `a`). `do=` is `status`, `next`, `prev`,
 `end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
-`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue) or `dead uri=` (the catalog rules that track
-unavailable, so the walk steps past it). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
+unavailable, so the walk steps past it) or `duration ms=` (the decoder reports the playing row's real length: the same row's duration
+changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 
@@ -469,7 +478,7 @@ transport do=repeat value=all
 transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
 ```
 
-### `state {kind, page?}` and `dialog {kind}`
+### `state {kind, page?, ai?, error?, lang?}` and `dialog {kind}`
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
@@ -481,7 +490,41 @@ come from the same catalogue (`--fake` installs that source; a live build asks S
 `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
 The reply's `leftOpen[{key, first}]` lists the overlays the state opened (Zune Compact's `loading` leaves the omni flyout up):
 `lint` fails them as `overlay.open` until `key esc` closes them.
-`mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
+`mount` and `reset` clear the vacancy.
+
+**The AI lyrics settings card: `state kind=ai`.** The server never starts the AI lyrics module, so the card is always "not
+started" (the switch off and disabled). `state kind=ai ai=<case> error=<kind> lang=<iso>` stages the card's one status model
+(`AiLyrics.Current`, through `AiLyrics.Stage`; `Diagnostics.Inspect.AiLyrics.cs`) on the Settings page that shows the card
+(Classic and WinUI: `route=settings arg=appearance`, the card `appearance.ai-lyrics`; Zune: `arg=lyrics`, the card `zs:ai`), with
+no module behind it: while it stands every module verb is inert, so a click on Try again, Remove, a language or the switch downloads
+nothing, loads nothing and never touches the profile's `ai\lyrics` folder. The cases: `off`, `unavailable` (not an Arm64 PC: the
+switch off and disabled), `setup` (needs its download), `downloading` (40 %, a speed and a file), `paused`, `preparing` (the first
+NPU compile, 3 of 8), `ready` (default; English and Spanish installed), `lang-failed` (a language added to a ready feature failed:
+the card stays Ready, with that language's own bar `ai:lang-failed` / `zs:ai:lang-failed`), `setup-failed` (a first setup stopped
+on a language's file: the whole card is the error, naming it), `error` (the whole feature: a shared file, the runtime, the NPU, the
+compile; the bar is `ai:error` / `zs:ai:error`), `timed` and `timing` (ready, and the PLAYING track timed by it: a finished job, or
+one running at a third of its lines, so the lyrics surfaces draw the AI disclosure, `ai-lyrics-footer-clip`, or its progress line;
+stage it after a `play`, e.g. the mini player: `mount w=420 h=420 mini=true face=1`, `play spotify:track:tr3 30000`,
+`state kind=ai ai=timed`) and `none` ("not started" again). `error=notfound|offline|network|hash|diskfull|unknown`
+(`runtime|nonpu|compile` too, for `ai=error`) picks the failure kind, with the detail the real download writes for it (the URL, the
+file, the drive); `lang=` the failed language (`ja` by default; a pack language). The bars' buttons are keyed: `ai:details` /
+`zs:ai:details` (reveals the raw detail in place) and `ai:retry` / `zs:ai:retry`. The reply names the `phase`, `error` and
+`failedLanguage`. The next `mount` (or `reset`) puts "not started" back.
+
+```text
+mount w=1440 h=960 theme=zune route=settings arg=lyrics
+state kind=ai ai=lang-failed error=diskfull
+click key=zs:ai:details trace=40 prefix=zs:ai     # the raw detail opens in place, traced
+```
+
+**The Playback runtime card: `state kind=runtime`.** The server has no local playback runtime, so `Setup.Runtime.Status` stays `NotApplicable` and Settings > Playback only shows its "not set up" bar. `state kind=runtime runtime=<case> issue=<kind>` publishes a made-up status whole, as the host does (`Diagnostics.Inspect.Runtime.cs`): `problem` (default: the error bar with View diagnostics, Connect diagnostics and Retry setup; `issue=wrongarch|nopack|unsupported` its typed reason), `setup` (the not-set-up bar), `ready` (the facts) and `none` (the boot's status back). Nothing is installed or loaded; the next `mount` puts the boot's status back. The bars are keyed `zs:runtime:problem` (Zune) and `playback.runtime:problem` (Classic, WinUI). The app's own "Local playback setup" toast answers the staged status as it would a real one.
+
+```text
+mount w=480 h=860 theme=zune route=settings arg=playback
+state kind=runtime runtime=problem issue=wrongarch
+```
+
+`dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
 photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. **The lightbox needs a
 `mount ... images=real`**: under the default fake decoder its photographs are flat gradients and it cannot be reviewed. Lint the lightbox with `root=` its key,
@@ -655,7 +698,7 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `border?` | `{w, color}`. |
 | `corners?` | `[tl, tr, br, bl]`. |
 | `clip?` | `true` when the node clips to its bounds, or `{x, y, w, h}` for an authored clip rect. |
-| `text?` | `string` (the resolved StringId), `sizeDip`, `lineHeight?`, `weight`, `family?`, `color`, `case?`, `maxLines?`, `wrap?`, `trim?`, `charSpacing?`, `trimmed`, `natural {w, h}`, `overflowX?`, `overflowY?`. A span run has an empty `string` and a `spans` count. An icon glyph (one or two private-use characters) prints as `glyph:<name>`, with its `codepoint` beside it. The name is the engine's `Icons` constant (`Icons.TryGetName`: `glyph:Bell`), else the app's own: the name a theme registered for a glyph it declares (`ThemeInspection.RegisterGlyphNames` in its composition file: `glyph:PlaySolid` for U+F5B0, `glyph:LyricsGlyph`), else `SegoeGlyphs` (`glyph:AddFriend`). Text in the app's own font (`WaveeIcons`, `family` ending `#WaveeIcons`) is named from that font's marks only (`glyph:Lyrics`, `glyph:PlayNext`), because they reuse Segoe code points (U+E900..U+E902). A glyph nothing names prints as `glyph:U+XXXX`. Text that mixes words and glyphs prints each glyph so, set apart from the words by a blank (`Afterglow glyph:U+E8B2`), and `codepoint` lists the glyphs' code points only. |
+| `text?` | `string` (the resolved StringId), `sizeDip`, `lineHeight?`, `weight`, `family?`, `color`, `case?`, `maxLines?`, `wrap?`, `trim?`, `charSpacing?`, `trimmed`, `natural {w, h}`, `overflowX?`, `overflowY?`, `drawn? {lines, cut, ellipsis, naturalLines, overhang?}`. A span run has an empty `string` and a `spans` count. An icon glyph (one or two private-use characters) prints as `glyph:<name>`, with its `codepoint` beside it. The name is the engine's `Icons` constant (`Icons.TryGetName`: `glyph:Bell`), else the app's own: the name a theme registered for a glyph it declares (`ThemeInspection.RegisterGlyphNames` in its composition file: `glyph:PlaySolid` for U+F5B0, `glyph:LyricsGlyph`), else `SegoeGlyphs` (`glyph:AddFriend`). Text in the app's own font (`WaveeIcons`, `family` ending `#WaveeIcons`) is named from that font's marks only (`glyph:Lyrics`, `glyph:PlayNext`), because they reuse Segoe code points (U+E900..U+E902). A glyph nothing names prints as `glyph:U+XXXX`. Text that mixes words and glyphs prints each glyph so, set apart from the words by a blank (`Afterglow glyph:U+E8B2`), and `codepoint` lists the glyphs' code points only. |
 | `flags` | `visible`, `focusable`, `focused`, `hovered`, `pressed`, `disabled`, `clipsToBounds`, `scrollable`, `hitTest`. |
 | `role?` | The automation role. |
 | `handlers?` | `click`, `key`, `pointer`, `char`, `repeat`, `pressed`, `context`, `focus`, `drag`, `wheel`, `selectableText`, `spanLinks`, `gesture`, `clickRequestsContext`, `rowCells`. |
@@ -663,13 +706,23 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `anim?` | `true` while the node has live animation tracks. |
 | `children` | The node's child count. |
 
-**`trimmed`** comes from the engine's `AppHost.QueryTextOverflow`. It re-measures the run without the cut, through the
-host's own font system, and compares that with the laid-out box:
+**`trimmed`** comes from the engine's `AppHost.QueryTextOverflow`. It re-measures the run UNCUT (no trim, no line cap),
+through the host's own font system, and compares that natural size with the laid-out box. It says what the words want,
+not what the draw did:
 
 - A single-line run is trimmed when it is wider than its box.
-- A wrapping run is trimmed when it is taller than its box, or than its line budget allows.
+- A wrapping run is trimmed when its uncut block (laid at the box width) is taller than its box. A word wider than the box
+  under `WrapWholeWords` does not set `overflowX`; `drawn.overhang` reports it.
 
-`natural` is the size the run wants. `trimSource` says whether the answer rests on real metrics: `dwrite` means it
+`natural` is the size the run wants. **`drawn`** is what the draw's own layout did: the run laid out once as it is drawn
+(its style at the auto-fit size, its trim and line cap, at the box width). `lines` is its line count; `cut` is true when it
+does not show all of the content (a line ellipsized or cut by the trim, lines dropped past `maxLines`, an overflow suffix;
+text drawn whole past its box is not `cut`, the box clips that); `ellipsis` is true when an ellipsis glyph was drawn.
+Beside them, from the uncut run at the same width: `naturalLines` (the lines the words want) and `overhang` (a wrapped
+word drawn past the box; hanging trailing spaces do not count). The two readings disagree exactly where a defect hides:
+`drawn.cut` with `trimmed: false` is text the engine ellipsised although its words fit (`text.trim` class `fits`), and
+`trimmed: true` with an ellipsis trim and no `drawn.cut` is text drawn whole past its box. `drawn` is absent under the
+headless model, which never draws. `trimSource` says whether the answer rests on real metrics: `dwrite` means it
 does; `headless-model` means `--text headless` was used and the answer is not truthful.
 
 ### `render {path, scale?, alpha?, max?}`

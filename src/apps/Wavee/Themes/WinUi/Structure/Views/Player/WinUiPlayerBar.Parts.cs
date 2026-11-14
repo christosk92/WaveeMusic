@@ -174,6 +174,10 @@ internal static partial class WinUiPlayerBar
             case RightSlot.Volume:
                 return Lit(PL.VolumeKey, lit, Embed.Comp(new VolumeProps(props, v.VolumePopup), static () => new WinUiVolumeButton())
                     with { Key = v.VolumePopup ? "volume-popup" : "volume-inline" });
+            case RightSlot.Mini:
+                return Lit(PL.MiniKey, lit, ToolTip.Wrap(
+                    Button(SegoeGlyphs.MiniPlayer, props.OpenMiniPlayer ?? (static () => { }), props.OpenMiniPlayer is not null, false, PL.ToolBox, PL.ToolBox, PL.Glyph),
+                    Loc.Get(Strings.Mini.Title)));
             default:
                 return Lit(PL.ExpandKey, lit, ToolTip.Wrap(
                     Button(PL.ExpandGlyph, () => verbs.OpenStage(begin, "bar-expand"), true, false, PL.ToolBox, PL.ToolBox, PL.Glyph),

@@ -27,6 +27,26 @@ internal static class ClassicTransport
 {
     // ══ THE SEEK RAIL ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The rail's style over the AUDIO FACE (the full-screen stage's Video mode over an audio-only track): its picture bar stands on the arm
+    /// the colour field decides (<see cref="ClassicStageAudioFaceGeometry.FieldArm"/>), so where that is not the theme's arm (a deep field on the light
+    /// theme) the rail draws in that arm's ink, as the bar's volume slider draws in the on-media ink: the theme's rail tokens (a dark track, a
+    /// light-theme accent) vanish on the dark arm's scrim. Null everywhere else (the theme's own slider style, unchanged).</summary>
+    static Slider.Style? OnFieldStyle(in ViewContext ctx)
+    {
+        var st = ctx.Hooks.UseContext(Stage.StageContext);
+        if (st is null || st.Mode.Value != Stage.Mode.Video || !st.AudioFace.Value) return null;
+        var kind = ClassicStageAudioFaceGeometry.FieldArm(st.BasePalette.Value);
+        if (kind == Tok.Theme) return null;
+        var arm = Wavee.Theming.Roles.StageInk.Arm(kind);
+        return Slider.DefaultStyle with
+        {
+            RailFill = arm.Ink with { A = ClassicStageGeometry.RailAlpha }, RailFillDisabled = arm.Ink with { A = ClassicStageGeometry.RailDisabledAlpha },
+            ValueFill = arm.Ink, ValueFillPointerOver = arm.Ink, ValueFillPressed = arm.InkSecondary, ValueFillDisabled = arm.InkTertiary,
+            ThumbRing = arm.Ink, ThumbFill = arm.Ink, ThumbFillPointerOver = arm.Ink, ThumbFillPressed = arm.InkSecondary, ThumbFillDisabled = arm.InkTertiary,
+            ThumbBorder = GradientSpec.Solid(arm.Stroke),
+        };
+    }
+
     /// <summary>The registered template of <see cref="ViewKeys.SeekRail"/>: the bespoke media rail (not a Slider) over the host's binds,
     /// or the live line when there is nothing to rewind.</summary>
     public static Element SeekRail(SeekRailProps props, in ViewContext ctx)
@@ -58,7 +78,7 @@ internal static class ClassicTransport
                 ],
             };
         Element chapters = props.Chapters ?? new BoxEl { HitTestVisible = false };
-        var s = Slider.DefaultStyle;
+        var s = OnFieldStyle(ctx) ?? Slider.DefaultStyle;
         var fill = new BoxEl
         {
             Grow = 1f, Height = s.TrackHeight, AlignSelf = FlexAlign.Center,
@@ -267,6 +287,7 @@ internal static class ClassicTransport
     public static Element TimeLabel(TimeLabelProps props, in ViewContext ctx)
     {
         if (props.LiveSlot) return Embed.Comp(() => new LiveSlot(props));
+        if (props.Alone && !props.IsLive) return AloneLabel(props);
 
         bool right = props.Remaining;
         var ink = props.Ink;
@@ -283,11 +304,33 @@ internal static class ClassicTransport
             Corners = Radii.ControlAll,
             OnClick = right ? props.ToggleRemaining : null,
             Cursor = right ? CursorId.Hand : null,
+            // the toggle's target meets the 40 DIP rule with slop above and below the line (a real hit beside it, the seek rail's, still wins)
+            HitSlop = right ? new Edges4(0f, ClassicTransportLayout.TimeSlop(caption.LineHeight), 0f, ClassicTransportLayout.TimeSlop(caption.LineHeight)) : default,
             Children =
             [
                 ink is { } inkColor
                     ? caption with { Text = label, Color = inkColor, Wrap = TextWrap.NoWrap }
                     : caption with { Text = label, Wrap = TextWrap.NoWrap },
+            ],
+        };
+    }
+
+    static readonly Func<string> s_noWidest = static () => "0:00";
+
+    /// <summary>The elapsed time ALONE (a time pill folded to it, <see cref="TimeLabelProps.Alone"/>): the slot is the track's widest elapsed
+    /// time (every digit a "0", the hour form when the track has one; an invisible copy holds it), so the clock never moves the pill, and the
+    /// digits sit centred in it.</summary>
+    static Element AloneLabel(TimeLabelProps props)
+    {
+        var caption = FluentGpu.Dsl.Ui.Caption("");
+        var shown = caption with { Text = Prop.Of(props.Label), Wrap = TextWrap.NoWrap, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center };
+        return new BoxEl
+        {
+            ZStack = true, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                caption with { Text = Prop.Of(props.Widest ?? s_noWidest), Color = ColorF.Transparent, Wrap = TextWrap.NoWrap },   // the reservation
+                props.Ink is { } ink ? shown with { Color = ink } : shown,
             ],
         };
     }

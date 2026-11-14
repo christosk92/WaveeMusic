@@ -63,6 +63,7 @@ public static class ClassicPolicies
         TabMaxW: 200f, TabMinW: 110f, PinnedTabW: 40f, TabViewportMinW: 32f)
     {
         SearchFocusGrowW = 80f, SearchFocusClearW = 12f,
+        RowActions = 4,   // bell, friends, pin, full screen
     };
 
     /// <summary>The title-bar row per window tier (board C-TitleBar, TC1): Compact folds the tab strip into ONE tab-count button that

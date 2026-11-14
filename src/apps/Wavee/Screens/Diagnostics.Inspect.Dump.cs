@@ -172,7 +172,9 @@ public static partial class Diagnostics
             if (style.Trim != TextTrim.None) w.WriteString("trim", style.Trim.ToString());
             if (style.CharSpacing != 0f) Inspect.Reply.Num(w, "charSpacing", style.CharSpacing);
             // The engine's per-node overflow query (AppHost.QueryTextOverflow, lane A1): the run re-measured uncut through the
-            // host's own font system against its laid-out box.
+            // host's own font system against its laid-out box (`trimmed`, `natural`, `overflowX/Y`), and what the draw's own
+            // layout did (`drawn`: line count, content cut, ellipsis glyph drawn, plus the uncut run's line count and whole-word
+            // overhang at the same width; only when the font system can say).
             // (Read-only: MeasureCacheRef is a write-intent accessor, so the dump never touches the cache itself.)
             TextOverflow overflow = shell.Host.QueryTextOverflow(node);
             w.WriteBoolean("trimmed", overflow.Trimmed);
@@ -184,6 +186,16 @@ public static partial class Diagnostics
                 w.WriteEndObject();
                 if (overflow.HorizontalOverflow) w.WriteBoolean("overflowX", true);
                 if (overflow.VerticalOverflow) w.WriteBoolean("overflowY", true);
+                if (overflow.HasDrawn)
+                {
+                    w.WriteStartObject("drawn");
+                    w.WriteNumber("lines", overflow.DrawnLines);
+                    w.WriteBoolean("cut", overflow.DrawnCut);
+                    w.WriteBoolean("ellipsis", overflow.DrawnEllipsis);
+                    w.WriteNumber("naturalLines", overflow.NaturalLines);
+                    if (overflow.NaturalOverhang) w.WriteBoolean("overhang", true);
+                    w.WriteEndObject();
+                }
             }
             w.WriteEndObject();
         }

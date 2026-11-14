@@ -116,6 +116,7 @@ internal static class ZuneStageFace
         var tiers = ctx.Tier();
         var a = ZuneStageKit.Arrangement(sc, in tiers);
         var safe = G.FaceSafe(in L, in a, galleryOpen, caption, backdrop, ZuneStageTiers.StageOf(in tiers).HeadH);
+        var side = backdrop ? default : G.FaceSide(in L, in a, in safe, galleryOpen);
         var track = sc.RowValue();
         string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
         Visualizer.UseScopeReader(ctx.Hooks, sc.Slab, Visualizer.Catalog.UsesScope(kind));
@@ -130,7 +131,8 @@ internal static class ZuneStageFace
                     Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(G.GalleryYieldMs, Easing.FluentDecelerate),
                         Enter: new EnterExit(Sx: G.FaceEnterScale, Sy: G.FaceEnterScale, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
                     Children = [Visualizer.Face(kind, sc.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,
-                        SafeLeft: safe.X, SafeTop: safe.Y, SafeRight: safe.Right, SafeBottom: safe.Bottom, Ambient: Stage.LayoutRules.FaceAmbient(look.Eff)))],
+                        SafeLeft: safe.X, SafeTop: safe.Y, SafeRight: safe.Right, SafeBottom: safe.Bottom, Ambient: Stage.LayoutRules.FaceAmbient(look.Eff),
+                        SideLeft: side.X, SideTop: side.Y, SideRight: side.Right, SideBottom: side.Bottom))],
                 },
             ],
         };

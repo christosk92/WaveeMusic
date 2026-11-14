@@ -70,7 +70,7 @@ public static partial class Lyrics
     /// <summary>The stage column ticks only while the stage is up AND the pane region shows the lyrics (Lyrics mode, Large art, the
     /// Artist hero with lyrics — <see cref="Stage.LyricsPaneShown"/>; any other pane parks it, the pane host keeps it mounted).
     /// A render-time signal read (O8): nothing here touches the preference registry.</summary>
-    static readonly Func<bool> s_stageVisible = static () => Shell.Ui.ImmersiveLyrics.Value && Stage.LyricsPaneShown.Value;
+    static readonly Func<bool> s_stageVisible = static () => Shell.Ui.ImmersiveLyrics.Value && Stage.LyricsPaneShown.Value && Stage.Picture.PaneOnScreen();
 
     // MOUNT POINT (stage B contract)
     /// <summary>The rail's lyrics body (`RailMode.Lyrics`): the reading surface at rail metrics on theme ink. The header
@@ -84,24 +84,36 @@ public static partial class Lyrics
     /// `Stage.UI.cs`'s). The SAME view at stage metrics on the stage's ink, with the ART ACCENT for the active-line pill.
     /// <paramref name="accent"/> is a mount-time signal INSTANCE (the slab's <c>Accent</c>, stable for the stage's life —
     /// the contract the Slider/ToggleSwitch signal instances follow): props freeze at mount, so only the signal's
-    /// VALUE ever changes.</summary>
-    public static Element StagePane(IReadSignal<ColorF> accent) => Embed.Comp(() => new StageColumn(accent));
+    /// VALUE ever changes. <paramref name="theatre"/>: Video mode's Theatre panel beside the picture, at the panel's type
+    /// (<see cref="Stage.Layout.TheatreLyricsTypeScale"/>).</summary>
+    public static Element StagePane(IReadSignal<ColorF> accent, bool theatre = false) => Embed.Comp(() => new StageColumn(accent, theatre, follow: false, s_stageVisible));
+
+    // MOUNT POINT (video full screen, the audio face)
+    /// <summary>The stage's reading column in the picture's place while Video mode holds over an audio-only track (<c>Stage.StageCtx.AudioFace</c>):
+    /// the same view at the stage's type in Cinema and the Theatre panel's in Theatre (it follows <c>StageCtx.Theatre</c> in place), ticking only
+    /// while <paramref name="visible"/> reads true (its own gate: the pane region's lyrics, parked in Theatre's KeepAlive, keep theirs).</summary>
+    /// <remarks><paramref name="arm"/>: the stage arm the column's on-media inks resolve on (<c>StageLayers.PictureLyricsOn</c>: the arm the face's
+    /// colour field resolved to); null = the theme's.</remarks>
+    public static Element PictureLyrics(IReadSignal<ColorF> accent, Func<bool> visible, ThemeKind? arm = null)
+        => Embed.Comp(() => new StageColumn(accent, false, follow: true, visible, arm));
 
     /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
     /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it (the cap and the
     /// gutter are the structure's, `Lyrics.View`). The scale reaches the view as a VALUE-GATED signal (tuned R1): a size step keeps the
     /// column MOUNTED — the rows re-render at the new type in place, the run lengths and extents are re-measured and the follow re-latches
     /// the active line at the band — instead of re-keying the view, which remounted it and made the text jump.</summary>
-    sealed class StageColumn(IReadSignal<ColorF> accent) : Component
+    sealed class StageColumn(IReadSignal<ColorF> accent, bool theatre, bool follow, Func<bool> visible, ThemeKind? arm = null) : Component
     {
         readonly Signal<float> _typeScale = new(1f);
 
         public override Element Render()
         {
-            float scale = UseContext(Stage.StageContext)?.Layout.Value.LyricsTypeScale ?? 1f;
+            var stage = UseContext(Stage.StageContext);
+            bool atTheatre = follow ? stage?.Theatre.Value ?? false : theatre;
+            float scale = stage is null ? 1f : atTheatre ? stage.Layout.Value.TheatreLyricsTypeScale : stage.Layout.Value.LyricsTypeScale;
             _typeScale.SetIfChanged(scale > 0f && float.IsFinite(scale) ? scale : 1f);
             var typeScale = _typeScale;
-            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: typeScale))
+            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: visible, accent: accent, onStage: true, typeScale: typeScale, darkArm: arm == ThemeKind.Dark, onPicture: follow, lightArm: arm == ThemeKind.Light))
                 with { Key = "lyrics:stage" };
         }
     }
@@ -111,35 +123,70 @@ public static partial class Lyrics
     /// the playing track has a timed document.</summary>
     public static Element NpvPeek() => Embed.Comp(static () => new PeekHost());
 
+    // MOUNT POINT (#197)
+    /// <summary>The mini player's lyrics face: THE reading surface (the side pane's, the same rows, ink, wipe and follow) in a box of the
+    /// mini window, its type at <paramref name="typeScale"/> of the pane's, the active line held at <paramref name="band"/> of the box,
+    /// <paramref name="gutter"/> either side, on the stage's ink over imagery (<paramref name="onMedia"/>). It ticks while
+    /// <paramref name="visible"/> reads true.</summary>
+    public static Element MiniView(bool onMedia, float typeScale, float band, float gutter, ColorF accent, Func<bool> visible)
+        => Embed.Comp(new MiniViewProps(onMedia, typeScale, band, gutter, accent, visible), static () => new MiniViewHost())
+            with { Key = onMedia ? "lyrics:mini:media" : "lyrics:mini" };
+
+    sealed record MiniViewProps(bool OnMedia, float TypeScale, float Band, float Gutter, ColorF Accent, Func<bool> Visible);
+
+    /// <summary>Holds the type scale as a value-gated signal (the stage column's way: a size step re-renders the rows in place, never a
+    /// remount) and mounts the view once per ink.</summary>
+    sealed class MiniViewHost : Component
+    {
+        readonly Signal<float> _typeScale = new(1f);
+        readonly Signal<ColorF> _accent = new(default);
+
+        public override Element Render()
+        {
+            var p = UseProps<MiniViewProps>();
+            _typeScale.SetIfChanged(p.TypeScale > 0f && float.IsFinite(p.TypeScale) ? p.TypeScale : 1f);
+            _accent.SetIfChanged(p.Accent);
+            var typeScale = _typeScale;
+            var accent = p.OnMedia && p.Accent.A > 0f ? _accent : null;
+            return Embed.Comp(() => new ViewCore(large: false, onMedia: p.OnMedia, visible: p.Visible, accent: accent, typeScale: typeScale,
+                band: p.Band, gutter: p.Gutter, darkArm: p.OnMedia));
+        }
+    }
+
     // ══ 1. THE INK SEAM ══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>WHICH ink a view paints with — the one seam between the two surfaces that mount the same view. A MODE,
     /// not a captured colour: every rung resolves its token at the point of consumption, so a live theme flip re-reads
     /// correctly on either surface (a <c>ColorF</c> frozen into a component would not).</summary>
-    public readonly record struct Ink(bool OnMedia)
+    public readonly record struct Ink(bool OnMedia, bool DarkArm = false, bool LightArm = false)
     {
+        /// <summary>The stage arm the on-media rungs resolve on: the active theme's, or always the dark one (<see cref="DarkArm"/>: the mini player
+        /// draws its lyrics over a darkened cover in either mode, #197), or always the light one (<see cref="LightArm"/>: a picture whose colour
+        /// field resolved on the light arm, <c>StageLayers.PictureLyricsOn</c>).</summary>
+        StageArmView Arm => StageInk.Arm(DarkArm ? ThemeKind.Dark : LightArm ? ThemeKind.Light : Tok.Theme);
+
         /// <summary>A sung glyph, the active line, a lit interlude dot.</summary>
-        public ColorF Primary => OnMedia ? StageInk.Ink : Tok.TextPrimary;
+        public ColorF Primary => OnMedia ? Arm.Ink : Tok.TextPrimary;
         /// <summary>An inactive line-synced line and the secondary layer.</summary>
-        public ColorF Secondary => OnMedia ? StageInk.InkSecondary : Tok.TextSecondary;
+        public ColorF Secondary => OnMedia ? Arm.InkSecondary : Tok.TextSecondary;
         /// <summary>Meta captions that are not lyric text.</summary>
-        public ColorF Tertiary => OnMedia ? StageInk.InkTertiary : Tok.TextTertiary;
+        public ColorF Tertiary => OnMedia ? Arm.InkTertiary : Tok.TextTertiary;
 
         /// <summary>The one plate the reading surface owns (the resync pill, the video note).</summary>
-        public ColorF Plate => OnMedia ? StageInk.ScrimRest : Tok.FillSolidBase with { A = R.Lyrics.ThemePlateAlpha };
-        public ColorF PlateHover => OnMedia ? StageInk.ScrimHover : Tok.FillSubtleSecondary;
-        public ColorF PlatePressed => OnMedia ? StageInk.ScrimPressed : Tok.FillSubtleTertiary;
-        public ColorF PlateStroke => OnMedia ? StageInk.Stroke : Tok.StrokeCardDefault;
+        public ColorF Plate => OnMedia ? Arm.ScrimRest : Tok.FillSolidBase with { A = R.Lyrics.ThemePlateAlpha };
+        public ColorF PlateHover => OnMedia ? Arm.ScrimHover : Tok.FillSubtleSecondary;
+        public ColorF PlatePressed => OnMedia ? Arm.ScrimPressed : Tok.FillSubtleTertiary;
+        public ColorF PlateStroke => OnMedia ? Arm.Stroke : Tok.StrokeCardDefault;
 
         /// <summary>The resync ring: the accent on a theme plate, plain ink on media.</summary>
-        public ColorF RingFill => OnMedia ? StageInk.Ink : Tok.AccentDefault;
+        public ColorF RingFill => OnMedia ? Arm.Ink : Tok.AccentDefault;
         /// <summary>The active transcript line's SUNG glyph — the one place the wipe shows a highlight instead of
         /// plain ink (<see cref="TranscriptPresentation.InkRung.Accent"/>). Same rung as <see cref="RingFill"/>.</summary>
         public ColorF Accent => RingFill;
-        public ColorF RingTrack => OnMedia ? StageInk.Ink with { A = R.Lyrics.RingTrackOnMediaAlpha } : Tok.StrokeControlDefault with { A = R.Lyrics.RingTrackThemeAlpha };
+        public ColorF RingTrack => OnMedia ? Arm.Ink with { A = R.Lyrics.RingTrackOnMediaAlpha } : Tok.StrokeControlDefault with { A = R.Lyrics.RingTrackThemeAlpha };
 
         /// <summary>The loading bars.</summary>
-        public ColorF Skeleton => OnMedia ? StageInk.SkeletonBar : Tok.FillSubtleSecondary;
+        public ColorF Skeleton => OnMedia ? Arm.SkeletonBar : Tok.FillSubtleSecondary;
 
         /// <summary>The held-note BLOOM: on a dark stage the ink (a halo adds luminance), on a light stage the VEIL —
         /// blurred near-black under near-black subtracts and reads as a smudge.</summary>
@@ -199,10 +246,16 @@ public static partial class Lyrics
         /// <summary>The fullscreen stage's view — an EXPLICIT flag (V-U51): <c>onMedia</c> is also true for the rail's
         /// on-media mode, which keeps its blur. The stage resolves blur strength 0 (<see cref="BlurPolicy.ResolveFor"/>).</summary>
         internal readonly bool OnStage;
+        /// <summary>The stage's reading column in the picture's place (Video mode's audio face, <see cref="PictureLyrics"/>): mount config.</summary>
+        internal readonly bool OnPicture;
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
-        internal RowMetrics Metrics => StageRows is { } rows ? rows.Metrics(TypeScale) : Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        internal RowMetrics Metrics => StageRows is { } rows ? rows.Metrics(TypeScale)
+            : _gutter >= 0f ? Surface.Timed(Large, IsPodcast).Scaled(TypeScale) with { SidePad = _gutter }
+            : Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        /// <summary>A mount's own focal band and side gutter (the mini player's), or -1 for the surface's.</summary>
+        readonly float _bandOverride, _gutter;
         /// <summary>The structure's own stage rows (<c>LyricsLinesStyle.StageRows</c>): the stage's music rows only; null everywhere else and for a
         /// style that leaves it unset (the core's metrics, band and ladder).</summary>
         Wavee.Theming.Contracts.LyricsStageRows? StageRows => OnStage && !IsPodcast ? _linesStyle?.StageRows : null;
@@ -238,12 +291,16 @@ public static partial class Lyrics
         // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
-            IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null)
+            IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
+            bool darkArm = false, bool onPicture = false, bool lightArm = false)
         {
+            OnPicture = onPicture;
+            _bandOverride = band;
+            _gutter = gutter;
             _readerEpisode = readerEpisode;
             Large = large;
             _typeScale = typeScale;
-            InkMode = new Ink(onMedia);
+            InkMode = new Ink(onMedia, darkArm, lightArm);
             Accent = accent;
             OnStage = onStage;
             _visible = visible;
@@ -297,6 +354,14 @@ public static partial class Lyrics
         // ── the wipe feather ─────────────────────────────────────────────────────────────────────────────────────────
         float[] _lineRunLen = [];         // per-line reading-order run length (NaN = unmeasured)
         float _runLenWrapW = float.NaN;   // the wrap width every cached entry was measured at
+        /// <summary>Per line: each syllable's first glyph as a fraction of the run (<see cref="Wipe.GlyphBounds"/>), written by
+        /// the same measurement as <see cref="_lineRunLen"/> (so it is re-measured exactly when that is); null = not measured,
+        /// empty = keep the character weights.</summary>
+        float[]?[] _lineWordBounds = [];
+        /// <summary>Per line: the text style and wrap width its run length and word bounds were measured at (the row's own, once
+        /// realized: <see cref="LineLayoutOf"/>).</summary>
+        TextStyle[] _lineMeasStyle = [];
+        float[] _lineMeasWrap = [];
 
         // ── scene handles (reported ONCE, at realization) ────────────────────────────────────────────────────────────
         NodeHandle _viewportNode = NodeHandle.Null;
@@ -437,8 +502,14 @@ public static partial class Lyrics
                 if (railForm.Crisp) strength = 0;
             }
             else if (OnRail) _band = Surface.FocalBand(Large);
+            if (_bandOverride >= 0f) _band = Math.Clamp(_bandOverride, 0.05f, 0.95f);   // the layout's own clamp: a different band re-made it every read
+            // A mini mount (#197) is a picture of the song (ILyricsHost.FlatRows): its other lines are one calm ink, never depth-blurred; the
+            // active line's halo still follows the setting.
+            float miniHalo = BlurPolicy.Scale(strength) * TypeScale;
+            if (_gutter >= 0f) strength = 0;
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
+            if (_gutter >= 0f) newScale *= TypeScale;   // a mini mount (#197): the depth blur and the halo scale with its type, as its rows do
             if (newScale != _dofScale)
             {
                 _dofScale = newScale;
@@ -447,7 +518,7 @@ public static partial class Lyrics
                 // decrease never stops part-way on a paused, tickerless surface.
                 Array.Fill(_dofCurrent, float.NaN);
             }
-            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : newScale;
+            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : _gutter >= 0f ? miniHalo : newScale;
             HaloScale.Value = _haloScale;
             // Re-arm the ramp IMMEDIATELY on a strength change — it does not ride the ticker, so it lands paused too.
             UseEffect(() => { if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs); }, DepKey.From(strength));
@@ -472,6 +543,13 @@ public static partial class Lyrics
             }, DepKey.From(BitConverter.SingleToInt32Bits(typeScale)));
 
             // ── what is playing ─────────────────────────────────────────────────────────────────────────────────────
+            // A HIDDEN view (its gate down: the rail's lyrics under the full-screen stage, the stage's Lyrics pane parked under the picture, the
+            // audio face's column over a video) holds what it drew last and follows no track: a track change behind the cover loads, mounts and
+            // scrolls nothing. The gate's rise re-renders it on the frame it shows, on the playing track at once (no swap: see `_heldHidden`).
+            // Not the podcast reader: its subject is its own episode.
+            if (!open && _heldView is { } heldView && !_readerEpisode.IsValid) { _heldHidden = true; return heldView; }
+            bool caughtUp = _heldHidden;
+            _heldHidden = false;
             var current = Playback.Current.Value;
             _subject = _readerEpisode.IsValid ? _readerEpisode : Playback.CurrentId.Value;
             bool anything = _subject.IsValid;
@@ -499,6 +577,9 @@ public static partial class Lyrics
                 M.PublishState(LyricsState.NoLyrics);
                 return MountView(message: Loc.Get(Strings.Lyrics.NoLyrics));
             }
+            // a skip from one document to the next swaps them as text (the stage's track swap): the old lines fade out where they stand, then
+            // the next document fades in, in the layer stack the structure's view places the body in; a first mount is born as it was
+            bool swapped = _trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal) && !caughtUp;
             if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
             _subjectEpoch = accountEpoch;
             _trackId = trackId;
@@ -510,11 +591,16 @@ public static partial class Lyrics
             // treats a non-owning podcast as neutral (no active line, no wipe, no follow, no σ ladder).
             Element body = IsPodcast
                 ? Embed.Comp(() => new TranscriptHost(this, _subject)) with { Key = "transcript-doc:" + accountEpoch + ":" + trackId }
-                : Embed.Comp(() => new DocHost(this, trackId)) with { Key = "lyrics-doc:" + trackId };
+                : Embed.Comp(() => new DocHost(this, trackId)) with
+                {
+                    Key = "lyrics-doc:" + trackId,
+                    Layout = Stage.TrackSwapText(swapped, drift: false),   // the old lines go first, then the next document fades in
+                };
             // …and the frame stepper stays UNMOUNTED while the gate is up: OnFrame returns immediately for a
             // non-owning podcast, so a subscription to panel-rate frames would buy nothing but battery.
             Element? ticker = open && owns ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;
-            Element debug = Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
+            // The developer pill never rides a mount whose lines are a picture (the mini player's): it is the main window's affordance.
+            Element? debug = _gutter >= 0f ? null : Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
 
             // The layers, the overlays and the AI disclosure are the structure's (`Lyrics.View`). The podcast reader never carries the
             // on-device AI disclosure (episodes are never timed): mount config, so the root's shape never flips for a mounted instance.
@@ -523,9 +609,14 @@ public static partial class Lyrics
             return MountView(body: body, ticker: ticker, debug: debug, footer: footer);
         }
 
+        /// <summary>What the last render drew (what a hidden view holds), and whether the last render held it (the next shown render catches up
+        /// without the track swap's fade: nobody saw the old document go).</summary>
+        Element? _heldView;
+        bool _heldHidden;
+
         /// <summary>Mount the structure's surface (<see cref="LyricsContracts.ViewKeys.LyricsView"/>) over what this render decided.</summary>
         Element MountView(string? message = null, Element? body = null, Element? ticker = null, Element? debug = null, Element? footer = null)
-            => ViewSlots.View(LyricsContracts.ViewKeys.LyricsView, new LyricsContracts.LyricsViewProps
+            => _heldView = ViewSlots.View(LyricsContracts.ViewKeys.LyricsView, new LyricsContracts.LyricsViewProps
             {
                 Host = this, Message = message, Body = body, Ticker = ticker, Debug = debug, Footer = footer,
             });
@@ -878,41 +969,84 @@ public static partial class Lyrics
         }
 
         /// <summary>The per-line softness fraction (<see cref="Wipe.SoftnessOfLine"/> over the measured run length).</summary>
-        internal float SoftnessOfLine(int index) => Wipe.SoftnessOfLine(RunLengthOf(index, CurrentWrapWidth()), Large);
+        internal float SoftnessOfLine(int index) => Wipe.SoftnessOfLine(RunLengthOf(index), Large);
 
-        /// <summary>Lazily measured reading-order run length, cached per line per width epoch (a ≥0.5 DIP wrap move
-        /// retires every entry). Per-frame callers only ever read the array.</summary>
-        float RunLengthOf(int index, float wrapWidth)
+        /// <summary>The text style and wrap width line <paramref name="index"/> is DRAWN with: its realized text node's own
+        /// (<see cref="Wipe.DrawnLayout"/>: the face, size, weight, tracking and line width the structure's row lays it out at — Zune's
+        /// stage rows set the display face, their tracking and the active scale, and lose the side pad), else, before the row is
+        /// realized and laid out, the core metrics over the viewport. False while neither has geometry.</summary>
+        bool LineLayoutOf(int index, out TextStyle style, out float wrapWidth)
         {
-            var runLen = _lineRunLen;
-            if (float.IsNaN(wrapWidth))
+            var scene = Context.Scene;
+            var node = (uint)index < (uint)_lineNodes.Length ? _lineNodes[index] : NodeHandle.Null;
+            if (scene is not null && Wipe.DrawnLayout(scene, node, out style, out wrapWidth)) return true;
+            wrapWidth = CurrentWrapWidth();
+            if (float.IsNaN(wrapWidth)) { style = default; return false; }
+            var m = Metrics;
+            style = new TextStyle(default, m.FontSize, m.Weight, TextWrap.Wrap, TextTrim.None, 0, CharSpacing: 0f, LineHeight: m.LineHeight);
+            return true;
+        }
+
+        /// <summary>Lazily measured reading-order run length, cached per line with the style and wrap width it was measured at
+        /// (<see cref="EnsureMeasured"/>). Per-frame callers compare and read; nothing is measured or allocated unless the line's
+        /// layout changed.</summary>
+        float RunLengthOf(int index)
+        {
+            if (!LineLayoutOf(index, out var style, out float wrapWidth))
             {
                 float last = _runLenWrapW;
                 return last > 1f ? last : Metrics.FontSize * 12f;
             }
-            if (float.IsNaN(_runLenWrapW) || MathF.Abs(_runLenWrapW - wrapWidth) >= 0.5f)
-            {
-                _runLenWrapW = wrapWidth;
-                Array.Fill(runLen, float.NaN);
-            }
-            if ((uint)index >= (uint)runLen.Length) return wrapWidth;
-            float cached = runLen[index];
-            if (!float.IsNaN(cached)) return cached;
-            float measured = MeasureRunLength(index, wrapWidth);
-            runLen[index] = measured;
-            return measured;
+            if ((uint)index >= (uint)_lineRunLen.Length) return wrapWidth;
+            EnsureMeasured(index, in style, wrapWidth);
+            return _lineRunLen[index];
         }
 
-        /// <summary>One seam query per line per epoch. The style MUST mirror <c>ClassicLyricsRow</c>'s LineText exactly —
-        /// the feather is a fraction of the extent measured here.</summary>
-        float MeasureRunLength(int index, float wrapWidth)
+        /// <summary>The syllables' glyph bounds of line <paramref name="index"/> on the wipe's reading-order axis
+        /// (<see cref="Wipe.GlyphBounds"/>), measured with the run length in the style the row draws it with (one layout
+        /// epoch: a text, wrap-width, face, size, weight or tracking change re-measures both); empty while the viewport has no
+        /// geometry or the line cannot be measured (the wipe then keeps the character weights). Per-frame callers only read the
+        /// cache.</summary>
+        internal ReadOnlySpan<float> WordBoundsOf(int index)
         {
+            if ((uint)index >= (uint)_lineRunLen.Length || !LineLayoutOf(index, out var style, out float wrapWidth)) return default;
+            EnsureMeasured(index, in style, wrapWidth);
+            return _lineWordBounds[index];
+        }
+
+        /// <summary>Measure line <paramref name="index"/> (run length and word bounds) unless its cache was measured at exactly
+        /// this style and (within half a DIP) this wrap width. A NaN run length (a new document, a remounted row, a stage type
+        /// step) also re-measures. A re-measure of the line the render thread is wiping re-seeds its keyframes.</summary>
+        void EnsureMeasured(int index, in TextStyle style, float wrapWidth)
+        {
+            int n = _lineRunLen.Length;
+            if (_lineWordBounds.Length != n || _lineMeasStyle.Length != n)
+            {
+                _lineWordBounds = new float[]?[n];
+                _lineMeasStyle = new TextStyle[n];
+                _lineMeasWrap = new float[n];
+            }
+            bool had = !float.IsNaN(_lineRunLen[index]) && _lineWordBounds[index] is not null;
+            if (had && _lineMeasStyle[index] == style && MathF.Abs(_lineMeasWrap[index] - wrapWidth) < 0.5f) return;
+            _runLenWrapW = wrapWidth;
+            _lineMeasStyle[index] = style;
+            _lineMeasWrap[index] = wrapWidth;
+            _lineRunLen[index] = MeasureRunLength(index, in style, wrapWidth);
+            if (had && index == _wipeRowLine) _wipeReseed = true;
+        }
+
+        /// <summary>One seam query per line per layout (plus one per syllable for <see cref="WordBoundsOf"/>), in the style
+        /// <see cref="LineLayoutOf"/> resolved — the row's own, so the feather and the word bounds are fractions of the run the
+        /// glyph wipe actually sweeps.</summary>
+        float MeasureRunLength(int index, in TextStyle style, float wrapWidth)
+        {
+            if ((uint)index < (uint)_lineWordBounds.Length) _lineWordBounds[index] = [];
             var doc = _doc;
             if (doc is null || (uint)index >= (uint)doc.Lines.Count) return wrapWidth;
             string text = doc.Lines[index].Text;
             if (text.Length == 0 || TextSeam.Default is not { } fonts) return wrapWidth;
-            var style = new TextStyle(default, Metrics.FontSize, Metrics.Weight, TextWrap.Wrap, TextTrim.None, 0,
-                CharSpacing: 0f, LineHeight: Metrics.LineHeight);
+            if ((uint)index < (uint)_lineWordBounds.Length && doc.Lines[index] is { IsWordByWord: true, Syllables.Count: > 0 } wl)
+                _lineWordBounds[index] = Wipe.GlyphBounds(fonts, wl, in style, wrapWidth) ?? [];
             Span<RectF> fragments = stackalloc RectF[8];
             int n = fonts.GetRangeRects(text, in style, wrapWidth, 0, text.Length, fragments);
             float sum = 0f;
@@ -1545,6 +1679,7 @@ public static partial class Lyrics
             if (renderWipe)
             {
                 double rate = _clock.ContentRate > 0 ? _clock.ContentRate : 1.0;
+                RunLengthOf(voiceLine);   // a compare while the row's layout holds; a re-laid row (a tier's type, a wrap) re-measures and re-seeds
                 if (voiceLine != _wipeRowLine || _wipeReseed || rate != _wipeRowRate || mainNode != _wipeRowMain)
                     SeedWipeRows(anim!, scene, voice!, voiceLine, nowMs, rate, mainNode, glowNode);
                 MaintainGlowSigma(scene, voiceLine, glowNode, runGlow);
@@ -1552,8 +1687,7 @@ public static partial class Lyrics
             }
             if (_wipeRowLine >= 0) CancelWipeRows(anim);   // the UI owns the split again (paused, probe)
 
-            float split = Wipe.ComputeSplit(doc.Lines[voiceLine], nowMs);
-            if (!IsPodcast && split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
+            float split = Wipe.SplitWithLead(doc.Lines[voiceLine], nowMs, WordBoundsOf(voiceLine), lead: !IsPodcast);
             // Pixel-quantise the boundary (skip-submit elides sub-pixel ticks); the settled endpoints stay EXACT.
             float runW = scene.AbsoluteRect(mainNode).W;
             if (runW > 1f && split > 0f && split < 1f) split = MathF.Round(split * runW) / runW;
@@ -1589,7 +1723,7 @@ public static partial class Lyrics
         {
             if (_wipeRowLine >= 0 && (_wipeRowMain != main || _wipeRowLine != voiceLine)) CancelWipeRows(anim);
             _wipeReseed = false;
-            var keys = Wipe.SplitKeyframes(line, nowMs, lead: !IsPodcast, out long endMs);
+            var keys = Wipe.SplitKeyframes(line, nowMs, lead: !IsPodcast, WordBoundsOf(voiceLine), out long endMs);
             float softness = SoftnessOfLine(voiceLine);
             if (keys is null)
             {
@@ -2054,8 +2188,11 @@ public static partial class Lyrics
             bool syncOff = SyncGate.SyncSuppressed(Playback.VideoActive.Value);
             bool show = PeekClock.ShouldShow(doc);
             _doc = show && !syncOff ? doc : null;
-            UseInterval(tick, TickMs, enabled: show && !syncOff);
-            UseLayoutEffect(() => { if (_doc is not null) Tick(); }, DepKey.From(show));
+            // the reel is the page's (the rail's now-playing body): under the full-screen stage it holds its pair and its clock stops; the stage's
+            // close ticks it once at once, so the pair is current on the close's first frame
+            bool seen = Shell.PageShown.Value;
+            UseInterval(tick, TickMs, enabled: show && !syncOff && seen);
+            UseLayoutEffect(() => { if (_doc is not null && seen) Tick(); }, DepKey.From(show ? 1 : 0, seen ? 1 : 0));
 
             var pair = _pair.Value;
             // ORDER matters: the `!show` early-out runs BEFORE the video branch — over an unsynced or absent document a

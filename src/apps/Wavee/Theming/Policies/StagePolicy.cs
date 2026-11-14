@@ -152,6 +152,14 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
     /// (<c>Stage.LayoutRules.Effective</c>). The stage's own Compact class draws Card whatever this says. Default: every layout. Appended (P6 WK).</summary>
     public StageLayouts Layouts { get; init; } = StageLayouts.All;
 
+    /// <summary>Video mode's Theatre (the picture with a panel beside it) docks its panel at this width on the right; 0: this tier has no
+    /// Theatre (the Lyrics and Up next tabs then leave the picture, and the Theatre button is not offered). Appended (contract 1.96).</summary>
+    public float TheatrePaneW { get; init; }
+
+    /// <summary>The lyrics' type size in Theatre's panel (the stage's reading column at the panel's measure; 0: the stage's own size).
+    /// Appended (contract 1.96).</summary>
+    public float TheatreLyricsType { get; init; }
+
     /// <summary>Everything wrong with the metrics of <paramref name="tier"/>.</summary>
     public IReadOnlyList<string> Validate(string tier)
     {
@@ -162,6 +170,8 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
         if (!float.IsFinite(LyricsTypeMax) || LyricsTypeMax < LyricsTypeMin) problems.Add($"Stage.{tier}.LyricsTypeMax must not be below LyricsTypeMin");
         if (!float.IsFinite(UpNextW) || UpNextW < 0f) problems.Add($"Stage.{tier}.UpNextW must be zero or more (was {UpNextW})");
         if (!float.IsFinite(ArtBarsH) || ArtBarsH < 0f) problems.Add($"Stage.{tier}.ArtBarsH must be zero or more (was {ArtBarsH})");
+        if (!float.IsFinite(TheatrePaneW) || TheatrePaneW < 0f) problems.Add($"Stage.{tier}.TheatrePaneW must be zero or more (was {TheatrePaneW})");
+        if (!float.IsFinite(TheatreLyricsType) || TheatreLyricsType < 0f) problems.Add($"Stage.{tier}.TheatreLyricsType must be zero or more (was {TheatreLyricsType})");
         if ((Layouts & StageLayouts.Card) == 0) problems.Add($"Stage.{tier}.Layouts must allow Card (every layout's fallback)");
         return problems;
     }
@@ -185,6 +195,12 @@ public sealed record StagePolicy(AspectThresholds Aspect)
 
     /// <summary>The metrics of every window tier that has none of its own (Standard).</summary>
     public StageTierMetrics Metrics { get; init; } = StageTierMetrics.Default;
+
+    /// <summary>The structure draws the stage's Video mode (Cinema: <c>Stage.Mode.Video</c>, the reservation the picture follows and
+    /// <see cref="Contracts.ViewKeys.StagePictureChrome"/>). Where it does, the app has ONE full screen: the stage opens on the picture while a
+    /// video is on, and F11, the video menu's "Video in fullscreen" and the presenter's own full-screen buttons open the stage. Where it does not,
+    /// those doors keep the video-only full screen. Default false. Appended (contract 1.95).</summary>
+    public bool VideoStage { get; init; }
 
     /// <summary>The metrics while the window is Compact; null keeps <see cref="Metrics"/>.</summary>
     public StageTierMetrics? Compact { get; init; }

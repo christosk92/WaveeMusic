@@ -9,6 +9,9 @@
 //            re-wraps a row or re-lays the column out (the trailing room it grows into is reserved on every row)
 //   column   24 either side, 14 between lines; the core follows the active line at the form's band (a quarter down)
 //   second   the translation / romanization under every row (14/20, secondary), so a row's height never depends on being active
+//   mini     the mini player's mount (`ILyricsHost.FlatRows`): every row but the active one draws the primary ink and is faded to
+//            `Lyrics.MiniRows.Ink` by its OPACITY (`Lyrics.MiniRows.Opacity`, the contract's way, as Classic and Zune do), never by a dimmed ink:
+//            a faded context line, not body copy written in a 42 % ink. The root's static `Opacity` is the mount seed; a spring owns it after.
 //
 // THE CORE'S HANDLES. The row reports its text node (the render-thread wipe) and its content box (the hand-off cascade's compensating
 // translate rides it: without it the column would jump on every line). No halo node: the core skips a missing one.
@@ -50,7 +53,7 @@ internal static class WinUiPaneLyrics
             MinHeight = 0f,
             // Realize the WHOLE document: every row must be measured before follow geometry is trusted.
             MeasureAll = lines.Count <= Lyrics.Surface.MeasureAllCap,
-            AutoEdgeFade = true,
+            AutoEdgeFade = !host.BoxFades,
             SuppressScrollBar = true,
             Handle = host.Scroll,
             OnRealized = host.SetViewport,
@@ -66,17 +69,22 @@ internal sealed class WinUiPaneLyricsRow : Component
     readonly ILyricsHost _host;
     readonly int _index;
     readonly Lyrics.Line _line;
+    readonly Signal<int> _emphasis;
     readonly Func<int> _shape;
+    float _seedOpacity = float.NaN;   // the root's static Opacity, fixed at the first render (the fade spring owns the channel after)
     readonly Action<NodeHandle> _onLine, _onDof;
     readonly Action _onClick;
 
     static readonly SpringParams s_scaleSpring = new(100f, 2f * MathF.Sqrt(100f * 2f), 2f);
+    /// <summary>The mini player's row fade: critically damped, settling in the pane's own colour-fade time (<see cref="Design.Motion.Fast"/>).</summary>
+    static readonly SpringParams s_fadeSpring = SpringParams.FromResponse(Design.Motion.Fast / 1000f);
 
     public WinUiPaneLyricsRow(ILyricsHost host, int index, Lyrics.Line line, Signal<int> emphasis)
     {
         _host = host;
         _index = index;
         _line = line;
+        _emphasis = emphasis;
         // The render tracks only what changes the picture: active, sung (past) and the interlude reserve.
         _shape = () =>
         {
@@ -107,33 +115,42 @@ internal sealed class WinUiPaneLyricsRow : Component
         // The scale's origin is the row's left edge; the matching translate keeps the run's first glyph on the column's 24 (both spring on the
         // same parameters from the same edge, so they move as one).
         float scale = active ? PR.ActiveScale : 1f;
-        float shift = active ? -PR.SidePad * (PR.ActiveScale - 1f) : 0f;
+        // A mount in a box narrower than the pane (the mini player, #197) scales the type and its rhythm and lays the rows on its gutter.
+        float k = host.TypeScale, side = host.Gutter ?? PR.SidePad;
+        float shift = active ? -side * (PR.ActiveScale - 1f) : 0f;
         var key = DepKey.From(active ? 1 : 0);
         UseSpring(AnimChannel.ScaleX, scale, s_scaleSpring, key);
         UseSpring(AnimChannel.ScaleY, scale, s_scaleSpring, key);
         UseSpring(AnimChannel.TranslateX, shift, s_scaleSpring, key);
         // Compact is the touch tier: a one-line row is a 40 target there (16 between lines instead of the board's 14).
         var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
-        float rowPad = PR.RowPadOf(facts.Policy is null ? WidthTier.Standard : facts.Window);
+        float rowPad = MathF.Round(PR.RowPadOf(facts.Policy is null ? WidthTier.Standard : facts.Window) * k);
 
-        ColorF rest = neutral ? Tok.TextSecondary : past ? Tok.TextTertiary : Tok.TextSecondary;
+        var ink = host.Ink;   // the theme's text rungs on the pane; the stage's arm where a mount reads over imagery (the mini player's)
+        // The mini player's picture of the song (ILyricsHost.FlatRows): every line but the active one at one ink, sung or not: the primary ink,
+        // faded by the row's opacity (the contract's Lyrics.MiniRows.Opacity). A 42 % ink at full opacity drew the same pixels but declared
+        // the context lines body copy, which no veil can hold at 4.5:1 (white at 42 % reads 3.9:1 even on black).
+        ColorF rest = neutral ? ink.Secondary : host.FlatRows ? ink.Primary : past ? ink.Tertiary : ink.Secondary;
+        float flat = Lyrics.MiniRows.Opacity(host, podcast, ownsPlayback, _emphasis.Peek(), 1f);
+        float opacity = float.IsNaN(flat) ? 1f : flat;
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = opacity;
+        UseSpring(AnimChannel.Opacity, opacity, s_fadeSpring, DepKey.From(opacity));
         Element text;
         if (line.IsWordByWord && line.Syllables.Count > 0)
         {
             // Always a wiped run (an in-place update when the line leaves the voice slot, never a node swap); off the active line both sides
             // carry the same ink, so the core's settled split shows nothing.
             bool highlight = active && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek()) : 0f;
-            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
-            ColorF sung = active ? Tok.TextPrimary : rest;
+            float split = highlight ? Lyrics.Wipe.SplitOf(host, _index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
+            ColorF sung = active ? ink.Primary : rest;
             // The active line's unsung words carry the upcoming lines' ink (W-PaneLyrics: upcoming #c5c5c5): tertiary read darker than the
             // lines after it, so the line being sung looked dimmer than the ones still to come.
-            ColorF unsung = active ? Tok.TextSecondary : rest;
+            ColorF unsung = active ? ink.Secondary : rest;
             text = LineText(line.Text, sung, new GlyphWipe(Before: sung, After: unsung, Split: split, Softness: host.SoftnessOfLine(_index), Lift: 0f));
         }
         else
         {
-            text = LineText(line.Text, active ? Tok.TextPrimary : rest, null) with { BrushTransitionMs = Design.Motion.Fast };
+            text = LineText(line.Text, active ? ink.Primary : rest, null) with { BrushTransitionMs = Design.Motion.Fast };
         }
 
         string? second = host.SecondaryLine.Value switch
@@ -151,8 +168,8 @@ internal sealed class WinUiPaneLyricsRow : Component
                 ? [text]
                 : [text, new TextEl(second)
                 {
-                    Size = PR.SecondSize, LineHeight = PR.SecondLine, Weight = PR.SecondWeight, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None,
-                    Color = Tok.TextSecondary, Margin = new Edges4(0f, PR.SecondGap, 0f, 0f),
+                    Size = PR.SecondSize * k, LineHeight = MathF.Round(PR.SecondLine * k), Weight = PR.SecondWeight, Wrap = TextWrap.Wrap, MaxLines = 0,
+                    Trim = TextTrim.None, Color = ink.Secondary, Margin = new Edges4(0f, PR.SecondGap * k, 0f, 0f),
                 }],
         };
 
@@ -162,24 +179,26 @@ internal sealed class WinUiPaneLyricsRow : Component
             ScaleX = scale,
             ScaleY = scale,
             OffsetX = shift,
+            Opacity = _seedOpacity,
             Shrink = 0f,
             // PAD, not margin: the measured seam reads the border box. The trailing room keeps the grown active run inside the column.
-            Padding = new Edges4(PR.SidePad, rowPad + reserve, PR.SidePad + PR.ScaleRoom, rowPad),
+            Padding = new Edges4(side, rowPad + reserve, side + PR.ScaleRoom * k, rowPad),
             Justify = FlexJustify.Center,
             AlignItems = FlexAlign.Stretch,
             TransformOriginX = 0f,
             TransformOriginY = 0.5f,
-            Cursor = CursorId.Hand,
-            OnClick = _onClick,
-            Role = AutomationRole.Button,
-            Focusable = true,
+            // A mount whose lines are a picture (the mini player's, ILyricsHost.Inert) takes no click: the window's click and wheel are its own.
+            Cursor = _host.Inert ? null : CursorId.Hand,
+            OnClick = _host.Inert ? null : _onClick,
+            Role = _host.Inert ? AutomationRole.None : AutomationRole.Button,
+            Focusable = !_host.Inert,
             AllowFocusOnInteraction = false,
             Children = [content],
         };
 
         TextEl LineText(string s, ColorF color, GlyphWipe? wipe) => new(s)
         {
-            Size = PR.LineSize, Weight = PR.LineWeight, Wrap = TextWrap.Wrap, LineHeight = PR.LineHeight,
+            Size = PR.LineSize * k, Weight = PR.LineWeight, Wrap = TextWrap.Wrap, LineHeight = MathF.Round(PR.LineHeight * k),
             Color = color, MaxLines = 0, Trim = TextTrim.None, Wipe = wipe, OnRealized = _onLine,
         };
     }

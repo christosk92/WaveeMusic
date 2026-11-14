@@ -234,6 +234,13 @@ public static class ZunePanelBodies
     /// the flip and a descender's ink runs past the 28 line box) on a 2-px square accent spine 12 from the text.</summary>
     public const float PeekRowH = 30f, PeekReelH = PeekRowH * 2f, PeekSpineW = 2f, PeekGap = 12f, PeekOpacity = 0.4f, PeekNoteSize = 12f;
 
+    /// <summary>The peek's lead offset: the spine and its gap hang in the panel's gutter, so the words stand on the bodies' text column (the
+    /// title above, "up next" below) as a quote mark hangs.</summary>
+    public const float PeekSpineHang = -(PeekSpineW + PeekGap);
+
+    /// <summary>The peek spine's key (the lint's hang names it).</summary>
+    public const string PeekSpineKey = "zune-peek-spine";
+
     // ── friends ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A row (Z-Part-Panel friends): the 40 round avatar in a 52 column, 64 tall at least; name 15/20, the track 13/18 (the accent

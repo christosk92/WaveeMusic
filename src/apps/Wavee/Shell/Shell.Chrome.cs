@@ -394,8 +394,8 @@ public static partial class Shell
         public static float FocusedFieldWidth(float expandW, float restW)
             => float.IsFinite(expandW) ? MathF.Max(expandW, restW) : restW;
 
-        /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves THREE nav buttons at
-        /// once (bell, friends, pin) REGARDLESS of whether pin actually applies to the current destination:
+        /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves the budget's
+        /// <c>RowActions</c> nav buttons at once (bell, friends, pin; a structure may state a fourth) REGARDLESS of whether pin actually applies to the current destination:
         /// a page that gains/loses a pin row must not reflow the whole trailing island, and an element tree that
         /// disagrees with the budget reflows the island on every navigation. There is no "…" reservation — Forward
         /// simply hides below its own threshold instead of moving to an overflow menu.</summary>
@@ -409,7 +409,7 @@ public static partial class Shell
                  + (newTab ? b.AddSlotW : 0f)
                  + (trailing ? ChipWidth(chip, b) : 0f)
                  + (trailing && name && chip == FrameRules.ChipForm.Profile ? b.ProfileNameW : 0f)
-                 + (actionsInRow ? 3f * b.NavButtonW : 0f)
+                 + (actionsInRow ? b.RowActions * b.NavButtonW : 0f)
                  + 2f * b.GutterMinW
                  + b.MinDragStripW
                  + b.CaptionClusterW;

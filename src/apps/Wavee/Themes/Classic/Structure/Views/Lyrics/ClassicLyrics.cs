@@ -42,10 +42,11 @@ internal static class ClassicLyrics
     /// <summary>The registered template of <see cref="ViewKeys.LyricsView"/>.</summary>
     public static Element Template(LyricsViewProps props, in ViewContext ctx)
     {
+        var box = ctx.Hooks.UseContext(LyricsBox.Context);   // hooks first, unconditionally
         var host = props.Host;
         Element content = props.Message is { } text
             ? ctx.StyleOf(StyleKeys.LyricsLines).Message(host, text)
-            : Layers(props, host, ClassicStageTiers.PanelOf(ctx.Tier()).MinTarget);
+            : Layers(props, host, ClassicStageTiers.PanelOf(ctx.Tier()).MinTarget, box);
         return host.OnStage ? StageColumn(host, content) : content;
     }
 
@@ -68,7 +69,7 @@ internal static class ClassicLyrics
         ],
     };
 
-    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH)
+    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH, LyricsBox? box)
     {
         // The frame stepper stays UNMOUNTED while the host's gate is up, so a surface that cannot step costs no frames.
         var kids = new List<Element>(6);
@@ -79,9 +80,11 @@ internal static class ClassicLyrics
         kids.Add(VideoNote(host));
         if (props.Debug is { } debug) kids.Add(debug);
 
+        // In a small box (the mini player's lyrics face) the box's edge fades are the LAYERS': the lines dissolve at the top and at the
+        // disclosure's edge under them, and the disclosure itself stays whole.
         var layers = new BoxEl
         {
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, EdgeFade = box?.Fade,
             Children = kids.ToArray(),
         };
         // The podcast reader never carries the on-device AI disclosure: it keeps the bare layer stack (mount config, so the
@@ -112,7 +115,8 @@ internal static class ClassicLyrics
                     host.VideoNoteShown,
                     new BoxEl
                     {
-                        Shrink = 0f, MinWidth = 0f,
+                        // it WRAPS inside a narrow column (the Theatre panel beside the picture) instead of ending in an ellipsis
+                        Shrink = 1f, MinWidth = 0f,
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
                         Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS),
                         Corners = CornerRadius4.All(Radii.Control),
@@ -122,8 +126,8 @@ internal static class ClassicLyrics
                         [
                             new TextEl(Loc.Get(Strings.Player.LyricsSyncUnavailableDuringVideo))
                             {
-                                Size = ClassicLyricsRules.VideoNoteSize, Weight = ClassicLyricsRules.NoteWeight, MinWidth = 0f, Color = ink.Tertiary,
-                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                                Size = ClassicLyricsRules.VideoNoteSize, Weight = ClassicLyricsRules.NoteWeight, MinWidth = 0f, Shrink = 1f, Color = ink.Tertiary,
+                                Wrap = TextWrap.Wrap, TextAlign = TextAlign.Center,
                             },
                         ],
                     }),

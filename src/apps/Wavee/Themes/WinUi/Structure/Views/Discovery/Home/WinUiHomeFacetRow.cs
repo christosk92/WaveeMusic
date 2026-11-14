@@ -168,11 +168,12 @@ internal static class WinUiHomeFacetRow
     /// greeting row at Small reads the same machine without re-rendering the page). Value-controlled: the checked state is the switch machine's own
     /// resolution. Off returns to the selected word.</summary>
     /// <para>A tier crossing that MOVES the button (the facet row's end at Standard, the greeting's row at Small) cannot keep the node: the old host fades
-    /// out and the new one fades in (<see cref="WinUiDiscoveryMotion.SwapFade"/>), so the button never pops.</para>
+    /// out, and only then does the new one fade in (<see cref="WinUiDiscoveryMotion.SwapFade"/>, its enter held for the fade-out), so the button never
+    /// pops and the verb never stands in two places at once (one home per verb).</para>
     public static Element Following(FacetRowProps p, WinUiHomeLayout layout) => new BoxEl
     {
         Key = "home:following", Shrink = 0f,
-        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+        Enter = WinUiDiscoveryMotion.SwapFadeAfterExit, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
         Children = [Embed.Comp(() => new FollowingView(p, layout)) with { Key = "home:facet:following" }],
     };
 

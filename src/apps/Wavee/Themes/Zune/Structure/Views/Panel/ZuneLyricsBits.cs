@@ -157,13 +157,16 @@ internal static class ZuneLyricsPeek
         };
     }
 
+    /// <summary>The spine hangs in the panel's gutter (<see cref="ZunePanelBodies.PeekSpineHang"/>): the words stand on the bodies' text column.</summary>
+    static Edges4 SpineHang => new(P.PeekSpineHang, 0f, 0f, 0f);
+
     static Element Reel(LyricsPeekProps props, CanvasInk ink) => new BoxEl
     {
-        Direction = 0, AlignItems = FlexAlign.Stretch, Gap = P.PeekGap, Height = P.PeekReelH,
+        Direction = 0, AlignItems = FlexAlign.Stretch, Gap = P.PeekGap, Height = P.PeekReelH, Margin = SpineHang,
         Cursor = CursorId.Hand, OnClick = props.OpenLyrics, Role = AutomationRole.Button, Focusable = true,
         Children =
         [
-            new BoxEl { Width = P.PeekSpineW, Shrink = 0f, Fill = ink.AccentFill },
+            new BoxEl { Key = P.PeekSpineKey, Width = P.PeekSpineW, Shrink = 0f, Fill = ink.AccentFill },
             new BoxEl
             {
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = P.PeekReelH, ClipToBounds = true,
@@ -174,11 +177,11 @@ internal static class ZuneLyricsPeek
 
     static Element Note(Action openLyrics, CanvasInk ink) => new BoxEl
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = P.PeekGap, Height = P.PeekRowH,
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = P.PeekGap, Height = P.PeekRowH, Margin = SpineHang,
         Cursor = CursorId.Hand, OnClick = openLyrics, Role = AutomationRole.Button, Focusable = true,
         Children =
         [
-            new BoxEl { Width = P.PeekSpineW, Height = P.PeekRowH, Shrink = 0f, Fill = ink.Tertiary },
+            new BoxEl { Key = P.PeekSpineKey, Width = P.PeekSpineW, Height = P.PeekRowH, Shrink = 0f, Fill = ink.Tertiary },
             new TextEl(Loc.Get(Strings.Player.LyricsSyncUnavailableDuringVideo))
             {
                 Size = P.PeekNoteSize, Color = ink.Tertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,

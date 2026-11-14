@@ -6,7 +6,8 @@
 // 96 DPI (= raw DIP); an aware thread reads physical px, which divide by the monitor's own DPI scale into raw DIP. Only
 // READS happen here (the thread's awareness is never changed: the window is created on this thread, and a restored
 // "previous" awareness would stay behind as a thread-level override of the process default the engine sets later).
-// Primary because the window is created at CW_USEDEFAULT. Every failure answers "unknown" (`ZoomMonitor.IsKnown` false),
+// Primary because a window with no saved placement is created at CW_USEDEFAULT; a restored one (Shell.Host.Placement.cs)
+// passes its own target monitor's work area instead. Every failure answers "unknown" (`ZoomMonitor.IsKnown` false),
 // never throws: a missing bound only means the requested client size is used as it is.
 
 using System.Runtime.InteropServices;

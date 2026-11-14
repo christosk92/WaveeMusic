@@ -718,7 +718,8 @@ public static partial class Video
 
         /// <summary>…and never while another device plays the video (<see cref="JoinVisual.Remote"/>): a player left bound from this
         /// device's own earlier turn is idle there, and its stage and strip would sit over the poster's "Play here".</summary>
-        public static bool ShouldMountPlayerStage(bool playerPresent, JoinVisual join) => playerPresent && join != JoinVisual.Remote;
+        public static bool ShouldMountPlayerStage(bool playerPresent, JoinVisual join)
+            => playerPresent && join is not (JoinVisual.Remote or JoinVisual.ScreenBlocked);
 
         /// <summary>Whether the poster layer over the stage is shown. The poster is ALWAYS a child of the stage wrapper (keyed,
         /// so the wrapper's shape never changes at first frame) and is merely collapsed once the live picture is the one
@@ -743,17 +744,23 @@ public static partial class Video
         public static bool Mounted(SurfacePlacement resolved, bool popOutPresented)
             => Owns(resolved) || (resolved == SurfacePlacement.Detached && !popOutPresented);
 
-        /// <summary>Whether the mounted presenter must be invisible: the immersive stage covers a docked video, or the
-        /// video lives in the pop-out and this presenter is only the outgoing half of the hand-off. A hidden presenter
-        /// stays mounted, pumps with an inert binding (nothing placed or shown from its slot) and publishes nothing the
-        /// player does not already publish itself.</summary>
-        public static bool Hidden(SurfacePlacement resolved, bool immersive)
-            => resolved == SurfacePlacement.Detached || (resolved == SurfacePlacement.Docked && immersive);
+        /// <summary>Whether the mounted presenter must be invisible: the immersive stage covers a docked video (unless the stage
+        /// shows the picture, <paramref name="staged"/>: then the presenter follows the stage's reservation instead), or the video lives
+        /// in the pop-out and this presenter is only the outgoing half of the hand-off. A hidden presenter stays mounted, pumps with an
+        /// inert binding (nothing placed or shown from its slot) and publishes nothing the player does not already publish itself.</summary>
+        public static bool Hidden(SurfacePlacement resolved, bool immersive, bool staged)
+            => resolved == SurfacePlacement.Detached || (resolved == SurfacePlacement.Docked && immersive && !staged);
+
+        /// <summary>Whether the full-screen stage can show the video of <paramref name="resolved"/> (its Video mode): the main window's
+        /// presenter holds it at a home (the docked card or the mini player), which the stage's reservation then takes over for as long
+        /// as the stage shows it. A video in the pop-out stays in its own window; a video off has nothing to show.</summary>
+        public static bool Stageable(SurfacePlacement resolved) => resolved is SurfacePlacement.Docked or SurfacePlacement.Floating;
 
         /// <summary>Whether the stay-mounted presenter takes its rect from the docked reservation (the engine's
         /// <c>FollowRect</c>, resolved in the same frame after layout and the animation tick) instead of from its own bound
         /// Width/Height/Transform. Only Docked has a reservation in the layout tree; the mini player and fullscreen are
-        /// positioned by the presenter's own geometry.</summary>
+        /// positioned by the presenter's own geometry. The stage's Video mode is the other reservation (<see cref="Stageable"/>):
+        /// while it shows the picture, the presenter follows the stage's instead, whichever home it came from.</summary>
         public static bool FollowsReservation(SurfacePlacement resolved) => resolved == SurfacePlacement.Docked;
 
         public static bool EngineTransportEnabled => false;
@@ -1286,7 +1293,11 @@ public static partial class Video
     /// <summary>The docked cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before
     /// any resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
     /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). The handle PINS the height (a drag or a key step) and the pin
-    /// holds across sources and restarts, clamped to the current floor and ceiling; only its double-click unpins it.</summary>
+    /// holds across sources and restarts, clamped to the current floor and ceiling; only its double-click unpins it.
+    /// Across an in-place switch the presenter holds the previous source's last frame at its own size and place until the next
+    /// source's first frame: while it does, an unpinned cap keeps that picture's shape (the natural it last fitted a shown
+    /// picture with) and takes the next source's fit when the hold ends, eased like any refit. A cold open holds nothing and
+    /// reserves the next source's shape as soon as it is known.</summary>
     public static class DockedFit
     {
         /// <param name="SourceKey">The playing source's key ("" with none).</param>
@@ -1295,9 +1306,15 @@ public static partial class Video
         /// <param name="PinnedHeight">The stored height (what a pinned cap keeps).</param>
         /// <param name="RailW">The rail's width — the card is full-bleed, so this IS the video's width.</param>
         /// <param name="RemainingRailH">The rail height left for the cap (the fit's ceiling).</param>
+        /// <param name="HoldsPicture">Is the main presenter holding the previous source's last frame (a picture shown, and no first
+        /// frame of the current source yet)?</param>
+        /// <param name="HeldW">The natural size the cap last fitted while no picture was held: the held picture's (0×0 ⇒ unknown).</param>
         public readonly record struct Input(string SourceKey, string? FittedFor, bool Pinned, float PinnedHeight, float RailW,
                                             int DecodedW, int DecodedH, int ManifestW, int ManifestH, int CatalogueW, int CatalogueH,
-                                            float RemainingRailH);
+                                            float RemainingRailH, bool HoldsPicture, int HeldW, int HeldH);
+
+        /// <summary>The fit line's name for a fit kept on the held picture's shape.</summary>
+        public const string HeldSource = "held";
 
         /// <param name="SourceChanged">A different source than the last fit: the caller records it.</param>
         /// <param name="Pinned">Is the height the user's (the pin, which a source change keeps)?</param>
@@ -1312,6 +1329,13 @@ public static partial class Video
         {
             bool changed = !string.Equals(i.SourceKey, i.FittedFor, StringComparison.Ordinal);
             bool pinned = i.Pinned;
+            if (i.HoldsPicture && !pinned)
+            {
+                // The held frame is drawn at its own natural inside the cap: refitting to the next source now would shrink or
+                // letterbox it. An unknown held shape keeps the height the cap has.
+                float kept = i.HeldW > 0 && i.HeldH > 0 ? Shell.FitDockedVideoHeight(i.RailW, i.HeldW, i.HeldH, i.RemainingRailH) : i.PinnedHeight;
+                return new Result(changed, false, i.HeldW, i.HeldH, HeldSource, kept, WritesHeight: true);
+            }
             string dimSource = NaturalSeed.Name(NaturalSeed.Pick(i.DecodedW, i.DecodedH, i.ManifestW, i.ManifestH,
                 i.CatalogueW, i.CatalogueH, out int naturalW, out int naturalH));
             float height = pinned
@@ -1352,6 +1376,10 @@ public static partial class Video
         /// <summary>The poster PLUS "Playing on &lt;device&gt;" and "Play here", NO ring: another device plays the video (a Connect
         /// controller's surface). No local player is coming, so it is neither a join nor a fault.</summary>
         Remote = 4,
+        /// <summary>The poster PLUS "This screen can't show protected video" and why, NO ring: the screen the video is on cannot carry the
+        /// HDCP the protected picture needs (<see cref="Hdcp"/>), so the song plays instead and the picture comes back by itself on a screen
+        /// that can. The player stage is not mounted under it: no protected picture is presented on that screen.</summary>
+        ScreenBlocked = 5,
     }
 
     /// <summary>A join's SHAPE — the four facts that say what the surface is looking at, without its clock.</summary>
@@ -1366,7 +1394,13 @@ public static partial class Video
     /// remote)? Without it no local player is coming, so a surface with no player is not "joining" — it is the poster.</param>
     /// <param name="Remote">Does a FOREIGN device own playback (<c>Playback.DeckVideo.Remote</c>)? The surface is a controller's: it shows
     /// what the owner plays, never a local join.</param>
-    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen, bool Hosted = true, bool Remote = false);
+    /// <param name="PictureHeld">Is a presenter of the bound player still showing a picture (<c>MediaPlayerElement.PictureShownOut</c>)?
+    /// Across an in-place video → video switch the element holds the previous source's last frame, at that frame's own size and place,
+    /// until the next source's first frame; it lets go itself on a failure, a stop or an audio-only successor.</param>
+    /// <param name="ScreenBlocked">The screen the video is on cannot carry HDCP and the row's video is protected (<see cref="Hdcp"/>): the
+    /// song plays, and the surface says why instead of loading.</param>
+    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen, bool Hosted = true, bool Remote = false,
+                                            bool PictureHeld = false, bool ScreenBlocked = false);
 
     /// <summary>The loading picture, decided. The artwork shows at once and the ring only for a join that outlasts
     /// <see cref="Playback.Video.Budgets.JoiningNoSpinnerMs"/> — a spinner that flashes for 200 ms reports trouble that
@@ -1374,7 +1408,7 @@ public static partial class Video
     public static class Joining
     {
         /// <summary>The join budget. Under it a surface shows the picture it already has (the previous frame while a
-        /// player is bound, the poster while none is) and claims nothing.</summary>
+        /// player is bound and its presenter holds one, <see cref="JoinState.PictureHeld"/>; the poster otherwise) and claims nothing.</summary>
         public const int SpinnerDelayMs = Playback.Video.Budgets.JoiningNoSpinnerMs;
 
         /// <summary>Has THIS join outlasted the budget? The one thing the clock decides — never what state we are in.</summary>
@@ -1397,6 +1431,8 @@ public static partial class Video
         {
             // A controller's surface: the owner plays the video elsewhere — say where, offer to take it, never a spinner.
             if (s.Remote && s.Wanted) return JoinVisual.Remote;
+            // A screen that cannot carry HDCP: no local picture is coming here, whatever the session says; the song plays meanwhile.
+            if (s.ScreenBlocked && s.Wanted) return JoinVisual.ScreenBlocked;
             // A failure DURING a join the user asked for replaces the loading picture — that IS the ask: a slow licence
             // and a dead one must not look alike. Gated on `Wanted` so a stale failure cannot flash on the NEXT time
             // video is turned on, and on `!FrameSeen` because a failure that arrives after the video started is the
@@ -1408,8 +1444,16 @@ public static partial class Video
             // picture yet is still the poster's story: `ShouldMountPlayerStage` alone dropped the poster ~1s before
             // `FrameSeen`, showing a blank/stale stage under the "video" label. The picture only counts once framed.
             if (SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent) && s.FrameSeen) return JoinVisual.Video;
-            if (!s.Wanted) return JoinVisual.Poster;
-            return IsJoining(in s) && ShowsSpinner(joinElapsedMs) ? JoinVisual.Working : JoinVisual.Poster;
+            if (IsJoining(in s) && ShowsSpinner(joinElapsedMs)) return JoinVisual.Working;
+            // Under the budget a surface shows the picture it already has: across an in-place video → video switch that is the
+            // previous source's last frame, which the presenter holds until the next one's first frame (picture → picture, never
+            // picture → poster → picture). Whatever the switch's own facts say in between: the host's teardown of the old load
+            // publishes no source, an Idle phase and, for a moment, no wanted placement before the next one resolves, and none of
+            // that is a reason to cover a picture that is still there. The PRESENTER says when it is gone (a failure, a stop, an
+            // audio-only successor end its hold). A first video has nothing to hold (the poster); a slow successor still earns the
+            // ring past the budget (above) and a failed one the fault line, both over the held frame.
+            if (s.PictureHeld && SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent)) return JoinVisual.Video;
+            return JoinVisual.Poster;
         }
     }
 

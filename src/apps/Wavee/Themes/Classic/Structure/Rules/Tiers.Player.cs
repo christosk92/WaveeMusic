@@ -175,16 +175,17 @@ public static class ClassicPlayerTiers
                 PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
                     | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit),
-            // Full: the expand button joins; the widest identity block.
+            // Full: the view split joins (now playing, with the mini player and full screen behind its chevron; the "..." has no row left
+            // here and goes); the widest identity block.
             new PlayerTier(1240f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
                     | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.VolumeSlider
-                    | PlayerBarSlots.Expand,
+                    | PlayerBarSlots.ViewSplit,
                 LeftW: 260f, ArtSize: 48f, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
                 PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.Expand)),
+                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.ViewSplit)),
         Hysteresis: 24f, Height: BarHeight)
     {
         // The levels each window tier may use, from the records above (Compact first).

@@ -121,8 +121,12 @@ internal static class ClassicPlayerBarLayout
     /// centre (the pause bars are symmetric and stay put).</summary>
     public const float PlayNudgeDivisor = 12f;
 
-    /// <summary>The split video button's chevron glyph.</summary>
+    /// <summary>A split button's chevron glyph (the video split, the view split).</summary>
     public const float SplitChevronGlyph = 10f;
+
+    /// <summary>The rule ahead of the view split: a hairline of this height, this far inside the slot's lead (the rest of the lead is the
+    /// air between the rule and the button).</summary>
+    public const float ViewRuleH = 16f, ViewRuleW = 1f, ViewRuleInset = 4f;
 
     // ── the remote-device line ("Playing on ...", above the title) ───────────────────────────────────────────────────
 

@@ -588,6 +588,10 @@ public static partial class Lyrics
 
             if (env.Doc is null)
             {
+                // "No lyrics anywhere" is a verdict of the matcher that ran: one written under another matcher version
+                // (or before markers carried one) is not trusted, so the track is asked again.
+                if (env.MatcherVersion != MetadataMatch.Version)
+                { Discard(path, trackId, "negative marker from matcher v" + env.MatcherVersion); return CacheEntry.Missing; }
                 long age = _nowUnixMs() - env.At;
                 if (age >= 0 && age < _negativeTtlMs) return new(CacheOutcome.KnownMissing, null, env.At);
                 Discard(path, trackId, "negative marker expired");
@@ -629,7 +633,8 @@ public static partial class Lyrics
             {
                 System.IO.Directory.CreateDirectory(_dir);
                 var env = new CacheEnvelope(SchemaVersion, _nowUnixMs(), trackId, document,
-                    Provisional: document is not null && provisional);
+                    Provisional: document is not null && provisional,
+                    MatcherVersion: document is null ? MetadataMatch.Version : 0);
                 var bytes = JsonSerializer.SerializeToUtf8Bytes(env, CacheJson.Default.CacheEnvelope);
                 await File.WriteAllBytesAsync(tmp, bytes, ct).ConfigureAwait(false);
                 File.Move(tmp, path, overwrite: true);   // write-then-rename: a crash cannot leave a torn document
@@ -755,7 +760,9 @@ public static partial class Lyrics
     /// <summary>The persisted envelope. Short keys: a word-synced document is tens of KB of syllables and one is
     /// written per played track. <c>doc</c> is absent on a negative marker. <c>prov</c> (an UNVERIFIED winner) is
     /// written only when true, and an envelope without it — every entry an older build wrote — reads as false, so the
-    /// field is backward compatible without a schema bump.</summary>
+    /// field is backward compatible without a schema bump. <c>mv</c> is written on a negative marker only: the
+    /// <see cref="MetadataMatch.Version"/> that decided "no lyrics anywhere"; a marker from another version (an older
+    /// one reads 0) is discarded on read.</summary>
     internal sealed record CacheEnvelope(
         [property: JsonPropertyName("v")] int V,
         [property: JsonPropertyName("at")] long At,
@@ -763,7 +770,10 @@ public static partial class Lyrics
         [property: JsonPropertyName("doc")] Doc? Doc,
         [property: JsonPropertyName("prov")]
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        bool Provisional = false);
+        bool Provisional = false,
+        [property: JsonPropertyName("mv")]
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        int MatcherVersion = 0);
 
     /// <summary>AOT-safe SOURCE-GENERATED JSON — no reflection-based serialization anywhere in this app.</summary>
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
@@ -927,7 +937,7 @@ public static partial class Lyrics
             public double Prior => 0.45;
 
             /// <summary>One parsed answer plus the metadata verdict it was picked on.</summary>
-            readonly record struct Picked(Doc Doc, MatchScore Score, string Note);
+            readonly record struct Picked(Doc Doc, MatchScore Score, string Note, bool Exact = false);
 
             public async Task<Candidate?> FetchAsync(Request req, CancellationToken ct)
             {
@@ -951,6 +961,7 @@ public static partial class Lyrics
                     Confidence = p.Score.Confidence,
                     Band = p.Score.Band,
                     MatchNote = p.Note,
+                    ExactLookup = p.Exact,
                 };
             }
 
@@ -1041,7 +1052,7 @@ public static partial class Lyrics
                     string? plain = Str(el, "plainLyrics");
                     if (!string.IsNullOrWhiteSpace(synced)) doc = Text.ParseLrc(synced!, req.TrackId, Id);
                     else if (!string.IsNullOrWhiteSpace(plain)) doc = Unsynced(plain!, req.TrackId);
-                    return doc is null ? null : new Picked(doc, score, note);
+                    return doc is null ? null : new Picked(doc, score, note, Exact: true);
                 }
                 catch { return null; }
             }
@@ -1857,8 +1868,17 @@ public static partial class Lyrics
                         With($"decoy: runs to {Diag.Ts(cleaned.Lines[^1].EndMs ?? cleaned.Lines[^1].StartMs)} on a "
                             + $"{Diag.Ts(req.DurationMs)} track"));
                 if (Timing.HasUniformLineDurations(cleaned))
-                    return new Probed(null, Outcome.Miss, Ms(),
-                        With($"decoy: {cleaned.Lines.Count} lines all exactly identical timing steps — uniform decoy timing"));
+                {
+                    // A fuzzy search pick with generated timing has nothing vouching for its words either: dropped. An
+                    // EXACT lookup (lrclib matched artist, title, album and duration itself) has the song's words with
+                    // fabricated timing: the words are kept, unsynced, for the on-device aligner to time.
+                    if (!c.ExactLookup)
+                        return new Probed(null, Outcome.Miss, Ms(),
+                            With($"decoy: {cleaned.Lines.Count} lines all exactly identical timing steps — uniform decoy timing"));
+                    Probe.Note(source.Id, $"{cleaned.Lines.Count} lines at one uniform step on an exact lookup — kept as "
+                        + "unsynced text, the fabricated timing dropped");
+                    c = c with { Document = Timing.ToUnsynced(cleaned) };
+                }
                 return new Probed(c, Outcome.Hit, Ms(), With($"{c.Sync}, {c.LineCount} lines, basis={c.Basis}"));
             }
             catch (OperationCanceledException)
@@ -2016,7 +2036,13 @@ public static partial class Lyrics
             // The memory cache may already hold it (a re-play inside the session): take that synchronously so the
             // surface never shimmers for a document it already has.
             if (provider.Peek(trackId) is { } warm) { Commit(trackId, warm, upgrade: false); return; }
-            _ = FetchAsync(provider, trackId);
+            // Started on the pool, never inline: an async method runs synchronously up to its first INCOMPLETE await, and
+            // the aggregator's prefix is the disk read-through (File.Exists, the open, a read that completes at once for a
+            // cached file), the JSON parse, the timing and junk-line repair, then the resolve and every source's start. Inline,
+            // that ran inside the caller's effect on the UI thread: 10.5 ms of one frame (`[ui] frame.slow
+            // slowEffect=LyricFacts:10.5`, the stage entering full screen after a track switch, 2026-11-11). The answer
+            // still lands through Commit's ToUi hop, as it always did, so the surface sees the same states in the same order.
+            _ = Task.Run(() => FetchAsync(provider, trackId));
         }
 
         static async Task FetchAsync(Aggregator provider, string trackId)
@@ -2095,7 +2121,7 @@ public static partial class Lyrics
             if (string.IsNullOrEmpty(trackId) || Provider is not { } provider) return;
             lock (Docs) { Docs.Remove(trackId); Asked.Remove(trackId); OfflineMisses.Remove(trackId); }
             Changed.Value++;
-            _ = RefetchAsync(provider, trackId);
+            _ = Task.Run(() => RefetchAsync(provider, trackId));   // off the UI thread, as Ensure's fetch
         }
 
         static async Task RefetchAsync(Aggregator provider, string trackId)

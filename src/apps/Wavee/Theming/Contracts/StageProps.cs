@@ -13,6 +13,7 @@
 //   `Stage.Gallery`    StageGalleryProps       the visualizer gallery pane
 //   `Stage.Options`    StageOptionsProps       the options popover (it mounts in the overlay layer, outside the stage subtree)
 //   `Stage.Caption`    StageCaptionProps       the lyric caption (its own file)
+//   `Stage.PictureChrome` StagePictureChromeProps  Video mode's chrome over the picture (mounted by the core in the video layer)
 //   `Stage.Backdrop` ... `Stage.ArtistPane`   the layout layers (T7a2: `StageLayerProps.cs`)
 //
 // WHY THE ROOT IS MOUNTED THROUGH `Mount`. The surface is a component with hooks that must run in a fixed order whatever theme
@@ -55,6 +56,9 @@ public sealed record StageRootView
 
     public required Action<NodeHandle> OnRealized { get; init; }
 
+    /// <summary>A pointer move: idle activity. Wire it as <c>OnPointerMoveWithin</c> (a move ANYWHERE within the box, a child's hit included: a
+    /// lyric line, the picture's ground) rather than <c>OnHoverMove</c> (the hovered leaf alone, so a move over a child is lost). The surface
+    /// reads the window position itself, so the box's local point only stands in when the platform has none.</summary>
     public required Action<Point2> OnHoverMove { get; init; }
 
     public required Action OnPointerExit { get; init; }
@@ -127,6 +131,74 @@ public sealed record StageRootView
 
     /// <summary>The core layers, as builders: the pane host (it mounts the lyrics pane, `Queue.StagePane` and <see cref="ViewKeys.StageArtistPane"/>), the caption host and the zero-size machinery.</summary>
     public required StageLayers Layers { get; init; }
+
+    // ── Video mode (Cinema): the picture is the one video presenter, following a reservation the template draws ──────────
+
+    /// <summary>The stage shows the music video (<c>Stage.Mode.Video</c>). Only a structure whose stage policy states
+    /// <see cref="Theming.StagePolicy.VideoStage"/> is ever in it. While it holds, the template draws a hollow reservation for the picture
+    /// (its box carries <see cref="PictureRealized"/>; the presenter follows its painted rect), none of the audio layers (the picture covers
+    /// them), and none of its chrome: the chrome over the picture is <see cref="ViewKeys.StagePictureChrome"/>, which the core mounts above
+    /// the video hole. A predicate. Appended (contract 1.95).</summary>
+    public Func<bool> ShowPicture { get; init; } = static () => false;
+
+    /// <summary>The picture's reservation was realized: the stay-mounted presenter follows this node (the engine's <c>FollowRect</c>). Put it
+    /// on the reservation's box. Appended (contract 1.95).</summary>
+    public Action<NodeHandle> PictureRealized { get; init; } = static _ => { };
+
+    /// <summary>Video mode shows the picture in THEATRE (<c>StageCtx.Theatre</c>): the reservation sits in the left region with the title block
+    /// under it, the Theatre panel (<see cref="StageLayers.TheatrePane"/>) beside it on the right; otherwise Video mode is CINEMA (the reservation
+    /// fills the stage). The template moves the reservation between the two rects with a layout transition the presenter follows. In Theatre only
+    /// the PICTURE counts for the idle chrome (contract 1.99): the core takes the reservation's rect, so a move reveals the chrome over the picture
+    /// alone, a pointer that leaves the picture (onto the panel, the floor, the top bar) has left, only controls over the picture hold it, and the
+    /// cursor hides only over the picture. A predicate. Appended (contract 1.96).</summary>
+    public Func<bool> ShowTheatre { get; init; } = static () => false;
+
+    /// <summary>Video mode holds while an AUDIO-ONLY track plays (the video is on, this track has none: <c>StageCtx.AudioFace</c>): the frame stays
+    /// (the top bar with the Video tab disabled, the shelf or the Theatre panel, the transport) and the picture's place shows the track's cover
+    /// and lyrics instead of the picture. No presenter (and so no video hole) is up meanwhile: the template draws the face as an ordinary stage
+    /// layer over the reservation, and the next track with a video brings the picture back by itself. A predicate. Appended (contract 1.97).</summary>
+    public Func<bool> ShowAudioFace { get; init; } = static () => false;
+
+    /// <summary>The END CARD is up (<c>StageCtx.EndCard</c>): a music video ended in Video mode and the next track waits for the countdown. The
+    /// template places <see cref="StageLayers.EndCard"/> over the picture's dimmed last frame (Cinema: the stage; Theatre: the picture's box), keeps
+    /// the chrome as it is (a paused deck pins the idle chrome) and, in Cinema, the shelf lists the tracks after the card's. A predicate.
+    /// Appended (contract 1.98).</summary>
+    public Func<bool> ShowEndCard { get; init; } = static () => false;
+
+    /// <summary>The ABOUT block under Theatre's title (YouTube's channel row and description): the playing track's primary artist and the track's
+    /// facts, read inside the block's render (it subscribes the track key, the artist and track tables and the billed artists' edge). Null: nothing
+    /// is playing. Built from what the stage already asks (the Artist pane's overview): no fetch of its own. Appended (contract 1.100).</summary>
+    public Func<StageAboutFacts?> About { get; init; } = static () => null;
+
+    /// <summary>Ask for what <see cref="About"/> shows (the Artist pane's own demand: the artist's overview, the track's credits), once per (artist, track).
+    /// Call it from an effect. Appended (contract 1.100).</summary>
+    public Action<int, int> DemandAbout { get; init; } = static (_, _) => { };
+
+    /// <summary>Open the stage's own Artist tab (the one home of the artist's whole story); it stays in full screen. Appended (contract 1.100).</summary>
+    public Action OpenArtist { get; init; } = static () => { };
+}
+
+/// <summary>The about block's facts (<see cref="StageRootView.About"/>). Every string is empty when its fact is missing: a block never shows a placeholder.</summary>
+/// <param name="Artist">The primary artist's slot (0: none).</param>
+/// <param name="Track">The playing track's slot.</param>
+/// <param name="Name">The artist's name.</param>
+/// <param name="Uri">The artist's uri (the Follow toggle's), "" when it has none.</param>
+/// <param name="ImageUrl">The artist's round portrait, null when it has none (the artwork's placeholder).</param>
+/// <param name="Listeners">"12.3M monthly listeners", "" when unknown.</param>
+/// <param name="Facts">The track's facts joined by " · ": plays, release year, album, tempo and key; "" when none is known.</param>
+/// <param name="Bio">The artist's biography as plain text, "" when there is none.</param>
+/// <param name="Pending">The artist's own facts have not landed yet (the block shows its skeleton at its full size).</param>
+public sealed record StageAboutFacts(int Artist, int Track, string Name, string Uri, string? ImageUrl, string Listeners, string Facts, string Bio, bool Pending);
+
+/// <summary>The props of <see cref="ViewKeys.StagePictureChrome"/>: the stage's chrome over the music video in Video mode (the top bar, the
+/// title block, the transport, the hairline, their scrims), drawn by the structure with the stage's own view (its wiring, predicates and
+/// chrome props). The core mounts it in the video layer right after the presenter, so it paints over the picture; the template is a
+/// full-bleed layer whose ground passes the pointer to the stage's idle machine (<see cref="StageRootView.OnHoverMove"/>) and leaves full
+/// screen on a double-click. Appended (contract 1.95).</summary>
+public sealed record StagePictureChromeProps
+{
+    /// <summary>The mounted stage's view (one per stage: built once by the core surface).</summary>
+    public required StageRootView Root { get; init; }
 }
 
 /// <summary>Element builders of the stage's layers that are not the layout layers' (those are views since T7a2: backdrop, hero, face, scrim,
@@ -153,6 +225,46 @@ public sealed record StageLayers
     /// a second stage-queue host that mounts <see cref="ViewKeys.QueueStagePane"/> with <see cref="QueueStagePaneProps.Aside"/>. Null where the core
     /// offers none. Appended (contract 1.22).</summary>
     public Func<Element>? UpNext { get; init; }
+
+    /// <summary>Video mode's Theatre panel beside the picture (Lyrics or Up next, the stored Theatre panel): a second pane host that mounts
+    /// <see cref="ViewKeys.StagePane"/> with <see cref="StagePaneProps.Theatre"/>, the lyrics at the panel's type and the Up next list in its
+    /// column form. Mount it under <see cref="StageRootView.ShowTheatre"/>. Null where the core offers none. Appended (contract 1.96).</summary>
+    public Func<Element>? TheatrePane { get; init; }
+
+    /// <summary>Video mode's Up next shelf over the picture (Cinema): the core host that mounts <see cref="ViewKeys.QueueStageShelf"/>. Null where
+    /// the core offers none. Appended (contract 1.97).</summary>
+    public Func<Element>? UpNextShelf { get; init; }
+
+    /// <summary>The audio face's lyrics (<see cref="StageRootView.ShowAudioFace"/>): the stage's reading column at the stage's type in Cinema and at
+    /// the Theatre panel's in Theatre, ticking only while the face shows lyrics (<c>StageCtx.AudioLyrics</c>). Null where the core offers none.
+    /// Appended (contract 1.97).</summary>
+    public Func<Element>? PictureLyrics { get; init; }
+
+    /// <summary>The audio face's lyrics on a stage ARM the structure names (<see cref="PictureLyrics"/>'s column with that arm's on-media inks,
+    /// whatever the theme kind): a structure that fills the picture's place with a colour field resolves the field on the arm that keeps its colour
+    /// (the field decides the arm, the theme kind does not) and hands the column the same arm, so the lines read on the field. The arm is mount
+    /// config: key the column by it. Null where the core offers none. Appended (contract 1.102).</summary>
+    public Func<ThemeKind, Element>? PictureLyricsOn { get; init; }
+
+    /// <summary>The end card over the picture (<see cref="StageRootView.ShowEndCard"/>): the core host that mounts <see cref="ViewKeys.StageEndCard"/>
+    /// on this render's queue. Null where the core offers none. Appended (contract 1.98).</summary>
+    public Func<Element>? EndCard { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.StageEndCard"/>: the end-of-video card ("Up next in 5"). The track it names is the queue's first row
+/// (<see cref="QueueProps.Rows"/>[0]: what the advance plays), its facts through <see cref="Lane"/> (<see cref="IQueueLane.TextOf"/>,
+/// <see cref="IQueueLane.VideoOf"/>: the shelf's 16:9 thumbnail). The countdown and the two verbs are the stage's (<c>StageCtx.EndSeconds</c>,
+/// <c>EndRemainingMs</c>, <c>EndPlayNow</c>, <c>EndCancel</c>), read from the stage's context. Appended (contract 1.98).</summary>
+public sealed record StageEndCardProps
+{
+    /// <summary>What the queue is (the first row is the card's track).</summary>
+    public required QueueProps Queue { get; init; }
+
+    /// <summary>The row facts.</summary>
+    public required IQueueLane Lane { get; init; }
+
+    /// <summary>The name of what the deck plays from (the card's "From ..." line); empty when there is none.</summary>
+    public string From { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePane"/>: the pane region (Lyrics, Up next, Artist) the core pane host mounts. The template
@@ -167,6 +279,12 @@ public sealed record StagePaneProps
     /// <summary>The core's KeepAlive over the shown pane, keyed <c>pane:&lt;kind&gt;</c>: it wraps each pane's body in <c>frame</c> (the theme's
     /// frame: its entrance and exit) and mounts <c>empty</c> for no pane. Call it from the template's render and place what comes back.</summary>
     public required Func<Func<Element, Element>, Func<Element>, Element> Panes { get; init; }
+
+    /// <summary>Video mode's Theatre panel beside the picture (<see cref="StageLayers.TheatrePane"/>): the template places the region at its
+    /// Theatre rect and shows it for as long as it is mounted (the root mounts it only while <see cref="StageRootView.ShowTheatre"/> holds and
+    /// plays its entrance and exit); <see cref="Panes"/> then keys on the stored Theatre panel (Lyrics or Up next) and never mounts
+    /// <c>empty</c>. Appended (contract 1.96).</summary>
+    public bool Theatre { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.StageTopBar"/>.</summary>
@@ -197,6 +315,14 @@ public sealed record StageTransportProps
     /// <summary>The bar's elapsed / remaining time label (the core host that mounts <see cref="ViewKeys.TimeLabel"/>) in the given ink.</summary>
     public required Func<bool, ColorF, Element> TimeText { get; init; }
 
+    /// <summary><see cref="SeekBar"/> for a transport that idles out with the stage's chrome: while the idle chrome is hidden (and Video mode holds no
+    /// audio face, whose control bar stays at rest) it holds its last state and drives no frames, and the chrome's return brings it current before
+    /// the fade-in. Null: a core without it (use <see cref="SeekBar"/>). Appended (contract 1.101).</summary>
+    public Func<Action<bool>, Element>? SeekBarWithChrome { get; init; }
+
+    /// <summary><see cref="TimeText"/> for a transport that idles out with the stage's chrome (see <see cref="SeekBarWithChrome"/>). Appended (contract 1.101).</summary>
+    public Func<bool, ColorF, Element>? TimeTextWithChrome { get; init; }
+
     /// <summary>Is playback muted (read inside the mute button's own render).</summary>
     public required Func<bool> Muted { get; init; }
 
@@ -215,6 +341,12 @@ public sealed record StageTransportProps
 
     /// <summary>The device picker was opened (a demand for the device list).</summary>
     public required Action OpenDevicePicker { get; init; }
+
+    /// <summary>The music video's settings menu, built when it opens: the docked video's own "…" rows (where it plays, then Aspect ratio, Quality
+    /// and Playback speed with their current values and cascades). While the stage shows the picture the placement rows leave full screen for
+    /// their place and "Video in fullscreen" reads as the current one; turning the video off is the stage's "Switch to audio". Null: a core with
+    /// nothing to hand. Appended (contract 1.99).</summary>
+    public Func<IReadOnlyList<MenuFlyoutItem>>? VideoMenu { get; init; }
 }
 
 /// <summary>What the transport card draws that is playback state.</summary>

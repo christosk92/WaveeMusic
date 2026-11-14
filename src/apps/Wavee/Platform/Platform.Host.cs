@@ -1003,15 +1003,22 @@ public static partial class Log
     /// <item><c>[overlay.popup]</c> — one line per OS popup window when it closes: what its lease held the UI thread
     /// and parked the render thread for, when its first frame landed and its window showed, and its per-frame cost while
     /// up. The only record of what opening a menu cost the whole window.</item>
-    /// <item><c>[window.move]</c> / <c>[window.size]</c> — the OS move/size loop edges. A stuck resize capture is a
-    /// <c>begin</c> with no <c>end</c>, which is unreadable if the pair is Debug-gated.</item>
-    /// <item><c>[window.msg.slow]</c> — one line per OS message dispatch over 25 ms (the message and its time): the frame ledger's pump
-    /// phase says the UI thread sat in dispatch (a 1.18 s stall in a real-data bench, 2026-10-21) but not in which message.</item>
+    /// <item><c>[window.*]</c> — the whole window family, every one an edge or rate-limited, never per frame:
+    /// <c>[window.loop] begin</c> and <c>[window.move]</c> / <c>[window.size] end</c> (the OS move/size loop: one pair per gesture; a stuck
+    /// resize capture is a <c>begin</c> with no <c>end</c>, unreadable if the pair is Debug-gated); <c>[window.msg.slow]</c> (one line per
+    /// OS message dispatch over 25 ms: the frame ledger's pump phase says the UI thread sat in dispatch, a 1.18 s stall in a real-data bench
+    /// on 2026-10-21, but not in which message); <c>[window.resize]</c> (one per swapchain resize, UI side and render side, each at most one
+    /// line per 100 ms with the lines it stood in for counted; a live drag writes at most ~20 a second for the gesture); and
+    /// <c>[window.fullscreen]</c> (one per full-screen edge: the style change and SetWindowPos cost). The resize and full-screen lines
+    /// never reached the file before (2026-11-11: the stage's exit cost could not be read from the owner's log).</item>
     /// <item><c>[pointer]</c> — one line per LOST primary contact (capture stolen, leave-while-down, the OS move loop
     /// taking the press). The stuck-drag class ("the window follows my cursor with no button down") is invisible
     /// without it: a pop-out session on 2026-09-22 had two <c>[window.move] begin</c> per gesture and no way to tell
     /// whether the engine contact was ever cancelled.</item>
     /// <item><c>[detached]</c> — a detached child window's frame failed and was withdrawn; the main window survives.</item>
+    /// <item><c>[dwm.*]</c> / <c>[pr.phase]</c> — the DWM freeze probe (armed only while protected video lives) and the
+    /// protected video's start/end steps it names a stall after. They never reached the file at first (2026-11-12: the owner's
+    /// run of the probe build had none of them).</item>
     /// <item><c>[d3d12.debug]</c> — the D3D12 debug layer's own messages (Debug builds with the layer armed): the
     /// ONLY thing that names the recording call behind a <c>cmdList.Close</c> failure.</item>
     /// <item><c>[tiles.stale]</c> — a composite turn ended with a STALE tile (valid pixels the stream no longer
@@ -1032,10 +1039,7 @@ public static partial class Log
         || s.StartsWith("[media.chrome]", StringComparison.Ordinal)
         || s.StartsWith("[overlay] wantWindowed", StringComparison.Ordinal)
         || s.StartsWith("[overlay.popup]", StringComparison.Ordinal)
-        || s.StartsWith("[window.move]", StringComparison.Ordinal)
-        || s.StartsWith("[window.loop]", StringComparison.Ordinal)
-        || s.StartsWith("[window.size]", StringComparison.Ordinal)
-        || s.StartsWith("[window.msg.slow]", StringComparison.Ordinal)
+        || s.StartsWith("[window.", StringComparison.Ordinal)   // move / loop / size / msg.slow / resize / fullscreen: edges or rate-limited
         || s.StartsWith("[pointer]", StringComparison.Ordinal)
         || s.StartsWith("[detached]", StringComparison.Ordinal)
         || s.StartsWith("[video.surface]", StringComparison.Ordinal)
@@ -1044,7 +1048,10 @@ public static partial class Log
         || s.StartsWith("[d3d12.scratch]", StringComparison.Ordinal)
         || s.StartsWith("[evidence]", StringComparison.Ordinal)
         || s.StartsWith("[hidden]", StringComparison.Ordinal)   // the hidden-window release / restore edge lines: once per park
-        || s.StartsWith("[scroll.engaged", StringComparison.Ordinal);
+        || s.StartsWith("[image.anim]", StringComparison.Ordinal)   // an animated image (ImageEl.Animate): open / pause / static edges and a 5 s playing summary (frames on time vs late, decode times)
+        || s.StartsWith("[scroll.engaged", StringComparison.Ordinal)
+        || s.StartsWith("[dwm.", StringComparison.Ordinal)        // the DWM freeze probe while protected video lives: armed / stall / park
+        || s.StartsWith("[pr.phase]", StringComparison.Ordinal);  // protected video start/end steps, to name what a [dwm.stall] followed
 
     /// <summary>True for the sink-routed engine lines that name a GPU stall, loss, recovery or adapter — the evidence
     /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks.</summary>

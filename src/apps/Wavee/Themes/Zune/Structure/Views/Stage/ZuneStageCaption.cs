@@ -38,7 +38,9 @@ internal static class ZuneStageCaption
     {
         float bottom = props.Bottom;
         var tiers = ctx.Tier();   // hooks first, unconditionally
-        if (ctx.Hooks.UseContext(Stage.StageContext) is { } sc)
+        var stage = ctx.Hooks.UseContext(Stage.StageContext);
+        float veilA = StageCaptionVeil.For(stage, artBaked: false, default);
+        if (stage is { } sc)
         {
             var a = ZuneStageKit.Arrangement(sc, tiers);
             var L = sc.Layout.Value;
@@ -63,28 +65,28 @@ internal static class ZuneStageCaption
             [
                 new BoxEl
                 {
-                    Key = "cap:veil", Layout = s_place,
-                    Width = props.Width + 2f * Stage.Layout.CaptionVeilPadX, Height = props.BlockMaxHeight + 2f * Stage.Layout.CaptionVeilPadY,
-                    AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Margin = new Edges4(props.X - Stage.Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, bottom - Stage.Layout.CaptionVeilPadY)),
-                    Gradient = RadialGradient(
-                        new GradientStop(0f, Shade(Stage.Tone.CaptionVeilA)),
-                        new GradientStop(G.VeilMidStop, Shade(Stage.Tone.CaptionVeilA * G.VeilMidAlpha)),
-                        new GradientStop(1f, Shade(0f))),
-                },
-                new BoxEl
-                {
                     Key = "cap:block", Layout = s_place,
                     Width = props.Width, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(props.X, 0f, 0f, bottom),
                     Direction = 1, AlignItems = FlexAlign.Center, Gap = Stage.Layout.CaptionLineGap, HitTestVisible = false,
-                    Children = kids.ToArray(),
+                    Children = [Hugged(kids.ToArray(), veilA)],
                 },
                 .. props.Ticker,
             ],
         };
     }
 
-    static ColorF Shade(float a) => Ink.Veil with { A = a };
+    /// <summary>The block's lines over their VEIL (<see cref="StageCaptionVeil"/>): a stack that hugs the lines (the block centres it), its
+    /// first layer the veil, the stack's size grown by its reach and edge-faded over that growth, so the ground follows the lines' laid-out
+    /// rects and eases with them (its own bounds move) when a hand-off changes them; nothing reaches past the caption's band.</summary>
+    static Element Hugged(Element[] lines, float veilA) => new BoxEl
+    {
+        ZStack = true, HitTestVisible = false,
+        Children =
+        [
+            StageCaptionVeil.Ground(veilA),
+            new BoxEl { Direction = 1, AlignItems = FlexAlign.Center, Gap = Stage.Layout.CaptionLineGap, HitTestVisible = false, Children = lines },
+        ],
+    };
 
     static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl
     {

@@ -31,4 +31,8 @@ public static partial class ViewKeys
 
     /// <summary>One transport time label: the digits' slot or the live slot.</summary>
     public static readonly ViewKey<TimeLabelProps> TimeLabel = new("Player.TimeLabel");
+
+    /// <summary>The mini player (#197): the always-on-top window's whole picture in one of four shapes, over the bar's core.
+    /// Mounted by <c>Shell.MiniPlayer</c>'s window root. Props: <see cref="MiniPlayerProps"/>.</summary>
+    public static readonly ViewKey<MiniPlayerProps> MiniPlayer = new("Player.Mini");
 }

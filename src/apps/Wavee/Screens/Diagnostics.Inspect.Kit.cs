@@ -757,6 +757,25 @@ public static partial class Diagnostics
             return new Palette.Graded(dark, light, HasLight: true, BestFitIsLight: false);
         }
 
+        /// <summary>A named test cover (`grade=dark|teal|white|yellow`): every cover grades to that ONE colour in both halves, as a cover that IS that colour
+        /// would (no provider darkens a white sleeve for the dark half): the grounds a surface tinted from the cover must hold its inks over. Null for
+        /// any other name.</summary>
+        public static Palette.Graded? NamedCover(string name)
+        {
+            uint? c = name switch
+            {
+                "dark" => Hsv(222f, 0.55f, 0.20f),     // a deep navy sleeve
+                "teal" => Hsv(194f, 0.53f, 0.48f),     // the #396b7a ground the caption once read 4.45 : 1 on
+                "white" => Hsv(45f, 0.04f, 0.97f),     // a near-white sleeve
+                "yellow" => Hsv(52f, 0.95f, 0.98f),    // a saturated yellow
+                _ => null,
+            };
+            if (c is not { } colour) return null;
+            var dark = new Scheme(colour, colour, 0xFFFFFFFFu, 0xFFC8C8C8u, 0xFFFFFFFFu);
+            var light = new Scheme(colour, colour, 0xFF000000u, 0xFF404040u, 0xFF000000u);
+            return new Palette.Graded(dark, light, HasLight: true, BestFitIsLight: false);
+        }
+
         /// <summary>A hueless grade (a black-and-white cover): every role grey, dark and light.</summary>
         public static readonly Palette.Graded GreyScheme = new(
             new Scheme(0xFF3A3A3Au, 0xFF555555u, 0xFFFFFFFFu, 0xFFC8C8C8u, 0xFFFFFFFFu),

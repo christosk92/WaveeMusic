@@ -61,9 +61,10 @@ internal static class ClassicNowPlayingHero
         };
     }
 
-    internal static Element HeroMeta(NowPlayingHeroProps props, Track track)
+    /// <summary>The meta: the canvas's (<see cref="BleedMeta"/>, its accent solved over the material <paramref name="tint"/>) or the cover's.</summary>
+    internal static Element HeroMeta(NowPlayingHeroProps props, Track track, ColorF tint)
     {
-        if (props.Bleeds()) return BleedMeta(props, track);
+        if (props.Bleeds()) return BleedMeta(props, track, tint);
         string uri = track.Uri.Text;
         string title = track.Title;
         var meta = new List<Element>(2);
@@ -107,13 +108,13 @@ internal static class ClassicNowPlayingHero
         };
     }
 
-    /// <summary>The meta under the canvas's crest (Tideline), on the plain panel: the 64 cover glowing in the art's dominant colour, the title,
+    /// <summary>The meta under the canvas's fade, on the plain panel: the 64 cover, the title,
     /// the artist in the art's hue (solved as text on the ground) and "album · year", the saved heart in that hue on a soft circle of it; the
     /// lyrics peek under them.</summary>
-    static Element BleedMeta(NowPlayingHeroProps props, Track track)
+    static Element BleedMeta(NowPlayingHeroProps props, Track track, ColorF tint)
     {
         string uri = track.Uri.Text, title = track.Title;
-        var ink = ClassicBleedInk.Of(props.NowArtUrl());
+        var ink = ClassicBleedInk.Of(props.NowArtUrl(), tint);
         var lines = new List<Element>(3)
         {
             new TextEl(title)
@@ -135,7 +136,7 @@ internal static class ClassicNowPlayingHero
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
         }
-        ColorF accent = ink.Text, glow = ink.Back;
+        ColorF accent = ink.Text;
         return new BoxEl
         {
             Direction = 1, Gap = Spacing.M,
@@ -151,7 +152,6 @@ internal static class ClassicNowPlayingHero
                         {
                             Width = ClassicHeroLayout.BleedCover, Height = ClassicHeroLayout.BleedCover, Shrink = 0f,
                             Corners = CornerRadius4.All(ClassicHeroLayout.BleedCoverRadius),
-                            Shadow = new ShadowSpec(ClassicHeroLayout.BleedGlowBlur, ClassicHeroLayout.BleedGlowY, 0f, glow with { A = ClassicHeroLayout.BleedGlowA }),
                             Children =
                             [
                                 new ImageEl
@@ -307,12 +307,11 @@ internal sealed class ClassicHeroTile : Component
             : null;
         if (sheetSide is not null) return SheetTile(props, sheetSide, strip);
 
-        // Over the edge-to-edge canvas the stage holds the room that puts the meta (in the body under this pinned hero) 24 under the wave's crest.
+        // Over the edge-to-edge canvas the stage holds the room that puts the meta (in the body under this pinned hero) 24 under the fade's end.
         _bleedRoom ??= panelW =>
         {
             float vh = MathF.Round(panelW * ClassicHeroLayout.BleedAspect), ph = props.RailHeight.Value;
-            float crest = MathF.Min(vh - ClassicHeroLayout.BleedCrestLift, (ph > 0f ? ph : vh) - ClassicHeroLayout.BleedCrestRoom);
-            return crest + ClassicHeroLayout.BleedMetaDrop - Rail.Hero.ArtTop - Spacing.M;
+            return ClassicHeroLayout.BleedEnd(vh, ph) + ClassicHeroLayout.BleedMetaDrop - Rail.Hero.ArtTop - Spacing.M;
         };
         var stage = new BoxEl { Direction = 1, Shrink = 0f, Children = [props.Stage(2f * Rail.Hero.Inset, _cover, Radii.CardAll, _bleedRoom)] };
         return new BoxEl
@@ -375,7 +374,7 @@ internal sealed class ClassicHeroHeaderRow : Component
         };
     }
 
-    /// <summary>The header over the canvas (Tideline): "Playing from album" over the album's name, and the chip on a light plate, in the media
+    /// <summary>The header over the canvas: "Playing from album" over the album's name, and the chip on a light plate, in the media
     /// scope's ink (Deck.Bleed.cs).</summary>
     static Element BleedFace(PanelSourceFacts source, IPlayerStyleVerbs verbs, int shown)
     {
@@ -614,10 +613,12 @@ internal sealed class ClassicNowPlayingBody : Component
 
         props.SubscribeEntities();
 
+        // Under the canvas the meta's accent is solved on the bleed's ground, which carries the page's tint: read (navigation rate) only then.
+        ColorF tint = props.Bleeds() ? ClassicBleedInk.Tint(UseContext(ClassicMaterial.StateSlot), UseContext(OptionStore.Context)) : default;
         return ScrollView(new BoxEl
         {
             Direction = 1,
-            Children = [ClassicNowPlayingHero.HeroMeta(props, track), Sections(props, track, nowArtist)],
+            Children = [ClassicNowPlayingHero.HeroMeta(props, track, tint), Sections(props, track, nowArtist)],
         }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 

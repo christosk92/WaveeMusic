@@ -99,6 +99,10 @@ public static partial class SettingsDoc
             Make(T.Playback, "Video", "showCanvas", K.Toggle, Strings.Settings.Playback.ShowCanvas,
                 SettingsWriter.OfToggle("playback.canvas", CanvasVideo.SetEnabled),
                 captionKey: Strings.Settings.Playback.ShowCanvasSub, value: BoolOf(CanvasVideo.ShowKey)),
+            // The full screen's end-of-video countdown (Playback.EndHold.cs), DEFAULT ON: off, a music video's end advances at once, as audio does.
+            Make(T.Playback, "Video", "videoEndCountdown", K.Toggle, Strings.Settings.Playback.VideoEndCountdown,
+                SettingsWriter.OfToggle("video.endCountdown", SettingsVerbs.SetVideoEndCountdown),
+                captionKey: Strings.Settings.Playback.VideoEndCountdownSub, value: BoolOf(Platform.Keys.VideoEndCountdown)),
             // "Clear all" is the ONE confirmed verb (N times, no per-row undo); no roster store → the whole row greys, no control.
             Make(T.Playback, "Video", "videoOverrides", K.Action, Strings.VideoOverride.SettingsHeader,
                 SettingsWriter.OfAction("video.overrides.clearAll", SettingsVerbs.ClearAllVideoOverrides),
@@ -256,6 +260,13 @@ public static partial class SettingsVerbs
     {
         Platform.Settings.Set(Playback.Video.PrepareAhead, on);
         Playback.Video.ApplyPrepareAhead();
+        return true;
+    }
+
+    /// <summary>The end-of-video countdown: read at the next video's end (Playback.EndHold.cs), so a write needs nothing re-decided now.</summary>
+    public static bool SetVideoEndCountdown(bool on)
+    {
+        Platform.Settings.Set(Platform.Keys.VideoEndCountdown, on);
         return true;
     }
 

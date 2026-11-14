@@ -176,7 +176,8 @@ public static partial class Diagnostics
 
         static bool NeedsLyrics(FrameBenchOptions o)
             => Array.IndexOf(o.Scenarios, FrameBenchScenarios.Lyrics) >= 0 || Array.IndexOf(o.Scenarios, FrameBenchScenarios.LyricsLine) >= 0
-            || Array.IndexOf(o.Scenarios, FrameBenchScenarios.StageLyrics) >= 0;
+            || Array.IndexOf(o.Scenarios, FrameBenchScenarios.StageLyrics) >= 0
+            || Array.IndexOf(o.Scenarios, FrameBenchScenarios.ArtistLyrics) >= 0;
 
         static FrameBenchTargets RealTargets(FrameBenchOptions o)
         {
@@ -206,6 +207,12 @@ public static partial class Diagnostics
             }
             return (word, line);
         }
+
+        /// <summary>stage-cinema: how long the bench waits after the stage publishes its chrome hidden before it measures the idle stage. In the
+        /// first seconds after the hide two host-timer turns (about 2.3 and 4.3 s after it) re-record the root slice with no component or bind work,
+        /// and the first presents once (2026-11-11, three runs; its owner is not named yet, see the stage-sweep report); with the window 5 s after
+        /// the hide both land before it and the idle stage measures 0 presents.</summary>
+        const double StageCinemaHiddenSettleSec = 5.0;
 
         static Pending RunScenario(string name, AppHost host, Win32Window w, FrameBenchOptions o, FrameBenchTargets t,
             string? play, string? word, string? line)
@@ -347,6 +354,48 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = false;
                     return r;
                 }
+                case FrameBenchScenarios.RailCanvas:
+                case FrameBenchScenarios.RailCover:
+                {
+                    // The now-playing panel in the Canvas player style with a canvas playing (the edge-to-edge canvas over the panel): the
+                    // real video through the compositor, which the headless inspector does not have. A shot of it lands in the output
+                    // folder (`rail-canvas.png`; the video itself is a hole in the captured frame), and the canvas player's state in the note.
+                    // `rail-cover` is the same panel, track and window in the Cover style: the panel's ground to compare the canvas's with.
+                    if (!Platform.Args.Fake || Entities.FakeCanvasTracks.Length == 0) return Skip("needs --fake (the seeded canvases)");
+                    bool canvas = name == FrameBenchScenarios.RailCanvas;
+                    int saved = Rail.PlayerPrefs.Style();
+                    Rail.PlayerPrefs.SetStyle(canvas ? Rail.PlayerCatalog.Canvas : Rail.PlayerCatalog.Cover, "bench");
+                    string canvasTrack = "spotify:track:tr" + Entities.FakeCanvasTracks[0].ToString(CultureInfo.InvariantCulture);
+                    Base(playing: true, canvasTrack);
+                    Shell.Ui.Mode.Value = Shell.RailMode.NowPlaying;
+                    Shell.Ui.RailOpen.Value = true;
+                    Settle(4.0);
+                    if (s_benchDevice is { } shotDevice) PlayDemoShot(host, w, shotDevice, Path.Combine(OutDir(), name + ".png"));
+                    var r = Measure(null, "track=" + canvasTrack + " rail=now-playing style=" + (canvas ? "canvas" : "cover") + " player=" + CanvasVideo.PlayerState()
+                        + " natural=" + CanvasVideo.PlayerNatural().Width.ToString(CultureInfo.InvariantCulture) + "x" + CanvasVideo.PlayerNatural().Height.ToString(CultureInfo.InvariantCulture)
+                        + " running=" + CanvasVideo.Running);
+                    Shell.Ui.RailOpen.Value = false;
+                    Rail.PlayerPrefs.SetStyle(saved, "bench");
+                    return r;
+                }
+                case FrameBenchScenarios.ArtistLyrics:
+                {
+                    // An artist page under the lyrics rail with a word-synced track playing: the owner's "listening while browsing an
+                    // artist" state (the hero, the top tracks and the rail's lines all on screen while the words step).
+                    if (t.Artists.Length == 0) return Skip("no artist");
+                    string? track = word ?? line ?? play;
+                    if (track is null) return Skip("no track to play");
+                    Base(playing: true, track);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(t.Artists[0]), "Bench artist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Shell.Ui.Mode.Value = Shell.RailMode.Lyrics;
+                    Shell.Ui.RailOpen.Value = true;
+                    Settle(2.0);
+                    var r = Measure(null, "artist=" + t.Artists[0] + " track=" + track + " rail=lyrics");
+                    Shell.Ui.RailOpen.Value = false;
+                    return r;
+                }
                 case FrameBenchScenarios.PlaylistPlaying:
                 case FrameBenchScenarios.PlaylistLyrics:
                 case FrameBenchScenarios.PlaylistMinimized:
@@ -472,6 +521,30 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = queueRail;
                     return r with { Note = r.Note + " clicks=" + clicks };
                 }
+                case FrameBenchScenarios.WhatsNewMotion:
+                {
+                    // A motion highlight playing on the What's new page (needs `--whatsnew <notes folder>` with one: ImageEl.Animate), then the
+                    // page scrolled to its end so the card leaves the screen 20 s into the measured window: the engine's `[image.anim]` lines
+                    // say how many frames showed on time and late while it played, and that it paused when the card left.
+                    if (Platform.Args.WhatsNewPreview is null) return Skip("needs --fake --whatsnew <notes folder>");
+                    Base(playing: false);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(new Shell.Route(Shell.RouteKind.WhatsNew));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Settle(2.0);
+                    var s = new ScrollState(depthViewports: 50);
+                    if (!s.WaitReady(host, w, 20)) return Skip("the What's new page never became scrollable (" + s.Describe(host) + ")");
+                    double awayAt = o.WarmupSec + 20;
+                    bool away = false;
+                    return Measure(new Driver(now =>
+                    {
+                        if (away || now < awayAt) return now + 0.25;
+                        away = true;
+                        FluentGpu.Hosting.FrameTrace.Mark("step", "scroll-away");
+                        s.ScrollToEnd(host);
+                        return now + 60;
+                    }), "scroll away at " + awayAt.ToString("0", CultureInfo.InvariantCulture) + " s, viewport=" + s.Key, s);
+                }
                 case FrameBenchScenarios.Video:
                     if (Platform.Args.FakeVideo is null) return Skip("needs --fake --fake-video <path>");
                     Base(playing: true, "spotify:track:tr0");
@@ -483,6 +556,88 @@ public static partial class Diagnostics
                         Shell.Ui.RailOpen.Value = false;
                         return r;
                     }
+                case FrameBenchScenarios.StageTheatre:
+                case FrameBenchScenarios.StageCinema:
+                {
+                    // The full screen on the music video (Classic's Video mode): the picture moving between Cinema and Theatre every 1.5 s
+                    // (the reservation's spring, the presenter following it, the panel sliding in and out), or Cinema at rest with its chrome
+                    // idled out (the window sits off every monitor: no pointer over it).
+                    if (Platform.Args.FakeVideo is null) return Skip("needs --fake --fake-video <path>");
+                    Base(playing: true, "spotify:track:tr0");
+                    // the video docked in the main window (what the stage stages), the fake clip as its source
+                    Video.State.FoldAvailability(true);
+                    Video.State.OpenAt(Video.SurfacePlacement.Docked);
+                    Settle(3.0);
+                    bool savedTheatre = Prefs.Stage.Theatre();
+                    int pane = Prefs.Stage.TheatrePane();
+                    Prefs.Stage.SetTheatre(false, pane);
+                    // the window stays where the bench put it (off every monitor): the stage must not take a monitor over to go full screen
+                    bool keptWindowed = ImmersiveService.Shared.KeepWindowed;
+                    ImmersiveService.Shared.KeepWindowed = true;
+                    Stage.Open(null, "bench");
+                    Settle(2.0);
+                    // `--bench-stage-audio`: the picture's place holds the AUDIO FACE (an audio-only track plays while Video mode stays on: a
+                    // local track, which `--fake-video` does not light), so the bench measures the face's colour field instead of the picture
+                    bool audioFace = Array.IndexOf(Platform.Args.Argv, "--bench-stage-audio") >= 0;
+                    if (audioFace)
+                    {
+                        Playback.PlayContext("wavee:local:track:0");
+                        PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20);
+                        Settle(2.0);
+                    }
+                    Pending r;
+                    if (!Stage.Picture.ShownPeek()) r = Skip("the stage did not open on the picture (Video mode not offered)");
+                    else if (name == FrameBenchScenarios.StageTheatre)
+                    {
+                        bool on = false;
+                        int toggles = 0;
+                        r = Measure(new Driver(now => { on = !on; toggles++; Prefs.Stage.SetTheatre(on, pane); return now + 1.5; }), "picture=stage toggle=1.5s" + (audioFace ? " face=" + (Stage.Picture.AudioFacePeek() ? "audio" : "video") : ""));
+                        r = r with { Note = r.Note + " toggles=" + toggles };
+                    }
+                    else
+                    {
+                        // the chrome idles out 3 s after the stage's holds let go (a load holds it): wait for the stage to publish it hidden, then
+                        // name what it published at the window's start and end (the stage's own signal, what its views read: not the idle machine,
+                        // whose last value only moves on its own tick)
+                        Settle(1.0);
+                        PumpUntil(host, w, static () => !Stage.Picture.ChromePeek(), 15);
+                        Settle(StageCinemaHiddenSettleSec);   // the hide's own aftermath lands before the window (see the constant)
+                        string atStart = Stage.Picture.ChromePeek() ? "shown" : "hidden";
+                        r = Measure(null, "picture=stage");
+                        string atEnd = Stage.Picture.ChromePeek() ? "shown" : "hidden";
+                        r = r with { Note = r.Note + " chrome=" + (atStart == atEnd ? atStart : atStart + "->" + atEnd) };
+                    }
+                    Stage.Close(null, "bench");
+                    Settle(1.0);
+                    ImmersiveService.Shared.KeepWindowed = keptWindowed;
+                    Prefs.Stage.SetTheatre(savedTheatre, pane);
+                    Video.State.TurnOff();
+                    return r;
+                }
+                case FrameBenchScenarios.StageExit:
+                {
+                    // The full-screen stage (its lyrics mode) opened and closed every 2 s over Home with a track playing, with the window really going
+                    // full screen and back: what the exit costs (the window restore, the page the stage uncovers laid out at the restored size).
+                    Base(playing: true, play);
+                    bool keptWindowed = ImmersiveService.Shared.KeepWindowed;
+                    ImmersiveService.Shared.KeepWindowed = false;
+                    bool open = false;
+                    int exits = 0;
+                    void Flip()
+                    {
+                        open = !open;
+                        if (open) Stage.Open(null, "bench");
+                        else { Stage.Close(null, "bench"); exits++; }
+                    }
+                    // `--bench-shots`: every presented frame of one entry and one exit, as PNGs (the exit's motion, frame by frame)
+                    if (o.Shots) Shots(name, host, w, Flip);
+                    exits = 0;
+                    var r = Measure(new Driver(now => { Flip(); return now + 2.0; }), "stage open/close every 2 s, real full screen");
+                    if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
+                    Settle(1.0);
+                    ImmersiveService.Shared.KeepWindowed = keptWindowed;
+                    return r with { Note = r.Note + " exits=" + exits };
+                }
                 case FrameBenchScenarios.NavGc:
                 {
                     // `--bench-nav-play`: the first playlist plays, so its row's equalizer runs while the bench navigates.
@@ -808,6 +963,14 @@ public static partial class Diagnostics
                     if (!v.Horizontal) sb.Append(v.ScrollKey ?? "?").Append(' ').Append(v.Extent.ToString("0", CultureInfo.InvariantCulture)).Append('/')
                         .Append(v.Viewport.ToString("0", CultureInfo.InvariantCulture)).Append("; ");
                 return sb.Length > 0 ? sb.ToString() : "no vertical viewport";
+            }
+
+            /// <summary>Glide the adopted page to its end (the What's new motion scenario's scroll away).</summary>
+            public void ScrollToEnd(AppHost host)
+            {
+                if (!Adopt(host, 1.0) && _handle is null) return;
+                _handle!.ScrollTo(_handle.MaxOffset, ScrollMove.Glide);
+                Steps++;
             }
 
             /// <summary>The measured window starts: distance from here.</summary>

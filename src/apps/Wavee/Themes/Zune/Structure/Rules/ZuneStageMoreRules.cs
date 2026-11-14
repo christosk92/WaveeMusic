@@ -361,6 +361,10 @@ public static class ZuneStageVideoRules
 
     public const ushort NoticeWeight = 600;
 
+    /// <summary>The "this screen can't show protected video" notice: its title's size (lowercase, the label case), its explanation's size,
+    /// the widest it reads at, its inset from the video box's edges and its gaps.</summary>
+    public const float ScreenNoticeTitle = 15f, ScreenNoticeBody = 12f, ScreenNoticeMaxW = 400f, ScreenNoticeInset = 16f, ScreenNoticeGap = 6f;
+
     // ── the strips ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The fullscreen bar: 48 tall (Z-Video), its parts 24 apart, the label 13/18, the title 15, the words 13/18.</summary>

@@ -24,6 +24,10 @@ public static class ClassicVideoRules
     /// <summary>The notice's ring, its words and the failure's glyph.</summary>
     public const float NoticeRing = 20f, NoticeText = 12f, NoticeGlyph = 18f;
 
+    /// <summary>The "this screen can't show protected video" notice: its title's size, its explanation's size, the widest it reads at (a
+    /// full-screen stage keeps it a paragraph, not one long line), its inset from the video box's edges and its gaps.</summary>
+    public const float ScreenNoticeTitle = 14f, ScreenNoticeBody = 12f, ScreenNoticeMaxW = 400f, ScreenNoticeInset = 16f, ScreenNoticeGap = 6f;
+
     // ── the hover glyph ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A hover-revealed chrome glyph's icon (the tooltip names the DESTINATION). Its box and the strip it sits on are the window

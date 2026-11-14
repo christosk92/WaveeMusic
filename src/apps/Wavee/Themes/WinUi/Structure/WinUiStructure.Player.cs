@@ -16,6 +16,7 @@ public sealed partial class WinUiStructure
     static partial void RegisterPlayer(ViewRegistryBuilder views)
     {
         views.Add(ViewKeys.PlayerBar, WinUiPlayerBar.Template, "winui.player.bar");
+        WinUiMiniPlayer.Register(views);   // Player.Mini (#197)
         views.Add(ViewKeys.SeekRail, WinUiTransport.SeekRail, "winui.player.seek-rail");
         views.Add(ViewKeys.SeekChapters, WinUiTransport.SeekChapters, "winui.player.seek-chapters");
         views.Add(ViewKeys.ChapterTip, WinUiTransport.ChapterTip, "winui.player.chapter-tip");

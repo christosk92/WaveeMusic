@@ -66,6 +66,10 @@ internal static class WinUiStageGeometry
     /// <summary>The mode pill: 40 tall, 4 inside at the sides (W-Stage: `height: 40px; padding: 0 4px; border-radius: 8px`).</summary>
     public const float PillH = 40f, PillPadX = 4f;
 
+    /// <summary>The stage's first tab (Video / Overview, relabelled in place on a track change) reserves the wider label's width, so a relabel moves no
+    /// tab beside it: "Overview" at the pill's 14 type and 14 side padding.</summary>
+    public const float FirstTabMinW = 92f;
+
     /// <summary>The gap between the right cluster's buttons.</summary>
     public const float BarButtonGap = 4f;
 

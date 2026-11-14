@@ -128,6 +128,33 @@ public static partial class AiLyrics
     /// <summary>Set by the Settings card while it is on screen: a toast is redundant then (Rules.ToastOnReady).</summary>
     public static bool SettingsCardVisible { get; set; }
 
+    /// <summary>True while the headless inspector shows a staged <see cref="Current"/> (<see cref="Stage"/>): the card renders that
+    /// status, and every verb is inert (no download, no model load, no job, nothing read or written under <see cref="Root"/>).</summary>
+    public static bool Staged { get; private set; }
+
+    /// <summary>The headless inspector's `state kind=ai`: publish <paramref name="status"/> as the card's status without the module
+    /// (the inspector never calls <see cref="Install"/>), or put the boot's "not started" back (<c>null</c>; the next mount does).</summary>
+    public static void Stage(Status? status, TrackPhase trackPhase = TrackPhase.Idle)
+    {
+        Staged = status is not null;
+        // `ai=timed|timing`: the playing track's status as a finished (cached) or running job publishes it, so the lyrics surfaces draw
+        // the AI disclosure without the module. Written before Current: the driver's staged branch then keeps it.
+        s_trackStaged = Staged && trackPhase is TrackPhase.Done or TrackPhase.Working;
+        if (s_trackStaged)
+        {
+            string id = PlayingLyricsId();
+            int lines = id.Length > 0 && Lyrics.Store.Doc(id) is { } doc ? doc.Lines.Count : 0;
+            bool done = trackPhase == TrackPhase.Done;
+            Track.Value = new TrackStatus(id, trackPhase, SkipReason.None, "en", done ? lines : lines / 3, lines,
+                done ? 0 : Playback.DurationMs.Peek() / 2000.0, done);
+        }
+        else if (Track.Peek().Phase != TrackPhase.Idle) Track.Value = default;
+        Current.Value = status ?? Status.Unknown;
+    }
+
+    /// <summary>A <see cref="Stage"/> also stands a track status: the driver leaves it alone.</summary>
+    static bool s_trackStaged;
+
     static Action<Action> s_post = static a => a();
     static CancellationTokenSource? s_downloadCts;
     static CancellationTokenSource? s_loadCts;
@@ -139,8 +166,6 @@ public static partial class AiLyrics
     // the playhead for just-in-time commits, written by the Driver (UI thread), read by the worker
     static int s_posMs, s_playing;
     static long s_posAtTick;
-
-    static readonly string[] s_languageOrder = ["en", "es", "nl", "ko"];
 
     // ══ boot and shutdown ═════════════════════════════════════════════════════════════════════════════════════════
 
@@ -209,6 +234,7 @@ public static partial class AiLyrics
 
     public static void SetEnabled(bool on)
     {
+        if (Staged) return;
         var st = Current.Peek();
         if (on && !Rules.CanToggleOn(st.Availability)) return;
         Prefs.AiLyrics.Set(Platform.Keys.AiLyricsEnabled, on);
@@ -218,7 +244,7 @@ public static partial class AiLyrics
             CancelDownloadInternal(pause: false);
             CancelLoads();
             s_worker?.Unload();
-            Current.Value = st with { Enabled = false, Phase = SetupPhase.Off, Error = SetupError.None, ErrorDetail = "" };
+            Current.Value = st with { Enabled = false, Phase = SetupPhase.Off, Error = SetupError.None, ErrorDetail = "", LanguageFailure = default };
             Track.Value = default;
             return;
         }
@@ -236,22 +262,25 @@ public static partial class AiLyrics
 
     static void StartDownload(IReadOnlyList<string> languages, string? addLanguage)
     {
-        if (s_downloadCts is not null) return;                     // one download at a time
+        if (Staged || s_downloadCts is not null) return;           // one download at a time (none while the inspector stages the card)
         var cts = new CancellationTokenSource();
         s_downloadCts = cts;
         s_pauseRequested = false;
         var st = Current.Peek();
+        var phaseBefore = st.Phase;
         Current.Value = st with
         {
-            Phase = SetupPhase.Downloading, Error = SetupError.None, ErrorDetail = "",
+            Phase = SetupPhase.Downloading, Error = SetupError.None, ErrorDetail = "", LanguageFailure = default,
             Download = new DownloadProgress(DownloadPhase.Checking, 0, st.PendingDownloadBytes, 0, ""),
         };
+        bool onlyAddLanguage = false;
         _ = Task.Run(async () =>
         {
             try
             {
                 var all = PackManifest.Embedded.FilesFor(languages);
                 var files = Pack.Missing(all);
+                onlyAddLanguage = addLanguage is not null && files.TrueForAll(f => PackManifest.Embedded.LanguageOfFile(f.Name) == addLanguage);
                 long total = Pack.DownloadBytes(files), already = Pack.DownloadBytes(all) - total;
                 Log.Info("ai-lyrics", $"ai.download.start files={files.Count} bytes={total}");
                 await Pack.InstallAsync(files, PackManifest.Embedded.Base,
@@ -290,13 +319,20 @@ public static partial class AiLyrics
             catch (Exception ex) when (ex is SetupException or IOException or UnauthorizedAccessException)
             {
                 var kind = ex is SetupException se ? se.Kind : SetupError.Unknown;
-                Log.Warn("ai-lyrics", $"ai.download.failed kind={kind} detail={ex.Message}");
+                string file = ex is SetupException sf ? sf.FileName : "";
+                string language = Rules.FailedLanguage(PackManifest.Embedded.LanguageOfFile(file), beforeAnyFile: file.Length == 0,
+                    addLanguage, onlyAddLanguage);
+                bool keepsReady = Rules.LanguageFailureKeepsReady(language, addLanguage, phaseBefore);
+                Log.Warn("ai-lyrics", $"ai.download.failed kind={kind} language={(language.Length > 0 ? language : "-")} " +
+                                      $"scope={(keepsReady ? "language" : "feature")} file={(file.Length > 0 ? file : "-")} detail={ex.Message}");
                 s_post(() =>
                 {
                     if (s_downloadCts != cts) return;
                     s_downloadCts = null;
                     cts.Dispose();
-                    Fail(kind, ex.Message);
+                    var failure = language.Length > 0 ? new LanguageFailure(language, kind, ex.Message) : default;
+                    if (keepsReady) FailLanguage(failure);
+                    else Fail(kind, ex.Message, failure);
                 });
             }
         });
@@ -314,9 +350,10 @@ public static partial class AiLyrics
     }
 
     /// <summary>The error card's "Try again": a download error downloads again (resuming), a runtime or compile error
-    /// loads the models again.</summary>
+    /// loads the models again. A failure of one language's download is retried with <see cref="InstallLanguage"/>.</summary>
     public static void Retry()
     {
+        if (Staged) return;
         var st = Current.Peek();
         if (Rules.RetryLoadsModels(st.Error)) LoadModels(reload: true);
         else StartDownload();
@@ -326,6 +363,7 @@ public static partial class AiLyrics
     /// unload, so no file is still mapped by a session; a loaded runtime DLL is cleared on the next start.</summary>
     public static void RemoveFiles(Action<bool>? deferred = null)
     {
+        if (Staged) return;
         CancelJob();
         CancelDownloadInternal(pause: false);
         CancelLoads();
@@ -344,7 +382,7 @@ public static partial class AiLyrics
                 Current.Value = st with
                 {
                     Phase = st.Enabled ? SetupPhase.NeedsSetup : SetupPhase.Off, InstalledBytes = 0,
-                    PendingDownloadBytes = Pack.DownloadBytes(missing), Error = SetupError.None, ErrorDetail = "",
+                    PendingDownloadBytes = Pack.DownloadBytes(missing), Error = SetupError.None, ErrorDetail = "", LanguageFailure = default,
                 };
                 Track.Value = default;
                 deferred?.Invoke(!complete);
@@ -355,6 +393,7 @@ public static partial class AiLyrics
     /// <summary>Download one more aligner language, then reload the models with it.</summary>
     public static void InstallLanguage(string language)
     {
+        if (Staged) return;
         var langs = new List<string>(LanguagesSetting());
         if (!langs.Contains(language)) langs.Add(language);
         StartDownload(langs, addLanguage: language);
@@ -363,6 +402,7 @@ public static partial class AiLyrics
     /// <summary>Remove one aligner language (never the last one). Its files go on the worker after the unload.</summary>
     public static void RemoveLanguage(string language)
     {
+        if (Staged) return;
         var langs = new List<string>(LanguagesSetting());
         if (langs.Count <= 1 || !langs.Remove(language)) return;
         CancelJob();
@@ -384,6 +424,7 @@ public static partial class AiLyrics
     /// <summary>Open the AI files folder in Explorer.</summary>
     public static void OpenFolder()
     {
+        if (Staged) return;
         _ = Task.Run(() =>
         {
             try
@@ -397,17 +438,40 @@ public static partial class AiLyrics
 
     // ══ internals (UI thread) ═════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A setup error. Ignored while the feature is off: a failure the user can no longer act on is not news.</summary>
-    static void Fail(SetupError kind, string detail)
+    /// <summary>A setup error: the whole feature stops (the shared files, the runtime, the NPU, or a first setup). Ignored
+    /// while the feature is off: a failure the user can no longer act on is not news. <paramref name="language"/> names the
+    /// language whose file stopped a first setup, so the card says which.</summary>
+    static void Fail(SetupError kind, string detail, LanguageFailure language = default)
     {
         var st = Current.Peek();
         if (!st.Enabled) return;
-        Current.Value = st with { Phase = SetupPhase.Error, Error = kind, ErrorDetail = detail };
+        Current.Value = st with { Phase = SetupPhase.Error, Error = kind, ErrorDetail = detail, LanguageFailure = language };
         if (Rules.ToastOnError(SettingsCardVisible, kind))
-            Notify.Say(Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
+            Notify.Say(language.IsSet
+                    ? Strings.Settings.Lyrics.Ai.Toast.LanguageFailed(LanguageName(language.Language), Loc.Get(Rules.LanguageErrorKey(kind)))
+                    : Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
                 actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
                 dedupeKey: "ai-lyrics-error");
     }
+
+    /// <summary>One language's download failed while the feature was ready: the card goes back to Ready (the installed
+    /// languages never stopped working; their models were not touched) and says which language failed and why, with Try
+    /// again for that language (<see cref="InstallLanguage"/>).</summary>
+    static void FailLanguage(LanguageFailure failure)
+    {
+        var st = Current.Peek();
+        if (!st.Enabled) return;
+        Current.Value = st with { Phase = SetupPhase.Ready, Error = SetupError.None, ErrorDetail = "", LanguageFailure = failure };
+        if (Rules.ToastOnError(SettingsCardVisible, failure.Kind))
+            Notify.Say(Strings.Settings.Lyrics.Ai.Toast.LanguageFailed(LanguageName(failure.Language), Loc.Get(Rules.LanguageErrorKey(failure.Kind))),
+                InfoBarSeverity.Error,
+                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
+                dedupeKey: "ai-lyrics-error");
+    }
+
+    /// <summary>A pack language's display name ("Japanese"); the code itself when the loc pack has no name for it.</summary>
+    public static string LanguageName(string language)
+        => Rules.LanguageNameKey(language) is { Length: > 0 } key ? Loc.Get(key) : language.ToUpperInvariant();
 
     /// <param name="deferIfCompiled">Boot: when every installed graph is already compiled, only record what is installed
     /// and leave the sessions unloaded until a job needs them (<see cref="Worker"/>'s EnsureLanguage loads them). A graph
@@ -473,11 +537,12 @@ public static partial class AiLyrics
         return Ordered(list);
     }
 
+    /// <summary>The manifest's language order (<see cref="PackManifest.LanguageOrder"/>), the one order everywhere.</summary>
     static List<string> Ordered(IEnumerable<string> langs)
     {
         var set = new HashSet<string>(langs, StringComparer.OrdinalIgnoreCase);
         var list = new List<string>();
-        foreach (var l in s_languageOrder) if (set.Remove(l)) list.Add(l);
+        foreach (var l in PackManifest.Embedded.LanguageOrder) if (set.Remove(l)) list.Add(l);
         list.AddRange(set);
         return list;
     }
@@ -525,10 +590,10 @@ public static partial class AiLyrics
         _ = Prefs.AiLyrics.Epoch.Value;
         _ = PreferEpoch.Value;
 
-        if (!st.Enabled || st.Phase != SetupPhase.Ready || !id.IsValid)
+        if (Staged || !st.Enabled || st.Phase != SetupPhase.Ready || !id.IsValid)
         {
             if (s_ledger.JobRunning) CancelJob();
-            if (Track.Peek().Phase != TrackPhase.Idle) Track.Value = default;
+            if (Track.Peek().Phase != TrackPhase.Idle && !(Staged && s_trackStaged)) Track.Value = default;
             return;
         }
         string trackId = "";
@@ -589,16 +654,19 @@ public static partial class AiLyrics
         if (reason != SkipReason.None)
         {
             if (Track.Peek().TrackId != trackId || Track.Peek().Reason != reason)
-                Log.Info("ai-lyrics", $"ai.skip track={trackId} reason={reason} provider={doc?.Provider} sync={doc?.Sync} tag={doc?.Language} language={(doc is null ? "" : Rules.LanguageOf(doc))}");
+                Log.Info("ai-lyrics", $"ai.skip track={trackId} reason={reason} provider={doc?.Provider} sync={doc?.Sync} tag={doc?.Language} language={(doc is null ? "" : Rules.LanguageOf(doc))}"
+                    + (doc is null ? "" : " " + Rules.DecideLanguage(doc).Describe()));
             Track.Value = new TrackStatus(trackId, TrackPhase.Skipped, reason, doc is null ? "" : Rules.LanguageOf(doc), 0, doc?.Lines.Count ?? 0, 0, false);
             return;
         }
-        string language = Rules.LanguageOf(doc!);
+        var decision = Rules.DecideLanguage(doc!);
+        string language = decision.Language ?? "";                                 // Eligibility passed: decided and installed
         int ticket = s_ledger.BeginJob(trackId);
         Track.Value = new TrackStatus(trackId, TrackPhase.Working, SkipReason.None, language, 0, doc!.Lines.Count, 0, false);
         Job.Value = new JobInfo(trackId, language, doc.Lines.Count, 0, track.DurationMs / 1000.0, 0, 0, 0, 0, false, ResultPathOf(trackId), "working", "");
         s_worker ??= new Worker();
-        s_worker.Start(new JobRequest(trackId, ticket, track.Uri.Text, track.DurationMs, doc, language, prefersAi, Platform.Network.IsMetered));
+        s_worker.Start(new JobRequest(trackId, ticket, track.Uri.Text, track.DurationMs, doc, language, prefersAi, Platform.Network.IsMetered,
+            decision.Describe()));
     }
 
     // ── posts from the worker (UI thread) ─────────────────────────────────────────────────────────────────────────
@@ -615,8 +683,9 @@ public static partial class AiLyrics
 
     // ══ the worker thread ═════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <param name="Decision">The language decision's evidence (<see cref="Rules.LanguageDecision.Describe"/>), for the log.</param>
     sealed record JobRequest(string TrackId, int Ticket, string Uri, long DurationMs, Lyrics.Doc Source, string Language,
-        bool OverrideProvider, bool Metered);
+        bool OverrideProvider, bool Metered, string Decision);
 
     sealed class Worker
     {
@@ -627,6 +696,8 @@ public static partial class AiLyrics
         string _installedKey = "";
         IReadOnlyList<string> _installed = [];
         CancellationTokenSource? _jobCts;
+        readonly Dictionary<string, Align.Vocab?> _vocabs = new(StringComparer.Ordinal);   // per language, for the spell check
+        readonly HashSet<string> _rejected = new(StringComparer.Ordinal);                 // results rejected this session
         volatile bool _loaded;
         long _lastUseMs;   // the worker thread's own clock: when a command last ran with the models loaded
 
@@ -782,7 +853,7 @@ public static partial class AiLyrics
             {
                 _models = LoadedModels.Load(RuntimeDir, ModelsDir, [language], null, ct);
                 _loaded = true;
-                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={language} installed={_installedKey} lazy=true ort={_models.Ort.Version}");
+                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={language} installed={string.Join(",", _installed)} lazy=true ort={_models.Ort.Version}");
             }
             else _models.SwapAligner(ModelsDir, language, null, ct);
             Log.Info("ai-lyrics", $"ai.models.switch active={language} ms={sw.ElapsedMilliseconds} recompiled={recompile}");
@@ -795,8 +866,9 @@ public static partial class AiLyrics
         {
             if (!_loaded && _models is null) return;
             long before = Environment.WorkingSet;
+            // _installed and _installedKey stay: an idle unload frees the sessions, not the record of what is installed.
+            // (Clearing the key here made the next lazy load log "installed=" with an empty list.)
             DisposeModels();
-            _installedKey = "";
             // The jobs' buffers are large-object garbage, and an idle app runs no full GC to reclaim it: the process
             // used to keep ~300 MB of dead LOH committed for hours after the unload. A BACKGROUND gen-2 collection hands
             // the freed regions back without stopping the UI thread: the unload now follows every song's job, and a
@@ -843,21 +915,48 @@ public static partial class AiLyrics
         {
             ct.ThrowIfCancellationRequested();
             ulong hash = Rules.SourceHash(req.Source.Lines);
-            // 1. the results cache: a replay needs no NPU and no audio
+            int lineCount = req.Source.Lines.Count;
+            string rejectKey = req.TrackId + ":" + hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + ":" + req.Language;
+            if (_rejected.Contains(rejectKey))
+            {
+                // the same words in the same language were rejected earlier this session: the aligner would answer the same
+                Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=RejectedEarlier language={req.Language}");
+                s_post(() => Skip(req, SkipReason.Failed, "timing rejected earlier"));
+                return;
+            }
+            // 1. the results cache: a replay needs no NPU and no audio, and passes the same acceptance check as a new result
             string resultPath = ResultPathOf(req.TrackId);
             try
             {
                 if (File.Exists(resultPath) && Results.TryDecode(File.ReadAllText(resultPath), out var cached)
-                    && Results.Overlay(cached, req.Source, hash) is { } overlay)
+                    && Results.Overlay(cached, req.Source, hash, req.Language) is { } overlay)
                 {
-                    Log.Info("ai-lyrics", $"ai.results.hit track={req.TrackId}");
-                    Publish(req, overlay, new JobProgress(req.Source.Lines.Count, req.Source.Lines.Count, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0, ct);
-                    return;
+                    if (Acceptance.Check(req.Source, overlay, lineCount, final: true, out var verdict) is { } accepted)
+                    {
+                        Log.Info("ai-lyrics", $"ai.results.hit track={req.TrackId} {verdict.Describe()}");
+                        Publish(req, accepted, new JobProgress(lineCount, lineCount, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0, ct);
+                        return;
+                    }
+                    Log.Info("ai-lyrics", $"ai.result.rejected track={req.TrackId} source=cache language={req.Language} {verdict.Describe()}");
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", "results read failed", ex); }
 
-            // 2. timing a new song fetches its audio once more: not on a metered connection
+            // 2. the model must be able to spell the lyric (step 5 of the language decision): a word with a letter outside
+            // its vocabulary is timed in part or not at all
+            if (VocabOf(req.Language) is { } vocab)
+            {
+                double spellable = Rules.SpellableShare(req.Source, vocab, out int spellWords, req.Language);
+                if (1 - spellable >= Rules.UnspellableSkipShare)
+                {
+                    Log.Info("ai-lyrics", FormattableString.Invariant($"ai.skip track={req.TrackId} reason=Unspellable language={req.Language} spellable={spellable:0.00} words={spellWords} {req.Decision}"));
+                    s_post(() => Skip(req, SkipReason.LanguageNotInstalled, FormattableString.Invariant($"the {req.Language} model spells {spellable:0.00} of the words")));
+                    return;
+                }
+                req = req with { Decision = req.Decision + FormattableString.Invariant($" spellable={spellable:0.00} spellWords={spellWords}") };
+            }
+
+            // 3. timing a new song fetches its audio once more: not on a metered connection
             if (req.Metered)
             {
                 Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=Metered");
@@ -891,15 +990,54 @@ public static partial class AiLyrics
                 s_post(() => Skip(req, SkipReason.AudioUnavailable, "audio: " + fault));
                 return;
             }
-            Log.Info("ai-lyrics", $"ai.job.start track={req.TrackId} language={req.Language} lines={req.Source.Lines.Count}");
+            Log.Info("ai-lyrics", $"ai.job.start track={req.TrackId} language={req.Language} lines={lineCount} {req.Decision}");
             var job = new TrackJob(req.Source, req.Language, _models.Separator, aligner, pcm, PlayheadSeconds);
-            var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct), ct,
-                _scratch ??= new JobScratch());
+            Acceptance.Verdict last = default;
+            Lyrics.Doc? shown = null;
+            // every publish passes the acceptance check: failing lines go back to the provider's, and a result with too
+            // few word-synced lines stops the job (nothing more is shown, nothing is saved)
+            var final = job.RunUntil((doc, p) =>
+            {
+                var accepted = Acceptance.Check(req.Source, doc, p.LinesReady, p.Final, out last);
+                if (accepted is null) return false;
+                Publish(req, accepted, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct);
+                shown = accepted;
+                return true;
+            }, ct, _scratch ??= new JobScratch());
+            if (final is null || shown is null)
+            {
+                ct.ThrowIfCancellationRequested();
+                _rejected.Add(rejectKey);
+                var verdict = last;
+                Log.Info("ai-lyrics", $"ai.result.rejected track={req.TrackId} source=job language={req.Language} ms={sw.ElapsedMilliseconds} {verdict.Describe()}");
+                s_post(() =>
+                {
+                    s_lastPublished.Remove(req.TrackId);                           // never re-layer a rejected result
+                    Skip(req, SkipReason.Failed, "timing rejected: " + verdict.Describe());
+                });
+                return;
+            }
             Directory.CreateDirectory(ResultsDir);
             string tmp = resultPath + ".tmp";
-            File.WriteAllText(tmp, Results.Encode(final, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            File.WriteAllText(tmp, Results.Encode(shown, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));   // what was accepted
             File.Move(tmp, resultPath, overwrite: true);
-            Log.Info("ai-lyrics", $"ai.job.done track={req.TrackId} ms={sw.ElapsedMilliseconds} separate={job.SeparateSeconds:0.0}s align={job.AlignSeconds:0.0}s");
+            Log.Info("ai-lyrics", $"ai.job.done track={req.TrackId} ms={sw.ElapsedMilliseconds} separate={job.SeparateSeconds:0.0}s align={job.AlignSeconds:0.0}s {last.Describe()}");
+        }
+
+        /// <summary>A language's aligner vocabulary for the spell check: the loaded aligner's, else read once from the
+        /// models folder (a few KB); null when it cannot be read (the job then finds the language missing).</summary>
+        Align.Vocab? VocabOf(string language)
+        {
+            if (_models is not null && _models.Aligners.TryGetValue(language, out var loaded)) return loaded.Vocab;
+            if (_vocabs.TryGetValue(language, out var known)) return known;
+            Align.Vocab? vocab = null;
+            try { vocab = Align.Vocab.Parse(File.ReadAllText(Path.Combine(ModelsDir, $"align-{language}.vocab.json"))); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or KeyNotFoundException)
+            {
+                Log.Info("ai-lyrics", $"ai.vocab.unavailable language={language} {ex.GetType().Name}");
+            }
+            _vocabs[language] = vocab;
+            return vocab;
         }
 
         /// <summary>An audio open the job will not use: close it whenever it lands (it may still be fetching).</summary>

@@ -171,7 +171,14 @@ public static class ZuneControls
         OffFill = Ink(0.14f), OffHover = Ink(0.20f), OffPressed = Ink(0.10f), OffBorder = ColorF.Transparent, OffKnob = Tok.TextPrimary,
         OnFill = Tok.AccentDefault, OnHover = Tok.AccentSecondary, OnPressed = Tok.AccentTertiary, OnKnob = Tok.TextOnAccentPrimary,
         KnobStrokeOn = null, KnobStrokeOnWidth = 0f,
-        OffBorderDisabled = ColorF.Transparent,
+        // Disabled: the track stays drawn, at the disabled rail's ink (the line slider's RailFillDisabled), under the dimmed knob. The
+        // Fluent base's off-disabled track is clear with a stroke ring, and Zune has no ring: only a grey dot was left.
+        OffBorderDisabled = ColorF.Transparent, OffFillDisabled = Ink(ZuneTokens.ChipA),
+        // On and disabled: the on arm's shape without its accent, a FILLED track in the ink under the on knob's own ink (black on dark, white on
+        // light), which the disabled control's dimming takes to a grey pill (knob to track 2.1 : 1 on light, 2.8 : 1 on dark, as rendered) a clear step
+        // over the off arm's 6 % rail. The Fluent base's accent-disabled track under the on-accent disabled knob was a white dot on pale grey
+        // on the light ground (1.2 : 1), barely telling on from off.
+        OnFillDisabled = Tok.TextPrimary, OnKnobDisabled = Tok.TextOnAccentPrimary,
     };
 
     /// <summary>The slider: a 2-DIP line (12 % ink rail, accent value) whose 12 accent thumb appears only while the pointer is over the control:

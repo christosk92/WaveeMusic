@@ -276,6 +276,10 @@ public static class ZuneSettingsRules
     /// <summary>The lane's air above and below the column.</summary>
     public const float LaneTop = 4f, LaneBottom = 32f;
 
+    /// <summary>How far the lane's scroll clip reaches left of the column (the column itself does not move): a glyph whose ink hangs left
+    /// of its advance at the gutter (a lowercase j's hook, "japanese" in the AI lyrics languages) is not cut by the clip.</summary>
+    public const float LaneInk = 4f;
+
     /// <summary>The gap between the column and the preview, the preview's basis and its cap.</summary>
     public const float AsideGap = 48f, AsideBasis = 320f, AsideMax = 480f, AsideMaxStandard = 360f;
 
@@ -321,9 +325,6 @@ public static class ZuneSettingsRules
 
     /// <summary>The download bar's width, a language line's height, its name and status lanes and the gap between lines.</summary>
     public const float AiBarWidth = 180f, AiLanguageRowHeight = 32f, AiLanguageNameWidth = 88f, AiLanguageStatusWidth = 84f, AiLanguageGap = 2f;
-
-    /// <summary>The pack's languages, in the order the page lists them (any other follows in code order).</summary>
-    public static readonly string[] AiLanguageOrder = ["en", "es", "nl", "ko"];
 
     // ── Storage ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 

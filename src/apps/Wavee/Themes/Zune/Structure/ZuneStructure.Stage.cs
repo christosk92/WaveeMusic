@@ -28,5 +28,10 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.StageNowPlayingCard, ZuneStageNowPlayingCard.Template, "zune.stage.now-playing-card");
         views.Add(ViewKeys.StageIdentity, ZuneStageIdentity.Template, "zune.stage.identity");
         views.Add(ViewKeys.StagePane, ZuneStagePane.Template, "zune.stage.pane");
+        // Video mode (Cinema and Theatre): the chrome over the picture (mounted by the core above the video hole), the "up next" strip over the
+        // picture and the end-of-video card. `ZuneStageTiers.Policy` states VideoStage, so F11 and "video in fullscreen" open the stage on the picture.
+        views.Add(ViewKeys.StagePictureChrome, ZuneStagePictureChrome.Template, "zune.stage.picture-chrome");
+        views.Add(ViewKeys.QueueStageShelf, ZuneStageShelf.Template, "zune.queue.stage-shelf");
+        views.Add(ViewKeys.StageEndCard, ZuneStageEndCard.Template, "zune.stage.end-card");
     }
 }

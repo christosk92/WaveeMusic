@@ -52,6 +52,7 @@ public static partial class Shell
         BellUnread = static () => Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value,
         ToggleNotifications = OpenNotificationPanel,
         Pin = CurrentPin,
+        OpenFullScreen = static begin => PlayerVerbs.Default.OpenStage(begin, "titlebar"),
         Search = SearchProps(),
         OnSearchRoute = static () => Current.Value.Kind == RouteKind.Search,
     };

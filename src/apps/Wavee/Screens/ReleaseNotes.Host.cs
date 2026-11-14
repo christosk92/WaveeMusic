@@ -42,8 +42,10 @@ public static partial class ReleaseNotes
     public sealed record ReleaseNotesView(ReleaseEntry[] Releases, HighlightItem[] MergedHighlights, ReleaseNotesIndex? Index,
         string SelectedVersion, string LastSeen);
 
-    /// <summary>A highlight ready to render, its poster already resolved to a real path (or null) by the LOADER.</summary>
-    public sealed record HighlightItem(ReleaseHighlight Highlight, ReleaseNotesDocument Doc, string? DarkPoster, string? LightPoster = null)
+    /// <summary>A highlight ready to render, its poster already resolved to a real path (or null) by the LOADER. <paramref name="Motion"/>
+    /// is a <c>kind: "motion"</c> highlight's animated WebP on disk (null otherwise, or when the file is missing): the cards and the
+    /// viewer play it over the poster (<c>ReleaseNotes.MotionLayer</c>).</summary>
+    public sealed record HighlightItem(ReleaseHighlight Highlight, ReleaseNotesDocument Doc, string? DarkPoster, string? LightPoster = null, string? Motion = null)
     {
         /// <summary>The poster for the app mode NOW: the light capture while Wavee is light (when the release has one), else the
         /// dark one. Read in render: a light/dark switch re-runs every render, so the card swaps with the rest of the page.</summary>
@@ -164,7 +166,7 @@ public static partial class ReleaseNotes
             foreach (var h in e.Doc.Highlights)
             {
                 if (merged.Count >= HighlightMax) return merged.ToArray();
-                if (HighlightVisibility.IsVisible(h, isStoreInstall)) merged.Add(new HighlightItem(h, e.Doc, ResolvePoster(h, store, e.Doc), ResolvePoster(h, store, e.Doc, light: true)));
+                if (HighlightVisibility.IsVisible(h, isStoreInstall)) merged.Add(new HighlightItem(h, e.Doc, ResolvePoster(h, store, e.Doc), ResolvePoster(h, store, e.Doc, light: true), ResolveMotion(h, store, e.Doc)));
             }
         return merged.ToArray();
     }
@@ -176,7 +178,7 @@ public static partial class ReleaseNotes
         if (store is null || await store.GetAsync(me.Core, ct).ConfigureAwait(false) is not { } doc) return null;
         var visible = HighlightVisibility.SelectVisible(doc.Highlights, me.IsStore, HighlightMax);
         var cards = new HighlightItem[visible.Count];
-        for (int i = 0; i < visible.Count; i++) cards[i] = new HighlightItem(visible[i], doc, ResolvePoster(visible[i], store, doc), ResolvePoster(visible[i], store, doc, light: true));
+        for (int i = 0; i < visible.Count; i++) cards[i] = new HighlightItem(visible[i], doc, ResolvePoster(visible[i], store, doc), ResolvePoster(visible[i], store, doc, light: true), ResolveMotion(visible[i], store, doc));
         return (doc, cards);
     }
 
@@ -185,8 +187,18 @@ public static partial class ReleaseNotes
     public static string? ResolvePoster(ReleaseHighlight? h, Store? store, ReleaseNotesDocument? doc, bool light = false)
     {
         if (store is null || doc is null || h?.Media is not { } m) return null;
-        bool video = string.Equals(m.Kind, "video", StringComparison.OrdinalIgnoreCase);
-        string? src = light ? (video ? null : m.SrcLight) : video ? m.Poster : m.Src;   // a video names its still
+        bool moving = ReleaseNotesValidation.IsVideoKind(m.Kind) || ReleaseNotesValidation.IsMotionKind(m.Kind);
+        string? src = light ? (moving ? null : m.SrcLight) : moving ? m.Poster : m.Src;   // a video or a motion names its still
+        return ExistingMedia(store, doc, src);
+    }
+
+    /// <summary>A <c>kind: "motion"</c> highlight's animated WebP on disk, or null (another kind, or the file is missing: the poster
+    /// alone shows). LOADER-only, like <see cref="ResolvePoster"/>.</summary>
+    public static string? ResolveMotion(ReleaseHighlight? h, Store? store, ReleaseNotesDocument? doc)
+        => store is null || doc is null || h?.Media is not { } m || !ReleaseNotesValidation.IsMotionKind(m.Kind) ? null : ExistingMedia(store, doc, m.Src);
+
+    static string? ExistingMedia(Store store, ReleaseNotesDocument doc, string? src)
+    {
         if (string.IsNullOrEmpty(src)) return null;
         try { string path = store.MediaPath(doc, src); return path.Length > 0 && File.Exists(path) ? path : null; }
         catch (Exception) { return null; }
