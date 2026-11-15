@@ -6,6 +6,8 @@
 //   · `PageMotionPolicy`  what a structure answers per kind: the page root's recipe (both legs) and the staggered entrance of the
 //                         incoming page's units (`EntranceCascade` over its `Element.EntranceGroup` containers). A structure that
 //                         declares none keeps the core's one fade-through for every swap (Classic, Zune).
+//   · `SectionJump`       how a tab INSIDE a page moves to its section (the artist page's pivot): a glide when the section is near, an
+//                         arrival (a cut to a lead short of it, then the glide's tail) when it is far. None keeps the full glide.
 
 using FluentGpu.Foundation;
 
@@ -45,13 +47,30 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// and no stagger. Null = a cut, as the shell shipped.</summary>
     public LayoutTransition? ReducedFade { get; init; }
 
-    /// <summary>A pivot INSIDE a page stepping to a sibling section (the artist page's tabs): the cascade that brings what then shows in,
-    /// given whether the step goes forward in the tab order (the new part comes from the right). Null = the page's own scroll glide.</summary>
-    public Func<bool, EntranceCascade?>? Pivot { get; init; }
+    /// <summary>How a tab INSIDE a page moves to its section (the artist page's pivot). Null = the page's own scroll glide the whole way.</summary>
+    public SectionJump? SectionJump { get; init; }
 
     /// <summary>The library family's pivot (<see cref="ShellCapabilities.LibraryFamily"/>): the recipe of the body under the fixed head when the kind
     /// changes, both legs, given whether the new kind comes after the old one in the pivot's order (it comes in from the right) and the facts the host is
     /// drawn in. Asked under reduced motion too (the host lets the recipe own it): answer the quick fade there. Null = the core's
     /// <c>Design.Nav.SameKindSwap</c> fade.</summary>
     public Func<bool, TierFacts, LayoutTransition?>? LibraryPivot { get; init; }
+}
+
+/// <summary>How a tab INSIDE a page (the artist page's pivot) moves the page to its section, by the distance <c>d</c> to it and the page viewport's
+/// height <c>vh</c>. Near (<c>d</c> &lt;= <see cref="NearViewports"/> x <c>vh</c>) the page glides there. Far, it cuts to a lead short of the section
+/// on the side the user comes from, already moving, and decelerates in (<c>ScrollHandle.ScrollTo</c>'s <c>maxTravel</c>), while what the page shows
+/// fades in over the same-kind swap's 100 ms from 40 % (<c>Design.Nav.SameKindEnterMs</c>, <c>SameKindEnterFrom</c>): a glide over many screens
+/// would cross virtualized grids at a viewport per frame. Under reduced motion every tab jumps and keeps the fade.</summary>
+/// <param name="NearViewports">The farthest a section glides from, in viewport heights.</param>
+/// <param name="LeadViewports">The lead a far section arrives from, in viewport heights, clamped to [<paramref name="LeadMin"/>, <paramref name="LeadMax"/>].</param>
+/// <param name="LeadMin">The shortest lead, DIP.</param>
+/// <param name="LeadMax">The longest lead, DIP.</param>
+public sealed record SectionJump(float NearViewports, float LeadViewports, float LeadMin, float LeadMax)
+{
+    /// <summary>Whether a section <paramref name="distance"/> away (DIP, either sign) in a <paramref name="viewport"/>-high page is far.</summary>
+    public bool IsFar(double distance, double viewport) => Math.Abs(distance) > NearViewports * Math.Max(1.0, viewport);
+
+    /// <summary>The lead a far section arrives from in a <paramref name="viewport"/>-high page, DIP.</summary>
+    public double LeadFor(double viewport) => Math.Clamp(LeadViewports * viewport, LeadMin, LeadMax);
 }

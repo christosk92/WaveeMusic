@@ -24,13 +24,17 @@
 //   · the drill's zoom in runs 500 ms, not 783 (DrillInScaleMs): the same spline, which is within a pixel of the end by 350 ms, while a zoom
 //     re-records the page every frame (a translate is a composite parameter, a scale is not);
 //   · the drill's outgoing zoom and fade run evenly (DrillAway): WinUI's fast spline moved the page edges half their way on the first frame;
-//   · the pivot slide has no exit leg and no fade: the page jumps to the section and what shows slides in, as WinUI's incoming slide does;
 //   · a sideways slide keeps every part inside the page (EntranceCascade.KeepInRoot): a part travels at most the room between it and the
 //     page's edge on the side it comes from (the gutter, for a part that starts at it; the whole 200 for one with room beside it), and parts
 //     side by side travel the same distance. WinUI slides the whole frame, which the frame's edge cuts; parted into sections, that edge cut
 //     a list's covers and titles off for most of the slide (owner, 2026-11-07).
 //
 // Reduced motion ("Animation effects" off): a quick cross-fade (ControlFaster each way), no slide, no scale, no stagger.
+//
+// THE ARTIST PAGE'S TABS scroll (SectionJump): a section within two viewports glides there; a farther one cuts to a lead short of it on the side the
+// user comes from and decelerates in, while what the page shows fades in from 40 % over 100 ms (the same-kind swap's numbers). The pinned pivot
+// neither moves nor fades. Reduced motion jumps and keeps the fade. (They used to jump and slide the section in sideways: the owner, 2026-11-15:
+// "things just randomly scroll and appear. i would expect scrolls".)
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`).
 
@@ -156,15 +160,15 @@ public static class WinUiPageMotion
         _ => null,
     };
 
-    /// <summary>A pivot inside a page bringing a sibling section in (the artist page's tabs): the visible units slide in from the side the
-    /// tab order points to, as <see cref="PageSwap.SlideFromRight"/> / <see cref="PageSwap.SlideFromLeft"/> do for pages, with no exit
-    /// leg (the page stays; the jump to the section is the hand-over).</summary>
-    public static EntranceCascade PivotCascade(bool fromRight) => fromRight ? s_pivotRight : s_pivotLeft;
+    // ── the artist page's tabs (SectionJump; see the header) ────────────────────────────────────────────────────────────
+    /// <summary>A section at most this many viewport heights away glides there: Overview to Albums is about 1.6 in the owner's session.</summary>
+    public const float SectionNearViewports = 2f;
+    /// <summary>A farther section arrives from this share of the viewport's height, clamped to [<see cref="SectionLeadMin"/>,
+    /// <see cref="SectionLeadMax"/>]: the tail of a real scroll, long enough to read as one.</summary>
+    public const float SectionLeadViewports = 0.4f;
+    public const float SectionLeadMin = 160f, SectionLeadMax = 320f;
 
-    // No fade: the jump to the section is the hand-over, so a unit that faded in from 0 left the frame after it blank. WinUI's slide does not
-    // fade its incoming page either (its opacity steps to 1 as the slide starts, ThemeTransitions.cpp:1571-1574).
-    static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx), 0f) with { KeepInRoot = true };
-    static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx), 0f) with { KeepInRoot = true };
+    static readonly SectionJump s_sectionJump = new(SectionNearViewports, SectionLeadViewports, SectionLeadMin, SectionLeadMax);
 
     // ── the library's pivot (the body under a fixed head; winui library family) ─────────────────────────────────────────────
     //
@@ -214,6 +218,6 @@ public static class WinUiPageMotion
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
     public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
     {
-        ReducedFade = s_reduced, Pivot = static fromRight => FluentGpu.Dsl.Motion.ReducedMotion ? null : PivotCascade(fromRight), LibraryPivot = LibraryPivot,
+        ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot,
     };
 }
