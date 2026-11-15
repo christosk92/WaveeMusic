@@ -551,7 +551,11 @@ the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, th
 and 4 know their face, the rest in flight: the hero arm (Compact, and Classic/Zune's vertical page) paints rows 1 and 4 over the
 others' placeholders; the two-column arm keeps the whole first page on its shimmer until the first page's faces are in,
 `TableRules.RowsPending`'s hot-row gate, by design) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
-credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). `state cold-head` instead of `cold-list` also takes the
+credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). **A regenerated Mix** (the stale head and list a
+first open holds, then the fresh answer): `goto uri=spotify:playlist:pl6 settle=false` (the seeded list is held on the open's revalidation,
+which the fake never answers: the cover and description wait on their skeletons with the rows), a few `frames`, then `state kind=regen` lands a
+new revision with other rows and another cover and description (a second `regen` on the settled page changes the cover in place: its
+hand-over crossfade). `state cold-head` instead of `cold-list` also takes the
 HEADER away (title, description and owner unknown, Identity not known; the cover stays: a deep link's first frames), so the page shows its
 pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
