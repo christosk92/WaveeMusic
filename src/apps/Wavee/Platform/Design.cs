@@ -561,7 +561,8 @@ public static partial class Design
         /// rejected in the sequenced swap); from 40 % the new page is readable on its first frame and still never shares the card.</summary>
         public const float SameKindEnterFrom = 0.4f;
 
-        /// <summary>EVERY page-to-page swap, not only a same-kind one, never shows two pages at once (the owner, 2026-11-15, after the arrive-whole
+        /// <summary>Fast navigation (<c>Platform.Keys.FastNavigation</c>, off by default): every page-to-page swap, not only a same-kind one, never
+        /// shows two pages at once (the owner, 2026-11-15, after the arrive-whole
         /// fix exposed the hand-over: the old and the new page printed over each other for ~3 frames). The recipe keeps its own cue on the incoming
         /// page (Classic's 8-DIP slide, WinUI's zoom or rise), loses its exit leg (the keep-alive host deactivates the outgoing page on the swap's
         /// frame) and its wait for that leg, and starts from <see cref="SameKindEnterFrom"/>, so no frame is an empty card.</summary>

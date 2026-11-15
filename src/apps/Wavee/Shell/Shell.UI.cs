@@ -981,9 +981,12 @@ public static partial class Shell
         return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in chosen) : chosen;
     }
 
-    /// <summary>Does this swap take <see cref="Design.Nav.NoOverlap(in LayoutTransition)"/>: a swap from one page to another (a first activation has
-    /// no outgoing page), outside a structure that mounts its incoming page at the end of the exit leg (Zune's sequenced swap never overlapped).</summary>
-    static bool SwapsWithoutOverlap(object oldToken) => oldToken is Route && !ShellCaps.Now.DefersPageMount;
+    /// <summary>Does this swap take <see cref="Design.Nav.NoOverlap(in LayoutTransition)"/>: only with Fast navigation on (Settings ▸ Appearance ▸
+    /// Display, <see cref="Platform.Keys.FastNavigation"/>; off keeps the authored hand-over, the owner's default), a swap from one page to another
+    /// (a first activation has no outgoing page), outside a structure that mounts its incoming page at the end of the exit leg (Zune's sequenced
+    /// swap never overlapped). Read at the swap, untracked.</summary>
+    static bool SwapsWithoutOverlap(object oldToken)
+        => oldToken is Route && !ShellCaps.Now.DefersPageMount && Platform.Settings.Get(Platform.Keys.FastNavigation);
 
     /// <summary>The incoming page's staggered entrance (<see cref="Theming.PageMotionPolicy.Cascade"/>), asked on the same edges as
     /// <see cref="PageTransition"/>: none for a facet switch inside Home, a video-safe swap, under reduced motion, or under a structure
