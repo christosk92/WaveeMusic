@@ -814,6 +814,22 @@ public static partial class Entities
             ? ownerSlot == meSlot
             : (caps & (byte)(PlaylistCaps.CanAdministratePermissions | PlaylistCaps.IsOwner)) != 0;
 
+    /// <summary>Is <paramref name="uri"/> the account's own collection, which it can neither follow nor save: Liked Songs (any
+    /// collection uri: the fake answers it as a playlist, Spotify as a collection), Your Episodes (<see cref="YourEpisodesRules"/>)
+    /// or a playlist the account owns (<see cref="IsOwnPlaylist"/>, asked directly because a row met in search or on a card often
+    /// knows its owner before its capabilities, and the derived <see cref="Playlist.IsOwner"/> bit waits on those). The one rule
+    /// behind search's trailing control and the container menu's Save (the owner saw "Following" on the Liked Songs top result,
+    /// 2026-11-16).</summary>
+    internal static bool IsOwnCollection(EntityUri uri)
+    {
+        if (!uri.IsValid) return false;
+        if (uri.Kind == EntityKind.Collection || EntityUri.IsLikedCollection(uri.Text)) return true;
+        if (uri.Kind != EntityKind.Playlist) return false;
+        if (!Current.Playlists.TryGetSlot(uri.Id, out int slot)) return YourEpisodesRules.Is(PlaylistFormat.None, uri.Text, Spotify.Podcasts.KnownSavedUri);
+        var pl = new Playlist(slot);
+        return pl.IsYourEpisodes || IsOwnPlaylist(pl.Owner.Slot, Current.MeSlot, (byte)pl.Caps);
+    }
+
     /// <summary>The derived owner fact (<see cref="IsOwnPlaylist"/>): an owner administers; a playlist someone else owns carries no
     /// owner bit (a stale one, derived from a grant before the owner row landed or kept on disk, is cleared). The server's own
     /// capability bits are left as it sent them. The decoder cannot see "me"; the commit can.</summary>

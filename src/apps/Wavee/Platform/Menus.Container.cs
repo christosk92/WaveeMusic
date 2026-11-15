@@ -30,7 +30,8 @@ public readonly record struct ContainerMenuPlan(ContainerVerb[] Strip, Container
 /// navigation → Share), settled from what the five old builders agreed on:
 /// <list type="bullet">
 /// <item>Album — strip Play · Play next · Add to queue · Save; rows Add to playlist · Open · Pin/Unpin · Go to artist · Share.</item>
-/// <item>Playlist — the album's, minus Go to artist (Liked Songs also drops Save: it is always yours).</item>
+/// <item>Playlist — the album's, minus Go to artist (the account's own — Liked Songs, Your Episodes, a playlist it owns — also
+/// drops Save: it is always yours).</item>
 /// <item>Artist — strip Play · Follow; rows Open · Pin/Unpin · Go to artist radio · Share (no queue pair, no deposit).</item>
 /// <item>Show — strip Play · Play next · Add to queue · Save; rows Open · Pin/Unpin · Share.</item>
 /// </list>
@@ -57,26 +58,27 @@ public static class ContainerMenuRules
     // The on-page variants are DERIVED from the card tables (not restated) so the two cannot drift.
     static readonly ContainerMenuPlan s_album = new(s_listStrip, s_albumRows);
     static readonly ContainerMenuPlan s_playlist = new(s_listStrip, s_playlistRows);
-    static readonly ContainerMenuPlan s_liked = new(s_listStripOwn, s_playlistRows);
+    static readonly ContainerMenuPlan s_own = new(s_listStripOwn, s_playlistRows);
     static readonly ContainerMenuPlan s_artist = new(s_artistStrip, s_artistRows);
     static readonly ContainerMenuPlan s_show = new(s_listStrip, s_showRows);
 
     static readonly ContainerMenuPlan s_albumPage = OnPage(s_album);
     static readonly ContainerMenuPlan s_playlistPage = OnPage(s_playlist);
-    static readonly ContainerMenuPlan s_likedPage = OnPage(s_liked);
+    static readonly ContainerMenuPlan s_ownPage = OnPage(s_own);
     static readonly ContainerMenuPlan s_artistPage = OnPage(s_artist);
     static readonly ContainerMenuPlan s_showPage = OnPage(s_show);
 
     /// <param name="kind">Album · Artist · Playlist · Show; anything else has no container menu (empty plan).</param>
-    /// <param name="liked">Liked Songs: a playlist target that is always saved, so it has no Save.</param>
+    /// <param name="own">The account's own collection (<c>Entities.IsOwnCollection</c>): a playlist target that is always
+    /// yours, so it has no Save.</param>
     /// <param name="onPage">The hero "…" of the entity's own page: no strip, no Open, no Go to artist.</param>
-    public static ContainerMenuPlan For(TargetKind kind, bool liked, bool onPage)
+    public static ContainerMenuPlan For(TargetKind kind, bool own, bool onPage)
     {
-        bool l = liked && kind == TargetKind.Playlist;
+        bool l = own && kind == TargetKind.Playlist;
         return kind switch
         {
             TargetKind.Album => onPage ? s_albumPage : s_album,
-            TargetKind.Playlist => l ? (onPage ? s_likedPage : s_liked) : (onPage ? s_playlistPage : s_playlist),
+            TargetKind.Playlist => l ? (onPage ? s_ownPage : s_own) : (onPage ? s_playlistPage : s_playlist),
             TargetKind.Artist => onPage ? s_artistPage : s_artist,
             TargetKind.Show => onPage ? s_showPage : s_show,
             _ => new ContainerMenuPlan(s_none, s_none),
@@ -129,7 +131,10 @@ public static partial class Menus
     public static ContextMenuModel? Container(in ActionTarget target, string? art, string? subtitle,
                                               in ContainerExtras x = default)
     {
-        var plan = ContainerMenuRules.For(target.Kind, x.Liked, x.OnPage);
+        // Own = the surface said Liked, or the target is the account's own collection (one rule for every surface: search, cards,
+        // library, sidebar), so no caller has to remember it.
+        var plan = ContainerMenuRules.For(target.Kind,
+            x.Liked || target.Kind == TargetKind.Playlist && Entities.IsOwnCollection(target.Uri), x.OnPage);
         if (plan.IsEmpty) return null;
         var ctx = new ActionContext(target, x.Services ?? Actions.Services);
 
