@@ -434,8 +434,11 @@ internal static partial class WinUiDetailFrame
             {
                 Width = WinUiDetailRules.BandCover, Height = WinUiDetailRules.BandCover, Shrink = 0f,
                 Corners = CornerRadius4.All(WinUiDetailRules.BandCoverRadius), ClipToBounds = true,
-                // The band's cover hands over like the hero's (a regenerated Mix lands a new cover in place): never a blank square between the two.
-                Children = [Controls.ArtworkHandOver(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
+                // The page's own small cover first: a generated one (Liked Songs' treatment, a playlist's mosaic) has no image url, and the url
+                // alone drew an empty tile (the owner, 2026-11-15: "liked songs here in winui is empty blob"). The playlist's slot hands over like
+                // the hero's (a regenerated Mix lands a new cover in place), as the url arm does: never a blank square between the two.
+                Children = [spec.Slots.CompactCover?.Invoke(WinUiDetailRules.BandCover)
+                    ?? Controls.ArtworkHandOver(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
             },
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = identity.ToArray() },
         };
