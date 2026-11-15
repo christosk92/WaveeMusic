@@ -1,6 +1,6 @@
 // ── Platform/Controls.Art.cs ───────────────────────────────────────────────────────────────────────────────────────
 // The media surface's shared PARTS (cover stack, corner "…", the now-playing overlay, the card data contract, the
-// chrome rules), chips, stat tiles, countdowns, face piles, rich text, the shimmer
+// chrome rules), chips, stat tiles, countdowns, face piles, rich text
 //
 // Role: UI
 // Owner: L
@@ -496,81 +496,7 @@ public static partial class Controls
     public static bool RelatesNow(string uri)
         => NowPlaying is { } pb && pb.HasActiveContext.Value && pb.RelatesTo(uri);
 
-    // ══ 5. THE COVER SHIMMER ═════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The neutral shimmer cover tile. A Component (granular re-render) so it can read the image LOAD STATE and
-    /// start/stop its own opacity breathe accordingly: the keyframe effect is keyed by <c>loading</c>, so when the art
-    /// becomes ready the looping pulse is replaced IN PLACE by a finite flat track and the frame loop can quiesce (the
-    /// engine's "no forever-loop" rule).
-    ///
-    /// <para>It LATCHES <c>settled</c> and stops calling the image hook, so a loaded cover unsubscribes from the global
-    /// image epoch — without that, one image's status change re-renders every loaded cover in the grid.</para>
-    ///
-    /// <para>WEAK GPU: the placeholder is held FLAT even while loading. A per-frame opacity loop keeps the render loop
-    /// hot, and on a weak/UMA part that is exactly what starves the decode uploads it is waiting for.</para>
-    ///
-    /// <para>The url and the decode target are RE-PUSHED PROPS (<see cref="ShimmerProps"/>), not constructor fields: a
-    /// recycled virtual row that rebinds to another cover UPDATES this component in place instead of remounting it (hook
-    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> gives it one constant key). The settle
-    /// latch is therefore keyed to WHAT it settled for — a rebind re-arms the breathe for the new cover exactly as the
-    /// old per-url remount did.</para></summary>
-    public sealed class CoverShimmer : Component
-    {
-        static readonly Keyframe[] Breathe = [new(0f, 1f), new(0.5f, 0.5f), new(1f, 1f)];
-        static readonly Keyframe[] Flat = [new(0f, 1f), new(1f, 1f)];
-
-        // the settle latch, and the (url, decode target) it settled for
-        bool _settled;
-        string? _settledUrl;
-        int _settledW, _settledH;
-        // the placeholder bind, memoized per url: `Prop.Of` is a closure allocation, and this component used to pay it
-        // on every render
-        string? _placeholderFor;
-        Prop<ColorF> _placeholder;
-
-        public override Element Render()
-        {
-            var p = UseProps<ShimmerProps>();
-            if (_settledUrl != p.Url || _settledW != p.DecodeW || _settledH != p.DecodeH)
-            {
-                _settledUrl = p.Url; _settledW = p.DecodeW; _settledH = p.DecodeH;
-                _settled = false;
-            }
-            bool loading = false;
-            if (!_settled)
-            {
-                // Share the displayed image's decode handle (same source + decode target) so this reads the SAME load
-                // state and forks no second decode. The image hook consumes no hook cell, so the conditional call is
-                // safe.
-                var binding = UseImage(p.Url, p.DecodeW, p.DecodeH);
-                var state = binding.State;
-                if (state == ImageState.Ready) _settled = true;
-                else if (state == ImageState.Failed && binding.Failure != ImageFailureKind.Canceled) _settled = true;
-                else loading = state is ImageState.None or ImageState.Pending;
-            }
-            // Deliberately NOT gated on reduced motion: this is a LOADING INDICATOR, not a flourish, and it stops on
-            // settle anyway. Nor on the GPU tier (owner decision, 2026-10-05): every tier gets the same shimmer; a saturated GPU
-            // is the engine's measured governor's business, not a reason to show a different placeholder.
-            bool shimmer = loading;
-            UseKeyframes(AnimChannel.Opacity, shimmer ? Breathe : Flat, shimmer ? 1000f : 1f, shimmer,
-                         DepKey.From(shimmer));
-            if (_placeholderFor != p.Url) { _placeholderFor = p.Url; _placeholder = Design.WatchedPlaceholder(p.Url); }
-            return new BoxEl
-            {
-                Width = p.Width, Height = p.Height, Corners = CornerRadius4.All(p.Corners),
-                // Tint is PAINT-ONLY: the fill bind reads the per-key watch signal, so a landed grading marks
-                // PaintDirty on exactly this tile — never a re-render, and never the global epoch fan-out that used to
-                // re-render every still-loading cover in the grid at once.
-                Fill = _placeholder,
-            };
-        }
-    }
-
-    /// <summary><see cref="CoverShimmer"/>'s re-pushed props. All value fields plus one string, so the compiler's record
-    /// equality is exactly the data gate wanted: a rebind to the same cover at the same size coalesces.</summary>
-    sealed record ShimmerProps(string Url, int DecodeW, int DecodeH, float Width, float Height, float Corners);
-
-    // ══ 6. CHIPS ═════════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 5. CHIPS ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The filter-chip rail's own metrics. <see cref="ChipRailExtent"/> is what the chip bar contributes to a
     /// stacked detail chrome column, INCLUDING its bottom semantic gap — one number, so a page's layout arithmetic and
@@ -648,7 +574,7 @@ public static partial class Controls
             ScrollKey = scrollKey,
         };
 
-    // ══ 7. THE STAT TILE ═════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 6. THE STAT TILE ═════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE 18/800-value-over-11-caption stat tile — it replaced FOUR hand copies that had drifted onto
     /// diverging motion specs.
@@ -701,7 +627,7 @@ public static partial class Controls
         };
     }
 
-    // ══ 8. THE COUNTDOWNS ════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 7. THE COUNTDOWNS ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The per-unit remainder, NOT a cumulative total. Clamped at zero so a tick that lands a hair past the
     /// instant (the released gate flips on the next render, not mid-frame) can never render a negative tile.</summary>
@@ -774,7 +700,7 @@ public static partial class Controls
         };
     }
 
-    // ══ 9. FACE PILES ════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 8. FACE PILES ════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // The overlapping-avatar strip. The constants below are what three separate piles had each hand-rolled; naming them
     // once is what stops the three drifting into three different overlaps.
@@ -906,7 +832,7 @@ public static partial class Controls
             : frame;
     }
 
-    // ══ 10. RICH TEXT ════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 9. RICH TEXT ═════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // A description that may be an HTML FRAGMENT — a playlist/album blurb carries anchors to artists and playlists and
     // <b> bold — rendered as ONE wrapped rich-text paragraph (a span paragraph shapes all runs as a single flow).

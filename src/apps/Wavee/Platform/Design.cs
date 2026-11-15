@@ -286,9 +286,10 @@ public static partial class Design
     // The neutral tile itself (an OPAQUE explicit neutral, never a translucent theme brush) is the style's `R.Layer.ArtPlaceholder`, and
     // the blend toward the cover's own colour is `ColorScience.Placeholder` at `ColorScience.TintStrength`.
 
-    /// <summary>Below this edge the breathe is imperceptible, so a slot takes a cheap STATIC tile: no component, no hook
-    /// cells, no image-epoch subscription — a 50k-row virtualized list pays nothing per item.</summary>
-    public const float ShimmerMinEdge = 80f;
+    /// <summary>At or above this edge a cover tile is KEYED (<c>"shim"</c>) and opts out of the derived skeleton, so a
+    /// pending region leaves the slot to the image's own placeholder tile instead of drawing a second bar over it. Below it
+    /// the tile is an anonymous box the skeleton deriver may replace.</summary>
+    public const float CoverTileKeyedEdge = 80f;
 
     /// <summary>THE art placeholder resolver, for the ACTIVE theme's polarity. Light theme only accepts a LIGHT grading;
     /// a dark-only entry keeps the neutral tile rather than dropping a dark slab onto a pale page.</summary>
@@ -313,7 +314,7 @@ public static partial class Design
     /// <para>A raw <see cref="PlaceholderFor(ReadOnlySpan{char})"/> VALUE is computed once, at the render that first
     /// mounted the slot, and then FROZEN into the record — component factory fields freeze at mount. The
     /// enqueue-on-miss is real, but nothing then repaints the slot when that grading LANDS a moment later: every
-    /// sidebar/pin thumb (always under <see cref="ShimmerMinEdge"/>) and every fill-grid cell took exactly this frozen
+    /// sidebar/pin thumb (always under <see cref="CoverTileKeyedEdge"/>) and every fill-grid cell took exactly this frozen
     /// path, which is why they stayed grey forever despite the plane correctly grading their covers in the
     /// background.</para>
     ///
@@ -723,11 +724,11 @@ public static partial class Design
     // ══ 11b. THE LOADING SKELETON ════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The detail pages' skeleton (the playlist / album / show list and its head): the row's own shapes in a bar that reads as LOADING.
-    /// The engine's default bar is the subtle hover fill (3.5 % black in light), which its breathing pulse halves: the owner's recording
-    /// (2026-11-15) read the loading list as an empty page. The bar is the text ink at <see cref="SkeletonBarAlpha"/> over whatever ground the
-    /// page has (light and dark alike), breathing gently between full and <see cref="SkeletonPulseMin"/> of it. A property: the ink is read
-    /// where the element is built, so a theme flip re-reads it.</summary>
-    public static SkeletonStyle Skeleton => new(SkeletonBar, PulseMs: SkeletonPulseMs, PulseMin: SkeletonPulseMin);
+    /// The engine's default bar is the subtle hover fill (3.5 % black in light): the owner's recording (2026-11-15) read the loading list
+    /// as an empty page. The bar is the text ink at <see cref="SkeletonBarAlpha"/> over whatever ground the page has (light and dark
+    /// alike), flat: it never moves or pulses (the owner, 2026-11-15); a page that takes a while says so once with its loading bar
+    /// (<see cref="LoadingBarShowAfterMs"/>). A property: the ink is read where the element is built, so a theme flip re-reads it.</summary>
+    public static SkeletonStyle Skeleton => new(SkeletonBar);
 
     /// <summary>The skeleton's bar colour: the active text ink at <see cref="SkeletonBarAlpha"/>.</summary>
     public static ColorF SkeletonBar
@@ -741,8 +742,11 @@ public static partial class Design
 
     /// <summary>The bar's opacity over the page (WinUI's loading placeholders sit near the control fills, 6-10 %).</summary>
     public const float SkeletonBarAlpha = 0.085f;
-    /// <summary>The breathing pulse's period and its floor (a calm breath that never fades the bar out).</summary>
-    public const float SkeletonPulseMs = 1400f, SkeletonPulseMin = 0.6f;
+
+    /// <summary>The page loading bar's timing (the owner, 2026-11-15): a page whose placeholders are still up after
+    /// <see cref="LoadingBarShowAfterMs"/> shows one thin bar on its top edge, and once shown the bar stays at least
+    /// <see cref="LoadingBarMinVisibleMs"/> so it never blinks. A load shorter than the delay shows nothing.</summary>
+    public const float LoadingBarShowAfterMs = 500f, LoadingBarMinVisibleMs = 400f;
 
     // ══ 12. IMAGE DECODE SCALE ═══════════════════════════════════════════════════════════════════════════════════════
 

@@ -9,7 +9,7 @@
 //  1. SELECTION IS A CROSSFADE, NOT A CUT. The component PERSISTS (the page re-pushes its props, whose equality ignores the callback) and this view returns a ZStack host whose single child is
 //     keyed by slot — a key change is a real unmount, so the engine orphans the leaving pane and fades it UNDER the entering one, which rises 6 DIP in (`ClassicLibraryPaneKit.PaneSwap`,
 //     after `ClassicConcertShyMonthPill`'s `s_presence`). Nothing reads a frame clock; reduced motion is the engine's.
-//  2. LOADING → READY IS A CROSS-DISSOLVE, not a swap. The rows area is one `Skel.Region`: pending ⇒ the engine paints and breathes the DERIVED shimmer of the counted rows; Ready ⇒ it mounts the
+//  2. LOADING → READY IS A CROSS-DISSOLVE, not a swap. The rows area is one `Skel.Region`: pending ⇒ the engine paints the flat DERIVED shimmer of the counted rows; Ready ⇒ it mounts the
 //     real table and blur-reveals it row by row while the shimmer fades out beneath. The two `Loadable<int>` are the host's CACHED instances, one per state, because the region's thunks close over the
 //     instance we hand it — a fresh one per render would re-arm the boundary instead of flipping it.
 //  3. THE HEADER NEVER SKELETONS once the navigator knows the row: only the Header state paints bars, and the real header paints at once, its art arriving through `Controls.Artwork`'s own image
@@ -200,7 +200,7 @@ internal static class ClassicLibraryAlbumPane
 
     // ══ THE COUNTED SHIMMER ══════════════════════════════════════════════════════════════════════════════════════════
     //
-    // This tree is the region's DERIVATION INPUT, never painted as written: the engine maps its leaves to pulsing bars and cross-dissolves the real table over it. Two consequences shape it.
+    // This tree is the region's DERIVATION INPUT, never painted as written: the engine maps its leaves to flat bars and cross-dissolves the real table over it. Two consequences shape it.
     //  · The header is CHROME, not data (W5 paints the real "#  Title  ♥  ⏱" while the rows shimmer), so it goes to the deriver as its own override — `Skel(head)` — which returns it verbatim.
     //  · The table's blank placeholder row (`ClassicTrackChrome.Placeholder`) cannot BE the row: its cells are bare `new BoxEl()`, the table's pre-reveal blank — it paints nothing, and the
     //    deriver maps a childless box with no declared extent to an empty spacer, so the pane would load as a void (the complaint itself). The row below is that row's EXTENT — the same tracks,

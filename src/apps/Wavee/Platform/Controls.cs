@@ -16,8 +16,7 @@
 //   · Controls.cs         — this file: the art surfaces, the row primitives, the states, the dialogs, the toasts.
 //   · Controls.Cta.cs     — the media pill, its icon arm, the standard icon button, the text action, the CTA ramps.
 //   · Controls.Art.cs     — the media surface's shared parts (cover stack, corner "…", the now-playing overlay, the
-//                           `CardData` contract), chips, stat tiles, countdowns, face piles, rich text, the shimmer
-//                           component.
+//                           `CardData` contract), chips, stat tiles, countdowns, face piles, rich text.
 //   · Controls.Picker.cs  — the preview-card radio strip and the equalizer curve.
 //   · Surface.*.cs        — THE media surface, `Controls.Surface(CardData, SurfaceShape)`: every media card, tile and row
 //                           (a shelf card, a grid card, a list row, the search hit row, the up-next row) is this one
@@ -137,43 +136,33 @@ public static partial class Controls
     // The COLOUR half of this (the two grading halves, the tinted placeholder, the bound watch) is `Design.cs`'s §7.
     // These are the ELEMENT recipes over it.
 
-    /// <summary>A neutral cover tile that BREATHES while the art at <paramref name="url"/> is still loading and settles
-    /// to a calm static tile once it is ready / failed / absent — so an art slot reads as "loading", never as a coloured
-    /// hole, and the pulse STOPS (a forever-loop would pin the frame loop awake).
+    /// <summary>The cover tile under an art slot's image: a flat, palette-graded placeholder
+    /// (<see cref="Design.WatchedPlaceholder"/>) that the image cross-fades in over once decoded, so an art slot reads as
+    /// "art coming", never as a hole. It never moves (the owner, 2026-11-15: no pulse anywhere).
     ///
-    /// <para><paramref name="decodeW"/>/<paramref name="decodeH"/> MUST equal the decode target of the real image
-    /// stacked over this tile, so the load-state read shares its exact cache handle and forks no second decode.</para>
+    /// <para>The tile is OPAQUE by construction (the fill forces A = 1): a small thumb often sits over an UNPAINTED chrome
+    /// band, which is live Mica, so a see-through placeholder lets the desktop read through and the cover becomes a washed
+    /// smear while it loads. The fill is a paint-only bind on the per-key watch signal, so a grading that lands later
+    /// repaints exactly this tile and re-renders nothing.</para>
     ///
-    /// <para>Small thumbnails (rows, sidebar, chips) get the CHEAP static arm — no component, no hook cells, no
-    /// image-epoch subscription — so a 50k-row virtualized list pays nothing per item. That tile is OPAQUE by
-    /// construction (the fill forces A = 1): a small thumb sits over an UNPAINTED chrome band, which is live Mica, so a
-    /// see-through placeholder lets the desktop read through and the cover becomes a washed smear while it
-    /// loads.</para></summary>
-    public static Element Shimmer(string? url, int decodeW, int decodeH, float width, float height, float corners)
+    /// <para>At or above <see cref="Design.CoverTileKeyedEdge"/> the tile is keyed <c>"shim"</c> and opts out of the
+    /// derived skeleton (<c>Skeletonized(false)</c>): inside a pending region it would otherwise map to the deriver's
+    /// default BAR, a stray stripe across the cover, while the paired image's own derived placeholder already IS the cover
+    /// square, so every loading cover reads the same. One constant key: a recycled row that rebinds to another cover
+    /// updates the tile in place, and a tier crossing that resizes it never remounts it (a key is never built from a
+    /// size).</para></summary>
+    public static Element CoverTile(string? url, float width, float height, float corners)
     {
-        if (url is not { Length: > 0 } u || MathF.Min(width, height) < Design.ShimmerMinEdge)
-            return new BoxEl
-            {
-                Width = width, Height = height, Corners = CornerRadius4.All(corners),
-                Fill = Design.WatchedPlaceholder(url),
-            };
-        // The url and the decode target travel as RE-PUSHED PROPS (the component-props contract): a virtualized card
-        // that REBINDS to a new cover — or to the SAME cover at a new decode target (a hero's unmeasured→measured
-        // bucket jump, a shelf↔grid mismatch) — UPDATES the mounted CoverShimmer in place, which re-arms its settle
-        // latch for the new (url, size) itself. Keying by url used to force a REMOUNT on every recycle (hook cells,
-        // effects, the keyframe track) and allocated a four-part key string per render; keying by the decode size remounted it
-        // whenever a tier crossing resized the cover (audit B9: a key is never built from a size). One constant key: the props
-        // carry the url and the size.
-        //
-        // Skeletonized(false): inside a derived skeleton this opaque component would otherwise map to the deriver's
-        // default BAR — a stray stripe across the cover. Dropping it lets the paired image's own derived placeholder BE
-        // the cover square, so every loading cover reads the same.
-        return (Embed.Comp(new ShimmerProps(u, decodeW, decodeH, width, height, corners), static () => new CoverShimmer())
-                with { Key = "shim" })
-            .Skeletonized(false);
+        var tile = new BoxEl
+        {
+            Width = width, Height = height, Corners = CornerRadius4.All(corners),
+            Fill = Design.WatchedPlaceholder(url),
+        };
+        if (url is not { Length: > 0 } || MathF.Min(width, height) < Design.CoverTileKeyedEdge) return tile;
+        return (tile with { Key = "shim" }).Skeletonized(false);
     }
 
-    /// <summary>An ARTWORK slot: a neutral <see cref="Shimmer"/> tile under the async image, which cross-fades in over
+    /// <summary>An ARTWORK slot: a neutral <see cref="CoverTile"/> under the async image, which cross-fades in over
     /// it once decoded. The tile shares ONE decode handle with the image (matched W×H, any aspect).
     ///
     /// <para>DECODE BRANCHES, and all three matter: with <paramref name="decodePx"/> 0 and <paramref name="scale"/> 1
@@ -190,7 +179,7 @@ public static partial class Controls
     /// pinned through <c>ImageEl.KeepWhileHidden</c> and never released.</para>
     ///
     /// <para><paramref name="morphKey"/> tags the image as a shared-element participant. A morph-tagged slot mounts NO
-    /// shimmer sibling (culling only the tagged image must not leave a separate tile painting the old slot behind the
+    /// cover-tile sibling (culling only the tagged image must not leave a separate tile painting the old slot behind the
     /// flying overlay) and therefore carries a FROZEN placeholder — the one art path in the app with no live tint. It is
     /// dormant today; if 0.3 ever re-arms the fly, this branch owes itself a watched placeholder.</para></summary>
     public static Element Artwork(string? url, float width, float height, float corners, string? morphKey = null,
@@ -215,13 +204,13 @@ public static partial class Controls
         // A2/G-259), clamped to the same Ceiling Design.ImageDecodeScale.For applies (Bucket itself has no ceiling
         // clamp; Design.cs is owned by another wave here, so the clamp lives at this call site instead), with dh
         // derived from (dw, aspect) EXACTLY the way the engine's Reconciler.ImageDecodeTarget will once dw is handed
-        // to Ui.Image as a DECODE hint rather than a layout extent (see below). Both dw/dh feed BOTH Shimmer's key and
-        // the real image's own DecodePx (just past this block) so the two never fork onto separate cache handles.
+        // to Ui.Image as a DECODE hint rather than a layout extent (see below). Both dw/dh feed the real image's own
+        // DecodePx (just past this block).
         int dw, dh;
         if (useScaledDecode) { dw = scaledDecodePx; dh = scaledDecodePx; }
         else { (dw, dh, _) = ArtworkDecode(width, height, 0); }
 
-        // Un-tagged art keeps a TRANSPARENT placeholder because the shimmer tile below already fills the slot (and
+        // Un-tagged art keeps a TRANSPARENT placeholder because the cover tile below already fills the slot (and
         // carries the tint). A morph participant owns its own placeholder — resolved directly, since it has no sibling
         // to inherit from.
         ColorF placeholder = morphKey is null ? ColorF.Transparent : Design.PlaceholderFor(url);
@@ -245,7 +234,7 @@ public static partial class Controls
         {
             ZStack = true, Width = width, Height = height, ClipToBounds = true,
             Corners = CornerRadius4.All(corners),
-            Children = morphKey is null ? [Shimmer(url, dw, dh, width, height, corners), img] : [img],
+            Children = morphKey is null ? [CoverTile(url, width, height, corners), img] : [img],
         };
     }
 
@@ -281,7 +270,7 @@ public static partial class Controls
     /// Mix lands a new cover under the same page). The cover shown stays put while the new one decodes over it on a transparent placeholder,
     /// then the new one crossfades in on top; only once it is whole does the shown one give way under it. The owner's recording (2026-11-15):
     /// the cover blanked to grey for a frame, then the new one popped in. A first cover (nothing shown yet) arrives as <see cref="Artwork"/>'s
-    /// does, over its shimmer tile. For a slot that never changes art (cards, rows) <see cref="Artwork"/> is the one to use: this keeps a
+    /// does, over its cover tile. For a slot that never changes art (cards, rows) <see cref="Artwork"/> is the one to use: this keeps a
     /// component and, for the length of a hand-over, a second decoded cover.</summary>
     public static Element ArtworkHandOver(string? url, float width, float height, float corners, int decodePx = 0, float saturation = 1f)
         => Embed.Comp(new HandOverProps(url ?? "", width, height, corners, decodePx, saturation), static () => new CoverHandOver()) with { Key = "art:handover" };
@@ -379,9 +368,8 @@ public static partial class Controls
     /// neither this nor its caller ever measures a width — the engine's own fit (<c>GridEl.MinColWidth</c>, flex
     /// <c>Grow</c>) decides the cell and this just fills whatever it is handed.
     /// <para>Placeholder is the same watched per-url tint every other art slot in the app uses
-    /// (<see cref="Design.WatchedPlaceholder"/>) — no <see cref="Shimmer"/> sibling: a responsive grid/shelf cell
-    /// recycles too fast (virtualized scroll) to justify the extra component + image-epoch subscription <see
-    /// cref="Artwork"/>'s fixed-size slots pay for their slower-turnover chrome.</para>
+    /// (<see cref="Design.WatchedPlaceholder"/>) — no <see cref="CoverTile"/> sibling: the image paints the watched tint
+    /// as its own placeholder, one node per cell where <see cref="Artwork"/>'s fixed-size slots stack two.</para>
     /// <para><paramref name="focusY"/> is the cover crop's vertical focal point (0 top … 1 bottom; 0.5 centres, the
     /// engine default): a daylist header whose subject sits high in the frame keeps its subject in a wide slot.</para></summary>
     public static Element Cover(string? url, float aspect, float corner, float decodePx, float focusY = 0.5f)
