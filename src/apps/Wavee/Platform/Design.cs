@@ -560,6 +560,34 @@ public static partial class Design
         /// <summary>Where the same-kind fade starts. From nothing, its first frame was a near-empty card (the washed-out frame the owner
         /// rejected in the sequenced swap); from 40 % the new page is readable on its first frame and still never shares the card.</summary>
         public const float SameKindEnterFrom = 0.4f;
+
+        /// <summary>EVERY page-to-page swap, not only a same-kind one, never shows two pages at once (the owner, 2026-11-15, after the arrive-whole
+        /// fix exposed the hand-over: the old and the new page printed over each other for ~3 frames). The recipe keeps its own cue on the incoming
+        /// page (Classic's 8-DIP slide, WinUI's zoom or rise), loses its exit leg (the keep-alive host deactivates the outgoing page on the swap's
+        /// frame) and its wait for that leg, and starts from <see cref="SameKindEnterFrom"/>, so no frame is an empty card.</summary>
+        public static LayoutTransition NoOverlap(in LayoutTransition r) => r with
+        {
+            Exit = default,
+            DelayMs = 0f,
+            Enter = r.Enter with { Opacity = MathF.Max(r.Enter.Opacity, SameKindEnterFrom) },
+            Dynamics = GentleStart(r.Dynamics),
+        };
+
+        /// <summary>The incoming leg alone on screen: the Fluent decelerate carried 57 % of Classic's 8-DIP travel on its first frame (traced:
+        /// 4.57 DIP at once), which the overlapping exit used to hide. The quadratic ease-out a continuous swap already uses
+        /// (<see cref="ContinuousEnterEasing"/>) starts at a quarter of that rate and settles in the same time.</summary>
+        static TransitionDynamics GentleStart(in TransitionDynamics d)
+            => d.Kind == DynamicsKind.Tween && d.Easing.Equals(s_fluentDecelerate) ? TransitionDynamics.Tween(d.DurationMs, ContinuousEnterEasing) : d;
+
+        static readonly EasingSpec s_fluentDecelerate = TransitionDynamics.Tween(1f, Easing.FluentDecelerate).Easing;
+
+        /// <summary>The incoming page's staggered units under <see cref="NoOverlap(in LayoutTransition)"/>: no wait for an exit leg that no longer
+        /// plays, and the units start from <see cref="SameKindEnterFrom"/> (from nothing, the page's first frames were an empty card).</summary>
+        public static EntranceCascade NoOverlap(in EntranceCascade c) => c with
+        {
+            DelayMs = 0f,
+            Enter = c.Enter with { Opacity = MathF.Max(c.Enter.Opacity, SameKindEnterFrom) },
+        };
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
 

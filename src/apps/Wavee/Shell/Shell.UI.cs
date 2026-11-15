@@ -976,9 +976,14 @@ public static partial class Shell
         if (videoSafe) return RecipeForVideoSafe(motion);
         if (IsSameKindSwap(oldToken, next)) return Design.Nav.SameKindSwap;
         // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
-        if (pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own) return own;
-        return RecipeFor(motion);
+        LayoutTransition chosen = pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own
+            ? own : RecipeFor(motion);
+        return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in chosen) : chosen;
     }
+
+    /// <summary>Does this swap take <see cref="Design.Nav.NoOverlap(in LayoutTransition)"/>: a swap from one page to another (a first activation has
+    /// no outgoing page), outside a structure that mounts its incoming page at the end of the exit leg (Zune's sequenced swap never overlapped).</summary>
+    static bool SwapsWithoutOverlap(object oldToken) => oldToken is Route && !ShellCaps.Now.DefersPageMount;
 
     /// <summary>The incoming page's staggered entrance (<see cref="Theming.PageMotionPolicy.Cascade"/>), asked on the same edges as
     /// <see cref="PageTransition"/>: none for a facet switch inside Home, a video-safe swap, under reduced motion, or under a structure
@@ -992,7 +997,9 @@ public static partial class Shell
         Route from = oldToken is Route r ? r : Route.None;
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
         if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
-        return Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is { } cascade ? cascade(SwapOf(from, next, Motion.Peek())) : null;
+        if (Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is not { } cascade || cascade(SwapOf(from, next, Motion.Peek())) is not { } units)
+            return null;
+        return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in units) : units;
     }
 
     /// <summary>A swap between two entity pages of the same kind (playlist to playlist, album to album, artist to artist), which takes
