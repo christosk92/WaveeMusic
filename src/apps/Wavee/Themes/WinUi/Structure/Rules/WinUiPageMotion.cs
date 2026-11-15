@@ -84,8 +84,10 @@ public static class WinUiPageMotion
     public const float RootFadeMs = 83f;
     /// <summary>A drilled page's units rise this far on top of the zoom.</summary>
     public const float DrillUnitDy = 40f;
-    /// <summary>A drilled page's units start this long after the zoom does (the old page's 100 ms fade is most of the way out).</summary>
-    public const float DrillUnitDelayMs = 60f;
+    /// <summary>A drilled page's units start this long after the zoom does: at once. They used to wait 60 ms for the old page's 100 ms fade to
+    /// be most of the way out, and in that window neither page covered the card (the owner's recording, 2026-11-15: a washed-out, near-blank
+    /// page between two playlists). Started with the zoom, the header is up as the old page leaves.</summary>
+    public const float DrillUnitDelayMs = 0f;
 
     static TransitionDynamics Tween(float ms, EasingSpec e) => TransitionDynamics.Tween(ms, e);
 

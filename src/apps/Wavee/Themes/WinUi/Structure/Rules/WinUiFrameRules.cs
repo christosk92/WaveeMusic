@@ -251,7 +251,7 @@ public static class WinUiFrameRules
         Enter: new EnterExit(Opacity: 0f, Active: true),
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Easing.FluentAccelerate),
-        DelayMs: Design.Nav.EnterDelayMs, ExitDelayMs: 0f);
+        DelayMs: Design.Nav.HandOverDelayMs, ExitDelayMs: 0f);
 
     // ── node keys ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

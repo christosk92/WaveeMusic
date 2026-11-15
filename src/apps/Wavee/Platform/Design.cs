@@ -524,10 +524,21 @@ public static partial class Design
         /// <summary>The exit leg's duration of the page swap — Material's
         /// fade-through, verified to have zero overlap.</summary>
         public const float ExitDurationMs = 90f;
-        /// <summary>The enter leg's start delay. Equal to <see cref="ExitDurationMs"/> EXACTLY — never less, or the two
-        /// legs are briefly both on screen, which is the regression this file exists to fix (two full-bleed pages
-        /// summing to 1.83 opacity for ~130ms when both legs started at t=0).</summary>
+        /// <summary>The enter leg's start delay in the SEQUENCED swap (a structure that asks for a continuous one: Zune). Equal to
+        /// <see cref="ExitDurationMs"/> exactly: the two legs never share the screen (two full-bleed 300 ms legs from t=0 summed to 1.83
+        /// opacity for ~130 ms).</summary>
         public const float EnterDelayMs = ExitDurationMs;
+        /// <summary>The enter leg's start delay in the HAND-OVER swap (every other structure, Classic and WinUI's top-level swaps): the incoming
+        /// page starts as the outgoing one starts to leave. The sequenced swap left the card nearly empty between its legs (the owner's
+        /// recording, 2026-11-15: the old page faded to a washed-out, near-blank card for 100-150 ms before the new header faded in; traced,
+        /// the two pages' summed cover fell to 0.06 for two frames). Overlapped, the short exit (90 ms) and the decelerating enter (210 ms)
+        /// keep at least ~85 % of the card covered on every frame, and the new header is on screen from the first one; the legs share the
+        /// screen for the 90 ms exit only, the old page already past half gone when the new one is.</summary>
+        public const float HandOverDelayMs = 0f;
+        /// <summary>The hand-over's incoming leg: 167 ms (WinUI ControlFast) on the Fluent decelerate, which brings the new page most of the way
+        /// up in its first frames while the outgoing one leaves on its own 90 ms exit leg. The two pages' summed cover never drops below ~84 %
+        /// (the sequenced legs fell to 6 %), they share the screen for the exit leg only, and the swap settles sooner.</summary>
+        public const float HandOverEnterMs = 167f;
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
 
@@ -548,26 +559,31 @@ public static partial class Design
         static TransitionDynamics SeqEnter(bool continuous) => TransitionDynamics.Tween(EnterDurationMs, continuous ? ContinuousEnterEasing : Easing.FluentDecelerate);
         static TransitionDynamics SeqExit(bool continuous) => TransitionDynamics.Tween(ExitDurationMs, continuous ? ContinuousExitEasing : Easing.FluentAccelerate);
 
-        /// <summary>A sequenced translate + fade — the enter and exit legs each on their own horizontal travel.</summary>
-        static LayoutTransition SeqTranslate(float enterDx, float exitDx, bool continuous) => new(
-            TransitionChannels.Position | TransitionChannels.Opacity, SeqEnter(continuous),
+        /// <summary>A translate + fade — the enter and exit legs each on their own horizontal travel: sequenced (the enter waits out the exit)
+        /// for a structure that mounts its incoming page at the end of the exit leg, else the hand-over (<see cref="HandOverDelayMs"/>).</summary>
+        static LayoutTransition SeqTranslate(float enterDx, float exitDx, bool continuous, bool sequenced) => new(
+            TransitionChannels.Position | TransitionChannels.Opacity,
+            sequenced ? SeqEnter(continuous) : TransitionDynamics.Tween(HandOverEnterMs, Easing.FluentDecelerate),
             Enter: new EnterExit(Dx: enterDx, Opacity: 0f, Active: true),
             Exit: new EnterExit(Dx: exitDx, Opacity: 0f, Active: true),
-            ExitDynamics: SeqExit(continuous), DelayMs: EnterDelayMs, ExitDelayMs: 0f);
+            ExitDynamics: SeqExit(continuous),
+            DelayMs: sequenced ? EnterDelayMs : HandOverDelayMs, ExitDelayMs: 0f);
 
         /// <summary>The recipe for a page swap, WITH its Exit half. Both halves are load-bearing: the reconciler only
         /// overlaps the outgoing page (ZStacked on the boundary, hit-test invisible, parked once its tracks settle) when
         /// <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is detached in the same frame and the card
         /// flashes EMPTY before the incoming page arrives. Neutral is a plain fade; Forward/Back are the 0.2.x
-        /// fade-through (a sequenced 8-DIP translate + fade), the same for every pair of pages.
+        /// fade-through's 8-DIP translate + fade, the same for every pair of pages, its legs overlapped into a hand-over
+        /// (<see cref="HandOverDelayMs"/>; <paramref name="sequenced"/> keeps the legs apart for a structure that mounts the incoming page at the
+        /// end of the exit leg (<c>ShellCapabilities.DefersPageMount</c>: Zune) and for the wizards' own page swaps (the default).
         /// <para>CRITICAL: the translate passes <c>ExitDelayMs: 0f</c> EXPLICITLY. It is <c>float?</c> and null means
         /// "inherit <c>DelayMs</c>" — omitting it would push the exit out by <see cref="EnterDelayMs"/> too and flash the
         /// content card empty for that whole window (the bug a naive port reintroduces).</para></summary>
-        public static LayoutTransition RecipeFor(NavTransitionKind motion, bool continuous = false) => motion switch
+        public static LayoutTransition RecipeFor(NavTransitionKind motion, bool continuous = false, bool sequenced = true) => motion switch
         {
             NavTransitionKind.Neutral => MotionRecipes.PageFade,
-            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx, continuous),
-            _ => SeqTranslate(ClassicDx, -ClassicDx, continuous),
+            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx, continuous, sequenced),
+            _ => SeqTranslate(ClassicDx, -ClassicDx, continuous, sequenced),
         };
 
         // ── the VIDEO-SAFE pair ──────────────────────────────────────────────────────────────────────────────────────
