@@ -111,13 +111,13 @@ is a loop (`AnimFlags.Loop`: a marquee title scrolling, a looping indicator; the
 is 0), the settle does not wait for them, nor for the `Anim` wake they raise. The replies report `frames` and `settled`,
 `ambient:[...]` when the settle saw any of those ambient reasons (motion they drive, a frame-clock ticker, was not waited
 for), and `loops:[keys]` when it ended on looping tracks: the nodes they run on (the nearest keyed ancestor), still moving
-when the reply was written. Loading indicators are the exception (below): a skeleton's shimmer, an indeterminate
-progress bar or a progress ring still holds the settle. A `render` after a settle catches a loop at whatever phase it has
+when the reply was written. Loading indicators are the exception (below): a region still on its placeholder, an indeterminate
+progress bar (the page's loading bar `page-busy:bar` among them) or a progress ring still holds the settle. A `render` after a settle catches a loop at whatever phase it has
 reached. A settle that hit its cap adds `busy`, what still moved:
 
 - `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor). Beside the array, `tracks` is the
   engine's census of the live rows: `anim=N:Channel*k,...`, then `done=`, `parked=` and `loop=` counts when there are any.
-- `{"key","kind":"loading"}`: a loading indicator still running (a skeleton's shimmer, a progress bar or ring, until the data or its error lands), with a
+- `{"key","kind":"loading"}`: a loading indicator still up (a region on its placeholder, a progress bar or ring, until the data or its error lands), with a
   `loading` sentence beside `busy` that names them (see Looping animations below).
 - `{"key","kind":"scroll","motion":"Wheel"}`: a scroller in motion.
 - `{"kind":"wake","reason":"ImageReady"}`: a wake reason with no node. `FrameNeeded` adds `terms`, the parts of it the
@@ -146,9 +146,11 @@ that never ends but is not a loop row (a frame-clock ticker is ambient already; 
 and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
 Anything else that moves beside a loop (a fade, a FLIP, a glide, a wake reason) is still waited for.
 
-Loading indicators are not ignored: a **loading skeleton's** shimmer (the pulse the engine puts on what a `Skel.Region` shows
-while its data is pending), an **indeterminate progress bar** (a looping node under the `ProgressBar` role: WinUI and Classic
-search's `omni-progress` while a query is pending) and a **progress ring** (its arc's trim loops). A page that still shows one
+Loading indicators are not ignored: a **region still on its placeholder** (a `Skel.Region` whose data is pending: the
+placeholder is flat and carries no track, so the settle reads the region's state, `AppHost.IsSkeletonPending`, and only on
+frames that would otherwise count as quiet), an **indeterminate progress bar** (a looping node under the `ProgressBar` role:
+WinUI and Classic search's `omni-progress` while a query is pending, the page's loading bar `page-busy:bar`) and a **progress
+ring** (its arc's trim loops). Under `motion=reduced` a settle now waits for data there too (the old pulse never ran there). A page that still shows one
 has not landed, so the settle waits for the data or its error (WinUI search `type text=ab` settles in about 30 frames on its
 suggestion rows `omni-row:0:spotify:artist:ar5` "Sable & Sun" and "Coffee Table Jazz", not after 4 on the progress rows), and a
 settle that hits `max` there says `loading` (above): `type text=zzqx` keeps its progress row and runs to `max`. The fake catalogue answers on the wall clock, so a slow page can take
@@ -158,9 +160,17 @@ Every settling verb, and `settle`, takes `loops`:
 
 | `loops=` | A loop holds the settle |
 |---|---|
-| `ignore` (default) | Only a loading indicator: a skeleton's shimmer, an indeterminate progress bar or ring. |
+| `ignore` (default) | Only a loading indicator: a region on its placeholder, an indeterminate progress bar or ring. |
 | `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
-| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). A loading indicator the settle did not wait for is then listed in `loops` like a loop row (`state kind=loading` replies `loops:["facet-body:0"]`). |
+| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). A loading indicator the settle did not wait for is then listed in `loops` like a loop row, a region on its placeholder by its placeholder's key (`state kind=loading` replies `loops:["facet-body:0"]`). |
+
+**The page loading bar.** Each page's body box (`page:<route>`) carries one thin bar on its top edge, `page-busy:bar` in the
+fixed slot `page-busy` (3 DIP in Classic and WinUI, 2 in Zune). It shows once the page's placeholders (or, in Zune, its deferred
+mount) have been pending 0.5 s and stays at least 0.4 s, fading in and out (about 11 frames each way); a load shorter than 0.5 s
+never shows it, and nothing moves when it comes or goes. The inspect host's frames are a fixed 16 ms clock while the fake
+catalogue answers on the wall clock, so an ordinary `goto` can show the bar (32 virtual frames pass in a few real
+milliseconds) and its settle then also waits out the 0.4 s minimum and the fade. For timing proofs use held answers only
+(`state kind=head uri=... answer=hold settle=false`, then `frames N`).
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
 `theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That

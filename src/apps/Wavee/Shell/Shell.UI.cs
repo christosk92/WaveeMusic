@@ -1003,14 +1003,21 @@ public static partial class Shell
     /// incoming slot is an empty placeholder (it already carries the enter, seeded with its 90 ms delay) until <see cref="Shown"/> reaches its
     /// route, which is when the exit leg has run and the leaving page is gone: the page mounts then, under an opacity 0 enter, and fades in. A
     /// page mounted once stays mounted (a revisit, or a facet switch inside the slot, never waits). The first frame and a slot that is already
-    /// the shown one are ready at once.</summary>
+    /// the shown one are ready at once.
+    ///
+    /// <para>It also owns the slot's <see cref="LoadingScope"/>: every <c>Skel.Region</c> of the page reports to it, and the theme's content
+    /// state draws one thin loading bar while <see cref="UseDelayedPending"/> says the page has been pending for
+    /// <see cref="Design.LoadingBarShowAfterMs"/> (then for at least <see cref="Design.LoadingBarMinVisibleMs"/>). While the mount itself is
+    /// deferred the slot holds a claim of its own, so the delay counts from the click, not from the mount.</para></summary>
     sealed class DeferredPage : Component
     {
         bool _ready;
+        readonly LoadingScope _loading = new();   // one per keep-alive slot
 
         public override Element Render()
         {
             var route = UseProps<DeferredPageProps>().Route;
+            var busy = UseDelayedPending(_loading.IsPending, Design.LoadingBarShowAfterMs, Design.LoadingBarMinVisibleMs);
             if (!_ready)
             {
                 var shown = PageChromeChannel.Landed.Value;   // the page mounts with the band's chrome: both follow the same landing
@@ -1018,7 +1025,8 @@ public static partial class Shell
                 // The mount lands as a keep-alive activation does: the page's first layouts are placed, not animated in from zero.
                 if (_ready && !shown.IsNone && ShellCaps.Now.DefersPageMount) Context.SuppressLayoutTransitions?.Invoke();
             }
-            return _ready ? PageBodyNow(route) : s_pendingPage;
+            UsePendingClaim(!_ready, _loading);   // released after the paint of the mount frame, when the page's own regions hold theirs
+            return _ready ? PageBodyNow(route, _loading, busy) : s_pendingPage;
         }
     }
 
@@ -1102,19 +1110,20 @@ public static partial class Shell
                               actionLabel: "New releases", onAction: static () => { }),
     };
 
-    static Element PageBodyNow(Route route)
+    static Element PageBodyNow(Route route, LoadingScope loading, IReadSignal<bool> busy)
     {
         if (s_inspectState.Value is { Length: > 0 } probe) return InspectStateBody(probe);
         var factory = PageFor(route);
         switch (FrameRules.ContentBodyFor(route, factory is not null, FrameFacts.DeveloperNow))
         {
             case ContentStateKind.Page:
-                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
+                return Ctx.Provide(LoadingScope.Current, loading,
+                    Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
                     Ctx.Provide(MeasureMemory.Scope, MeasureScopeOf(route),
                         Ctx.Provide(PageChromeSink.Context, PageChromeChannel.SinkFor(route),
                             // P5 Z2b: the content host names the page's main scroller to the page-scroll signal (Shell.PageScrollFollower.cs).
                             FollowPageScroll(route, ViewSlots.View(ViewKeys.ShellContentState,
-                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route)))))));
+                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route), busy)))))));
             case ContentStateKind.EmptyBody:
                 return ViewSlots.View(ViewKeys.ShellContentState,
                     ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));
