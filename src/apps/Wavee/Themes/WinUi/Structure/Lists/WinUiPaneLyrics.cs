@@ -3,18 +3,27 @@
 // The rail's own form of the lines (`LyricsLinesStyle.Rail` = `WinUiPaneLyricsRules.Form`; the core host says `ILyricsHost.OnRail`). The stage
 // keeps `WinUiLyricsRow` (its blur ladder, halo and pill); the pane reads like the board instead:
 //
-//   ink      a sung line in the tertiary ink, an upcoming one in the secondary, the active line in the primary (a word-synced line wipes
-//            from the primary into the tertiary as it is sung); no opacity ladder, no depth blur, no halo
-//   type     18/24 semibold; the active line reads 20/28 as a springing 20/18 scale of the same run, left-anchored, so a hand-off never
+//   ink      a sung line in the tertiary ink, an upcoming one in the secondary, the active line in the primary; a word-synced active line
+//            draws its sung words in the primary and its unsung ones in the tertiary (the secondary on the mini's picture), so the wipe
+//            reads as it moves; no halo
+//   fade     every line but the active one faded by its distance from it (`WinUiPaneLyricsRules.RowOpacity`; a sung line dimmer than an
+//            upcoming one), retargeted on a spring from this row's own emphasis without a render
+//   blur     the core's rail depth-of-field ladder at the user's blur strength, written on the content box this row reports (and re-declared
+//            from the ramp's live value on a render, so a shape render never stomps a σ in flight)
+//   type    18/24 semibold; the active line reads 20/28 as a springing 20/18 scale of the same run, left-anchored, so a hand-off never
 //            re-wraps a row or re-lays the column out (the trailing room it grows into is reserved on every row)
 //   column   24 either side, 14 between lines; the core follows the active line at the form's band (a quarter down)
 //   second   the translation / romanization under every row (14/20, secondary), so a row's height never depends on being active
 //   mini     the mini player's mount (`ILyricsHost.FlatRows`): every row but the active one draws the primary ink and is faded to
 //            `Lyrics.MiniRows.Ink` by its OPACITY (`Lyrics.MiniRows.Opacity`, the contract's way, as Classic and Zune do), never by a dimmed ink:
-//            a faded context line, not body copy written in a 42 % ink. The root's static `Opacity` is the mount seed; a spring owns it after.
+//            a faded context line, not body copy written in a 42 % ink (the core gives that mount no depth blur).
+//
+// The root's static `Opacity` is the MOUNT seed and never changes afterwards, so the reconciler's column diff never rewrites the channel: the
+// fade spring owns it outright after realization.
 //
 // THE CORE'S HANDLES. The row reports its text node (the render-thread wipe) and its content box (the hand-off cascade's compensating
-// translate rides it: without it the column would jump on every line). No halo node: the core skips a missing one.
+// translate and the depth blur's σ ride it: without the translate the column would jump on every line). No halo node: the core skips a
+// missing one.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -71,12 +80,13 @@ internal sealed class WinUiPaneLyricsRow : Component
     readonly Lyrics.Line _line;
     readonly Signal<int> _emphasis;
     readonly Func<int> _shape;
+    readonly Action _retargetOpacity;
     float _seedOpacity = float.NaN;   // the root's static Opacity, fixed at the first render (the fade spring owns the channel after)
     readonly Action<NodeHandle> _onLine, _onDof;
     readonly Action _onClick;
 
     static readonly SpringParams s_scaleSpring = new(100f, 2f * MathF.Sqrt(100f * 2f), 2f);
-    /// <summary>The mini player's row fade: critically damped, settling in the pane's own colour-fade time (<see cref="Design.Motion.Fast"/>).</summary>
+    /// <summary>The row fade: critically damped, settling in the pane's own colour-fade time (<see cref="Design.Motion.Fast"/>).</summary>
     static readonly SpringParams s_fadeSpring = SpringParams.FromResponse(Design.Motion.Fast / 1000f);
 
     public WinUiPaneLyricsRow(ILyricsHost host, int index, Lyrics.Line line, Signal<int> emphasis)
@@ -94,9 +104,33 @@ internal sealed class WinUiPaneLyricsRow : Component
             if (Lyrics.Emphasis.HasReserve(e)) s |= ReserveBit;
             return s;
         };
+        _retargetOpacity = RetargetOpacity;
         _onLine = h => host.ReportLineNode(index, h);
         _onDof = h => host.ReportDofNode(index, h);
         _onClick = () => host.SeekToLine(index);
+    }
+
+    /// <summary>The row's fade for its packed emphasis: none on a transcript the reader browses (neutral), the mini player's flat picture where
+    /// its mount asks for one (<see cref="Lyrics.MiniRows.Opacity"/>), else the pane's distance ladder (<see cref="PR.RowOpacity"/>).</summary>
+    float RowOpacity(int emphasis)
+    {
+        bool podcast = _host.IsPodcast;
+        bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
+        if (Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback)) return 1f;
+        float flat = Lyrics.MiniRows.Opacity(_host, podcast, ownsPlayback, emphasis, 1f);
+        if (!float.IsNaN(flat)) return flat;
+        return _host.FlatRows ? 1f : PR.RowOpacity(Lyrics.Emphasis.DistOf(emphasis), (emphasis & Lyrics.Emphasis.PastBit) != 0);
+    }
+
+    /// <summary>The fade, delivered to the slab without a render: tracks THIS line's packed word (its distance changes on every line, the shape
+    /// only on its own hand-off). The mount run (inside the first render) finds no host node yet and leaves the static seed in place; the first
+    /// retarget after realization springs from that seed.</summary>
+    void RetargetOpacity()
+    {
+        float to = RowOpacity(_emphasis.Value);
+        var ctx = Context;
+        if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
+        anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_fadeSpring);
     }
 
     public override Element Render()
@@ -104,6 +138,7 @@ internal sealed class WinUiPaneLyricsRow : Component
         var host = _host;
         var line = _line;
         int shape = UseComputed(_shape).Value;
+        UseSignalEffect(_retargetOpacity);
         bool podcast = host.IsPodcast;
         bool ownsPlayback = !podcast || host.ObservedPlaybackOwner;
         bool neutral = Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback);
@@ -131,10 +166,9 @@ internal sealed class WinUiPaneLyricsRow : Component
         // faded by the row's opacity (the contract's Lyrics.MiniRows.Opacity). A 42 % ink at full opacity drew the same pixels but declared
         // the context lines body copy, which no veil can hold at 4.5:1 (white at 42 % reads 3.9:1 even on black).
         ColorF rest = neutral ? ink.Secondary : host.FlatRows ? ink.Primary : past ? ink.Tertiary : ink.Secondary;
-        float flat = Lyrics.MiniRows.Opacity(host, podcast, ownsPlayback, _emphasis.Peek(), 1f);
-        float opacity = float.IsNaN(flat) ? 1f : flat;
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = opacity;
-        UseSpring(AnimChannel.Opacity, opacity, s_fadeSpring, DepKey.From(opacity));
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(_emphasis.Peek());
+        // The depth blur's σ as the core's ramp holds it now (0 while the user owns the scroll), so a shape render re-asserts the live value.
+        float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(_index) : 0f;
         Element text;
         if (line.IsWordByWord && line.Syllables.Count > 0)
         {
@@ -143,9 +177,10 @@ internal sealed class WinUiPaneLyricsRow : Component
             bool highlight = active && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
             float split = highlight ? Lyrics.Wipe.SplitOf(host, _index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
             ColorF sung = active ? ink.Primary : rest;
-            // The active line's unsung words carry the upcoming lines' ink (W-PaneLyrics: upcoming #c5c5c5): tertiary read darker than the
-            // lines after it, so the line being sung looked dimmer than the ones still to come.
-            ColorF unsung = active ? ink.Secondary : rest;
+            // The active line's unsung words in the tertiary ink on the pane: in the secondary (the upcoming lines' ink) the sung and unsung
+            // halves of the line differed by a fifth of white and the wipe did not read; the upcoming lines' fade keeps them under these words.
+            // The mini player's picture keeps the secondary: its context lines show 42 % of white, which the tertiary would sink into.
+            ColorF unsung = active ? host.FlatRows ? ink.Secondary : ink.Tertiary : rest;
             text = LineText(line.Text, sung, new GlyphWipe(Before: sung, After: unsung, Split: split, Softness: host.SoftnessOfLine(_index), Lift: 0f));
         }
         else
@@ -160,10 +195,11 @@ internal sealed class WinUiPaneLyricsRow : Component
             _ => null,
         };
 
-        // The content box the core's hand-off cascade translates (reported once; no blur: the pane is crisp).
+        // The content box the core's hand-off cascade translates and its depth-of-field ramp blurs (reported once); the secondary line sits
+        // inside it, so it blurs and travels with its lyric.
         var content = new BoxEl
         {
-            Direction = 1, OnRealized = _onDof,
+            Direction = 1, Blur = blur, OnRealized = _onDof,
             Children = second is null
                 ? [text]
                 : [text, new TextEl(second)

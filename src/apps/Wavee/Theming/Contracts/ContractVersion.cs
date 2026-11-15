@@ -293,6 +293,8 @@
 // 1.110 (the artist page's tabs scroll): `PageMotionPolicy.SectionJump` (`SectionJump`: a tab glides to a near section and arrives at a far one
 // from a lead short of it, fading what shows in) replaces 1.87's `PageMotionPolicy.Pivot` (the jump and the sideways slide of the sections;
 // removed before any external theme existed, as 1.2 did). A structure that declares none keeps the full glide.
+// 1.111 (the WinUI pane's lyrics follow the blur setting): `LyricsRailForm.Crisp` is gone (the pane's "never depth-blur, whatever the
+// setting says"; removed before any external theme existed, as 1.2 did): every rail follows the user's blur strength.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -308,7 +310,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 110;
+    public const int Minor = 111;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
