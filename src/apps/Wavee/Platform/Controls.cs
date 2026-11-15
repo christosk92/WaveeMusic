@@ -181,10 +181,14 @@ public static partial class Controls
     /// <para><paramref name="morphKey"/> tags the image as a shared-element participant. A morph-tagged slot mounts NO
     /// cover-tile sibling (culling only the tagged image must not leave a separate tile painting the old slot behind the
     /// flying overlay) and therefore carries a FROZEN placeholder — the one art path in the app with no live tint. It is
-    /// dormant today; if 0.3 ever re-arms the fly, this branch owes itself a watched placeholder.</para></summary>
+    /// dormant today; if 0.3 ever re-arms the fly, this branch owes itself a watched placeholder.</para>
+    ///
+    /// <para><paramref name="connect"/> tags the image for the connected NAVIGATION flight (<see cref="Design.MorphKeys.ForUri"/>: a card's
+    /// cover flying into its page's hero). Unlike <paramref name="morphKey"/> it keeps the cover tile and the transparent placeholder: the
+    /// engine hides the whole slot (the image and the same-sized boxes round it) while the flyer is up, never the image alone.</para></summary>
     public static Element Artwork(string? url, float width, float height, float corners, string? morphKey = null,
                                   int decodePx = 0, float saturation = 1f, float scale = 1f, string? blurHash = null,
-                                  bool keepWhileHidden = false, MediaScrim.Crop crop = default)
+                                  bool keepWhileHidden = false, MediaScrim.Crop crop = default, string? connect = null)
     {
         crop = crop.OrCentred;   // a cover crop's focal point (the artist hero's faces, lane B10); centred by default
         if (url is { Length: 0 }) url = null;
@@ -226,7 +230,7 @@ public static partial class Controls
             : Ui.Image(url, ImageFit.Cover, aspect, dw, corners, placeholder, blurHash)
                 with
                 {
-                    MorphId = morphKey, Saturation = saturation, KeepWhileHidden = keepWhileHidden,
+                    MorphId = connect ?? morphKey, Saturation = saturation, KeepWhileHidden = keepWhileHidden,
                     FocusX = crop.FocusX, FocusY = crop.FocusY, FocusFrameX = crop.FrameX, FocusFrameY = crop.FrameY,
                 };
 

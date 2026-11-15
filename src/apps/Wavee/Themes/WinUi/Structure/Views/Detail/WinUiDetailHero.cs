@@ -312,11 +312,14 @@ internal static partial class WinUiDetailFrame
         float art = form.Cover;
         BoxEl cover = new()
         {
+            Key = "hero-cover",
             Width = art, Height = art, Shrink = 0f,
             Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius), Shadow = Elevation.Card, ClipToBounds = true,
             Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
             Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-            Children = [slots.Cover?.Invoke(art) ?? Controls.Artwork(id.CoverUrl, art, art, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(art))],
+            // A page's own cover (a slot: the generated covers) is not tagged; the artwork is the connected navigation flight's dest (Design.MorphKeys.ForUri).
+            Children = [slots.Cover?.Invoke(art) ?? Controls.Artwork(id.CoverUrl, art, art, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(art),
+                connect: Design.MorphKeys.ForUri(id.Subject.Text))],
         };
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: acts.CoverClick is not null);
         return !mode.OwnsClick ? cover : cover with

@@ -302,6 +302,9 @@
 // structure that words its modes "Followed shows · 7", "Your Episodes · 8", as the show page words its filter); a borrowing structure's
 // Podcasts page draws no count row under them. `LibraryPageProps.SavedCountText` now feeds the Your Episodes word. The track table's header
 // args say when every row is an episode row (`TrackHeaderArgs.EpisodeRows`, `NarrowEpisode`), so a header can stand over that row's own layout.
+// 1.114 (the connected navigation flight): `PageMotionPolicy.Connected` (the structure's `ConnectedNavSpec`: an album card's cover flies into
+// the album page's hero and back; null flies nothing) and `PageMotionPolicy.ConnectedQuietPage` (the page under a flight swaps with the
+// recipe's opacity legs only, `Design.Nav.Quiet`).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -317,7 +320,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 113;
+    public const int Minor = 114;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

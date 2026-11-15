@@ -879,6 +879,7 @@ public static partial class Shell
             // below for every commit — the effect subscribes to the route, this render body never does. The lag is the
             // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
             var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
+            s_beginNav = UseContext(SharedTransition.BeginNav);   // the connected flight's trigger (Shell.Connected.cs), read by the nav verbs
             // The band's chrome lands from the host's after-animations phase (PageChromeChannel.ArmLanding), so its height eases instead of snapping.
             UseContext(InputHooks.Current).SetAfterAnimations(s_chromeLanding, PageChromeChannel.LandIfDue);
             UseSignalEffect(() =>
@@ -978,6 +979,8 @@ public static partial class Shell
         // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
         LayoutTransition chosen = pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own
             ? own : RecipeFor(motion);
+        // Under a connected flight the page keeps its recipe's fades and loses its travel: the cover is the only thing that moves.
+        if (oldToken is Route && SwapsUnderFlight(in next)) chosen = Design.Nav.Quiet(in chosen);
         return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in chosen) : chosen;
     }
 
@@ -1000,6 +1003,7 @@ public static partial class Shell
         Route from = oldToken is Route r ? r : Route.None;
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
         if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
+        if (oldToken is Route && SwapsUnderFlight(in next)) return null;   // the quiet swap under a connected flight: no staggered rise
         if (Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is not { } cascade || cascade(SwapOf(from, next, Motion.Peek())) is not { } units)
             return null;
         return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in units) : units;

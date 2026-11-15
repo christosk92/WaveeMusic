@@ -582,6 +582,18 @@ public static partial class Design
 
         static readonly EasingSpec s_fluentDecelerate = TransitionDynamics.Tween(1f, Easing.FluentDecelerate).Easing;
 
+        /// <summary>The page swap under a connected navigation flight (a card's cover flying into its page's hero): the recipe's own opacity legs,
+        /// delays and dynamics, with no slide, no zoom and no rise on either page, so the cover is the only thing that travels. Microsoft: a
+        /// connected animation "does not work well" with a page transition that translates; Material's container transform fades the incoming
+        /// page in and holds the outgoing one still. An opacity-only leg is a composite parameter, so the page is not re-recorded under the
+        /// flight (a zoom re-records it every frame). <see cref="NoOverlap(in LayoutTransition)"/> still applies on top under Fast navigation.</summary>
+        public static LayoutTransition Quiet(in LayoutTransition r) => r with
+        {
+            Channels = TransitionChannels.Opacity,
+            Enter = r.Enter with { Dx = 0f, Dy = 0f, Sx = 1f, Sy = 1f },
+            Exit = r.Exit with { Dx = 0f, Dy = 0f, Sx = 1f, Sy = 1f },
+        };
+
         /// <summary>The incoming page's staggered units under <see cref="NoOverlap(in LayoutTransition)"/>: no wait for an exit leg that no longer
         /// plays, and the units start from <see cref="SameKindEnterFrom"/> (from nothing, the page's first frames were an empty card).</summary>
         public static EntranceCascade NoOverlap(in EntranceCascade c) => c with
@@ -868,28 +880,25 @@ public static partial class Design
         public static int Bucket(int px) => px <= 0 ? BucketPx : ((px + BucketPx - 1) / BucketPx) * BucketPx;
     }
 
-    // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION — DORMANT ═══════════════════════════════════════════════════════
+    // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION ═══════════════════════════════════════════════════════════════
 
-    /// <summary>The connected-animation (shared-element / Hero) key for a cover IS the route key the card navigates
-    /// with — already unique and already present on both the card and the detail page, so source and destination agree
-    /// with zero extra plumbing. One place for the convention so the two sides never drift. Null ⇒ no Hero (the liked
-    /// collection has no uri; artist covers are circular and were deferred) ⇒ today's instant swap.
+    /// <summary>The connected navigation flight's key (<c>SharedTransition.BeginNav</c>, a card's cover flying into its page's hero
+    /// and back): the album uri ITSELF (<c>spotify:album:…</c>), no prefix, so the card, the hero and the shell agree with nothing
+    /// built per card. The card passes its data's uri, the hero its identity's subject, the shell the route's subject.
     ///
-    /// <para><b>NOTHING FLIES TODAY, AND THE CONVENTION STILL PORTS.</b> The forward CAPTURE seam was removed in the
-    /// same commit that made the detail rail's cover pass a null key, so re-arming it means restoring the whole capture
-    /// seam AND deciding how a cover fly composes with the page slide (the page's own absolute rect moves every frame of
-    /// the slide, so the flight would chase a fading page). Dropping the key parameters is not a simplification; it is
-    /// the deletion of the only agreement the two halves have — and the nav probe ASSERTS the source half is still
-    /// minted, so the dormancy is a measured state rather than a hope.</para>
+    /// <para>A key may repeat down a page (the same album on two shelves): the engine flies from the tagged cover INSIDE the card
+    /// the user activated and to the one on the page it opens, never "every node with the key", and hides only those two slots.</para>
+    ///
+    /// <para><see cref="For"/> is the older prefixed convention (<c>album:</c>, <c>pl:</c>) still minted by Recents and the Liked
+    /// covers. Its keys can never equal a raw uri, so they stay inert; they go in the slice that brings the flight to Classic.</para>
     ///
     /// <para>NOT to be folded together with the content card's stable-frame FLIP anchor. That rides the same
-    /// <c>MorphId</c> column and has nothing to do with connected animation.</para>
-    ///
-    /// <para>ONE TAG PER URI. Uris repeat down a recents list (~1,388 times on a real account), the engine's tagged
-    /// registry is last-writer-wins, and hiding a flying key hides EVERY node carrying it — so a second tagged row would
-    /// blank itself mid-fly. A minting surface tags only the FIRST occurrence of each uri.</para></summary>
+    /// <c>MorphId</c> column and has nothing to do with connected animation.</para></summary>
     public static class MorphKeys
     {
+        /// <summary>The flight key for a cover showing <paramref name="uri"/>: the uri when it is an album's, else null (slice 1 flies albums only).</summary>
+        public static string? ForUri(string? uri) => uri is { Length: > 14 } && uri.StartsWith("spotify:album:", StringComparison.Ordinal) ? uri : null;
+
         /// <inheritdoc cref="MorphKeys"/>
         public static string? For(EntityKind kind, string? id) => id is { Length: > 0 }
             ? kind switch

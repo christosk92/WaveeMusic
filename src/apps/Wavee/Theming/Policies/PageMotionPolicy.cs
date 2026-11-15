@@ -55,6 +55,15 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// drawn in. Asked under reduced motion too (the host lets the recipe own it): answer the quick fade there. Null = the core's
     /// <c>Design.Nav.SameKindSwap</c> fade.</summary>
     public Func<bool, TierFacts, LayoutTransition?>? LibraryPivot { get; init; }
+
+    /// <summary>The connected navigation flight (<c>SharedTransition.BeginNav</c>): an album card's cover flies into the album page's hero,
+    /// and back into the card on Back. Null = this structure flies nothing (the swap plays as authored).</summary>
+    public FluentGpu.Animation.ConnectedNavSpec? Connected { get; init; }
+
+    /// <summary>Under a flight, the page swap keeps its recipe's opacity legs and timings and loses its slide, zoom and stagger
+    /// (<c>Design.Nav.Quiet</c>): the cover is the only thing that travels (Microsoft: a connected animation "does not work well" over a
+    /// translating page transition). False keeps the authored recipe under the flight.</summary>
+    public bool ConnectedQuietPage { get; init; } = true;
 }
 
 /// <summary>How a tab INSIDE a page (the artist page's pivot) moves the page to its section, by the distance <c>d</c> to it and the page viewport's

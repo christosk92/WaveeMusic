@@ -144,8 +144,9 @@ internal static class WinUiSurface
 
         if (float.IsNaN(width))
         {
+            // The cover flies into the album page's hero when the card opens it (Design.MorphKeys.ForUri; the engine finds it under the card the user activated).
             Element fill = d.CoverOverride
-                ?? Controls.ArtworkFill(d.CoverUrl, circular ? Radii.Full : Radii.Card, aspect: d.CoverAspect);
+                ?? Controls.ArtworkFill(d.CoverUrl, circular ? Radii.Full : Radii.Card, aspect: d.CoverAspect) with { MorphId = Design.MorphKeys.ForUri(d.Uri) };
             // The overlay is mounted whenever the corner is (chrome ⊂ overlay), so three arms cover every case.
             Element[] cover = fab is null ? [fill] : corner is null ? [fill, fab.Value] : [fill, fab.Value, corner.Value];
             return new BoxEl
@@ -172,7 +173,7 @@ internal static class WinUiSurface
         bool square = d.CoverAspect == 1f;
         Element art = d.CoverOverride
             ?? Controls.Artwork(d.CoverUrl, float.NaN, float.NaN, circular ? Radii.Full : Radii.Card,
-                                decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx);
+                                decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx, connect: Design.MorphKeys.ForUri(d.Uri));
         return new BoxEl
         {
             Direction = 1, Gap = SurfaceGeometry.ShelfPlatePad, Grow = 1f, MinWidth = 0f,   // the gutter's width, not the cover's (Surface.Host)

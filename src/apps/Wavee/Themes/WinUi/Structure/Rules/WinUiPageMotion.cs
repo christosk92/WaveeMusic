@@ -215,9 +215,33 @@ public static class WinUiPageMotion
         return s_libraryPivot[(fromRight ? 4 : 0) + tier];
     }
 
+    // ── THE CONNECTED NAVIGATION FLIGHT (an album card's cover into the album page's hero, and back) ─────────────────────────
+    // WinUI's ConnectedAnimation runs 300 ms on (0.8, 0, 0.2, 1), its Back (Direct) configuration 150-200 ms on (0.1, 0.9, 0.2, 1).
+    // Here a critically damped spring whose response grows with the distance (a turn-around keeps its velocity): 90 % of the way at
+    // 0.62 x the response, 99 % at 1.06 x, so forward reads as 250-340 ms and Back 15 % quicker. No arc, no dip, no overshoot.
+    /// <summary>The shortest response (s): a short hop.</summary>
+    public const float ConnectedResponseMin = 0.24f;
+    /// <summary>The longest response (s): across the window.</summary>
+    public const float ConnectedResponseMax = 0.32f;
+    /// <summary>The response added per DIP of centre-to-centre travel (s).</summary>
+    public const float ConnectedResponsePerDip = 0.00008f;
+    /// <summary>Back's response against forward's.</summary>
+    public const float ConnectedBackScale = 0.85f;
+    /// <summary>The least share of a cover on screen that flies (under it: the plain swap).</summary>
+    public const float ConnectedMinVisible = 0.5f;
+    /// <summary>The longest the flyer holds at the card for the page to mount: WinUI mounts it on the click frame.</summary>
+    public const float ConnectedPendingMs = 0f;
+    /// <summary>An abandoned flyer's fade where it stands (ControlFaster).</summary>
+    public const float ConnectedAbandonFadeMs = 83f;
+    /// <summary>The longest a landed flyer waits for its hero to be ready before it hands off anyway.</summary>
+    public const float ConnectedHandOffWaitMs = 600f;
+
+    static readonly FluentGpu.Animation.ConnectedNavSpec s_connected = new(ConnectedResponseMin, ConnectedResponseMax, ConnectedResponsePerDip,
+        ConnectedBackScale, ConnectedMinVisible, ConnectedPendingMs, ConnectedAbandonFadeMs, ConnectedHandOffWaitMs);
+
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
     public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
     {
-        ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot,
+        ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot, Connected = s_connected,
     };
 }
