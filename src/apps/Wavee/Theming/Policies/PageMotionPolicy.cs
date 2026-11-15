@@ -48,4 +48,10 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// <summary>A pivot INSIDE a page stepping to a sibling section (the artist page's tabs): the cascade that brings what then shows in,
     /// given whether the step goes forward in the tab order (the new part comes from the right). Null = the page's own scroll glide.</summary>
     public Func<bool, EntranceCascade?>? Pivot { get; init; }
+
+    /// <summary>The library family's pivot (<see cref="ShellCapabilities.LibraryFamily"/>): the recipe of the body under the fixed head when the kind
+    /// changes, both legs, given whether the new kind comes after the old one in the pivot's order (it comes in from the right) and the facts the host is
+    /// drawn in. Asked under reduced motion too (the host lets the recipe own it): answer the quick fade there. Null = the core's
+    /// <c>Design.Nav.SameKindSwap</c> fade.</summary>
+    public Func<bool, TierFacts, LayoutTransition?>? LibraryPivot { get; init; }
 }

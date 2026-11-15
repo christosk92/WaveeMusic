@@ -120,6 +120,10 @@ public sealed record LibraryPageProps
 
     // ── slots the core mounts ──────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The page's head (<see cref="LibraryControlsStyle.Head"/>) is drawn ONCE above the library family's kinds by its host (<c>User.LibraryFamily</c>,
+    /// <see cref="Wavee.Theming.ShellCapabilities.LibraryFamily"/>): the page draws its columns only. Default false: a page that finds a head draws it. Contract 1.109.</summary>
+    public bool HeadHosted { get; init; }
+
     /// <summary>The selected row's pane: the album pane, the show pane or the artists' reader, mounted without a key so a selection re-skins it in place.</summary>
     public required Func<Element> Pane { get; init; }
 

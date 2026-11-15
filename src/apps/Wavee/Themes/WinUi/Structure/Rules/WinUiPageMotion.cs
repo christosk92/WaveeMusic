@@ -36,6 +36,7 @@
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
 
@@ -165,6 +166,54 @@ public static class WinUiPageMotion
     static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx), 0f) with { KeepInRoot = true };
     static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx), 0f) with { KeepInRoot = true };
 
+    // ── the library's pivot (the body under a fixed head; winui library family) ─────────────────────────────────────────────
+    //
+    // The library's kinds share one head ("Library" over the kinds' SelectorBar): a switch moves only the body under it, as the SelectorBar sample
+    // navigates a Frame under the bar by the index's direction. WinUI's slide, cut short because only a body moves and the owner switches often:
+    // the old body fades out over ControlFaster, drifting half the travel toward the side it leaves by; the new one waits HandOverMs short of that
+    // (two frames of overlap, never a frame with neither), then slides in from the side the pivot order points to over 250 ms on the in spline,
+    // fading in on the same tween. The travel is the tier's page inset, at least 24: content coming from the left starts at the card's edge, as
+    // KeepInRoot keeps a part inside the page. Reduced motion: the quick cross-fade.
+    // The old body's leg runs evenly (LibraryPivotAway), as the drill's outgoing leg does: on WinUI's out spline five frames put 69 % of the drift in
+    // the last one, which read (and gated) as a jump.
+
+    /// <summary>The old body's fade (ControlFaster) and the new body's slide (ControlNormal), ms.</summary>
+    public const float LibraryPivotOutMs = RootFadeMs, LibraryPivotInMs = 250f;
+    /// <summary>The new body starts this long after the click: the old one's fade less the hand-over.</summary>
+    public const float LibraryPivotDelayMs = LibraryPivotOutMs - HandOverMs;
+    /// <summary>The smallest travel (the Compact and Small insets are 16 and 24).</summary>
+    public const float LibraryPivotMinTravel = 24f;
+    /// <summary>The old body's leg: even, as <see cref="DrillAway"/>.</summary>
+    public static EasingSpec LibraryPivotAway => Easing.Linear;
+
+    static LayoutTransition LibraryPivotBody(WidthTier tier, bool fromRight)
+    {
+        float travel = MathF.Max(WinUiDetailRules.InsetOf(tier), LibraryPivotMinTravel);
+        float side = fromRight ? 1f : -1f;
+        return new(Pose, Tween(LibraryPivotInMs, In),
+            Enter: new EnterExit(Dx: side * travel, Opacity: 0f, Active: true),
+            Exit: new EnterExit(Dx: -side * travel * 0.5f, Opacity: 0f, Active: true),
+            ExitDynamics: Tween(LibraryPivotOutMs, LibraryPivotAway), DelayMs: LibraryPivotDelayMs, ExitDelayMs: 0f);
+    }
+
+    /// <summary>Per window tier (Compact, Small, Standard, Huge) from the left, then from the right.</summary>
+    static readonly LayoutTransition[] s_libraryPivot =
+    [
+        LibraryPivotBody(WidthTier.Compact, false), LibraryPivotBody(WidthTier.Small, false), LibraryPivotBody(WidthTier.Standard, false), LibraryPivotBody(WidthTier.Huge, false),
+        LibraryPivotBody(WidthTier.Compact, true), LibraryPivotBody(WidthTier.Small, true), LibraryPivotBody(WidthTier.Standard, true), LibraryPivotBody(WidthTier.Huge, true),
+    ];
+
+    /// <summary>The library family's body switch (<see cref="PageMotionPolicy.LibraryPivot"/>) for the tier the host is drawn in.</summary>
+    public static LayoutTransition? LibraryPivot(bool fromRight, TierFacts facts)
+    {
+        if (FluentGpu.Dsl.Motion.ReducedMotion) return s_reduced;
+        int tier = Math.Clamp((int)WinUiDetailTiers.Of(in facts).Tier - (int)WidthTier.Compact, 0, 3);
+        return s_libraryPivot[(fromRight ? 4 : 0) + tier];
+    }
+
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
-    public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor) { ReducedFade = s_reduced, Pivot = static fromRight => FluentGpu.Dsl.Motion.ReducedMotion ? null : PivotCascade(fromRight) };
+    public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
+    {
+        ReducedFade = s_reduced, Pivot = static fromRight => FluentGpu.Dsl.Motion.ReducedMotion ? null : PivotCascade(fromRight), LibraryPivot = LibraryPivot,
+    };
 }

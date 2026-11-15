@@ -88,16 +88,28 @@ internal static class WinUiLibraryControls
 
     /// <summary>The page's head across its width (W-Library): "Library" (Title Large 40/52, the Display face) over a SelectorBar of the kinds ("Playlists Albums
     /// Artists Podcasts Audiobooks", the page on screen pilled) and the hairline under it, on the page's inset. At Compact the title steps down to Title
-    /// 28/36 (W-Library-Compact). The route is the truth: a pick navigates, the next page re-seeds the selection.</summary>
+    /// 28/36 (W-Library-Compact). The route is the truth: a pick navigates, and the head follows the route's kind. The library family draws this head
+    /// once over its kinds (winui library family), so the bar survives a switch: its selection is ONE signal for the head's life, which a pick writes
+    /// before it navigates and the pushed kind re-seeds, and the pill glides under the new word (the SelectorBar's own 167 ms).</summary>
     static Element Head(LibraryHeadArgs a) => Embed.Comp(new HeadProps(a), static () => new HeadView());
 
     sealed record HeadProps(LibraryHeadArgs Args);
 
     sealed class HeadView : Component
     {
+        Signal<int>? _selection;
+        int _selected;
+        Action? _reseed;
+
         public override Element Render()
         {
             var a = UseProps<HeadProps>().Args;
+            // The selected kind: re-seeded when the route's kind changes, and when the page comes back on screen (a pick of "Liked Songs" left the pill there).
+            _selected = SelectedOf(a.Kinds);
+            var selection = _selection = UseSignal(_selected);
+            int selected = _selected;
+            UseEffect(() => selection.Value = selected, DepKey.From(selected));
+            UseActivation(onActivated: _reseed ??= () => { if (_selection is { } s) s.Value = _selected; });
             var facts = Wavee.Theming.TierContext.DrawnIn(UseContext(Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
             var tier = WinUiDetailTiers.Of(in facts).Tier;
             bool compact = tier == WidthTier.Compact;
@@ -131,7 +143,7 @@ internal static class WinUiLibraryControls
                                         Direction = 1, MinWidth = 0f,
                                         Children =
                                         [
-                                            Kinds(new LibraryKindsArgs(a.Kinds, compact ? WinUiDetailRules.CompactTarget : WinUiChoiceRules.HeadPivot)),
+                                            KindsBar(new LibraryKindsArgs(a.Kinds, compact ? WinUiDetailRules.CompactTarget : WinUiChoiceRules.HeadPivot), selection),
                                             new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
                                         ],
                                     },
@@ -149,23 +161,32 @@ internal static class WinUiLibraryControls
 
     /// <summary>The Compact head's kinds as a SelectorBar (W-Library-Compact: "Playlists Albums Artists Podcasts Audiobooks", the page on screen pilled), in one
     /// scrolling line whose end fades where more wait. A fresh signal per render: the ROUTE is the truth; a pick navigates and the next page re-seeds it.</summary>
-    static Element Kinds(LibraryKindsArgs a)
+    static Element Kinds(LibraryKindsArgs a) => KindsBar(a, null);
+
+    /// <summary>The kinds' bar over <paramref name="selection"/> (the head's one signal; null: a fresh one at the kind on screen).</summary>
+    static Element KindsBar(LibraryKindsArgs a, Signal<int>? selection)
     {
         var kinds = a.Kinds;
         var labels = new string[kinds.Count];
         var keys = new string?[kinds.Count];
-        int selected = 0;
         for (int i = 0; i < labels.Length; i++)
         {
             labels[i] = kinds[i].Title;
             keys[i] = "lib:kind:" + FormatCache.Int(i);
-            if (kinds[i].Selected) selected = i;
         }
-        Element bar = WinUiChoice.Pivot(labels, new Signal<int>(selected), a.Height, i => { if ((uint)i < (uint)kinds.Count) kinds[i].Open(); }, keys);
+        Element bar = WinUiChoice.Pivot(labels, selection ?? new Signal<int>(SelectedOf(kinds)), a.Height, i => { if ((uint)i < (uint)kinds.Count) kinds[i].Open(); }, keys);
         return ScrollView(new BoxEl { Direction = 0, Shrink = 0f, Children = [bar] }, horizontal: true) with
         {
             Key = "lib:kinds", Grow = 0f, ContentSized = true, AutoEdgeFade = true, SuppressScrollBar = true, ScrollKey = "lib:kinds",
         };
+    }
+
+    /// <summary>The index of the kind on screen (0 when none is).</summary>
+    static int SelectedOf(IReadOnlyList<LibraryKindChip> kinds)
+    {
+        for (int i = 0; i < kinds.Count; i++)
+            if (kinds[i].Selected) return i;
+        return 0;
     }
 
     // ══ THE VIEW ═════════════════════════════════════════════════════════════════════════════════════════════════════

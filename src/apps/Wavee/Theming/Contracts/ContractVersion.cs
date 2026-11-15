@@ -286,6 +286,13 @@
 // the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
 // `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
 // (the mini player is unreleased: its three styles moved with it).
+// 1.109 (the WinUI library family): `ShellCapabilities.LibraryFamily` (the four library kinds share one keep-alive slot, `page:library`, under
+// one head the core host draws once, `User.LibraryFamily`), `PageMotionPolicy.LibraryPivot` (the body's slide under that head),
+// `LibraryPageProps.HeadHosted` (the borrowed page leaves the head to the host) and `LibraryControlsStyle.Nav` with `LibraryNavMetrics`
+// (the navigator column's leads: every left edge of the page on the head's own lead, the panes' right edge on its trail).
+// 1.110 (the artist page's tabs scroll): `PageMotionPolicy.SectionJump` (`SectionJump`: a tab glides to a near section and arrives at a far one
+// from a lead short of it, fading what shows in) replaces 1.87's `PageMotionPolicy.Pivot` (the jump and the sideways slide of the sections;
+// removed before any external theme existed, as 1.2 did). A structure that declares none keeps the full glide.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -301,7 +308,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 108;
+    public const int Minor = 110;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

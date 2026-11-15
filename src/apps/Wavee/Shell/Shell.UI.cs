@@ -964,6 +964,9 @@ public static partial class Shell
         // time the facet pivot is clicked).
         if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
             return null;
+        // Two library kinds in one family (ShellCapabilities.LibraryFamily): one slot, so this is a kind switch inside the mounted family, whose head
+        // stays and whose body slides by the pivot's order (User.LibraryFamily). A page transition here would move the head with it.
+        if (oldToken is Route prevKind && SameLibraryFamily(prevKind, next)) return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
         var pageMotion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
@@ -985,6 +988,7 @@ public static partial class Shell
         if (newToken is not Route next || FgMotion.ReducedMotion) return null;
         if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
             return null;
+        if (oldToken is Route prevKind && SameLibraryFamily(prevKind, next)) return null;   // the family plays the switch (PageTransition)
         Route from = oldToken is Route r ? r : Route.None;
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
         if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
@@ -1139,7 +1143,7 @@ public static partial class Shell
                         Ctx.Provide(PageChromeSink.Context, PageChromeChannel.SinkFor(route),
                             // P5 Z2b: the content host names the page's main scroller to the page-scroll signal (Shell.PageScrollFollower.cs).
                             FollowPageScroll(route, ViewSlots.View(ViewKeys.ShellContentState,
-                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route), busy)))))));
+                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, SlotNameOf(route), null), factory!(route), busy)))))));
             case ContentStateKind.EmptyBody:
                 return ViewSlots.View(ViewKeys.ShellContentState,
                     ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));

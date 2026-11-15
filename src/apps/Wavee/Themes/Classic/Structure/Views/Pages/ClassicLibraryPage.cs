@@ -87,8 +87,8 @@ internal static partial class ClassicLibraryPage
             };
         }
         // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser. A borrowing structure's head (contract 1.88) stands
-        // over the columns at every arm; Classic registers none.
-        Element[] page = cache.Controls?.Head is { } head ? [head(new LibraryHeadArgs(props.Kinds(), props.Title)), inner] : [inner];
+        // over the columns at every arm, unless its library family's host draws it once over every kind (`HeadHosted`); Classic registers none.
+        Element[] page = cache.Controls?.Head is { } head && !props.HeadHosted ? [head(new LibraryHeadArgs(props.Kinds(), props.Title)), inner] : [inner];
         return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = page };
     }
 
