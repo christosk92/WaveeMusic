@@ -1057,6 +1057,8 @@ public static partial class Shell
             case "cold-rows": Entities.StageColdRows(); return true;
             case "cold-warm": Entities.StageColdWarm(); return true;
             case "cold-faces": Entities.StageColdFaces(); return true;
+            // A regenerated Mix's fresh answer over the copy the page holds (`goto` pl6 first): Entities.Fake.Cold.cs.
+            case "regen": Entities.StageRegen(); return true;
             // The album's credits (Entities.Fake.Album.cs): al2's members' credits asked and unanswered, then answered (`goto` al2 first).
             case "cold-credits": Entities.StageColdCredits(); return true;
             case "credits-land": Entities.LandFakeCredits(); return true;

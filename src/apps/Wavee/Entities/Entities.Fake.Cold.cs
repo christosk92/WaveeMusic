@@ -10,6 +10,9 @@
 //                 (the owner's recording: "Smart" alone, rows 1 and 4 with a hole between);
 //   · cold-warm   (instead of cold-rows) the membership lands with every row restored from disk: faces known, credits in flight;
 //   · cold-faces  the rows' own fields land (titles, artists, covers, durations: the meta line gains its duration).
+//   · regen       a regenerated Mix's fresh answer (the owner's recording, 2026-11-15, Heartbreak Mix): open the Mix first (`goto` pl6: a seeded list
+//                 nobody revalidated this session, so the page HOLDS it on the open's revalidation, which the fake never answers), then `regen` lands
+//                 what the /diff would: a new revision with other rows, and a new cover and description on the same uri.
 //
 // Inspector-only (`Shell.SetInspectState`); every value is a pure function of the row index and a per-staging epoch, so a second `cold-list` is cold again.
 
@@ -277,6 +280,32 @@ public static partial class Entities
         }
         Current.PublishAll();
     }
+
+    /// <summary>`state regen`: the Mix's fresh answer lands over the copy the page holds: another cover and description, and a new revision whose
+    /// rows are other tracks (each knows its face). The membership's version moves, so the open's revalidation sees it MOVED and lets go.</summary>
+    public static void StageRegen()
+    {
+        int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
+        if (list == Table.None) return;
+        s_regenEpoch++;
+        var t = Current.Playlists;
+        RetainText(ref t.Image[list], Intern(Utf8(Cover(17 + s_regenEpoch * 5))));
+        RetainText(ref t.Description[list], Intern(Utf8("Suzan & Freek, sombr, Conan Gray and more")));
+        RetainText(ref t.Revision[list], Intern(Utf8("9" + s_regenEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",regen")));
+        t.Version[list]++;
+        t.MarkDirty();
+        var targets = new int[ColdRows];
+        var payload = new PlaylistTrackEdge[ColdRows];
+        for (int k = 0; k < ColdRows; k++)
+        {
+            targets[k] = ResolveSeedSlot(EntityKind.Track, TrackUri(Wrap(k * 7 + 3 + s_regenEpoch, 60)));
+            payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0);
+        }
+        Current.Edges.PlaylistTracks.Replace(list, targets, payload, EdgeState.Complete, ColdRows);
+        Current.PublishAll();
+    }
+
+    static int s_regenEpoch;
 
     /// <summary>Stage 2: every cold row's own fields land at once (one batch answer), the in-flight stamps clear.</summary>
     public static void StageColdFaces()
