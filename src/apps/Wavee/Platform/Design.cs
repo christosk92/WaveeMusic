@@ -659,7 +659,74 @@ public static partial class Design
         /// <summary>Is the row at this display position a REAL row yet (vs a shimmer placeholder)? True once the ramp
         /// count passes it; always true at <see cref="Done"/>, so a fully-revealed list pays nothing.</summary>
         public static bool Revealed(int displayIndex, int reveal) => displayIndex < reveal;
+
+        /// <summary>The FIRST step of a cold reveal: every row the list's viewport can show, plus one, so the rows on screen all turn real
+        /// on the same frame (the owner's recording, 2026-11-15: rows 1-12 landed, then 13-15 a frame later through a grey placeholder, half
+        /// faded while the rows above stood solid). Only the overscan past the screen steps on by <see cref="Chunk"/> after it.
+        /// <paramref name="viewportH"/> is the list column's measured height (0 before the first measure: a 1080-DIP screen's worth).</summary>
+        public static int FirstBand(float viewportH, float rowH)
+        {
+            float h = viewportH > 1f ? viewportH : FallbackViewportH;
+            int rows = rowH > 1f ? (int)MathF.Ceiling(h / rowH) + 1 : Chunk;
+            return Math.Clamp(rows, Chunk, Cap);
+        }
+
+        /// <summary>The list height <see cref="FirstBand"/> assumes before the column has measured.</summary>
+        const float FallbackViewportH = 1080f;
+
+        // ── the cold reveal's row entrance (the owner's recording, 2026-11-15: the whole list cut in at once) ──
+        // Each row of the first band crossfades from its skeleton to its content IN PLACE (opacity only: nothing moves, no layout), one row a
+        // step behind the one above, the whole band settled inside RowSpanMs + RowFadeMs. The skeleton under the band dissolves on the region's
+        // own exit (SkelReveal.None floors it at Expressive.Slow), so a row never stands blank between the two.
+
+        /// <summary>Each row's crossfade.</summary>
+        public const float RowFadeMs = 150f;
+        /// <summary>The gap between two rows' crossfades.</summary>
+        public const float RowStepMs = 8f;
+        /// <summary>The last row starts at most this long after the first: the band settles within 250 ms however tall the window is.</summary>
+        public const float RowSpanMs = 100f;
+
+        static readonly LayoutTransition[] s_rowEnter = BuildRowEnter();
+
+        static LayoutTransition[] BuildRowEnter()
+        {
+            int n = (int)(RowSpanMs / RowStepMs) + 1;
+            var a = new LayoutTransition[n];
+            for (int i = 0; i < n; i++)
+                a[i] = new LayoutTransition(TransitionChannels.Opacity, TransitionDynamics.Tween(RowFadeMs, Easing.FluentDecelerate),
+                    Enter: new EnterExit(Opacity: 0f, Active: true), DelayMs: MathF.Min(i * RowStepMs, RowSpanMs));
+            return a;
+        }
+
+        /// <summary>The entrance of the row at <paramref name="displayIndex"/> when a cold reveal mounts it (null under reduced motion: the swap
+        /// snaps, as the skeleton's own exit does). Preallocated: a reveal allocates nothing per row.</summary>
+        public static LayoutTransition? RowEnter(int displayIndex)
+            => Reduced ? null : s_rowEnter[Math.Clamp(displayIndex, 0, s_rowEnter.Length - 1)];
     }
+
+    // ══ 11b. THE LOADING SKELETON ════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The detail pages' skeleton (the playlist / album / show list and its head): the row's own shapes in a bar that reads as LOADING.
+    /// The engine's default bar is the subtle hover fill (3.5 % black in light), which its breathing pulse halves: the owner's recording
+    /// (2026-11-15) read the loading list as an empty page. The bar is the text ink at <see cref="SkeletonBarAlpha"/> over whatever ground the
+    /// page has (light and dark alike), breathing gently between full and <see cref="SkeletonPulseMin"/> of it. A property: the ink is read
+    /// where the element is built, so a theme flip re-reads it.</summary>
+    public static SkeletonStyle Skeleton => new(SkeletonBar, PulseMs: SkeletonPulseMs, PulseMin: SkeletonPulseMin);
+
+    /// <summary>The skeleton's bar colour: the active text ink at <see cref="SkeletonBarAlpha"/>.</summary>
+    public static ColorF SkeletonBar
+    {
+        get
+        {
+            var ink = Tok.TextPrimary;
+            return new ColorF(ink.R, ink.G, ink.B, SkeletonBarAlpha);
+        }
+    }
+
+    /// <summary>The bar's opacity over the page (WinUI's loading placeholders sit near the control fills, 6-10 %).</summary>
+    public const float SkeletonBarAlpha = 0.085f;
+    /// <summary>The breathing pulse's period and its floor (a calm breath that never fades the bar out).</summary>
+    public const float SkeletonPulseMs = 1400f, SkeletonPulseMin = 0.6f;
 
     // ══ 12. IMAGE DECODE SCALE ═══════════════════════════════════════════════════════════════════════════════════════
 

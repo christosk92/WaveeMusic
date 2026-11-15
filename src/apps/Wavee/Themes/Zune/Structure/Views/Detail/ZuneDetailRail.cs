@@ -63,7 +63,7 @@ internal static class ZuneDetailRail
             Pending: stacked ? K.Never : p.Pending, Failed: K.Never,
             Content: () => Column(spec, p, lay, w, shortWindow, enter, stacked, gutter),
             ShimmerSource: () => Skeleton(spec, column, stacked ? column.RailW : w),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false);
         return new BoxEl
         {
             Direction = 1, Width = w, Shrink = 0f, Grow = stacked ? 0f : 1f, MinHeight = 0f, ClipToBounds = true,

@@ -600,6 +600,16 @@ public readonly partial struct Track
         readonly Signal<bool> _rampActive = new(false);
         bool _rampPending, _rampDecided, _sawUnknown;
         int _rampEpoch;
+        /// <summary>The ramp's first step: the rows the viewport shows (<see cref="Design.RevealRamp.FirstBand"/>), fixed when the ramp arms.</summary>
+        int _rampFirst = Design.RevealRamp.Chunk;
+        /// <summary>The list column's measured height (<see cref="OnColumnBounds"/>): the cold reveal's first band and the skeleton's row count.</summary>
+        float _lastH;
+        /// <summary>When the last COLD reveal released (the skeleton gave way to rows), and how many rows its band covers: a row slot that first
+        /// mounts real inside <see cref="RevealWindowMs"/> of it, within the band, takes the band's staggered crossfade
+        /// (<see cref="Design.RevealRamp.RowEnter"/>); a row realized later (a scroll) mounts as it always did, with no entrance.</summary>
+        long _revealAtMs = long.MinValue;
+        int _revealBand;
+        const long RevealWindowMs = 400;
 
         // ── membership choreography + re-deal (ch 04 §5) ───────────────────────────────────────────────────────────
         readonly Signal<int> _dispVer = new(0);
@@ -868,6 +878,7 @@ public readonly partial struct Track
         {
             if (r.W <= 0f) return;
             _lastW = r.W;
+            _lastH = r.H;
             if (MathF.Abs(_colW.Peek() - r.W) > 4f) _colW.Value = r.W;
             if (r.W != _tableW.Peek()) _tableW.Value = r.W;
             if (VerticalArm)
@@ -1262,7 +1273,12 @@ public readonly partial struct Track
                 // shimmer on the gate (TableRowContent), so a ramp there would only turn rows past the first chunk back into blank placeholders for a frame:
                 // the arm releases every row at once instead.
                 bool together = vertical && !trailing && ShellPolicy.Tracked.Lists.RowsRevealTogether;
-                if ((_sawUnknown || trailing) && !together) { _rampPending = true; _rampEpoch++; }
+                // The first step covers every row on screen (the owner's recording: rows 13-15 a frame after 1-12, through a grey placeholder);
+                // only the overscan past the screen ramps on.
+                int band = Design.RevealRamp.FirstBand(_lastH, shape.RowH);
+                if ((_sawUnknown || trailing) && !together) { _rampPending = true; _rampEpoch++; _rampFirst = band; }
+                // A cold reveal (the list stood on its skeleton): the rows on screen crossfade in, top-down (TableRowContent).
+                if (_sawUnknown) { _revealAtMs = Environment.TickCount64; _revealBand = band; }
             }
             UseLayoutEffect(ArmRamp, DepKey.From(_rampEpoch));
 
@@ -1327,13 +1343,16 @@ public readonly partial struct Track
                 : listState == PlaylistRowsState.Rows ? FlatList(layout, trailing, narrate)
                 : Placeholder(listState, in shape);
 
+            // A list of rows owns its reveal (SkelReveal.None): the band on screen crossfades in row by row (TableRowContent,
+            // Design.RevealRamp.RowEnter) while the skeleton dissolves under it, so each row turns from its bones to its content in place (the
+            // whole list used to cut in at once, owner video 2026-11-15). The hero arm's region holds the hero band too, which fades as one.
             Element region = new SkelRegionEl(
                 Pending: vertical && !trailing ? VerticalPending : RowsPending,
                 Failed: vertical && !trailing ? VerticalFailed : RowsFailed,
                 Content: () => realList,
                 ShimmerSource: vertical && !trailing ? () => VerticalShimmer(in shape, chips, lens) : () => RowsShimmer(in shape),
                 OnFailed: FailedPanel,
-                Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+                Reveal: vertical && !trailing ? SkelReveal.FadeOnly : SkelReveal.None, Style: Design.Skeleton, Group: null, SmoothResize: false);
 
             // Density · skin · (two-column only) query+filter · reset epoch · recs, and `vh:` for the vertical arm. NOT the
             // tier and NOT the sort (ch 04 §0.3/§0.5, ch 30 §5.3).
@@ -1402,7 +1421,7 @@ public readonly partial struct Track
         void ArmRamp()
         {
             if (!_rampPending) return;
-            _reveal.Value = Design.RevealRamp.Chunk;
+            _reveal.Value = _rampFirst;
             _rampActive.Value = true;
             _rampPending = false;
         }
@@ -1426,8 +1445,26 @@ public readonly partial struct Track
         internal bool RowRevealed(int displayIndex)
         {
             int reveal = _reveal.Value;
-            if (_rampPending) reveal = Design.RevealRamp.Chunk;
+            if (_rampPending) reveal = _rampFirst;
             return Design.RevealRamp.Revealed(displayIndex, reveal);
+        }
+
+        /// <summary>The entrance of a row slot that FIRST mounts real at <paramref name="displayIndex"/>: the cold reveal's staggered crossfade while
+        /// the reveal that just released the skeleton is fresh and the row is in its band (on screen), else none (a row a scroll realizes later
+        /// mounts as it always did). An untracked read: a slot's entrance is decided once, at its first render.</summary>
+        internal LayoutTransition? RevealEntrance(int displayIndex)
+        {
+            if ((uint)displayIndex >= (uint)_revealBand) return null;
+            if (Environment.TickCount64 - _revealAtMs > RevealWindowMs) return null;
+            return Design.RevealRamp.RowEnter(displayIndex);
+        }
+
+        /// <summary>The hero arm's rows hold their own skeletons until the table's gate opens (<see cref="RowGateClosed"/>): a row mounted behind
+        /// that gate crossfades in with the band when it opens (<see cref="Design.RevealRamp.RowEnter"/>), the rows on screen top-down. Untracked.</summary>
+        internal LayoutTransition? GatedEntrance(int displayIndex)
+        {
+            int band = Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().RowH);
+            return (uint)displayIndex < (uint)band ? Design.RevealRamp.RowEnter(displayIndex) : null;
         }
 
         /// <summary>What the list shows against what it has (tuned Classic D4): the shown rows' length is summed only while a find or a
@@ -1861,12 +1898,29 @@ public readonly partial struct Track
             // The placeholder's key sits on a CHILD: this item and row 1 are one slot (the first suffix slot becomes the first track row when the rows
             // land), and a slot root ignores its key, so a keyed root patched the shimmer's nodes into row 1, which then glided in from the
             // placeholder's layout (the one row that slid in from the right on a playlist load). Under an unkeyed root the row mounts fresh.
+            // The loading skeleton LEAVES as the rows arrive: it dissolves under them in the same place (an exit orphan draws under the live rows)
+            // while the rows crossfade in top-down (Design.RevealRamp.RowEnter). It used to vanish on the frame the membership landed, so the rows
+            // faded in over bare ground (owner video 2026-11-15).
+            bool loading = state == PlaylistRowsState.Loading;
             return new BoxEl
             {
                 Direction = 1, HitTestPassThrough = true,
-                Children = [new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] }],
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "vitem:empty", MinHeight = 160f, Direction = 1, Animate = loading && !Design.Reduced ? s_skeletonLeave : null,
+                        Children = [InsetList(Placeholder(state, in shape))],
+                    },
+                ],
             };
         }
+
+        /// <summary>The hero list's loading skeleton leaving: an opacity exit as long as the rows' staggered crossfade, linear so the bones thin out
+        /// evenly under the rows arriving over them.</summary>
+        static readonly LayoutTransition s_skeletonLeave = new(TransitionChannels.Opacity,
+            TransitionDynamics.Tween(Design.RevealRamp.RowSpanMs + Design.RevealRamp.RowFadeMs, Easing.Linear),
+            Exit: new EnterExit(Opacity: 0f, Active: true));
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
         /// <summary>The hero arm's list carries the recommendations section after its rows (a tracked read: the slot map follows it).</summary>
@@ -1904,7 +1958,7 @@ public readonly partial struct Track
                 return new SkelRegionEl(
                     Pending: RowsPending, Failed: RowsFailed, Content: static () => new BoxEl(),
                     ShimmerSource: () => RowsShimmer(in geometry), OnFailed: FailedPanel,
-                    Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
+                    Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false)
                     with { Key = "rows:loading" };
             }
             return Message(Loc.Get(state == PlaylistRowsState.Empty ? Strings.Detail.Empty.NoTracks : Strings.Detail.Empty.NoMatch));
@@ -1929,7 +1983,7 @@ public readonly partial struct Track
             ],
         };
 
-        /// <summary>12 copies of the REAL row grid over an empty track — the deriver shimmers the row's own shape (one
+        /// <summary>A screenful of copies of the REAL row grid over an empty track — the deriver shimmers the row's own shape (one
         /// source; the shimmer can never drift from the rows). A two-column Modern row sits inside its skin's plate inset
         /// (<see cref="RowMetrics.RowInset"/> either side), so its copy does too (tuned Classic X2: the bars used to start 8 DIP
         /// left of the cells and run 16 wider). A list that groups by date (Liked Songs, D16, sorted by when its songs were added — its
@@ -1940,16 +1994,18 @@ public readonly partial struct Track
             Edges4 inset = !shape.Set.Classic && (!VerticalArm || ColumnsForm) ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
             // As many rows as the source already knows it has (a 2-song single shimmered a 12-row chunk, and the section under it climbed 400 DIP when the
-            // rows landed: "About this album", owner video 2026-10-25), a full chunk when nothing is known yet.
+            // rows landed: "About this album", owner video 2026-10-25), else every row the screen shows: the skeleton stands wherever a row on screen
+            // will land (it stopped at 12, and rows 13-15 landed below it on bare ground, owner video 2026-11-15).
             int expected = _latest.Source.ExpectedRows;
-            var rows = new Element[expected > 0 ? Math.Min(expected, Design.RevealRamp.Chunk) : Design.RevealRamp.Chunk];
+            int band = Design.RevealRamp.FirstBand(_lastH, shape.RowH);
+            var rows = new Element[expected > 0 ? Math.Min(expected, band) : band];
             for (int i = 0; i < rows.Length; i++)
             {
                 rows[i] = ShimmerGrid(in shape, i);
                 if (inset != default) rows[i] = new BoxEl { Direction = 1, Margin = inset, Children = [rows[i]] };
             }
             if (groups) rows[0] = new BoxEl { Direction = 1, Children = [GroupHeader(s_pendingGroupHead, in shape), rows[0]] };
-            return new BoxEl { Direction = 1, Children = rows };
+            return new BoxEl { Key = "rows:skeleton", Direction = 1, Children = rows };
         }
 
         /// <summary>One copy of the REAL row grid over an empty track: what the deriver shimmers.</summary>
@@ -2916,6 +2972,8 @@ public readonly partial struct Track
         int _likeSlot;
         bool _likeSaved;
         byte _latch;   // 0 = unrendered · 1 = first render was a placeholder (the crossing fades) · 2 = mounted real
+        bool _entranceTaken;
+        LayoutTransition? _entrance;
         Track.BoundRow? _row;
 
         static readonly LayoutTransition s_rampReveal = new(TransitionChannels.Opacity,
@@ -2970,6 +3028,11 @@ public readonly partial struct Track
             // grid. The gate opens for every row on the same frame, so the list swaps in as one block; covers then fade in inside rows already laid out.
             var host = _host;
             var geometry = shape;
+            int display = _scope.Index.Peek() - _start;
+            // A row mounted behind the hero arm's closed gate crossfades in with the band when the gate opens, top-down (the rows used to swap in as
+            // one block, owner video 2026-11-15): its content owns the entrance and the row's skeleton dissolves under it. A row whose own data lands
+            // later (scrolled to before its page) keeps the plain cross-dissolve.
+            var gated = TableHost.RowsTogether() && host.RowGateClosed() ? host.GatedEntrance(display) : null;
             Element body = !TableHost.RowsTogether()
                 ? Flow.Show(() => { var t = row.Presentation.Value.Track; return TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)); }, grid,
                     _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)))
@@ -2982,12 +3045,16 @@ public readonly partial struct Track
                     return !TableRules.RowHasData(t.IsValid, paints) || host.RowGateClosed();
                 },
                 Failed: static () => false,
-                Content: () => grid,
+                Content: gated is null ? () => grid : () => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Animate = gated, Children = [grid] },
                 ShimmerSource: () => host.ShimmerRow(in geometry),
-                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+                OnFailed: null, Reveal: gated is null ? SkelReveal.FadeOnly : SkelReveal.None, Style: Design.Skeleton, Group: null, SmoothResize: false);
+            // A slot whose first render was the ramp's placeholder fades as it turns real (off screen: the overscan past the first band); one that
+            // mounts real in a cold reveal's band takes the band's staggered crossfade (Design.RevealRamp.RowEnter).
+            // Decided once, at the slot's first real render, and kept (the node's transition stays the one its entrance started on).
+            if (!_entranceTaken) { _entranceTaken = true; _entrance = _latch == 1 ? s_rampReveal : host.RevealEntrance(display); }
             return new BoxEl
             {
-                Key = "row:real", Direction = 0, Grow = 1f, Animate = _latch == 1 ? s_rampReveal : null, Children = [body],
+                Key = "row:real", Direction = 0, Grow = 1f, Animate = _entrance, Children = [body],
             };
         }
     }

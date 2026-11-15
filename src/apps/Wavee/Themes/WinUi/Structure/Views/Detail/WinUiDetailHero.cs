@@ -369,7 +369,7 @@ internal static partial class WinUiDetailFrame
             Pending: pending, Failed: s_never,
             Content: () => Column(words),
             ShimmerSource: () => Column(shimmer()),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
     }
 
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned while they fit beside it, top-aligned once taller), or over
