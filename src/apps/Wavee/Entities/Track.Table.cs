@@ -61,6 +61,9 @@ public readonly partial struct Track
         /// <summary>How many rows the loading table should shimmer before any is resident: what the source already knows of its length (the album's own track
         /// count before its track list answers, else the declared total), 0 when nothing does.</summary>
         public virtual int ExpectedRows => Total;
+        /// <summary>The rows whose covers the table may decode AHEAD of showing them (the first screen's art, prefetched with the track data so the
+        /// thumbnails land with their rows): the resident rows, and for a source that holds its rows back, the rows it holds.</summary>
+        public virtual int PrefetchCount => Count;
         /// <summary>Unknown ⇒ shimmer, never "Nothing here yet"; Failed only while nothing is resident (G-050).</summary>
         public abstract EdgeState State { get; }
         /// <summary>The edge version for this parent.</summary>
@@ -665,6 +668,7 @@ public readonly partial struct Track
 
         // ── cached delegates (mount-stable; list options freeze at mount and must read live state) ─────────────────
         readonly Action<RectF> _onBounds;
+        readonly Action _prefetchArt;
         readonly Action<float> _onHeroMeasured;
         readonly Action _playAll, _shuffle;
         Detail.VerticalSpec? _heroSpecFrom, _heroSpec;
@@ -677,6 +681,7 @@ public readonly partial struct Track
         public TableHost()
         {
             _onBounds = OnColumnBounds;
+            _prefetchArt = PrefetchBandArt;
             // Unknown (no seed) is the widest tier, as the table always opened.
             _listSeed = () => _latest is { WidthSeed: > 0f } a ? a.WidthSeed : float.PositiveInfinity;
             _onHeroMeasured = h =>
@@ -1326,6 +1331,8 @@ public readonly partial struct Track
                       DepKey.From(listCount.Shown, listCount.Total, (int)(listCount.ShownMs / 1000L),
                                   (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0) | (listCount.EmptyLead ? 4 : 0)));
             UseEffect(InstallBenchHook, DepKey.Empty);
+            // The first screen's covers decode with the track data, ahead of the rows' reveal (the owner's recording: empty squares, then pictures).
+            UseEffect(_prefetchArt);
 
             float rowH = shape.RowH;
             // An episode-capable source has rows of more than one height, so the fixed `MeasuredStackVirtualLayout`
@@ -1442,6 +1449,30 @@ public readonly partial struct Track
 
         /// <summary>Is this display row REAL yet? Reads the signal (subscribing the caller's per-row bool memo) and, on the
         /// render that arms a ramp, the pending chunk — so rows mounting before the arming layout effect already agree.</summary>
+        /// <summary>Warm the image cache with the covers of the rows the first screen will show, at the rows' own decode
+        /// (<see cref="Track.RowArtDecodePx"/>: the same cache key the row's image then pins), as soon as their faces are known: the rows' data and
+        /// their thumbnails arrive together instead of the rows first and their covers a beat later. Auto-tracked (the source and the track table);
+        /// a cover already requested is a cache hit, and a row already prefetched is skipped, so a publication that adds nothing costs a compare.</summary>
+        void PrefetchBandArt()
+        {
+            var src = _latest.Source;
+            src.Subscribe();
+            _ = Entities.Current.Tracks.Changed.Value;
+            if (!src.Context.Equals(_prefetchFor)) { _prefetchFor = src.Context; _prefetched = 0; }
+            int n = Math.Min(src.PrefetchCount, Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().RowH));
+            for (int i = _prefetched; i < n; i++)
+            {
+                var t = src.At(i);
+                string? url = t.IsValid ? Track.RowArtUrl(t.ForDisplay) : null;
+                if (url is not { Length: > 0 }) break;          // the rows below it wait for their faces: the next publication resumes here
+                PrefetchImage(url, Track.RowArtDecodePx);
+                _prefetched = i + 1;
+            }
+        }
+
+        EntityUri _prefetchFor;
+        int _prefetched;
+
         internal bool RowRevealed(int displayIndex)
         {
             int reveal = _reveal.Value;

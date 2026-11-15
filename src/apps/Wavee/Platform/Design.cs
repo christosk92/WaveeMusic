@@ -693,7 +693,7 @@ public static partial class Design
             int n = (int)(RowSpanMs / RowStepMs) + 1;
             var a = new LayoutTransition[n];
             for (int i = 0; i < n; i++)
-                a[i] = new LayoutTransition(TransitionChannels.Opacity, TransitionDynamics.Tween(RowFadeMs, Easing.FluentDecelerate),
+                a[i] = new LayoutTransition(TransitionChannels.Opacity, TransitionDynamics.Tween(RowFadeMs, Easing.EaseOut),
                     Enter: new EnterExit(Opacity: 0f, Active: true), DelayMs: MathF.Min(i * RowStepMs, RowSpanMs));
             return a;
         }
