@@ -301,7 +301,6 @@ internal sealed class ClassicCoverTint : Component
         // "Have I EVER published": the first publish is the mount's claim (neither activation callback fires at mount);
         // a reactivation claims through onActivated explicitly.
         var claimedOnce = UseRef(false);
-        var active = UseIsActive();
 
         void Publish(bool isClaim) => p.Port.Publish(p.Owner, isClaim, definite, known, wash: null);
 
@@ -310,15 +309,13 @@ internal sealed class ClassicCoverTint : Component
         // themes plan X44.)
         UseEffect(() =>
         {
-            if (!active.Peek()) return;
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Epoch,
                                         p.Ready, washes, p.Apply, p.PayloadAccent)));
         // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
         // retake the slot from whatever deactivated in between, even if that never cleared it either.
-        // A page built off screen for a held swap is inactive until it shows: it claims the slot when it comes on screen (onActivated).
-        UseActivation(onActivated: () => { Publish(isClaim: true); claimedOnce.Value = true; });
+        UseActivation(onActivated: () => Publish(isClaim: true));
 
         return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     }

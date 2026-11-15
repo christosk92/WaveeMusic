@@ -70,19 +70,16 @@ internal sealed class WinUiCoverTint : Component
     {
         var p = UseProps<CoverTintProps>();
         var claimedOnce = UseRef(false);
-        var active = UseIsActive();
         const bool definite = true;
         ColorF? known = null;
         void Publish(bool isClaim) => p.Port.Publish(p.Owner, isClaim, definite, known, wash: null);
         UseEffect(() =>
         {
-            if (!active.Peek()) return;
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(Tok.Epoch));
         // A KeepAlive reactivation always claims the slot back.
-        // A page built off screen for a held swap is inactive until it shows: it claims the slot when it comes on screen (onActivated).
-        UseActivation(onActivated: () => { Publish(isClaim: true); claimedOnce.Value = true; });
+        UseActivation(onActivated: () => Publish(isClaim: true));
         return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     }
 }

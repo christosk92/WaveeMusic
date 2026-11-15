@@ -852,25 +852,7 @@ public static partial class Shell
         // A structure with per-kind page motion staggers the incoming page's units in (PageMotionPolicy.Cascade).
         CascadeFor: PageCascade,
         // Reduced motion is the recipes' call (PageTransition): a structure's quick fade, or the cut the shell always made.
-        RecipeOwnsReducedMotion: true,
-        // The swap waits (up to Design.Nav.HoldMaxMs) for the incoming page's first screen, built off screen, so the page arrives whole.
-        HoldMaxMs: Design.Nav.HoldMaxMs,
-        HoldFor: HoldsSwap,
-        // The staged label and the band's chrome land from the swap's commit, which a held swap moves past the click.
-        OnShown: static _ => s_land.RestartIn(TabLabelStaging.DelayMs(FgMotion.ReducedMotion)));
-
-    /// <summary>Whether a page swap waits for its incoming page (<see cref="Design.Nav.HoldMaxMs"/>): every swap between two slots, and a
-    /// detail page opened over another of its kind (album to album: the new one is built beside the old one and swaps in whole, instead of
-    /// the old one re-rendering in place through its skeleton). A facet switch, a search query and the other in-slot changes update in
-    /// place; a structure that mounts its incoming page at the end of the exit leg (Zune) has nothing to hold.</summary>
-    static bool HoldsSwap(object oldToken, object newToken)
-    {
-        if (ShellCaps.Now.DefersPageMount || oldToken is not Route from || newToken is not Route to) return false;
-        return !string.Equals(SlotKey(in from), SlotKey(in to), StringComparison.Ordinal) || IsDetail(to.Kind);
-    }
-
-    /// <summary>The content host's staged-label timer (<see cref="Shown"/>), restarted by the swap's commit (<see cref="KeepAliveOptions.OnShown"/>).</summary>
-    static TimerHandle s_land;
+        RecipeOwnsReducedMotion: true);
 
 
     /// <summary>The route whose page is ON SCREEN, as opposed to <see cref="Current"/>, the route just committed: the two
@@ -896,14 +878,14 @@ public static partial class Shell
             // The staged label route (see Shown): armed ONCE from mount so boot's route lands, then RE-ARMED by the effect
             // below for every commit — the effect subscribes to the route, this render body never does. The lag is the
             // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
-            s_land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
+            var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
             // The band's chrome lands from the host's after-animations phase (PageChromeChannel.ArmLanding), so its height eases instead of snapping.
             UseContext(InputHooks.Current).SetAfterAnimations(s_chromeLanding, PageChromeChannel.LandIfDue);
-            // The label's timer restarts at the swap's commit (s_keepAlive's OnShown), which a held swap moves past the click.
-            UseSignalEffect(static () =>
+            UseSignalEffect(() =>
             {
                 _ = Current.Value;
                 Residency.NoteNavigationStarted();   // the post-navigation gen-0 collection waits for this one to land
+                land.RestartIn(TabLabelStaging.DelayMs(FgMotion.ReducedMotion));
             });
 
             // The NEUTRAL half of the material hand-over: claimed for exactly the routes no page tints (disjoint sets,

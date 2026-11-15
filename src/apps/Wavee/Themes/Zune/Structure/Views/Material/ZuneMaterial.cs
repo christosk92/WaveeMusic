@@ -283,18 +283,15 @@ internal sealed class ZuneCoverTint : Component
         }
 
         var claimedOnce = UseRef(false);
-        var active = UseIsActive();
         void Publish(bool isClaim) => p.Port.Publish(p.Owner, isClaim, definite, known, wash: null);
         // The theme epoch is in the key: a light/dark flip re-derives the tint and re-publishes it.
         UseEffect(() =>
         {
-            if (!active.Peek()) return;
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Epoch, p.Ready, wash, p.Apply, p.PayloadAccent)));
         // A KeepAlive reactivation always claims the slot back.
-        // A page built off screen for a held swap is inactive until it shows: it claims the slot when it comes on screen (onActivated).
-        UseActivation(onActivated: () => { Publish(isClaim: true); claimedOnce.Value = true; });
+        UseActivation(onActivated: () => Publish(isClaim: true));
 
         return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     }

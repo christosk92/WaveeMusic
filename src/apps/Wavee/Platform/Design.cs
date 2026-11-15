@@ -539,12 +539,6 @@ public static partial class Design
         /// up in its first frames while the outgoing one leaves on its own 90 ms exit leg. The two pages' summed cover never drops below ~84 %
         /// (the sequenced legs fell to 6 %), they share the screen for the exit leg only, and the swap settles sooner.</summary>
         public const float HandOverEnterMs = 167f;
-        /// <summary>How long a page swap may wait for the incoming page's first screen (the engine's held swap,
-        /// <c>KeepAliveOptions.HoldMaxMs</c>): the page is built and laid out off screen while the outgoing one stays, and swaps in
-        /// complete, with no skeleton and nothing moving, once its data and the pictures in view have landed. A page that needs longer
-        /// swaps in at this point and shows its skeletons (their own show delay has run by then). The owner's recording, 2026-11-15: the
-        /// page swapped in at the click and sat on faint skeleton bars for ~0.8 s, then the hero and the sections landed in other places.</summary>
-        public const float HoldMaxMs = 300f;
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
 
