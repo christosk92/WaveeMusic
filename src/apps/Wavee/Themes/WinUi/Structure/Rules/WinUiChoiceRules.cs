@@ -3,7 +3,8 @@
 // What `Views\Choice\WinUi*.cs` read instead of a literal (WVTH003). Boards: W-Flyouts ("Sort and view menu · Library toolbar": a DropDownButton
 // "Recently added ⌄" over a MenuFlyout with caption group headers and radio rows), W-Library (the filter, the sort and the grid / list pair in one 32
 // row), W-LibraryList (the scope SelectorBar "In your library | All releases" and the "Newest ⌄" sort), W-Show (the filter SelectorBar "All · 14",
-// the find box and "Newest ⌄"). The menu's own metrics (36 rows, 14 text, 4 backplates, the 8 acrylic plate) are the engine MenuFlyout's.
+// the find box and "Newest ⌄"). The menu's own metrics (32 plates 36 apart, 14 text, 4 backplates, the 8 acrylic plate, the pill on the chosen radio row) are
+// WinUiControls.Menu's over the engine MenuFlyout's.
 
 namespace Wavee.Themes.WinUi;
 
