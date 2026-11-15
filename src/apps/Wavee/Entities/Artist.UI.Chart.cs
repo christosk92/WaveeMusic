@@ -50,14 +50,16 @@ public readonly partial struct Artist
     /// group (that coordination faded the hero from 0 after the photo was already decoded).
     /// <para><paramref name="rows"/>: a structure's LIVE rows per column, over the tier's (<see cref="Wavee.Theming.ArtistTierPolicy.ChartRows"/>); 0 or
     /// null keeps the tier's. A structure whose chart stands beside a taller column lets the chart take as many rows as fill it (WinUI's two-column
-    /// overview); the pager's pages follow it, and the mounted shelf re-fits in place (a live prop, never a key).</para></summary>
-    internal static Element Chart(Artist a, IReadSignal<ColorF> accent, object? group = null, IReadSignal<int>? rows = null)
-        => Embed.Comp(new ChartProps(a, accent, group, rows), static () => new ChartHost());
+    /// overview); the pager's pages follow it, and the mounted shelf re-fits in place (a live prop, never a key).</para>
+    /// <para><paramref name="seedRows"/>: the rows the structure predicts that fit (a plain prop, worked out before any layout), which the chart
+    /// mounts with while <paramref name="rows"/> reads 0; 0 keeps the tier's. The live count stays the correction.</para></summary>
+    internal static Element Chart(Artist a, IReadSignal<ColorF> accent, object? group = null, IReadSignal<int>? rows = null, int seedRows = 0)
+        => Embed.Comp(new ChartProps(a, accent, group, rows, seedRows), static () => new ChartHost());
 
-    sealed record ChartProps(Artist A, IReadSignal<ColorF> Accent, object? Group, IReadSignal<int>? Rows)
+    sealed record ChartProps(Artist A, IReadSignal<ColorF> Accent, object? Group, IReadSignal<int>? Rows, int SeedRows = 0)
     {
         public bool Equals(ChartProps? o) => o is not null && o.A == A && ReferenceEquals(o.Accent, Accent) && Equals(o.Group, Group)
-            && ReferenceEquals(o.Rows, Rows);
+            && ReferenceEquals(o.Rows, Rows) && o.SeedRows == SeedRows;
         public override int GetHashCode() => A.Slot;
     }
 
@@ -203,8 +205,8 @@ public readonly partial struct Artist
             _failed = gate.Verdict == ArtistReadiness.ChartVerdict.Failed;
             NoteGate(scope, gate);
             _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
-            int fit = p.Rows?.Value ?? 0;   // the structure's live fit to its column (0: the tier's)
-            _rows = fit > 0 ? fit : Math.Max(1, chartTiers.ChartRows(tierFacts));
+            int fit = p.Rows?.Value ?? 0;   // the structure's live fit to its column (0: its seed, else the tier's)
+            _rows = fit > 0 ? fit : p.SeedRows > 0 ? p.SeedRows : Math.Max(1, chartTiers.ChartRows(tierFacts));
             _balanced = _maxColumns >= 2 && chartTiers.ChartBalanced(tierFacts);
             RefreshItems();
             Selection.ItemCount = _items.Length;

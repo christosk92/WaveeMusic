@@ -132,6 +132,12 @@ public static class WinUiArtistRules
     /// <summary>The discography preview: three covers 16 apart, the title 14/20 semibold 6 under, the sub 12/16; the combos 32 tall.</summary>
     public const float PreviewColumns = 3f, PreviewGap = 16f, PreviewTitleGap = 6f, PreviewCardRadius = 8f, ComboHeight = 32f;
 
+    /// <summary>The preview's "Show all" link's line: the Small hyperlink's 12/16 text (its padding is the control's `ControlMetrics`).</summary>
+    public const float PreviewLinkLine = 16f;
+
+    /// <summary>The lines of the compact pick's quote the chart's row seed counts (a quote wraps to at most four; the measured fit corrects a longer one).</summary>
+    public const int PickQuoteSeedLines = 1;
+
     /// <summary>At Huge the preview shows Albums and Singles &amp; EPs as two titled rows (the boards), three covers each.</summary>
     public const int HugePreviewRows = 2;
 
@@ -310,6 +316,12 @@ public static class WinUiArtistMotion
         Enter: SwapFamilies.Declare(RestackFamily, new EnterExit(Opacity: 0f, Active: true, DelayMs: FadeInDelayMs)),
         Exit: SwapFamilies.Declare(RestackFamily, new EnterExit(Opacity: 0f, Active: true)),
         ExitDynamics: TransitionDynamics.Tween(FadeOutMs, Easing.Linear), DelayMs: HoldMs, ExitDelayMs: 0f);
+
+    /// <summary><see cref="Side"/> for the side column the page LANDS with (the overview's first arrangement): no Enter, so it stands at the page's
+    /// opacity from the first frame, beside Popular. Its enter waits out a restack's fade-out and Popular's resize, which a landing has none of: on the
+    /// landing it left the column empty for 317 ms and then popped it in (the owner's recording, 2026-11-15: "the right content just appears"). A
+    /// restack's column still fades through (it mounts under <see cref="Side"/>).</summary>
+    public static readonly LayoutTransition SideLanding = Side with { Enter = default };
 
     /// <summary>The hero card's height across a tier crossing (200 / 220 / 260 / 420): it eases through real layout, so the pivot and the page under the
     /// card ride it; the photograph, the veil and the copy stretch with the card.</summary>
