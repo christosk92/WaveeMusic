@@ -531,6 +531,11 @@ Exit/Layout` FLIP, `MotionTok`, reduced-motion-as-a-value) provides the primitiv
    frame fades out, new list fades in with a ~12 ms stagger on the first ~10 visible rows), plus the §4.1
    header refresh (curated playlists usually change cover/description in the same push). This reads as "the
    playlist was refreshed", which is the truthful narration for an editorial re-cut.
+   *Superseded 2026-11-15 (feat/playlist-open-smooth):* there is no reset. A re-cut is the same three steps as an
+   edit (`Design.Membership`): the live rows that are gone leave where they stand, top-down (the engine retires their
+   slots as exit orphans, `ItemsViewController.CommitMembership`, run from the list's structural observer ahead of every
+   row), the survivors close up, and each arrival fades in once its own place is free. The list keeps its key, its
+   scroll and its selection; the description hands over (`Controls.TextHandOver`) and the cover crossfades.
 6. **Now-playing row:** the marquee row (`DetailTracks.cs:495-518`) follows its key through moves — the
    playing-track highlight must never detach from the track during a FLIP.
 

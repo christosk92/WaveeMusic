@@ -1445,18 +1445,58 @@ public readonly partial struct Track
 
     // ══ 9. THE MEMBERSHIP DIFF ═══════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The window rules of a membership change the page narrates (leave, close up, arrive; Design.Membership holds the numbers): only
+    /// the LIVE rows (the list's realized window) animate, a survivor glides only when its old and new place are both live rows, and nothing
+    /// arrives until every leaver is gone. Pure: every number comes in as an argument.</summary>
+    public static class MembershipWindow
+    {
+        /// <summary>The scroll anchor of a change: the <c>new - old</c> of the first visible survivor (from <paramref name="firstVisible"/> down)
+        /// whose shift at least half of the live survivors (<c>[liveFirst, liveLast)</c>, old indices) share: an edit ABOVE the window moves
+        /// them together and the rows on screen keep their place, a row that moved on its own (the top row, moved far up) is not the anchor,
+        /// and a re-cut scatters them (0: the offset stays where it is).</summary>
+        public static int AnchorShift(ReadOnlySpan<int> oldToNew, int liveFirst, int liveLast, int firstVisible)
+        {
+            int lo = Math.Max(0, liveFirst), hi = Math.Min(liveLast, oldToNew.Length);
+            int survivors = 0;
+            for (int i = lo; i < hi; i++) if (oldToNew[i] >= 0) survivors++;
+            for (int i = Math.Max(lo, firstVisible); i < hi; i++)
+            {
+                if (oldToNew[i] < 0) continue;
+                int shift = oldToNew[i] - i, sharing = 0;
+                for (int j = lo; j < hi; j++) if (oldToNew[j] >= 0 && oldToNew[j] - j == shift) sharing++;
+                if (sharing * 2 >= survivors) return shift;
+            }
+            return 0;
+        }
+
+        /// <summary>When the last of <paramref name="leavers"/> live rows is gone (ms after the commit): each leaves <paramref name="staggerMs"/>
+        /// after the one above it, capped at <paramref name="staggerCap"/> steps, and takes <paramref name="exitMs"/>. 0 with no leaver.</summary>
+        public static float ExitEnd(int leavers, float exitMs, float staggerMs, int staggerCap)
+            => leavers <= 0 ? 0f : exitMs + Math.Min(leavers - 1, staggerCap) * staggerMs;
+
+        /// <summary>The <paramref name="k"/>-th leaver's delay, top-down.</summary>
+        public static float ExitDelay(int k, float staggerMs, int staggerCap) => Math.Min(Math.Max(k, 0), staggerCap) * staggerMs;
+
+        /// <summary>A glider's delay: it starts <paramref name="leadBackMs"/> before the leavers are gone (its spring's slow start covers the
+        /// overlap), at once when nothing leaves.</summary>
+        public static float GlideDelay(float exitEnd, float leadBackMs) => exitEnd > 0f ? MathF.Max(0f, exitEnd - leadBackMs) : 0f;
+
+        /// <summary>The <paramref name="j"/>-th arrival's delay, top-down: its place free (<paramref name="freeAt"/>: the row that left it gone, a
+        /// glide past it gone by; 0 for a place nothing leaves), and never before its stagger.</summary>
+        public static float ArriveDelay(int j, float freeAt, float staggerMs, int staggerCap)
+            => MathF.Max(freeAt, Math.Min(Math.Max(j, 0), staggerCap) * staggerMs);
+    }
+
     /// <summary>One row-level change: an add has no <see cref="OldIndex"/>, a remove no <see cref="NewIndex"/>, a move both.</summary>
     public readonly record struct RowChange(string Key, int? OldIndex, int? NewIndex);
 
     /// <summary>The keyed diff between two snapshots. <see cref="Moves"/> lists EVERY survivor whose index changed,
-    /// including rows merely displaced (the FLIP pass needs them); classification counts only STRUCTURAL changes, so one
-    /// insert above 999 survivors is a small edit, not a reset. <see cref="IsReset"/> = a curated re-cut.</summary>
+    /// including rows merely displaced. A re-cut is no special case: it is the same three steps as a small edit (most rows
+    /// leave, a few glide, most arrive; <see cref="MembershipWindow"/>).</summary>
     public sealed record MembershipDelta(
         IReadOnlyList<RowChange> Adds,
         IReadOnlyList<RowChange> Removes,
-        IReadOnlyList<RowChange> Moves,
-        double RetainedFraction,
-        bool IsReset)
+        IReadOnlyList<RowChange> Moves)
     {
         public bool IsEmpty => Adds.Count == 0 && Removes.Count == 0 && Moves.Count == 0;
     }
@@ -1466,9 +1506,6 @@ public readonly partial struct Track
     /// still diffs row-accurately — whichever network path produced the new list.</summary>
     public static class MembershipDiff
     {
-        const double ResetRetainedBelow = 0.5;
-        const int ResetStructuralAbove = 40;
-
         /// <summary>The per-row keys for one snapshot. <paramref name="itemIds"/> is parallel to <paramref name="tracks"/>
         /// and may be empty (an album has no membership ids).</summary>
         public static string[] Keys(ReadOnlySpan<Track> tracks, ReadOnlySpan<StringId> itemIds)
@@ -1481,35 +1518,38 @@ public readonly partial struct Track
         }
 
         public static MembershipDelta Diff(ReadOnlySpan<string> oldKeys, ReadOnlySpan<string> newKeys)
+            => Diff(oldKeys, newKeys, new int[oldKeys.Length], new int[newKeys.Length]);
+
+        /// <summary>The diff, and the two index maps the choreography classifies by, written into buffers the caller owns:
+        /// <paramref name="oldToNew"/> (old index to new, -1 gone; at least <c>oldKeys.Length</c> long) and <paramref name="newToOld"/>
+        /// (new index to old, -1 added; at least <c>newKeys.Length</c>).</summary>
+        public static MembershipDelta Diff(ReadOnlySpan<string> oldKeys, ReadOnlySpan<string> newKeys, Span<int> oldToNew, Span<int> newToOld)
         {
+            oldToNew = oldToNew[..oldKeys.Length];
+            newToOld = newToOld[..newKeys.Length];
+            oldToNew.Fill(-1);
+            newToOld.Fill(-1);
             var oldIndex = new Dictionary<string, int>(oldKeys.Length, StringComparer.Ordinal);
             for (int i = 0; i < oldKeys.Length; i++) oldIndex[oldKeys[i]] = i;
 
             var adds = new List<RowChange>();
             var moves = new List<RowChange>();
-            var consumed = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < newKeys.Length; i++)
             {
                 var key = newKeys[i];
-                if (oldIndex.TryGetValue(key, out int was) && consumed.Add(key))
+                if (oldIndex.TryGetValue(key, out int was) && oldToNew[was] < 0)
                 {
+                    oldToNew[was] = i;
+                    newToOld[i] = was;
                     if (was != i) moves.Add(new RowChange(key, was, i));
                 }
                 else adds.Add(new RowChange(key, null, i));
             }
 
             var removes = new List<RowChange>();
-            foreach (var kv in oldIndex)
-                if (!consumed.Contains(kv.Key)) removes.Add(new RowChange(kv.Key, kv.Value, null));
-            removes.Sort(static (a, b) => a.OldIndex!.Value.CompareTo(b.OldIndex!.Value));   // dictionary order isn't positional
-
-            int retained = consumed.Count;
-            double retainedFraction = oldKeys.Length == 0 ? 1.0 : (double)retained / oldKeys.Length;
-            int structural = adds.Count + removes.Count;
-            // A first fill (old empty) is a load, not an edit — never a reset.
-            bool isReset = oldKeys.Length > 0 && (retainedFraction < ResetRetainedBelow || structural > ResetStructuralAbove);
-
-            return new MembershipDelta(adds, removes, moves, retainedFraction, isReset);
+            for (int o = 0; o < oldKeys.Length; o++)
+                if (oldToNew[o] < 0) removes.Add(new RowChange(oldKeys[o], o, null));   // in old order
+            return new MembershipDelta(adds, removes, moves);
         }
 
         /// <summary>ONE row's identity for per-row UI STATE: the item id where the membership has one, else the uri

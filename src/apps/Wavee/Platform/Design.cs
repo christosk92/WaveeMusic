@@ -640,6 +640,36 @@ public static partial class Design
             ExitDynamics: VideoSafeDynamics);
     }
 
+    // ══ 10b. A LIST'S MEMBERSHIP CHANGE ═════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A list's membership change the page narrates (a remote answer, another device, a local edit), row by row in three steps from the
+    /// frame that commits it: LEAVE (a live row that is gone, or that leaves the live rows, fades out where it stands and rises
+    /// <c>Spacing.XS</c>, top-down), CLOSE UP (a survivor glides from its old place to its new one, starting <see cref="GlideLeadBackMs"/>
+    /// before the last leaver is gone) and ARRIVE (an added row, or one that comes from outside the live rows, rises <see cref="EnterRise"/>
+    /// and fades in, staggered, once its place is free: the row that left it gone, a glide past it gone by). Text never crosses text. With
+    /// no leaver the glide and the arrivals keep their old timing. The rules are <c>Track.MembershipWindow</c>'s; these are the numbers (owner, 2026-11-15: "a clean but not abrupt
+    /// transition to new content individually").</summary>
+    public static class Membership
+    {
+        /// <summary>Each leaver starts this long after the one above it.</summary>
+        public const float ExitStaggerMs = 16f;
+        /// <summary>The leavers' stagger stops growing after this many rows (a re-cut's screen leaves within 246 ms).</summary>
+        public const int ExitStaggerCap = 6;
+        /// <summary>The gliders start this long before the last leaver is gone.</summary>
+        public const float GlideLeadBackMs = 50f;
+        /// <summary>How long after its start a glide has gone by a place it passes (the placement spring is three quarters there at 150 ms):
+        /// an arrival in that place waits for it.</summary>
+        public const float GlideClearMs = 150f;
+        /// <summary>An arriving row's rise (DIP).</summary>
+        public const float EnterRise = 6f;
+        /// <summary>Each arrival starts this long after the one above it.</summary>
+        public const float EnterStaggerMs = 20f;
+        /// <summary>The arrivals' stagger stops growing after this many rows.</summary>
+        public const int EnterStaggerCap = 8;
+        /// <summary>The leave's own length: the removal recipe's token (<c>MotionTokenId.ControlFast</c>), never a second literal.</summary>
+        public static float ExitMs => MotionTok.Get(MotionTokenId.ControlFast).DurationMs;
+    }
+
     // ══ 11. THE DETAIL REVEAL RAMP ═══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Pure progression math for a cold list's progressive shimmer→real reveal. BCL-only, so it is
