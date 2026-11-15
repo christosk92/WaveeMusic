@@ -12,7 +12,11 @@
 //   · cold-faces  the rows' own fields land (titles, artists, covers, durations: the meta line gains its duration).
 //   · regen       a regenerated Mix's fresh answer (the owner's recording, 2026-11-15, Heartbreak Mix): open the Mix first (`goto` pl6: a seeded list
 //                 nobody revalidated this session: the page paints it and revalidates behind it, and the fake never answers), then `regen` lands
-//                 what the /diff would: a new revision with other rows, and a new cover and description on the same uri.
+//                 what the /diff would: a new revision with other rows (a re-cut: most rows leave, a few glide, most arrive), and a new cover and
+//                 a description that alternates per regen between a short line and one that wraps to three lines in a 216 DIP rail;
+//   · regen-edit  a SMALL remote edit over the list the page shows (another device): display rows 2, 5 and 6 removed, row 9 moved to row 3, new
+//                 tracks inserted at rows 1, 4 and 30 (the last off the first screen); a new cover, the alternating description and a new
+//                 revision. A pure function of the current membership and an epoch, so it repeats; the count stays.
 //
 // Inspector-only (`Shell.SetInspectState`); every value is a pure function of the row index and a per-staging epoch, so a second `cold-list` is cold again.
 
@@ -288,12 +292,7 @@ public static partial class Entities
         int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
         if (list == Table.None) return;
         s_regenEpoch++;
-        var t = Current.Playlists;
-        RetainText(ref t.Image[list], Intern(Utf8(Cover(17 + s_regenEpoch * 5))));
-        RetainText(ref t.Description[list], Intern(Utf8("Suzan & Freek, sombr, Conan Gray and more")));
-        RetainText(ref t.Revision[list], Intern(Utf8("9" + s_regenEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",regen")));
-        t.Version[list]++;
-        t.MarkDirty();
+        StageRegenHead(list, "regen");
         var targets = new int[ColdRows];
         var payload = new PlaylistTrackEdge[ColdRows];
         for (int k = 0; k < ColdRows; k++)
@@ -306,6 +305,54 @@ public static partial class Entities
     }
 
     static int s_regenEpoch;
+
+    /// <summary>A regen's head: another cover, the description alternating per epoch (the short line, then one long enough to wrap to three
+    /// lines in a 216 DIP rail, so every regen exercises the description's hand-over and its height) and a new revision.</summary>
+    static void StageRegenHead(int list, string tag)
+    {
+        var t = Current.Playlists;
+        RetainText(ref t.Image[list], Intern(Utf8(Cover(17 + s_regenEpoch * 5))));
+        RetainText(ref t.Description[list], Intern(Utf8(s_regenEpoch % 2 == 1
+            ? "Suzan & Freek, sombr, Conan Gray and more"
+            : "The songs you keep coming back to, from Suzan & Freek, sombr and Conan Gray to the quieter ones in between.")));
+        RetainText(ref t.Revision[list], Intern(Utf8("9" + s_regenEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + tag)));
+        t.Version[list]++;
+        t.MarkDirty();
+    }
+
+    /// <summary>`state regen-edit`: a small remote edit over the membership the page shows (another device): display rows 2, 5 and 6 leave, row 9
+    /// moves to row 3, and new tracks land at rows 1, 4 and 30 (the last below the first screen), taken from `tr70`..`tr130` (neither pl6's seed
+    /// nor `regen` uses them); the count stays. A new cover, the alternating description and a new revision ride it.</summary>
+    public static void StageRegenEdit()
+    {
+        int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
+        if (list == Table.None) return;
+        var current = Current.Edges.PlaylistTracks.Targets(list);
+        if (current.Length < 30) return;
+        s_regenEpoch++;
+        StageRegenHead(list, "edit");
+        // Rows 2, 5 and 6 leave and row 9 moves; the rest keep their order around the four placed rows (final rows 1, 3, 4 and 30).
+        var rest = new List<int>(current.Length);
+        for (int i = 0; i < current.Length; i++)
+            if (i != 1 && i != 4 && i != 5 && i != 8) rest.Add(current[i]);
+        int moved = current[8];
+        var rows = new int[rest.Count + 4];
+        for (int pos = 0, next = 0; pos < rows.Length; pos++)
+            rows[pos] = pos switch
+            {
+                0 => Fresh(0),        // a new row 1
+                2 => moved,           // row 9 → row 3
+                3 => Fresh(1),        // a new row 4
+                29 => Fresh(2),       // a new row 30
+                _ => rest[next++],
+            };
+        var payload = new PlaylistTrackEdge[rows.Length];
+        for (int k = 0; k < payload.Length; k++) payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0);
+        Current.Edges.PlaylistTracks.Replace(list, rows, payload, EdgeState.Complete, rows.Length);
+        Current.PublishAll();
+
+        static int Fresh(int j) => ResolveSeedSlot(EntityKind.Track, TrackUri(70 + Wrap(s_regenEpoch * 3 + j, 61)));
+    }
 
     /// <summary>`state rescope`: a login's scope switch (<c>Spotify.Session.AdoptWelcome</c>: the welcome names another market or tier than the
     /// scope the app booted on). A new, EMPTY table set replaces the one every page is bound to, the freshness stamps of the old one are

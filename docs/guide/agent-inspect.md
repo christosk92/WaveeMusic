@@ -566,7 +566,13 @@ credits in flight, as a warm open), then `state cold-faces` (the rows' fields la
 first open holds, then the fresh answer): `goto uri=spotify:playlist:pl6 settle=false` (the seeded list is held on the open's revalidation,
 which the fake never answers: the cover and description wait on their skeletons with the rows), a few `frames`, then `state kind=regen` lands a
 new revision with other rows and another cover and description (a second `regen` on the settled page changes the cover in place: its
-hand-over crossfade). **A login's scope switch under the page**: `state kind=rescope` puts a new, empty table set in (another market, the
+hand-over crossfade; the description alternates per `regen` between a short line and one that wraps to three lines in a 216 DIP rail, so
+each one exercises the description's hand-over and its height). The rows narrate the change one by one (leave, close up, arrive:
+`Design.Membership`): a re-cut has most rows leave and most arrive, the list keeps its key and its scroll. **A small remote edit**: `state
+kind=regen-edit` on the settled pl6 page removes display rows 2, 5 and 6, moves row 9 to row 3 and inserts new tracks at rows 1, 4 and 30
+(`tr70`..`tr130`), with a new cover, the alternating description and a new revision; it is a pure function of the shown membership and an
+epoch, so it repeats. Trace either with `trace=90 keys=row,art:handover,hero-description,rail:desc prefix=list:,top:`; after `scroll key=row
+dy=8` the edit is above the window and the first visible row keeps its place (the anchor). **A login's scope switch under the page**: `state kind=rescope` puts a new, empty table set in (another market, the
 old set's stamps forgotten, the deck re-bound: the welcome's `Entities.Switch`, minus handing the old set's text back, which a Debug build
 asserts on while the page still draws it), and `state kind=rescope-land` a few frames later lands the seed in it, the shown list Complete and
 never revalidated, as the disk warm-up does. The owner's case (2026-11-15) ran under a covered window: `window state=minimized` first, then
