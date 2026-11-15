@@ -18,7 +18,8 @@ public readonly partial struct User
     /// owns its OWN membership loading via the edge's state.
     /// <para>T10c1: the states' picture (the cold seed rows, the fade-only reveal) is the structure's `Library.SavedEpisodes` view (Classic: `ClassicLibrarySavedEpisodes`).</para></summary>
     [CoreHost]
-    sealed class SavedEpisodesReader : Component
+    /// <param name="count">Where the table publishes what it counts (the library's count row over Your Episodes reads it).</param>
+    sealed class SavedEpisodesReader(Signal<Detail.ListCount> count) : Component
     {
         static readonly Track.TableProfile s_profile = Track.TableProfile.From(
             Detail.Config.Playlist with
@@ -124,6 +125,7 @@ public readonly partial struct User
             ShowToolbar = false,
             Embedded = true,
             ScrollKey = "saved-episodes:" + slot,
+            ListCount = count,
         });
     }
 }

@@ -51,6 +51,10 @@ public sealed record LibraryControlsStyle(
 /// <param name="PaneTrail">The panes' right inset: their last ink and control plates end this far in from the card's right edge, on the head's own trail.</param>
 public sealed record LibraryNavMetrics(Element LeadAir, float ItemLead, float RowArtLead, float PaneTrail)
 {
+    /// <summary>Where the structure's episode row (<see cref="StyleKeys.EpisodeRow"/>) stands its art in from its plate: Your Episodes' table hangs its row plates this far
+    /// left of G, so their art stands on G as a list row's does. 0: <see cref="RowArtLead"/>. Contract 1.112.</summary>
+    public float EpisodeArtLead { get; init; }
+
     /// <summary>The bound list row's chrome pads its content this far in from the plate (the engine's WinUI ListViewItem: Padding 16,0,12,0), so a row's art
     /// stands <see cref="RowArtLead"/> in when its content sits <c>RowArtLead - ChromeContentPad</c> from the chrome's content edge.</summary>
     public const float ChromeContentPad = 16f;

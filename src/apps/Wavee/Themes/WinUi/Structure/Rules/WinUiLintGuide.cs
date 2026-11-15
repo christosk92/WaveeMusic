@@ -69,10 +69,16 @@ public sealed class WinUiLintGuide : IThemeLintGuide
         new(LintIntent.Allow, CardRingKey,
             "a grid card's selection ring is the card's plate: it hangs the card's padding left of the column its cover stands on, as a row's plate hangs (W-Library)",
             Rule: "align.inset"),
+        new(LintIntent.Allow, HeaderRuleKey,
+            "a list's column header draws its rule across the row plates under it, so where the plates hang left of the column (the library's Your Episodes, as a ListView row's) the rule hangs with them",
+            Rule: "align.inset"),
     ];
 
     /// <summary>The stock ListView row's selection pill (`SelectorVisualsBound.AccentPill`) and a bound grid card's selection ring (its plate).</summary>
     private const string ListPillKey = "lv-pill", CardRingKey = "ic-ring";
+
+    /// <summary>The track table's column-header rule (`WinUiTrackChrome`'s header band).</summary>
+    private const string HeaderRuleKey = "winui.list.header-rule";
 
     /// <inheritdoc />
     public IReadOnlyList<LintPolicy> Policies(LintContext context) => s_policies;

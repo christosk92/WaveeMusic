@@ -38,7 +38,7 @@ internal static class WinUiLibraryControls
 
     /// <summary>The navigator column's leads for <paramref name="facts"/>: G is the head's lead (<see cref="HeadView"/> reads the same tier), the column's edge
     /// stands G - 16 in, the navigator's head 16 in from it, a row's art 12 in from its plate; the panes end G short of the card's right edge, on the
-    /// head's trail.</summary>
+    /// head's trail. An episode row (Your Episodes) hangs its plate by its own art lead, so its art stands on G too.</summary>
     static LibraryNavMetrics Nav(Wavee.Theming.TierFacts facts)
     {
         var tier = WinUiDetailTiers.Of(in facts).Tier;
@@ -46,7 +46,7 @@ internal static class WinUiLibraryControls
         if (s_nav[at] is { } known) return known;
         float g = WinUiDetailRules.InsetOf(tier);
         return s_nav[at] = new LibraryNavMetrics(WinUiDiscoveryMotion.AirH("lib:nav:lead", g - WinUiChoiceRules.LibraryItemLead),
-            WinUiChoiceRules.LibraryItemLead, WinUiChoiceRules.LibraryRowArtLead, PaneTrail: g);
+            WinUiChoiceRules.LibraryItemLead, WinUiChoiceRules.LibraryRowArtLead, PaneTrail: g) { EpisodeArtLead = WinUiEpisodeRow.ArtLead };
     }
 
     // ══ THE SORT ═════════════════════════════════════════════════════════════════════════════════════════════════════

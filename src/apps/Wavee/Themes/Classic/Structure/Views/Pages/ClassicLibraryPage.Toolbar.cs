@@ -96,7 +96,8 @@ internal static partial class ClassicLibraryPage
         if (!headed) rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
         if (filter is not null) rows.Add(filter.Value with { Layout = ClassicTierMotion.Shove });
-        if (headed) rows.Add(new TextEl(p.CountText) { Key = "lib:count", Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
+        // The headed count stands over the body it counts, as the list's caption: over Your Episodes it is the episodes' count, never the followed shows' (contract 1.112).
+        if (headed) rows.Add(new TextEl(p.SavedEpisodesMode && p.SavedCountText is { } saved ? saved : p.CountText) { Key = "lib:count", Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",

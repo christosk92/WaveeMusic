@@ -14,6 +14,9 @@ internal static class WinUiEpisodeRowLayout
     /// <summary>The title rung: 14 on a 19 line (600, up to two lines).</summary>
     public const float TitleSize = 14f, TitleLine = 19f;
 
+    /// <summary>The air between the now-playing tone bar's lane and the art, at the row's left.</summary>
+    public const float ToneAir = 8f;
+
     /// <summary>The gap between the copy column's lines (title, blurb, meta, rule).</summary>
     public const float CopyGap = 3f;
 

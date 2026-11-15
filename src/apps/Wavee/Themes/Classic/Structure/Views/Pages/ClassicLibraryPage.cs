@@ -64,13 +64,19 @@ internal static partial class ClassicLibraryPage
         if (props.Collapsed)
             inner = Collapsed(props, cache);
         // Your Episodes (A2 plan §3.5): the standard toolbar's row-1 words ARE the mode switch for Podcasts. Selecting the word swaps the WHOLE body for the flat episode table, but
-        // the toolbar (and so the word that switches back) stays put.
+        // the toolbar (and so the word that switches back) stays put. Under a borrowing structure's leads (contract 1.109) the toolbar AND the table stand in ONE led column, as
+        // the one-column arm's do: a led row grows along its parent's axis, and in this column that is DOWN, so a led toolbar alone took half the free height above the table.
         else if (props.SavedEpisodesMode)
             inner = new BoxEl
             {
                 Key = "lib:wide:saved", Animate = s_arm,
                 Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Led(cache, "lib:headrow", Toolbar(props, cache), fills: true), props.SavedEpisodes()],
+                Children = cache.Nav is null
+                    ? [Toolbar(props, cache), props.SavedEpisodes()]
+                    : [Led(cache, "lib:savedrow", new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [Toolbar(props, cache), SavedBody(props, cache)],
+                    }, fills: true)],
             };
         else
         {
@@ -179,6 +185,24 @@ internal static partial class ClassicLibraryPage
         Children = [nav.LeadAir, fills ? new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [column] } : column],
     };
 
+    /// <summary>Your Episodes' table in a borrowing structure's led column (contract 1.109): its row plates hang <see cref="LibraryNavMetrics.EpisodeArtLead"/> left of G so
+    /// their art stands on G (the column's edge is <see cref="LibraryNavMetrics.ItemLead"/> short of it), and its last ink ends on the page trail, an eased spacer as the reader's
+    /// is, so a tier crossing glides the right edge (contract 1.112). Without one (Classic) the table is returned as it is.</summary>
+    static Element SavedBody(LibraryPageProps p, PageCache c)
+    {
+        if (c.Nav is not { } nav) return p.SavedEpisodes();
+        float hang = nav.EpisodeArtLead > 0f ? nav.EpisodeArtLead : nav.RowArtLead;
+        return new BoxEl
+        {
+            Key = "lib:episodes", Direction = 0, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Margin = new Edges4(nav.ItemLead - hang, 0f, 0f, 0f),
+            Children =
+            [
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [p.SavedEpisodes()] },
+                ClassicLibraryArtistReader.TrailAir(nav.PaneTrail),
+            ],
+        };
+    }
+
     /// <summary>The two column seams, each built ONCE into its cached field — so the key goes on at construction rather than through a per-render <c>with</c> clone. Both carry a bound
     /// <c>Fill</c> and a <c>Splitter</c> bound to their own width signal, which is the reason they may not be paired by ordinal with anything else.</summary>
     static Element LeftGrip(LibraryPageProps p, Signal<bool> dragging)
@@ -272,7 +296,7 @@ internal static partial class ClassicLibraryPage
                 Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
                 Direction = 1, Grow = 1f,
                 Children = [Toolbar(p, c), p.SavedEpisodesMode
-                    ? p.SavedEpisodes()
+                    ? SavedBody(p, c)
                     : (p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c))],
             }, fills: true);
         else if (depth >= 2)

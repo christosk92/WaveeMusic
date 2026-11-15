@@ -43,6 +43,9 @@ internal static class WinUiEpisodeRow
     /// <summary>The style WinUI registers under <c>StyleKeys.EpisodeRow</c>. Stateless: every host and a test share it.</summary>
     public static readonly EpisodeRowStyle Style = new(Content, Seed, Failure);
 
+    /// <summary>Where the row stands its art in from its plate: the tone bar's lane and its air (the library's Your Episodes hangs the plate this far left of G).</summary>
+    public const float ArtLead = Episode.RowPadX + Episode.ToneBarWidth + WinUiEpisodeRowLayout.ToneAir;
+
     static readonly ContextMenuOptions s_menuOptions = new();
 
     /// <summary>Segoe Fluent's Lock (U+E72E) — not in the engine's glyph table; built from its code point so the source stays ASCII
@@ -82,7 +85,7 @@ internal static class WinUiEpisodeRow
     static BoxEl RowGrid(Element art, Element copy, Element actions) => new()
     {
         Direction = 0, Gap = Episode.RowGap, AlignItems = FlexAlign.Start, MinWidth = 0,
-        Padding = new Edges4(Episode.RowPadX + Episode.ToneBarWidth + 8f, Episode.RowPadY, Episode.RowPadX, Episode.RowPadY), Children = [art, copy, actions],
+        Padding = new Edges4(ArtLead, Episode.RowPadY, Episode.RowPadX, Episode.RowPadY), Children = [art, copy, actions],
     };
 
     static Element ReaderRowContent(in BoundItemScope<RowItem> item, RowContext ctx, bool narrow, bool seed)

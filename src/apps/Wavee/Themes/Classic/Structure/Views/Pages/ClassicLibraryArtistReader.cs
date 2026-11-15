@@ -419,8 +419,8 @@ internal static partial class ClassicLibraryArtistReader
     static readonly Context<float> s_trailPad = new(float.NaN);
 
     /// <summary>The trail's air: a spacer whose width eases through real layout (<see cref="s_trailReflow"/>), so a tier crossing glides the reader's right edge with the
-    /// head's instead of snapping it.</summary>
-    static Element TrailAir(float width) => new BoxEl { Width = MathF.Max(0f, width), MinWidth = 0f, Shrink = 0f, HitTestVisible = false, Layout = s_trailReflow };
+    /// head's instead of snapping it. Your Episodes' led table ends on the same spacer (`ClassicLibraryPage.SavedBody`).</summary>
+    internal static Element TrailAir(float width) => new BoxEl { Width = MathF.Max(0f, width), MinWidth = 0f, Shrink = 0f, HitTestVisible = false, Layout = s_trailReflow };
 
     /// <summary>The width half of the tier's reflow (<see cref="ClassicTierMotion.SizeReflow"/>).</summary>
     static readonly LayoutTransition s_trailReflow = ClassicTierMotion.SizeReflow with { Axes = SizeAxes.Width };
