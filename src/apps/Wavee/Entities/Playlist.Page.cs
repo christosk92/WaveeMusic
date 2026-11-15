@@ -77,6 +77,7 @@ public readonly partial struct Playlist
         Shell.OnNewPlaylist ??= static () => Sidebar.LibraryWrites?.CreatePlaylist?.Invoke(null, true);
         Shell.OnNewFolder ??= static () => Sidebar.LibraryWrites?.NewFolderWith?.Invoke(null, Array.Empty<RootlistItemRef>());
         Controls.Library ??= User.LibrarySeam;
+        User.InstallSaveVerb();   // the container menus' Save / Follow, through that same seam
         Drag.LikedChipArt ??= User.LikedChipArt();
         Shell.OnFilesDropped ??= PlayFiles;
         Shell.PickAndPlayFile ??= PickAndPlay;

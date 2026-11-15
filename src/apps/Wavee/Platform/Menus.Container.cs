@@ -188,11 +188,10 @@ public static partial class Menus
 
     static AppBarCommand? StripCommand(ContainerVerb verb, in ActionContext ctx)
     {
-        var cmd = Actions.Menu.Command(IdOf(verb), in ctx);
-        // An artist's Save is Follow: same verb, the word the artist surfaces use.
-        if (cmd is { } c && verb == ContainerVerb.Save && ctx.Target.Kind == TargetKind.Artist)
-            return c with { Label = Loc.Get(c.IsChecked ? Strings.Artist.Following : Strings.Artist.Follow) };
-        return cmd;
+        // A Save the target cannot take (Local Files, a stream with no library relation) is absent, never a dead button. The verb
+        // words itself by kind (Save / Saved; Follow / Following for an artist or show: User.InstallSaveVerb).
+        if (verb == ContainerVerb.Save && AppActions.Find(ActionId.SaveContext) is { } save && !save.EnabledFor(in ctx)) return null;
+        return Actions.Menu.Command(IdOf(verb), in ctx);
     }
 
     static MenuFlyoutItem? RowFor(ContainerVerb verb, in ActionContext ctx, in ContainerExtras x)

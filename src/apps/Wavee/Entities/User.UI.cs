@@ -194,6 +194,53 @@ public readonly partial struct User
     /// saved and is not toggled.</summary>
     public static Controls.LibrarySeam LibrarySeam { get; } = new(IsSavedUri, ToggleSavedUri);
 
+    /// <summary>The container menu's Save / Follow (<see cref="ActionId.SaveContext"/>, every "…" on a card, row, hero, search hit,
+    /// the sidebar and the band) and the bound descriptors' saved pair (<see cref="ActionServices.IsSaved"/> /
+    /// <see cref="ActionServices.SetSaved"/>). Both run the hearts' and Follow buttons' own seam, <see cref="Controls.Library"/>, read
+    /// when the menu opens and written on the click, so the optimistic edge, its rollback on a failed write and the rootlist
+    /// follow are theirs: there is no second write path. Called once by <c>Playlist.InstallPages</c> after it connects the seam.</summary>
+    internal static void InstallSaveVerb()
+    {
+        Actions.Services.IsSaved ??= static uri => uri.IsValid && Controls.Library is { } lib && lib.IsSaved(uri.Text);
+        Actions.Services.SetSaved ??= static (uri, saved) =>
+        {
+            if (uri.IsValid && Controls.Library is { } lib && lib.IsSaved(uri.Text) != saved) lib.ToggleSaved(uri.Text, null);
+        };
+        AppActions.Register(new AppAction
+        {
+            Id = ActionId.SaveContext, IconKey = ActionIcons.Save,
+            Label = static c => Loc.Get(SaveWordOf(c.Target.Kind, c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
+            IsEnabled = static c => c.S.SetSaved is not null && Controls.Library is not null && CanSave(c.Target),
+            IsChecked = static c => c.S.IsSaved?.Invoke(c.Target.Uri) ?? false,
+            Execute = static c => c.S.SetSaved?.Invoke(c.Target.Uri, !(c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
+        });
+    }
+
+    /// <summary>The word the kind's own button says, as the strip's other toggle (the track menu's Save / Saved) does: an album or
+    /// playlist is Save / Saved (its heart and Save button), an artist or show Follow / Following (its Follow toggle). The strip's
+    /// four labels share one row, where "Remove from Your Library" trimmed to "Remove ..." (WinUI, 1440).</summary>
+    static string SaveWordOf(TargetKind kind, bool saved) => kind is TargetKind.Artist or TargetKind.Show
+        ? (saved ? Strings.Artist.Following : Strings.Artist.Follow)
+        : (saved ? Strings.Menu.Saved : Strings.Menu.Save);
+
+    /// <summary>Can the library seam save or follow this container? Its own collections cannot (<see cref="Entities.IsOwnCollection"/>:
+    /// Liked Songs, Your Episodes, a playlist the account owns), nor the imported files (Local Files) or a playback module's
+    /// stream, which have no library relation; an artist, album, playlist or show of any other source can.</summary>
+    static bool CanSave(in ActionTarget t)
+    {
+        var uri = t.Uri;
+        if (!uri.IsValid || uri.Provider is EntityProvider.None or EntityProvider.Local or EntityProvider.Module) return false;
+        bool kindOk = t.Kind switch
+        {
+            TargetKind.Album => uri.Kind == EntityKind.Album,
+            TargetKind.Artist => uri.Kind == EntityKind.Artist,
+            TargetKind.Playlist => uri.Kind == EntityKind.Playlist,
+            TargetKind.Show => uri.Kind == EntityKind.Show,
+            _ => false,
+        };
+        return kindOk && !Entities.IsOwnCollection(uri);
+    }
+
     static bool IsSavedUri(string uri)
     {
         _ = Entities.ScopeEpoch.Value;
