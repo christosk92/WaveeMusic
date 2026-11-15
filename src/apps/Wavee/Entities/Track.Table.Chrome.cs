@@ -750,6 +750,7 @@ public readonly partial struct Track
                 Set = shape.Set, Tracks = shape.Tracks, Sort = _sort.Value, SortSignal = _sort,
                 Checks = _checksVisible?.Value ?? false, Vertical = HeroFormLive,
                 OnSort = SortBy,
+                EpisodeRows = Cfg.Content == DetailContent.Episodes, NarrowEpisode = shape.NarrowEpisode,
             });
         }
 

@@ -298,6 +298,10 @@
 // 1.112 (WinUI's Your Episodes on the library column): `LibraryPageProps.SavedCountText` (the listen-later list's episode count, which a borrowing
 // structure's count row shows over Your Episodes instead of the followed shows' count) and `LibraryNavMetrics.EpisodeArtLead` (where the
 // structure's episode row stands its art in from its plate, so Your Episodes' rows hang their plates and stand their art on the column G).
+// 1.113 (Podcasts' counts word its modes): `LibraryModesArgs.FollowedCount` and `LibraryModesArgs.EpisodesCount` (each mode's count, live, for a
+// structure that words its modes "Followed shows · 7", "Your Episodes · 8", as the show page words its filter); a borrowing structure's
+// Podcasts page draws no count row under them. `LibraryPageProps.SavedCountText` now feeds the Your Episodes word. The track table's header
+// args say when every row is an episode row (`TrackHeaderArgs.EpisodeRows`, `NarrowEpisode`), so a header can stand over that row's own layout.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -313,7 +317,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 112;
+    public const int Minor = 113;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

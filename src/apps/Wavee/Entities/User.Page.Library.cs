@@ -659,7 +659,7 @@ public readonly partial struct User
                 LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
                 CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText, Count = _count, CountKnown = _countKnown,
                 Pane = () => PaneFor(selectedSlot),
-                SavedEpisodes = () => Embed.Comp(() => new SavedEpisodesReader(_savedList)) with { Key = "saved-episodes:" + epoch },
+                SavedEpisodes = () => Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch },
                 SkelGroup = _skelGroup, Navigator = _navigator,
                 Search = fullSearch ? SearchPropsOf() : null,
                 Groups = !collapsed && GroupingOn ? GroupsProps() : null,

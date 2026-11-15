@@ -798,6 +798,7 @@ public readonly partial struct Track
             bool dataDependent = sort != SortSpec.Default || query.Length > 0 || !filters.IsDefault;
             uint data = dataDependent
                 ? Entities.Current.Tracks.Changed.Value + (sort.Column == SortColumn.Album ? Entities.Current.Albums.Changed.Value : 0u)
+                  + (args.Profile.Config.Content == DetailContent.Episodes ? Entities.Current.Episodes.Changed.Value : 0u)   // an episode's title and length sort it
                 : 0u;
             uint likes = filters.LikedOnly ? Entities.Current.Edges.Liked.Changed.Value : 0u;
             var cfg = ConfigOf(args);
@@ -1013,9 +1014,9 @@ public readonly partial struct Track
                 var src = _src!;
                 int c = _sort.Column switch
                 {
-                    SortColumn.Title => string.Compare(src.At(a).Title, src.At(b).Title, StringComparison.OrdinalIgnoreCase),
+                    SortColumn.Title => string.Compare(TitleOf(src, a), TitleOf(src, b), StringComparison.OrdinalIgnoreCase),
                     SortColumn.Album => string.Compare(src.At(a).Album.Title, src.At(b).Album.Title, StringComparison.OrdinalIgnoreCase),
-                    SortColumn.Duration => src.At(a).DurationMs.CompareTo(src.At(b).DurationMs),
+                    SortColumn.Duration => DurationOf(src, a).CompareTo(DurationOf(src, b)),
                     SortColumn.Artist => string.Compare(Entities.Strings.Resolve(src.At(a).ArtistLineId),
                                                         Entities.Strings.Resolve(src.At(b).ArtistLineId), StringComparison.OrdinalIgnoreCase),
                     SortColumn.DateAdded => src.AddedAt(a).CompareTo(src.AddedAt(b)),
@@ -1025,6 +1026,13 @@ public readonly partial struct Track
                 if (_sort.Descending) c = -c;
                 return c != 0 ? c : a.CompareTo(b);
             }
+
+            // An episode member (a playlist's, Your Episodes') has no track row: `At` answers an empty track for it, so a title or length sort compared
+            // nothing and left the list in its own order. Its title is the one its row shows (the "#11 " prefix its number already states taken off,
+            // or "11 Loose Ends" sorted before "8 First Principles"), its length the episode's.
+            static string TitleOf(TableSource src, int i) => src.KindAt(i) == EntityKind.Episode ? Episode.ShownTitle(src.EpisodeAt(i)) : src.At(i).Title;
+
+            static int DurationOf(TableSource src, int i) => src.KindAt(i) == EntityKind.Episode ? src.EpisodeAt(i).DurationMs : src.At(i).DurationMs;
         }
 
         int OriginalOf(int display)

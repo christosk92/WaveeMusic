@@ -36,8 +36,6 @@ public readonly partial struct User
     {
         LibraryEpisodesProps? _episodesProps;
         Prop<string>? _savedCountText;
-        /// <summary>What Your Episodes' table counts (its own `ListCount`, the rows it holds once the list's total is known), written by the table.</summary>
-        readonly Signal<Detail.ListCount> _savedList = new(default);
 
         /// <summary>The podcasts page, the structure asked, and the page is split (the one-column drill-in keeps the mode words).</summary>
         // A stored GRID view keeps its grid: the shows list is the pinned row's column only while the view is a list (the grid takes the old arrangement, with the mode words).
@@ -47,12 +45,13 @@ public readonly partial struct User
         LibraryEpisodesProps EpisodesProps() => _episodesProps ??= new LibraryEpisodesProps(
             Prop.Of(SavedEpisodeCount), static () => PodcastsMode.Value == 1, static () => PodcastsMode.Value = 1);
 
-        /// <summary>Your Episodes' count as ONE bound text, allocated once: a borrowing structure's count row shows it over that body (contract 1.112), where the
-        /// page's own count counts the followed shows. It is the table's own count, so it says what the rows under it hold; empty until the list's total is known,
-        /// as the shows' count is while the relation has not answered.</summary>
-        Prop<string> SavedCountText() => _savedCountText ??= Prop.Of(() => _savedList.Value.Total is var n and > 0 ? FormatCache.Int(n) : "");
+        /// <summary>Your Episodes' count as ONE bound text, allocated once: a borrowing structure words its Your Episodes mode with it ("Your Episodes · 8",
+        /// contract 1.113), as it words Followed shows with the page's own count. Read whichever mode is on screen, so the word says what switching to it shows;
+        /// empty until the listen-later list's count is known, as the shows' count is while the relation has not answered.</summary>
+        Prop<string> SavedCountText() => _savedCountText ??= Prop.Of(static () => SavedEpisodeCount() is var n and > 0 ? FormatCache.Int(n) : "");
 
-        /// <summary>How many episodes the listen-later list holds (0 while it is not discovered or its count has not landed).</summary>
+        /// <summary>How many episodes the listen-later list holds: its membership's total once the list has answered (what Your Episodes' table shows), else the
+        /// playlist row's track count (discovery lands the row before anything asks for the rows); 0 while it is not discovered or neither has landed. Reactive.</summary>
         static int SavedEpisodeCount()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -61,6 +60,9 @@ public readonly partial struct User
             var table = Entities.Current.Playlists;
             _ = table.Changed.Value;
             if (!table.TryGetSlot(EntityId.Parse(uri), out int slot)) return 0;
+            var edge = Entities.Current.Edges.PlaylistTracks;
+            _ = edge.Changed.Value;
+            if (edge.State(slot) != EdgeState.Unknown) return edge.Total(slot);
             var playlist = new Playlist(slot);
             return playlist.IsValid && playlist.Knows(PlaylistFields.TrackCount) ? playlist.TrackCount : 0;
         }

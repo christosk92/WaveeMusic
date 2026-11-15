@@ -6,7 +6,7 @@
 // W-LibraryList):
 //
 //   Sort        [Recently added ⌄]   → Sort by: Recents · Alphabetical · Artist · Recently added · Release date │ Ascending · Descending
-//   Modes       Followed shows | Your Episodes                       (SelectorBar)
+//   Modes       Followed shows · 7 | Your Episodes · 8               (SelectorBar)
 //   View        [▤|▦] [⋯]            → View: Compact list · List · Compact grid · Grid │ Size: Small · Medium · Large (grid only)
 //   Scope       In your library | All releases · 42                 (SelectorBar)
 //   ReaderSort  [Newest ⌄]           → Sort by: Newest · Oldest · Alphabetical
@@ -94,13 +94,30 @@ internal static class WinUiLibraryControls
 
     static readonly string?[] s_modeKeys = ["lib:mode:0", "lib:mode:1"];
 
-    static Element Modes(LibraryModesArgs a)
-        => new BoxEl
+    static Element Modes(LibraryModesArgs a) => Embed.Comp(a, static () => new ModesHost());
+
+    /// <summary>A mode word's item glides to its new place and width when a count lands beside a word (the width revealed, never a snap of the word after it).</summary>
+    static readonly TemplateParts s_modeParts = new() { [SelectorBar.PartItem] = static item => item with { Layout = WinUiDiscoveryMotion.Reflow } };
+
+    /// <summary>"Followed shows · 7 | Your Episodes · 8": each mode worded with its count, as the show page words its filter ("All · 19"), so the count
+    /// stands with the control it counts instead of on a line of its own. The counts are read here: one landing re-renders this pivot alone.</summary>
+    sealed class ModesHost : Component
+    {
+        public override Element Render()
         {
-            Key = "lib:modes", Direction = 0, MinWidth = 0f,
-            Children = [WinUiChoice.Pivot([Loc.Get(Strings.Podcast.Reader.FollowedShows), Loc.Get(Strings.Podcast.Reader.YourEpisodes)], a.Mode, a.Height,
-                                          keys: s_modeKeys)],
-        };
+            var a = UseProps<LibraryModesArgs>();
+            string[] labels =
+            [
+                WinUiChoice.Counted(Loc.Get(Strings.Podcast.Reader.FollowedShows), a.FollowedCount?.Current() ?? ""),
+                WinUiChoice.Counted(Loc.Get(Strings.Podcast.Reader.YourEpisodes), a.EpisodesCount?.Current() ?? ""),
+            ];
+            return new BoxEl
+            {
+                Key = "lib:modes", Direction = 0, MinWidth = 0f,
+                Children = [SelectorBar.Create(labels, a.Mode, parts: Design.Reduced ? null : s_modeParts, style: WinUiChoice.PivotStyle(a.Height), itemKeys: s_modeKeys)],
+            };
+        }
+    }
 
     // ══ THE PAGE HEAD (W-Library, W-LibraryList) ═════════════════════════════════════════════════════════════════════
 

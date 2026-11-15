@@ -118,8 +118,9 @@ public sealed record LibraryPageProps
     /// that words <see cref="Count"/> draws nothing: the list beside it is a skeleton, and "0" would state an empty library (contract 1.59, audit B7).</summary>
     public Prop<bool> CountKnown { get; init; } = true;
 
-    /// <summary>How many episodes Your Episodes holds, as ONE bound text (empty while the listen-later list's count has not landed): the count a structure shows
-    /// over that body, where <see cref="CountText"/> counts the followed shows. Null: the page's count stays <see cref="CountText"/>. Contract 1.112.</summary>
+    /// <summary>How many episodes Your Episodes holds, as ONE bound text (empty while the listen-later list's count has not landed), on a Podcasts page: a
+    /// borrowing structure words its Your Episodes mode with it (<see cref="LibraryModesArgs.EpisodesCount"/>), as it words Followed shows with
+    /// <see cref="CountText"/>. Null on every other kind. Contract 1.112; since 1.113 it words the mode instead of standing as a count row.</summary>
     public Prop<string>? SavedCountText { get; init; }
 
     // ── slots the core mounts ──────────────────────────────────────────────────────────────────────────────────────────────

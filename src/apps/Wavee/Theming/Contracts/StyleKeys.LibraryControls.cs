@@ -75,7 +75,16 @@ public sealed record LibrarySortArgs(EntityKind Kind, Signal<int> Sort, Signal<b
 /// <summary>Podcasts' modes.</summary>
 /// <param name="Mode">The persisted mode: 0 Followed shows, 1 Your Episodes.</param>
 /// <param name="Height">The control's height at this tier.</param>
-public sealed record LibraryModesArgs(Signal<int> Mode, float Height);
+public sealed record LibraryModesArgs(Signal<int> Mode, float Height)
+{
+    /// <summary>How many shows Followed shows holds, as ONE bound text ("" while the relation has not answered): a structure that words its modes with
+    /// their counts ("Followed shows · 7") reads it, live. Null: no count. Contract 1.113.</summary>
+    public Prop<string>? FollowedCount { get; init; }
+
+    /// <summary>How many episodes Your Episodes holds, as ONE bound text ("" while the listen-later list's count has not landed), read the same way
+    /// ("Your Episodes · 8"). Null: no count. Contract 1.113.</summary>
+    public Prop<string>? EpisodesCount { get; init; }
+}
 
 /// <summary>The view toggle.</summary>
 /// <param name="View">The persisted view code: 0 compact list, 1 list, 2 compact grid, 3 grid.</param>
