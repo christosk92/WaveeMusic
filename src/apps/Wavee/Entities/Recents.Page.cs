@@ -849,13 +849,18 @@ public readonly partial struct Recents
             page.LastWash = wash;
 
             var claimed = UseRef(false);
+            var active = UseIsActive();
             UseEffect(() =>
             {
+                if (!active.Peek()) return;   // a page built off screen for a held swap claims when it shows (onActivated)
                 ShellMaterial.Publish(slot, page.WashOwner, isClaim: !claimed.Value, definite: false, tint: null, wash);
                 claimed.Value = true;
             }, DepKey.From(HashCode.Combine(pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
-            UseActivation(onActivated: () => ShellMaterial.Publish(slot, page.WashOwner, isClaim: true,
-                definite: false, tint: null, page.LastWash));
+            UseActivation(onActivated: () =>
+            {
+                ShellMaterial.Publish(slot, page.WashOwner, isClaim: true, definite: false, tint: null, page.LastWash);
+                claimed.Value = true;
+            });
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }
@@ -872,4 +877,4 @@ public readonly partial struct Recents
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }
-}
+}

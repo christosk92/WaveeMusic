@@ -250,6 +250,15 @@ text is still true, but `render` answers `ok:false`.
 {"cmd":"goto","args":{"uri":"spotify:album:4aawyAB9vmqN3uQ7FjRGTy"},"id":3}
 ```
 
+**A page swap is held** (the engine's `KeepAliveOptions.HoldMaxMs`, `Design.Nav.HoldMaxMs` = 300 ms): a swap to a page that is not
+ready (a cold mount, a cached page on another token, a detail page over another of its kind) builds the incoming page off screen,
+transparent and inactive, while the outgoing one stays, and swaps once no Skel region and no picture in its first screen is still
+pending, or after 300 ms. In a trace the incoming page's root reads `shown:false, op:0` for those frames (2 when the data is there;
+19 on the 16 ms clock when it never comes), then enters as before. To see the late page's skeleton: `state kind=head uri=<artist|album|...>
+answer=hold settle=false`, `frames 22`; `state kind=head-land answer=fill` inside the first 18 frames lands the page whole instead.
+A skeleton that shows keeps its 300 ms on screen (`SkeletonStyle.MinShowMs`) before its content takes over, and one whose data comes
+within its 250 ms show delay never shows (`ShowDelayMs`).
+
 ### `resize {w, h, loop?, settle?, max?, trace?}`
 
 Resizes the window and settles. Use it to check a tier crossing on a live mount.

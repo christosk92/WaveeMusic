@@ -293,8 +293,11 @@ public static partial class Shell
             // The content host holds the leaving page for its exit leg (Design.Nav.ExitDurationMs) and lands the swap when the incoming page's
             // enter starts, so row 2 swaps WITH the page (its words fade through in step with it) instead of a whole exit leg ahead of it.
             var landed = s_landed.Value;
-            bool sameSlot = !landed.IsNone && !committed.IsNone && string.Equals(SlotKey(in landed), SlotKey(in committed), StringComparison.Ordinal);
-            return sameSlot || FrameRules.SwapLanded(in landed, in committed) ? committed : landed;
+            // An in-slot change updates the page in place (no swap to wait for); a detail page opened over another of its kind is a held
+            // swap (HoldsSwap), whose chrome lands with it like any other.
+            bool inPlace = !landed.IsNone && !committed.IsNone && string.Equals(SlotKey(in landed), SlotKey(in committed), StringComparison.Ordinal)
+                           && !HoldsSwap(landed, committed);
+            return inPlace || FrameRules.SwapLanded(in landed, in committed) ? committed : landed;
         }
 
         // ══ THE PAGE SCROLL ═══════════════════════════════════════════════════════════════════════════════════════════
