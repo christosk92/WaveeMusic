@@ -164,6 +164,12 @@ Every settling verb, and `settle`, takes `loops`:
 | `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
 | `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). A loading indicator the settle did not wait for is then listed in `loops` like a loop row, a region on its placeholder by its placeholder's key (`state kind=loading` replies `loops:["facet-body:0"]`). |
 
+**The WinUI library family.** Under WinUI the four library kinds (albums, artists, podcasts, audiobooks) share ONE keep-alive slot
+and ONE body box, `page:library` (Classic and Zune keep `page:albums`, `page:artists`, ...): the head (`lib:head`, the kinds
+`lib:kind:0`..`4`) is drawn once, and each kind is a page inside it keyed `library:<kind>` (`find prefix=library:` lists the
+visited ones; parked kinds are `shown:false`). A kind switch is no page swap: trace `prefix=library:` with
+`keys=lib:head,lib:kinds` to see the body slide under a head that never moves. The route still names the kind (`after.route`).
+
 **The page loading bar.** Each page's body box (`page:<route>`) carries one thin bar on its top edge, `page-busy:bar` in the
 fixed slot `page-busy` (3 DIP in Classic and WinUI, 2 in Zune). It shows once the page's placeholders (or, in Zune, its deferred
 mount) have been pending 1 s and stays at least 0.4 s, fading in and out (about 11 frames each way); a load shorter than 1 s
