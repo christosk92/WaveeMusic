@@ -591,7 +591,10 @@ flight (the reply's `held`); `state kind=head-land answer=fill|omit|unfilled|fai
 (the fetch layer's miss retries are omitted too, then the group is Failed), `unfilled` answers it as a route that did not answer, `fail` is a terminal
 404, `cancel` a transport failure the fetch layer re-queues (still in flight; the retry is held again). The page turns into its error vacancy on the
 settle's own publication (no timer), its Retry re-asks through the same door (held again), and `head-land answer=fill` (or the next `mount`) puts
-the original transport back. A `state` with `trace=N` (or `settle=false`) runs no frames before its
+the original transport back. An artist's hold also stages its release cards (the latest release and the discography's releases) asked and in
+flight, so `head-land answer=fill part=overview`, `frames 3`, `head-land part=cards` lands the page in the real client's order (the overview and
+chart first, the side column's cards a few frames later); `part=overview cards=3 trace=70 ...` lands the cards on frame 3 of the overview's own trace,
+so one trace sees both; without `part` both land at once. A `state` with `trace=N` (or `settle=false`) runs no frames before its
 trace, so the trace starts on the frame the state lands. Its verdict judges that landing frame too: the watched nodes are sampled once
 before it (the reply's `baseline` row, frame -1) and f0 is compared with them, so a jump in the landing frame counts as moved at once.
 `baseline=false` turns that off; `baseline=true` turns it on for another verb's `trace=N`. Pass `trace=N` on a `state` command to trace its

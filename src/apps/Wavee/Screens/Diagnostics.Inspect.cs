@@ -632,16 +632,33 @@ public static partial class Diagnostics
                             string word = a.Has("answer") ? a.Str("answer").ToLowerInvariant() : "fill";
                             if (Entities.ScriptedAnswerOf(word) is not { } answer)
                                 return Inspect.Reply.Fail(id, name, "state kind=head-land answer= wants fill|omit|unfilled|fail|cancel, not '" + word + "'");
-                            int settled = Entities.LandScripted(answer);
-                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
-                            return Settled(id, name, a, w =>
+                            string partWord = a.Has("part") ? a.Str("part").ToLowerInvariant() : "";
+                            if (Entities.HeadPartOf(partWord) is not { } part)
+                                return Inspect.Reply.Fail(id, name, "state kind=head-land part= wants all|overview|cards, not '" + partWord + "'");
+                            // cards=N (with part=overview): the release cards land N frames after the overview, inside this verb's trace (or before its settle).
+                            int cardsAfter = part == Entities.HeadPart.Overview && a.Has("cards") ? a.Int("cards", 3) : -1;
+                            int settled = Entities.LandScripted(answer, part);
+                            if (cardsAfter >= 0 && !a.Has("trace"))
                             {
-                                w.WriteString("kind", kind);
-                                w.WriteString("answer", word);
-                                w.WriteNumber("settled", settled);
-                                w.WriteNumber("held", Entities.ScriptedHeld);
-                                AfterState(w, shell, kind);
-                            });
+                                RunFrames(cardsAfter);
+                                Entities.LandScripted(answer, Entities.HeadPart.Cards);
+                                cardsAfter = -1;
+                            }
+                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+                            if (cardsAfter >= 0) _traceFrameHook = f => { if (f == cardsAfter) Entities.LandScripted(answer, Entities.HeadPart.Cards); };
+                            try
+                            {
+                                return Settled(id, name, a, w =>
+                                {
+                                    w.WriteString("kind", kind);
+                                    w.WriteString("answer", word);
+                                    if (partWord.Length > 0) w.WriteString("part", partWord);
+                                    w.WriteNumber("settled", settled);
+                                    w.WriteNumber("held", Entities.ScriptedHeld);
+                                    AfterState(w, shell, kind);
+                                });
+                            }
+                            finally { _traceFrameHook = null; }
                         }
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back

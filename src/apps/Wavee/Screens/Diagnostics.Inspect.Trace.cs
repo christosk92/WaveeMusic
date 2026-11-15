@@ -719,6 +719,10 @@ public static partial class Diagnostics
 
     public sealed partial class InspectSession
     {
+        /// <summary>Called at the top of each traced frame with its index, before it runs: a verb that stages something mid-trace sets it for its own
+        /// trace and clears it after (`state kind=head-land part=overview cards=N` lands the release cards on frame N).</summary>
+        Action<int>? _traceFrameHook;
+
         static bool Tracing(Inspect.Args a) => a.Int("trace", 0) > 0;
 
         /// <summary>`trace {frames, keys?, prefix?, scroll?, every?, ...}`: run N frames and report them (see InspectTrace).</summary>
@@ -796,6 +800,7 @@ public static partial class Diagnostics
             }
             for (int f = 0; f < o.Frames; f++)
             {
+                _traceFrameHook?.Invoke(f);   // a staged landing's later part (`head-land part=overview cards=N`)
                 var keyed = shell.FindPrefix("");   // one key copy per frame serves the nodes, the wheel target and the scroller
                 bool wheel = o.Wheel.Length > 0 && InspectTrace.WheelDue(f, o.WheelEvery, o.WheelCount, sent);
                 if (wheel)

@@ -144,8 +144,78 @@ public static partial class Entities
         t.Known[artist] &= ~(uint)(ArtistFields.Overview | ArtistFields.Chart);
         t.Version[artist]++;
         t.MarkDirty();
+        StageArtistCards(artist);
         Current.PublishAll();
         return true;
+    }
+
+    // ── the release cards of an artist page, landing after its overview (`head-land part=overview`, then `head-land part=cards`) ──
+    // The real client's order (the owner's recording, 2026-11-15): the overview and the chart land first, and the release cards beside them (the latest
+    // release, the discography preview's covers) land a few frames later, as their own album rows' answers do. The hold stages those rows' card fields
+    // unknown, asked and in flight with the overview; `part=overview` lands the overview alone and `part=cards` the cards (no `part`: both at once).
+
+    /// <summary>The album rows <see cref="StageArtistCards"/> took the card fields of, and what each knew.</summary>
+    static (int[] Slots, uint[] Known)? s_artistCards;
+
+    /// <summary>The request stamp of the staged card rows' fetch (cleared by the landing).</summary>
+    const uint ArtistCardsStamp = 0xCA4Du;
+
+    /// <summary>Take <see cref="AlbumFields.DiscoCard"/> away from <paramref name="artist"/>'s latest release and its discography's releases: unknown,
+    /// asked and in flight, so the side column's cards read "still coming".</summary>
+    static void StageArtistCards(int artist)
+    {
+        RestoreArtistCards();
+        var a = new Artist(artist);
+        var slots = new List<int>();
+        if (a.Latest.IsValid) slots.Add(a.Latest.Slot);
+        foreach (int s in a.AlbumSlots) if (!slots.Contains(s)) slots.Add(s);
+        foreach (int s in a.SingleSlots) if (!slots.Contains(s)) slots.Add(s);
+        foreach (int s in a.CompilationSlots) if (!slots.Contains(s)) slots.Add(s);
+        if (slots.Count == 0) return;
+        var t = Current.Albums;
+        uint group = (uint)AlbumFields.DiscoCard;
+        var known = new uint[slots.Count];
+        for (int i = 0; i < slots.Count; i++)
+        {
+            int slot = slots[i];
+            known[i] = t.Known[slot];
+            t.Known[slot] &= ~group;
+            t.Asked[slot] |= group;
+            StageSeat(t, slot, ArtistCardsStamp);
+            t.Version[slot]++;
+        }
+        s_artistCards = (slots.ToArray(), known);
+        t.MarkDirty();
+    }
+
+    /// <summary>The landing of <see cref="StageArtistCards"/>: the card fields back, as the rows' answers land them. Nothing when none is staged.</summary>
+    public static void RestoreArtistCards()
+    {
+        if (s_artistCards is not { } c) return;
+        s_artistCards = null;
+        var t = Current.Albums;
+        for (int i = 0; i < c.Slots.Length; i++)
+        {
+            int slot = c.Slots[i];
+            if (slot <= Table.None || slot >= t.Count) continue;
+            t.Known[slot] = c.Known[i];
+            LandSeat(t, slot);
+            t.Version[slot]++;
+        }
+        t.MarkDirty();
+        Current.PublishAll();
+    }
+
+    /// <summary>The landing of <see cref="StageArtistOverview"/>'s overview alone: the artist's known bits back (the cards stay staged).</summary>
+    public static void RestoreArtistOverview()
+    {
+        if (s_artistOverview is not { } o) return;
+        s_artistOverview = null;
+        var t = Current.Artists;
+        t.Known[o.Slot] = o.Known;
+        t.Version[o.Slot]++;
+        t.MarkDirty();
+        Current.PublishAll();
     }
 
     /// <summary>The request stamp of the staged chart rows' fetch (cleared by the landing).</summary>
@@ -211,15 +281,8 @@ public static partial class Entities
     public static void RestoreHead()
     {
         RestoreChartLate();
-        if (s_artistOverview is { } o)
-        {
-            s_artistOverview = null;
-            var t = Current.Artists;
-            t.Known[o.Slot] = o.Known;
-            t.Version[o.Slot]++;
-            t.MarkDirty();
-            Current.PublishAll();
-        }
+        RestoreArtistCards();
+        RestoreArtistOverview();
         if (s_head is not { } h) return;
         s_head = null;
         h.Title[h.Slot] = h.Value;
