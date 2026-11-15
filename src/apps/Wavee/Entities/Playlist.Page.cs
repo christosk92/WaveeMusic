@@ -354,7 +354,8 @@ public readonly partial struct Playlist
             _recsAside = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);
             _cover = size => HeldCover(size, CoverSlot(_playlist, size));
-            _compactCover = size => HeldCover(size, CoverArt(_playlist, size));
+            // The rail's strip cover (Classic, Zune) hands over in place like the hero's (a regenerated Mix's new cover).
+            _compactCover = size => HeldCover(size, CoverArt(_playlist, size, handOver: true));
             _attribution = w => AttributionSlot(_playlist, w);
             _description = w => DescriptionSlot(_playlist, w);
             _facts = w => User.FactsPanel(_source!, DetailKind.Playlist, _lens, w, false);

@@ -353,6 +353,59 @@ public static partial class Controls
     /// <summary>The arriving cover's crossfade (WinUI ControlNormal), and the slack each hand-over step waits past it.</summary>
     const float HandOverFadeMs = Design.Motion.Standard, HandOverSlackMs = 60f;
 
+    /// <summary>A head TEXT that can change in place (a regenerated Mix's description) hands over instead of snapping: <paramref name="body"/>
+    /// is the text for <paramref name="content"/> (its identity: the html, the plain string). On a change the old words fade out where they stand
+    /// (<see cref="MotionTokenId.ControlFast"/>), then the new ones fade in, delayed by as much (<see cref="Design.Motion.Standard"/>, decelerate):
+    /// in sequence, never two strings over each other (the full-screen player's track swap has the same rule). The stable box eases its height
+    /// through real layout (none under reduced motion; the fades stay), so a text that gains or loses a line moves what is under it instead
+    /// of stepping it. The first content is born at rest, and a text that appears where there was none keeps its own entrance (no hand-over).</summary>
+    public static Element TextHandOver(string content, Element body)
+        => Embed.Comp(new TextHandOverProps(content, body), static () => new TextHandOverView());
+
+    sealed record TextHandOverProps(string Content, Element Body);
+
+    sealed class TextHandOverView : Component
+    {
+        string? _seen;
+
+        public override Element Render()
+        {
+            var p = UseProps<TextHandOverProps>();
+            // Born at rest (the head's own entrance carries the first text); a text replacing another hands over.
+            bool swapped = _seen is { Length: > 0 } seen && p.Content.Length > 0 && !string.Equals(seen, p.Content, StringComparison.Ordinal);
+            _seen = p.Content;
+            var part = new BoxEl
+            {
+                Key = "headtext:" + p.Content.GetHashCode().ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Direction = 1, MinWidth = 0f,
+                Layout = HeadTextSwap(swapped),
+                Children = [p.Body],
+            };
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, ClipToBounds = true,
+                Layout = Design.Reduced ? null : s_headTextResize,
+                Children = [part],
+            };
+        }
+    }
+
+    /// <summary>The head text's swap family: the leaving words' fade, declared so the inspector reads the remount as design.</summary>
+    static readonly EnterExit s_headTextFade = SwapFamilies.Declare("Detail.HeadText", new EnterExit(Opacity: 0f, Active: true));
+
+    /// <summary>The head text's swap: the old words out over the fast control token, the new ones in after them.</summary>
+    static LayoutTransition HeadTextSwap(bool entering) => new(
+        TransitionChannels.Opacity,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.FluentDecelerate),
+        SizeMode.Auto,
+        Enter: entering ? new EnterExit(Opacity: 0f, Active: true) with { DelayMs = MotionTok.ControlFast.DurationMs } : default,
+        Exit: s_headTextFade,
+        ExitDynamics: MotionTok.ControlFast.ToDynamics());
+
+    /// <summary>The head text's height across a hand-over (a line gained or lost): eased through real layout, the content under it riding it.</summary>
+    static readonly LayoutTransition s_headTextResize = new(TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>A square cover that FILLS the width its layout hands it (aspect-ratio 1) — for responsive grid cells
     /// whose exact width is not known at template time. Pass <c>Radii.Full</c> for a layout-derived circular tile.
     /// <para>It NEVER mosaics: a fill cell has no known width, so a cover-less container collapses to its FIRST tile and

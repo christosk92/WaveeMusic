@@ -125,7 +125,7 @@ internal static partial class WinUiDetailFrame
                 if (id.EditableMetadata && spec.Slots.Description is { } editDescription)
                     rows.Add(Block("hero-description", editDescription(measure), late: true, formPiece: true));
                 else if (description.Length > 0)
-                    rows.Add(Block("hero-description", WinUiDetailKit.DescriptionRun(description, center), late: true, formPiece: true));
+                    rows.Add(Block("hero-description", Controls.TextHandOver(description, WinUiDetailKit.DescriptionRun(description, center)), late: true, formPiece: true));
             }
             // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
             // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
@@ -434,7 +434,8 @@ internal static partial class WinUiDetailFrame
             {
                 Width = WinUiDetailRules.BandCover, Height = WinUiDetailRules.BandCover, Shrink = 0f,
                 Corners = CornerRadius4.All(WinUiDetailRules.BandCoverRadius), ClipToBounds = true,
-                Children = [Controls.Artwork(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
+                // The band's cover hands over like the hero's (a regenerated Mix lands a new cover in place): never a blank square between the two.
+                Children = [Controls.ArtworkHandOver(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
             },
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = identity.ToArray() },
         };

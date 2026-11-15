@@ -994,13 +994,16 @@ public static partial class Controls
     /// <para>Every input is a LIVE prop (re-pushed, never frozen at mount — a late page accent reaches the links); the key
     /// is the CONTENT's identity only, so a new body resets the expansion and a resize or a new line cap does not.</para>
     /// <para><paramref name="fullTextTip"/>: while collapsed, hovering the paragraph shows its whole text in a tooltip
-    /// (<see cref="RichTextTip"/>) — the detail description's opt-in; a long show-notes body (Episode) does not ask.</para></summary>
+    /// (<see cref="RichTextTip"/>) — the detail description's opt-in; a long show-notes body (Episode) does not ask.</para>
+    /// <para>A new body that replaces another hands over (<see cref="TextHandOver"/>: the old words fade out, then the new ones in, the height
+    /// easing); the first body, or one appearing where there was none, arrives as it always did.</para></summary>
     public static Element ExpandableRichText(string? html, float size, ColorF color, ColorF linkColor, float width,
                                              int maxLines, string contextKey, Action<string>? onNavRoute = null,
                                              bool fullTextTip = false)
-        => Embed.Comp(new ExpandableRichProps(html, size, color, linkColor, width, maxLines, onNavRoute, fullTextTip),
-                      static () => new ExpandableRich())
-            with { Key = $"rich-expand:{contextKey}:{html}" };
+        => TextHandOver(html ?? "", Embed.Comp(new ExpandableRichProps(html, size, color, linkColor, width, maxLines, onNavRoute, fullTextTip),
+                                               static () => new ExpandableRich())
+                                        with { Key = $"rich-expand:{contextKey}:{html}" })
+            with { Key = $"rich-expand:{contextKey}" };
 
     public static Element ExpandableRichTextFlex(string? html, float size, ColorF color, ColorF linkColor,
                                                 int maxLines, string contextKey, Action<string>? onNavRoute = null)
