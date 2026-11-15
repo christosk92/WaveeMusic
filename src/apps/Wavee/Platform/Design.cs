@@ -540,6 +540,26 @@ public static partial class Design
         /// up in its first frames while the outgoing one leaves on its own 90 ms exit leg. The two pages' summed cover never drops below ~84 %
         /// (the sequenced legs fell to 6 %), they share the screen for the exit leg only, and the swap settles sooner.</summary>
         public const float HandOverEnterMs = 167f;
+
+        /// <summary>A swap between two pages of the SAME kind (playlist to playlist, album to album, artist to artist): the outgoing page leaves
+        /// on the click frame and the incoming one fades in over this, with no travel and no stagger (<see cref="SameKindSwap"/>). The owner's
+        /// recording, 2026-11-15: the hand-over between two playlists printed two dense track lists over each other ("very heavy"). The two
+        /// pages share one layout, so a crossfade reads as one list turning into an unrelated one (Heer and Robertson's false relation),
+        /// its text unreadable mid-fade (Material: a fade exposes "overlapping and partially transparent frames"), and the 8-DIP travel
+        /// moves a layout that does not change. It is frequent, productive navigation: Microsoft's ~100 ms for frequent operations, Carbon's
+        /// productive range (70-150 ms), Apple's "avoid adding motion to interactions that happen frequently".</summary>
+        public const float SameKindEnterMs = 100f;
+
+        /// <summary>The same-kind swap (<see cref="SameKindEnterMs"/>): an opacity-only enter on the Fluent decelerate from
+        /// <see cref="SameKindEnterFrom"/>, and NO exit, so the keep-alive host deactivates the outgoing page on the swap's own frame and the
+        /// two pages never share the card.</summary>
+        public static readonly LayoutTransition SameKindSwap = new(TransitionChannels.Opacity,
+            TransitionDynamics.Tween(SameKindEnterMs, Easing.FluentDecelerate),
+            Enter: new EnterExit(Opacity: SameKindEnterFrom, Active: true));
+
+        /// <summary>Where the same-kind fade starts. From nothing, its first frame was a near-empty card (the washed-out frame the owner
+        /// rejected in the sequenced swap); from 40 % the new page is readable on its first frame and still never shares the card.</summary>
+        public const float SameKindEnterFrom = 0.4f;
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
 

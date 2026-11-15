@@ -971,6 +971,7 @@ public static partial class Shell
         // would wash out a composited video hole, so a video-safe swap cuts.
         if (FgMotion.ReducedMotion) return videoSafe ? null : pageMotion.ReducedFade;
         if (videoSafe) return RecipeForVideoSafe(motion);
+        if (IsSameKindSwap(oldToken, next)) return Design.Nav.SameKindSwap;
         // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
         if (pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own) return own;
         return RecipeFor(motion);
@@ -986,8 +987,16 @@ public static partial class Shell
             return null;
         Route from = oldToken is Route r ? r : Route.None;
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
+        if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
         return Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is { } cascade ? cascade(SwapOf(from, next, Motion.Peek())) : null;
     }
+
+    /// <summary>A swap between two entity pages of the same kind (playlist to playlist, album to album, artist to artist), which takes
+    /// <see cref="Design.Nav.SameKindSwap"/>: no overlap, no travel, a 100 ms fade in. A structure that mounts its incoming page at the end of the
+    /// exit leg (<c>ShellCapabilities.DefersPageMount</c>: Zune) keeps its own sequenced swap, which never shows two pages at once and lands
+    /// with its band's chrome.</summary>
+    static bool IsSameKindSwap(object oldToken, in Route next)
+        => oldToken is Route prev && prev.Kind == next.Kind && IsDetail(next.Kind) && !ShellCaps.Now.DefersPageMount;
 
     /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the
     /// structure's <c>Shell.ContentState</c> view, which draws it (T4a). The core decides which state and builds the page; the
