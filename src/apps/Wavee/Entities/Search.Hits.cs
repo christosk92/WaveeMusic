@@ -152,10 +152,11 @@ public readonly partial struct Search
         });
     }
 
-    /// <summary>The trailing control: Follow for an artist / playlist / show, the heart for a track / album, none else.
-    /// Keyed on the uri — the embed's props freeze by design (Controls.cs §4).</summary>
+    /// <summary>The trailing control: Follow for an artist / playlist / show, the heart for a track / album, none else, and
+    /// none for the account's own collection (<see cref="IsOwnCollection"/>). Keyed on the uri — the embed's props freeze by
+    /// design (Controls.cs §4).</summary>
     internal static Element? TrailingOf(EntityRef hit, string uri, string name)
-        => SearchHitRules.TrailingOf(hit.Kind, hasUri: uri.Length > 0) switch
+        => SearchHitRules.TrailingOf(hit.Kind, hasUri: uri.Length > 0, own: IsOwnCollection(hit)) switch
         {
             SearchHitRules.Trailing.Follow
                 => Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri },
@@ -164,6 +165,21 @@ public readonly partial struct Search
             _ => null,
         };
 
+
+    /// <summary>Is this hit the account's own collection: Liked Songs (told by its uri: the fake answers it as a playlist hit,
+    /// Spotify as a collection hit), Your Episodes (<see cref="Playlist.IsYourEpisodes"/>) or a playlist the account owns
+    /// (<see cref="Entities.IsOwnPlaylist"/>, the rule behind <see cref="Playlist.IsOwner"/>, which drops the detail page's
+    /// heart; asked directly because a search hit's row often carries its owner but not yet its capabilities, and the derived
+    /// bit waits on those)? Following your own list means nothing, so its hit carries no Follow (the owner saw "Following" on
+    /// the Liked Songs top result, 2026-11-16).</summary>
+    internal static bool IsOwnCollection(EntityRef hit)
+    {
+        if (hit.Kind == EntityKind.Collection) return true;
+        if (hit.Kind != EntityKind.Playlist) return false;
+        if (EntityUri.IsLikedCollection(hit.Id.Text)) return true;
+        var pl = new Playlist(hit.Slot);
+        return pl.IsValid && (pl.IsYourEpisodes || Entities.IsOwnPlaylist(pl.Owner.Slot, Entities.Current.MeSlot, (byte)pl.Caps));
+    }
 
     // ══ 4. THE HIT ROW (W9, §3 "Search rows") ════════════════════════════════════════════════════════════════════════
 
@@ -255,7 +271,8 @@ public static class SearchHitRules
 
     /// <summary>Where a hit row's "…" goes: its OWN lane after the trailing control
     /// (<see cref="MenuPlacement.TrailingLane"/>), never the overlay over the row's end. Every kind that has a menu
-    /// (<see cref="Search.HasMenu"/>) also ends in a control (<see cref="TrailingOf"/>: the heart or the Follow pill), so
+    /// (<see cref="Search.HasMenu"/>) also ends in a control (<see cref="TrailingOf"/>: the heart or the Follow pill; the
+    /// account's own collections excepted), so
     /// the overlay would always land on that control — hiding and blocking the heart, cutting "Follow" to "Fol". The Top
     /// Result card already places its "…" in a slot of its own beside the same control; the rows (search page and the
     /// search flyout alike, <c>OmnibarRowRules.RowShape</c>) now do the same.</summary>
@@ -273,10 +290,11 @@ public static class SearchHitRules
     public enum Trailing : byte { None, Follow, Save }
 
     /// <summary>Follow for an artist / playlist / show, the heart (Save) for a track / album, none for the rest — and none
-    /// for a hit with no uri to act on.</summary>
-    public static Trailing TrailingOf(EntityKind kind, bool hasUri)
+    /// for a hit with no uri to act on, or for the account's <paramref name="own"/> collection (Liked Songs, Your Episodes,
+    /// a playlist it owns: <c>Search.IsOwnCollection</c>), which is always yours.</summary>
+    public static Trailing TrailingOf(EntityKind kind, bool hasUri, bool own)
     {
-        if (!hasUri) return Trailing.None;
+        if (!hasUri || own) return Trailing.None;
         return kind switch
         {
             EntityKind.Artist or EntityKind.Playlist or EntityKind.Show => Trailing.Follow,
