@@ -745,8 +745,10 @@ public static partial class Design
 
     /// <summary>The page loading bar's timing (the owner, 2026-11-15): a page whose placeholders are still up after
     /// <see cref="LoadingBarShowAfterMs"/> shows one thin bar on its top edge, and once shown the bar stays at least
-    /// <see cref="LoadingBarMinVisibleMs"/> so it never blinks. A load shorter than the delay shows nothing.</summary>
-    public const float LoadingBarShowAfterMs = 500f, LoadingBarMinVisibleMs = 400f;
+    /// <see cref="LoadingBarMinVisibleMs"/> so it never blinks. A load shorter than the delay shows nothing: under a second
+    /// the flow of thought holds and no indicator is needed (Nielsen's 1 s limit; Primer, "less than 1 second: don't show a
+    /// loading state"), so the bar first marks a wait the user would otherwise wonder about.</summary>
+    public const float LoadingBarShowAfterMs = 1000f, LoadingBarMinVisibleMs = 400f;
 
     // ══ 12. IMAGE DECODE SCALE ═══════════════════════════════════════════════════════════════════════════════════════
 

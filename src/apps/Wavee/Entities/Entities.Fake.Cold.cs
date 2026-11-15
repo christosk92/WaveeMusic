@@ -11,7 +11,7 @@
 //   · cold-warm   (instead of cold-rows) the membership lands with every row restored from disk: faces known, credits in flight;
 //   · cold-faces  the rows' own fields land (titles, artists, covers, durations: the meta line gains its duration).
 //   · regen       a regenerated Mix's fresh answer (the owner's recording, 2026-11-15, Heartbreak Mix): open the Mix first (`goto` pl6: a seeded list
-//                 nobody revalidated this session, so the page HOLDS it on the open's revalidation, which the fake never answers), then `regen` lands
+//                 nobody revalidated this session: the page paints it and revalidates behind it, and the fake never answers), then `regen` lands
 //                 what the /diff would: a new revision with other rows, and a new cover and description on the same uri.
 //
 // Inspector-only (`Shell.SetInspectState`); every value is a pure function of the row index and a per-staging epoch, so a second `cold-list` is cold again.

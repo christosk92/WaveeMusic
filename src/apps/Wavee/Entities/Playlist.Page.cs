@@ -35,8 +35,8 @@
 //
 // Once per (playlist slot, scope epoch): PlaylistFields.All + the membership through THE OPEN RULE (§6: ListOpen.Open,
 // Surface.Page) — the first open of a session revalidates (an Unknown list comes off the disk and the edge door chains its
-// /diff), a fresh list paints, a stale one holds the reveal on its /diff for at most ListFreshness.BlockingBudgetMs. The
-// hold reaches the table through its own readiness (HeldRows: the reveal gate reads State/Count), never a page probe. A
+// /diff), a fresh list paints, a stale one paints what it holds and revalidates behind it; only a rolling list (a daylist)
+// holds the reveal on its /diff, for at most ListFreshness.BlockingBudgetMs (ListOpenPolicy.HoldsReveal). The hold reaches the table through its own readiness (HeldRows: the reveal gate reads State/Count), never a page probe. A
 // parked page coming back opens again as a Revisit (asks, never holds). As the membership lands: the member rows
 // (Row | Audio | Tags | Video), the owner + adders' profiles, and the facts refold (Playlist.Refold — the Added-by / Date /
 // Video column facts and the meta line's duration, written only when they moved).
@@ -742,7 +742,8 @@ public readonly partial struct Playlist
             // an unconditional full read against the list-open disk/diff path.
             Entities.Ensure(pl, PlaylistFields.Visibility | PlaylistFields.Saves | PlaylistFields.Accent);
             // The list goes through THE open rule (§6): an Unknown one is asked once — the disk leg, then the /diff the edge
-            // door chains itself — a fresh one paints, a stale one is revalidated and holds the reveal on the answer.
+            // door chains itself — a fresh one paints, a stale one paints and is revalidated behind it (a rolling one holds the
+            // reveal on the answer: ListOpenPolicy.HoldsReveal).
             ListOpen.Open(pl, ListOpenPolicy.Surface.Page);
             _source?.Opened();
         }

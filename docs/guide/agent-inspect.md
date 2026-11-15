@@ -166,7 +166,7 @@ Every settling verb, and `settle`, takes `loops`:
 
 **The page loading bar.** Each page's body box (`page:<route>`) carries one thin bar on its top edge, `page-busy:bar` in the
 fixed slot `page-busy` (3 DIP in Classic and WinUI, 2 in Zune). It shows once the page's placeholders (or, in Zune, its deferred
-mount) have been pending 0.5 s and stays at least 0.4 s, fading in and out (about 11 frames each way); a load shorter than 0.5 s
+mount) have been pending 1 s and stays at least 0.4 s, fading in and out (about 11 frames each way); a load shorter than 1 s
 never shows it, and nothing moves when it comes or goes. The inspect host's frames are a fixed 16 ms clock while the fake
 catalogue answers on the wall clock, so an ordinary `goto` can show the bar (32 virtual frames pass in a few real
 milliseconds) and its settle then also waits out the 0.4 s minimum and the fade. For timing proofs use held answers only
