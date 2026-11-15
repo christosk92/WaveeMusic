@@ -209,6 +209,11 @@ internal static partial class WinUiDetailFrame
         bool showNames = hasFaces && (center || filled);
         bool showMeta = hasMeta && settled && (center ? metaLine : filled);
         bool namesLine = !center || hasFaces;
+        // A row line that has not filled yet stands EMPTY in its reserved row: no lines at all. Its lines used to stand as empty boxes, so when
+        // the facts filled, the meta line glided from the row's start to its place beside the names, under the names fading in ("Spotify" over
+        // "50 songs" for two frames). Mounted together on the fill, the names and the meta fade up where they belong.
+        if (!center && !filled)
+            return new BoxEl { Key = "hero-facts", Direction = 0, Height = WinUiDetailRules.AttributionRow(avatar), Shrink = 0f, MinWidth = 0f, MaxWidth = measure };
         var kids = new List<Element>(3);
         if (!center && avatar > 0f && hasFaces && filled)
             kids.Add(WinUiDetailKit.AvatarPile(faces!, avatar) with
