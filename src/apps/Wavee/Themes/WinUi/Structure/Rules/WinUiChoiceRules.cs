@@ -39,4 +39,10 @@ public static class WinUiChoiceRules
 
     /// <summary>The word that joins a pivot word to its count ("All · 14", W-Show).</summary>
     public const string CountJoin = " · ";
+
+    /// <summary>The library's one column (W-LibraryList; the owner's "the inner content margin/padding is wrong and not aligning", 2026-11-15): every left
+    /// edge of the page stands on the head's lead G (the page inset, <c>WinUiDetailRules.InsetOf</c>). The navigator's head (the sort, the filter, the count)
+    /// stands ItemLead in from the navigator column's edge, which stands G - ItemLead in from the card; a list row's plate hangs 12 left of G and pads its art
+    /// RowArtLead in, onto G, as the pivot's items hang their 12 (owner, mock B).</summary>
+    public const float LibraryItemLead = 16f, LibraryRowArtLead = 12f;
 }

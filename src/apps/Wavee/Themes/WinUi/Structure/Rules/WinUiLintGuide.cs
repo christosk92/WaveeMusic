@@ -32,12 +32,20 @@ public sealed class WinUiLintGuide : IThemeLintGuide
         RectF content = context.RectOf(WinUiFrameLayout.ContentKey) ?? new RectF(0f, 0f, context.WindowW, context.WindowH);
 
         // The page title sits on the content inset (W-Tiers "Content inset": 16 / 24 / 36 / 48 left and right): the page column's ink line.
+        // The library's column stands on the same line (W-LibraryList, the owner's 2026-11-15 "not aligning"): the navigator's sort and count, and a
+        // list row's art, whose plate hangs left of it.
         return
         [
             new LintEdge(Gutter, "page.title", "the page title", LintSide.Left, content.X + inset, Tolerance,
                 Keys: [WinUiFrameLayout.PageTitleKey], Column: true),
+            new LintEdge(Gutter, "library.sort", "the library's sort", LintSide.Left, content.X + inset, Tolerance, Keys: [LibrarySortKey], Column: true),
+            new LintEdge(Gutter, "library.count", "the library's count", LintSide.Left, content.X + inset, Tolerance, Keys: [LibraryCountKey], Column: true),
+            new LintEdge(Gutter, "library.row", "a library row's art", LintSide.Left, content.X + inset, Tolerance, Keys: [LibraryRowKey], Column: true),
         ];
     }
+
+    /// <summary>The library navigator's sort (`WinUiLibraryControls`), its count and a list row's content (`ClassicLibraryPage` under WinUI's leads).</summary>
+    private const string LibrarySortKey = "lib:sort", LibraryCountKey = "lib:count", LibraryRowKey = "lib:row";
 
     /// <summary>Home's facet words (the key `WinUiHomeFacetRow` gives the SelectorBar's box).</summary>
     private const string FacetWordsKey = "home:facet:words";
@@ -55,7 +63,13 @@ public sealed class WinUiLintGuide : IThemeLintGuide
             "search hits are ListView rows: the row's hover plate starts on the column and pads the art in (W-Search draws the song rows' art 8 right of 'Songs')"),
         new(LintIntent.ItemPlate, SearchFacetsKey,
             "the search facets are a stock SelectorBar: each item pads its words in from the column (W-Search draws 'All' one item padding right of 'Results for')"),
+        new(LintIntent.Allow, ListPillKey,
+            "a ListView row's selection pill stands in its plate's margin, 8 left of the column the row's art stands on, as the pivot's pill hangs (W-LibraryList)",
+            Rule: "align.inset"),
     ];
+
+    /// <summary>The stock ListView row's selection pill (`SelectorVisualsBound.AccentPill`).</summary>
+    private const string ListPillKey = "lv-pill";
 
     /// <inheritdoc />
     public IReadOnlyList<LintPolicy> Policies(LintContext context) => s_policies;

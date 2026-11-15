@@ -96,11 +96,11 @@ internal static partial class ClassicLibraryPage
         if (!headed) rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
         if (filter is not null) rows.Add(filter.Value with { Layout = ClassicTierMotion.Shove });
-        if (headed) rows.Add(new TextEl(p.CountText) { Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
+        if (headed) rows.Add(new TextEl(p.CountText) { Key = "lib:count", Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",
-            Direction = 1, Gap = layout.HeadGap, Shrink = 0f, Padding = layout.HeadPad,
+            Direction = 1, Gap = layout.HeadGap, Shrink = 0f, Padding = c.Nav is { } nav ? layout.HeadPad with { Left = nav.ItemLead } : layout.HeadPad,
             Children = rows.ToArray(),
         };
     }

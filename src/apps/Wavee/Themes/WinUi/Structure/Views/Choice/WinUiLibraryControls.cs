@@ -29,7 +29,25 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiLibraryControls
 {
     /// <summary>The style WinUI registers under <see cref="StyleKeys.LibraryControls"/>. Stateless.</summary>
-    public static readonly LibraryControlsStyle Style = new(Sort, Modes, View, Scope, ReaderSort, Kinds, Head);
+    public static readonly LibraryControlsStyle Style = new(Sort, Modes, View, Scope, ReaderSort, Kinds, Head, Nav);
+
+    // ══ THE COLUMN (W-LibraryList: every left edge on the head's lead) ═══════════════════════════════════════════════
+
+    /// <summary>One record per window tier, built once (the lead air is an eased spacer: a crossing glides it with the head's own).</summary>
+    static readonly LibraryNavMetrics?[] s_nav = new LibraryNavMetrics?[4];
+
+    /// <summary>The navigator column's leads for <paramref name="facts"/>: G is the head's lead (<see cref="HeadView"/> reads the same tier), the column's edge
+    /// stands G - 16 in, the navigator's head 16 in from it, a row's art 12 in from its plate; the panes end G short of the card's right edge, on the
+    /// head's trail.</summary>
+    static LibraryNavMetrics Nav(Wavee.Theming.TierFacts facts)
+    {
+        var tier = WinUiDetailTiers.Of(in facts).Tier;
+        int at = Math.Clamp((int)tier, 0, s_nav.Length - 1);
+        if (s_nav[at] is { } known) return known;
+        float g = WinUiDetailRules.InsetOf(tier);
+        return s_nav[at] = new LibraryNavMetrics(WinUiDiscoveryMotion.AirH("lib:nav:lead", g - WinUiChoiceRules.LibraryItemLead),
+            WinUiChoiceRules.LibraryItemLead, WinUiChoiceRules.LibraryRowArtLead, PaneTrail: g);
+    }
 
     // ══ THE SORT ═════════════════════════════════════════════════════════════════════════════════════════════════════
 

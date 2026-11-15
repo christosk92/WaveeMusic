@@ -36,16 +36,16 @@ internal static partial class ClassicLibraryPage
     /// rungs (the stock list-item shape stood 66 apart and drifted 6 DIP a row). A grid: the bound cards at the fitted grid's own cells (it used to draw
     /// rows over a grid). <paramref name="fullBase"/> is the full grid's size-S floor of the tier (the record's <c>CardCellMin</c>, the host's mount floor) and
     /// <paramref name="gaps"/> its gaps (the record's <c>GridGaps</c>, the host's mount gaps).</summary>
-    internal static Element NavShimmer(int view, int size, EntityKind entity, float fullBase = LibraryNavMount.CardCellMinFull, LibraryGridGaps? gaps = null)
+    internal static Element NavShimmer(int view, int size, EntityKind entity, float fullBase = LibraryNavMount.CardCellMinFull, LibraryGridGaps? gaps = null, LibraryNavMetrics? nav = null)
     {
         bool compact = User.IsCompactView(view);
-        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size, fullBase), entity == EntityKind.Artist, gaps ?? LibraryGridGaps.Core);
+        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size, fullBase), entity == EntityKind.Artist, gaps ?? LibraryGridGaps.Core, nav);
         var rows = new Element[ClassicLibraryRules.NavSkelRows];
-        for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact) with { Key = "navskel:" + i };
+        for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact, nav) with { Key = "navskel:" + i };
         return new BoxEl { Key = "navskel", Direction = 1, Children = rows };
     }
 
-    static Element NavShimmerRow(bool compact)
+    static Element NavShimmerRow(bool compact, LibraryNavMetrics? nav)
     {
         Element title = new TextEl("Loading title")   // loc-allow: skeleton shimmer template — the leaf only sizes the bar
         {
@@ -65,7 +65,8 @@ internal static partial class ClassicLibraryPage
         {
             Height = compact ? User.NavRowCompactPlate : User.NavRowPlate,
             Margin = new Edges4(ClassicLibraryRules.NavSkelPlateMarginX, User.NavRowMarginY, ClassicLibraryRules.NavSkelPlateMarginX, User.NavRowMarginY),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = ClassicLibraryRules.NavSkelContentPad,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+            Padding = nav is null ? ClassicLibraryRules.NavSkelContentPad : ClassicLibraryRules.NavSkelContentPad with { Left = nav.RowArtLead },   // the bound row's art lead
             Children = compact
                 ? [text]
                 : [new BoxEl
@@ -79,13 +80,13 @@ internal static partial class ClassicLibraryPage
     /// <summary>The grid view's shimmer: <see cref="NavCard"/>'s shape at the fitted grid's cells — an auto-fill grid at the mount's cell minimum and gap
     /// (the column count and the cell width are <see cref="RepeatLayout.GridFit"/>'s formula, <c>GridEl.AutoFillColumnCount</c>), inside the list's
     /// <see cref="NavGridPad"/>, each card the fill-width square cover in its padding (16 round, 8 square) and, outside the compact grid, the title line.</summary>
-    static Element NavGridShimmer(bool compact, float cellMin, bool circular, LibraryGridGaps gaps)
+    static Element NavGridShimmer(bool compact, float cellMin, bool circular, LibraryGridGaps gaps, LibraryNavMetrics? nav)
     {
         var cards = new Element[ClassicLibraryRules.NavSkelCards];
         for (int i = 0; i < cards.Length; i++) cards[i] = NavShimmerCard(compact, circular) with { Key = "navskel:" + i };
         return new BoxEl
         {
-            Key = "navskel", Direction = 1, Padding = NavGridPad,
+            Key = "navskel", Direction = 1, Padding = NavGridPadOf(nav, circular),
             Children = [new GridEl { MinColWidth = cellMin, ColGap = gaps.Column, RowGap = gaps.Row, Children = cards }],
         };
     }
@@ -123,6 +124,10 @@ internal static partial class ClassicLibraryPage
     /// <summary>A grid's wrapper padding around its cells (a list has none): the bound grid's and its shimmer's.</summary>
     static Edges4 NavGridPad => new(Spacing.S, Spacing.S, Spacing.S, 0f);
 
+    /// <summary><see cref="NavGridPad"/>, or under a borrowing structure's leads (contract 1.109) the first column's covers on its item lead (a card pads its cover 16 round, 8 square).</summary>
+    static Edges4 NavGridPadOf(LibraryNavMetrics? nav, bool circular)
+        => nav is null ? NavGridPad : NavGridPad with { Left = nav.ItemLead - (circular ? ClassicLibraryRules.CardPadRound : Spacing.S) };
+
     /// <summary>The real navigator (library-stabilization-plan §3.3, A1). The ROOT returned here is the region's single-child slot — UNKEYED and the SAME shape (a plain row `BoxEl`) every
     /// single render, forever, because a `Key` in that slot is INERT (RC1: <c>ReconcileSkeletonRegion</c> pairs a region's content root by <c>ElementTypeId</c> alone, never by
     /// <c>Key</c>). Everything that must actually remount is a KEYED CHILD, one level down, where <c>ReconcileChildren</c> honors keys: the nav list itself (<c>mount.Key</c>), the sticky
@@ -137,7 +142,7 @@ internal static partial class ClassicLibraryPage
         {
             Key = mount.Key, OnRealized = nav.OnMounted,
             Grow = 1f, Direction = 1, MinHeight = 0f,
-            Padding = mount.GridPadding ? NavGridPad : default,
+            Padding = mount.GridPadding ? NavGridPadOf(c.Nav, c.Props.Entity == EntityKind.Artist) : default,
             Children = [ItemsView.CreateBound(nav.Items, c.TemplateOf(mount.Template), plan.Layout, plan.Options)],
         };
         Element body = new BoxEl
@@ -158,15 +163,15 @@ internal static partial class ClassicLibraryPage
 
     /// <summary>The list slot: the template runs ONCE per recycled slot and branches at BUILD time on the pooled content type (Recents' `ClassicRecentsRowSlot` idiom) — a header plate and a row
     /// never share a pool.</summary>
-    static Element NavSlot(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
-        => scope.Item.Peek().Slot < Table.None ? LetterHeader(scope) : NavRow(scope, kind, compact);
+    static Element NavSlot(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact, LibraryNavMetrics? nav)
+        => scope.Item.Peek().Slot < Table.None ? LetterHeader(scope, nav) : NavRow(scope, kind, compact, nav);
 
     /// <summary>The inline header item (the flat projection's <c>ContentType 1</c>, extent <see cref="LibraryLetters.HeaderExtent"/>): the letter on a small card plate. A header row
     /// carries <c>Slot = -(letter + 1)</c>, so the plate reads its letter out of the slot and nothing else.</summary>
-    static Element LetterHeader(BoundItemScope<LibraryNavItem> scope) => new BoxEl
+    static Element LetterHeader(BoundItemScope<LibraryNavItem> scope, LibraryNavMetrics? nav) => new BoxEl
     {
         Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
-        Padding = new Edges4(Spacing.S, 0f, Spacing.S, Spacing.XS),
+        Padding = new Edges4(nav?.ItemLead ?? Spacing.S, 0f, Spacing.S, Spacing.XS),
         Children = [ClassicLetterKit.LetterPlate(scope.Text(static it => ClassicLetterKit.LetterText(-it.Slot - 1)))],
     };
 
@@ -174,7 +179,7 @@ internal static partial class ClassicLibraryPage
 
     /// <summary>A navigator LIST row (plate 40 compact / 56, outer extent 44 / 60): 40×40 art (r 20 artist / 5 album, show) + title 14/20/600 + subtitle 12/16 — compact drops both the art
     /// and the subtitle. Wears the bound AccentPill chrome.</summary>
-    static Element NavRow(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
+    static Element NavRow(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact, LibraryNavMetrics? nav)
     {
         bool circular = kind == EntityKind.Artist;
         Element text = new BoxEl
@@ -186,7 +191,9 @@ internal static partial class ClassicLibraryPage
         };
         Element content = new BoxEl
         {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(nav is null ? Spacing.S : 0f, 0f, Spacing.S, 0f),
+            // A borrowing structure's art lead from the plate (contract 1.109): the chrome pads its content 16 in, so the art stands RowArtLead in.
+            Margin = nav is null ? default : new Edges4(nav.RowArtLead - LibraryNavMetrics.ChromeContentPad, 0f, 0f, 0f), Key = nav is null ? null : "lib:row",
             Draggable = User.DragOf(scope),
             Children = compact
                 ? [text]
