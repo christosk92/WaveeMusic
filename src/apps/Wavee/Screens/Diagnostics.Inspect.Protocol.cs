@@ -180,6 +180,7 @@ public static partial class Diagnostics
             Arg("every", ArgType.Int, "emit every Nth row (the summary covers every frame)", "1"),
             Arg("rows", ArgType.Bool, "false: the summary only", "true"),
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
+            Arg("flights", ArgType.Bool, "each row carries the connected navigation flights (a card's cover flying into its page), the summary their take-off, landing and hand-off", "false"),
             Arg("baseline", ArgType.Bool, "judge the first traced frame against the watched nodes as they stood before it (on for state)", "state"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),

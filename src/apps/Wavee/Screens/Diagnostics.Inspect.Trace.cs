@@ -86,6 +86,9 @@ public static partial class Diagnostics
             /// starts on the frame the state lands, so its landing frame had nothing to compare with: audit FU2c); `baseline=` sets it.</summary>
             public bool Baseline;
             public bool WatchesNodes => Keys.Count > 0 || Prefixes.Count > 0;
+            /// <summary>`flights=true`: each row carries the connected navigation flights (a card's cover flying into its page's hero) and the
+            /// summary their take-off, landing and hand-off (<see cref="FlightSummary"/>).</summary>
+            public bool Flights;
         }
 
         /// <summary>The trace options an args bag spells: <c>frames</c> (or <paramref name="frames"/> from an action's
@@ -109,6 +112,7 @@ public static partial class Diagnostics
             o.InstantDip = a.Float("instant", 4f);
             o.Rows = a.Bool("rows", true);
             o.Census = a.Bool("census", false);
+            o.Flights = a.Bool("flights", false);
             if (a.Has("wheel"))
             {
                 if (!TryWheelSequence(string.Join(",", a.List("wheel")), out o.Wheel)) { error = "wheel is a number or a comma list of numbers (notches, + toward the end)"; return false; }
@@ -194,6 +198,25 @@ public static partial class Diagnostics
         public readonly record struct ScrollSample(string Label, double Offset, double Velocity, double Max, double Content, double Viewport,
                                                   double LastShown, string Motion, bool User);
 
+        /// <summary>One connected navigation flight on one frame (the engine's probe, <c>AppHost.TryGetNavFlight</c>): its key, phase
+        /// (pending, flying, landed, abandoned), direction, the flyer's presented rect, the dest's rest rect, the shadow's opacity and
+        /// whether each end's slot is hidden, and the image the flyer draws.</summary>
+        public readonly record struct FlightSample(string Key, string Phase, bool Back, RectF Pres, RectF Dest, RectF Source, float Shadow,
+                                                  bool SrcHidden, bool DestHidden, RectF TakeOff, int ImageId);
+
+        /// <summary>The flights over a trace: the frame a flyer first showed, the frame its springs landed, the frame it handed off (the flyer
+        /// gone, no flight left), the largest edge difference between the flyer and the source on the first frame that drew it (the engine's record,
+        /// so a verb that ran its dispatch frame before the trace still judges it) and the dest on its last frame
+        /// (DIP), the largest edge step of the flyer between two frames, and whether one was abandoned. -1: never.</summary>
+        public sealed class FlightSummary
+        {
+            public int StartedAt = -1, LandedAt = -1, HandedOffAt = -1, Flights;
+            public float TakeoffDelta, HandoffDelta, MaxStepDip;
+            public bool Abandoned;
+            /// <summary>Started and neither handed off nor abandoned within the trace.</summary>
+            public bool Unfinished => StartedAt >= 0 && HandedOffAt < 0 && !Abandoned;
+        }
+
         public sealed class Row
         {
             public int Frame;
@@ -204,6 +227,8 @@ public static partial class Diagnostics
                        Components, ReactiveUnits, BindingFires, BindingWrites, ImageApplied, Gc0, Gc1, Gc2;
             public List<NodeSample> Nodes = [];
             public ScrollSample? Scroll;
+            /// <summary>The connected navigation flights after the frame (`flights=true`); null when off.</summary>
+            public List<FlightSample>? Flights;
             /// <summary>The render census of a slow frame (which components made the flush slow), when the host has it on.</summary>
             public string? Census;
             /// <summary>A theme switch's own frame (<see cref="Options.ThemeSwitch"/>): the host was frozen for the transaction at the frame's
@@ -269,6 +294,63 @@ public static partial class Diagnostics
             public Row? Baseline;
             public Options Options = new();
             public Summary Summary = new();
+            /// <summary>The connected navigation flights over the trace (`flights=true`); null when off.</summary>
+            public FlightSummary? Flight;
+        }
+
+        static float EdgeDelta(in RectF a, in RectF b)
+            => MathF.Max(MathF.Max(MathF.Abs(a.X - b.X), MathF.Abs(a.Y - b.Y)), MathF.Max(MathF.Abs(a.W - b.W), MathF.Abs(a.H - b.H)));
+
+        /// <summary>The flights' summary over the rows (<see cref="FlightSummary"/>), from the first flight of the trace.</summary>
+        public static FlightSummary SummarizeFlights(IReadOnlyList<Row> rows)
+        {
+            var s = new FlightSummary();
+            FlightSample? prev = null;
+            foreach (Row r in rows)
+            {
+                if (r.Flights is not { } fl) continue;
+                s.Flights = Math.Max(s.Flights, fl.Count);
+                FlightSample? cur = null;
+                foreach (FlightSample f in fl)
+                {
+                    if (f.Phase == "abandoned") { s.Abandoned = true; continue; }
+                    cur = f;
+                }
+                if (cur is { } c)
+                {
+                    if (s.StartedAt < 0 && c.Phase != "pending")
+                    {
+                        s.StartedAt = r.Frame;
+                        s.TakeoffDelta = EdgeDelta(c.TakeOff, c.Source);   // the engine's own record of the first frame that drew it
+                    }
+                    if (c.Phase == "landed" && s.LandedAt < 0) s.LandedAt = r.Frame;
+                    if (prev is { } p && p.Phase != "pending" && c.Phase != "pending") s.MaxStepDip = MathF.Max(s.MaxStepDip, EdgeDelta(c.Pres, p.Pres));
+                    s.HandoffDelta = EdgeDelta(c.Pres, c.Dest);
+                    prev = c;
+                }
+                else if (prev is not null && s.HandedOffAt < 0 && !s.Abandoned)
+                {
+                    s.HandedOffAt = r.Frame;
+                    if (s.LandedAt < 0) s.LandedAt = r.Frame;   // landed and handed off in one frame (the probe never saw it landed)
+                    prev = null;
+                }
+            }
+            return s;
+        }
+
+        static void WriteFlightSummary(Utf8JsonWriter w, FlightSummary s)
+        {
+            w.WriteStartObject("flight");
+            w.WriteNumber("flights", s.Flights);
+            w.WriteNumber("startedAt", s.StartedAt);
+            w.WriteNumber("landedAt", s.LandedAt);
+            w.WriteNumber("handedOffAt", s.HandedOffAt);
+            w.WriteNumber("takeoffDelta", Math.Round(s.TakeoffDelta, 3));
+            w.WriteNumber("handoffDelta", Math.Round(s.HandoffDelta, 3));
+            w.WriteNumber("maxStepDip", Math.Round(s.MaxStepDip, 2));
+            w.WriteBoolean("abandoned", s.Abandoned);
+            w.WriteBoolean("unfinished", s.Unfinished);
+            w.WriteEndObject();
         }
 
         public static Summary Summarize(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, Options o, Row? baseline = null)
@@ -517,6 +599,7 @@ public static partial class Diagnostics
                 WriteRow(w, baseRow);
             }
             WriteSummary(w, result.Summary);
+            if (result.Flight is { } flight) WriteFlightSummary(w, flight);   // `inspect.py --gate` reads it
             // the gate's counts: snapped watched keys, and remounts in and outside a swap family; a theme switch's own frames apart
             var switchFrames = new HashSet<int>();
             foreach (Row r in result.Rows) if (r.Switch) switchFrames.Add(r.Frame);
@@ -606,6 +689,25 @@ public static partial class Diagnostics
                     w.WriteBoolean("track", n.Track);
                     w.WriteBoolean("shown", n.Shown);
                     Ms(w, "op", n.Opacity);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+            }
+            if (r.Flights is { Count: > 0 } flights)
+            {
+                w.WriteStartArray("flights");
+                foreach (FlightSample f in flights)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("key", f.Key);
+                    w.WriteString("phase", f.Phase);
+                    w.WriteBoolean("back", f.Back);
+                    Arr(w, "pres", f.Pres);
+                    Arr(w, "dest", f.Dest);
+                    Ms(w, "shadow", f.Shadow);
+                    w.WriteBoolean("srcHidden", f.SrcHidden);
+                    w.WriteBoolean("destHidden", f.DestHidden);
+                    w.WriteNumber("img", f.ImageId);   // the texture the flyer draws: it cuts to the dest's own rendition once that is ready
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
@@ -844,6 +946,7 @@ public static partial class Diagnostics
                     Switch = frozenBefore || (o.ThemeSwitch && shell.Host.FreezeState == FreezePhase.Frozen),
                 };
                 if (o.WatchesNodes) keyed = SampleNodes(row, f);
+                if (o.Flights) row.Flights = SampleFlights(shell);
                 if (o.Scroll.Length > 0)
                 {
                     NodeHandle vp = TraceScroller(shell, o.Scroll, keyed);
@@ -858,6 +961,7 @@ public static partial class Diagnostics
             }
             o.Window = window;
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o, result.Baseline);
+            if (o.Flights) result.Flight = InspectTrace.SummarizeFlights(result.Rows);
             return result;
 
             // The watched nodes after a frame (or before the first: the baseline, frame -1): their rects, tracks and opacity, and a remount where
@@ -949,6 +1053,37 @@ public static partial class Diagnostics
                 foreach (var (key, node) in nowNode) lastNode[key] = node;
                 return keyed;
             }
+        }
+
+        /// <summary>The connected navigation flights after a frame (the engine's probe).</summary>
+        static List<InspectTrace.FlightSample> SampleFlights(Shell.HeadlessShell shell)
+        {
+            var list = new List<InspectTrace.FlightSample>(1);
+            for (int i = 0; i < shell.Host.NavFlightCount; i++)
+                if (shell.Host.TryGetNavFlight(i, out FluentGpu.Animation.ConnectedNavFlightInfo f))
+                    list.Add(new InspectTrace.FlightSample(f.Key, PhaseName(f.Phase), f.Back, f.Presented, f.Dest, f.Source, f.ShadowOpacity,
+                        f.SourceHidden, f.DestHidden, f.TakeOff, f.ImageId));
+            return list;
+        }
+
+        static string PhaseName(FluentGpu.Animation.ConnectedNavPhase p) => p switch
+        {
+            FluentGpu.Animation.ConnectedNavPhase.Pending => "pending",
+            FluentGpu.Animation.ConnectedNavPhase.Flying => "flying",
+            FluentGpu.Animation.ConnectedNavPhase.Landed => "landed",
+            _ => "abandoned",
+        };
+
+        /// <summary>`status`: the connected navigation flights up now (`connected:{flights, pending}`).</summary>
+        static void WriteConnectedFacts(Utf8JsonWriter w, Shell.HeadlessShell shell)
+        {
+            int pending = 0, n = shell.Host.NavFlightCount;
+            for (int i = 0; i < n; i++)
+                if (shell.Host.TryGetNavFlight(i, out FluentGpu.Animation.ConnectedNavFlightInfo f) && f.Phase == FluentGpu.Animation.ConnectedNavPhase.Pending) pending++;
+            w.WriteStartObject("connected");
+            w.WriteNumber("flights", n);
+            w.WriteNumber("pending", pending);
+            w.WriteEndObject();
         }
 
         /// <summary>The swap family a node remounted mid-trace belongs to: the key of the nearest node at or above it that swaps under the theme's

@@ -1085,6 +1085,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
+| `flights` | `true`: each row carries the connected navigation flights (a card's cover flying into its page's hero, and back) and the summary their take-off and hand-off (`flight`, below). Off by default. |
 | `wheel`, `wheelEvery`, `wheelCount`, `wheelKey`, `wheelX`, `wheelY` | Mouse-wheel input during the trace: notches (a number, or a list that cycles: `3,3,-6` or `[3,3,-6]`), one event every `wheelEvery` frames, `wheelCount` events, aimed at `wheelKey`, a point, or the traced scroller. |
 | `pan`, `panFrames`, `panStart`, `panEvery`, `panCount`, `panKind` | A touchpad (or `panKind=touch`) contact: DIP per frame (cycled; a number or a list) for `panFrames` frames from `panStart`, then the lift (fling or edge spring). `panEvery`/`panCount` repeat it. The wheel clamps hard at the bounds; only a contact stream rubber-bands. |
 | `drag`, `dragFrames`, `dragStart`, `dragKey`, `dragX`, `dragY`, `dragDy` | A mouse drag (a splitter, a slider): the button goes down at `dragStart` on `dragKey`'s centre (or `dragX`,`dragY`), the pointer moves `drag` DIP per frame along x (cycled list) and `dragDy` down for `dragFrames` frames, then the button comes up. WinUI's pane seam: `drag=4 dragFrames=14 dragX=<pane x - 8> dragY=500` narrows the pane by 56. |
@@ -1099,7 +1100,9 @@ Each **row**: `f` (frame in the trace), `abs`, `animating`, `ms` (`wall`, `cpu` 
 `fullLayoutInferred`, `components`, `reactiveUnits`, `bindingFires`, `bindingWrites`, `textShapes`, `textShapeMisses`, `nodesVisited`,
 `drawNodes`, `imageApplied`, `gc0/1/2`), `nodes` (`w` = index into `watch`, `lay` and `pres` = `[x,y,w,h]` laid-out and presented rects,
 `track` = a track is live on the node or an ancestor, `shown`, `op` = opacity multiplied up the chain) and `scroll` (`offset`,
-`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`).
+`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img}]`:
+the flight's key (the album uri), `pending|flying|landed|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect,
+the shadow's opacity, whether each end's slot is hidden, and the texture the flyer draws (it cuts to the dest's own rendition once ready).
 
 The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFramesInferred` (measures with no dirty marks), measure and component
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
@@ -1113,6 +1116,15 @@ next, with the swap family fading it in (as `crossing` names it) or null. `inspe
 `movedAtOnce` (snapped or instant keys) is above `--max-moved` or that remounted a key outside a family, and warns on a trace
 that watched nothing (pass `prefix=`/`keys=`, and `max=` above 20 for a page). `python -I tools/inspect.py --trace ...`
 prints the summary as text: the motion counts, the remounts, the snaps, instants and jumps (30 each), `after`.
+
+With `flights=true` the reply also carries `flight{flights, startedAt, landedAt, handedOffAt, takeoffDelta, handoffDelta,
+maxStepDip, abandoned, unfinished}`: the frame the flyer first showed, landed and handed off (the flyer gone, the real cover shown),
+the largest edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on its
+last frame, the largest edge step between two frames, and whether a flight was abandoned (a new navigation mid-flight) or never
+ended. `inspect.py --gate` fails a flight whose `takeoffDelta` or `handoffDelta` is over 0.5 DIP, or that is `unfinished`. `status`
+carries `connected{flights, pending}`. A forward flight: `click key=lazy-cell:8 trace=60 keys=hero-cover flights=true` on
+`disco:0:spotify:artist:ar3`; Back: `key alt+left trace=45 keys=hero-cover,lazy-cell:8 flights=true`. Click a card on its label, not its
+centre: the centre of a WinUI card's cover is its play button.
 
 ## Typical workflows
 

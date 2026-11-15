@@ -1743,6 +1743,7 @@ public static partial class Diagnostics
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)
                 w.WriteBoolean("animating", shell.Host.Animation.HasActive);
+                WriteConnectedFacts(w, shell);   // the connected navigation flights (Diagnostics.Inspect.Trace.cs)
                 w.WriteString("trimSource", InspectDump.TrimSource(shell));
                 return;
             }

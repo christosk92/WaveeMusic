@@ -353,6 +353,8 @@ class Gate:
       remounted a key outside a swap family (`counts.remountedOutside`);
     - a trace (`trace` or `trace=N` on an acting verb) moved more than --max-moved watched keys at once (`counts.movedAtOnce`: a snap
       with no track, or an instant run of tracked moves one frame carried), or remounted a watched key outside a swap family.
+    - a trace with `flights=true` whose connected navigation flight took off or handed off more than 0.5 DIP from its source or dest
+      (`flight.takeoffDelta`, `flight.handoffDelta`), or started and neither handed off nor was abandoned (`flight.unfinished`).
     Warnings (printed, not counted): a lint whose listing or judgement was narrowed (rules, min, outcomes, limit, root), a crossing that
     crossed no edge or ran without its control, a trace that watched no nodes. Else 0."""
 
@@ -432,6 +434,14 @@ class Gate:
         if outside > 0:
             names = [r["key"] for r in t.get("remounted", []) if r.get("family") is None][:4]
             self.motion.append("%s remounted %d watched key%s outside a swap family (%s)" % (where, outside, "" if outside == 1 else "s", ", ".join(names)))
+        fl = t.get("flight")
+        if isinstance(fl, dict) and fl.get("startedAt", -1) >= 0:
+            # a connected navigation flight (`flights=true`): it takes off on the source and hands off on the dest, within half a DIP, and ends
+            for name in ("takeoffDelta", "handoffDelta"):
+                if fl.get(name, 0) > 0.5:
+                    self.motion.append("%s: the flight's %s is %.2f DIP (max 0.5)" % (where, name, fl[name]))
+            if fl.get("unfinished"):
+                self.motion.append("%s: a flight started at frame %d and neither handed off nor was abandoned" % (where, fl["startedAt"]))
 
     def see(self, reply):
         if reply is None:
