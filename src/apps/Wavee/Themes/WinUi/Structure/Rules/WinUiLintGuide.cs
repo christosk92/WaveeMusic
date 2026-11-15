@@ -66,10 +66,13 @@ public sealed class WinUiLintGuide : IThemeLintGuide
         new(LintIntent.Allow, ListPillKey,
             "a ListView row's selection pill stands in its plate's margin, 8 left of the column the row's art stands on, as the pivot's pill hangs (W-LibraryList)",
             Rule: "align.inset"),
+        new(LintIntent.Allow, CardRingKey,
+            "a grid card's selection ring is the card's plate: it hangs the card's padding left of the column its cover stands on, as a row's plate hangs (W-Library)",
+            Rule: "align.inset"),
     ];
 
-    /// <summary>The stock ListView row's selection pill (`SelectorVisualsBound.AccentPill`).</summary>
-    private const string ListPillKey = "lv-pill";
+    /// <summary>The stock ListView row's selection pill (`SelectorVisualsBound.AccentPill`) and a bound grid card's selection ring (its plate).</summary>
+    private const string ListPillKey = "lv-pill", CardRingKey = "ic-ring";
 
     /// <inheritdoc />
     public IReadOnlyList<LintPolicy> Policies(LintContext context) => s_policies;
