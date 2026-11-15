@@ -1947,10 +1947,11 @@ public readonly partial struct Track
             };
         }
 
-        /// <summary>The hero list's loading skeleton leaving: an opacity exit as long as the rows' staggered crossfade, linear so the bones thin out
-        /// evenly under the rows arriving over them.</summary>
+        /// <summary>The hero list's loading skeleton leaving: an opacity exit a little longer than the rows' staggered crossfade, easing IN so the
+        /// bones hold under the lower rows until those rows' own fades have begun over them (a linear exit thinned them out before the last rows
+        /// started, and those rows stood blank for a frame or two).</summary>
         static readonly LayoutTransition s_skeletonLeave = new(TransitionChannels.Opacity,
-            TransitionDynamics.Tween(Design.RevealRamp.RowSpanMs + Design.RevealRamp.RowFadeMs, Easing.Linear),
+            TransitionDynamics.Tween(Design.RevealRamp.RowSpanMs + Design.RevealRamp.RowFadeMs + Design.RevealRamp.RowStepMs * 6f, Easing.EaseIn),
             Exit: new EnterExit(Opacity: 0f, Active: true));
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
@@ -1986,14 +1987,20 @@ public readonly partial struct Track
             if (state == PlaylistRowsState.Loading)
             {
                 var geometry = shape;
+                // Pending for as long as this placeholder stands: a Loading list is pending by definition (RowsPending is true while the edge is
+                // Unknown), and when the rows land the placeholder itself leaves (the hero list's item exits under the arriving rows; the
+                // two-column list swaps it for the rows). Re-reading RowsPending here made the region dissolve its own skeleton on the landing
+                // frame, inside the leaving item, so the bones were gone before the lower rows began to fade in.
                 return new SkelRegionEl(
-                    Pending: RowsPending, Failed: RowsFailed, Content: static () => new BoxEl(),
+                    Pending: s_pending, Failed: RowsFailed, Content: static () => new BoxEl(),
                     ShimmerSource: () => RowsShimmer(in geometry), OnFailed: FailedPanel,
                     Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false)
                     with { Key = "rows:loading" };
             }
             return Message(Loc.Get(state == PlaylistRowsState.Empty ? Strings.Detail.Empty.NoTracks : Strings.Detail.Empty.NoMatch));
         }
+
+        static readonly Func<bool> s_pending = static () => true;
 
         static Element Message(string text) => new BoxEl
         {
@@ -3077,7 +3084,9 @@ public readonly partial struct Track
                 },
                 Failed: static () => false,
                 Content: gated is null ? () => grid : () => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Animate = gated, Children = [grid] },
-                ShimmerSource: () => host.ShimmerRow(in geometry),
+                // A box root: the derived skeleton takes its exit (the cross-dissolve) only on a BoxEl root, and the row grid is a GridEl, so
+                // the row's bones used to vanish on the frame its content landed.
+                ShimmerSource: () => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [host.ShimmerRow(in geometry)] },
                 OnFailed: null, Reveal: gated is null ? SkelReveal.FadeOnly : SkelReveal.None, Style: Design.Skeleton, Group: null, SmoothResize: false);
             // A slot whose first render was the ramp's placeholder fades as it turns real (off screen: the overscan past the first band); one that
             // mounts real in a cold reveal's band takes the band's staggered crossfade (Design.RevealRamp.RowEnter).
