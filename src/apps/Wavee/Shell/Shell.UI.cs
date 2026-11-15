@@ -1012,7 +1012,8 @@ public static partial class Shell
     /// incoming slot is an empty placeholder (it already carries the enter, seeded with its 90 ms delay) until <see cref="Shown"/> reaches its
     /// route, which is when the exit leg has run and the leaving page is gone: the page mounts then, under an opacity 0 enter, and fades in. A
     /// page mounted once stays mounted (a revisit, or a facet switch inside the slot, never waits). The first frame and a slot that is already
-    /// the shown one are ready at once.
+    /// the shown one are ready at once. Whenever it mounts, the page arrives whole (<c>Context.ArriveWhole</c>): the swap presents it, and no part
+    /// inside fades in on its own under that.
     ///
     /// <para>It also owns the slot's <see cref="LoadingScope"/>: every <c>Skel.Region</c> of the page reports to it, and the theme's content
     /// state draws one thin loading bar while <see cref="UseDelayedPending"/> says the page has been pending for
@@ -1020,7 +1021,7 @@ public static partial class Shell
     /// deferred the slot holds a claim of its own, so the delay counts from the click, not from the mount.</para></summary>
     sealed class DeferredPage : Component
     {
-        bool _ready;
+        bool _ready, _mounted;
         readonly LoadingScope _loading = new();   // one per keep-alive slot
 
         public override Element Render()
@@ -1035,7 +1036,11 @@ public static partial class Shell
                 if (_ready && !shown.IsNone && ShellCaps.Now.DefersPageMount) Context.SuppressLayoutTransitions?.Invoke();
             }
             UsePendingClaim(!_ready, _loading);   // released after the paint of the mount frame, when the page's own regions hold theirs
-            return _ready ? PageBodyNow(route, _loading, busy) : s_pendingPage;
+            if (!_ready) return s_pendingPage;
+            // The page's first mount arrives whole: the swap's entrance (or its cut) presents it, so no part inside fades in from 0 under it (a
+            // detail frame's arm did, and the new page read as a near-empty card for two frames). Parts that come later still enter.
+            if (!_mounted) { _mounted = true; Context.ArriveWhole?.Invoke(); }
+            return PageBodyNow(route, _loading, busy);
         }
     }
 
