@@ -52,7 +52,8 @@ internal static class ClassicLibraryAlbumPane
         // The Compact pane (the drill-in's leaf) draws its commands 40 tall: the targets of a one-column page.
         float box = ctx.Tier().Content == WidthTier.Compact ? ClassicLibraryPaneRules.CompactCommandBox : ClassicLibraryPaneRules.CommandBox;
         // The pane header's metrics are the library tier's (C-Library-Huge: the 160 cover in a 200 band).
-        var layout = ClassicLibraryTiers.Of(ctx.Tier(), single: false);
+        var layout = ClassicLibraryPaneKit.Trailed(ClassicLibraryTiers.Of(ctx.Tier(), single: false), ctx);
+        cell.Layout = layout;
         BoxEl child = props.State == AlbumPaneState.Header ? ClassicLibraryPaneKit.HeaderSkeleton(layout) : Body(props, cell, box, layout);
         // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance instead of a remount of this component (which would lose the table's scroll and
         // re-ask the model).
@@ -67,6 +68,8 @@ internal static class ClassicLibraryAlbumPane
     sealed class PaneCell
     {
         public LibraryAlbumPaneProps Props = null!;
+        /// <summary>The latest tier record (its <c>PaneTrail</c> sets the "Also by" strip's right inset).</summary>
+        public ClassicLibraryLayout? Layout;
         public Func<Element>? Shimmer, Trailing;
         public Func<int, Element>? Rows;
 
@@ -106,7 +109,7 @@ internal static class ClassicLibraryAlbumPane
             // strip arriving on a crossing cross-fades in as the declared tier swap (none on the band's first render: it arrives with the pane).
             Element band = docked
                 ? new BoxEl { Key = "also:none" }
-                : AlsoBy(p.Cell.Props.AlsoBy()) with { Key = "also:strip", Enter = ClassicTierMotion.SwapEnter(rendered), Exit = ClassicTierMotion.SwapFade };
+                : AlsoBy(p.Cell.Props.AlsoBy(), p.Cell.Layout?.PaneTrail ?? ClassicTiers.PaneInset) with { Key = "also:strip", Enter = ClassicTierMotion.SwapEnter(rendered), Exit = ClassicTierMotion.SwapFade };
             return new BoxEl { Key = "also:band", Direction = 1, Shrink = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize, Children = [band] };
         }
     }
@@ -128,7 +131,7 @@ internal static class ClassicLibraryAlbumPane
                 ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta, layout),
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
                     Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = box }) with { Key = p.SaveKey },
-                    ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f, layout.PaneInsetLeft),
+                    ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f, layout.PaneInsetLeft, layout.PaneTrail),
                 p.Notice!.Value,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move. "Also by" is NOT a
                 // sibling here any more — it is the table's trailing band, inside the table's scroller — except at Huge, where it is the aside beside the slot (C-Library-Huge).
@@ -324,7 +327,7 @@ internal static class ClassicLibraryAlbumPane
 
     /// <summary>The other saved albums billed to this album's FIRST billed artist, as the shared media surface (<see cref="Shape.Shelf"/> over a 96-px cover) in the saved edge's own order, each
     /// entering on the staggered cascade. Absent when there are none. A tile selects IN PLACE through the page's callback — the one library-internal jump that stays.</summary>
-    static Element AlsoBy(LibraryAlsoByModel? model)
+    static Element AlsoBy(LibraryAlsoByModel? model, float trail)
     {
         if (model is null) return new BoxEl();
         var tiles = new Element[model.Tiles.Count];
@@ -332,7 +335,7 @@ internal static class ClassicLibraryAlbumPane
         return new BoxEl
         {
             Direction = 1, Gap = ClassicLibraryPaneRules.AlsoByGap, Shrink = 0f,
-            Padding = new Edges4(ClassicTiers.PaneInset, Spacing.S, ClassicTiers.PaneInset, Spacing.XL),
+            Padding = new Edges4(ClassicTiers.PaneInset, Spacing.S, trail, Spacing.XL),
             Children =
             [
                 R.Type.Eyebrow(Strings.Library.AlsoBy(model.ArtistName)) with { Color = Tok.TextTertiary },

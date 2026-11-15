@@ -94,6 +94,10 @@ public sealed record ClassicLibraryLayout
     /// <summary>The pane header's and command row's LEFT inset: <see cref="PaneInset"/> (16), C-Library-Small's 8.</summary>
     public float PaneInsetLeft { get; init; } = ClassicTiers.PaneInset;
 
+    /// <summary>The panes' RIGHT inset (the header, the command row, "Also by", the reader's sub-rail): <see cref="PaneInset"/> (16) at every tier; a borrowing structure's
+    /// column puts it on its page trail (contract 1.109, <c>LibraryNavMetrics.PaneTrail</c>, <see cref="ClassicLibraryPaneKit.Trailed"/>).</summary>
+    public float PaneTrail { get; init; } = ClassicTiers.PaneInset;
+
     /// <summary>The pane title's size and line (NaN: the page-hero rung, 28 / 36; C-Library-Small 24 / 30). Both finite or neither.</summary>
     public float PaneTitleSize { get; init; } = float.NaN;
 

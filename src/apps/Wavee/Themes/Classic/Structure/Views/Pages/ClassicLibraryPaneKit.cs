@@ -10,6 +10,9 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
+using FluentGpu.Theming;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
@@ -17,6 +20,16 @@ namespace Wavee.Themes.Classic;
 /// <summary>Classic's library pane pieces.</summary>
 internal static class ClassicLibraryPaneKit
 {
+    /// <summary><paramref name="layout"/> with the panes' right inset on a borrowing structure's page trail (contract 1.109, <c>LibraryControlsStyle.Nav</c>); Classic registers none and
+    /// keeps its 16.</summary>
+    public static ClassicLibraryLayout Trailed(ClassicLibraryLayout layout, in ViewContext ctx)
+    {
+        var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
+        return registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var controls) && controls.Nav is { } nav
+            ? layout with { PaneTrail = nav(ctx.Tier()).PaneTrail }
+            : layout;
+    }
+
     /// <summary>The selection swap: the leaving pane fades out as an exit orphan (drawn UNDER the live tree) while the entering one rises 6 DIP into place. Opacity only — a page-sized
     /// subtree is the blur-group perf cliff, and the fade alone reads as the dissolve. Faster out than in, so the new album never waits for the old one.</summary>
     public static readonly LayoutTransition PaneSwap = new(
@@ -37,7 +50,7 @@ internal static class ClassicLibraryPaneKit
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
-        Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
+        Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, layout.PaneTrail, layout.PaneHeaderPadBottom),
         Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
         Children =
         [
@@ -86,7 +99,7 @@ internal static class ClassicLibraryPaneKit
     public static BoxEl HeaderSkeleton(ClassicLibraryLayout layout) => new()
     {
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
-        Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
+        Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, layout.PaneTrail, layout.PaneHeaderPadBottom),
         Children =
         [
             new BoxEl { Width = layout.PaneCover, Height = layout.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
@@ -118,7 +131,7 @@ internal static class ClassicLibraryPaneKit
     /// the edge. Now the spacer gives way first, then the label ellipsizes, and a trimmed label — only a trimmed one — gets its whole text as a tooltip (<c>Controls.TrimTip</c>). The
     /// tooltip wraps the LABEL, in a column slot of its own, rather than the whole link: that slot is exactly the text's box, so the trim test compares like with like (around the link it
     /// would measure a box 36 DIP wider than the text — padding, gap and glyph), and a ToolTip wrapper is `Shrink 0`, so it can only be sized as a COLUMN child (the engine's rule 11).</para></summary>
-    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open, float box = 0f, float insetLeft = float.NaN)
+    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open, float box = 0f, float insetLeft = float.NaN, float insetRight = ClassicTiers.PaneInset)
     {
         string openLabel = Loc.Get(Strings.Library.OpenAlbum);
         TextEl label = R.Type.DenseMeta(openLabel) with
@@ -129,7 +142,7 @@ internal static class ClassicLibraryPaneKit
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicLibraryPaneRules.CommandsGap, Shrink = 0f,
-            Padding = new Edges4(float.IsNaN(insetLeft) ? ClassicTiers.PaneInset : insetLeft, Spacing.M, ClassicTiers.PaneInset, Spacing.S),
+            Padding = new Edges4(float.IsNaN(insetLeft) ? ClassicTiers.PaneInset : insetLeft, Spacing.M, insetRight, Spacing.S),
             Children =
             [
                 box > 0f ? Controls.PlayButton(Tok.AccentDefault, play) with { MinHeight = box } : Controls.PlayButton(Tok.AccentDefault, play),
