@@ -1059,6 +1059,9 @@ public static partial class Shell
             case "cold-faces": Entities.StageColdFaces(); return true;
             // A regenerated Mix's fresh answer over the copy the page holds (`goto` pl6 first): Entities.Fake.Cold.cs.
             case "regen": Entities.StageRegen(); return true;
+            // A login's scope switch under the page (Entities.Fake.Cold.cs): a new, empty table set, then the seed landing in it as from disk.
+            case "rescope": Entities.StageRescope(); return true;
+            case "rescope-land": Entities.StageRescopeLand(); return true;
             // The album's credits (Entities.Fake.Album.cs): al2's members' credits asked and unanswered, then answered (`goto` al2 first).
             case "cold-credits": Entities.StageColdCredits(); return true;
             case "credits-land": Entities.LandFakeCredits(); return true;

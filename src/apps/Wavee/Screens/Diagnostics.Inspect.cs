@@ -1694,7 +1694,8 @@ public static partial class Diagnostics
         long _logSeen;   // the last log sequence a `status log=` listed
 
         /// <summary>`log:[...]`: the app log lines (Log.Snapshot, the in-memory ring) that contain <paramref name="text"/>, written since the
-        /// last `status log=` (the newest 64), so a verb's `[stage.chrome]` lines can be read back after it.</summary>
+        /// last `status log=` (the newest 64), so a verb's `[stage.chrome]` lines can be read back after it. A structured event without a
+        /// message is matched and listed in its one-line form (<see cref="WaveeLogEntry.Format"/>).</summary>
         void WriteLogSince(Utf8JsonWriter w, string text)
         {
             var lines = new List<string>();
@@ -1703,7 +1704,9 @@ public static partial class Diagnostics
             {
                 if (entry.Sequence <= seen) continue;
                 _logSeen = Math.Max(_logSeen, entry.Sequence);
-                if (entry.Message.Contains(text, StringComparison.Ordinal)) lines.Add(entry.Message);
+                // A structured event with no message (`list.open`, `list.meta`, `list.settle`) is read as its one-line form: its name and fields.
+                string line = entry.Message.Length == 0 && entry.EventId.Length > 0 ? entry.Format() : entry.Message;
+                if (line.Contains(text, StringComparison.Ordinal)) lines.Add(line);
             }
             w.WriteStartArray("log");
             for (int i = Math.Max(0, lines.Count - 64); i < lines.Count; i++) w.WriteStringValue(lines[i]);

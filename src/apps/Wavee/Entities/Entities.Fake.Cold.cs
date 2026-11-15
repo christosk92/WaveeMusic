@@ -307,6 +307,32 @@ public static partial class Entities
 
     static int s_regenEpoch;
 
+    /// <summary>`state rescope`: a login's scope switch (<c>Spotify.Session.AdoptWelcome</c>: the welcome names another market or tier than the
+    /// scope the app booted on). A new, EMPTY table set replaces the one every page is bound to, the freshness stamps of the old one are
+    /// forgotten (the library's publish hook does that in a real session) and the deck re-binds: a page showing a list now has an unknown row
+    /// with nothing asked. `rescope-land` then lands the seed in the new set as the disk warm-up lands a restored list: whole, and never
+    /// revalidated in this scope. The owner's log, 2026-11-15: a playlist restored at launch was opened before the session was online, the
+    /// welcome switched the scope under it, and the page held its list on the loading arm for minutes.</summary>
+    public static void StageRescope()
+    {
+        // Switch's own steps but one: the retired set's text is NOT handed back (the inspector leaks it for the life of the process). The
+        // page's last frames still draw the old set's ids, and a Debug build asserts on an id taken again inside its quarantine.
+        var key = Current.Key;
+        uint epoch = Current.Epoch + 1;
+        s_dirty.Clear();
+        Current = new Scope(key with { Market = key.Market == "ZZ" ? "US" : "ZZ" }) { Epoch = epoch };
+        ResolveMe(Current);
+        StoreWarm(Current);
+        BumpScopeEpoch();
+        ListStamps.ForgetAll();
+        Playback.Rebind();
+        Current.PublishAll();
+    }
+
+    /// <summary>`state rescope-land`, a few frames after `rescope`: the seed lands in the new table set, the restored list Complete as from
+    /// disk.</summary>
+    public static void StageRescopeLand() => SeedFake(Platform.Clock.SeedEpoch);
+
     /// <summary>Stage 2: every cold row's own fields land at once (one batch answer), the in-flight stamps clear.</summary>
     public static void StageColdFaces()
     {

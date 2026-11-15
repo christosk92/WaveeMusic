@@ -309,6 +309,10 @@ public readonly partial struct Playlist
         /// <summary>The open hold's deadline wake (<see cref="HoldExpired"/>), re-armed from its own fire while the hold
         /// still has budget — a wake that lands a frame early must not be the last one.</summary>
         TimerHandle _holdWake;
+        /// <summary>The demand's dep key as the last render keyed it, and as the demand last ran it: unequal while a run of the demand is QUEUED
+        /// (keyed effects drain after the frame's present, so a render that moved the key has an open on its way). <see cref="HoldExpired"/>
+        /// reads the pair: a pre-open window whose open is queued is not spent.</summary>
+        DepKey _demandKey, _demandRan;
         readonly Func<bool> _editable;
         readonly Func<DragPayload, int?, bool> _deposit;
         readonly Func<ReadOnlySpan<RowRef>, int, bool> _moveRows;
@@ -405,7 +409,8 @@ public readonly partial struct Playlist
             // when that row lands — so without the arm a cold navigation stranded the open behind that guard forever
             // and the page kept its PRE-open reveal rule for good. Re-running the demand is cheap (HeldRows.Opened is
             // idempotent; an open that joins its own record asks nothing and stamps nothing).
-            UseEffect(_demand, DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid, _local), 0));
+            _demandKey = DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid, _local), 0);
+            UseEffect(_demand, _demandKey);
             UseEffect(_demandRows);
             // The open's revalidation: subscribed to the tables that publish its answer, settled when the model says how it ended.
             UseEffect(_observe);
@@ -729,6 +734,7 @@ public readonly partial struct Playlist
 
         void Demand()
         {
+            _demandRan = _demandKey;
             var pl = _playlist;
             if (!pl.IsValid) return;
             if (_local) { SettleLocalFiles(); return; }
@@ -779,7 +785,12 @@ public readonly partial struct Playlist
         {
             int slot = _playlist.Slot;
             ListOpen.ExpireHold(slot);
-            if (_source is { } source && !source.OpenRan && source.HeldForMs > 0) source.PreOpenSpent();
+            // Not while the open is QUEUED: a render keyed a run of the demand that has not drained yet (the window was parked, covered or
+            // minimized, so no frame presented and no effect ran), and it runs at the end of this very frame. Latching here painted the
+            // copy the open is about to hold, and the open then took it back to its skeleton (the owner's log, 2026-11-15: a launch into a
+            // restored playlist under a covered window, uncovered five minutes later: the list, then its skeleton, then the list).
+            bool openQueued = _demandRan != _demandKey;
+            if (_source is { } source && !source.OpenRan && !openQueued && source.HeldForMs > 0) source.PreOpenSpent();
             int left = _source?.HeldForMs ?? 0;
             if (left > 0) _holdWake.RestartIn(left + ListOpenPolicy.HoldWakeSlackMs);
         }
@@ -1004,7 +1015,17 @@ public readonly partial struct Playlist
         /// (<see cref="Subscribe"/>, or <see cref="ListOpen.Changed"/>, is that half). Before the open the re-decide
         /// only stands for its own bound (<see cref="PreOpenSpent"/>).</summary>
         internal bool Held => _opened.Value ? ListOpen.Holding(_playlist.Slot)
-                            : !_preOpenSpent.Value && ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+                            : !_preOpenSpent.Value && PreOpenStamps() && ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+
+        /// <summary>The pre-open re-decide reads the list's freshness stamps (<see cref="ListStamps"/>), so the memo that asks it subscribes to
+        /// them: a revalidation that lands for this list before the page's own open (the library's, a queue's) turns the re-decide's hold
+        /// into a paint, and a memo that did not hear it kept the hold with nothing left to end it (the pre-open wake finds no hold to
+        /// latch). Always true.</summary>
+        static bool PreOpenStamps()
+        {
+            _ = ListStamps.Changed.Value;
+            return true;
+        }
 
         /// <summary>HOW LONG THE CURRENT <see cref="Held"/> ANSWER MAY STAND, in milliseconds — what the page arms its
         /// one deadline wake with, on either side of the open: the record's remaining budget after it
@@ -1038,6 +1059,7 @@ public readonly partial struct Playlist
             _ = ListOpen.Changed.Value;
             _ = _opened.Value;          // the other edge of Held: a consumer that subscribes here and reads Count later
             _ = _preOpenSpent.Value;    // …and the pre-open window's bound, which ends a hold no table publishes
+            if (!_opened.Value) _ = ListStamps.Changed.Value;   // …and, before the open, the stamps the re-decide reads
         }
         internal override void Retry() => _rows.Retry();
         internal override Playlist HostPlaylist => _rows.HostPlaylist;

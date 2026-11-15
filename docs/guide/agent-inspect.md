@@ -337,7 +337,8 @@ Home, and makes Classic dark the active theme.
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
   `animating` and `trimSource`. `status log=<text>` adds `log[...]`: the app log lines (the in-memory ring; the headless boot
-  writes no log file) that contain the text, written since the last `status log=` (the newest 64). `status log="stage.chrome"`
+  writes no log file) that contain the text, written since the last `status log=` (the newest 64). A structured event with no message is
+  matched and listed in its one-line form (`status log="list."` reads the `list.open`, `list.meta` and `list.settle` lines). `status log="stage.chrome"`
   (quoted: a bare `[...]` parses as a list) after a `hover`, `window active=false` or `frames` reads back the fullscreen stage's chrome edges (`exit as=left src=...`,
   `hold OverControls=0`, `hide cause=leave`).
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
@@ -555,7 +556,12 @@ credits in flight, as a warm open), then `state cold-faces` (the rows' fields la
 first open holds, then the fresh answer): `goto uri=spotify:playlist:pl6 settle=false` (the seeded list is held on the open's revalidation,
 which the fake never answers: the cover and description wait on their skeletons with the rows), a few `frames`, then `state kind=regen` lands a
 new revision with other rows and another cover and description (a second `regen` on the settled page changes the cover in place: its
-hand-over crossfade). `state cold-head` instead of `cold-list` also takes the
+hand-over crossfade). **A login's scope switch under the page**: `state kind=rescope` puts a new, empty table set in (another market, the
+old set's stamps forgotten, the deck re-bound: the welcome's `Entities.Switch`, minus handing the old set's text back, which a Debug build
+asserts on while the page still draws it), and `state kind=rescope-land` a few frames later lands the seed in it, the shown list Complete and
+never revalidated, as the disk warm-up does. The owner's case (2026-11-15) ran under a covered window: `window state=minimized` first, then
+`rescope`, `frames 30`, `rescope-land`, `frames 200`, `window state=restored`: the page's open runs on the restore and its hold settles.
+`state cold-head` instead of `cold-list` also takes the
 HEADER away (title, description and owner unknown, Identity not known; the cover stays: a deep link's first frames), so the page shows its
 pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
