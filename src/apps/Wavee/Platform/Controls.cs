@@ -277,6 +277,93 @@ public static partial class Controls
         return (dw, dh, aspect);
     }
 
+    /// <summary>An <see cref="Artwork"/> whose cover can CHANGE in place and hands over instead of blanking: a detail page's head (a regenerated
+    /// Mix lands a new cover under the same page). The cover shown stays put while the new one decodes over it on a transparent placeholder,
+    /// then the new one crossfades in on top; only once it is whole does the shown one give way under it. The owner's recording (2026-11-15):
+    /// the cover blanked to grey for a frame, then the new one popped in. A first cover (nothing shown yet) arrives as <see cref="Artwork"/>'s
+    /// does, over its shimmer tile. For a slot that never changes art (cards, rows) <see cref="Artwork"/> is the one to use: this keeps a
+    /// component and, for the length of a hand-over, a second decoded cover.</summary>
+    public static Element ArtworkHandOver(string? url, float width, float height, float corners, int decodePx = 0, float saturation = 1f)
+        => Embed.Comp(new HandOverProps(url ?? "", width, height, corners, decodePx, saturation), static () => new CoverHandOver()) with { Key = "art:handover" };
+
+    sealed record HandOverProps(string Url, float Width, float Height, float Corners, int DecodePx, float Saturation);
+
+    /// <summary><see cref="ArtworkHandOver"/>'s two layers: the shown cover under, the arriving one over it while it decodes and fades in. Phase 1:
+    /// the arriving cover decodes and reveals (<see cref="HandOverFadeMs"/>); phase 2: the shown layer takes the arriving cover UNDER the
+    /// identical top layer, so whatever its own swap does is covered; phase 0: the top layer leaves. No phase ever shows a frame without a whole
+    /// cover.</summary>
+    sealed class CoverHandOver : Component
+    {
+        string _shown = "", _top = "";
+        bool _mounted, _ready;
+        byte _phase;
+        readonly Signal<int> _tick = new(0);
+        readonly Action _advance;
+
+        public CoverHandOver() => _advance = Advance;
+
+        public override Element Render()
+        {
+            var p = UseProps<HandOverProps>();
+            _ = _tick.Value;
+            if (!_mounted) { _mounted = true; _shown = p.Url; }
+            else if (p.Url.Length == 0 || _shown.Length == 0 || Design.Reduced)
+            {
+                // Nothing to hand over from (or to), or reduced motion: the cover swaps as Artwork does.
+                _shown = p.Url; _top = ""; _phase = 0;
+            }
+            else if (!string.Equals(p.Url, _shown, StringComparison.Ordinal) && !string.Equals(p.Url, _top, StringComparison.Ordinal))
+            {
+                _top = p.Url; _phase = 1;
+            }
+            else if (string.Equals(p.Url, _shown, StringComparison.Ordinal) && _phase == 1)
+            {
+                _top = ""; _phase = 0;   // it came back before the hand-over finished
+            }
+
+            int dw, dh;
+            float aspect;
+            if (p.DecodePx > 0) { dw = dh = p.DecodePx; aspect = 1f; }
+            else (dw, dh, aspect) = ArtworkDecode(p.Width, p.Height, 0);
+            // The arriving cover's load state (the image hook takes no hook cell, so the conditional call is safe; it shares the top image's handle).
+            bool ready = _phase == 1 && UseImage(_top, dw, dh).State is FluentGpu.Scene.ImageState.Ready or FluentGpu.Scene.ImageState.Failed;
+            _ready = ready;
+            float wait = _phase == 1 ? HandOverFadeMs + HandOverSlackMs : HandOverSlackMs;
+            UseTimeout(_advance, wait, DepKey.From(_top.GetHashCode(), _phase, ready ? 1 : 0, 0));
+
+            Element bottom = Artwork(_shown.Length > 0 ? _shown : null, p.Width, p.Height, p.Corners, decodePx: p.DecodePx, saturation: p.Saturation);
+            // The arriving layer fades in as a whole (a cover already decoded elsewhere, the home card's, lands at once and still crossfades), and
+            // its image reveals on its own decode inside it.
+            Element top = _phase == 0
+                ? new BoxEl { Key = "top:none" }
+                : new BoxEl
+                {
+                    Key = "top:" + _top, ZStack = true, Width = p.Width, Height = p.Height, Animate = s_arrive, HitTestVisible = false,
+                    Children = [Ui.Image(_top, ImageFit.Cover, aspect, dw, p.Corners, ColorF.Transparent, transition: ImageTransition.Fade(HandOverFadeMs))
+                        with { Saturation = p.Saturation }],
+                };
+            return new BoxEl
+            {
+                ZStack = true, Width = p.Width, Height = p.Height, ClipToBounds = true, Corners = CornerRadius4.All(p.Corners),
+                Children = [bottom, top],
+            };
+        }
+
+        static readonly LayoutTransition s_arrive = new(TransitionChannels.Opacity, TransitionDynamics.Tween(HandOverFadeMs, Easing.EaseInOut),
+            Enter: new EnterExit(Opacity: 0f, Active: true));
+
+        /// <summary>The timer's step: a whole arriving cover moves under (phase 2), then the top layer leaves (phase 0). A fire with nothing due
+        /// (the mount's own, or one re-armed by a newer cover) does nothing.</summary>
+        void Advance()
+        {
+            if (_phase == 1 && _ready) { _shown = _top; _phase = 2; _tick.Value = _tick.Peek() + 1; }
+            else if (_phase == 2) { _top = ""; _phase = 0; _tick.Value = _tick.Peek() + 1; }
+        }
+    }
+
+    /// <summary>The arriving cover's crossfade (WinUI ControlNormal), and the slack each hand-over step waits past it.</summary>
+    const float HandOverFadeMs = Design.Motion.Standard, HandOverSlackMs = 60f;
+
     /// <summary>A square cover that FILLS the width its layout hands it (aspect-ratio 1) — for responsive grid cells
     /// whose exact width is not known at template time. Pass <c>Radii.Full</c> for a layout-derived circular tile.
     /// <para>It NEVER mosaics: a fill cell has no known width, so a cover-less container collapses to its FIRST tile and

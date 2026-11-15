@@ -279,6 +279,9 @@ public readonly partial struct Playlist
         Playlist _playlist;
         string? _visibleCover;
         IOverlayService? _overlay;
+        /// <summary>The open's revalidation holds the list (<see cref="PageStamp.Holding"/>), and with it the parts of the head that turn over with
+        /// the list (<see cref="HeldCover"/>, <see cref="IdentityOf"/>).</summary>
+        bool _headHeld;
 
         // value caches: an equal re-render costs the frame and the table nothing
         HeldRows? _source;
@@ -346,8 +349,8 @@ public readonly partial struct Playlist
             _recs = () => RecommendationsSection(_playlist);
             _recsAside = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);
-            _cover = size => CoverSlot(_playlist, size);
-            _compactCover = size => CoverArt(_playlist, size);
+            _cover = size => HeldCover(size, CoverSlot(_playlist, size));
+            _compactCover = size => HeldCover(size, CoverArt(_playlist, size));
             _attribution = w => AttributionSlot(_playlist, w);
             _description = w => DescriptionSlot(_playlist, w);
             _facts = w => User.FactsPanel(_source!, DetailKind.Playlist, _lens, w, false);
@@ -502,6 +505,8 @@ public readonly partial struct Playlist
                 identity = IdentityOf(pl, editableMeta, stamp.Holding);
                 _identity = identity;
             }
+            // The cover slot reads it when the frame invokes it (the identity moves with it, so the hero re-renders).
+            _headHeld = stamp.Holding && !_local;
 
             return Detail.Frame(new Detail.FrameSpec
             {
@@ -523,6 +528,17 @@ public readonly partial struct Playlist
             if (_actionsShown is { } shown && shown.Equals(next) && ReferenceEquals(shown.DepositOnPage, basis.DepositOnPage)) return shown;
             return _actionsShown = next;
         }
+
+        /// <summary>The cover, behind the head's hold (<see cref="IdentityOf"/>: the held copy's art is never shown): its skeleton square while the
+        /// list is held on its revalidation, then the cover, crossfading in over it. ONE region in both states, so a page that was never held
+        /// mounts its cover directly and a held one dissolves (never a cut).</summary>
+        Element HeldCover(float size, Element cover)
+            => new SkelRegionEl(
+                Pending: _headHeld ? s_held : s_free, Failed: s_free, Content: () => cover,
+                ShimmerSource: () => new BoxEl { Width = size, Height = size, Corners = CornerRadius4.All(Radii.Card) },
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false);
+
+        static readonly Func<bool> s_held = static () => true, s_free = static () => false;
 
         /// <summary>The invite affordance's gate, the owner menu's (<see cref="AppendOwnerItems"/>): an owner who can administrate the permissions, on a live edit
         /// path (item 58: absent under <c>--fake</c>).</summary>
@@ -619,9 +635,17 @@ public readonly partial struct Playlist
         /// <summary>The identity snapshot every arm renders (ch 06 §7's table, read off the columns and the membership).
         /// Called only when the <see cref="PageStamp"/> moved (the cache in Render). <paramref name="holding"/>: the open's
         /// revalidation holds the list, and the meta line's count and duration ARE the list's — they shimmer with it
-        /// rather than paint yesterday's numbers and then change.</summary>
+        /// rather than paint yesterday's numbers and then change.
+        /// <para>THE HEAD WAITS WITH THE LIST (the owner's recording, 2026-11-15, Heartbreak Mix): the head the disk restores came with the list it
+        /// describes (the membership answer owns the playlist-v2 header), so while the list is held on its revalidation the head is as unconfirmed
+        /// as the rows. A personalised Mix regenerates under the same uri: its page showed yesterday's cover and description ("Justin Bieber, Avril
+        /// Lavigne, Huh Gak and more"), then blanked the cover to grey and swapped both when the fresh answer landed. So the parts that turn over
+        /// with the list (the cover, a followed list's description, the meta line) hold on their skeletons with the rows and land with them; the
+        /// title, the owner and the verbs, which identify the list, paint at once. The hold is bounded by its budget
+        /// (<see cref="ListFreshness.BlockingBudgetMs"/>): past it the held copy paints, and a later answer that moves it crossfades.</para></summary>
         Detail.Identity IdentityOf(Playlist pl, bool editableMeta, bool holding)
         {
+            bool headHeld = holding && !_local;
             var slots = pl.TrackSlots;
             var state = pl.MembershipState;
             // THE reveal discipline the rest of the app already reads (EdgeTableBase.Readiness, G-050): an Unknown list
@@ -656,8 +680,9 @@ public readonly partial struct Playlist
             string? meta = arm != MetaArm.Text ? null
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
 
+            // While the head waits with the list, no cover is latched: the held copy's art is never shown, so it can never be swapped out.
             string? incoming = Controls.ArtUrl(pl.ImageId);
-            _visibleCover = Detail.CoverLatch.PreferVisible(incoming, _visibleCover);
+            if (!headHeld) _visibleCover = Detail.CoverLatch.PreferVisible(incoming, _visibleCover);
 
             var owner = pl.Owner;
             bool spotify = pl.Uri.Provider == EntityProvider.Spotify;
@@ -675,7 +700,7 @@ public readonly partial struct Playlist
                 HeaderPending = !_local && !pl.Knows(PlaylistFields.Identity)
                                 && !Entities.Current.Playlists.IsFailed(pl.Slot, (uint)PlaylistFields.Identity),
                 Title = _local && title.Length == 0 ? Loc.Get("localFile.playlistTitle") : title,
-                CoverUrl = _visibleCover,
+                CoverUrl = headHeld ? null : _visibleCover,
                 CardAccent = pl.Accent,
                 Eyebrow = _local ? Loc.Get(Strings.Nav.LocalFiles)
                     : Detail.Text.Eyebrow(DetailKind.Playlist, BadgeStyle.OwnerRow, AlbumKind.Album, 0, pl.IsCollaborative, pl.IsPublic,
@@ -688,7 +713,8 @@ public readonly partial struct Playlist
                 Owner = owner.IsValid ? owner.Uri : default,
                 Collaborative = pl.IsCollaborative,
                 IsPublic = !_local && pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
-                DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription") : Entities.Strings.Resolve(pl.DescriptionId),
+                DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription")
+                                : headHeld && !editableMeta ? null : Entities.Strings.Resolve(pl.DescriptionId),
                 ChartNewEntries = pl.ChartNewEntries,
                 ChartUpdatedAtMs = pl.ChartUpdatedAt * 1000L,
                 DaylistExpiresAtMs = pl.DaylistExpiresAt * 1000L,
@@ -992,6 +1018,8 @@ public readonly partial struct Playlist
         public override EntityUri Context => _rows.Context;
         public override int Count => Held ? 0 : _rows.Count;
         public override int Total => Held ? 0 : _rows.Total;
+        /// <summary>The rows the hold keeps back still prefetch their covers: an unchanged answer (the common one) reveals them with their art.</summary>
+        public override int PrefetchCount => _rows.Count;
         public override EdgeState State => Held ? EdgeState.Unknown : _rows.State;
         public override uint Version => _rows.Version;
         // Index reads are gated by Count (0 while held), so they go straight through.
