@@ -193,7 +193,7 @@ internal static class ZuneDetailKit
                 {
                     Direction = 0, MinWidth = 0f, Padding = new Edges4(past, 0f, 0f, 0f), Children = [Bar(MathF.Max(0f, shimmerW - past), lay.ArtistLine)],
                 },
-                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false);
         }
         return new BoxEl
         {
@@ -491,14 +491,16 @@ internal static class ZuneDetailKit
     // ── identity text ────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The meta line (Z-Album: "album · may 17, 2013 · 13 songs · 74 min"): the eyebrow (the kind and the year) and the page's meta in one
-    /// run, the label case lowering the words. Null while neither is known.</summary>
+    /// run, the label case lowering the words. Null while neither is known. The page's meta joins the run once, whole: while a part of it is still
+    /// on its way (the duration or the owner, <c>MetaSettling</c>) it waits with the count (the line grew twice, owner video 2026-11-15).</summary>
     public static string? MetaText(Detail.Identity id)
     {
         bool eyebrow = id.Eyebrow.Length > 0;
-        bool meta = !id.MetaLoading && id.Meta is { Length: > 0 };
+        bool loading = id.MetaLoading || id.MetaSettling;
+        bool meta = !loading && id.Meta is { Length: > 0 };
         if (eyebrow && meta) return id.Eyebrow + " · " + id.Meta;
         if (meta) return id.Meta;
-        return eyebrow && !id.MetaLoading ? id.Eyebrow : null;
+        return eyebrow && !loading ? id.Eyebrow : null;
     }
 
     /// <summary>A line of data under a name (13/18, secondary, one line): a card's subtitle, a video's meta. Data, never re-cased.</summary>
@@ -538,7 +540,7 @@ internal static class ZuneDetailKit
                     Children =
                     [
                         new SkelRegionEl(Pending: s_true, Failed: s_false, Content: s_metaShimmer, ShimmerSource: null, OnFailed: null,
-                            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+                            Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false),
                     ],
                 },
             ],
