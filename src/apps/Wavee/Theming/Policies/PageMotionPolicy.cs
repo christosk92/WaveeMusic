@@ -56,9 +56,18 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// <c>Design.Nav.SameKindSwap</c> fade.</summary>
     public Func<bool, TierFacts, LayoutTransition?>? LibraryPivot { get; init; }
 
-    /// <summary>The connected navigation flight (<c>SharedTransition.BeginNav</c>): an album card's cover flies into the album page's hero,
-    /// and back into the card on Back. Null = this structure flies nothing (the swap plays as authored).</summary>
+    /// <summary>The connected navigation flight (<c>SharedTransition.BeginNav</c>): a picture flies into the header of the page it opens (a
+    /// card's cover into an album's, a playlist's or a show's, an artist's round photo into the artist's header), and back into the card on
+    /// Back. Null = this structure flies nothing (the swap plays as authored).</summary>
     public FluentGpu.Animation.ConnectedNavSpec? Connected { get; init; }
+
+    /// <summary>The forward flight into a page of a kind, when it differs from <see cref="Connected"/> (the artist's header, whose copy lies on
+    /// the picture: the flyer lands and fades out over it). Null, or a null answer, = <see cref="Connected"/>.</summary>
+    public Func<EntityKind, FluentGpu.Animation.ConnectedNavSpec?>? ConnectedInto { get; init; }
+
+    /// <summary>Under a flight into a page of a kind, the page keeps its staggered entrance (its sections rise as they do without a
+    /// flight; the page transition stays quiet). Null, or false, = the quiet swap drops the stagger (<see cref="ConnectedQuietPage"/>).</summary>
+    public Func<EntityKind, bool>? ConnectedKeepsCascade { get; init; }
 
     /// <summary>Under a flight, the page swap keeps its recipe's opacity legs and timings and loses its slide, zoom and stagger
     /// (<c>Design.Nav.Quiet</c>): the cover is the only thing that travels (Microsoft: a connected animation "does not work well" over a

@@ -1042,7 +1042,7 @@ public static partial class Shell
     {
         if (!ForwardStep(ref s_nav)) return;
         RedirectCurrent();
-        ArmNone(s_nav.Current);
+        ArmForwardStep(s_nav.Current);   // mouse Forward after a Back flies from the card it left (Shell.Connected.cs)
         Motion.Value = NavTransitionKind.Forward;
         Current.Value = s_nav.Current;
         RouteCommitted();

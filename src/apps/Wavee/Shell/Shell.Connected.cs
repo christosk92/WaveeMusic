@@ -1,16 +1,18 @@
 // ── Shell/Shell.Connected.cs ───────────────────────────────────────────────────────────────────────────────────────
-// the connected navigation flight's shell seam: an album card's cover flies into the album page's hero, and back on Back
+// the connected navigation flight's shell seam: a picture flies into the header of the page it opens, and back on Back
 //
 // Role: SHELL
 // Owner: I
 //
 // THE SEAM. The engine owns the flight (`ConnectedAnimation.BeginNav`, published as `SharedTransition.BeginNav`): it finds the
-// tagged cover inside the element the user activated, puts a flyer up at its rect, and lands it on the like-tagged cover of the
-// page that mounts (`Design.MorphKeys.ForUri`: the album uri on the card, the hero and here). The shell tells it about EVERY
+// tagged picture inside the element the user activated, puts a flyer up at its rect, and lands it on the like-tagged header of the
+// page that mounts (`Design.MorphKeys.ForUri`: the entity's uri on the card, the header and here). The shell tells it about EVERY
 // route commit, before the route is written: the key of the page being opened (or left, for Back), an empty key when the route
 // has none, so a running flight to another page is abandoned and navigation never waits for one. When a flyer is up, the swap
-// under it is quiet (`Design.Nav.Quiet`: the recipe's opacity legs, no slide, no zoom, no stagger), so the cover is the only
-// thing that travels. The structure's `PageMotionPolicy.Connected` says how it flies; null (Classic, Zune today) flies nothing.
+// under it is quiet (`Design.Nav.Quiet`: the recipe's opacity legs, no slide, no zoom, no stagger), so the picture is the only
+// thing that travels (a kind may keep its sections' staggered rise, `PageMotionPolicy.ConnectedKeepsCascade`: the artist page). The
+// structure's `PageMotionPolicy.Connected` says how it flies (`ConnectedInto` per kind of page); null (Classic, Zune today) flies nothing.
+// Back flies the header home into the card it came from; mouse Forward after a Back flies from that card again (the engine remembers it).
 
 using FluentGpu.Animation;
 
@@ -26,21 +28,38 @@ public static partial class Shell
     /// <see cref="PageCascade"/>); every other swap keeps its recipe. Rewritten by every commit.</summary>
     static Route s_connectedFor = Route.None;
 
-    /// <summary>A forward commit (<see cref="Commit"/>): fly the activated card's cover into <paramref name="to"/>'s hero.</summary>
-    static void ArmForward(in Route to) => Arm(in to, KeyOf(in to), back: false);
+    /// <summary>Set by <see cref="ConnectFromActivated"/>: the next forward commit flies the largest picture inside the activated element.</summary>
+    static bool s_fromActivated;
 
-    /// <summary>Back (<see cref="GoBack"/>): fly the hero of <paramref name="leaving"/> back into the card it came from on
+    /// <summary>The next forward navigation flies the largest picture inside the element the user activated, tagged or not: a bound row's
+    /// template cannot carry a per-item tag (the episode reader's rows). Call it just before the navigation, from an open action whose
+    /// row's picture is the entity's own. Consumed (and cleared) by that commit; any other commit clears it.</summary>
+    internal static void ConnectFromActivated() => s_fromActivated = true;
+
+    /// <summary>A forward commit (<see cref="Commit"/>): fly the activated picture into <paramref name="to"/>'s header.</summary>
+    static void ArmForward(in Route to)
+        => Arm(in to, KeyOf(in to), back: false, s_fromActivated ? ConnectedNavSource.ActivatedAnyPicture : ConnectedNavSource.Activated);
+
+    /// <summary>Back (<see cref="GoBack"/>): fly the header of <paramref name="leaving"/> back into the card it came from on
     /// <paramref name="arriving"/>, the page Keep-alive restores exactly. A flight still on its way turns around.</summary>
-    static void ArmBack(in Route leaving, in Route arriving) => Arm(in arriving, KeyOf(in leaving), back: true);
+    static void ArmBack(in Route leaving, in Route arriving) => Arm(in arriving, KeyOf(in leaving), back: true, ConnectedNavSource.Activated);
 
-    /// <summary>A commit that flies nothing in this slice (Forward, a tab switch, a page replaced in place): abandons a running flight.</summary>
-    static void ArmNone(in Route to) => Arm(in to, null, back: false);
+    /// <summary>Forward (<see cref="GoForward"/>, mouse Forward after a Back): fly from the card the last flight into <paramref name="to"/> left
+    /// from, when it is still on screen and still shows that picture; else nothing flies.</summary>
+    static void ArmForwardStep(in Route to) => Arm(in to, KeyOf(in to), back: false, ConnectedNavSource.Remembered);
 
-    static void Arm(in Route to, string? key, bool back)
+    /// <summary>A commit that flies nothing (a tab switch, a page replaced in place, a restored history): abandons a running flight.</summary>
+    static void ArmNone(in Route to) => Arm(in to, null, back: false, ConnectedNavSource.Activated);
+
+    static void Arm(in Route to, string? key, bool back, ConnectedNavSource source)
     {
         s_connectedFor = Route.None;
-        if (s_beginNav is not { } begin || Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Connected is not { } spec) return;
-        if (begin(new ConnectedNavRequest(key ?? "", back, spec))) s_connectedFor = to;
+        s_fromActivated = false;
+        var motion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
+        if (s_beginNav is not { } begin || motion.Connected is not { } spec) return;
+        // Forward into a page whose kind flies its own way (the artist header fades its flyer out); Back flies home as a card does.
+        if (!back && motion.ConnectedInto?.Invoke(to.Subject.Kind) is { } into) spec = into;
+        if (begin(new ConnectedNavRequest(key ?? "", back, spec, source))) s_connectedFor = to;
     }
 
     /// <summary>The flight key of a route: its album's uri (albums only in this slice), else null. One string per navigation.</summary>
@@ -50,4 +69,10 @@ public static partial class Shell
     static bool SwapsUnderFlight(in Route next)
         => !s_connectedFor.IsNone && SameSlot(next, s_connectedFor)
            && Theming.ThemeHost.Facts.Peek().Policies.PageMotion.ConnectedQuietPage;
+
+    /// <summary>Does the quiet swap to <paramref name="next"/> drop its staggered entrance? Not into a kind that keeps it under a flight
+    /// (<see cref="Theming.PageMotionPolicy.ConnectedKeepsCascade"/>: the artist page's sections rise as they always do).</summary>
+    static bool DropsCascadeUnderFlight(in Route next)
+        => SwapsUnderFlight(in next)
+           && Theming.ThemeHost.Facts.Peek().Policies.PageMotion.ConnectedKeepsCascade?.Invoke(next.Subject.Kind) != true;
 }

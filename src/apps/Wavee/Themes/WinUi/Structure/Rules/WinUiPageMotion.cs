@@ -215,10 +215,13 @@ public static class WinUiPageMotion
         return s_libraryPivot[(fromRight ? 4 : 0) + tier];
     }
 
-    // ── THE CONNECTED NAVIGATION FLIGHT (an album card's cover into the album page's hero, and back) ─────────────────────────
-    // WinUI's ConnectedAnimation runs 300 ms on (0.8, 0, 0.2, 1), its Back (Direct) configuration 150-200 ms on (0.1, 0.9, 0.2, 1).
-    // Here a critically damped spring whose response grows with the distance (a turn-around keeps its velocity): 90 % of the way at
-    // 0.62 x the response, 99 % at 1.06 x, so forward reads as 250-340 ms and Back 15 % quicker. No arc, no dip, no overshoot.
+    // ── THE CONNECTED NAVIGATION FLIGHT (a picture into the header of the page it opens, and back) ──────────────────────────────
+    // Every kind: a card's, a row's or a tile's cover into an album's, a playlist's, a show's or an episode's header cover; an artist's
+    // round photo into the artist's header card (the radius travels with the size, the avatar dissolves into the header photograph);
+    // a generated cover (Liked Songs, a playlist with no image) as one whole picture. WinUI's ConnectedAnimation runs 300 ms on
+    // (0.8, 0, 0.2, 1), its Back (Direct) configuration 150-200 ms on (0.1, 0.9, 0.2, 1). Here a critically damped spring whose
+    // response grows with the distance (a turn-around keeps its velocity): 90 % of the way at 0.62 x the response, 99 % at 1.06 x,
+    // so forward reads as 250-340 ms and Back 15 % quicker. No arc, no dip, no overshoot.
     /// <summary>The shortest response (s): a short hop.</summary>
     public const float ConnectedResponseMin = 0.24f;
     /// <summary>The longest response (s): across the window.</summary>
@@ -233,15 +236,30 @@ public static class WinUiPageMotion
     public const float ConnectedPendingMs = 0f;
     /// <summary>An abandoned flyer's fade where it stands (ControlFaster).</summary>
     public const float ConnectedAbandonFadeMs = 83f;
-    /// <summary>The longest a landed flyer waits for its hero to be ready before it hands off anyway.</summary>
-    public const float ConnectedHandOffWaitMs = 600f;
+    /// <summary>The longest a landed flyer stands in for a header picture that is not drawable yet (a cold artist page loading its
+    /// photograph) before it fades out and the page's own entrance takes over.</summary>
+    public const float ConnectedHandOffWaitMs = 2500f;
+    /// <summary>The smallest picture that flies (its shorter edge, DIP): rows' 40 px art and up; a sidebar's 16 px thumb does not.</summary>
+    public const float ConnectedMinSourceEdge = 40f;
+    /// <summary>The artist header's hand-off: the copy lies on the photograph, so the real card shows and the flyer fades out over it
+    /// (ControlFaster) instead of a cut that would pop the name in on one frame.</summary>
+    public const float ConnectedHeaderFadeMs = 83f;
 
     static readonly FluentGpu.Animation.ConnectedNavSpec s_connected = new(ConnectedResponseMin, ConnectedResponseMax, ConnectedResponsePerDip,
-        ConnectedBackScale, ConnectedMinVisible, ConnectedPendingMs, ConnectedAbandonFadeMs, ConnectedHandOffWaitMs);
+        ConnectedBackScale, ConnectedMinVisible, ConnectedPendingMs, ConnectedAbandonFadeMs, ConnectedHandOffWaitMs,
+        HandOffFadeMs: 0f, MinSourceEdge: ConnectedMinSourceEdge);
+    static readonly FluentGpu.Animation.ConnectedNavSpec s_connectedHeader = s_connected with { HandOffFadeMs = ConnectedHeaderFadeMs };
+
+    /// <summary>The forward flight into a page of a kind (<see cref="PageMotionPolicy.ConnectedInto"/>): the artist header fades its flyer out.</summary>
+    static FluentGpu.Animation.ConnectedNavSpec? ConnectedInto(EntityKind kind) => kind == EntityKind.Artist ? s_connectedHeader : null;
+
+    /// <summary>The artist page's sections keep their rise under a flight (the owner, 2026-11-16: "keep blur rise"); the flyer sits above.</summary>
+    static bool ConnectedKeepsCascade(EntityKind kind) => kind == EntityKind.Artist;
 
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
     public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
     {
         ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot, Connected = s_connected,
+        ConnectedInto = ConnectedInto, ConnectedKeepsCascade = ConnectedKeepsCascade,
     };
 }
