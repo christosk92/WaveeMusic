@@ -39,18 +39,24 @@ internal static class WinUiHomeBoard
     public static Element Template(HomeBoardProps props, in ViewContext ctx)
     {
         var facts = ctx.Tier();
-        return Embed.Comp(new BoardProps(props, WinUiHomeBoardTiers.Of(facts), WinUiHomeTiers.Of(facts)), static () => new BoardView())
+        // The board's first pack uses the region's own estimate of its width (the Recently played grid seeds the same way): measured one frame
+        // late, a zero width packed one column and the whole board re-packed and re-laid on the next frame.
+        float firstWidth = WinUiRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
+        return Embed.Comp(new BoardProps(props, WinUiHomeBoardTiers.Of(facts), WinUiHomeTiers.Of(facts), firstWidth), static () => new BoardView())
             with { Key = "home:board-root" };
     }
 
-    internal sealed record BoardProps(HomeBoardProps Board, WinUiHomeBoardLayout Lay, WinUiHomeLayout Home);
+    internal sealed record BoardProps(HomeBoardProps Board, WinUiHomeBoardLayout Lay, WinUiHomeLayout Home, float FirstWidth);
 
     /// <summary>The board's component: its width, the measured full rows, the items memo and the reorder.</summary>
     internal sealed class BoardView : Component
     {
         readonly Signal<float> _width = new(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
+        readonly Dictionary<string, float> _packed = new(StringComparer.Ordinal);   // the height each full row was last packed at
         readonly Action<RectF> _onBounds;
+        readonly Action<RectF> _onBand;
+        float _bandH;
         BoardProps? _p;
         PackReorder<WinUiBoardItem>? _reorder;
         PackGridOptions<WinUiBoardItem>? _options;
@@ -62,6 +68,7 @@ internal static class WinUiHomeBoard
         public BoardView()
         {
             _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
+            _onBand = r => _bandH = r.H;
         }
 
         /// <summary>A full row's measured height (0 until its body has laid out once).</summary>
@@ -71,14 +78,51 @@ internal static class WinUiHomeBoard
             return s;
         }
 
+        /// <summary>The board's width: measured, else the region's estimate (the first frame).</summary>
+        float WidthNow(float measured) => measured > 0f ? measured : _p?.FirstWidth ?? 0f;
+
+
+        float PackedOf(string id) => _packed.TryGetValue(id, out var h) ? h : 0f;
+
+        readonly Dictionary<string, float> _seen = new(StringComparer.Ordinal);   // a body's latest laid-out height, not yet applied
+        readonly Signal<bool> _settling = new(false);
+        long _lastSeenMs;
+        Action? _settle;
+
+        /// <summary>A full row's body laid out at <paramref name="h"/>: remember it; the settle tick applies it once the bodies hold still.</summary>
+        void Measured(string id, float h)
+        {
+            if (h <= 0f) return;
+            if (MathF.Abs(h - PackedOf(id)) <= WinUiHomeBoardRules.ExtentSlop) { _seen.Remove(id); return; }
+            _seen[id] = h;
+            _lastSeenMs = Environment.TickCount64;
+            _settling.Value = true;
+        }
+
+        /// <summary>The settle tick (only while a body differs from its box): when no body has changed for the settle time, every pending height is
+        /// written at once, so the board re-packs ONE time (and slides) instead of following each pass of a body's own layout.</summary>
+        void Settle()
+        {
+            if (Environment.TickCount64 - _lastSeenMs < WinUiHomeBoardRules.ExtentSettleMs) return;
+            foreach (var (id, h) in _seen) ExtentOf(id).Value = h;
+            _seen.Clear();
+            _settling.Value = false;
+        }
+
         public override Element Render()
         {
             var p = UseProps<BoardProps>();
             _p = p;
+            // The first pack is at the region's estimate of the board's width; the measurement then only writes when the width really differs, so
+            // a mount whose estimate holds re-packs nothing on its second frame. (First render: nothing reads the width yet.)
+            if (_width.Peek() <= 0f && p.FirstWidth > 0f) _width.Value = p.FirstWidth;
             var board = p.Board;
+            board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
+            _settle ??= Settle;
+            UseInterval(_settle, WinUiHomeBoardRules.ExtentSettleTickMs, enabled: _settling.Value);
 
-            _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(_width.Peek()));
+            _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(WidthNow(_width.Peek())));
             _template ??= (item, cell) => Item(item, cell);
             _reorder ??= new PackReorder<WinUiBoardItem>("home.tile")
             {
@@ -87,6 +131,8 @@ internal static class WinUiHomeBoard
                 Slot = static rect => WinUiHomeTiles.Slot(rect),
                 AcceptKinds = [WinUiHomeAddBand.DragKind],
                 CanAccept = static payload => payload is HomeCandidate,
+                // A candidate dragged in from the add band: a provisional tile at its chosen size under the pointer; the drop adds it there.
+                Materialize = static payload => payload is HomeCandidate c ? Provisional(c) : null,
                 OnCommit = m => Commit(m),
                 OnForeignCommit = (payload, index) => ForeignCommit(payload, index),
                 AnnounceText = a => Announce(a),
@@ -95,7 +141,7 @@ internal static class WinUiHomeBoard
             {
                 KeyOf = static it => it.Key,
                 EntryOf = it => EntryOf(it),
-                Metrics = () => _p!.Lay.Metrics(_width.Value),
+                Metrics = () => _p!.Lay.Metrics(WidthNow(_width.Value)),
                 Controller = board.Grid,
                 Scroll = board.Scroll,
                 Reorder = _reorder,
@@ -109,12 +155,23 @@ internal static class WinUiHomeBoard
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
+                // A card's menu: a right-click opens the menu of the tile under the pointer, the Menu key / Shift+F10 that of the tile in focus
+                // (its wrapper holds focus). A touch hold never arrives here: the wrapper's hold takes it, so the hold can become a drag.
+                OnContextRequested = OnContext,
                 Children =
                 [
-                    WinUiHomeAddBand.Disclosure(board, p.Lay, bandOpen),
+                    WinUiHomeAddBand.Disclosure(board, p.Lay, bandOpen) with { OnBoundsChanged = _onBand },
                     PackGrid.Create(items, _template, _options),
                 ],
             };
+        }
+
+        static WinUiBoardItem Provisional(HomeCandidate c)
+        {
+            var size = WinUiHomeAddBand.SizeChosen(c);
+            var e = new BoardEntry("provisional:" + c.Id, BoardEntryKind.Item, c.TargetGroupId, HomeSourceRegistry.Default.Of(c.Source), c.Source,
+                size, SectionTemplate.None, c.Title, false, false, false, c.Source is PinSource, false, -1);
+            return new WinUiBoardItem(HomeBoardKeys.Tile(e.Id), e, false);
         }
 
         static IReadOnlyList<WinUiBoardItem> ItemsOf(BoardModel m)
@@ -142,24 +199,30 @@ internal static class WinUiHomeBoard
             float full = 0f;
             if (WinUiHomeBoardRules.SizeOf(e) == HomeSize.Full)
             {
+                // A full row packs at its chapter's own height (the numbers its body reserves with), so it mounts in its box and nothing
+                // re-packs; a body whose height is its content's is measured and the box follows by the re-flow.
                 full = ExtentOf(e.Id).Value;
-                if (full <= 0f) full = FullEstimate(e, _p.Home);
+                if (full <= 0f) full = FullEstimate(e, _p.Home, WidthNow(_width.Value), lay);
+                _packed[e.Id] = full;
             }
             return WinUiHomeBoardRules.EntryOf(e, lay, full, open, false);
         }
 
-        /// <summary>A full row's height before its body has laid out: the Home tier record's own numbers for the bodies it knows.</summary>
-        static float FullEstimate(BoardEntry e, WinUiHomeLayout home)
+        /// <summary>A full row's height before its body has laid out: its chapter's own extent at the row's content width (the ⋯ lane aside), else
+        /// the rules' fallback until it is measured.</summary>
+        static float FullEstimate(BoardEntry e, WinUiHomeLayout home, float rowW, WinUiHomeBoardLayout lay)
         {
-            float head = WinUiHomeRules.TitleLine + (home.HeaderSubtitles ? WinUiHomeRules.SubtitleLine : 0f) + home.HeaderGap;
-            if (e.Raw is WidgetSource w)
-                switch (w.Widget)
-                {
-                    case "daylist": return home.Daylist.Cover + 2f * home.Daylist.Pad;
-                    case "recents": return head + home.RecentsRows * home.RecentsRowH + (home.RecentsRows - 1) * home.RecentsGap;
-                    case "releases": return head + 4f * WinUiHomeRules.ReleaseRowH;
-                }
-            return WinUiHomeBoardRules.FullFallback;
+            Zone? zone = e.Raw switch
+            {
+                WidgetSource { Widget: "daylist" } => HomeBoardZones.DaylistZone(e),
+                WidgetSource { Widget: "recents" } => HomeBoardZones.RecentsZone(e),
+                WidgetSource { Widget: "releases" } => HomeBoardZones.ReleasesZone(e),
+                _ => e.Zone,
+            };
+            // A chapter with a header keeps the row's full width (the menu button rides its header); a headerless one gives up the lane.
+            float contentW = zone is not null && WinUiHomeZones.HasHeader(zone.Kind) ? rowW : rowW - Spacing.XS - lay.MoreBox;
+            float h = zone is null ? 0f : WinUiHomeZones.ChapterExtent(zone, home, contentW);
+            return h > 0f ? h : WinUiHomeBoardRules.FullFallback;
         }
 
         Element Item(WinUiBoardItem it, PackCell cell)
@@ -175,6 +238,7 @@ internal static class WinUiHomeBoard
             var tile = board.Tile(e, cell, s_full);
             // A full row: the body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
+            string id = e.Id;
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -183,7 +247,9 @@ internal static class WinUiHomeBoard
                     new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, Grow = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-                        OnBoundsChanged = r => { if (r.H > 0f && MathF.Abs(r.H - extent.Peek()) > 0.5f) extent.Value = r.H; },
+                        // A body that settles at a height other than the one it was packed at moves the box, once it has settled (a shelf lays
+                        // out in two passes; its first, header-only height must not re-pack the board).
+                        OnBoundsChanged = r => Measured(id, r.H),
                         Children = [tile],
                     },
                 ],
@@ -221,11 +287,22 @@ internal static class WinUiHomeBoard
             return a.Kind switch
             {
                 PackAnnounceKind.Grab => Strings.Theme.Winui.Home.Board.Grabbed(name: name),
-                PackAnnounceKind.Move => board.Verbs.Where(id),
-                PackAnnounceKind.Drop => Strings.Theme.Winui.Home.Board.Dropped(name: name, where: board.Verbs.Where(id)),
+                // The projected place while lifted (the document has not moved yet); the drop itself is the move verb's sentence.
+                PackAnnounceKind.Move => Strings.Home.BoardVerbs.Position(n: a.Position, count: a.Count, group: GroupTitleAt(board, a.Group)),
                 PackAnnounceKind.Cancel => Strings.Theme.Winui.Home.Board.Cancelled(name: name),
                 _ => null,
             };
+        }
+
+        /// <summary>The title of the group the lifted tile is projected into (the pack's group ordinal: the n-th group head in order), not the
+        /// group it left.</summary>
+        static string GroupTitleAt(HomeBoardProps board, int group)
+        {
+            var entries = board.Model.Peek().Entries;
+            int n = -1;
+            for (int i = 0; i < entries.Length; i++)
+                if (entries[i].Kind == BoardEntryKind.GroupHead && ++n == group) return entries[i].Title;
+            return "";
         }
 
         PackAutomation Automation(WinUiBoardItem it)
@@ -242,16 +319,37 @@ internal static class WinUiHomeBoard
             return "";
         }
 
-        internal static string IdOf(string key) => key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : "";
-
-        /// <summary>The board's keys while focus is inside it (guarded by the text-editor test): Ctrl+Z undoes; "/" opens the add band's search;
-        /// Escape unwinds (the open tile, then the band).</summary>
-        void OnKey(KeyEventArgs e)
+        /// <summary>The board's keys while focus is inside Home's board or its head tools (single keys stand aside for a text editor): Ctrl+Z
+        /// undoes; "/" opens the add band's search; Escape unwinds (the open tile, then the band).</summary>
+        internal static void HandleKey(KeyEventArgs e, HomeBoardProps board)
         {
-            if (e.Handled || _p is null) return;
-            var board = _p.Board;
-            if (e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
-            if (WinUiHomeAddBand.EditorFocused()) return;
+            if (e.Handled) return;
+            bool editor = board.EditorFocused();
+            if (!editor && e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
+            if (editor && e.KeyCode != Keys.Escape) return;
+            // The focused tile (the grid's wrapper holds focus; plain arrows move focus there, Alt+Shift+arrows bubble here): Start's chord moves it,
+            // the Menu key or Shift+F10 opens its menu.
+            if (board.Grid.FocusedKey is { } fk && IdOf(fk) is { Length: > 0 } id)
+            {
+                if (e.Alt && e.Shift && !e.Ctrl)
+                {
+                    switch (e.KeyCode)
+                    {
+                        case Keys.Left: board.Verbs.MoveBy(id, -1); e.Handled = true; return;
+                        case Keys.Right: board.Verbs.MoveBy(id, 1); e.Handled = true; return;
+                        case Keys.Up or Keys.Down:
+                            if (board.Grid.Neighbour(fk, 0, e.KeyCode == Keys.Up ? -1 : 1) is { } nk && IdOf(nk) is { Length: > 0 } target)
+                                board.Verbs.MoveOnto(id, target);
+                            e.Handled = true;
+                            return;
+                    }
+                }
+                if (e.KeyCode == Keys.Apps || e.Shift && !e.Ctrl && !e.Alt && e.KeyCode == Keys.F10)
+                {
+                    if (WinUiHomeTiles.TileMore.OpenFor(id)) e.Handled = true;
+                    return;
+                }
+            }
             if (!e.Ctrl && !e.Alt && e.KeyCode == WinUiHomeAddBand.SlashKey)
             {
                 WinUiHomeAddBand.OpenSearch(board);
@@ -263,6 +361,24 @@ internal static class WinUiHomeBoard
                 if (board.View.OpenId.Peek() is not null) { board.Verbs.Close(refocus: true); e.Handled = true; return; }
                 if (board.View.Add.Peek().Kind == HomeAddSurfaceKind.Band) { WinUiHomeAddBand.Close(board); e.Handled = true; }
             }
+        }
+
+        internal static string IdOf(string key) => key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : "";
+
+        /// <summary>The board's keys while focus is inside it (guarded by the text-editor test): Ctrl+Z undoes; "/" opens the add band's search;
+        /// Escape unwinds (the open tile, then the band).</summary>
+        void OnContext(ContextRequestEventArgs e)
+        {
+            if (_p is not { } p) return;
+            var grid = p.Board.Grid;
+            // The position is local to this column: the grid stands under the add band.
+            string? key = e.Trigger == ContextRequestTrigger.Keyboard ? grid.FocusedKey : grid.KeyAt(e.Position.X, e.Position.Y - _bandH);
+            if (key is not null && IdOf(key) is { Length: > 0 } id) WinUiHomeTiles.TileMore.OpenFor(id);
+        }
+
+        void OnKey(KeyEventArgs e)
+        {
+            if (_p is not null) HandleKey(e, _p.Board);
         }
     }
 }

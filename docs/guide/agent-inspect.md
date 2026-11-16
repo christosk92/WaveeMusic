@@ -1193,7 +1193,9 @@ The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFram
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
 `jumps` (presented rect moved over `jump` DIP in a frame under a track; every eased glide has some), `instants` (a run of jumps on
 consecutive frames whose largest frame moves at least `instant`=4 DIP and carries 60 % of the run: the change landed at once
-while something above it animated, a page reflowing in one frame beside a sliding pane), and `scroll`:
+while something above it animated, a page reflowing in one frame beside a sliding pane; a node whose own rect stands still while
+an animating ancestor's clip uncovers or covers it, a FlowReveal opening over a control, is no jump and no instant: those frames
+carry its run on and are counted as `uncovered`), and `scroll`:
 `reversals`, `overshoots` (runs outside [0, max], with the deepest point), `stalls`, `uneven` deltas, `layoutDuringScroll` and `deltas`
 statistics. Beside the summary, `counts{watched, snaps, snappedKeys, instants, movedAtOnce, remounted, remountedSwap,
 remountedOutside}` and `remounted[{key, frame, family}]`: a lone watched key that is a different node from one frame to the

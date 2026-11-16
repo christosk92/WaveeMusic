@@ -33,7 +33,7 @@ internal static partial class WinUiHomeZones
 
     /// <summary>A section that hangs off something ("Popular with listeners of" The Pog State): the thing's cover, the lead words in the caption
     /// voice over its name in the module header voice, the name a link to it; the tools at the end.</summary>
-    static Element EntityHeader(HeaderEntity e, Element? tools, WinUiHomeLayout layout)
+    static Element EntityHeader(HeaderEntity e, Element? tools, WinUiHomeLayout layout, Element? tail = null)
     {
         string uri = e.Uri, name = e.Name;
         var link = new BoxEl
@@ -61,9 +61,67 @@ internal static partial class WinUiHomeZones
                     ],
                 },
                 tools ?? new BoxEl(),
+                tail ?? new BoxEl(),
             ],
         };
     }
+
+    // ── extents (the pinned board packs a full row at its chapter's height: `ChapterExtent`) ─────────────────────────────
+
+    /// <summary>The entity header's height: the cover beside the lead's caption line over the name's title line, never under the tools' floor.</summary>
+    static float EntityHeadExtent(WinUiHomeLayout layout)
+        => MathF.Max(layout.HeaderToolsH, MathF.Max(WinUiHomeRules.EntityCover, WinUiHomeRules.SubtitleLine + WinUiHomeRules.TitleLine));
+
+    /// <summary>The mood plates' grid at <paramref name="width"/>: its rows of plates and the gaps between them.</summary>
+    static float MoodPlatesExtent(Zone zone, WinUiHomeLayout layout, float width)
+    {
+        int n = Math.Min(zone.Items.Count, WinUiHomeRules.MoodPlatesMax);
+        if (n == 0) return 0f;
+        int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Tiles.Floor, WinUiHomeRules.CardGap,
+            Math.Min(layout.Tiles.MaxCols, WinUiHomeRules.MoodPlatesMax / 2)), 1, n);
+        int rows = (n + cols - 1) / cols;
+        return rows * WinUiHomeRules.MoodPlateH + (rows - 1) * WinUiHomeRules.CardGap;
+    }
+
+    /// <summary>The video card in its row form: the card's padding and stroke around the still (the copy beside it is shorter); 0 in the stacked form,
+    /// whose title wraps to its width (measured).</summary>
+    static float VideoCardExtent(WinUiHomeLayout layout)
+    {
+        if (layout.Tier < WidthTier.Standard) return 0f;
+        var pad = Spacing.CardPad;
+        return pad.Top + pad.Bottom + WinUiHomeRules.VideoStillW / R.Space.WideTileAspect;
+    }
+
+    /// <summary>The preview cards' grid at <paramref name="width"/>: each grid row as tall as its tallest card (the reason, the offer, its rows), then
+    /// the "Show more" row when cards are held back.</summary>
+    static float ClusterGridExtent(Zone zone, WinUiHomeLayout layout, float width)
+    {
+        var clusters = zone.Clusters;
+        if (clusters is not { Count: > 0 }) return 0f;
+        int visible = Math.Min(clusters.Count, layout.Clusters.MaxCols * WinUiHomeRules.ClusterVisibleRows);
+        int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Clusters.Floor, WinUiHomeRules.CardGap, layout.Clusters.MaxCols), 1, visible);
+        float rowH = Shape.Row(WinUiHomeRules.ClusterArt).MinHeight;
+        var pad = Spacing.CardPad;
+        float total = 0f;
+        for (int start = 0, r = 0; start < visible; start += cols, r++)
+        {
+            float tallest = 0f;
+            for (int i = start; i < Math.Min(start + cols, visible); i++)
+            {
+                var c = clusters[i];
+                float h = pad.Top + pad.Bottom + WinUiHomeRules.ReasonAvatar;
+                if (c.Header is not null) h += Spacing.M + WinUiHomeRules.PreviewCover;
+                h += Spacing.M + Math.Min(c.Rows.Count, WinUiHomeRules.ClusterRows) * rowH;
+                tallest = MathF.Max(tallest, h);
+            }
+            total += (r > 0 ? WinUiHomeRules.CardGap : 0f) + tallest;
+        }
+        if (visible < clusters.Count) total += WinUiHomeRules.CardGap + layout.HeaderToolsH;
+        return total;
+    }
+
+
+
 
     // ── mood plates (P6) ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -197,7 +255,7 @@ internal static partial class WinUiHomeZones
             [
                 grid,
                 Embed.Comp(new MoreProps(zone.Key, rest, layout), static () => new ClusterMore())
-                    with { SkeletonProxy = () => MoreLink(rest.Length, open: false, static () => { }) },
+                    with { SkeletonProxy = () => MoreLink(rest.Length, open: false, static () => { }, layout) },
             ],
         };
     }
@@ -208,11 +266,12 @@ internal static partial class WinUiHomeZones
         ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, Children = cards,
     };
 
-    static Element MoreLink(int count, bool open, Action toggle)
+    static Element MoreLink(int count, bool open, Action toggle, WinUiHomeLayout layout)
         => new BoxEl
         {
-            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space).
-            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start,
+            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space); the tools' height, so the chapter's
+            // extent is known before it lays out.
+            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start, Height = layout.HeaderToolsH, AlignItems = FlexAlign.Center,
             Children = [HyperlinkButton.Create(open ? Loc.Get(Strings.Home.ShowFewer) : Strings.Home.ShowMore(count), toggle) with { Shrink = 0f }],
         };
 
@@ -241,7 +300,7 @@ internal static partial class WinUiHomeZones
                     Animate = Design.Reveal.Drawer, Children = [ClusterCells(cards, p.Layout)],
                 });
             }
-            kids.Add(MoreLink(p.Rest.Count, open, () => set(!open)) with { Key = "cluster-more-link:" + p.Key });
+            kids.Add(MoreLink(p.Rest.Count, open, () => set(!open), p.Layout) with { Key = "cluster-more-link:" + p.Key });
             return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = WinUiHomeRules.CardGap, Children = kids.ToArray() };
         }
     }
@@ -330,7 +389,7 @@ internal static partial class WinUiHomeZones
                         Meta(SectionCopy.PreviewFacts(in h)) with { Color = Tok.TextTertiary },
                         new BoxEl
                         {
-                            Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
+                            Direction = 0, MinWidth = 0f,
                             Children = [Button.Create(Loc.Get(Strings.Home.Play), () => HomeCardNav.Play(in hc), ButtonAppearance.Accent, ControlSize.Small, Icons.Play)
                                 with { Shrink = 0f }],
                         },

@@ -259,15 +259,39 @@ internal static class WinUiTitleBar
         }
     }
 
-    /// <summary>The direct Pin / Unpin for the destination on screen; an unpinnable destination keeps the button's place, disabled.</summary>
+    /// <summary>The destination's Pin: the direct Pin / Unpin when only one list can hold it; when both Home and the sidebar can (pinned Home,
+    /// design 1.6), the one button opens the two toggles. An unpinnable destination keeps the button's place, disabled.</summary>
     private sealed class PinButton(ShellTitleBarProps props) : Component
     {
         public override Element Render()
         {
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
             var pin = props.Pin();
+            var home = props.HomePin?.Invoke();
             var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
-            if (pin is null) return IconButton.Create(Icons.Pin, static () => { }, style, isEnabled: false);
-            return ToolTip.Wrap(IconButton.Create(pin.Glyph, pin.Invoke, style), pin.Label);
+            if (pin is null && home is null) return IconButton.Create(Icons.Pin, static () => { }, style, isEnabled: false);
+            if (home is null) return ToolTip.Wrap(IconButton.Create(pin!.Glyph, pin.Invoke, style), pin.Label);
+            if (pin is null) return ToolTip.Wrap(IconButton.Create(home.Glyph, home.Invoke, style), home.Label);
+
+            void Open()
+            {
+                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+                // Read at open: the two toggles as they stand now.
+                var rows = new List<MenuFlyoutItem>(2);
+                if (props.HomePin?.Invoke() is { } h) rows.Add(new MenuFlyoutItem(h.Label, h.Glyph, true, h.Invoke));
+                if (props.Pin() is { } p) rows.Add(new MenuFlyoutItem(p.Label, p.Glyph, true, p.Invoke));
+                var o = overlay.Open(() => anchor.Value,
+                    () => ViewSlots.View(ViewKeys.ShellHistoryMenu, new HistoryMenuProps { Items = rows, Close = () => handle.Value?.Close() }),
+                    FlyoutPlacement.BottomEdgeAlignedRight,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+                handle.Value = o;
+                o.ClosedAction = () => handle.Value = null;
+            }
+
+            return ToolTip.Wrap(IconButton.Create(Icons.Pin, Open, style) with { OnRealized = h => anchor.Value = h },
+                Loc.Get(Strings.Theme.Winui.Home.Board.PinMenu));
         }
     }
 
@@ -322,6 +346,7 @@ internal static class WinUiTitleBar
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 var rows = new List<MenuFlyoutItem>(2);
+                if (props.HomePin?.Invoke() is { } home) rows.Add(new MenuFlyoutItem(home.Label, home.Glyph, true, home.Invoke));
                 if (props.Pin() is { } pin) rows.Add(new MenuFlyoutItem(pin.Label, pin.Glyph, true, pin.Invoke));
                 rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Shell.Friends), Icons.Friends, true, props.ToggleFriends));
                 var h = overlay.Open(() => anchor.Value,

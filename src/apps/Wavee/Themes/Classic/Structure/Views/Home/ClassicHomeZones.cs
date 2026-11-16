@@ -167,6 +167,22 @@ internal static partial class ClassicHomeZones
         };
     }
 
+    /// <summary>One zone's chapter as a shelf tile of the pinned Home board (`ClassicHomeTiles`): the same keyed sticky scope and the same body as
+    /// the column's chapter, without the page-entrance stagger (the grid realizes tiles as the page scrolls; a tile that mounts there stands in place).</summary>
+    internal static Element TileChapter(Zone zone, IOverlayService? overlay, ClassicHomeLayout layout)
+    {
+        Element content = IsShelf(zone.Kind)
+            ? Embed.Comp(new ShelfChapterProps(zone, overlay, layout), static () => new ClassicHomeShelfChapter())
+                with { SkeletonProxy = () => Chapter(zone, overlay, controller: null, layout) }
+            : Chapter(zone, overlay, controller: null, layout);
+        return new BoxEl
+        {
+            Key = "zone:" + zone.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            ScrollScope = zone.Key,
+            Children = [content],
+        };
+    }
+
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
         or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf;
 

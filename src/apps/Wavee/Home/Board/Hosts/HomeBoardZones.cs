@@ -45,7 +45,7 @@ public static class HomeBoardZones
         if (!h.Knows(HomeFields.Sections)) return s_plan = new Plan(null, null, null);
         var inputs = SectionReader.Read(h);
         IReadOnlyList<SectionInput>? following = fh.Knows(HomeFields.Sections) ? SectionReader.Read(fh) : null;
-        var zones = ZonePlanner.Plan(inputs, "", HomeScreen.LocalizedTitles(), null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following,
+        var zones = ZonePlanner.Plan(inputs, "", HomeZoneTitles.Localized(), null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following,
                                      HomeScreen.LocalizedSubtitles());
         Zone? daylist = null, recents = null, releases = null;
         foreach (var z in zones)

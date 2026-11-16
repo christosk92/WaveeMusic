@@ -813,6 +813,7 @@ public static partial class Diagnostics
         {
             float w0 = a.Float("w", 1180f), h0 = a.Float("h", 760f);
             if (!MountShell(a, w0, h0, out string error, out bool mounted)) return Inspect.Reply.Fail(id, name, error, mounted ? WriteMountFacts : null);
+            LandHomeDoc(a);   // Diagnostics.Inspect.Home.cs: a homedoc whose state needs the mounted board (gonepin)
             return Settled(id, name, a, WriteMountFacts);
         }
 

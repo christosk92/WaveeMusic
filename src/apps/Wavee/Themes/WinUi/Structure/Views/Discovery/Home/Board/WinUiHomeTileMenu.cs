@@ -53,6 +53,14 @@ internal static class WinUiHomeTileMenu
         return items;
     }
 
+    /// <summary>The menu of a tile whose thing is gone (or unknown to this build): only its removal.</summary>
+    public static IReadOnlyList<MenuFlyoutItem> RemoveOnly(HomeTileFrame f)
+    {
+        var verbs = f.Verbs;
+        string id = f.Entry.Id;
+        return [new MenuFlyoutItem(RemoveLabel(f.Entry), Icons.UnPin, Invoke: () => verbs.Remove(id))];
+    }
+
     /// <summary>"Small", "Medium", "Large", "Full row".</summary>
     public static string SizeLabel(HomeSize s) => Loc.Get(s switch
     {
@@ -71,12 +79,4 @@ internal static class WinUiHomeTileMenu
         _ when e.Raw is PinSource => Strings.Theme.Winui.Home.Board.UnpinFromHome,
         _ => Strings.Theme.Winui.Home.Board.UnpinWidget,
     });
-
-    /// <summary>The entry one step up or down from <paramref name="f"/>'s (the grid's nearest: overlapping columns first).</summary>
-    public static string? Neighbour(HomeTileFrame f, int dy)
-    {
-        var grid = f.View.Grid;
-        string? key = grid?.Neighbour(HomeBoardKeys.Tile(f.Entry.Id), 0, dy);
-        return key is not null && key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : null;
-    }
 }

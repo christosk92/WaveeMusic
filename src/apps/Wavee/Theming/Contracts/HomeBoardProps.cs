@@ -190,6 +190,9 @@ public sealed record HomePinTileProps
     /// <summary>A round cover (an artist, a profile).</summary>
     public bool Round { get; init; }
 
+    /// <summary>A drawn cover in place of an image, at an edge (Liked Songs' heart plate, as the Recently played grid draws it); null: the image.</summary>
+    public Func<float, Element>? CoverArt { get; init; }
+
     /// <summary>The user's pin (false: one of Spotify's shortcut fill cells).</summary>
     public bool UserPin { get; init; }
 
@@ -369,6 +372,9 @@ public enum HomeTileVacancy : byte
 
     /// <summary>A source this build does not know (kept in the document, drawn as nothing).</summary>
     Unknown,
+
+    /// <summary>Spotify's answer failed (the feed slot's sections), with nothing cached. Appended.</summary>
+    Failed,
 }
 
 /// <summary>The props of <see cref="ViewKeys.HomeTileVacant"/>.</summary>

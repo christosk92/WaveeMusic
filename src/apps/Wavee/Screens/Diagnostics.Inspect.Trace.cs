@@ -278,6 +278,9 @@ public static partial class Diagnostics
             /// <summary>Tracked moves nobody saw (the part drawn did not change: a zone that glided on below the fold). Never a verdict or a listed
             /// jump; they only carry a run on, so a glide that leaves the window after two frames is not judged by those two alone.</summary>
             internal List<Move> HiddenJumps = [];
+            /// <summary>Tracked frames of a node that stood still while an animating ancestor's clip uncovered or covered it (<see cref="DetectMoves"/>):
+            /// carried like <see cref="HiddenJumps"/>, never a jump or an instant. Reported as a count.</summary>
+            public int Uncovered;
             public List<OvershootRun> Overshoots = [];
             public List<ScrollEvent> Reversals = [], Stalls = [], Uneven = [], LayoutDuringScroll = [];
             public DeltaStats Deltas;
@@ -467,7 +470,13 @@ public static partial class Diagnostics
                         // A move nobody can see counts as neither: the part of the rect inside the window is what is drawn (a part below the fold, a tall
                         // column whose foot moved off the window).
                         bool visible = !clip || VisibleChange(p.Vis, cur.Vis);
-                        if (track && mag > jumpDip) (visible ? into.Jumps : into.HiddenJumps).Add(move);
+                        // UNCOVERED, not moved: the node's own rect (laid out and presented) stands still and only what an animating ancestor's
+                        // clip shows of it changed (a FlowReveal opening over it, an edge sliding across it). The node did not move; the
+                        // ancestor's reveal did, and that ancestor is judged on its own rect. Such a frame carries a run on like a move nobody
+                        // saw, and is never a verdict: one frame of a reveal can uncover a whole small control, which is no snap.
+                        bool uncovered = clip && track && Same(p.Pres, cur.Pres) && lay < 0.5f && VisibleChange(p.Vis, cur.Vis);
+                        if (uncovered && mag > jumpDip) into.Uncovered++;
+                        if (track && mag > jumpDip) (visible && !uncovered ? into.Jumps : into.HiddenJumps).Add(move);
                         else if (visible && !track && mag > snapDip && lay > snapDip) into.Snaps.Add(move);
                         prevMag[w] = mag;
                     }
@@ -650,6 +659,7 @@ public static partial class Diagnostics
             w.WriteNumber("snaps", result.Summary.Snaps.Count);
             w.WriteNumber("snappedKeys", snappedKeys.Count);
             w.WriteNumber("instants", result.Summary.Instants.Count);
+            w.WriteNumber("uncovered", result.Summary.Uncovered);   // frames a reveal uncovered a still node: carried, never a verdict
             w.WriteNumber("movedAtOnce", movedKeys.Count);   // snapped or instant keys off a switch's frames: what `inspect.py --gate` counts
             w.WriteNumber("remounted", result.Remounts.Count);
             w.WriteNumber("remountedSwap", swap);

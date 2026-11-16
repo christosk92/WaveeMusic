@@ -185,18 +185,18 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneBookShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.book-shelf");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
         CommonNothing.Register(views, ViewKeys.HomeQuickplay);   // P5 Z5: Classic has no quickplay strip (its pins are the sidebar's)
-        // The pinned Home board (contract 1.117): Nothing until Classic draws its board (lane W registered these at I1).
-        CommonNothing.Register(views, ViewKeys.HomeBoard);
-        CommonNothing.Register(views, ViewKeys.HomeBoardTools);
-        CommonNothing.Register(views, ViewKeys.HomeTilePin);
-        CommonNothing.Register(views, ViewKeys.HomeTileNowPlaying);
-        CommonNothing.Register(views, ViewKeys.HomeTileUpNext);
-        CommonNothing.Register(views, ViewKeys.HomeTileRecents);
-        CommonNothing.Register(views, ViewKeys.HomeTileReleases);
-        CommonNothing.Register(views, ViewKeys.HomeTileDaylist);
-        CommonNothing.Register(views, ViewKeys.HomeTileSection);
-        CommonNothing.Register(views, ViewKeys.HomeTileOptions);
-        CommonNothing.Register(views, ViewKeys.HomeTileVacant);
+        // The pinned Home board (contract 1.117; spec 8.3): Edit Home on the tiles, the sidebar's edit bar in the facet row's end.
+        views.Add(ViewKeys.HomeBoard, ClassicHomeBoard.Template, "classic.home.board");
+        views.Add(ViewKeys.HomeBoardTools, ClassicHomeEditBar.Template, "classic.home.board-tools");
+        views.Add(ViewKeys.HomeTilePin, ClassicHomeTiles.Pin, "classic.home.tile.pin");
+        views.Add(ViewKeys.HomeTileNowPlaying, ClassicHomeTiles.NowPlaying, "classic.home.tile.now-playing");
+        views.Add(ViewKeys.HomeTileUpNext, ClassicHomeTiles.UpNext, "classic.home.tile.up-next");
+        views.Add(ViewKeys.HomeTileRecents, ClassicHomeTiles.Recents, "classic.home.tile.recents");
+        views.Add(ViewKeys.HomeTileReleases, ClassicHomeTiles.Releases, "classic.home.tile.releases");
+        views.Add(ViewKeys.HomeTileDaylist, ClassicHomeTiles.Daylist, "classic.home.tile.daylist");
+        views.Add(ViewKeys.HomeTileSection, ClassicHomeTiles.Section, "classic.home.tile.section");
+        views.Add(ViewKeys.HomeTileOptions, ClassicHomeTileOptions.Template, "classic.home.tile.options");
+        views.Add(ViewKeys.HomeTileVacant, ClassicHomeTiles.Vacant, "classic.home.tile.vacant");
         // T9a: the shared detail frame. The scaffold (notice, content column, rail | grip | content row, the vertical page), the rail and its collapsed
         // strip, the vertical show header, the vertical arm's hero (and its loading band, a style the table reads) and the insights sheet with its two
         // entry points. The mode ladder, the rail cells and prefs, the accent, the tint and tone claims, the table, the drop target and the insights
