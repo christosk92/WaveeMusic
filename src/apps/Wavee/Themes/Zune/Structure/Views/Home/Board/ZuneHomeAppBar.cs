@@ -37,10 +37,13 @@ internal static class ZuneHomeAppBar
     {
         readonly Signal<bool> _open = new(false);
         bool _rendered;
+        NodeHandle _more;
+        InputHooks? _hooks;
 
         public override Element Render()
         {
             var board = UseProps<HomeBoardProps>();
+            _hooks = UseContext(InputHooks.Current);
             var view = board.View;
             var verbs = board.Verbs;
             bool editing = view.Editing.Value;
@@ -83,7 +86,7 @@ internal static class ZuneHomeAppBar
                             [
                                 Controls.Named(new BoxEl
                                 {
-                                    Key = B.BarMoreKey, Width = B.BarMoreW, Height = B.BarMoreH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                                    Key = B.BarMoreKey, OnRealized = h => _more = h, Width = B.BarMoreW, Height = B.BarMoreH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                                     Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = () => _open.Value = !_open.Peek(),
                                     Children = [new TextEl(Icons.More) { Size = B.BarGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextPrimary }],
                                 }, Loc.Get(Strings.Theme.Zune.Home.More)),
@@ -127,7 +130,13 @@ internal static class ZuneHomeAppBar
             };
         }
 
-        void Close() { if (_open.Peek()) _open.Value = false; }
+        /// <summary>Close the menu; focus returns to the ⋯ (its word is gone), so the bar keeps the keys (Escape, Ctrl+Z).</summary>
+        void Close()
+        {
+            if (!_open.Peek()) return;
+            _open.Value = false;
+            if (!_more.IsNull) _hooks?.FocusNode?.Invoke(_more, true);
+        }
 
         void OnKey(KeyEventArgs e, HomeBoardProps board)
         {

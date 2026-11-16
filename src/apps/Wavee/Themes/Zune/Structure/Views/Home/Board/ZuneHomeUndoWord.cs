@@ -42,6 +42,7 @@ internal static class ZuneHomeUndoWord
         WordProps? _p;
         NodeHandle _node;
         int _version = -1;
+        bool _here;
         float _shown = -1f;
         float _initial = -1f;
         TimerHandle _timer;
@@ -69,9 +70,12 @@ internal static class ZuneHomeUndoWord
 
             float target = !here ? 0f : p.Hover.Value || _focused.Value || _fresh.Value ? 1f : B.UndoRest;
             if (_initial < 0f) _initial = target;
-            UseLayoutEffect(() => Fade(target), DepKey.From((int)(target * 100f)));
+            // The word is re-keyed when it arrives at or leaves this title (a new node): its fade starts over from the node's own value.
+            if (here != _here) { _here = here; _shown = -1f; _initial = target; }
+            UseLayoutEffect(() => Fade(target), DepKey.From((int)(target * 100f) * 2 + (here ? 1 : 0)));
 
-            return new BoxEl
+            // A component's root ignores its key: the word is keyed one level down.
+            var word = new BoxEl
             {
                 Key = here ? HomeBoardKeys.Undo : null,
                 Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.End,
@@ -90,6 +94,7 @@ internal static class ZuneHomeUndoWord
                     },
                 ],
             };
+            return new BoxEl { Direction = 0, Shrink = 0f, AlignSelf = FlexAlign.End, Children = [word] };
         }
 
         void Fade(float target)
