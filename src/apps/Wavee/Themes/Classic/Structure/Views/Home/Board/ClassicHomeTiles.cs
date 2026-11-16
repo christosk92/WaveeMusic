@@ -511,6 +511,7 @@ internal static class ClassicHomeTiles
             HomeTileVacancy.Unavailable => Strings.Theme.Classic.Home.Board.Unavailable,
             HomeTileVacancy.Paused => Strings.Theme.Classic.Home.Board.Paused,
             HomeTileVacancy.Offline => Strings.Theme.Classic.Home.Board.Offline,
+            HomeTileVacancy.Failed => Strings.Theme.Classic.Home.Board.Failed,
             _ => Strings.Theme.Classic.Home.Board.Unknown,
         });
         string name = p.Name;
