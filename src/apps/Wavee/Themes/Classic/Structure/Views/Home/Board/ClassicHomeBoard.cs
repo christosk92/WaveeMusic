@@ -124,7 +124,9 @@ internal static class ClassicHomeBoard
                 _lastItems = list;
                 return list;
             });
-            UseLayoutEffect(() =>
+            // The core mount (`HomeBoardMount`) registers the generic seam in its layout effect; Classic's board registers its own after it (an
+            // effect runs after every layout effect), so `home do=edit|surface|search|reset` drive Classic's Edit Home, its find and its question.
+            UseEffect(() =>
             {
                 Live = this;
                 HomeBoardInspect.Register(this);
