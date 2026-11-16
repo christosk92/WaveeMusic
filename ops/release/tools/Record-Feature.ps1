@@ -48,6 +48,9 @@ param(
     [int]$Width = 1600, [int]$Height = 1000,
     [int]$Fps = 0,
     [int]$TailMs = 600,
+    # rgb: the window's BGRA pixels, lossless (libx264rgb qp 0); nv12: converted to 4:2:0 by the encoder (less encode work;
+    # lossless in luma, chroma at half resolution, as every H.264 delivery is anyway; the GPU route, scale_d3d11, fails on Adreno)
+    [ValidateSet('rgb', 'nv12')][string]$Capture = 'rgb',
     [switch]$Audio,
     [switch]$KeepOpen
 )
@@ -145,6 +148,16 @@ $take = if ($cut -ge 0) { $all[($cut + 1)..($all.Count - 1)] } else { $all }
 
 $ff = $null; $aud = $null; $d = $null; $takeError = $null
 try {
+    if ($Audio) {
+        # built first (a file-based app compiles on its first run), started before the setup: it keeps its file on the wall
+        # clock from its own start (startQpc100ns in take.wav.json), and the muxer lines that up with the take's t = 0
+        $tool = Join-Path $PSScriptRoot 'Record-AppAudio.cs'
+        & dotnet build $tool -o (Join-Path $Out 'audio-tool') | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Record-AppAudio.cs did not build' }
+        $apsi = New-Object System.Diagnostics.ProcessStartInfo (Join-Path $Out 'audio-tool\Record-AppAudio.exe'), ("$($v.Pid) `"$(Join-Path $Out 'take.wav')`"")
+        $apsi.UseShellExecute = $false; $apsi.RedirectStandardInput = $true; $apsi.CreateNoWindow = $true
+        $aud = [System.Diagnostics.Process]::Start($apsi)
+    }
     Diag 'cmd=present&on=1' | Out-Null
     Diag "cmd=theme&mode=$Theme" | Out-Null
     Start-Sleep -Milliseconds 1500
@@ -159,19 +172,13 @@ try {
     Start-Sleep -Milliseconds 400
     $mkv = Join-Path $Out 'take.mkv'
     $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-filter_complex',
-        "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $Fps):resize_mode=crop,hwdownload,format=bgra",
-        '-fps_mode', 'passthrough', '-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0', $mkv)
+        ("gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $Fps):resize_mode=crop," + $(if ($Capture -eq 'rgb') { 'hwdownload,format=bgra' } else { 'hwdownload,format=bgra' })),
+        '-fps_mode', 'passthrough') + $(if ($Capture -eq 'rgb') { @('-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0') } else { @('-c:v', 'libx264', '-preset', 'ultrafast', '-qp', '0', '-pix_fmt', 'yuv420p') }) + @($mkv)
     $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($ffArgs | ForEach-Object { if ($_ -match '[\s;,]') { '"' + $_ + '"' } else { $_ } })))
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
     $ff = [System.Diagnostics.Process]::Start($psi)
+    try { $ff.PriorityClass = 'High' } catch { }   # a capture that falls behind loses frames from Windows.Graphics.Capture's small pool
     $ffErr = $ff.StandardError.ReadToEndAsync()
-    if ($Audio) {
-        $tool = Join-Path $PSScriptRoot 'Record-AppAudio.cs'
-        $wav = Join-Path $Out 'take.wav'
-        $apsi = New-Object System.Diagnostics.ProcessStartInfo 'dotnet', ("run `"$tool`" -- $($v.Pid) `"$wav`"")
-        $apsi.UseShellExecute = $false; $apsi.RedirectStandardInput = $true; $apsi.CreateNoWindow = $true
-        $aud = [System.Diagnostics.Process]::Start($apsi)
-    }
     Start-Sleep -Milliseconds 900   # the capture's first frames: a still lead-in
     if ($ff.HasExited) { throw "ffmpeg stopped at once: $($ffErr.Result)" }
     Say "take ($($take.Count) lines)"

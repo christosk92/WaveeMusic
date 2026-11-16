@@ -652,6 +652,7 @@ public static partial class Diagnostics
             summary.Append("result\t").Append(result).Append('\n');
             if (why.Length > 0) summary.Append("why\t").Append(why).Append('\n');
             summary.Append("ms\t").Append(total.ToString("0", Inv)).Append('\n');
+            summary.Append("startQpc100ns\t").Append(((long)(run.Start * (10_000_000.0 / Stopwatch.Frequency))).ToString(Inv)).Append('\n');   // t = 0 on the system clock (the audio recorder's too)
             summary.Append("frames\t").Append(run.FrameCount.ToString(Inv)).Append('\n');
             if (run.FirstStats is { } a && run.LastStats is { } b)
             {

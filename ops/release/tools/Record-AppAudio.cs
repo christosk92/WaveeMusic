@@ -110,7 +110,7 @@ using (var w = new BinaryWriter(wav, System.Text.Encoding.ASCII, leaveOpen: true
     w.Write((short)BlockAlign); w.Write((short)Bits);
     w.Write("data"u8.ToArray()); w.Write((int)dataBytes);
 }
-File.WriteAllText(outPath + ".json", "{ \"startQpc100ns\": " + (startQpc * 10_000_000 / Stopwatch.Frequency) + ", \"seconds\": " + (dataBytes / (double)(Rate * BlockAlign)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " }");
+File.WriteAllText(outPath + ".json", "{ \"startQpc100ns\": " + (long)(startQpc * (10_000_000.0 / Stopwatch.Frequency)) + ", \"seconds\": " + (dataBytes / (double)(Rate * BlockAlign)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " }");
 Console.WriteLine($"wrote {outPath}: {dataBytes / (double)(Rate * BlockAlign):0.00} s");
 return 0;
 

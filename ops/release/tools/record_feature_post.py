@@ -33,18 +33,26 @@ def run(args, **kw):
     return r.stdout
 
 
-def missing(gaps_ms, period_ms):
-    """Frames missing inside continuous motion: a gap of k periods (k >= 2) between two one-period gaps counts k - 1."""
+def missing(gaps_ms, period_ms, windows=None, starts=None):
+    """Frames missing inside motion. A gap of k periods (1.5 < k) counts k - 1 frames when the window was moving around it:
+    always for a short gap (up to 6 periods: an idle UI is never that brief between two moving frames), and for a longer
+    one only inside a known motion window (the driver's glides: the pointer moves on every frame, so the window must present
+    on every vblank). `windows` are (start_ms, end_ms) on the same clock as `starts` (each frame's time, ms)."""
     n = 0
     events = []
-    for i in range(1, len(gaps_ms) - 1):
+    for i in range(1, len(gaps_ms)):
         g = gaps_ms[i]
         if g < 1.5 * period_ms:
             continue
-        if gaps_ms[i - 1] < 1.25 * period_ms and gaps_ms[i + 1] < 1.25 * period_ms:
+        inside = False
+        if windows and starts is not None:
+            t0, t1 = starts[i] - g, starts[i]
+            inside = any(a <= t0 and t1 <= b + period_ms for a, b in windows)
+        if g <= 6 * period_ms or inside:
             k = int(round(g / period_ms)) - 1
-            n += k
-            events.append((i, g, k))
+            if k > 0:
+                n += k
+                events.append((i, round(g, 1), k))
     return n, events
 
 
@@ -64,7 +72,8 @@ def main():
 
     # ── the capture's own timestamps ────────────────────────────────────────────────────────────────────────────────
     raw = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "csv=p=0", mkv])
-    times = [float(x) for x in raw.split() if x.strip() and x.strip() != "N/A"]
+    vals = [x.strip().strip(",") for x in raw.split()]
+    times = [float(x) for x in vals if x and x != "N/A"]
     if len(times) < 2:
         raise SystemExit("the capture holds fewer than 2 frames")
     gaps = [0.0] + [(times[i] - times[i - 1]) * 1000.0 for i in range(1, len(times))]
@@ -72,7 +81,18 @@ def main():
         f.write("frame\tt_s\tgap_ms\tperiods\n")
         for i, t in enumerate(times):
             f.write(f"{i}\t{t:.6f}\t{gaps[i]:.3f}\t{gaps[i] / period:.2f}\n")
-    cap_missing, cap_events = missing(gaps, period)
+    # The driver's glides (steps.tsv), on the take's clock. The capture is lined up on the take's first move: the setup leaves the
+    # pointer still, so the first new frame after the still lead-in is the first glide's first move.
+    glides = []
+    steps_path = os.path.join(out, "drive", "steps.tsv")
+    if os.path.exists(steps_path):
+        for l in open(steps_path, encoding="utf-8").readlines()[1:]:
+            c = l.rstrip("\n").split("\t")
+            if len(c) >= 4 and c[1] == "glide" and float(c[3]) - float(c[2]) > period:
+                glides.append((float(c[2]), float(c[3])))
+    first_move = next((i for i in range(1, len(gaps)) if gaps[i] > 200.0), 1)
+    cap_starts = [(t - times[first_move]) * 1000.0 for t in times]
+    cap_missing, cap_events = missing(gaps, period, glides, cap_starts)
     on_beat = sum(1 for g in gaps[1:] if g < 1.25 * period)
     duration = times[-1] - times[0]
 
@@ -84,8 +104,14 @@ def main():
         if os.path.exists(ft):
             rows = [l.rstrip("\n").split("\t") for l in open(ft, encoding="utf-8").readlines()[1:] if l.strip()]
             app_gaps = [float(r[2]) for r in rows]
+            app_starts = [float(r[1]) for r in rows]
             app_frames = len(app_gaps)
-            app_missing, app_events = missing(app_gaps, period)
+            # UI frames: only the glides need one per vblank (the pointer is UI-placed); a scroll or a transition presents
+            # from the render thread without a UI frame, so the app side is judged inside the glides only.
+            gl = [i for i in range(len(rows)) if any(a <= app_starts[i] - app_gaps[i] and app_starts[i] <= b for a, b in glides)]
+            sel_gaps = [0.0] + [app_gaps[i] for i in gl]
+            app_missing = sum(int(round(g / period)) - 1 for g in sel_gaps[1:] if g >= 1.5 * period)
+            app_events = [(gl[j - 1], round(sel_gaps[j], 1), int(round(sel_gaps[j] / period)) - 1) for j in range(1, len(sel_gaps)) if sel_gaps[j] >= 1.5 * period]
         st = os.path.join(drive, "summary.txt")
         if os.path.exists(st):
             for l in open(st, encoding="utf-8"):
@@ -94,7 +120,18 @@ def main():
 
     # ── the MP4s ────────────────────────────────────────────────────────────────────────────────────────────────────
     full = os.path.join(out, f"take-{a.fps}.mp4")
-    audio_in = ["-i", wav] if has_audio else []
+    audio_in = []
+    if has_audio:
+        # line the audio up: its file starts at its own startQpc; the take's t = 0 (the drive's startQpc100ns) is the
+        # capture's first-move frame. A positive offset delays the audio.
+        offset = 0.0
+        try:
+            a0 = json.load(open(wav + ".json", encoding="utf-8"))["startQpc100ns"] / 1e7
+            d0 = int(summary["startQpc100ns"]) / 1e7
+            offset = (times[first_move] - times[0]) - (d0 - a0)
+        except (OSError, KeyError, ValueError):
+            pass
+        audio_in = ["-itsoffset", f"{offset:.4f}", "-i", wav]
     audio_out = ["-c:a", "aac", "-b:a", "192k", "-shortest"] if has_audio else ["-an"]
     run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", mkv, *audio_in, "-vf", f"fps={a.fps}",
          "-c:v", "libx264", "-profile:v", "high", "-preset", "slow", "-crf", "14", "-pix_fmt", "yuv420p",
@@ -124,9 +161,9 @@ def main():
     n = 12
     step = duration / n
     font = "C\\:/Windows/Fonts/segoeui.ttf"
-    sel = "+".join(f"between(t\\,{times[0] + step * (i + 0.5):.3f}\\,{times[0] + step * (i + 0.5) + period / 1000.0 * 1.5:.3f})" for i in range(n))
+    picks = "+".join(f"eq(n\\,{int((step * (i + 0.5)) * a.fps)})" for i in range(n))
     run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", full, "-vf",
-         f"select='{sel}',scale=640:-2,drawtext=fontfile='{font}':text='%{{pts\\:hms}}':x=10:y=10:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=6,tile=4x3:padding=6:color=black",
+         f"select='{picks}',scale=640:-2,drawtext=fontfile='{font}':text='%{{pts\\:hms}}':x=10:y=10:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=6,tile=4x3:padding=6:color=black",
          "-frames:v", "1", "-update", "1", sheet])
 
     # ── the report ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -135,10 +172,10 @@ def main():
         f"take            {duration:.2f} s, {len(times)} captured frames at up to {a.fps} fps (one per window update)",
         f"window          {a.width}x{a.height} DIP at x{a.scale} = {int(a.width * a.scale)}x{int(a.height * a.scale)} px",
         f"on the beat     {on_beat} of {len(times) - 1} gaps are one display period ({period:.2f} ms)",
-        f"capture missing {cap_missing} frame(s) inside continuous motion" + (f": at frames {', '.join(f'#{i} ({g:.1f} ms)' for i, g, _ in cap_events[:20])}" if cap_events else ""),
+        f"capture missing {cap_missing} frame(s) inside motion (aligned on the take's first move at capture frame #{first_move})" + (f": at frames {', '.join(f'#{i} ({g:.1f} ms)' for i, g, _ in cap_events[:20])}" if cap_events else ""),
     ]
     if app_missing is not None:
-        lines.append(f"app missing     {app_missing} frame(s) inside continuous motion over {app_frames} rendered frames"
+        lines.append(f"app missing     {app_missing} UI frame(s) inside the pointer glides ({len(glides)} glides, {app_frames} UI frames in all)"
                      + (f": at app frames {', '.join(f'#{i} ({g:.1f} ms)' for i, g, _ in app_events[:20])}" if app_events else ""))
     for k in ("result", "why", "presentsDisplayed", "presentsDropped", "vblanksRepeated", "renderMissedMotionTicks"):
         if k in summary:
