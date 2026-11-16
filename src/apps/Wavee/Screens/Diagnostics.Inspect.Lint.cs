@@ -67,6 +67,9 @@ public static partial class Diagnostics
                 OverlayNarrow = "overlay.narrow", TextRuled = "text.ruled", EdgeGutter = "edge.gutter", EdgeHuge = "edge.huge",
                 TypeVoice = "type.voice", StateRest = "state.rest", PlayingStatus = "playing.status", ControlRequired = "control.required",
                 EdgeWindow = "edge.window", SpaceHuge = "space.huge", PictureText = "picture.text";
+
+            // the pinned Home (Diagnostics.Inspect.Lint.Pack.cs): a grid with an empty cell gates; edit tools over content are todo
+            public const string PackHole = "pack.hole", PackTools = "pack.tools";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -124,6 +127,8 @@ public static partial class Diagnostics
             new(Rules.EdgeWindow, "", Level.Todo, "content laid out past the window's right edge, outside any rail"),
             new(Rules.SpaceHuge, "", Level.Todo, "a band of the page at Huge or Huge4K with nothing in it, as wide as a column"),
             new(Rules.PictureText, "", Level.Todo, "text the scene shows that never reaches the frame (its box paints one colour), less edge fades and sticky plates"),
+            new(Rules.PackHole, "", Level.Gate, "a pack grid group with an empty cell, an overlap, a ragged band or a tile below its class (PackLayout.Verify over the whole board), or a settled tile off its packed rect"),
+            new(Rules.PackTools, "", Level.Todo, "a tile's edit tools (home:tile:<id>:tools) drawn over text or a control of its own content"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>
@@ -567,6 +572,9 @@ public static partial class Diagnostics
 
             /// <summary>The rendered frame the grounds under the text are read from; null when nothing was rendered.</summary>
             public Pixels? Backdrop { get; init; }
+
+            /// <summary>The pack grids the page mounts (the pinned Home's board), as <c>pack.hole</c> reads them; empty in an old snapshot.</summary>
+            public IReadOnlyList<PackShot> Packs { get; init; } = [];
 
             /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
             public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
@@ -1155,6 +1163,8 @@ public static partial class Diagnostics
                     Rules.EdgeWindow => PastWindowRule(s, found),
                     Rules.SpaceHuge => HugeSpaceRule(s, found),
                     Rules.PictureText => UnpaintedTextRule(s, found),
+                    Rules.PackHole => PackHoleRule(s, found),
+                    Rules.PackTools => PackToolsRule(s, found),
                     _ => 0,
                 };
                 checks[spec.Id] = looked;
@@ -1402,6 +1412,8 @@ public static partial class Diagnostics
             Rules.TextPlaceholder => "a missing string or argument: add the loc key or pass the argument; never blank the text",
             Rules.PictureBlank => "look at the render: nothing painted (a surface with no picture, a page that never drew); find what should draw there, never call a blank frame done",
             Rules.PictureUnpainted => "look at the render: the region's nodes are laid out but never reach the screen (a layer or clip covers them, or a pass stops painting); fix the paint, never move the text",
+            Rules.PackHole => "a bento has no empty cell: fix the packer input (a span the theme's rules record gives, an Extent) or the tile's box, never hide the tile",
+            Rules.PackTools => "move the tools into the tile's reserved corner or tool strip; edit tools never sit on content",
             Rules.OverlayOpen => "close the overlay before judging the state (key esc), or stage the state a way that opens none; the page under it is not what the frame shows",
             Rules.KeyHygiene => "key the node by its entity or slot id, without tier, form, count or run-id parts (keys must be stable selectors)",
             Rules.TextDuplicate => "say it once: keep the heading and drop the repeat inside the section (or give the repeat its own words); the section stays",

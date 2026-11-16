@@ -33,7 +33,7 @@ namespace Wavee;
 public static partial class Diagnostics
 {
     /// <summary>Scene capture, option parsing and the JSON report of the lint. UI thread.</summary>
-    public static class InspectLintScene
+    public static partial class InspectLintScene
     {
         // ── the arguments ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -766,6 +766,7 @@ public static partial class Diagnostics
             }
             return new InspectLint.Snapshot(width, height, tiers.Window, nodes)
             {
+                Packs = CapturePacks(),   // Diagnostics.Inspect.Lint.Pack.cs: the pinned Home's grids
                 Edges = edges,
                 Policies = policies,
                 TopBleeds = bleeds,

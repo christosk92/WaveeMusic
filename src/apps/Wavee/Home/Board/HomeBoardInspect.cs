@@ -76,4 +76,21 @@ public static class HomeBoardInspect
     {
         if (ReferenceEquals(Current, board)) Current = null;
     }
+
+    static readonly List<(string Key, FluentGpu.Controls.PackGridController Grid)> s_packs = new();
+
+    /// <summary>The pack grids mounted now, by debug key: the lint's pack.hole reads them. The board host registers its grid
+    /// ("home:board") at mount and unregisters it at unmount.</summary>
+    public static IReadOnlyList<(string Key, FluentGpu.Controls.PackGridController Grid)> Packs => s_packs;
+
+    public static void RegisterPack(string key, FluentGpu.Controls.PackGridController grid)
+    {
+        UnregisterPack(grid);
+        s_packs.Add((key, grid));
+    }
+
+    public static void UnregisterPack(FluentGpu.Controls.PackGridController grid)
+    {
+        for (int i = s_packs.Count - 1; i >= 0; i--) if (ReferenceEquals(s_packs[i].Grid, grid)) s_packs.RemoveAt(i);
+    }
 }
