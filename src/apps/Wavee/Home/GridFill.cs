@@ -14,8 +14,8 @@
 //      slide sideways in one PagedShelf of page-wide cells (snapped to a page; swipe, wheel and keys as every shelf), the section keeping
 //      the tallest page's height so paging never moves what is under it. One page: no pager. The theme draws the pager (owner 2026-11-16).
 //
-// A grid whose column count follows the width sits in a form-gated responsive box keyed by the body (the count changes only at a fit
-// edge), so a width inside one count rebuilds nothing; each card keeps its key and re-flows with the theme's motion.
+// The cards stand in ONE wrapping row whatever the column count (a card keeps its parent and its node: a column change re-flows the
+// same cards with the theme's motion, it never rebuilds them), each card's width the width's share, in a responsive box keyed by the body.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -49,48 +49,46 @@ public static class GridFill
     /// <summary>The width a last-row card takes when <paramref name="rest"/> cards share the row.</summary>
     public static float LastWidth(float width, int rest, float gap) => rest <= 1 ? width : (width - (rest - 1) * gap) / rest;
 
-    /// <summary>A form-gated responsive grid of <paramref name="count"/> cards: <paramref name="fit"/> maps the measured width to the
-    /// columns that fit it; <paramref name="build"/> builds the grid at the columns <see cref="Columns"/> picks.</summary>
-    public static Element Responsive(string key, int count, Func<float, int> fit, Func<int, Element> build, float fallback)
-        => FluentGpu.Controls.Responsive.Of(key, w => Columns(count, fit(w)), build, fallback: fallback);
+    /// <summary>A grid that lays its cards out at the width it measures: <paramref name="fit"/> maps the width to the columns that fit it,
+    /// <paramref name="build"/> builds the cards at (fit, width) with <see cref="Build"/>. Rebuilt for every width it is laid out at (the
+    /// cards' widths are the width's), every card keeping its node: a resize re-flows the same cards.</summary>
+    public static Element Of(string key, Func<float, int> fit, Func<int, float, Element> build, float fallback)
+        => FluentGpu.Controls.Responsive.Of(key, w => build(fit(w), w), fallback: fallback);
 
-    /// <summary>The cards at <paramref name="cols"/> columns: one grid of equal star tracks where every row is full; otherwise the full rows
-    /// over a last row whose cards share its width (<paramref name="lone"/>, when given, draws a lone last card in its wide form).
-    /// <paramref name="rowH"/> is the rows' fixed height (NaN: each row its tallest card).</summary>
-    public static Element Build(Element[] cells, int cols, float colGap, float rowGap, float rowH = float.NaN, Func<Element>? lone = null)
+    /// <summary>A grid of <paramref name="count"/> cards at the columns <see cref="Columns"/> picks from the fit.</summary>
+    public static Element Responsive(string key, int count, Func<float, int> fit, Func<int, float, Element> build, float fallback)
+        => Of(key, fit, (f, w) => build(Columns(count, f), w), fallback);
+
+    /// <summary>The cards at <paramref name="cols"/> columns across <paramref name="width"/>, in ONE wrapping row (so a card keeps its parent,
+    /// and its node, whatever the column count): the full rows' cards a column wide, the last row's cards sharing its width (grow-only;
+    /// <paramref name="lone"/>, when given, draws a lone last card in its wide form). <paramref name="rowH"/> is the rows' fixed height
+    /// (NaN: each row its tallest card); <paramref name="rowGap"/> the step between rows, <paramref name="colGap"/> between columns.</summary>
+    public static Element Build(Element[] cells, int cols, float width, float colGap, float rowGap, float rowH = float.NaN, Func<Element>? lone = null)
     {
         cols = Math.Max(1, cols);
-        int rest = Remainder(cells.Length, cols);
-        if (rest == 0) return Grid(cells, cols, colGap, rowGap, rowH);
-        int full = cells.Length - rest;
-        var last = new Element[rest];
-        for (int i = 0; i < rest; i++)
+        int n = cells.Length, rest = Remainder(n, cols), full = n - rest;
+        float cell = CellWidth(width, cols, colGap), last = LastWidth(width, rest, colGap);
+        var kids = new Element[n];
+        for (int i = 0; i < n; i++)
         {
-            var cell = rest == 1 && lone is not null ? lone() : cells[full + i];
-            last[i] = new BoxEl
+            bool inLast = i >= full;
+            var c = inLast && rest == 1 && cols >= 2 && lone is not null ? lone() : cells[i];
+            kids[i] = new BoxEl
             {
-                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [cell],
+                Key = c.Key is { Length: > 0 } k ? "fill:" + k : null,
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = rowH,
+                // The cell's width less a hair, then grown: rounding never pushes a full row's last card onto the next line.
+                Basis = MathF.Max(0f, (inLast ? last : cell) - Slack), Grow = 1f, Shrink = 1f,
+                // The wrap's gap is the column gap; a row after the first steps by the row gap instead.
+                Margin = i >= cols ? new Edges4(0f, rowGap - colGap, 0f, 0f) : default,
+                Children = [c],
             };
         }
-        var row = new BoxEl
-        {
-            Direction = 0, Gap = colGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = rowH, Children = last,
-        };
-        if (full == 0) return row;
-        var head = new Element[full];
-        Array.Copy(cells, head, full);
-        return new BoxEl
-        {
-            Direction = 1, Gap = rowGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [Grid(head, cols, colGap, rowGap, rowH), row],
-        };
+        return new BoxEl { Direction = 0, Wrap = true, Gap = colGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids };
     }
 
-    static GridEl Grid(Element[] cells, int cols, float colGap, float rowGap, float rowH) => new()
-    {
-        Columns = RhythmCards.Stars(cols), ColGap = colGap, RowGap = rowGap, RowHeight = rowH, Children = cells,
-    };
+    /// <summary>What a card's basis gives back to rounding (it grows into it).</summary>
+    const float Slack = 0.5f;
 
     // ── pages of tall cards ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -153,7 +151,7 @@ public static class GridFill
         Func<T, Element> card, Func<T, Element>? wide, ShelfController? controller, ShelfPager pager, string prevGlyph, string nextGlyph,
         TemplateParts? parts = null)
     {
-        Element PageAt(Page pg)
+        Element PageAt(Page pg, float width)
         {
             var cells = new Element[pg.Count];
             for (int i = 0; i < cells.Length; i++) cells[i] = card(items[pg.Start + i]);
@@ -161,16 +159,16 @@ public static class GridFill
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Build(cells, pg.Cols, colGap, rowGap, lone: wide is null ? null : () => wide(last))],
+                Children = [Build(cells, pg.Cols, width, colGap, rowGap, lone: wide is null ? null : () => wide(last))],
             };
         }
         return PagedShelf.Create<Page>(pages,
-            (pg, _, _) => PageAt(pg),
+            (pg, _, w) => PageAt(pg, w),
             cardHeight: float.IsNaN(height) ? null : _ => height, measured: true,
             pager: pages.Length > 1 ? pager : ShelfPager.None,
             controller: controller,
             minCardW: PageMinW, maxCardW: PageMaxW, maxColumns: 1, gap: colGap, edgeFade: 0f, snap: ShelfSnap.Page,
-            prevGlyph: prevGlyph, nextGlyph: nextGlyph, parts: parts, lift: ShelfLift.None, cardWidthAgnostic: true,
+            prevGlyph: prevGlyph, nextGlyph: nextGlyph, parts: parts, lift: ShelfLift.None,
             keyOf: static (pg, i) => "grid-page:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture))
             with { Key = "grid-pages:" + key };
     }

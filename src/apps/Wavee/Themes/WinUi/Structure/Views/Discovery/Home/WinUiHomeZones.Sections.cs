@@ -145,7 +145,7 @@ internal static partial class WinUiHomeZones
         }
         var band = layout.Plates;
         return GridFill.Responsive("mood-plates:" + zone.Key, n, w => band.Columns(w, WinUiHomeRules.CardGap),
-            cols => GridFill.Build(plates, cols, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap, WinUiHomeRules.MoodPlateH),
+            (cols, w) => GridFill.Build(plates, cols, w, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap, WinUiHomeRules.MoodPlateH),
             FirstWidth(band, WinUiHomeRules.CardGap));
     }
 

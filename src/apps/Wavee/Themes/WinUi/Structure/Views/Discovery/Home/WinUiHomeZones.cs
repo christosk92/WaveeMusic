@@ -578,7 +578,7 @@ internal static partial class WinUiHomeZones
         }
         var band = layout.Releases;
         return GridFill.Responsive("releases:" + zone.Key, n, w => band.Columns(w, WinUiHomeRules.ReleaseColGap),
-            cols => GridFill.Build(rows, cols, WinUiHomeRules.ReleaseColGap, WinUiHomeRules.ReleaseRowGap, WinUiHomeRules.ReleaseRowH),
+            (cols, w) => GridFill.Build(rows, cols, w, WinUiHomeRules.ReleaseColGap, WinUiHomeRules.ReleaseRowGap, WinUiHomeRules.ReleaseRowH),
             FirstWidth(band, WinUiHomeRules.ReleaseColGap));
     }
 
@@ -628,7 +628,7 @@ internal static partial class WinUiHomeZones
             Children =
             [
                 GridFill.Responsive("browse-tiles:" + zone.Key, tiles.Length, w => layout.Tiles.Columns(w, WinUiHomeRules.CardGap),
-                    cols => GridFill.Build(tiles, cols, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap), FirstWidth(layout.Tiles, WinUiHomeRules.CardGap)),
+                    (cols, w) => GridFill.Build(tiles, cols, w, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap), FirstWidth(layout.Tiles, WinUiHomeRules.CardGap)),
                 ChartsBlock(),
             ],
         };
@@ -670,7 +670,7 @@ internal static partial class WinUiHomeZones
         for (int i = 0; i < rows.Length; i++) rows[i] = EpisodeRow(cards[i], clock);
         // Rows auto-height: two-line titles and a progress rung.
         return GridFill.Responsive("episodes:" + zone.Key, rows.Length, w => band.Columns(w, gap),
-            cols => GridFill.Build(rows, cols, gap, Spacing.XS), FirstWidth(band, gap));
+            (cols, w) => GridFill.Build(rows, cols, w, gap, Spacing.XS), FirstWidth(band, gap));
     }
 
     /// <summary>One Home episode row: the card's own facts (its section facts win over the columns — a resume point or an explicit mark the feed stated) through

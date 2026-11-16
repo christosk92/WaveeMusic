@@ -220,7 +220,7 @@ internal static partial class ZuneHomeZones
         }
         var band = new ZuneCappedBand(H.TileMinCol, lay.TileCols, 0);
         Element grid = GridFill.Responsive("zune-home-tiles:" + zone.Key, tiles.Length, w => band.Columns(w, H.TileGap),
-            cols => GridFill.Build(tiles, cols, H.TileGap, H.TileGap), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
+            (cols, w) => GridFill.Build(tiles, cols, w, H.TileGap, H.TileGap), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
         bool beside = lay.ChartsBeside;
         return new BoxEl
         {

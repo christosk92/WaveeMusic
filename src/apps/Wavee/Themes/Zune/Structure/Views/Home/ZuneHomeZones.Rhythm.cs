@@ -57,7 +57,7 @@ internal static partial class ZuneHomeZones
         Element grid = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
-            Children = [GridFill.Build(cells, GridFill.Columns(n, lay.LeadCols), H.ShelfGap, H.ShelfGap)],
+            Children = [GridFill.Of("lead-cells:" + zone.Key, _ => lay.LeadCols, (fit, w) => GridFill.Build(cells, GridFill.Columns(n, fit), w, H.ShelfGap, H.ShelfGap), 0f)],
         };
         var body = new BoxEl
         {
@@ -122,13 +122,13 @@ internal static partial class ZuneHomeZones
         var cards = RhythmCards.Usable(zone.Items);
         if (cards.Count == 0) return K.Section(Heading(zone, lay), new BoxEl());
         float first = band.MinCol * band.MaxCols + gap * (band.MaxCols - 1);
-        Element grid = Responsive.Of("zune-rhythm:" + zone.Key, w => band.Columns(w, gap), c =>
+        Element grid = GridFill.Of("zune-rhythm:" + zone.Key, w => band.Columns(w, gap), (c, width) =>
         {
             int n = RhythmCards.Shown(c, band.Rows, cards.Count);
             var cells = new Element[n];
             for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
-            return GridFill.Build(cells, GridFill.Columns(n, c), gap, gap, rowH);
-        }, fallback: first);
+            return GridFill.Build(cells, GridFill.Columns(n, c), width, gap, gap, rowH);
+        }, first);
         return K.Section(Heading(zone, lay), grid);
     }
 

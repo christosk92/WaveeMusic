@@ -86,7 +86,7 @@ internal static partial class ZuneHomeZones
         }
         var band = new ZuneCappedBand(H.TileMinCol, Math.Min(lay.TileCols, H.MoodPlatesMax / 2), 0);
         Element grid = GridFill.Responsive("zune-mood-plates:" + zone.Key, n, w => band.Columns(w, H.TileGap),
-            cols => GridFill.Build(plates, cols, H.TileGap, H.TileGap, H.MoodPlateH), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
+            (cols, w) => GridFill.Build(plates, cols, w, H.TileGap, H.TileGap, H.MoodPlateH), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
         return K.Section(Heading(zone, lay), grid);
     }
 

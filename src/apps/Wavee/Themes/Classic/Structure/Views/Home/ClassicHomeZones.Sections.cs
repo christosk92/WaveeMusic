@@ -102,7 +102,7 @@ internal static partial class ClassicHomeZones
         }
         var band = layout.Tiles with { MaxCols = Math.Min(layout.Tiles.MaxCols, ClassicHomeRules.MoodPlatesMax / 2) };
         return GridFill.Responsive("mood-plates:" + zone.Key, n, w => band.Columns(w, Spacing.M),
-            cols => GridFill.Build(plates, cols, Spacing.M, Spacing.M, ClassicHomeRules.MoodPlateH), FirstWidth(band, Spacing.M));
+            (cols, w) => GridFill.Build(plates, cols, w, Spacing.M, Spacing.M, ClassicHomeRules.MoodPlateH), FirstWidth(band, Spacing.M));
     }
 
     /// <summary>One plate: the mix's colour graded toward the card fill (the hero's way), the name 20 semibold and its line in the on-media inks

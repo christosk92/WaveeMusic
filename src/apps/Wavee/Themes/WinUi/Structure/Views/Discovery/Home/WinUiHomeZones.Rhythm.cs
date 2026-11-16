@@ -65,7 +65,7 @@ internal static partial class WinUiHomeZones
         Element grid = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
-            Children = [GridFill.Build(cells, GridFill.Columns(n, band.Cols), WinUiHomeRules.CardGap, WinUiHomeRules.CardGap)],
+            Children = [GridFill.Of("lead-cells:" + zone.Key, _ => band.Cols, (fit, w) => GridFill.Build(cells, GridFill.Columns(n, fit), w, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap), 0f)],
         };
         return new BoxEl
         {
@@ -152,13 +152,13 @@ internal static partial class WinUiHomeZones
         if (cards.Count == 0) return new BoxEl();
         var cols = band.Columns;
         float first = MathF.Max(cols.MinCol, 1f) * cols.MaxCols + gap * (cols.MaxCols - 1);
-        return Responsive.Of("rhythm:" + zone.Key, w => cols.Columns(w, gap), c =>
+        return GridFill.Of("rhythm:" + zone.Key, w => cols.Columns(w, gap), (c, width) =>
         {
             int n = RhythmCards.Shown(c, band.Rows, cards.Count);
             var cells = new Element[n];
             for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
-            return GridFill.Build(cells, GridFill.Columns(n, c), gap, gap, rowH);
-        }, fallback: first);
+            return GridFill.Build(cells, GridFill.Columns(n, c), width, gap, gap, rowH);
+        }, first);
     }
 
     static Element CompactGrid(Zone zone, IOverlayService? overlay, WinUiHomeLayout layout)

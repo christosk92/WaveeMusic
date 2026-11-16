@@ -500,7 +500,7 @@ internal static partial class ClassicHomeZones
             [
                 ReleaseHeader(zone, layout),
                 GridFill.Responsive("releases:" + zone.Key, n, w => layout.Releases.Columns(w, Spacing.M),
-                    cols => GridFill.Build(rows, cols, Spacing.M, Spacing.XS, ClassicHomeRules.RowH), FirstWidth(layout.Releases, Spacing.M)),
+                    (cols, w) => GridFill.Build(rows, cols, w, Spacing.M, Spacing.XS, ClassicHomeRules.RowH), FirstWidth(layout.Releases, Spacing.M)),
             ],
         };
     }
@@ -550,7 +550,7 @@ internal static partial class ClassicHomeZones
             Children =
             [
                 GridFill.Responsive("browse-tiles:" + zone.Key, tiles.Length, w => layout.Tiles.Columns(w, Spacing.M),
-                    cols => GridFill.Build(tiles, cols, Spacing.M, Spacing.M), FirstWidth(layout.Tiles, Spacing.M)),
+                    (cols, w) => GridFill.Build(tiles, cols, w, Spacing.M, Spacing.M), FirstWidth(layout.Tiles, Spacing.M)),
                 ChartsBlock(layout.HeaderSubtitles),
             ],
         };
@@ -593,7 +593,7 @@ internal static partial class ClassicHomeZones
         for (int i = 0; i < rows.Length; i++) rows[i] = EpisodeRow(cards[i], clock);
         // Rows auto-height: two-line titles and a progress rung.
         return GridFill.Responsive("episodes:" + zone.Key, rows.Length, w => band.Columns(w, Spacing.M),
-            cols => GridFill.Build(rows, cols, Spacing.M, Spacing.XS), FirstWidth(band, Spacing.M));
+            (cols, w) => GridFill.Build(rows, cols, w, Spacing.M, Spacing.XS), FirstWidth(band, Spacing.M));
     }
 
     /// <summary>One Home episode row: the card's own facts (its section facts win over the columns — a resume point or an
