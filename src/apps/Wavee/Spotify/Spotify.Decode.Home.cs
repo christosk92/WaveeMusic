@@ -184,7 +184,7 @@ public static partial class Spotify
             if (map.Length == 0) return;
             s.ClearCredit();
 
-            // The map is small (≤ 50) and reused for every returned card: its uris are resolved to comparable bytes
+            // The map is small (one link per baseline section, ~100 at most) and reused for every returned card: its uris are resolved to comparable bytes
             // ONCE, not once per answer entry.
             var cardUtf8 = new byte[map.Length][];
             var sectionIds = new StagedId[map.Length];
@@ -421,10 +421,16 @@ public static partial class Spotify
                     if (r.ValueTextEquals("uri"u8)) { r.Read(); if (row.Id.IsEmpty) row.Id = JsonId(ref r, s); }
                     else if (r.ValueTextEquals("data"u8))
                     {
+                        // The pinned Home's identity and chooser read the band's own structure (design 2.1): the wire's
+                        // typename as text (an unknown one stays visible), the title TEMPLATE beside the filled title,
+                        // the header entity and the icon name.
                         for (int d = Fields(ref r); Next(ref r, d);)
                         {
-                            if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Label(ref r, s); }
+                            if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Label(ref r, s, out row.TitleBase); }
                             else if (r.ValueTextEquals("subtitle"u8)) { r.Read(); row.Subtitle = Label(ref r, s); }
+                            else if (r.ValueTextEquals("__typename"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String) row.TypeName = s.AddJson(ref r); }
+                            else if (r.ValueTextEquals("iconName"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String) row.Icon = s.AddJson(ref r); }
+                            else if (r.ValueTextEquals("headerEntity"u8)) HeaderEntity(ref r, s, ref row);
                             else SkipValue(ref r);
                         }
                     }
@@ -463,6 +469,45 @@ public static partial class Spotify
                 }
                 s.Edges.Close(Relation.SectionCards, in id, cards);
                 return id;
+            }
+
+            /// <summary><c>headerEntity: { __typename, _uri, data: { profile.name | name, visuals.avatarImage | coverArt |
+            /// image, … } }</c> — an artist, a show or book, a genre (the reader on the PROPERTY NAME). Its uri, name, image
+            /// and dark colour, as the section's own columns (design 2.1); an <c>UnknownType</c> wrapper or a null answers
+            /// nothing.</summary>
+            static void HeaderEntity(ref Utf8JsonReader r, Staging s, ref StagedSection row)
+            {
+                TextRef uri = default, name = default, profile = default, image = default;
+                uint accent = 0;
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("_uri"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String && uri.IsEmpty) uri = s.AddJson(ref r); }
+                    else if (!r.ValueTextEquals("data"u8)) SkipValue(ref r);
+                    else
+                    {
+                        for (int e = Fields(ref r); Next(ref r, e);)
+                        {
+                            if (r.ValueTextEquals("uri"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String && uri.IsEmpty) uri = s.AddJson(ref r); }
+                            else if (r.ValueTextEquals("name"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String && name.IsEmpty) name = s.AddJson(ref r); }
+                            else if (r.ValueTextEquals("profile"u8)) profile = OneText(ref r, s, "name"u8);
+                            else if (r.ValueTextEquals("coverArt"u8) || r.ValueTextEquals("image"u8)) Picture(ref r, s, ref image, ref accent);
+                            else if (r.ValueTextEquals("visuals"u8))
+                            {
+                                for (int v = Fields(ref r); Next(ref r, v);)
+                                {
+                                    if (r.ValueTextEquals("avatarImage"u8)) Picture(ref r, s, ref image, ref accent);
+                                    else SkipValue(ref r);
+                                }
+                            }
+                            else SkipValue(ref r);
+                        }
+                    }
+                }
+                if (uri.IsEmpty) return;
+                row.HeaderUri = uri;
+                row.HeaderName = profile.IsEmpty ? name : profile;
+                row.HeaderImage = image;
+                row.HeaderAccent = accent;
             }
 
             /// <summary><c>data.__typename</c> of the band the (copied) reader is on → the <see cref="SectionKind"/>.</summary>
@@ -510,13 +555,21 @@ public static partial class Spotify
             static void Item(ref Utf8JsonReader r, Staging s, ref StagedSection row, bool recents, ref bool listSeen, ref int listTotal)
             {
                 int outcome = Unsupported;
-                bool list = false;
+                bool list = false, data = false;
+                TextRef contentUri = default;
                 for (int depth = r.CurrentDepth; Next(ref r, depth);)
                 {
                     if (!r.ValueTextEquals("content"u8)) { SkipValue(ref r); continue; }
                     for (int c = Fields(ref r); Next(ref r, c);)
                     {
+                        if (r.ValueTextEquals("uri"u8))
+                        {
+                            r.Read();
+                            if (r.TokenType == JsonTokenType.String && contentUri.IsEmpty) contentUri = s.AddJson(ref r);
+                            continue;
+                        }
                         if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
+                        data = true;
                         if (recents && !listSeen)
                         {
                             r.Read();
@@ -529,10 +582,26 @@ public static partial class Spotify
                     }
                 }
                 if (list) return;                         // the wrapper is not an item; its members were counted
+                // The shortcuts band's Liked Songs: an `UnknownType` wrapper with no data around the account's collection
+                // uri (`spotify:user:@:collection`). The app draws Liked from its own row and treatment, so the card is
+                // the canonical Liked uri and nothing is staged over that row (pinned-home design 2.1, home-gap P3).
+                if (!data && !contentUri.IsEmpty && IsLikedUri(s.Utf8(contentUri))) outcome = LikedShortcut(s, ref row);
                 row.Raw++;
                 if (outcome == Card) row.Cards++;
                 else if (outcome == Duplicate) row.Duplicates++;
                 else row.Unsupported++;
+            }
+
+            /// <summary>The Liked Songs card of a shortcuts band: the edge to the canonical collection row and a bare fact.</summary>
+            static int LikedShortcut(Staging s, ref StagedSection row)
+            {
+                var liked = new StagedId(s.AddText(LikedUri));
+                if (Holds(s, in row, in liked)) return Duplicate;
+                ref var f = ref s.CardFacts.Add();
+                f.Target = liked;
+                f.SeedStart = -1;
+                s.Edges.Push().Target = liked;
+                return Card;
             }
 
             /// <summary>A card's scratch: B1's <see cref="Node"/> for the entity row, plus what only a home card carries.</summary>
@@ -578,7 +647,11 @@ public static partial class Spotify
                     if (c.Type == TAlbum && !c.Node.Uri.IsEmpty) CloseArtists(s, in c.Node, mark);
                     else s.Edges.Pop(mark);
                 }
-                if (c.Type == 0 || c.Node.Uri.IsEmpty) return Unsupported;
+                if (c.Node.Uri.IsEmpty) return Unsupported;
+                // An item of a typename this build does not know is a generic card when it has a uri of a kind the app
+                // has a table for and a name or an image; else it is counted Unsupported (design 2.1, spec 3.1).
+                if (c.Type == 0) c.Type = GenericType(s, in c);
+                if (c.Type == 0) return Unsupported;
 
                 var n = c.Node;
                 bool liked = false;
@@ -839,6 +912,24 @@ public static partial class Spotify
                     else SkipValue(ref r);
                 }
                 return paywalled;
+            }
+
+            /// <summary>The card type an unknown typename's item is drawn as: its uri's kind, when it is one a card can be
+            /// and the item carries a name or an image. 0 otherwise.</summary>
+            static byte GenericType(Staging s, in CardNode c)
+            {
+                bool face = !c.Node.Name.IsEmpty || !c.ProfileName.IsEmpty
+                    || !c.ImgImages.IsEmpty || !c.ImgCover.IsEmpty || !c.ImgAvatar.IsEmpty || !c.ImgVisual.IsEmpty;
+                if (!face) return 0;
+                return c.Node.Uri.Kind(s) switch
+                {
+                    EntityKind.Album => TAlbum,
+                    EntityKind.Playlist => TPlaylist,
+                    EntityKind.Artist => TArtist,
+                    EntityKind.Episode => TEpisode,
+                    EntityKind.Show => TPodcast,
+                    _ => 0,
+                };
             }
 
             static byte TypeOf(ref Utf8JsonReader r)
