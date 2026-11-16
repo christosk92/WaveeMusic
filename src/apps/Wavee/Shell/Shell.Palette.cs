@@ -351,7 +351,8 @@ public static partial class Shell
             case PaletteKind.Registry:
                 if (e.RegistryKey is not { Length: > 0 } key) return;
                 var binding = new ActionBinding(Actions.Key.PublisherOf(key), key, e.RegistryTarget);
-                Actions.Registry.Current?.Execute(Actions.Services, in binding);
+                if (Actions.Registry.Current?.Execute(Actions.Services, in binding) is { } refused && refused != ActionUnavailable.None)
+                    Log.Info("palette", "palette.action.refused key=" + key + " reason=" + refused);
                 break;
         }
     }

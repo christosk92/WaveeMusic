@@ -14,6 +14,7 @@
 
 using System.Collections.Immutable;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
 using Wavee.HomeUi;
 
 namespace Wavee;
@@ -54,10 +55,29 @@ public static class HomeProjection
         return h.IsValid && h.Knows(HomeFields.Sections) ? SectionReader.Read(h) : [];
     }
 
+    /// <summary>How many placeholder sections the feed slot holds while its answer is still coming (a failed or offline answer is one).</summary>
+    public const int FeedPlaceholders = 4;
+
+    /// <summary>The inspector's override of the feed's state (`state kind=loading|error|offline` on the Home route); null: the tables decide.</summary>
+    public static readonly Signal<HomeFeedState?> FeedOverride = new(null);
+
+    /// <summary>The feed's state for the All answer <paramref name="h"/> (a subscribing read of the override and the session phase): on hand,
+    /// still coming, failed, or offline. The board host passes it to <see cref="Project"/>.</summary>
+    public static HomeFeedState FeedStateOf(Home h)
+    {
+        if (FeedOverride.Value is { } forced) return forced;
+        if (h.IsValid && h.Knows(HomeFields.Sections)) return HomeFeedState.Ready;
+        var phase = Spotify.Status.Value;
+        if (!h.IsValid || !h.LiveAttemptConcluded) return phase is >= Spotify.SessionPhase.Offline and <= Spotify.SessionPhase.Minting ? HomeFeedState.Offline : HomeFeedState.Loading;
+        return phase == Spotify.SessionPhase.Online ? HomeFeedState.Error : HomeFeedState.Offline;
+    }
+
     public static BoardModel Project(HomeDoc doc, IReadOnlyList<SectionInput> answer,
         IReadOnlyList<SectionInput>? followingReleases, ChartTilesModel? charts,
-        HomeSourceRegistry sources, ZoneTitles? titles, long nowMs)
+        HomeSourceRegistry sources, ZoneTitles? titles, long nowMs, HomeFeedState feedState = HomeFeedState.Ready)
     {
+        // An answer that is not on hand (or that the inspector says failed) draws nothing of it: the feed slot holds placeholders.
+        if (feedState != HomeFeedState.Ready) { answer = []; followingReleases = null; }
         // The feed: one entry per section the chooser gives a drawable template, in Spotify's order (design 2.3, 2.4). The
         // shortcuts feed the fill, the recently played section the recents widget, the daylist the daylist widget: no room.
         var feed = new List<FeedCandidate>();
@@ -113,6 +133,7 @@ public static class HomeProjection
         foreach (var f in feed) if (f.Input is { } input) t_inputs.TryAdd(f.Ref.Key, input);
 
         var entries = ImmutableArray.CreateBuilder<BoardEntry>();
+        int fillCursor = 0;   // the shortcuts are dealt in order across every Fill item: a fill split around a pin continues where the first part stopped
         foreach (var g in doc.Groups)
         {
             string title = g.Title ?? (g.TitleKey is { Length: > 0 } tk ? Loc.Get(tk) : "");
@@ -124,6 +145,12 @@ public static class HomeProjection
                 var def = sources.Of(it.Source);
                 switch (it.Source)
                 {
+                    case SpotifyFeedSource when feedState != HomeFeedState.Ready:
+                        // Loading: shelves at their boxes; failed or offline: one line that says so (not one per missing shelf).
+                        for (int k = 0, places = feedState == HomeFeedState.Loading ? FeedPlaceholders : 1; k < places; k++)
+                            run.Add(new BoardEntry("placeholder:" + k.ToString(System.Globalization.CultureInfo.InvariantCulture), BoardEntryKind.Placeholder,
+                                g.Id, def, null, HomeSize.Full, SectionTemplate.CoverShelf, "", false, false, false, false, false, -1) { Feed = feedState });
+                        break;
                     case SpotifyFeedSource:
                         foreach (var f in feed)
                         {
@@ -145,13 +172,13 @@ public static class HomeProjection
                     case FillSource fill:
                         Flush(entries, run, titles);
                         int n = 0;
-                        foreach (var p in shortcuts)
+                        while (n < fill.Max && fillCursor < shortcuts.Count)
                         {
-                            if (n >= fill.Max) break;
+                            var p = shortcuts[fillCursor++];
                             if (pinned.Contains(p.PinId) || HomeCommands.IsHidden(doc, new SectionRef(p.PinId, 0, HomeCommands.FillFamily))) continue;
                             if (doc.Find(HomeCommands.FillPrefix + p.PinId).Group >= 0) continue;
                             entries.Add(new BoardEntry(HomeCommands.FillPrefix + p.PinId, BoardEntryKind.FillCell, g.Id, def, p, HomeSize.Auto,
-                                SectionTemplate.ShortcutFill, p.NameHint, false, false, false, false, true, -1));
+                                SectionTemplate.ShortcutFill, p.NameHint, false, false, false, false, true, -1) { Parent = it.Id });
                             n++;
                         }
                         break;

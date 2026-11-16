@@ -57,7 +57,11 @@ public sealed class HomeTileHost : Component
         if (p.Cell is not null) s_forms[p.Entry.Id] = form;
         var e = p.Entry;
         if (e.Kind == BoardEntryKind.Placeholder)
-            return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Loading, Name = e.Title });
+            return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps
+            {
+                Frame = frame, Name = e.Title,
+                Reason = e.Feed switch { HomeFeedState.Offline => HomeTileVacancy.Offline, HomeFeedState.Error => HomeTileVacancy.Failed, _ => HomeTileVacancy.Loading },
+            });
         if (e.Paused && e.Live && e.Raw is WidgetSource { Widget: "nowPlaying" })
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Paused, Name = e.Title });
 
@@ -103,6 +107,10 @@ public sealed class PinTileHost : Component
         var target = id.IsValid ? Entities.Ref(id.Id) : default;
 
         string hintName = p.NameHint, hintCover = p.CoverHint;
+        // A pin nobody else shows is asked here (an effect, never the render); a row the answer settled without is gone.
+        UseEffect(() => { HomePinState.Ensure(target); }, DepKey.From((int)target.Kind, target.Slot));
+        if (HomePinState.IsGone(target))
+            return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = p.Frame, Reason = HomeTileVacancy.Unavailable, Name = hintName });
         Controls.CardData? card = target.IsNone ? null : Search.CardDataOf(target, HomeCardNav.HomeOrigin);
         return Slots.View(ViewKeys.HomeTilePin, new HomePinTileProps
         {

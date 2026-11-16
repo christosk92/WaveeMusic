@@ -458,6 +458,7 @@ internal static class WinUiHomeTiles
             HomeTileVacancy.Unavailable => Strings.Theme.Winui.Home.Board.Unavailable,
             HomeTileVacancy.Paused => Strings.Theme.Winui.Home.Board.Paused,
             HomeTileVacancy.Offline => Strings.Theme.Winui.Home.Board.Offline,
+            HomeTileVacancy.Failed => Strings.Theme.Winui.Home.Board.Failed,
             _ => Strings.Theme.Winui.Home.Board.Unknown,
         });
         string name = p.Name;
