@@ -135,8 +135,9 @@ public static class ClassicHomeBoardRules
     /// <summary>A speed-dial cell's name lane gives up this much at its end in Edit Home: its two chips stand there.</summary>
     public const float CellChipsW = 84f;
 
-    /// <summary>The list rows a card (2) and a wide card (3) show under their head.</summary>
-    public const int CardRows = 2, WideRows = 3;
+    /// <summary>The list rows a card and a wide card show under their head (two: a list row is the media row's own height, so a third would be cut
+    /// at the card's three units; the wide card is wider, not taller).</summary>
+    public const int CardRows = 2, WideRows = 2;
 
     /// <summary>Up next and Recents list rows inside a card: a 40 row with a 32 cover.</summary>
     public const float ListRowH = 40f, ListArt = 32f;

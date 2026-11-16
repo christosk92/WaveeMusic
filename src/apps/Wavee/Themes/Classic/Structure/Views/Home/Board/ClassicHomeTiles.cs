@@ -265,8 +265,11 @@ internal static class ClassicHomeTiles
         var f = p.Frame;
         var lay = ClassicHomeBoardTiers.Of(ctx.Tier());
         string? cover = p.Cover();
+        // A pin with no cover of its own (Liked Songs, a route) stands on its glyph, never on an empty plate.
+        Element cellArt = cover is { Length: > 0 } ? CellArt(cover, lay, p.Round)
+            : CellGlyph(f.Entry.Raw is PinSource { PinId: "liked" } ? Icons.HeartFill : Icons.Pin, lay);
         if (f.Form is HomeTileForm.S or HomeTileForm.Full)
-            return Frame(ctx, f, Clickable(CellFace(CellArt(cover, lay, p.Round), p.Name, p.Line), p.Open));
+            return Frame(ctx, f, Clickable(CellFace(cellArt, p.Name, p.Line), p.Open));
         bool wide = f.Form == HomeTileForm.L;
         float art = wide ? ClassicHomeBoardRules.WideArt : ClassicHomeBoardRules.CardArt;
         var head = new BoxEl
