@@ -171,7 +171,7 @@ public sealed class FetchBatch
     /// <see cref="Ids"/>.</summary>
     public ListRow[]?[] Baselines = [];
     /// <summary>For <see cref="FetchEdge.HomePreviews"/> only: each home row's baseline-section card uris to request,
-    /// deduped, at most 50 — the <c>feedBaselineLookup</c> body (<c>Fetch.FillPreviewMap</c>, UI thread, at send).
+    /// deduped, at most 120 — the <c>feedBaselineLookup</c> body (<c>Fetch.FillPreviewMap</c>, UI thread, at send).
     /// Null for every other batch. Parallel to <see cref="Ids"/>.</summary>
     public string[]?[] PreviewUris = [];
     /// <summary>For <see cref="FetchEdge.HomePreviews"/> only: every baseline section's (section uri, card uri) pair
@@ -1775,11 +1775,12 @@ public static partial class Fetch
         }
     }
 
-    /// <summary>The distinct card uris of <paramref name="links"/>, first-seen order, capped at 50 — the wire request
-    /// (a card shared by two baseline sections is asked for once).</summary>
+    /// <summary>The distinct card uris of <paramref name="links"/>, first-seen order, capped at 120 — the wire request
+    /// (a card shared by two baseline sections is asked for once). The 1.3.8.620 client sends every baseline card of an
+    /// answer in one call (91 on the Audiobooks chip, Fiddler capture 2026-11-16); 120 covers that with room.</summary>
     static string[] DedupCardUris(HomePreviewLink[] links)
     {
-        const int Cap = 50;
+        const int Cap = 120;
         var seen = new HashSet<string>(Math.Min(links.Length, Cap), StringComparer.Ordinal);
         var uris = new List<string>(Math.Min(links.Length, Cap));
         for (int i = 0; i < links.Length && uris.Count < Cap; i++)
