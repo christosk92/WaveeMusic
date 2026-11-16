@@ -70,6 +70,8 @@ public enum ActionId : ushort
     /// plan §3.3) — a TOGGLE, unlike the mark pair, because "some selected are saved" has no absolute-state reading.
     /// <c>Episode.Menu.cs</c>'s single-row row menu routes its inline save through this same id.</summary>
     SaveEpisode,
+    // The pinned Home's pin pair (an ABSOLUTE-STATE pair, like the sidebar's): two identities, two labels.
+    PinToHome, UnpinFromHome,
 }
 
 /// <summary>The action icon-KEY vocabulary: an action carries a SEMANTIC key and never a raw glyph. The one
@@ -270,6 +272,10 @@ public sealed class ActionServices
     // ── sidebar pins (owner J fills these; `PinRowRule` itself is `Sidebar.cs`) ──
     public Func<Shell.Route, bool>? IsPinned;
     public Action<Shell.Route, bool>? SetPinned;
+
+    // ── Home pins (HomePinVerbs fills these; the store is HomeBoardStore) ──
+    public Func<Shell.Route, bool>? IsHomePinned;
+    public Action<Shell.Route, bool>? SetHomePinned;
 
     // ── platform ──
     /// <summary>Copy text to the clipboard.</summary>

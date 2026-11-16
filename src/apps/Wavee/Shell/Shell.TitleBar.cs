@@ -52,6 +52,7 @@ public static partial class Shell
         BellUnread = static () => Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value,
         ToggleNotifications = OpenNotificationPanel,
         Pin = CurrentPin,
+        HomePin = CurrentHomePin,
         OpenFullScreen = static begin => PlayerVerbs.Default.OpenStage(begin, "titlebar"),
         Search = SearchProps(),
         OnSearchRoute = static () => Current.Value.Kind == RouteKind.Search,
@@ -99,6 +100,17 @@ public static partial class Shell
     {
         if (PinRow(Current.Value) is not { Invoke: { } invoke } row) return null;
         return new TitleBarPin(row.Icon.Glyph ?? Icons.Pin, row.Label, invoke);
+    }
+
+    /// <summary>The direct Pin to Home / Unpin from Home for the destination on screen, or null when Home cannot hold it
+    /// (<see cref="HomePinVerbs.TargetFor"/>, read tracked: the pin set's version).</summary>
+    static TitleBarPin? CurrentHomePin()
+    {
+        if (HomePinVerbs.TargetFor(Current.Value) is not { } t) return null;
+        string id = t.PinId, title = t.Title;
+        return t.Pinned
+            ? new TitleBarPin(ActionIcons.Resolve(ActionIcons.Unpin).Glyph ?? Icons.Pin, Loc.Get(Strings.Home.Board.Pin.Unpin), () => HomePinVerbs.Unpin(id))
+            : new TitleBarPin(ActionIcons.Resolve(ActionIcons.Pin).Glyph ?? Icons.Pin, Loc.Get(Strings.Home.Board.Pin.PinTo), () => HomePinVerbs.Pin(id, title, ""));
     }
 
     // ══ THE SEARCH'S PROPS ══════════════════════════════════════════════════════════════════════════════════════════

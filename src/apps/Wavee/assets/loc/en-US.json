@@ -627,6 +627,20 @@
   },
   "home": {
     "board": {
+      "pin": {
+        "pinTo": "Pin to Home",
+        "unpin": "Unpin from Home",
+        "pinAlbum": "Pin this album to Home",
+        "unpinAlbum": "Unpin this album from Home",
+        "pinArtist": "Pin this artist to Home",
+        "unpinArtist": "Unpin this artist from Home",
+        "pinned": "Pinned {name} to Home",
+        "pinnedIn": "Pinned {name} to Home, in {group}",
+        "unpinned": "Unpinned {name} from Home",
+        "undo": "Undo",
+        "home": "Home",
+        "sidebar": "Sidebar"
+      },
       "readOnly": "This Home was saved by a newer Wavee. It shows the default here and can't be changed.",
       "group": {
         "today": "Today",

@@ -369,6 +369,10 @@ public static partial class Controls
         /// so a card answers "where did it open" beside its drawer.</summary>
         public bool Selected { get; init; }
 
+        /// <summary>The entity is pinned to Home: the structure's pin mark shows at rest (pinned Home, design 1.6). Set by the surface
+        /// host from the Home store (an adapter never sets it); the style's bodies draw the mark from it.</summary>
+        public bool PinnedToHome { get; init; }
+
         /// <summary>The accent the selected border paints (null = the theme accent), read INSIDE the host's render — a
         /// palette landing repaints the one selected surface and no other. Counts by presence in equality (a fresh thunk
         /// is behaviour, not data).</summary>
@@ -441,7 +445,7 @@ public static partial class Controls
                    && (OnClick is null) == (other.OnClick is null) && (OnPlay is null) == (other.OnPlay is null)
                    && Drag?.Kind == other.Drag?.Kind && Equals(Drag?.Style, other.Drag?.Style)
                    // `float.Equals`, not `==`: NaN (the "unpinned" default) must equal NaN.
-                   && Height.Equals(other.Height) && Selected == other.Selected
+                   && Height.Equals(other.Height) && Selected == other.Selected && PinnedToHome == other.PinnedToHome
                    && (SelectedAccent is null) == (other.SelectedAccent is null) && (Menu is null) == (other.Menu is null)
                    && (Drop is null) == (other.Drop is null)
                    && Equals(Subtitle, other.Subtitle) && Equals(CoverOverride, other.CoverOverride)
