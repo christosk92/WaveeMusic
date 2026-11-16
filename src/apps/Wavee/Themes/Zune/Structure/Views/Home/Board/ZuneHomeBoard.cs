@@ -308,7 +308,13 @@ internal static class ZuneHomeBoard
                 OnClick = editing ? () => Done(view, verbs) : null,
                 Children =
                 [
-                    grid,
+                    // The pack's height changes with a re-pack (a crossing's new columns, a resize, a tile turned over): its presented height eases on the
+                    // chapters' clock, so what stands under the board (the round arrow, the foot) rides it instead of jumping by the difference.
+                    new BoxEl
+                    {
+                        Key = "home:board-pack", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                        Layout = Design.Reduced ? null : ZuneHomeRules.ChapterResize, Children = [grid],
+                    },
                     ZuneHomeAllItems.EndRow(board, lay),
                     new BoxEl { Height = lay.FootReserve, Shrink = 0f, HitTestVisible = false },
                 ],
