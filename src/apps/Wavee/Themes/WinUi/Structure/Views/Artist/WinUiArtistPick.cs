@@ -131,7 +131,8 @@ internal static class WinUiArtistPick
             Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
             Children =
             [
-                new BoxEl { Shrink = 0f, Children = [Controls.Artwork(cover, WinUiArtistRules.PickCover, WinUiArtistRules.PickCover, Radii.Control, decodePx: 96)] },
+                new BoxEl { Shrink = 0f, Children = [Controls.Artwork(cover, WinUiArtistRules.PickCover, WinUiArtistRules.PickCover, Radii.Control, decodePx: 96,
+                                                                      connect: Design.MorphKeys.ForUri(target, WinUiArtistRules.PickCover))] },
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,

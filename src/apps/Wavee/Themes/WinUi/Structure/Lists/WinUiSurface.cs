@@ -193,7 +193,9 @@ internal static class WinUiSurface
                                   Element? text = null)
     {
         float edge = s.ArtEdge;
-        Element art = d.CoverOverride ?? Controls.Artwork(d.CoverUrl, edge, edge, d.Circular ? edge / 2f : Radii.Control);
+        // The art flies into the page the row opens (Design.MorphKeys.ForUri): a row in a popup that closes on the click opts out (SurfaceShape.Connect).
+        Element art = d.CoverOverride ?? Controls.Artwork(d.CoverUrl, edge, edge, d.Circular ? edge / 2f : Radii.Control,
+                                                          connect: s.Connect ? Design.MorphKeys.ForUri(d.Uri, edge) : null);
         var artBox = new BoxEl
         {
             ZStack = true, Width = edge, Height = edge, Shrink = 0f, ClipToBounds = !d.Circular,

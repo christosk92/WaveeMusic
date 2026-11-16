@@ -45,7 +45,9 @@ internal static class ClassicLibraryPaneKit
     /// The <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose metrics overrun the budget anyway: it clips, it never reflows.</para>
     /// <para><paramref name="layout"/> is the library tier's record: its cover, stated height and gap (C-Library-Huge: a 160 cover in a 200 band, 24 from the words;
     /// 128 / 156 / 18 at Standard; C-Library-Small: a 96 cover in a 120 band, 146 stated, 16 from the words). A tier crossing eases the band's height (and the cover's edge) instead of snapping the rows under it.</para></summary>
-    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta, ClassicLibraryLayout layout) => new BoxEl
+    /// <para><paramref name="connect"/>: the cover's flight key (<c>Design.MorphKeys.ForUri</c>), for a structure that flies it (WinUI shows this pane); inert under Classic.</para>
+    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta, ClassicLibraryLayout layout,
+                                     string? connect = null) => new BoxEl
     {
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
@@ -58,7 +60,7 @@ internal static class ClassicLibraryPaneKit
             {
                 Width = layout.PaneCover, Height = layout.PaneCover, Shrink = 0f, Corners = Radii.CardAll, ClipToBounds = true, Shadow = Elevation.Card,
                 Animate = Design.Reveal.Resize,
-                Children = [Controls.Artwork(cover, layout.PaneCover, layout.PaneCover, Radii.Card, decodePx: ClassicLibraryPaneRules.CoverDecodePx)],
+                Children = [Controls.Artwork(cover, layout.PaneCover, layout.PaneCover, Radii.Card, decodePx: ClassicLibraryPaneRules.CoverDecodePx, connect: connect)],
             },
             new BoxEl
             {

@@ -62,8 +62,11 @@ public static partial class Shell
         if (begin(new ConnectedNavRequest(key ?? "", back, spec, source))) s_connectedFor = to;
     }
 
-    /// <summary>The flight key of a route: its album's uri (albums only in this slice), else null. One string per navigation.</summary>
-    static string? KeyOf(in Route r) => r.Subject.Kind == EntityKind.Album ? Design.MorphKeys.ForUri(r.Subject.Text) : null;
+    /// <summary>The flight key of a route: the uri of the entity whose page it is (an album, prerelease, playlist, artist, show,
+    /// episode or user), else null. Discography and ProfileList carry an entity subject but have no header picture: they never
+    /// fly. One string per navigation.</summary>
+    static string? KeyOf(in Route r) => r.Kind is RouteKind.Album or RouteKind.Prerelease or RouteKind.Playlist or RouteKind.Artist
+        or RouteKind.Show or RouteKind.Episode or RouteKind.User ? Design.MorphKeys.ForUri(r.Subject.Text) : null;
 
     /// <summary>Is the swap to <paramref name="next"/> the one a flyer is up for, under a structure that wants the page quiet?</summary>
     static bool SwapsUnderFlight(in Route next)

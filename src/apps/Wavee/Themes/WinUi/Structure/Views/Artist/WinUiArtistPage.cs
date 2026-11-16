@@ -111,7 +111,7 @@ internal static class WinUiArtistPage
                     Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                     Children =
                     [
-                        WinUiArtistHero.Card(in text, uri, p.HeroUrl, cardW, tier, in acts, latch),
+                        WinUiArtistHero.Card(in text, uri, p.HeroUrl, cardW, tier, in acts, latch, Design.MorphKeys.ForUri(uri)),
                         WinUiArtistHero.CompactActionsSlot(a.Name, uri, in acts, tier == WidthTier.Compact),
                     ],
                 }),
@@ -168,7 +168,7 @@ internal static class WinUiArtistPage
         {
             Direction = 1, MinWidth = 0f,
             Padding = new Edges4(inset, WinUiDetailRules.InsetTopOf(tier), inset, WinUiArtistRules.HeroToPivot),
-            Children = [WinUiArtistHero.Card(Artist.HeroText.Placeholder, "", null, cardW, tier, in acts)],
+            Children = [WinUiArtistHero.Card(Artist.HeroText.Placeholder, "", null, cardW, tier, in acts, connect: Design.MorphKeys.ForUri(p.Artist.Uri.Text))],
         };
         return new BoxEl
         {

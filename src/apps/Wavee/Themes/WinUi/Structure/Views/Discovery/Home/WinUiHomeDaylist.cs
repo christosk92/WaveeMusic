@@ -72,7 +72,7 @@ internal static class WinUiHomeDaylist
                            Loc.Get(Strings.Home.More)));
 
         string? artUrl = DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl) ?? card.ImageUrl;
-        Element cover = CoverTile(artUrl, dl);
+        Element cover = CoverTile(artUrl, dl, Design.MorphKeys.ForUri(uri));
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist. The tile ramp is the card's hover/press feedback.
         var root = CardShape(new Parts(title, Tags(card, dl), Strings.Home.DaylistMeta(card.TrackCount), actions, props.Clock ?? new BoxEl(), cover), dl)
@@ -106,7 +106,7 @@ internal static class WinUiHomeDaylist
         var clock = WinUiHomeDaylistClock.Shape(ProgressRing.Determinate(0f, dl.Ring), line, caption, null, (int)current, dl, ClockWidthEstimate(dl, 1000f));
         // The cover slot as its watched placeholder (the real shape): a component the deriver cannot see into would shimmer as one stray bar.
         return CardShape(new Parts(Loc.Get(Strings.Home.Layout.Daylist), TagLine(new TextSpan[] { new(words) }, null, dl),
-                                   Strings.Home.DaylistMeta(50), actions, clock, CoverTile(null, dl)), dl);
+                                   Strings.Home.DaylistMeta(50), actions, clock, CoverTile(null, dl, null)), dl);
     }
 
     /// <summary>The primary action at the tier's size; the Compact button is the board's 20-padded 40.</summary>
@@ -142,10 +142,11 @@ internal static class WinUiHomeDaylist
         };
 
     /// <summary>The cover: a square r4 tile of the tier's edge (the board's `border-radius: 4px`). A crossing eases its edge through real layout (the art fills
-    /// the box, so it scales with it): the copy beside it and the card's height follow it frame by frame.</summary>
-    static Element CoverTile(string? url, WinUiDaylistLayout dl)
+    /// the box, so it scales with it): the copy beside it and the card's height follow it frame by frame. <paramref name="connect"/>: the
+    /// daylist's flight key (it flies into the playlist page's cover).</summary>
+    static Element CoverTile(string? url, WinUiDaylistLayout dl, string? connect)
     {
-        var art = Controls.Artwork(url, dl.Cover, dl.Cover, Radii.Control, decodePx: WinUiHomeRules.DaylistArtDecodePx);
+        var art = Controls.Artwork(url, dl.Cover, dl.Cover, Radii.Control, decodePx: WinUiHomeRules.DaylistArtDecodePx, connect: connect);
         return new BoxEl
         {
             Key = "daylist-cover", Width = dl.Cover, Height = dl.Cover, Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,

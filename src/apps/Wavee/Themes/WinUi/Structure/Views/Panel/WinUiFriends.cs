@@ -58,7 +58,12 @@ internal static class WinUiFriends
         Action? openProfile = props.OpenProfile(user);
         if (openProfile is not null)
         {
-            picture = new BoxEl { Shrink = 0f, Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = openProfile, Children = [picture] };
+            // The avatar (a tagged box) flies into the profile's own.
+            picture = new BoxEl
+            {
+                Shrink = 0f, Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = openProfile,
+                Children = [picture with { MorphId = Design.MorphKeys.ForUri(user.Uri.Text, P.Avatar) }],
+            };
             nameText = new BoxEl
             {
                 Direction = 0, MinWidth = 0f, Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = openProfile,
