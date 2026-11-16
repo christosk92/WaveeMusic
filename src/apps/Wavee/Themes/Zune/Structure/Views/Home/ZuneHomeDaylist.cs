@@ -84,7 +84,7 @@ internal static class ZuneHomeDaylist
         var root = Strip(Loc.Get(Strings.Home.YourDaylist), title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
                          DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay,
                          ArtWidth(lay, stripH), r => { if (!lay.DaylistBleed && MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; },
-                         rendered ? ZuneMotion.SwapThrough : null)
+                         rendered ? ZuneMotion.SwapThrough : null, Tags(in card), SectionCopy.DaylistBasis(in card))
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
@@ -149,7 +149,7 @@ internal static class ZuneHomeDaylist
 
     /// <summary>The save ring: the shared heart (it subscribes to the saved set on its own) inside the outlined ring, with its word where the tier
     /// has words.</summary>
-    static Element SaveRing(string uri, string title, ZuneHomeLayout lay)
+    internal static Element SaveRing(string uri, string title, ZuneHomeLayout lay, string key = "zune-daylist-save")
     {
         // The picture (the outlined disc, no glyph of its own) under the heart button, which is the target: its box is `SaveHitBox` (40) at every
         // tier (the button freezes its props at mount, so the size cannot follow the tier; where the stack is the disc's 36 it fits the stack).
@@ -176,7 +176,7 @@ internal static class ZuneHomeDaylist
             });
         return new BoxEl
         {
-            Key = "zune-daylist-save", Direction = 0, AlignItems = FlexAlign.Center, Gap = H.DaylistActionLabelGap, Shrink = 0f, BlocksDragArm = true,
+            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.DaylistActionLabelGap, Shrink = 0f, BlocksDragArm = true,
             Justify = lay.RingTarget > 0f ? FlexJustify.Center : FlexJustify.Start, MinWidth = lay.RingTarget, MinHeight = lay.RingTarget,
             Children = kids.ToArray(),
         };
@@ -195,6 +195,35 @@ internal static class ZuneHomeDaylist
             Children = [K.RingDisc(Icons.More, primary: false, lay.RingSize)],
         };
         return Controls.Named(ring, Loc.Get(Strings.Home.More));
+    }
+
+    /// <summary>The tags as one line of lowercase words, " · " between them, each opening its own mix (its niche link, else Search).</summary>
+    static Element? Tags(in HomeCard card)
+    {
+        int n = Math.Min(card.SeedCount, H.DaylistMaxTags);
+        var tags = new List<string>(n);
+        var links = new List<string?>(n);
+        for (int i = 0; i < n; i++)
+        {
+            string tag = card.SeedAt(i);
+            if (tag.Length == 0) continue;
+            tags.Add(tag);
+            links.Add(SectionCopy.TagLink(in card, i));
+        }
+        if (tags.Count == 0) return null;
+        var spans = new TextSpan[tags.Count * 2 - 1];
+        for (int i = 0; i < tags.Count; i++)
+        {
+            if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextTertiary);
+            spans[2 * i] = new TextSpan(ZuneText.Word(tags[i]), Color: Tok.TextSecondary, IsLink: true);
+        }
+        var meta = R.Type.DenseMeta("");
+        return new SpanTextEl(spans)
+        {
+            Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextSecondary,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            OnSpanClick = i => { if ((i & 1) == 0 && (i >> 1) < tags.Count) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); },
+        };
     }
 
     /// <summary>The title in the tier's role (the quickplay head, the heading, the daylist title or the hero), on its lines. Its box scales from the
@@ -226,7 +255,7 @@ internal static class ZuneHomeDaylist
     /// and sizes are live props. <paramref name="wordsIn"/>: the enter of the copy and the clock column when this form mounts by a crossing (the words
     /// wait out the leaving form's leg, so its title is gone before this one shows; the plate and the art cross-fade with the form's layer).</summary>
     static BoxEl Strip(string eyebrow, string title, string meta, Element[] rings, Element clock, string? art, ZuneHomeLayout lay,
-                       Prop<float> artWidth, Action<RectF>? onBounds, EnterExit? wordsIn)
+                       Prop<float> artWidth, Action<RectF>? onBounds, EnterExit? wordsIn, Element? tags = null, string basis = "")
     {
         var wordsMotion = ZuneMotion.SwapThroughMotion;
         bool bleed = lay.DaylistBleed;
@@ -254,6 +283,25 @@ internal static class ZuneHomeDaylist
             },
             TitleBox(title, lay),
         };
+        // The tags (each opens its own mix) and what the pick is based on, two lines under the title where the strip has its meta line. Both lines
+        // are reserved whether or not the card carries them (the skeleton too), so nothing in the strip moves when they arrive.
+        if (lay.DaylistMeta)
+        {
+            var line = R.Type.DenseMeta(" ");
+            textKids.Add(new BoxEl
+            {
+                Key = "zune-daylist-tags", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight,
+                Children = tags is { } t ? [t] : [],
+            });
+            textKids.Add(new BoxEl
+            {
+                Key = "zune-daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight,
+                Children = [R.Type.DenseMeta(basis.Length > 0 ? basis : " ") with
+                {
+                    Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                }],
+            });
+        }
         if (lay.DaylistMeta)
             textKids.Add(R.Type.DenseMeta(meta) with
             {

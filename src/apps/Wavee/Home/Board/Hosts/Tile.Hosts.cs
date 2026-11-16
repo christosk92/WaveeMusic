@@ -110,7 +110,10 @@ public sealed class PinTileHost : Component
         // A pin nobody else shows is asked here (an effect, never the render); a row the answer settled without is gone.
         UseEffect(() => { HomePinState.Ensure(target); }, DepKey.From((int)target.Kind, target.Slot));
         if (HomePinState.IsGone(target))
-            return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = p.Frame, Reason = HomeTileVacancy.Unavailable, Name = hintName });
+            return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps
+            {
+                Frame = p.Frame, Reason = HomeTileVacancy.Unavailable, Name = hintName.Length > 0 ? hintName : HomePinVerbs.NameOf(pinId),
+            });
         Controls.CardData? card = target.IsNone ? null : Search.CardDataOf(target, HomeCardNav.HomeOrigin);
         return Slots.View(ViewKeys.HomeTilePin, new HomePinTileProps
         {

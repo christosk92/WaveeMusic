@@ -1420,6 +1420,9 @@ public static partial class Entities
         {
             string file = facet.Length > 0 ? "home." + facet + ".json"
                 : name == "capture" ? "home.all.json" : "home.all." + name + ".json";
+            // A derived fixture may replace a facet too (`home.<facet>.<name>.json`: the synthetic following list carries a pre-save).
+            if (facet.Length > 0 && name != "capture" && ReadBundledCapture(Path.Combine("fixtures", "home." + facet + "." + name + ".json")) is not null)
+                file = "home." + facet + "." + name + ".json";
             if (!LandHomeAnswer(facet, file)) return false;
         }
         HomeFixture = name;

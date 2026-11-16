@@ -34,7 +34,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiHomeDaylist
 {
     /// <summary>The card's content, built once per render (or from placeholders for the skeleton) and laid out by <see cref="CardShape"/>.</summary>
-    readonly record struct Parts(string Title, Element Tags, string Meta, Element Actions, Element Clock, Element Cover);
+    readonly record struct Parts(string Title, Element Tags, string Meta, Element Actions, Element Clock, Element Cover, string Basis = "");
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeDaylist"/>.</summary>
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
@@ -75,7 +75,8 @@ internal static class WinUiHomeDaylist
         Element cover = CoverTile(artUrl, dl, Design.MorphKeys.ForUri(uri));
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist. The tile ramp is the card's hover/press feedback.
-        var root = CardShape(new Parts(title, Tags(card, dl), Strings.Home.DaylistMeta(card.TrackCount), actions, props.Clock ?? new BoxEl(), cover), dl)
+        var root = CardShape(new Parts(title, Tags(card, dl), Strings.Home.DaylistMeta(card.TrackCount), actions, props.Clock ?? new BoxEl(), cover,
+                                       SectionCopy.DaylistBasis(in card)), dl)
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
@@ -237,7 +238,7 @@ internal static class WinUiHomeDaylist
                     },
                 ],
             },
-            p.Tags,
+            new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [p.Tags, BasisLine(p.Basis)] },
             p.Actions,
             p.Clock,
         ],
@@ -266,6 +267,7 @@ internal static class WinUiHomeDaylist
             TitleSlot(p.Title, dl),
             WinUiDiscoveryMotion.AirV("daylist-gap:title", gap),
             p.Tags with { Key = "daylist-tags" },
+            BasisLine(p.Basis),
         };
         if (!pair) kids.Add(MetaSlot(p.Meta, gap));
         kids.Add(new BoxEl { Key = "daylist-spacer", Grow = 1f, MinWidth = 0f, MinHeight = gap });
@@ -357,7 +359,19 @@ internal static class WinUiHomeDaylist
         }
         if (meta.Length > 0) spans.Add(new TextSpan((tags.Count > 0 ? " · " : "") + meta, Color: Tok.TextSecondary));
         int tagCount = tags.Count;
-        return TagLine(spans.ToArray(), i => { if ((i & 1) == 0 && (i >> 1) < tagCount) HomeVerbs.OpenTag(tags[i >> 1]); }, dl);
+        var links = new string?[tags.Count];
+        for (int i = 0, t = 0; i < seedCount && t < links.Length; i++)
+            if (card.SeedAt(i).Length > 0) links[t++] = SectionCopy.TagLink(in card, i);
+        return TagLine(spans.ToArray(), i => { if ((i & 1) == 0 && (i >> 1) < tagCount) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); }, dl);
+    }
+
+    /// <summary>What the pick is based on ("Based on pop and western"), caption 12/16 tertiary, under the tags. The line is reserved whether or
+    /// not the card says it, so nothing under it moves when it arrives.</summary>
+    static Element BasisLine(string basis)
+    {
+        var line = Ui.Caption(basis.Length > 0 ? basis : " ") with
+            { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        return new BoxEl { Key = "daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight, Children = [line] };
     }
 
     /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), primary base.</summary>

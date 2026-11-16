@@ -40,6 +40,7 @@
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Scene;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
@@ -51,7 +52,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.WinUi;
 
 /// <summary>WinUI's Home zone column.</summary>
-internal static class WinUiHomeZones
+internal static partial class WinUiHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key whose body needs nothing but its zone.</summary>
     public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
@@ -176,20 +177,25 @@ internal static class WinUiHomeZones
 
     /// <summary>A zone's chapter content alone (the header and the body; a shelf through its pager-owning component), with no FLIP or entrance box of
     /// its own: the pinned board's full-row section tile, whose packed wrapper is the box that moves.</summary>
-    internal static Element ChapterContent(Zone zone, IOverlayService? overlay, WinUiHomeLayout layout)
+    /// <para><paramref name="headerTail"/> ends the header row after its tools (the board's tile menu button): the body keeps the chapter's full
+    /// width, so it lays out exactly as the page's chapter does.</para>
+    internal static Element ChapterContent(Zone zone, IOverlayService? overlay, WinUiHomeLayout layout, Element? headerTail = null)
         => IsShelf(zone.Kind)
-            ? Embed.Comp(new ShelfChapterProps(zone, overlay, layout), static () => new WinUiHomeShelfChapter())
-                with { SkeletonProxy = () => Chapter(zone, overlay, controller: null, layout) }
-            : Chapter(zone, overlay, controller: null, layout);
+            ? Embed.Comp(new ShelfChapterProps(zone, overlay, layout) { Tail = headerTail }, static () => new WinUiHomeShelfChapter())
+                with { SkeletonProxy = () => Chapter(zone, overlay, controller: null, layout, headerTail) }
+            : Chapter(zone, overlay, controller: null, layout, headerTail);
+
+    /// <summary>Whether a zone's chapter has a header row (the board's tile menu button then rides it).</summary>
+    internal static bool HasHeader(ZoneKind kind) => kind is not (ZoneKind.Daylist or ZoneKind.EmptyFacet);
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf;
 
     /// <summary>Header + body, or the bare body for a headerless zone.</summary>
-    internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout)
+    internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout, Element? headerTail = null)
     {
         Element body = Body(zone, overlay, controller, layout);
-        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null, layout);
+        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null, layout, headerTail);
         if (header is null) return body;
         return new BoxEl
         {
@@ -200,7 +206,7 @@ internal static class WinUiHomeZones
 
     /// <summary>The chapter header: the zone's title (20/28 display) over its subtitle (12/16 secondary; none at Compact) and the tools at the end ("See all" /
     /// "Listening history", then the shelf pager). Null for the headerless kinds (Daylist, EmptyFacet).</summary>
-    static Element? Header(Zone zone, ShelfController? controller, WinUiHomeLayout layout)
+    static Element? Header(Zone zone, ShelfController? controller, WinUiHomeLayout layout, Element? tail = null)
     {
         bool sub = layout.HeaderSubtitles;
         switch (zone.Kind)
@@ -211,18 +217,21 @@ internal static class WinUiHomeZones
                 return ModuleHeader(
                     zone.Title ?? Loc.Get(Strings.Sidebar.Section.RecentlyPlayed),
                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
-                    HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents), layout);
+                    HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents), layout, tail);
             case ZoneKind.ReleaseList:
                 return ModuleHeader(zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow),
                                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null,
-                                    ShelfHeaderTools(HomeVerbs.SeeAll(zone), null), layout);
+                                    ShelfHeaderTools(HomeVerbs.SeeAll(zone), null, HomeVerbs.SeeAllLabel(zone)), layout, tail);
             default:
-                return ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller), layout);
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone));
+                return zone.Header is { } entity
+                    ? EntityHeader(entity, tools, layout, tail)
+                    : ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, tools, layout, tail);
         }
     }
 
     /// <summary>A chapter header (W-Home): the title's line over the subtitle's, the tools at the end. A non-drillable label: no chevron, no click.</summary>
-    internal static Element ModuleHeader(string title, string? subtitle, Element? tools, WinUiHomeLayout layout)
+    internal static Element ModuleHeader(string title, string? subtitle, Element? tools, WinUiHomeLayout layout, Element? tail = null)
     {
         var kids = new List<Element>(2)
         {
@@ -237,15 +246,16 @@ internal static class WinUiHomeZones
             [
                 new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = kids.ToArray() },
                 tools ?? new BoxEl(),
+                tail ?? new BoxEl(),
             ],
         };
     }
 
     /// <summary>A shelf header's tools: the "See all" link (when the zone has a backing section), then — while the shelf pages — a 16-px vertical divider and the
     /// pager (‹ pips ›). Null when the header has neither.</summary>
-    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller)
+    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label)
     {
-        Element? link = seeAll is null ? null : HyperlinkButton.Create(Loc.Get(Strings.Home.SeeAll), seeAll) with { Shrink = 0f };
+        Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
             : Embed.Comp(() => new WinUiHomeShelfTools(controller, leadingDivider)) with { Key = leadingDivider ? "tools+link" : "tools" };
@@ -286,8 +296,11 @@ internal static class WinUiHomeZones
     internal static Element BodyTree(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout,
                                      RenderContext? hooks = null) => zone.Kind switch
     {
+        ZoneKind.VideoTiles when IsOneEpisode(zone) => VideoCard(zone.Items[0], layout),
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
+        ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
+        ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
@@ -319,7 +332,7 @@ internal static class WinUiHomeZones
             // Only an artist is a disc. A radio station's art is Spotify's own square design (its circles are drawn IN the image).
             bool circular = c.Kind == HomeCardKind.Artist;
             items[i] = wide
-                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl,
+                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl,
                                         meta: CardMeta.Of(c.OwnerName, c.TrackCount))
                 : leadWide && i == 0
                     ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl, captionLines: 2,
@@ -362,6 +375,92 @@ internal static class WinUiHomeZones
            // ONE key at every tier: the card band, the column cap, the pager and the card height are live props, so a width change re-fits the SAME shelf
            // (its cards, its page and the header's controller survive) instead of remounting it.
            with { Key = "home-shelf:" + zone.Key };
+    }
+
+    /// <summary>The height a zone's chapter lays out at, at a content width: the header (its title and subtitle lines, its tools' floor) and the header
+    /// gap over the body, from the SAME numbers the body reserves its height with (a shelf's fitted card, the release rows' grid, the Recents rows, the
+    /// daylist card's cover and padding). 0 where the body's height is its content's (the pinned board then measures it): the board packs a full row at
+    /// this height, so a chapter that knows its height mounts in its box and nothing re-packs.</summary>
+    internal static float ChapterExtent(Zone zone, WinUiHomeLayout layout, float width)
+    {
+        if (width <= 0f) return 0f;
+        float head = 0f;
+        bool sub = layout.HeaderSubtitles;
+        switch (zone.Kind)
+        {
+            case ZoneKind.Daylist:
+                return layout.Daylist.Form == WinUiDaylistForm.Triple ? layout.Daylist.Cover + layout.Daylist.Pad + layout.Daylist.Pad : 0f;
+            case ZoneKind.EmptyFacet:
+                return 0f;
+            case ZoneKind.RecentGrid or ZoneKind.ReleaseList:
+                head = HeadExtent(true, layout) + layout.HeaderGap;   // both fall back to their own subtitle
+                break;
+            default:
+                head = (zone.Header is not null ? EntityHeadExtent(layout) : HeadExtent(sub && zone.Subtitle is { Length: > 0 }, layout)) + layout.HeaderGap;
+                break;
+        }
+        switch (zone.Kind)
+        {
+            case ZoneKind.RecentGrid:
+            {
+                int rows = layout.RecentsRows;
+                return head + rows * layout.RecentsRowH + (rows - 1) * layout.RecentsGap;
+            }
+            case ZoneKind.ReleaseList:
+            {
+                int n = Math.Min(zone.Items.Count, WinUiHomeRules.ReleaseRowsMax);
+                if (n == 0) return 0f;
+                int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Releases.Floor, WinUiHomeRules.ReleaseColGap, layout.Releases.MaxCols), 1, n);
+                int rows = (n + cols - 1) / cols;
+                return head + rows * WinUiHomeRules.ReleaseRowH + (rows - 1) * WinUiHomeRules.ReleaseRowGap;
+            }
+            case ZoneKind.VideoTiles when IsOneEpisode(zone):
+                return VideoCardExtent(layout) is var v && v > 0f ? head + v : 0f;
+            case ZoneKind.MoodPlates:
+                return MoodPlatesExtent(zone, layout, width) is var m && m > 0f ? head + m : 0f;
+            case ZoneKind.ClusterCards:
+                return ClusterGridExtent(zone, layout, width) is var g && g > 0f ? head + g : 0f;
+            case ZoneKind.BookShelf:
+            {
+                var band = layout.Shelf;
+                var (_, cardW) = FillRowVirtualLayout.Fit(width, band.MinCardW, band.MaxCardW, band.Gap, 0, band.FixedCardW, band.MaxColumns);
+                if (band.Pager) head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
+                return head + s_bookHeight(cardW);
+            }
+            case ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles:
+            {
+                if (layout.ShelfLead) return 0f;   // a 2-span lead changes the row: measured
+                bool wide = zone.Kind is ZoneKind.WideTiles or ZoneKind.VideoTiles;
+                var band = ShelfBandOf(zone.Kind, layout);
+                var (_, cardW) = FillRowVirtualLayout.Fit(width, band.MinCardW, band.MaxCardW, band.Gap, 0, band.FixedCardW, band.MaxColumns);
+                float card = wide ? s_wideCardHeight(cardW) : CoverCardHeight(HomeCards.CaptionLinesOf(ShelfItems(zone, wide))).Invoke(cardW);
+                // A paging shelf's header carries the pager's chevrons: the header is at least their height.
+                if (band.Pager) head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
+                return head + card;
+            }
+            default:
+                return 0f;
+        }
+    }
+
+    /// <summary>A chapter header's height: the title's line over the subtitle's, never under the tools' floor.</summary>
+    static float HeadExtent(bool subtitle, WinUiHomeLayout layout)
+        => MathF.Max(layout.HeaderToolsH, WinUiHomeRules.TitleLine + (subtitle ? WinUiHomeRules.SubtitleLine : 0f));
+
+    /// <summary>A shelf's items, as <see cref="Shelf"/> builds them (no lead: <see cref="ChapterExtent"/> asks only where the lead is off).</summary>
+    static HomeCards.ShelfItem[] ShelfItems(Zone zone, bool wide)
+    {
+        var cards = ShelfLead.Merge(zone.Items, zone.Lead);
+        var items = new HomeCards.ShelfItem[cards.Count];
+        for (int i = 0; i < items.Length; i++)
+        {
+            var c = cards[i];
+            string second = HomeCards.PlainText(c.Subtitle);
+            items[i] = wide
+                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl, meta: CardMeta.Of(c.OwnerName, c.TrackCount))
+                : HomeCards.ShelfItemOf(in c, second, c.Kind == HomeCardKind.Artist);
+        }
+        return items;
     }
 
     /// <summary>The shelf band of a zone kind in <paramref name="layout"/>: the wide tiles' or the covers'.</summary>
@@ -418,7 +517,11 @@ internal static class WinUiHomeZones
     /// service by reference.</summary>
     internal sealed record ShelfChapterProps(Zone Zone, IOverlayService? Overlay, WinUiHomeLayout Layout)
     {
-        public bool Equals(ShelfChapterProps? o) => o is not null && Zone.Equals(o.Zone) && ReferenceEquals(Overlay, o.Overlay) && Layout.Equals(o.Layout);
+        /// <summary>The header row's tail (the pinned board's tile menu button), or null.</summary>
+        public Element? Tail { get; init; }
+
+        public bool Equals(ShelfChapterProps? o) => o is not null && Zone.Equals(o.Zone) && ReferenceEquals(Overlay, o.Overlay) && Layout.Equals(o.Layout)
+            && Equals(Tail, o.Tail);
         public override int GetHashCode() => Zone.GetHashCode();
     }
 
@@ -431,7 +534,7 @@ internal static class WinUiHomeZones
         public override Element Render()
         {
             var p = UseProps<ShelfChapterProps>();
-            return Chapter(p.Zone, p.Overlay, _controller, p.Layout);
+            return Chapter(p.Zone, p.Overlay, _controller, p.Layout, p.Tail);
         }
     }
 
@@ -452,7 +555,7 @@ internal static class WinUiHomeZones
         {
             var c = items[i];
             var key = new ReleaseRowKey(c, c.Uri, c.Title, HomeCards.PlainText(c.Subtitle), c.ImageUrl,
-                                        ReleaseListRules.TypeLabel(c.Kind), ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture));
+                                        ReleaseListRules.TypeLabel(c), ReleaseListRules.DateLabel(c, nowMs, tz, culture));
             rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
         }
         return new GridEl
@@ -488,66 +591,6 @@ internal static class WinUiHomeZones
             Key = "release:" + k.Uri, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove,
             Children = [Controls.Surface(data, Shape.Row(WinUiHomeRules.ReleaseArt))],
         };
-    }
-
-    // ── 2.4 clusters: "Because you like" — Ui.Card(avatar + name, then <= 3 Surface(Row(40))) ──────────────────────────────────
-
-    static Element ClusterGrid(Zone zone, WinUiHomeLayout layout)
-    {
-        var clusters = zone.Clusters;
-        if (clusters is not { Count: > 0 }) return new BoxEl();
-        int n = Math.Min(clusters.Count, WinUiHomeRules.ClusterMax);
-        var cards = new Element[n];
-        for (int i = 0; i < n; i++) cards[i] = ClusterCard(clusters[i]);
-        return new GridEl
-        {
-            MinColWidth = layout.Clusters.Floor, MaxColumns = layout.Clusters.MaxCols,
-            ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, Children = cards,
-        };
-    }
-
-    static Element ClusterCard(ZoneCluster cluster)
-    {
-        // The header (W-Home): a 24 avatar and the name, 14/20 semibold; the cluster opens to its own baseline card when it has one.
-        var kids = new List<Element>(2);
-        if (cluster.Header is { } hc0 && hc0.ImageUrl is { Length: > 0 } avatarUrl)
-            kids.Add(new BoxEl
-            {
-                Width = WinUiHomeRules.ClusterAvatar, Height = WinUiHomeRules.ClusterAvatar, Shrink = 0f,
-                Children = [Controls.Artwork(avatarUrl, WinUiHomeRules.ClusterAvatar, WinUiHomeRules.ClusterAvatar, WinUiHomeRules.ClusterAvatar / 2f)],
-            });
-        kids.Add(Ui.BodyStrong(cluster.Name) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
-        Element header = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S + Spacing.XXS, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, Spacing.S), Children = kids.ToArray(),
-        };
-        if (cluster.Header is { } h)
-        {
-            var hc = h;
-            header = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
-                OnClick = () => HomeCardNav.Open(in hc), Children = [header],
-            };
-        }
-
-        var rowsSrc = cluster.Rows;
-        int n = Math.Min(rowsSrc.Count, WinUiHomeRules.ClusterRows);
-        var rows = new Element[n];
-        for (int i = 0; i < n; i++)
-        {
-            var c = rowsSrc[i];
-            string sub = HomeCards.PlainText(c.Subtitle);
-            var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
-                () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
-                { Menu = HomeCardNav.MenuOf(in c) };
-            rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(WinUiHomeRules.ClusterArt))] };
-        }
-
-        return Ui.Card(header, new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows })
-            with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.XS, Layout = WinUiDiscoveryMotion.Shove };
     }
 
     // ── 2.5 browse tiles: stock SettingsCards in the tile skin, then the Charts sub-block ─────────────────────────────────────────

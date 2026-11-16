@@ -182,7 +182,8 @@ public static class ClusterFold
 
             var rows = PreviewRows(s.Preview, MaxRows);
             if (rows.Count == 0) continue;
-            result.Add(new ZoneCluster(s.Title ?? titles.MoreForYou, header.Title, rows, FooterSectionSlot: s.Slot, Header: header));
+            result.Add(new ZoneCluster(s.Title ?? titles.MoreForYou, header.Title, rows, FooterSectionSlot: s.Slot, Header: header)
+                { Reason = HeaderEntity.Of(s) });
         }
 
         following = releases ?? (IReadOnlyList<HomeCard>)[];

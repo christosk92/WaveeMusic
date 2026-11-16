@@ -54,7 +54,7 @@ internal static class ClassicHomeDaylist
     /// copy — both null for a daylist without art (the plain card); the skeleton has the placeholder
     /// art slot and no veil.</summary>
     readonly record struct Parts(string Eyebrow, string Title, Element Tags, string Meta, Element Actions, Element Clock,
-                                 Element? Art, Element? Veil);
+                                 Element? Art, Element? Veil, string Basis = "");
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeDaylist"/>.</summary>
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
@@ -112,7 +112,7 @@ internal static class ClassicHomeDaylist
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
         // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.
         var root = CardShape(new Parts(props.Eyebrow, title, Tags(card), Strings.Home.DaylistMeta(card.TrackCount), actions,
-                                       props.Clock ?? new BoxEl(), art, veil), dl, firstW)
+                                       props.Clock ?? new BoxEl(), art, veil, SectionCopy.DaylistBasis(in card)), dl, firstW)
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
@@ -357,6 +357,14 @@ internal static class ClassicHomeDaylist
         if (dl.Details)
         {
             kids.Add(p.Tags);
+            // What the pick is based on, between the tags and the playlist line; its line is reserved whether or not the card says it.
+            var basis = Ui.Caption(p.Basis.Length > 0 ? p.Basis : " ").Secondary() with
+                { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+            kids.Add(new BoxEl
+            {
+                Key = "daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = basis.LineHeight, Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
+                Children = [basis],
+            });
             // Secondary, not tertiary: the copy sits on the cover veil, whose far side lets the art through (tertiary read 3.2 : 1 there).
             kids.Add(Ui.Caption(p.Meta).Secondary() with
             {
@@ -413,7 +421,10 @@ internal static class ClassicHomeDaylist
             if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextSecondary);
             spans[2 * i] = new TextSpan(tags[i], Color: Tok.TextSecondary, IsLink: true);
         }
-        return TagLine(spans, i => { if ((i & 1) == 0 && (i >> 1) < tags.Count) HomeVerbs.OpenTag(tags[i >> 1]); });
+        var links = new string?[tags.Count];
+        for (int i = 0, t = 0; i < seedCount && t < links.Length; i++)
+            if (card.SeedAt(i).Length > 0) links[t++] = SectionCopy.TagLink(in card, i);
+        return TagLine(spans, i => { if ((i & 1) == 0 && (i >> 1) < tags.Count) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); });
     }
 
     /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), secondary base, 6 below the title.</summary>

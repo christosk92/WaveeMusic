@@ -32,7 +32,7 @@ using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
 namespace Wavee.Themes.Zune;
 
 /// <summary>Zune's Home zone bodies.</summary>
-internal static class ZuneHomeZones
+internal static partial class ZuneHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key.</summary>
     public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
@@ -43,7 +43,10 @@ internal static class ZuneHomeZones
     internal static Element Tree(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay, RenderContext? hooks = null) => zone.Kind switch
     {
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid => CoverShelf(zone, overlay, lay),
+        ZoneKind.VideoTiles when IsOneEpisode(zone) => VideoCard(zone, lay),
         ZoneKind.WideTiles or ZoneKind.VideoTiles => WideShelf(zone, overlay, lay),
+        ZoneKind.MoodPlates => MoodPlates(zone, lay, hooks),
+        ZoneKind.BookShelf => BookShelf(zone, overlay, lay),
         ZoneKind.ReleaseList => ReleaseList(zone, lay, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => Clusters(zone, lay),
         ZoneKind.BrowseTiles => BrowseTiles(zone, lay),
@@ -58,7 +61,8 @@ internal static class ZuneHomeZones
     static BoxEl Heading(Zone zone, ZuneHomeLayout lay, string? fallbackTitle = null)
     {
         var seeAll = HomeVerbs.SeeAll(zone);
-        Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, Loc.Get(Strings.Home.SeeAll), seeAll, lay.LinkTarget);
+        Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, HomeVerbs.SeeAllLabel(zone), seeAll, lay.LinkTarget);
+        if (zone.Header is { } entity && zone.Kind is not (ZoneKind.ReleaseList or ZoneKind.ClusterCards)) return EntityHeading(entity, tools, lay);
         return K.Heading(zone.Title ?? fallbackTitle ?? "", lay.Subtitles ? zone.Subtitle : null, tools);
     }
 
@@ -106,7 +110,7 @@ internal static class ZuneHomeZones
         for (int i = 0; i < items.Length; i++)
         {
             var c = cards[i];
-            items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl);
+            items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl);
         }
         var host = HostOf(overlay);
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
@@ -148,10 +152,15 @@ internal static class ZuneHomeZones
         for (int i = 0; i < n; i++)
         {
             var c = items[i];
-            string type = ReleaseListRules.TypeLabel(c.Kind);
+            // Zune has no chips: the kind is the line's first word (Single, EP, Album), and a pre-save says "upcoming · 5 dec" in the accent where
+            // the date stands.
+            string type = ReleaseListRules.TypeLabel(c, upcomingFirst: false);
             string sub = HomeCards.PlainText(c.Subtitle);
+            string date = ReleaseListRules.DateLabel(c, nowMs, tz, culture);
+            bool upcoming = c.IsPreRelease;
+            string when = upcoming ? (date.Length > 0 ? Loc.Get(Strings.Home.Release.Upcoming) + " · " + date : Loc.Get(Strings.Home.Release.Upcoming)) : date;
             var key = new ReleaseRowKey(c, i, c.Uri, c.Title, type.Length > 0 && sub.Length > 0 ? type + " · " + sub : type + sub, c.ImageUrl,
-                                        ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture), shape, lay.ReleaseWhenW);
+                                        when, shape, lay.ReleaseWhenW, upcoming);
             rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
         }
         return K.Section(Heading(zone, lay, Loc.Get(Strings.Home.Zone.FromArtistsYouFollow)),
@@ -161,7 +170,7 @@ internal static class ZuneHomeZones
     /// <summary>Everything a release row shows: the card and its place (a blank's key), its strings and art, the tier's shape and "when" lane (the
     /// row's <see cref="ItemMemo"/> key).</summary>
     readonly record struct ReleaseRowKey(HomeCard Card, int Index, string Uri, string Title, string Line, string? Image, string When,
-                                         SurfaceShape Shape, float WhenW);
+                                         SurfaceShape Shape, float WhenW, bool Upcoming = false);
 
     static readonly Func<ReleaseRowKey, Element> s_releaseRow = static k => ReleaseRow(in k);
 
@@ -177,7 +186,8 @@ internal static class ZuneHomeZones
         {
             // Compact has no "when" lane (the board gives the row's end to its "…").
             Trailing = when.Length > 0 && whenW > 0f
-                ? new BoxEl { Width = whenW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Children = [K.Caption(when)] }
+                ? new BoxEl { Width = whenW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
+                              Children = [k.Upcoming ? K.Caption(when) with { Color = Tok.AccentTextPrimary } : K.Caption(when)] }
                 : null,
             Menu = HomeCardNav.MenuOf(in c),
         };
@@ -185,62 +195,6 @@ internal static class ZuneHomeZones
         {
             Key = c.IsBlank ? "zune-release-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-release:" + k.Uri,
             Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in shape), Children = [Controls.Surface(data, shape)],
-        };
-    }
-
-    // ── the clusters ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>"Because you like": the tier's columns of clusters, each a 28 title over three 48 rows of 40 art (an artist round).</summary>
-    static Element Clusters(Zone zone, ZuneHomeLayout lay)
-    {
-        var clusters = zone.Clusters;
-        int n = clusters is null ? 0 : Math.Min(clusters.Count, H.ClusterMax);
-        var cells = new Element[n];
-        var rowShape = Shape.Row(lay.ClusterArt) with { MinHeight = lay.ClusterRowH };
-        for (int i = 0; i < n; i++) cells[i] = Cluster(clusters![i], i, lay, rowShape);
-        Element grid = new GridEl
-        {
-            Key = "zune-home-clusters:" + zone.Key, MinColWidth = H.ClusterMinCol, MaxColumns = lay.ClusterCols,
-            ColGap = H.ClusterGap, RowGap = H.ClusterGap, Children = cells,
-        };
-        return K.Section(K.Heading(zone.Title ?? "", lay.Subtitles ? zone.Subtitle : null, null), grid);
-    }
-
-    static Element Cluster(ZoneCluster cluster, int index, ZuneHomeLayout lay, SurfaceShape rowShape)
-    {
-        // The lead words are the cluster's own ("More like", "For fans of") and take Zune's case (Z-Home: "more like The Midnight"); the name keeps its own.
-        string title = cluster.Over is { Length: > 0 } over ? ZuneText.Word(over) + " " + cluster.Name : cluster.Name;
-        BoxEl head = new BoxEl
-        {
-            Height = lay.ClusterTitleH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children = [R.Type.DenseTitle(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-        };
-        if (cluster.Header is { } h)
-        {
-            var hc = h;
-            head = head with { Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => HomeCardNav.Open(in hc) };
-        }
-        int n = Math.Min(cluster.Rows.Count, H.ClusterRows);
-        var kids = new Element[n + 1];
-        kids[0] = head;
-        for (int i = 0; i < n; i++)
-        {
-            var c = cluster.Rows[i];
-            string sub = HomeCards.PlainText(c.Subtitle);
-            var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? K.Caption(sub, cased: false) with { Color = Tok.TextSecondary } : null,
-                c.ImageUrl, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
-            { Menu = HomeCardNav.MenuOf(in c) };
-            kids[i + 1] = new BoxEl
-            {
-                Key = c.IsBlank ? "zune-cluster-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-cluster-row:" + c.Uri,
-                Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in rowShape), Children = [Controls.Surface(data, rowShape)],
-            };
-        }
-        return new BoxEl
-        {
-            Key = "zune-cluster:" + index.ToString(CultureInfo.InvariantCulture) + ":" + cluster.Name,
-            Direction = 1, Gap = H.ClusterRowGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids,
         };
     }
 

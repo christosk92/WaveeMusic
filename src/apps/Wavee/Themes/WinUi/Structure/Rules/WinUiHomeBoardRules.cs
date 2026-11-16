@@ -183,6 +183,14 @@ public static class WinUiHomeBoardRules
     /// <summary>The now-playing card's progress bar (3) and its transport buttons (32).</summary>
     public const float ProgressH = 3f, TransportBox = 32f;
 
+    /// <summary>A full row's measured height applies once the bodies have held still this long (ticked every 50 ms while one differs), and only
+    /// when it differs from the packed height by more than half a DIP.</summary>
+    public const long ExtentSettleMs = 120;
+    public const float ExtentSettleTickMs = 50f, ExtentSlop = 0.5f;
+
+    /// <summary>The blank cards of a loading shelf's placeholder.</summary>
+    public const int SeedCards = 6;
+
     /// <summary>A full-row tile's estimate where nothing better is known (a shelf's header and one row of covers).</summary>
     public const float FullFallback = 320f;
 

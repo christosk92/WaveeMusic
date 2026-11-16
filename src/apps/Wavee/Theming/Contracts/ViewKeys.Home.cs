@@ -69,6 +69,10 @@ public static partial class ViewKeys
     public static readonly ViewKey<HomeZoneProps> HomeZonePodcastGroups = new("Home.Zone.PodcastGroups");
     /// <summary>The empty facet's vacancy. Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneEmptyFacet = new("Home.Zone.EmptyFacet");
+    /// <summary>Colour-plate mixes as flat plates with the mix name (home-gap P6). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneMoodPlates = new("Home.Zone.MoodPlates");
+    /// <summary>Audiobooks with author, rating, length and plan, every card the same caption lines (home-gap P8). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneBookShelf = new("Home.Zone.BookShelf");
 
     /// <summary>The "See all" / charts drill page: the "N items" line over the bound card grid in a skeleton region. Mounted by `SectionScreen`. Props: <see cref="HomeSectionProps"/>.</summary>
     public static readonly ViewKey<HomeSectionProps> HomeSection = new("Pages.HomeSection");
@@ -100,6 +104,8 @@ public static class HomeZoneKeys
             case ZoneKind.EpisodeRows: key = ViewKeys.HomeZoneEpisodeRows; return true;
             case ZoneKind.PodcastGroups: key = ViewKeys.HomeZonePodcastGroups; return true;
             case ZoneKind.EmptyFacet: key = ViewKeys.HomeZoneEmptyFacet; return true;
+            case ZoneKind.MoodPlates: key = ViewKeys.HomeZoneMoodPlates; return true;
+            case ZoneKind.BookShelf: key = ViewKeys.HomeZoneBookShelf; return true;
             default: key = default; return false;
         }
     }

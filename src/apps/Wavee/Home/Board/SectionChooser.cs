@@ -17,7 +17,7 @@
 //   a typename this build knows                   → EntityShelf (with a header entity) or CoverShelf
 //   ANYTHING ELSE, an unknown typename included   → PlainShelf, a cover shelf of whatever cards decode
 //
-// MoodPlates and BookShelf are chosen and named but drawn as a cover shelf until their templates exist (design 4.2).
+// MoodPlates and BookShelf draw their own zone kinds (`Home.Zone.MoodPlates`, `Home.Zone.BookShelf`; home-gap P6, P8).
 // Counts are the theme's form, not a template: one card is a single wide card, two or three a short row, four or more a
 // shelf. Pure.
 
@@ -79,7 +79,7 @@ public static class SectionChooser
                 HomeCardKind.Episode => c.HasVideo && c.VideoThumbUrl is not null
                     ? new(SectionTemplate.VideoTiles, ZoneKind.VideoTiles, "baseline: a video episode")
                     : new(SectionTemplate.EpisodeRows, ZoneKind.EpisodeRows, "baseline: an episode"),
-                HomeCardKind.Audiobook => new(SectionTemplate.BookShelf, ZoneKind.CoverShelf, "baseline: a book"),
+                HomeCardKind.Audiobook => new(SectionTemplate.BookShelf, ZoneKind.BookShelf, "baseline: a book"),
                 HomeCardKind.Podcast => new(SectionTemplate.ShowGrid, ZoneKind.ShowGrid, "baseline: a show"),
                 _ => new(SectionTemplate.PreviewCard, ZoneKind.ClusterCards,
                     s.Preview.Count > 0 ? "baseline: a card with preview tracks" : "baseline: a card (preview tracks not landed)"),
@@ -90,9 +90,9 @@ public static class SectionChooser
             return video * 2 >= episodes
                 ? new(SectionTemplate.VideoTiles, ZoneKind.VideoTiles, $"episodes, {video} of {episodes} with video")
                 : new(SectionTemplate.EpisodeRows, ZoneKind.EpisodeRows, $"episodes, {video} of {episodes} with video");
-        if (books * 2 > usable) return new(SectionTemplate.BookShelf, ZoneKind.CoverShelf, $"audiobooks ({books} of {usable})");
+        if (books * 2 > usable) return new(SectionTemplate.BookShelf, ZoneKind.BookShelf, $"audiobooks ({books} of {usable})");
         if (shows * 2 > usable) return new(SectionTemplate.ShowGrid, ZoneKind.ShowGrid, $"shows ({shows} of {usable})");
-        if (plates * 2 >= usable) return new(SectionTemplate.MoodPlates, ZoneKind.CoverShelf, $"colour-plate mixes ({plates} of {usable})");
+        if (plates * 2 >= usable) return new(SectionTemplate.MoodPlates, ZoneKind.MoodPlates, $"colour-plate mixes ({plates} of {usable})");
         if (usable >= 2 && headers * 3 >= usable * 2) return new(SectionTemplate.WideTiles, ZoneKind.WideTiles, $"header images ({headers} of {usable})");
         if (ReleaseDetect.IsReleases(s, nowMs)) return new(SectionTemplate.ReleaseList, ZoneKind.ReleaseList, "albums in the release window");
 
@@ -119,7 +119,7 @@ public static class SectionChooser
                 Clusters: ClusterFold.Fold([s], titles), SectionSlot: s.Slot, TotalCount: total),
             ZoneKind.Daylist => new Zone(ZoneKind.Daylist, key, s.Title, s.Subtitle, cards, cards.Count > 0 ? cards[0] : null,
                 SectionSlot: s.Slot, TotalCount: total),
-            _ => new Zone(choice.Zone, key, title, s.Subtitle, cards, SectionSlot: s.Slot, TotalCount: total),
+            _ => new Zone(choice.Zone, key, title, s.Subtitle, cards, SectionSlot: s.Slot, TotalCount: total) { Header = HeaderEntity.Of(s) },
         };
     }
 

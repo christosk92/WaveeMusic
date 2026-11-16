@@ -107,7 +107,32 @@ internal static class ClassicHomeFind
             }, SayAfterMs, DepKey.From(StringComparer.Ordinal.GetHashCode(q)));
 
             var kids = new List<Element>(3);
-            if (editing && !inline)
+            if (editing && lay.ButtonsInStrip)
+            {
+                // Compact: the bar's buttons stand on this line beside the field (40 targets); the reset question takes the line and wraps.
+                if (view.ConfirmingReset.Value)
+                    kids.Add(new BoxEl
+                    {
+                        Key = "home:find:question", Direction = 0, Wrap = true, Gap = Spacing.S, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                        Children = ClassicHomeEditBar.Question(board, ControlSize.Large, wrap: true),
+                    });
+                else
+                {
+                    var undo = board.Undo.Value;
+                    kids.Add(new BoxEl
+                    {
+                        Key = "home:find:bar", Direction = 0, Gap = Spacing.XS, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                        Children =
+                        [
+                            ClassicEditBarParts.Undo(board.Verbs.Undo, undo.CanUndo, lay.ChipBox),
+                            ClassicEditBarParts.Redo(board.Verbs.Redo, undo.CanRedo, lay.ChipBox),
+                            ClassicHomeEditBar.ResetButton(board, ControlSize.Large),
+                            ClassicHomeEditBar.FindField(board, float.NaN, field) with { Key = "home:find:field" },
+                        ],
+                    });
+                }
+            }
+            else if (editing && !inline)
                 kids.Add(ClassicHomeEditBar.FindField(board, float.NaN, field) with { Key = "home:find:field" });
             if (editing && finding)
             {

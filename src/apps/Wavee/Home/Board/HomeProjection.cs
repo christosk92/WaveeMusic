@@ -84,8 +84,12 @@ public static class HomeProjection
         if (answer.Count > 0 && titles is not null)
         {
             int wideAt = -1;
+            var keys = new HashSet<string>(StringComparer.Ordinal);
             foreach (var s in answer)
             {
+                // A section's identity is its key: an answer that repeats a uri (the synthetic fixture does, by design) shows it once, where it
+                // first appears; the repeat is dropped (two tiles of one identity are one entry twice).
+                if (s.Uri.Length > 0 && !keys.Add(s.Uri)) continue;
                 var choice = SectionChooser.Choose(s, nowMs);
                 if (choice.Template is SectionTemplate.None or SectionTemplate.ShortcutFill or SectionTemplate.RecentsData or SectionTemplate.DaylistHero) continue;
                 var zone = SectionChooser.ToZone(s, choice, titles);
