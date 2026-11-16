@@ -29,10 +29,10 @@ public static class ReleaseListRules
 {
     /// <summary>The row's type badge (sheet row 9 .rel: a small filled pill naming what kind of release this is). An album says what
     /// it is (Single, EP, Album, Compilation: <c>albumType</c>); a pre-save says Upcoming (home-gap P7).</summary>
-    public static string TypeLabel(in HomeCard card, Func<string, string>? localize = null)
+    public static string TypeLabel(in HomeCard card, Func<string, string>? localize = null, bool upcomingFirst = true)
     {
         Func<string, string> resolve = localize ?? Loc.Get;
-        if (card.Kind == HomeCardKind.Album && card.IsPreRelease) return resolve(Strings.Home.Release.Upcoming);
+        if (upcomingFirst && card.Kind == HomeCardKind.Album && card.IsPreRelease) return resolve(Strings.Home.Release.Upcoming);
         if (card.Kind == HomeCardKind.Album && card.AlbumKind is { } k)
             return resolve(k switch
             {

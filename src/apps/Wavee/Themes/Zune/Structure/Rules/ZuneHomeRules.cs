@@ -167,8 +167,27 @@ public static class ZuneHomeRules
     /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art, the narrowest column.</summary>
     public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f, ClusterMinCol = 200f;
 
-    /// <summary>At most this many clusters, and rows per cluster.</summary>
-    public const int ClusterMax = 4, ClusterRows = 3;
+    /// <summary>Rows per cluster (home-gap P4: four), and the rows of clusters shown before "show more".</summary>
+    public const int ClusterRows = 4, ClusterVisibleRows = 2;
+
+    /// <summary>A preview group's playlist cover, the reason's avatar, the gap in the group's offer (home-gap P4).</summary>
+    public const float PreviewCover = 72f, ReasonAvatar = 24f, OfferGap = 14f;
+
+    /// <summary>The daylist's tags shown (each opens its own mix).</summary>
+    public const int DaylistMaxTags = 6;
+
+    /// <summary>The mood plates (home-gap P6): the plate, how many a shelf shows, the plate's insets. The name is 40 light and bleeds off the plate.</summary>
+    public const float MoodPlateH = 120f;
+    public const int MoodPlatesMax = 8;
+
+    /// <summary>A book's caption lines (home-gap P8): the author, the rating and length, the plan.</summary>
+    public const int BookCaptionLines = 3;
+
+    /// <summary>A section head that hangs off something: its cover.</summary>
+    public const float EntityCover = 48f;
+
+    /// <summary>The video card: the still's width beside the copy, its badges' inset, the progress line.</summary>
+    public const float VideoStillW = 380f, VideoBadgeInset = 8f, VideoProgressH = 3f;
 
     /// <summary>The episode rows: the floor, the art, the gap between art and copy.</summary>
     public const float EpisodeRowH = 72f, EpisodeArt = 56f, EpisodeGap = 14f;
