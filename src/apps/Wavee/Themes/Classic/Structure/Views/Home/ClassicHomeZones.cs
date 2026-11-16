@@ -51,6 +51,8 @@
 //   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of Surface(Row)       (sub-block)
 //   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
 //   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block (Home.Charts)
+//   LeadGrid/CompactGrid/ArtistCircles/
+//   CappedShelf                               the Home rhythm templates (ClassicHomeZones.Rhythm.cs)        tools: See all N
 //   EpisodeLead/EpisodeRows                   GridEl{320, ≤2} of Surface(Episode.RowData, EpisodeRow: 56, 2-line title, meta, "…")
 //   ContinueEpisodes                          GridEl{320, ≤3} of the same row + the resume rung (CardData.Below)
 //   EmptyFacet                                Controls.Vacancy(Empty, … → Browse)                          no header
@@ -294,6 +296,10 @@ internal static partial class ClassicHomeZones
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
         ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
         ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
+        ZoneKind.LeadGrid => LeadGrid(zone, overlay, layout),
+        ZoneKind.CompactGrid => CompactGrid(zone, overlay, layout),
+        ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
+        ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),

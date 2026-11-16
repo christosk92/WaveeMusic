@@ -5,7 +5,8 @@
 // placed and not hidden (by ref or by family) and has a drawable template, in Spotify's order, as FeedSection entries
 // "feed:<key>". The Fill item expands to the shortcut section's cards that are not pinned (or removed from the fill), up
 // to Max, as FillCell entries "fill:<pin id>". Adjacency folds join a run of two or more one-card baseline sections into
-// one PreviewGrid entry; nothing is reordered. Two synthetic sections keep what All shows today: the Following release
+// one PreviewGrid entry, then the rhythm pass (SectionRhythm) moves a section whose neighbour draws its template to an
+// alternate; nothing is reordered. Two synthetic sections keep what All shows today: the Following release
 // list (wavee:following-releases, after the editorial shelf) and the Charts block (wavee:charts), last.
 //
 // Each feed entry carries its Zone (BoardEntry.Zone): SectionChooser.ToZone, keyed by the section uri, so a section tile
@@ -97,16 +98,16 @@ public static class HomeProjection
                 if (choice.Template == SectionTemplate.WideTiles && wideAt < 0) wideAt = feed.Count;
                 // A preview card whose preview has not landed draws as a shelf (Drawable): its box is the shelf's.
                 var template = choice.Template == SectionTemplate.PreviewCard && zone.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : choice.Template;
-                feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", template, s.Slot, zone, oneCardBaseline, s));
+                feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", template, s.Slot, zone, oneCardBaseline, s, choice.Alternates));
             }
             // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf.
             if (FollowingReleases(followingReleases, titles) is { } releases)
                 feed.Insert(wideAt >= 0 ? wideAt + 1 : Math.Min(1, feed.Count),
                     new FeedCandidate(new SectionRef(FollowingReleasesKey, Fnv(FollowingReleasesKey), FollowingReleasesKey), releases.Title ?? "",
-                        SectionTemplate.ReleaseList, releases.SectionSlot, releases, false, null));
+                        SectionTemplate.ReleaseList, releases.SectionSlot, releases, false, null, []));
             // Synthetic: the Charts block, last.
             if (charts is not null)
-                feed.Add(new FeedCandidate(new SectionRef(ChartsKey, Fnv(ChartsKey), ChartsKey), "", SectionTemplate.CoverShelf, -1, null, false, null));
+                feed.Add(new FeedCandidate(new SectionRef(ChartsKey, Fnv(ChartsKey), ChartsKey), "", SectionTemplate.CoverShelf, -1, null, false, null, []));
         }
 
         // The shortcuts the fill draws from.
@@ -212,7 +213,7 @@ public static class HomeProjection
     }
 
     readonly record struct FeedCandidate(SectionRef Ref, string Title, SectionTemplate Template, int Slot, Zone? Zone, bool OneCardBaseline,
-        SectionInput? Input);
+        SectionInput? Input, ImmutableArray<SectionTemplate> Alternates);
 
     /// <summary>The zones the three data widgets draw, from the All answer by the chooser (the sections they take room from in the feed):
     /// the daylist (the section a daylist leads, its lead card), Recently played (the recently played section, capped at the planner's RecentsCap) and New releases (the release-window sections' albums, then the Following answer's, deduped).</summary>
@@ -290,11 +291,21 @@ public static class HomeProjection
         ImmutableSortedDictionary<string, string> options)
         => new(id, kind, groupId, def, new SpotifySectionSource(f.Ref, f.Title), size, f.Template, f.Title, false, false, false, false,
             kind == BoardEntryKind.FeedSection, f.Slot)
-        { Zone = f.Zone, Options = options, Members = f.OneCardBaseline ? [f.Ref] : [] };
+        { Zone = f.Zone, Options = options, Members = f.OneCardBaseline ? [f.Ref] : [], Alternates = f.Alternates.IsDefault ? [] : f.Alternates };
 
     /// <summary>Emit a run of section entries, folding two or more neighbouring one-card baseline sections (at their auto
-    /// size) into one preview grid. Nothing is reordered.</summary>
+    /// size) into one preview grid, then keeping two neighbours from drawing one template (<see cref="SectionRhythm"/>).
+    /// Nothing is reordered.</summary>
     static void Flush(ImmutableArray<BoardEntry>.Builder into, List<BoardEntry> run, ZoneTitles? titles)
+    {
+        var folded = new List<BoardEntry>(run.Count);
+        Fold(folded, run, titles);
+        SectionRhythm.Apply(folded);
+        into.AddRange(folded);
+        run.Clear();
+    }
+
+    static void Fold(List<BoardEntry> into, List<BoardEntry> run, ZoneTitles? titles)
     {
         int i = 0;
         while (i < run.Count)
@@ -325,7 +336,6 @@ public static class HomeProjection
             for (int k = i; k < Math.Max(j, i + 1); k++) into.Add(run[k] with { Members = [] });
             i = Math.Max(j, i + 1);
         }
-        run.Clear();
     }
 
     /// <summary>The fold's one zone: the members' clusters ("Because you like"), each its card and its preview tracks. Before any member's

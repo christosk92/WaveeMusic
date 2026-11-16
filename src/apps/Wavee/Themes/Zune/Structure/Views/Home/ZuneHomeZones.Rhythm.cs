@@ -1,0 +1,159 @@
+// ── Themes/Zune/Structure/Views/Home/ZuneHomeZones.Rhythm.cs — the Home rhythm templates in Zune's voice (solution A, #a-zune) ─────
+//
+// Owner 2026-11-16: "go with A, the issue is not shorter page its mono all same stuff". Each section's template follows what it holds and
+// no two neighbours share one (SectionChooser + SectionRhythm). No cards: a Zune group stands on the ground.
+//
+//   LeadGrid       the lead's art (no corners) over its name in the 40 light voice, lowercase, on one line that runs off the column's edge
+//                  under a fade (never shrunk, never an ellipsis), its line and the play ring; beside a grid of the next covers (half
+//                  each; Compact stacks the lead over the grid at 16 : 8)
+//   CompactGrid    small rows, the cover beside the name and its line, no plate; two to five columns, two rows
+//   ArtistCircles  one row of round covers, the name centred under each
+//   CappedShelf    one row of covers with two title lines; "see all" in the heading instead of paging
+//
+// Every count is the content tier's `ZuneHomeLayout` (LeadBeside/LeadCols/LeadRows, Compact, Circles, Capped); every grid shows columns x rows
+// (never a ragged row). A width change resizes each cell in place (TileResize).
+
+using System.Globalization;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Localization;
+using FluentGpu.Theming;
+using Wavee.HomeUi;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
+using H = Wavee.Themes.Zune.ZuneHomeRules;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+
+namespace Wavee.Themes.Zune;
+
+internal static partial class ZuneHomeZones
+{
+    static SurfaceShape CircleShape => Shape.Grid with { CaptionLines = 0 };
+    static SurfaceShape CappedShape => Shape.Grid with { TitleLines = H.CappedTitleLines };
+    static SurfaceShape CompactShape(ZuneHomeLayout lay) => Shape.Row(lay.CompactArt);
+
+    static Element Resizes(Element cell) => Design.Reduced ? cell : cell with { Layout = ZuneMotion.TileResize };
+
+    static Element CoverCard(HomeCard c, string prefix, SurfaceShape shape, IOverlayService? host, bool circular, bool caption)
+    {
+        string sub = caption ? HomeCards.PlainText(c.Subtitle) : "";
+        var data = RhythmCards.Data(in c, sub.Length > 0 ? K.Sub(sub) : null, host, circular);
+        return Resizes(new BoxEl { Key = prefix + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)] });
+    }
+
+    // ── LeadGrid ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    static Element LeadGrid(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
+    {
+        var cards = RhythmCards.Usable(zone.Items);
+        if (cards.Count == 0) return K.Section(Heading(zone, lay), new BoxEl());
+        bool beside = lay.LeadBeside;
+        var host = HostOf(overlay);
+        int n = RhythmCards.Shown(lay.LeadCols, lay.LeadRows, cards.Count - 1);
+        var cells = new Element[n];
+        for (int i = 0; i < n; i++) cells[i] = CoverCard(cards[i + 1], "zune-lead-grid:", Shape.Grid, host, circular: cards[i + 1].Kind == HomeCardKind.Artist, caption: true);
+        Element grid = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
+            Children = [new GridEl { Columns = RhythmCards.Stars(lay.LeadCols), ColGap = H.ShelfGap, RowGap = H.ShelfGap, Children = cells }],
+        };
+        var body = new BoxEl
+        {
+            Key = "zune-lead-grid:" + zone.Key, Direction = (byte)(beside ? 0 : 1), Gap = H.ShelfGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children = [Lead(cards[0], beside, lay), grid],
+        };
+        return K.Section(Heading(zone, lay), body);
+    }
+
+    /// <summary>The lead: its header art (its cover where it has none) filling the space the grid beside it leaves (16 : 8 stacked), its name in
+    /// the 40 light voice (the word is the art: never shrunk, it runs off the edge under a fade), its line, the play ring.</summary>
+    static Element Lead(HomeCard c, bool beside, ZuneHomeLayout lay)
+    {
+        var cc = c;
+        string line = HomeCards.PlainText(c.Subtitle);
+        var art = new BoxEl
+        {
+            ZStack = true, MinWidth = 0f, MinHeight = beside ? H.LeadArtMin : 0f, Grow = beside ? 1f : 0f,
+            AspectRatio = beside ? float.NaN : H.LeadArtAspect, ClipToBounds = true,
+            Cursor = CursorId.Hand, OnClick = () => HomeCardNav.Open(in cc),
+            Children = [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, H.LeadArtDecodePx)],
+        };
+        var name = new BoxEl
+        {
+            Direction = 0, MinWidth = 0f, ClipToBounds = true, EdgeFade = new EdgeFadeSpec(EdgeMask.Right, H.TilePadX * 2f),
+            Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => HomeCardNav.Open(in cc),
+            Children = [R.Type.HeroTitle(c.Title) with
+            {
+                Color = Tok.TextPrimary, HoverColor = Tok.TextSecondary, Case = R.Case.For(LabelKind.Navigation),
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.None, Shrink = 0f,
+            }],
+        };
+        var copy = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Shrink = 0f, Gap = H.LeadCopyGap, Padding = new Edges4(0f, H.LeadCopyTop, 0f, 0f),
+            Children =
+            [
+                name,
+                K.Caption(line.Length > 0 ? line : " ", cased: false) with { Color = Tok.TextSecondary },
+                new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, H.LeadRingTop - H.LeadCopyGap, 0f, 0f),
+                    Children = [K.Ring("zune-lead-play:" + c.Uri, Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true,
+                                       () => HomeCardNav.Play(in cc), lay.RingSize, lay.RingTarget)],
+                },
+            ],
+        };
+        return Resizes(new BoxEl
+        {
+            Key = "zune-lead:" + c.Uri, Direction = 1, MinWidth = 0f,
+            Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN,
+            // Its art's top meets the covers' beside it (a grid cover card stands its plate inset above the cover), its foot their labels' foot.
+            Margin = new Edges4(0f, SurfaceGeometry.ShelfPlatePad, 0f, SurfaceGeometry.ShelfPlatePad),
+            Children = [art, copy],
+        });
+    }
+
+    // ── the capped grids ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    static Element CappedGrid(Zone zone, ZuneHomeLayout lay, ZuneCappedBand band, float gap, float rowH, Func<HomeCard, Element> cell)
+    {
+        var cards = RhythmCards.Usable(zone.Items);
+        if (cards.Count == 0) return K.Section(Heading(zone, lay), new BoxEl());
+        float first = band.MinCol * band.MaxCols + gap * (band.MaxCols - 1);
+        Element grid = Responsive.Of("zune-rhythm:" + zone.Key, w => band.Columns(w, gap), c =>
+        {
+            int n = RhythmCards.Shown(c, band.Rows, cards.Count);
+            var cells = new Element[n];
+            for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
+            return new GridEl { Columns = RhythmCards.Stars(c), ColGap = gap, RowGap = gap, RowHeight = rowH, Children = cells };
+        }, fallback: first);
+        return K.Section(Heading(zone, lay), grid);
+    }
+
+    static Element CompactGrid(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
+    {
+        var host = HostOf(overlay);
+        var shape = CompactShape(lay);
+        return CappedGrid(zone, lay, lay.Compact, H.CompactGap, shape.MinHeight, c =>
+        {
+            string sub = HomeCards.PlainText(c.Subtitle);
+            var data = RhythmCards.Data(in c, sub.Length > 0 ? K.Sub(sub) : null, host, circular: c.Kind == HomeCardKind.Artist);
+            return Resizes(new BoxEl { Key = "zune-compact:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)] });
+        });
+    }
+
+    static Element ArtistCircles(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
+    {
+        var host = HostOf(overlay);
+        return CappedGrid(zone, lay, lay.Circles, H.ShelfGap, float.NaN, c => CoverCard(c, "zune-circle:", CircleShape, host, circular: true, caption: false));
+    }
+
+    static Element CappedShelf(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
+    {
+        var host = HostOf(overlay);
+        return CappedGrid(zone, lay, lay.Capped, H.ShelfGap, float.NaN,
+            c => CoverCard(c, "zune-capped:", CappedShape, host, circular: c.Kind == HomeCardKind.Artist, caption: true));
+    }
+}

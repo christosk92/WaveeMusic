@@ -86,6 +86,24 @@ public static class WinUiHomeRules
     /// <summary>A book card's caption lines (home-gap P8): author, rating and length, the plan pill. Every card reserves all of them.</summary>
     public const int BookCaptionLines = 4;
 
+    // ── the rhythm templates (Home rhythm A: home-rhythm.html #a-winui) ────────────────────────────────────────────────
+
+    /// <summary>The lead card's copy band under its art: the inset, the name's 28 line over two 16 caption lines, Play at its end. Fixed, so
+    /// the card's height is known before it lays out.</summary>
+    public const float LeadCopyH = 88f, LeadCopyPadX = 16f, LeadCopyPadTop = 12f, LeadCopyPadBottom = 16f, LeadCopyGap = 12f;
+
+    /// <summary>The lead's art: never under this height beside the grid; stacked (Compact) it is this wide for one tall (16 : 8).</summary>
+    public const float LeadArtMin = 120f, LeadArtAspect = 2f;
+
+    /// <summary>The lead art's decode target.</summary>
+    public const int LeadArtDecodePx = 960;
+
+    /// <summary>The compact tiles' gap (the concept's 8).</summary>
+    public const float CompactGap = 8f;
+
+    /// <summary>The caption lines a capped card shows: two title lines over one caption line.</summary>
+    public const int CappedTitleLines = 2;
+
     /// <summary>The section header's entity cover ("Popular with listeners of" + the show, home-gap P8).</summary>
     public const float EntityCover = 40f;
 

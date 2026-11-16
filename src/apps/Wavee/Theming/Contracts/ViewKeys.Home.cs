@@ -69,6 +69,14 @@ public static partial class ViewKeys
     public static readonly ViewKey<HomeZoneProps> HomeZoneMoodPlates = new("Home.Zone.MoodPlates");
     /// <summary>Audiobooks with author, rating, length and plan, every card the same caption lines (home-gap P8). Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneBookShelf = new("Home.Zone.BookShelf");
+    /// <summary>A personal set as one lead card beside a small grid (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneLeadGrid = new("Home.Zone.LeadGrid");
+    /// <summary>Small tiles with the cover beside the text, two to five columns (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneCompactGrid = new("Home.Zone.CompactGrid");
+    /// <summary>A row of round covers with the names centred (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneArtistCircles = new("Home.Zone.ArtistCircles");
+    /// <summary>One capped row of two-line cards, "See all N" instead of paging (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneCappedShelf = new("Home.Zone.CappedShelf");
 
     /// <summary>The "See all" / charts drill page: the "N items" line over the bound card grid in a skeleton region. Mounted by `SectionScreen`. Props: <see cref="HomeSectionProps"/>.</summary>
     public static readonly ViewKey<HomeSectionProps> HomeSection = new("Pages.HomeSection");
@@ -100,6 +108,10 @@ public static class HomeZoneKeys
             case ZoneKind.EmptyFacet: key = ViewKeys.HomeZoneEmptyFacet; return true;
             case ZoneKind.MoodPlates: key = ViewKeys.HomeZoneMoodPlates; return true;
             case ZoneKind.BookShelf: key = ViewKeys.HomeZoneBookShelf; return true;
+            case ZoneKind.LeadGrid: key = ViewKeys.HomeZoneLeadGrid; return true;
+            case ZoneKind.CompactGrid: key = ViewKeys.HomeZoneCompactGrid; return true;
+            case ZoneKind.ArtistCircles: key = ViewKeys.HomeZoneArtistCircles; return true;
+            case ZoneKind.CappedShelf: key = ViewKeys.HomeZoneCappedShelf; return true;
             default: key = default; return false;
         }
     }

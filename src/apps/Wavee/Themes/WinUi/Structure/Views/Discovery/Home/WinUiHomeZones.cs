@@ -30,6 +30,8 @@
 //   ReleaseList                               GridEl of Surface(Row) 56 high, the "New" chip and the when at the end         tools: See all
 //   ClusterCards/PodcastGroups                GridEl of Ui.Card(avatar + name, then three Surface(Row(40)))
 //   BrowseTiles                               GridEl of SettingsCard tiles + the Charts sub-block (Home.Charts)
+//   LeadGrid/CompactGrid/ArtistCircles/
+//   CappedShelf                               the Home rhythm templates (WinUiHomeZones.Rhythm.cs)                           tools: See all N
 //   EpisodeLead/EpisodeRows                   GridEl of Surface(Episode.RowData, EpisodeRow)
 //   ContinueEpisodes                          GridEl of the same row + the resume rung (CardData.Below)
 //   EmptyFacet                                Controls.Vacancy(Empty, ... -> Browse)                                         no header
@@ -301,6 +303,10 @@ internal static partial class WinUiHomeZones
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
         ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
         ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
+        ZoneKind.LeadGrid => LeadGrid(zone, overlay, layout),
+        ZoneKind.CompactGrid => CompactGrid(zone, overlay, layout),
+        ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
+        ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
@@ -420,6 +426,8 @@ internal static partial class WinUiHomeZones
                 return MoodPlatesExtent(zone, layout, width) is var m && m > 0f ? head + m : 0f;
             case ZoneKind.ClusterCards:
                 return ClusterGridExtent(zone, layout, width) is var g && g > 0f ? head + g : 0f;
+            case ZoneKind.LeadGrid or ZoneKind.CompactGrid or ZoneKind.ArtistCircles or ZoneKind.CappedShelf:
+                return RhythmExtent(zone, layout, width) is var r && r > 0f ? head + r : 0f;
             case ZoneKind.BookShelf:
             {
                 var band = layout.Shelf;

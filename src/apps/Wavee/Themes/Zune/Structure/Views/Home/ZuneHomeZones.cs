@@ -10,6 +10,8 @@
 //   ClusterCards · PodcastGroups                      the tier's columns (2 at Standard, 24 apart) of a 28 title over three 48 rows of 40 art
 //   BrowseTiles                                       flat 88 plates (the tier's columns, 12 apart) 2 : 1 beside the charts (`Home.Charts`)
 //   EpisodeLead · EpisodeRows · ContinueEpisodes      the shared episode rows (72 floor, 56 art), one column (a pair puts two side by side)
+//   LeadGrid · CompactGrid · ArtistCircles ·
+//   CappedShelf                                       the Home rhythm templates (ZuneHomeZones.Rhythm.cs)
 //   EmptyFacet                                        the app's one vacancy with the facet's own words
 //
 // Every body is a pure function of its zone (and the tier's record): the template and the page's skeleton proxy build the SAME tree (`Tree`).
@@ -47,6 +49,10 @@ internal static partial class ZuneHomeZones
         ZoneKind.WideTiles or ZoneKind.VideoTiles => WideShelf(zone, overlay, lay),
         ZoneKind.MoodPlates => MoodPlates(zone, lay, hooks),
         ZoneKind.BookShelf => BookShelf(zone, overlay, lay),
+        ZoneKind.LeadGrid => LeadGrid(zone, overlay, lay),
+        ZoneKind.CompactGrid => CompactGrid(zone, overlay, lay),
+        ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, lay),
+        ZoneKind.CappedShelf => CappedShelf(zone, overlay, lay),
         ZoneKind.ReleaseList => ReleaseList(zone, lay, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => Clusters(zone, lay),
         ZoneKind.BrowseTiles => BrowseTiles(zone, lay),
