@@ -239,9 +239,9 @@ public static class ZuneHomeBoardRules
     /// <summary>The menu and labels opening (the bar's height eases).</summary>
     public static LayoutTransition BarReveal => new(TransitionChannels.Size, TransitionDynamics.Tween(RecedeMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
-    /// <summary>The shortcuts group's head (the concept's pivot words): the gap between "shortcuts", "history" and "see all", how far "see all" stands
-    /// up from the words' foot (onto their baseline), and the heart on Liked Songs' flat accent plate when the history face shows it.</summary>
-    public const float FaceWordGap = 20f, FaceLinkDrop = 8f, FaceHeartGlyph = 32f;
+    /// <summary>The shortcuts group's head (the concept's pivot words): the gap between "shortcuts" and "history", and the heart on Liked Songs' flat
+    /// accent plate when the history face shows it.</summary>
+    public const float FaceWordGap = 20f, FaceHeartGlyph = 32f;
 
     /// <summary>The theme's auto size of a source (spec 4.3): a pin is medium in Zune (a small tile hides the name); a fill cell small.</summary>
     public static HomeSize AutoOf(BoardEntry e)

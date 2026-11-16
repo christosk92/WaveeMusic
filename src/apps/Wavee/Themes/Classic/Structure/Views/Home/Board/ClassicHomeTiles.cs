@@ -34,28 +34,21 @@ internal static class ClassicHomeTiles
     {
         string key = HomeBoardKeys.Group(e.GroupId);
         bool shortcuts = e.GroupId == HomeDocs.Pinned;
-        // Compact stacks the head: the title and the link, then the switch on its own line (the subtitle steps aside), at the 40 target floor.
+        // Compact stacks the head: the title, then the switch on its own line (the subtitle steps aside), at the 40 target floor.
         bool stacked = lay.Tier == WidthTier.Compact;
         var face = new BoxEl
         {
             Key = key + ":face", Shrink = 0f, AlignSelf = FlexAlign.Start,
-            // The switch and the link change places at the Compact edge (beside the title, under it): each crossing cross-fades them, never a rebuilt part.
+            // The switch changes places at the Compact edge (beside the title, under it): each crossing cross-fades it, never a rebuilt part.
             Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
             Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
                                           new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
                                          options: FaceOptions(lay.FaceSwitchH))],
         };
-        var link = new BoxEl
-        {
-            Key = key + ":history", Shrink = 0f,
-            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
-            Children = [HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents)],
-        };
         // The Pinned group is the concept's "Your shortcuts": its subtitle on the title's baseline, and while the history tile closes the grid, Classic's
-        // selector bar (two words over the accent underline) to switch the grid to Recently played and the "Listening history" link.
-        Element? tools = !switchable ? null
-            : stacked ? link
-            : new BoxEl { Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face, link] };
+        // selector bar (two words over the accent underline) to switch the grid to Recently played. No "Listening history" link: the grid's own history
+        // tile is the way in (owner 2026-11-16).
+        Element? tools = !switchable || stacked ? null : face;
         var header = HomeModules.ModuleHeader(e.Title, shortcuts && !stacked ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null, tools, open: null) with { Key = key + ":title" };
         var title = new BoxEl
         {

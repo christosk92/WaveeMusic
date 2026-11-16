@@ -68,12 +68,8 @@ internal static class ZuneHomeTiles
             Children =
             [
                 Word(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts), HomeShortcuts.ShortcutsFace, "face-shortcuts"),
+                // No "see all" after the words: the grid's own history tile is the way to the listening history (owner 2026-11-16).
                 Word(Loc.Get(Strings.Theme.Zune.Discovery.History), HomeShortcuts.RecentsFace, "face-history"),
-                new BoxEl
-                {
-                    Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, B.FaceLinkDrop),
-                    Children = [K.Link(key + ":history", Loc.Get(Strings.Home.SeeAll), HomeVerbs.OpenRecents)],
-                },
             ],
         };
     }
