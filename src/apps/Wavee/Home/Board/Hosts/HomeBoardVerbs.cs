@@ -54,8 +54,9 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     /// <inheritdoc/>
     public void Unpin(string pinId)
     {
+        string name = HomePinVerbs.NameOf(pinId);   // read before the pin leaves the document
         var applied = Store.Dispatch(new HomeCommand.Unpin(pinId));
-        if (applied.Changed) Confirm(Loc.Get(Strings.Home.BoardVerbs.Unpinned));
+        if (applied.Changed) Confirm(name.Length > 0 ? Strings.Home.Board.Pin.Unpinned(name) : Loc.Get(Strings.Home.BoardVerbs.Unpinned));
     }
 
     /// <inheritdoc/>
