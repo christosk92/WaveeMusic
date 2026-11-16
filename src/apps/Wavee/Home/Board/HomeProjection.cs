@@ -133,6 +133,7 @@ public static class HomeProjection
         foreach (var f in feed) if (f.Input is { } input) t_inputs.TryAdd(f.Ref.Key, input);
 
         var entries = ImmutableArray.CreateBuilder<BoardEntry>();
+        int fillCursor = 0;   // the shortcuts are dealt in order across every Fill item: a fill split around a pin continues where the first part stopped
         foreach (var g in doc.Groups)
         {
             string title = g.Title ?? (g.TitleKey is { Length: > 0 } tk ? Loc.Get(tk) : "");
@@ -171,13 +172,13 @@ public static class HomeProjection
                     case FillSource fill:
                         Flush(entries, run, titles);
                         int n = 0;
-                        foreach (var p in shortcuts)
+                        while (n < fill.Max && fillCursor < shortcuts.Count)
                         {
-                            if (n >= fill.Max) break;
+                            var p = shortcuts[fillCursor++];
                             if (pinned.Contains(p.PinId) || HomeCommands.IsHidden(doc, new SectionRef(p.PinId, 0, HomeCommands.FillFamily))) continue;
                             if (doc.Find(HomeCommands.FillPrefix + p.PinId).Group >= 0) continue;
                             entries.Add(new BoardEntry(HomeCommands.FillPrefix + p.PinId, BoardEntryKind.FillCell, g.Id, def, p, HomeSize.Auto,
-                                SectionTemplate.ShortcutFill, p.NameHint, false, false, false, false, true, -1));
+                                SectionTemplate.ShortcutFill, p.NameHint, false, false, false, false, true, -1) { Parent = it.Id });
                             n++;
                         }
                         break;

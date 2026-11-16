@@ -55,7 +55,7 @@ public static partial class HomeCommands
             _ => doc,
         };
         if (ReferenceEquals(next, doc) || !applied.Changed) { applied = applied with { Changed = false }; return doc; }
-        return next with { Rev = doc.Rev + 1, UpdatedAtMs = nowMs };
+        return NormalizeFills(next) with { Rev = doc.Rev + 1, UpdatedAtMs = nowMs };
     }
 
     static string LabelOf(HomeCommand c) => c switch
@@ -280,11 +280,11 @@ public static partial class HomeCommands
     // ══ taking control and owning ═══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Make the entry a document item: a feed section or fold takes control of the whole feed, a fill cell becomes
-    /// the user's pin where it is shown. Returns the item id (the entry id), or null when the entry cannot be owned.</summary>
-    /// <param name="through">A fill cell is owned IN PLACE: with it, every cell of its fill run shown ahead of it, and up to this shown index
-    /// (a move's destination inside the run), become the user's pins in the order shown, so the order seen is the order saved (a pin can only
-    /// stand ahead of the Fill item, never between its cells).</param>
-    static HomeDoc Own(HomeDoc doc, BoardModel shown, string entryId, ref HomeApplied applied, out string? itemId, int through = -1)
+    /// the user's pin where it is shown. Returns the item id (the entry id), or null when the entry cannot be owned.
+    /// <para>A fill cell is owned IN PLACE and ALONE: its Fill item splits around it (the cells shown ahead of it stay the fill's, as do
+    /// the ones after it), so the order seen is the order saved, no other shortcut becomes the user's, and the shortcuts shown stay as
+    /// many (the parts' sizes add up to the one before less the owned cell).</para></summary>
+    static HomeDoc Own(HomeDoc doc, BoardModel shown, string entryId, ref HomeApplied applied, out string? itemId)
     {
         itemId = null;
         if (doc.Find(entryId).Group >= 0) { itemId = entryId; return doc; }
@@ -305,33 +305,76 @@ public static partial class HomeCommands
             }
             case BoardEntryKind.FillCell when e.Raw is PinSource p:
             {
-                if (doc.ItemCount >= HomeDoc.MaxItems) return doc;
-                int g = doc.GroupIndex(e.GroupId);
-                if (g < 0) return doc;
-                var items = doc.Groups[g].Items;
-                int fill = -1;
-                for (int i = 0; i < items.Length; i++) if (items[i].Source is FillSource) { fill = i; break; }
-                int index = fill >= 0 ? fill : items.Length;
-                // In place: the run's cells from its start through this one (or through the move's destination) become pins in the order shown,
-                // before the Fill item; the cells after them stay the fill's.
-                int start = at;
-                while (start > 0 && shown.Entries[start - 1].Kind == BoardEntryKind.FillCell && shown.Entries[start - 1].GroupId == e.GroupId) start--;
-                int last = Math.Max(at, through);
-                int end = at;
-                while (end + 1 < shown.Entries.Length && end < last && shown.Entries[end + 1].Kind == BoardEntryKind.FillCell
-                       && shown.Entries[end + 1].GroupId == e.GroupId) end++;
-                var add = ImmutableArray.CreateBuilder<HomeItem>();
-                for (int k = start; k <= end && doc.ItemCount + add.Count < HomeDoc.MaxItems; k++)
-                    if (shown.Entries[k].Raw is PinSource kp && doc.Find(shown.Entries[k].Id).Group < 0)
-                        add.Add(new HomeItem(shown.Entries[k].Id, kp, HomeSize.Auto, s_noOptions));
-                if (add.Count == 0) return doc;
+                if (doc.ItemCount >= HomeDoc.MaxItems || e.Parent is not { } fillId) return doc;
+                var next = IntoFill(doc, shown, fillId, CellsOfBefore(shown, fillId, at), new HomeItem(entryId, p, HomeSize.Auto, s_noOptions), consumesCell: true);
+                if (ReferenceEquals(next, doc)) return doc;
                 applied = applied with { Changed = true, ItemId = entryId, GroupId = e.GroupId };
                 itemId = entryId;
-                return WithItems(doc, g, items.InsertRange(index, add.ToImmutable()));
+                return next;
             }
             default:
                 return doc;
         }
+    }
+
+    /// <summary>How many cells of the Fill item <paramref name="fillId"/> are shown ahead of entry index <paramref name="at"/>.</summary>
+    static int CellsOfBefore(BoardModel shown, string fillId, int at)
+    {
+        int n = 0;
+        for (int i = 0; i < at && i < shown.Entries.Length; i++)
+            if (shown.Entries[i].Kind == BoardEntryKind.FillCell && string.Equals(shown.Entries[i].Parent, fillId, StringComparison.Ordinal)) n++;
+        return n;
+    }
+
+    /// <summary>How many cells the Fill item <paramref name="fillId"/> shows now.</summary>
+    static int CellsOf(BoardModel shown, string fillId) => CellsOfBefore(shown, fillId, shown.Entries.Length);
+
+    /// <summary>Put <paramref name="item"/> inside the Fill item <paramref name="fillId"/>'s run, after <paramref name="before"/> of its cells:
+    /// the fill splits into a part of <paramref name="before"/> cells (the fill's own id), the item, and the rest (a new id). A cell the item
+    /// <paramref name="consumesCell"/> (an owned shortcut) leaves the rest one smaller, so the shortcuts shown stay as many.</summary>
+    static HomeDoc IntoFill(HomeDoc doc, BoardModel shown, string fillId, int before, HomeItem item, bool consumesCell)
+    {
+        var (g, i) = doc.Find(fillId);
+        if (g < 0 || doc.Groups[g].Items[i].Source is not FillSource fill) return doc;
+        var items = doc.Groups[g].Items;
+        int max = fill.Max, take = Math.Clamp(before, 0, max);
+        int rest = Math.Max(0, max - take - (consumesCell ? 1 : 0));
+        var parts = ImmutableArray.CreateBuilder<HomeItem>(3);
+        var fillItem = items[i];
+        if (take > 0) parts.Add(fillItem with { Source = fill with { Max = take } });
+        parts.Add(item);
+        if (rest > 0) parts.Add(take > 0 ? new HomeItem(HomeDocs.NewItemId(), fill with { Max = rest }, HomeSize.Auto, s_noOptions) : fillItem with { Source = fill with { Max = rest } });
+        return WithItems(doc, g, items.RemoveAt(i).InsertRange(i, parts.ToImmutable()));
+    }
+
+    /// <summary>Neighbouring Fill items of one kind merge back into one (the first's id, the sum of their sizes); an empty one goes. Run after
+    /// every command, so a pin moved out from between two parts leaves one fill, as before.</summary>
+    static HomeDoc NormalizeFills(HomeDoc doc)
+    {
+        var result = doc;
+        for (int g = 0; g < doc.Groups.Length; g++)
+        {
+            var items = doc.Groups[g].Items;
+            bool any = false;
+            foreach (var it in items) if (it.Source is FillSource) { any = true; break; }
+            if (!any) continue;
+            var b = ImmutableArray.CreateBuilder<HomeItem>(items.Length);
+            foreach (var it in items)
+            {
+                if (it.Source is FillSource f)
+                {
+                    if (f.Max <= 0) continue;
+                    if (b.Count > 0 && b[^1].Source is FillSource prev && prev.Of == f.Of)
+                    {
+                        b[^1] = b[^1] with { Source = prev with { Max = prev.Max + f.Max } };
+                        continue;
+                    }
+                }
+                b.Add(it);
+            }
+            if (b.Count != items.Length || !b.SequenceEqual(items)) result = WithItems(result, g, b.ToImmutable());
+        }
+        return result;
     }
 
     /// <summary>Every section of the current answer that the feed shows becomes an explicit SpotifySection item, in the
@@ -370,7 +413,33 @@ public static partial class HomeCommands
         var target = shown.Entries[to];
         bool later = to > from;
 
-        var owned = Own(doc, shown, entryId, ref applied, out string? id, through: to);
+        // Onto a fill cell: the item lands inside that fill's run, beside the cell (the fill splits around it; no shortcut becomes the
+        // user's but a moved one).
+        if (target.Kind == BoardEntryKind.FillCell && target.Parent is { } fillId)
+        {
+            var self = shown.Entries[from];
+            bool sameFill = self.Kind == BoardEntryKind.FillCell && string.Equals(self.Parent, fillId, StringComparison.Ordinal);
+            int k = CellsOfBefore(shown, fillId, to) - (sameFill && from < to ? 1 : 0) + (later ? 1 : 0);
+            HomeDoc start = doc;
+            HomeItem moving;
+            if (sameFill && self.Raw is PinSource sp)
+                moving = new HomeItem(entryId, sp, HomeSize.Auto, s_noOptions);
+            else
+            {
+                start = Own(doc, shown, entryId, ref applied, out string? oid);
+                if (oid is null) return doc;
+                var (og, oi) = start.Find(oid);
+                if (og < 0) return doc;
+                moving = start.Groups[og].Items[oi];
+                start = WithItems(start, og, start.Groups[og].Items.RemoveAt(oi));
+            }
+            var landed = IntoFill(start, shown, fillId, k, moving, consumesCell: sameFill);
+            if (ReferenceEquals(landed, start)) return doc;
+            applied = applied with { Changed = true, ItemId = moving.Id, GroupId = target.GroupId };
+            return landed;
+        }
+
+        var owned = Own(doc, shown, entryId, ref applied, out string? id);
         if (id is null) return doc;
         // A target in the feed is owned too (one take-control covers both); a target fill cell stands for the Fill item.
         string? targetItem = null;
@@ -386,13 +455,7 @@ public static partial class HomeCommands
                 if (target.Kind == BoardEntryKind.Fold && later && !target.Members.IsDefaultOrEmpty) targetItem = FeedPrefix + target.Members[^1].Key;
                 break;
             }
-            case BoardEntryKind.FillCell:
-            {
-                // A fill cell target is owned in place too (its run through it), so the item lands exactly beside it.
-                owned = Own(owned, shown, targetId, ref applied, out string? tid, through: to);
-                targetItem = tid ?? FillItemOf(owned, target.GroupId);
-                break;
-            }
+            case BoardEntryKind.FillCell: targetItem = FillItemOf(owned, target.GroupId); break;
             default: targetItem = targetId; break;
         }
 
@@ -430,8 +493,7 @@ public static partial class HomeCommands
     static HomeDoc MoveBy(HomeDoc doc, BoardModel shown, string entryId, int delta, ref HomeApplied applied)
     {
         if (delta == 0) return doc;
-        int at = shown.IndexOf(entryId);
-        var owned = Own(doc, shown, entryId, ref applied, out string? id, through: at < 0 ? -1 : at + delta);
+        var owned = Own(doc, shown, entryId, ref applied, out string? id);
         if (id is null) return doc;
         var d = owned;
         bool moved = false;
@@ -455,7 +517,21 @@ public static partial class HomeCommands
         var items = doc.Groups[g].Items;
         var item = items[i];
         int j = i + dir;
-        while (j >= 0 && j < items.Length && ShowsNothing(items[j], shown)) j += dir;
+        while (j >= 0 && j < items.Length && (ShowsNothing(items[j], shown) || items[j].Source is FillSource && CellsOf(shown, items[j].Id) == 0)) j += dir;
+        // A Fill item next in the way is a run of cells, not one: one step moves one of its cells to the other side of the item (a fill is
+        // dealt in order, so its first cell after the item becomes the last before it, and the other way).
+        if (j >= 0 && j < items.Length && items[j].Source is FillSource fill)
+        {
+            var list = items;
+            list = list.SetItem(j, list[j] with { Source = fill with { Max = fill.Max - 1 } });
+            int other = i - dir;
+            if (other >= 0 && other < list.Length && list[other].Source is FillSource near && near.Of == fill.Of)
+                list = list.SetItem(other, list[other] with { Source = near with { Max = near.Max + 1 } });
+            else
+                list = list.Insert(dir > 0 ? i : i + 1, new HomeItem(HomeDocs.NewItemId(), fill with { Max = 1 }, HomeSize.Auto, s_noOptions));
+            next = WithItems(doc, g, list);
+            return true;
+        }
         if (j >= 0 && j < items.Length)
         {
             var list = items.RemoveAt(i);

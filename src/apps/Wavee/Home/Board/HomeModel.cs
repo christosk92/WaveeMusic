@@ -57,6 +57,9 @@ public sealed record BoardEntry(string Id, BoardEntryKind Kind, string GroupId, 
     /// its own from <see cref="SectionSlot"/>). Null for every other kind.</summary>
     public HomeUi.Zone? Zone { get; init; }
 
+    /// <summary>A <see cref="BoardEntryKind.FillCell"/>'s Fill item (the document item that drew it); null for every other kind.</summary>
+    public string? Parent { get; init; }
+
     /// <summary>A <see cref="BoardEntryKind.Placeholder"/>'s reason: the feed's state (Loading before the first answer, Error, Offline).</summary>
     public HomeFeedState Feed { get; init; }
 }
