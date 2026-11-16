@@ -142,9 +142,28 @@ internal static class WinUiHomeAddBand
                 board.View.Add.Value = new HomeAddSurface(HomeAddSurfaceKind.Band, KindId(Math.Max(0, s_kind.Peek())));
             }) with { Key = "home:add:kinds" };
 
-            var search = AutoSuggestBox.Create([], Loc.Get(Strings.Theme.Winui.Home.Board.SearchPlaceholder), WinUiHomeBoardRules.SearchMaxW,
-                text: board.View.Query, onChange: OnQuery, onQuerySubmitted: _ => FocusFirstPin(hooks), field: field, debounceMs: 0f,
-                grow: 1f, maxFillWidth: WinUiHomeBoardRules.SearchMaxW, suggestionPresentation: AutoSuggestBoxSuggestionPresentation.Inline);
+            // An AutoSuggestBox-style field with no suggestion popup (the band's own row is the result list): the stock TextBox (its clear button)
+            // led by the query glyph. Escape is the band's: it clears the text first, then closes the band (the stock box would only restore it).
+            var search = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                Children =
+                [
+                    Ui.Icon(Icons.Search, WinUiHomeBoardRules.WidgetGlyph, Tok.TextSecondary) with { Shrink = 0f },
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                        Children =
+                        [
+                            TextBox.Create(board.View.Query, OnQuery, new TextBox.TextBoxOptions
+                            {
+                                Placeholder = Loc.Get(Strings.Theme.Winui.Home.Board.SearchPlaceholder), Width = WinUiHomeBoardRules.SearchMaxW,
+                                OnCommit = _ => FocusFirstPin(hooks), OnCancel = () => OnSearchEscape(board), KeepTextOnEscape = true, Field = field,
+                            }),
+                        ],
+                    },
+                ],
+            };
 
             var close = ToolTip.Wrap(Controls.IconAction(Icons.ChromeClose, () => Close(board)) with { Key = "home:add:close" },
                                      Loc.Get(Strings.Theme.Winui.Home.Board.CloseBand));
@@ -224,6 +243,17 @@ internal static class WinUiHomeAddBand
                 int n = board.Catalog.Find(board.Catalog.All(), q).Count;
                 board.Verbs.Say(n > 0 ? Strings.Theme.Winui.Home.Board.ResultsSaid(n: n, q: q) : Strings.Theme.Winui.Home.Board.NoMatchSaid(q: q));
             }
+        }
+
+        /// <summary>Escape in the search: clear the text first; on an empty search, close the band.</summary>
+        void OnSearchEscape(HomeBoardProps board)
+        {
+            if (board.View.Query.Peek().Length > 0)
+            {
+                board.View.Query.Value = ""; _lastQuery = ""; s_kind.Value = s_kindBeforeSearch;
+                s_focusSearch.Value = s_focusSearch.Peek() + 1;   // the field keeps focus, so a second Escape reaches it and closes the band
+            }
+            else Close(board);
         }
 
         void FocusFirstPin(InputHooks hooks)
