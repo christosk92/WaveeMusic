@@ -220,14 +220,15 @@ public sealed record HomeNowPlayingTileProps
     /// <summary>The cover.</summary>
     public required Func<string?> Cover { get; init; }
 
-    /// <summary>The position as a fraction 0..1 (a bound prop; repaint only).</summary>
-    public required Func<float> Progress { get; init; }
+    /// <summary>The position as a hairline (the player bar's own seek rail in its hairline form; bound, repaint only).</summary>
+    public required Func<Element> ProgressLine { get; init; }
 
     /// <summary>Playing (the primary button's glyph).</summary>
     public required IReadSignal<bool> Playing { get; init; }
 
-    /// <summary>The current lyric line, when the "lyric" option is on (null: off).</summary>
-    public Func<string>? Lyric { get; init; }
+    /// <summary>The lyric reel, when the "lyric" option is on (null: off): the playing track's lines and active index (the mini player's own
+    /// reel, `MiniLyricsFrame`), drawn by the theme's function; it ticks only while the tile shows.</summary>
+    public Func<Func<MiniLyricsFrame, Element>, Element>? Lyric { get; init; }
 
     /// <summary>Play or pause.</summary>
     public required Action PlayPause { get; init; }
@@ -242,17 +243,14 @@ public sealed record HomeNowPlayingTileProps
     public required Action Open { get; init; }
 }
 
-/// <summary>One row of <see cref="HomeUpNextTileProps"/>.</summary>
-public sealed record HomeUpNextRow(string Title, string Line, string? Cover);
-
 /// <summary>The props of <see cref="ViewKeys.HomeTileUpNext"/>.</summary>
 public sealed record HomeUpNextTileProps
 {
     /// <summary>The tile's frame.</summary>
     public required HomeTileFrame Frame { get; init; }
 
-    /// <summary>The next tracks (a subscribing read: the queue).</summary>
-    public required Func<IReadOnlyList<HomeUpNextRow>> Rows { get; init; }
+    /// <summary>The next tracks (the queue panel's own rows; call it inside the render: it subscribes the queue).</summary>
+    public required Func<NextUpRow[]> Rows { get; init; }
 
     /// <summary>Open the queue.</summary>
     public required Action OpenQueue { get; init; }

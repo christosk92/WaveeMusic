@@ -72,6 +72,9 @@ public sealed record HomePageProps
     /// <summary>The pinned Home board (contract 1.117): non-null on the All facet, where the page mounts it in place of its zone column (the
     /// scroller, the head, the facet row, the wash and the motion stay the page's). Null on every other facet, which keep their planners.</summary>
     public Func<Element>? Board { get; init; }
+
+    /// <summary>The board's tools for the page's head row (contract 1.117, <see cref="ViewKeys.HomeBoardTools"/>): non-null with <see cref="Board"/>.</summary>
+    public Func<Element>? BoardTools { get; init; }
 }
 
 /// <summary>The props of every `Home.Zone.{Kind}` body key whose body needs nothing but the zone.</summary>

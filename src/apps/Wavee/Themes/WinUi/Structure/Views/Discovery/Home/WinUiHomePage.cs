@@ -164,7 +164,9 @@ internal static class WinUiHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, EntranceGroup = true,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),      // compositor-only
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),
-                    Children = [WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],
+                    // On All the pinned board stands where the zone column stood (the scroller, the head, the band, the dim host and the
+                    // entrance stay the page's); every other facet keeps its zones.
+                    Children = [props.Board is { } board ? board() : WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],
                 },
             ],
         };

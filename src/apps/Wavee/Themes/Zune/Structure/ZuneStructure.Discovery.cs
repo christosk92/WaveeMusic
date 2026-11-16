@@ -27,6 +27,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.HomeZoneRecentGrid, ZuneHomeQuickplay.HistoryTemplate, "zune.home.zone.recent-grid");
         // The pinned Home board (contract 1.117): Nothing until Zune draws its board (lane W registered these at I1).
         CommonNothing.Register(views, ViewKeys.HomeBoard);
+        CommonNothing.Register(views, ViewKeys.HomeBoardTools);
         CommonNothing.Register(views, ViewKeys.HomeTilePin);
         CommonNothing.Register(views, ViewKeys.HomeTileNowPlaying);
         CommonNothing.Register(views, ViewKeys.HomeTileUpNext);

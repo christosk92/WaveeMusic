@@ -19,6 +19,10 @@ public static partial class ViewKeys
     /// chrome. Mounted by `HomeBoardHost` through <see cref="HomePageProps.Board"/>. Props: <see cref="HomeBoardProps"/>.</summary>
     public static readonly ViewKey<HomeBoardProps> HomeBoard = new("Home.Board");
 
+    /// <summary>The board's tools in the page's head row, beside the greeting (WinUI: "Add widgets" and the page's ⋯; a theme whose entry lives
+    /// elsewhere registers Nothing). Mounted through <see cref="HomePageProps.BoardTools"/> with the board's own props.</summary>
+    public static readonly ViewKey<HomeBoardProps> HomeBoardTools = new("Home.BoardTools");
+
     /// <summary>A pinned entity (album, playlist, artist, show, Liked Songs) or one of Spotify's shortcut fill cells. Mounted by `PinTileHost`.</summary>
     public static readonly ViewKey<HomePinTileProps> HomeTilePin = new("Home.Tile.Pin");
 

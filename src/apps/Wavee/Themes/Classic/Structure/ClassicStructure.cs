@@ -185,6 +185,7 @@ public sealed class ClassicStructure : IStructureLayer
         CommonNothing.Register(views, ViewKeys.HomeQuickplay);   // P5 Z5: Classic has no quickplay strip (its pins are the sidebar's)
         // The pinned Home board (contract 1.117): Nothing until Classic draws its board (lane W registered these at I1).
         CommonNothing.Register(views, ViewKeys.HomeBoard);
+        CommonNothing.Register(views, ViewKeys.HomeBoardTools);
         CommonNothing.Register(views, ViewKeys.HomeTilePin);
         CommonNothing.Register(views, ViewKeys.HomeTileNowPlaying);
         CommonNothing.Register(views, ViewKeys.HomeTileUpNext);
