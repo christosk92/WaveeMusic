@@ -57,6 +57,8 @@ internal static class WinUiHomeBoard
         Func<WinUiBoardItem, PackCell, Element>? _template;
         Func<PackBox, HomeTileForm>? _formRule;
 
+        static readonly Func<PackBox, HomeTileForm> s_full = static _ => HomeTileForm.Full;
+
         public BoardView()
         {
             _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
@@ -168,8 +170,9 @@ internal static class WinUiHomeBoard
             if (e.Kind == BoardEntryKind.GroupHead) return WinUiHomeTiles.GroupHead(e, _p.Lay);
             if (board.View.OpenId.Value == e.Id)
                 return WinUiHomeTiles.Open(e, board.Options(e));
-            var tile = board.Tile(e, cell, _formRule!);
-            if (WinUiHomeBoardRules.SizeOf(e) != HomeSize.Full) return tile;
+            // A full row always draws its full form (its height is its body's); every other size draws what its box can carry.
+            if (WinUiHomeBoardRules.SizeOf(e) != HomeSize.Full) return board.Tile(e, cell, _formRule!);
+            var tile = board.Tile(e, cell, s_full);
             // A full row: the body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
             return new BoxEl

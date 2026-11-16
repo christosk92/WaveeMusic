@@ -129,6 +129,7 @@ public sealed class PinTileHost : Component
         var card = new HomeCard(r);
         string kind = Search.KindWordOf(r.Kind, default);
         string? sub = r.Kind is EntityKind.Playlist or EntityKind.Collection ? card.OwnerName : card.Subtitle;
+        if (sub is { Length: > 0 } && string.Equals(sub, kind, StringComparison.CurrentCultureIgnoreCase)) return kind;
         return sub is { Length: > 0 } && kind.Length > 0 ? kind + " · " + sub : sub is { Length: > 0 } ? sub : kind;
     }
 

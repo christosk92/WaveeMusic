@@ -70,10 +70,11 @@ internal static class WinUiHomeTiles
 
     /// <summary>A card around <paramref name="content"/>: the plate, the reserved ⋯ corner, focus, the keys and the context request. A full row has no
     /// plate (it is a chapter on the page, as today): its ⋯ stands in a lane at its header's end.</summary>
-    static Element Card(HomeTileFrame f, Element content, string? key = null)
+    static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null)
     {
+        float moreBox = WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox;
         bool full = f.Form == HomeTileForm.Full;
-        var more = Embed.Comp(new MoreProps(f), static () => new TileMore()) with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
+        var more = Embed.Comp(new MoreProps(f, moreBox), static () => new TileMore()) with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
         string id = f.Entry.Id;
         var verbs = f.Verbs;
         Action<KeyEventArgs> keys = e => OnKey(e, f);
@@ -128,7 +129,7 @@ internal static class WinUiHomeTiles
     static BoxEl Pad(params Element[] kids) => new()
     {
         Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S,
-        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad + WinUiHomeBoardRules.MoreEdge, WinUiHomeBoardRules.TilePad),
+        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.MoreReserve, WinUiHomeBoardRules.TilePad),
         Children = kids,
     };
 
@@ -147,7 +148,7 @@ internal static class WinUiHomeTiles
         return new BoxEl
         {
             Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.MoreEdge + WinUiHomeBoardRules.MoreInset, 0f),
+            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
             Children = end is null ? [art, text] : [art, text, end],
         };
     }
@@ -189,7 +190,7 @@ internal static class WinUiHomeTiles
         switch (f.Form)
         {
             case HomeTileForm.S:
-                return Card(f, Clickable(RowFace(Cover(cover, WinUiHomeBoardRules.RowArt, p.Round), p.Name, p.Line), p.Open));
+                return Card(ctx, f, Clickable(RowFace(Cover(cover, WinUiHomeBoardRules.RowArt, p.Round), p.Name, p.Line), p.Open));
             default:
             {
                 bool wide = f.Form != HomeTileForm.M;
@@ -215,7 +216,7 @@ internal static class WinUiHomeTiles
                         },
                     ],
                 };
-                return Card(f, Clickable(Pad(head), p.Open));
+                return Card(ctx, f, Clickable(Pad(head), p.Open));
             }
         }
     }
@@ -239,7 +240,7 @@ internal static class WinUiHomeTiles
                                      Controls.IconAction(Icons.Pause, p.PlayPause) with { Visible = Prop.Of(() => p.Playing.Value) }],
         };
         if (f.Form == HomeTileForm.S)
-            return Card(f, RowFace(Cover(p.Cover(), WinUiHomeBoardRules.RowArt, false), name, p.Line, pp));
+            return Card(ctx, f, RowFace(Cover(p.Cover(), WinUiHomeBoardRules.RowArt, false), name, p.Line, pp));
         bool wide = f.Form != HomeTileForm.M;
         float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;
         var transport = new BoxEl
@@ -269,7 +270,7 @@ internal static class WinUiHomeTiles
                 new BoxEl { Height = WinUiHomeBoardRules.ProgressH, Shrink = 0f, Direction = 1, Children = [p.ProgressLine()] },
             ],
         };
-        return Card(f, body);
+        return Card(ctx, f, body);
     }
 
     /// <summary>The lyric reel's line: the active line in the accent (a re-render per line, the reel's own signal).</summary>
@@ -295,13 +296,13 @@ internal static class WinUiHomeTiles
         string first = rows.Length > 0 ? rows[0].Data.Title : Loc.Get(Strings.Theme.Winui.Home.Board.QueueEmpty);
         string count = Strings.Theme.Winui.Home.Board.InQueue(n: rows.Length);
         if (f.Form == HomeTileForm.S)
-            return Card(f, Clickable(RowFace(GlyphPlate(Icons.List, WinUiHomeBoardRules.RowArt), () => title, () => first), p.OpenQueue));
+            return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.List, WinUiHomeBoardRules.RowArt), () => title, () => first), p.OpenQueue));
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.List, title, () => count) };
         for (int i = 0; i < rows.Length && i < max; i++)
             kids.Add(Controls.Surface(rows[i].Data, ListShape) with { Key = "upnext:" + rows[i].Key });
         if (rows.Length == 0) kids.Add(Ui.Caption(first).Secondary());
-        return Card(f, Pad(kids.ToArray()));
+        return Card(ctx, f, Pad(kids.ToArray()));
     }
 
     static SurfaceShape ListShape => Shape.Row(WinUiHomeBoardRules.ListArt) with { MinHeight = WinUiHomeBoardRules.ListRowH };
@@ -330,10 +331,10 @@ internal static class WinUiHomeTiles
                         ctx.View(ViewKeys.HomeZoneRecentGrid, r),
                     ],
                 };
-                return Card(f, body);
+                return Card(ctx, f, body);
             }
             case HomeTileForm.S:
-                return Card(f, Clickable(RowFace(GlyphPlate(Icons.History, WinUiHomeBoardRules.RowArt), () => title, () => week), p.OpenHistory));
+                return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.History, WinUiHomeBoardRules.RowArt), () => title, () => week), p.OpenHistory));
             default:
             {
                 int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
@@ -346,7 +347,7 @@ internal static class WinUiHomeTiles
                         () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Circular: cell.Round) { Menu = HomeCardNav.MenuOf(in c) };
                     kids.Add(Controls.Surface(data, ListShape) with { Key = "recents:" + (c.IsBlank ? i.ToString(CultureInfo.InvariantCulture) : c.Uri) });
                 }
-                return Card(f, Pad(kids.ToArray()));
+                return Card(ctx, f, Pad(kids.ToArray()));
             }
         }
     }
@@ -359,12 +360,12 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         var zone = p.Zone;
         var home = WinUiHomeTiers.Of(ctx.Tier());
-        if (f.Form == HomeTileForm.Full) return Card(f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        if (f.Form == HomeTileForm.Full) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
         string title = zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow);
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.RefineSparkle, title, null) };
         for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
-        return Card(f, Pad(kids.ToArray()));
+        return Card(ctx, f, Pad(kids.ToArray()));
     }
 
     static Element CardRow(HomeCard card, int i)
@@ -381,7 +382,7 @@ internal static class WinUiHomeTiles
     public static Element Daylist(HomeDaylistTileProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        if (f.Form == HomeTileForm.Full) return Card(f, p.Card);
+        if (f.Form == HomeTileForm.Full) return Card(ctx, f, p.Card);
         var card = p.Zone.Items.Count > 0 ? p.Zone.Items[0] : default;
         bool wide = f.Form != HomeTileForm.M;
         float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;
@@ -399,7 +400,7 @@ internal static class WinUiHomeTiles
             ],
         };
         var row = new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(card.ImageUrl, art, false), text] };
-        return Card(f, Pad(row));
+        return Card(ctx, f, Pad(row));
     }
 
     // ══ Home.Tile.Section ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -411,13 +412,13 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         var zone = p.Zone;
         var home = WinUiHomeTiers.Of(ctx.Tier());
-        if (f.Form == HomeTileForm.Full) return Card(f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        if (f.Form == HomeTileForm.Full) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
         string title = zone.Title ?? f.Entry.Title;
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.Library, title, zone.Subtitle is { Length: > 0 } sub ? () => sub : null) };
         for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
         var box = Pad(kids.ToArray());
-        return Card(f, p.SeeAll is { } open ? Clickable(box, open) : box);
+        return Card(ctx, f, p.SeeAll is { } open ? Clickable(box, open) : box);
     }
 
     // ══ Home.Tile.Vacant ════════════════════════════════════════════════════════════════════════════════════════════
@@ -437,14 +438,14 @@ internal static class WinUiHomeTiles
             _ => Strings.Theme.Winui.Home.Board.Unknown,
         });
         string name = p.Name;
-        return Card(f, RowFace(GlyphPlate(Icons.Info, WinUiHomeBoardRules.RowArt), () => name, () => line));
+        return Card(ctx, f, RowFace(GlyphPlate(Icons.Info, WinUiHomeBoardRules.RowArt), () => name, () => line));
     }
 
     // ══ the ⋯ ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    internal sealed record MoreProps(HomeTileFrame Frame)
+    internal sealed record MoreProps(HomeTileFrame Frame, float Box)
     {
-        public bool Equals(MoreProps? o) => o is not null && Frame.Entry.Equals(o.Frame.Entry) && Frame.Form == o.Frame.Form && ReferenceEquals(Frame.Verbs, o.Frame.Verbs);
+        public bool Equals(MoreProps? o) => o is not null && Frame.Entry.Equals(o.Frame.Entry) && Frame.Form == o.Frame.Form && ReferenceEquals(Frame.Verbs, o.Frame.Verbs) && Box == o.Box;
         public override int GetHashCode() => Frame.Entry.GetHashCode();
     }
 
@@ -472,7 +473,7 @@ internal static class WinUiHomeTiles
                 s_live[id] = this;
                 return () => { if (s_live.TryGetValue(id, out var x) && ReferenceEquals(x, this)) s_live.Remove(id); };
             }, DepKey.From(id.GetHashCode()));
-            return ToolTip.Wrap(Controls.MoreButton(Toggle, requestsContext: false, restOpacity: 1f) with
+            return ToolTip.Wrap(Controls.IconAction(Icons.More, Toggle, requestsContext: false, size: p.Box) with
             {
                 OnRealized = h => _anchor = h, Role = AutomationRole.Button,
             }, Loc.Get(Strings.Theme.Winui.Home.Board.More));

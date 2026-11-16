@@ -36,6 +36,7 @@ internal static class WinUiHomeBoardTools
     {
         NodeHandle _add, _more;
         OverlayHandle? _menu, _tip;
+        bool _closingQuietly;
         ToolsProps? _p;
 
         public override Element Render()
@@ -48,12 +49,15 @@ internal static class WinUiHomeBoardTools
             bool open = board.View.Add.Value.Kind == HomeAddSurfaceKind.Band;
             bool seen = board.View.TipSeen.Value;
             int focusAsk = s_focusAdd.Value;
+            // The tip points at the button: while the page is scrolled past the head it waits (it never hangs over the title bar).
+            var scroll = UseScroll(board.Scroll);
+            bool atHead = UseComputed(() => scroll.Offset.Value < WinUiHomeBoardRules.TipScrollMax).Value;
             UseLayoutEffect(() => { if (focusAsk > 0 && !_add.IsNull) hooks.FocusNode?.Invoke(_add, true); }, DepKey.From(focusAsk));
 
             // The first-run tip: shown once the button has a node, gone for good once closed or once the band opens.
             UseLayoutEffect(() =>
             {
-                if (seen || open || overlay is null || _add.IsNull) { _tip?.Close(); return; }
+                if (seen || open || !atHead || overlay is null || _add.IsNull) { _closingQuietly = true; _tip?.Close(); _closingQuietly = false; return; }
                 if (_tip is { IsOpen: true }) return;
                 _tip = TeachingTip.Show(overlay, () => _add, t =>
                 {
@@ -66,8 +70,8 @@ internal static class WinUiHomeBoardTools
                     t.IsLightDismissEnabled = false;
                     t.PreferredPlacement = TeachingTip.PlacementMode.BottomLeft;
                 });
-                _tip.ClosedAction = () => { if (!board.View.TipSeen.Peek()) board.View.MarkTipSeen(); _tip = null; };
-            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0));
+                _tip.ClosedAction = () => { if (!_closingQuietly && !board.View.TipSeen.Peek()) board.View.MarkTipSeen(); _tip = null; };
+            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0, atHead ? 1 : 0, 0));
 
             var add = Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.AddWidgets), () => WinUiHomeAddBand.Toggle(board),
                     open ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Medium, Icons.Add)

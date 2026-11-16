@@ -112,6 +112,9 @@ public static class WinUiHomeBoardRules
     /// <summary>The ⋯ button's own edge and its inset from the tile's corner.</summary>
     public const float MoreEdge = 32f, MoreInset = 4f;
 
+    /// <summary>The lane a card's content leaves free at its end for the ⋯ (Compact's 40 box and its inset): edit tools never sit on content.</summary>
+    public const float MoreReserve = 44f;
+
     /// <summary>A card's cover (96) and a double card's (the card's height less its padding: 216).</summary>
     public const float CardArt = 96f, WideArt = 216f;
 
@@ -153,6 +156,9 @@ public static class WinUiHomeBoardRules
     /// <summary>The search box: at most 300 wide, 32 tall.</summary>
     public const float SearchMaxW = 300f, SearchH = 32f;
 
+    /// <summary>The page offset past which the first-run tip waits (the head row is leaving the viewport).</summary>
+    public const double TipScrollMax = 48d;
+
     /// <summary>The teaching tip's width.</summary>
     public const float TipW = 330f;
 
@@ -178,10 +184,9 @@ public static class WinUiHomeBoardRules
     public static HomeSize SizeOf(BoardEntry e) => e.Size != HomeSize.Auto ? e.Size : AutoOf(e.Source);
 
     /// <summary>The form a packed box can carry (spec 4.2): the class is the floor; a card the fill made two columns wide draws the wide form, a
-    /// row tile that got three units draws the card.</summary>
+    /// row tile that got three units draws the card. A full row is never decided here: it always draws its full form.</summary>
     public static HomeTileForm FormOf(in PackBox box, WinUiHomeBoardLayout lay, int columns)
     {
-        if (box.Cols >= Math.Max(columns, 1) && box.Rows >= lay.M.Rows && columns > lay.L.Cols) return HomeTileForm.Full;
         if (box.Rows >= lay.M.Rows - 0.01f) return box.Cols >= lay.L.Cols ? HomeTileForm.L : HomeTileForm.M;
         return HomeTileForm.S;
     }
