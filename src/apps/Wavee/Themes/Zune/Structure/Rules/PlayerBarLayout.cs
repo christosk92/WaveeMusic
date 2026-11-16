@@ -167,6 +167,21 @@ public static class ZuneTransportLayout
 
     public const float ReadoutSize = 13f, ReadoutLine = 18f;
 
+    /// <summary>The seek preview: the picture's width (its height follows the video's aspect), the caption's inset under it, and its two
+    /// lines: the time in the plate's large type (24/30) and the chapter (13/18, two lines at most).</summary>
+    public const float PreviewW = 248f, PreviewTimeSize = 24f, PreviewTimeLine = 30f, PreviewLabelSize = 13f, PreviewLabelLine = 18f;
+
+    public static readonly Edges4 PreviewCaptionPadding = new(12f, 6f, 12f, 10f);
+
+    public const int PreviewLabelLines = 2;
+
+    /// <summary>The air the tip keeps: 10 above the rail's line it points at (clear of the thumb), and 24 to either side, so a plate the
+    /// window clamps stops short of the glass.</summary>
+    public static readonly Edges4 PreviewLift = new(24f, 0f, 24f, 10f);
+
+    /// <summary>The plate arrives from 8 below while the host's tip fade runs (no scale: a square plate keeps its edges).</summary>
+    public static readonly EnterExit PreviewEnter = new(Dy: 8f, Active: true);
+
     /// <summary>The time labels (12/16, the board's): a slot wide enough for "-59:59" so 0:09 → 0:10 moves nothing (a floor while live), and
     /// the " · " between the two.</summary>
     public const float TimeSize = 12f, TimeLine = 16f, TimeSlotW = 40f;

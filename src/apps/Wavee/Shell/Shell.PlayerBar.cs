@@ -74,6 +74,13 @@ public static partial class Shell
             public static bool ChapterRail(EntityKind kind, SeekRailMode mode)
                 => kind == EntityKind.Episode && mode == SeekRailMode.Track;
 
+            /// <summary>Does the rail's tip carry the PICTURE under the pointer? The playing video has seek sheets, the rail is one
+            /// that scrubs a fixed span (a DVR window's sheets would be stale, a live line has nothing to seek), and the picture
+            /// would not cover the video it previews (<see cref="SeekRail.PreviewFits"/>: the mini player's and a narrow docked
+            /// card's rail keep the time alone).</summary>
+            public static bool PreviewRail(bool hasSheets, SeekRailMode mode, bool fits)
+                => hasSheets && mode == SeekRailMode.Track && fits;
+
             /// <summary>The chapter intervals the rail marks: the fetched chapters normalised against the duration once the
             /// request is <paramref name="ready"/> (sorted, de-duplicated, each ending where the next starts), else none.</summary>
             public static PodcastChapterTimeline.Interval[] Chapters(bool ready,
@@ -526,6 +533,23 @@ public static partial class Shell
         /// interval). Either way each tick is a recorded and presented full-window frame for nothing.</summary>
         public static bool Ticks(bool advances, SeekRailMode mode, bool concealed, bool windowHidden)
             => advances && mode != SeekRailMode.Line && !concealed && !windowHidden;
+
+        /// <summary>The narrowest ON-MEDIA rail whose tip may carry a picture. The strip over a video is as wide as the video,
+        /// and the tip rises over it: on the mini player or a docked card at its resting width (a rail of about 320) the picture
+        /// would cover most of the video it previews, so the tip stays the time alone until the surface is roomy.</summary>
+        public const float PreviewMinRailPx = 420f;
+
+        /// <summary>May this rail's tip carry the picture? A rail that sits over no video (the player bar, the stage's transport
+        /// card) always may: its tip covers nothing the picture repeats.</summary>
+        public static bool PreviewFits(bool onMedia, float railPx) => !onMedia || railPx >= PreviewMinRailPx;
+
+        /// <summary>How long the pointer rests before the tip's picture sharpens to the fine sheet: a sweep across the rail
+        /// then fetches no fine sheet at all.</summary>
+        public const float PreviewSharpenMs = 120f;
+
+        /// <summary>The coarse sheets all stay mounted (so a sweep never waits on one) up to this many; a longer video keeps a
+        /// window of <see cref="PreviewWindow"/> each side of the pointer's sheet.</summary>
+        public const int PreviewMountAll = 12, PreviewWindow = 1;
 
         /// <summary>How long a re-scaled rail eases to its new fraction, and the step of the stepper that drives it.</summary>
         public const float RescaleMs = 360f, RescaleStepMs = 16f;

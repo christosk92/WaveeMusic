@@ -280,6 +280,30 @@ public static class WinUiTransportLayout
 
     public const float ReadoutSize = 14f;
 
+    // ── the seek preview (the picture under the pointer) ──
+
+    /// <summary>The picture's width; its height follows the video's aspect.</summary>
+    public const float PreviewWidth = 232f;
+
+    /// <summary>The card around the picture: 4 on the picture's three sides, so its 4 corners sit concentric inside the card's 8, and the
+    /// caption's foot.</summary>
+    public static readonly Edges4 PreviewPadding = new(4f, 4f, 4f, 7f);
+
+    /// <summary>The picture to its caption, and the time to the chapter beside it.</summary>
+    public const float PreviewGap = 5f, PreviewCaptionGap = 6f;
+
+    /// <summary>The caption: the time (14, semibold: the readout's size) and the chapter (12).</summary>
+    public const float PreviewTimeSize = 14f, PreviewLabelSize = 12f;
+
+    public const int PreviewTimeWeight = 600;
+
+    /// <summary>The air the tip keeps: 14 above the rail's line it points at (clear of the thumb and of the transport card's edge), and the
+    /// page gutter (16) to either side, so a tip the window clamps stops on the gutter and not on the glass.</summary>
+    public static readonly Edges4 PreviewLift = new(16f, 0f, 16f, 14f);
+
+    /// <summary>The card arrives from 6 below and 3 % small while the host's tip fade runs: it rises out of the rail it belongs to.</summary>
+    public static readonly EnterExit PreviewEnter = new(Dy: 6f, Sx: 0.97f, Sy: 0.97f, Active: true);
+
     // ── the time labels ──
 
     /// <summary>The time slot (Shell-Player: 40, the digits centred).</summary>

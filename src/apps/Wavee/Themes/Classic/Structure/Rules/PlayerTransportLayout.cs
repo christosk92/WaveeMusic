@@ -64,6 +64,29 @@ internal static class ClassicTransportLayout
     /// <summary>The readout's text size.</summary>
     public const float ReadoutSize = 15f;
 
+    // ── the seek preview (the picture under the pointer) ──
+
+    /// <summary>The picture's width; its height follows the video's aspect.</summary>
+    public const float PreviewWidth = 224f;
+
+    /// <summary>The picture to the time bubble under it, and the time to the chapter inside the bubble.</summary>
+    public const float PreviewGap = 6f, PreviewCaptionGap = 6f;
+
+    /// <summary>The bubble's digits (the readout's 15 would outweigh the picture: 13, semibold) and the chapter (12).</summary>
+    public const float PreviewTimeSize = 13f, PreviewLabelSize = 12f;
+
+    public const int PreviewTimeWeight = 600;
+
+    /// <summary>The bubble's padding: the readout's, a little wider for a pill.</summary>
+    public static readonly Edges4 PreviewBubblePadding = new(10f, 3f, 10f, 5f);
+
+    /// <summary>The air the tip keeps: 10 above the rail's line it points at (clear of the thumb), and 12 to either side, so a picture the
+    /// window clamps stops short of the glass.</summary>
+    public static readonly Edges4 PreviewLift = new(12f, 0f, 12f, 10f);
+
+    /// <summary>The pair arrives from 6 below and 4 % small while the host's tip fade runs.</summary>
+    public static readonly EnterExit PreviewEnter = new(Dy: 6f, Sx: 0.96f, Sy: 0.96f, Active: true);
+
     // ── the time labels ──
 
     /// <summary>The track slot: wide enough for "-59:59", so 0:09 → 0:10 moves nothing (a reservation at rest, a FLOOR while live).</summary>

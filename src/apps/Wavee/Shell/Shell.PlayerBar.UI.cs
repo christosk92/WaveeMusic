@@ -509,6 +509,11 @@ public static partial class Shell
 
         readonly bool _drawn;   // the caller draws (SeekBarDrawn): the props carry its drawing
 
+        // The seek PREVIEW: the playing video's seek sheets put the picture under the pointer in the rail's tip (hover and scrub), where the
+        // rail is wide enough for one. While it does, the plain time readout stays shut: one tip per rail.
+        readonly Func<bool> _previewFitsNow;
+        bool _previewRail;
+
         public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false,
             bool drawn = false)
         {
@@ -536,6 +541,7 @@ public static partial class Shell
             _onHover = local => { _chapterHovering.Value = true; _chapterHover.SetIfChanged(_scrub.FractionAt(local.X)); };
             _onExit = () => _chapterHovering.Value = false;
             _onBounds = b => _scrub.SetRailWidth(b.W);
+            _previewFitsNow = () => SeekRail.PreviewFits(onMedia: _chromeFeed is not null, _scrub.RailPx.Value);   // only the on-media strip has a chrome feed
         }
 
         /// <summary>What the last render drew: what a CONCEALED rail answers (see <see cref="Render"/>).</summary>
@@ -584,6 +590,9 @@ public static partial class Shell
             // V-PA24/X5: the rail can be unmounted mid-gesture (the stage closing, a tier remount, a theme swap): a live scrub must not leave
             // the pump holding the main voice behind a grain voice nobody will ever release. `ScrubCancel` is idempotent.
             UseEffect(() => () => { if (_scrub.AbortIfScrubbing()) CloseReadout(); }, DepKey.Empty);
+            // The preview's two facts: the source's sheets (a source change re-renders) and whether the rail is wide enough (a memo: only the edge).
+            var sheets = Playback.Video.Source.Value?.SeekPanels;
+            bool previewFits = UseComputed(_previewFitsNow).Value;
 
             // NOTHING TO REWIND: the rail stops pretending to be one (the view draws the live line). After every hook, so the hook
             // order never varies.
@@ -597,14 +606,17 @@ public static partial class Shell
             var chapterId = Playback.CurrentId.Value;
             uint chapterEpoch = Entities.ScopeEpoch.Value;
             bool chapterRail = PlayerBarFacts.Seek.ChapterRail(chapterId.Kind, mode);
+            bool previewRail = _previewRail = PlayerBarFacts.Seek.PreviewRail(sheets is not null, mode, previewFits);
+            var preview = previewRail ? sheets : null;
             var chapterIdentity = new ChapterResources.Identity(chapterEpoch, Entities.Current.Key.Account, chapterId);
-            Element? chapters = chapterRail
-                ? Embed.Comp(() => new BarChapterTimeline(chapterIdentity, _scrub.RailPx, _chapterHover, _scrub.Fraction, _chapterHovering, _scrub.Scrubbing))
-                    with { Key = "player-chapters:" + chapterEpoch + ":" + chapterId.Text }
+            // ONE tip host per rail: an episode's chapters, a video's seek preview, or both in one bubble. Keyed on everything it froze at mount.
+            Element? chapters = chapterRail || previewRail
+                ? Embed.Comp(() => new BarRailTip(chapterIdentity, chapterRail, preview, _scrub, _chapterHover, _chapterHovering))
+                    with { Key = "player-rail-tip:" + chapterEpoch + ":" + chapterId.Text + (chapterRail ? ":chapters" : "") + (preview is null ? "" : ":" + preview.Key) }
                 : null;
             return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
             {
-                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, ChapterRail = chapterRail, Chapters = chapters,
+                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = chapterRail || previewRail, Chapters = chapters,
             });
         }
 
@@ -670,11 +682,21 @@ public static partial class Shell
 
         void OnDown(Point2 local)
         {
-            if (!_scrub.Begin(_scrub.FractionAt(local.X))) return;   // jump to the press point; the reducer decides grains or a visual-only scrub
+            float fraction = _scrub.FractionAt(local.X);
+            if (!_scrub.Begin(fraction)) return;   // jump to the press point; the reducer decides grains or a visual-only scrub
+            _chapterHover.SetIfChanged(fraction);    // the tip's hover point travels with the gesture (see OnDragMove)
             OpenReadout();
         }
 
-        void OnDragMove(Point2 local) => _scrub.Update(_scrub.FractionAt(local.X));
+        /// <summary>The drag follows the pointer, and so does the tip's HOVER point: a release leaves the pointer where the drag ended with no
+        /// hover move to say so, and a tip that fell back to the last hovered fraction jumped away from the pointer (and showed that other
+        /// moment's picture) until the mouse next moved.</summary>
+        void OnDragMove(Point2 local)
+        {
+            float fraction = _scrub.FractionAt(local.X);
+            _scrub.Update(fraction);
+            _chapterHover.SetIfChanged(fraction);
+        }
 
         /// <summary>The drag-END edge. The controller always releases the gate (a commit that cannot happen cancels), so the
         /// readout closes either way.</summary>
@@ -696,7 +718,7 @@ public static partial class Shell
         /// track, not a DVR window or an episode's chapter rail).</summary>
         void OpenReadout()
         {
-            if (_overlay is null || _readout is { IsOpen: true } || !_scrub.ReadoutWanted) return;
+            if (_overlay is null || _readout is { IsOpen: true } || !_scrub.ReadoutWanted || _previewRail) return;
             _readout = _overlay.Open(_readoutAnchor, _readoutContent, FlyoutPlacement.Top,
                 new PopupOptions(FocusTrap: false, DismissBehavior: DismissBehavior.None, Chrome: PopupChrome.Raw));
         }

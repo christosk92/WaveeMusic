@@ -163,8 +163,8 @@ internal static class ClassicTransport
             OnDrag = enabled ? host.DragMove : null,
             OnClick = enabled ? host.Commit : null,
             OnDragCanceled = enabled ? host.Cancel : null,
-            OnHoverMove = props.ChapterRail && enabled ? host.HoverMove : null,
-            OnPointerExit = props.ChapterRail ? host.PointerExit : null,
+            OnHoverMove = props.HoverTip && enabled ? host.HoverMove : null,
+            OnPointerExit = props.HoverTip ? host.PointerExit : null,
             Children = [stack],
         };
     }
@@ -280,6 +280,52 @@ internal static class ClassicTransport
         Padding = ClassicTransportLayout.ReadoutPadding,
         Children = [new TextEl(Prop.Of(props.Text)) { Size = ClassicTransportLayout.ReadoutSize, Color = Tok.TextPrimary }],
     };
+
+    // ══ THE SEEK PREVIEW ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekPreview"/>: the picture floating alone (the card radius, the flyout
+    /// ring and elevation, no plate around it) and, centred under it, the time in the readout's own bubble drawn as a pill; an episode's
+    /// chapter rides in the pill beside the time. The picture is the core host's; the fill under it shows until its sheet decodes.</summary>
+    public static Element SeekPreview(SeekPreviewProps props, in ViewContext ctx)
+    {
+        float width = ClassicTransportLayout.PreviewWidth;
+        var has = props.HasLabel;
+        var pair = new BoxEl
+        {
+            Direction = 1, Gap = ClassicTransportLayout.PreviewGap, AlignItems = FlexAlign.Center, HitTestVisible = false,
+            Enter = ClassicTransportLayout.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "classic-seek-preview-picture", Width = width, Height = width / props.Aspect, Shrink = 0,
+                    Fill = Tok.MediaLetterbox, Corners = Radii.CardAll, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+                    Shadow = Elevation.Flyout, HitTestVisible = false,
+                    Children = [props.Frame(width, Radii.CardAll)],
+                },
+                new BoxEl
+                {
+                    Direction = 0, Gap = ClassicTransportLayout.PreviewCaptionGap, AlignItems = FlexAlign.Center, MaxWidth = width,
+                    Fill = ColorF.Transparent, Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+                    Corners = Radii.PillAll, Shadow = Elevation.Tooltip, Padding = ClassicTransportLayout.PreviewBubblePadding, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(Prop.Of(props.Time))
+                        {
+                            Size = ClassicTransportLayout.PreviewTimeSize, Weight = ClassicTransportLayout.PreviewTimeWeight, Color = Tok.TextPrimary,
+                            FontFeatures = FontFeatures.TabularFigures,
+                        },
+                        new TextEl(Prop.Of(props.Label))
+                        {
+                            Size = ClassicTransportLayout.PreviewLabelSize, Color = Tok.TextSecondary, Shrink = 1, MinWidth = 0,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Visible = Prop.Of(has),
+                        },
+                    ],
+                },
+            ],
+        };
+        return new BoxEl { Padding = ClassicTransportLayout.PreviewLift, HitTestVisible = false, Children = [pair] };
+    }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 

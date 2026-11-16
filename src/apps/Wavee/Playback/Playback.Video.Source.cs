@@ -434,13 +434,13 @@ public static partial class Playback
                     return null;
                 }
 
-                if (Parse(result.Bytes) is not { } m) return null;
+                if (Parse(result.Bytes, manifestId) is not { } m) return null;
                 if (ToDescriptor(in m) is not { } descriptor) return null;
                 License.Remember(m.DefaultKid, m.LicenseEndpoint);
                 Log.Info("video", $"[video] manifest.ok key={Tail(manifestId)} ms={FrameNowMs() - t0} cached=false rungs={m.Video.Length} " +
                                   $"segLen={m.SegmentLengthSeconds} dur={m.DurationMs} natural={m.NaturalWidth}x{m.NaturalHeight} audio={(m.HasAudio ? "true" : "false")}");
                 return VideoSource.PlayReady(manifestId, descriptor, License.Relay(m.LicenseEndpoint), m.LicenseEndpoint)
-                    with { NaturalWidth = m.NaturalWidth, NaturalHeight = m.NaturalHeight };
+                    with { NaturalWidth = m.NaturalWidth, NaturalHeight = m.NaturalHeight, SeekPanels = m.SeekPanels };
             }
 
             /// <summary>One compatible video or audio rung. <see cref="KeyId"/> is the CENC key id as 32 lowercase hex.</summary>
@@ -454,11 +454,11 @@ public static partial class Playback
                 int SegmentLengthSeconds, long DurationMs,
                 byte[] Pssh, string? LicenseEndpoint, string? DefaultKid,
                 Rung[] Video, Rung Audio, bool HasAudio,
-                int NaturalWidth, int NaturalHeight);
+                int NaturalWidth, int NaturalHeight, SeekPanels? SeekPanels = null);
 
             /// <summary>Parse the v9 JSON. Both shapes are handled: templates at the root beside <c>contents[0]</c>, or
             /// everything nested under <c>sources[0]</c>.</summary>
-            public static Parsed? Parse(ReadOnlySpan<byte> json)
+            public static Parsed? Parse(ReadOnlySpan<byte> json, string seekKey = "")
             {
                 try
                 {
@@ -543,7 +543,7 @@ public static partial class Playback
                     Rung top = rungs[^1];
 
                     return new Parsed(baseUrl, initTpl, segTpl, segLen, durMs, pssh, license, defaultKid,
-                        rungs, audio, hasAudio, top.Width, top.Height);
+                        rungs, audio, hasAudio, top.Width, top.Height, SeekPanels.Parse(root, seekKey));
                 }
                 catch (Exception ex) { Log.Warn("video", "manifest parse failed", ex); return null; }
             }

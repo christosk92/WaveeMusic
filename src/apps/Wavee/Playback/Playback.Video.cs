@@ -100,6 +100,9 @@ public static partial class Playback
         {
             public bool IsDrm => DrmDescriptor is not null && LicenseRelay is not null;
 
+            /// <summary>The source's seek-preview sheets (the manifest's <c>seekpanels</c>), or null: the seek tip then shows the time alone.</summary>
+            public SeekPanels? SeekPanels { get; init; }
+
             public static VideoSource Clear(string url, bool isLive = false)
                 => new(url, ClearUrl: url, IsLive: isLive);
 

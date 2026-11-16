@@ -900,6 +900,10 @@ public static partial class Diagnostics
                     _fakePlayer = FluentGpu.Media.MediaPlayer.Create();
                     Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
                 }
+                // `seekPreview=on`: publish a source that carries seek sheets (the fixture's, read from files beside the exe), so the rails' tip
+                // shows the picture under the pointer as it does over a real video.
+                if (string.Equals(a.Str("seekPreview"), "on", StringComparison.OrdinalIgnoreCase))
+                    Playback.Video.Source.Value = InspectKit.SeekPreviewSource();
                 // `join=`: the host's switch phase as its events would leave it (`Video.JoinNow` folds it): poster = a player bound and no join in
                 // flight (the artwork alone), working = a join still in flight past the budget (the ring), failed = the join failed (the fault line).
                 if (join.Length > 0)

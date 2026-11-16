@@ -11,6 +11,7 @@
 //   Player.SeekChapters  an episode's chapter ticks (1 x 8, the ink at 0.6) hanging from the line, and the tip's invisible anchor
 //   Player.ChapterTip    the tip: a square raised plate, the time, the chapter's title and its range
 //   Player.SeekReadout   the scrub readout: a square raised plate over the thumb
+//   Player.SeekPreview   the seek preview: the readout's plate grown around the picture under the pointer, the accent line, the time large
 //   Player.TimeLabel     the digits (12/16, tabular through the slot reservation), or the live slot (LIVE · GO LIVE, lowercase words)
 //
 // Everything hot is a compositor bind (the fill's scale, the thumb's and the ticks' translates) or a bound text channel.
@@ -102,8 +103,8 @@ internal static class ZuneTransport
             OnDrag = enabled ? host.DragMove : null,
             OnClick = enabled ? host.Commit : null,
             OnDragCanceled = enabled ? host.Cancel : null,
-            OnHoverMove = props.ChapterRail && enabled ? host.HoverMove : null,
-            OnPointerExit = props.ChapterRail ? host.PointerExit : null,
+            OnHoverMove = props.HoverTip && enabled ? host.HoverMove : null,
+            OnPointerExit = props.HoverTip ? host.PointerExit : null,
             Children = [stack],
         };
     }
@@ -169,6 +170,50 @@ internal static class ZuneTransport
         Fill = R.Layer.FloatingChrome, Corners = R.Shape.All(ShapeRole.Overlay), Shadow = Elevation.Flyout, Padding = T.ReadoutPadding,
         Children = [new TextEl(Prop.Of(props.Text)) { Size = T.ReadoutSize, LineHeight = T.ReadoutLine, Color = Tok.TextPrimary }],
     };
+
+    // ══ THE SEEK PREVIEW ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekPreview"/>: the square raised plate of the readout, grown around a
+    /// picture. The picture runs to the plate's edges (no inset, no radius), the rail's own 2-px accent line closes it, and the time
+    /// stands under it in the plate's large type, left like every Zune caption; an episode's chapter is the line under the time.</summary>
+    public static Element SeekPreview(SeekPreviewProps props, in ViewContext ctx)
+    {
+        var has = props.HasLabel;
+        var square = R.Shape.All(ShapeRole.Overlay);
+        var plate = new BoxEl
+        {
+            Direction = 1, Width = T.PreviewW, Fill = R.Layer.FloatingChrome, Corners = square, Shadow = Elevation.Flyout,
+            HitTestVisible = false, Enter = T.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "zune-seek-preview-picture", Width = T.PreviewW, Height = T.PreviewW / props.Aspect, Shrink = 0f,
+                    Fill = Tok.MediaLetterbox, HitTestVisible = false,
+                    Children = [props.Frame(T.PreviewW, square)],
+                },
+                new BoxEl { Height = T.LineH, Shrink = 0f, Fill = R.Ink.AccentDecor, HitTestVisible = false },
+                new BoxEl
+                {
+                    Direction = 1, Padding = T.PreviewCaptionPadding, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(Prop.Of(props.Time))
+                        {
+                            Size = T.PreviewTimeSize, LineHeight = T.PreviewTimeLine, Color = Tok.TextPrimary,
+                            FontFeatures = FontFeatures.TabularFigures,
+                        },
+                        new TextEl(Prop.Of(props.Label))
+                        {
+                            Size = T.PreviewLabelSize, LineHeight = T.PreviewLabelLine, Color = Tok.TextSecondary, MinWidth = 0f,
+                            MaxLines = T.PreviewLabelLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, Visible = Prop.Of(has),
+                        },
+                    ],
+                },
+            ],
+        };
+        return new BoxEl { Padding = T.PreviewLift, HitTestVisible = false, Children = [plate] };
+    }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 

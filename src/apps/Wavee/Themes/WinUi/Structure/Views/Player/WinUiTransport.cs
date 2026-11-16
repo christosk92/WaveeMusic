@@ -140,8 +140,8 @@ internal static class WinUiTransport
             OnDrag = enabled ? host.DragMove : null,
             OnClick = enabled ? host.Commit : null,
             OnDragCanceled = enabled ? host.Cancel : null,
-            OnHoverMove = props.ChapterRail && enabled ? host.HoverMove : null,
-            OnPointerExit = props.ChapterRail ? host.PointerExit : null,
+            OnHoverMove = props.HoverTip && enabled ? host.HoverMove : null,
+            OnPointerExit = props.HoverTip ? host.PointerExit : null,
             Children = [stack],
         };
     }
@@ -257,6 +257,52 @@ internal static class WinUiTransport
         Padding = WinUiTransportLayout.ReadoutPadding,
         Children = [new TextEl(Prop.Of(props.Text)) { Size = WinUiTransportLayout.ReadoutSize, Color = Tok.TextPrimary }],
     };
+
+    // ══ THE SEEK PREVIEW ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekPreview"/>: a thumbnail flyout. The acrylic card of every WinUI
+    /// flyout (the overlay radius, the flyout ring and elevation), the picture inset by 4 so its control radius sits concentric in the
+    /// card's, and one caption line: the time, and on an episode the chapter beside it. The picture is the core host's; the plate under
+    /// it is what shows until its sheet decodes.</summary>
+    public static Element SeekPreview(SeekPreviewProps props, in ViewContext ctx)
+    {
+        float width = WinUiTransportLayout.PreviewWidth;
+        var has = props.HasLabel;
+        var card = new BoxEl
+        {
+            Direction = 1, Gap = WinUiTransportLayout.PreviewGap, Padding = WinUiTransportLayout.PreviewPadding, AlignItems = FlexAlign.Center,
+            Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+            Corners = Radii.OverlayAll, Shadow = Elevation.Flyout, HitTestVisible = false,
+            Enter = WinUiTransportLayout.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "winui-seek-preview-picture", Width = width, Height = width / props.Aspect, Shrink = 0,
+                    Fill = Tok.MediaLetterbox, Corners = Radii.ControlAll, HitTestVisible = false,
+                    Children = [props.Frame(width, Radii.ControlAll)],
+                },
+                new BoxEl
+                {
+                    Direction = 0, Gap = WinUiTransportLayout.PreviewCaptionGap, AlignItems = FlexAlign.Center, MaxWidth = width, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(Prop.Of(props.Time))
+                        {
+                            Size = WinUiTransportLayout.PreviewTimeSize, Weight = WinUiTransportLayout.PreviewTimeWeight, Color = Tok.TextPrimary,
+                            FontFeatures = FontFeatures.TabularFigures,
+                        },
+                        new TextEl(Prop.Of(props.Label))
+                        {
+                            Size = WinUiTransportLayout.PreviewLabelSize, Color = Tok.TextSecondary, Shrink = 1, MinWidth = 0,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Visible = Prop.Of(has),
+                        },
+                    ],
+                },
+            ],
+        };
+        return new BoxEl { Padding = WinUiTransportLayout.PreviewLift, HitTestVisible = false, Children = [card] };
+    }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
