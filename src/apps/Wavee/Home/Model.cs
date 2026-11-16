@@ -149,6 +149,9 @@ public static class SectionReader
         for (int i = 0; i < slots.Length; i++) result[i] = Of(new Section(slots[i]));
 
         cache.Sections = result;
+        // Phase 0's identity log (Home/Board/HomeIdentLog.cs): every answer read is noted; it upserts per (day, facet,
+        // section), so the reads a landing card or preview causes refine the line instead of adding one.
+        HomeIdentLog.Note(h.FacetId.IsEmpty ? "" : Entities.Strings.Resolve(h.FacetId), result, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         cache.HomeVersion = hv;
         cache.SectionEdgeVersion = sv;
         cache.CardFold = fold;
