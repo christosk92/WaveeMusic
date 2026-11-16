@@ -197,7 +197,7 @@ public static class ZuneHomeBoardRules
 
     /// <summary>The tile's back: its padding, its head (the name in 26/30 light and "done"), one option (its 13 label over a line of words), the words'
     /// gap, and the gap between options.</summary>
-    public const float BackPadX = 14f, BackPadTop = 10f, BackPadBottom = 14f, BackHeadH = 40f, BackLabelH = 18f, BackWordH = 32f, BackWordGap = 18f,
+    public const float BackPadX = 14f, BackPadTop = 10f, BackPadBottom = 14f, BackHeadH = 40f, BackLabelH = 18f, BackWordH = 40f, BackWordGap = 18f,
         BackOptionGap = 12f;
 
     /// <summary>How many words fit on a line of the back at its least width (4 cells): the open extent reserves one line per this many values.</summary>

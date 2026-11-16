@@ -32,7 +32,7 @@ internal static class ZuneHomeTileBack
                 Key = "home:options:head", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = B.BackHeadH,
                 Children =
                 [
-                    R.Type.Heading(p.Title) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.Heading(p.Title) with { Case = R.Case.For(LabelKind.Heading), Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     Word("home:options:done", Loc.Get(Strings.Theme.Zune.Home.Done), lit: false, p.Done, command: true),
                 ],
             },
@@ -80,7 +80,7 @@ internal static class ZuneHomeTileBack
     /// <summary>A choice as a word: the 22/28 light voice, lowercase, the accent when it is the current one; a 40 target at least.</summary>
     static Element Word(string key, string text, bool lit, Action act, bool command = false) => new BoxEl
     {
-        Key = key, Direction = 0, AlignItems = FlexAlign.Center, MinHeight = B.BackWordH, Shrink = 0f,
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = B.BackWordH, MinWidth = B.BadgeHit, Shrink = 0f,
         Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = act,
         Children =
         [

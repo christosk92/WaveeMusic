@@ -194,7 +194,7 @@ internal static class ZuneHomeTiles
             if (Context.Anim is not { } anim || Context.Scene is not { } s || _node.IsNull || !s.IsLive(_node)) return;
             float scale = recede ? B.Recede : 1f, opacity = recede ? B.RecedeDim : 1f;
             bool reduced = Design.Reduced;
-            var motion = MotionTokenDef.Eased(reduced ? B.ReducedMs : B.RecedeMs, Easing.FluentDecelerate);
+            var motion = MotionTokenDef.Eased(reduced ? B.ReducedMs : B.RecedeMs, Easing.FluentStandard);   // eases in: no first-frame lurch
             // Reduced motion: the dim fades, the scale lands at once (no travel).
             var scaleMotion = reduced ? MotionTokenDef.Eased(0f, Easing.Linear) : motion;
             anim.SeedValue(_node, AnimChannel.ScaleX, scale, scaleMotion);
@@ -314,7 +314,7 @@ internal static class ZuneHomeTiles
                 Gradient = B.NameScrim,
                 Children = line is null
                     ? [NameText(name, 2)]
-                    : [NameText(name, 1), R.Type.MicroMeta("") with { Text = Prop.Of(line), Color = Tok.OnMediaSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+                    : [NameText(name, 1), R.Type.MicroMeta("") with { Text = Prop.Of(line), Color = Tok.OnMediaPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
             },
         ],
     };
