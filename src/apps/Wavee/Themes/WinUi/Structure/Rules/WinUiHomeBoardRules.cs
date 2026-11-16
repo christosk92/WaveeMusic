@@ -140,6 +140,9 @@ public static class WinUiHomeBoardRules
     /// <summary>Reduced motion's fade.</summary>
     public const float ReducedMs = 120f;
 
+    /// <summary>The pin mark on a card whose entity is on Home (12, the meta line's glyph).</summary>
+    public const float PinMarkGlyph = 12f;
+
     /// <summary>Half (a round cover's corner is half its edge).</summary>
     public const float Half = 0.5f;
 
