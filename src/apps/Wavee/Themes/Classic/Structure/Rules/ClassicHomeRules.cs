@@ -89,8 +89,24 @@ public static class ClassicHomeRules
 
     /// <summary>How many release rows, cluster cards and cluster rows a body shows.</summary>
     public const int ReleaseRowsMax = 6;
-    public const int ClusterMax = 6;
-    public const int ClusterRows = 3;
+    public const int ClusterRows = 4;
+
+    /// <summary>The preview cards shown before "Show more" (home-gap P4): two rows of the tier's columns. A card's playlist cover and the reason's avatar.</summary>
+    public const int ClusterVisibleRows = 2;
+    public const float PreviewCover = 72f, ReasonAvatar = 32f;
+
+    /// <summary>A section header that hangs off an entity: its height (the cover beside two lines) and the cover.</summary>
+    public const float EntityHeaderH = 44f, EntityCover = 40f;
+
+    /// <summary>A mood plate (home-gap P6): its height, its inset, how many a shelf shows; the plate's colour fades to this share toward its right edge.</summary>
+    public const float MoodPlateH = 88f, MoodPlatePad = 16f, MoodPlateFadeTo = 0.45f;
+    public const int MoodPlatesMax = 8;
+
+    /// <summary>A book card's caption lines (home-gap P8): author, rating and length, the plan pill.</summary>
+    public const int BookCaptionLines = 4;
+
+    /// <summary>The video card: the still's width in a row, the badges' inset, the progress hairline.</summary>
+    public const float VideoStillW = 380f, VideoBadgeInset = 8f, VideoProgressH = 3f;
 
     /// <summary>The Recents cell's equalizer height, the history tile's 7-day strip box, the header tools' divider.</summary>
     public const float EqualizerH = 12f;

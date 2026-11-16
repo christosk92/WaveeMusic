@@ -48,7 +48,7 @@ public static class HomeVerbs
 
     /// <summary>A zone header's "See all" words: "See all 36" when the section says how many it holds, else "See all".</summary>
     public static string SeeAllLabel(Zone zone)
-        => zone.TotalCount > 0 ? Strings.Home.SeeAllN(zone.TotalCount) : Loc.Get(Strings.Home.SeeAll);
+        => zone.TotalCount > 1 ? Strings.Home.SeeAllN(zone.TotalCount) : Loc.Get(Strings.Home.SeeAll);
 
     /// <summary>Shuffle STARTS the daylist shuffled; it never toggles (<c>HomeCardNav.Play</c> pauses a daylist that already plays).</summary>
     public static void ShuffleContext(string uri)

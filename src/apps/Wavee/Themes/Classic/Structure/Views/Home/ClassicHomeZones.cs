@@ -73,7 +73,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.Classic;
 
 /// <summary>Wavee Classic's Home zone column.</summary>
-internal static class ClassicHomeZones
+internal static partial class ClassicHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key whose body needs nothing but its zone.</summary>
     public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
@@ -168,7 +168,7 @@ internal static class ClassicHomeZones
     }
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf;
 
     /// <summary>Header + clipped body inside the zone scope, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout)
@@ -176,6 +176,8 @@ internal static class ClassicHomeZones
         Element body = Body(zone, overlay, controller, layout);
         Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null, layout);
         if (header is null) return body;
+        // A header with an entity (its cover over two lines) is taller; the body's clip follows it.
+        float headerH = HasEntityHeader(zone) ? ClassicHomeRules.EntityHeaderH : ClassicHomeRules.HeaderH;
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -185,7 +187,7 @@ internal static class ClassicHomeZones
                 new BoxEl
                 {
                     Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
-                    Height = ClassicHomeRules.HeaderH + ClassicHomeRules.HeaderGap,
+                    Height = headerH + ClassicHomeRules.HeaderGap,
                     Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
                     Children = [header.Value],
                 }.Sticky(ClassicHomeRules.StuckBottom, scope: zone.Key),
@@ -195,7 +197,7 @@ internal static class ClassicHomeZones
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                     EdgeFade = new EdgeFadeSpec(EdgeMask.Top, ClassicHomeRules.ClipFadeBand) { WhileStuck = true },
                     Children = [body],
-                }.StickyClip(ClassicHomeRules.BodyClipInset),
+                }.StickyClip(ClassicHomeRules.BodyClipInset + headerH - ClassicHomeRules.HeaderH),
             ],
         };
     }
@@ -218,16 +220,18 @@ internal static class ClassicHomeZones
                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
                     HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents), open: null);
             default:
-                return HomeModules.ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null,
-                                                ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller), open: null);
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone));
+                return HasEntityHeader(zone)
+                    ? EntityHeader(zone.Header!, tools)
+                    : HomeModules.ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, tools, open: null);
         }
     }
 
     /// <summary>A shelf header's tools: the "See all" link (when the zone has a backing section), then — while the
     /// shelf pages — a 16-px vertical divider and the pager (‹ pips ›). Null when the header has neither.</summary>
-    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller)
+    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label)
     {
-        Element? link = seeAll is null ? null : HyperlinkButton.Create(Loc.Get(Strings.Home.SeeAll), seeAll) with { Shrink = 0f };
+        Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
             : Embed.Comp(() => new ClassicHomeShelfTools(controller, leadingDivider)) with { Key = leadingDivider ? "tools+link" : "tools" };
@@ -269,8 +273,11 @@ internal static class ClassicHomeZones
     internal static Element BodyTree(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout,
                                      RenderContext? hooks = null) => zone.Kind switch
     {
+        ZoneKind.VideoTiles when IsOneEpisode(zone) => VideoCard(zone.Items[0], layout),
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
+        ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
+        ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
@@ -461,8 +468,7 @@ internal static class ClassicHomeZones
             Direction = 1, MinWidth = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Stretch,
             Children =
             [
-                Ui.SectionHeader(zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow),
-                                 layout.HeaderSubtitles ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null) with { Margin = default },
+                ReleaseHeader(zone, layout),
                 new GridEl
                 {
                     MinColWidth = layout.Releases.MinCol, MaxColumns = layout.Releases.MaxCols,
@@ -494,54 +500,6 @@ internal static class ClassicHomeZones
             () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Drag: HomeCardNav.DragOf(in c))
             { Trailing = trailing, Menu = HomeCardNav.MenuOf(in c) };
         return new BoxEl { Key = "release:" + k.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row())] };
-    }
-
-    // ── 2.4 clusters: "Because you like" / "Because you listen to" — Ui.Card(SectionHeader + ≤3 Surface(Row(40))) ───
-
-    static Element ClusterGrid(Zone zone, ClassicHomeLayout layout)
-    {
-        var clusters = zone.Clusters;
-        if (clusters is not { Count: > 0 }) return new BoxEl();
-        int n = Math.Min(clusters.Count, ClassicHomeRules.ClusterMax);
-        var cards = new Element[n];
-        for (int i = 0; i < n; i++) cards[i] = ClusterCard(clusters[i]);
-        return new GridEl
-        {
-            MinColWidth = layout.Clusters.MinCol, MaxColumns = layout.Clusters.MaxCols,
-            ColGap = Spacing.M, RowGap = Spacing.M, Children = cards,
-        };
-    }
-
-    static Element ClusterCard(ZoneCluster cluster)
-    {
-        Element header = Ui.SectionHeader(cluster.Name, cluster.Over is { Length: > 0 } ? cluster.Over : null) with { Margin = default, MinWidth = 0f };
-        if (cluster.Header is { } h)
-        {
-            // The cluster opens to its own baseline card (a playlist / an album): the header is the drill.
-            var hc = h;
-            header = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
-                OnClick = () => HomeCardNav.Open(in hc), Children = [header],
-            };
-        }
-
-        var rowsSrc = cluster.Rows;
-        int n = Math.Min(rowsSrc.Count, ClassicHomeRules.ClusterRows);
-        var rows = new Element[n];
-        for (int i = 0; i < n; i++)
-        {
-            var c = rowsSrc[i];
-            string sub = HomeCards.PlainText(c.Subtitle);
-            var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
-                () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
-                { Menu = HomeCardNav.MenuOf(in c) };
-            rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(ClassicHomeRules.ClusterArt))] };
-        }
-
-        return Ui.Card(header, new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows })
-            with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.S };
     }
 
     // ── 2.5 browse tiles: stock SettingsCards in the tile skin (48 art plate, one-line text), then the Charts sub-block ──
