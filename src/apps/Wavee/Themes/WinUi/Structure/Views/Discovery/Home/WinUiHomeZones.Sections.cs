@@ -261,13 +261,13 @@ internal static partial class WinUiHomeZones
         var pips = new BoxEl
         {
             Direction = 0, Height = WinUiHomeRules.PipsRowH, MinWidth = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = controller is null ? [] : [Embed.Comp(() => new ClusterPips(controller)) with { Key = "cluster-pips" }],
+            Children = controller is null ? [] : [Embed.Comp(() => new ClusterPips(new ShelfPagerSource(controller))) with { Key = "cluster-pips" }],
         };
         return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = WinUiHomeRules.CardGap, Children = [shelf, pips] };
     }
 
     /// <summary>The pips under the preview cards: the stock pips over the chapter's controller (the selected one larger), each a page.</summary>
-    sealed class ClusterPips(ShelfController controller) : Component
+    internal sealed class ClusterPips(IPager controller) : Component
     {
         public override Element Render()
         {

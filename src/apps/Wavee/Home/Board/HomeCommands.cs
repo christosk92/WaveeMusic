@@ -22,6 +22,9 @@ public abstract record HomeCommand
     public sealed record MoveBy(string EntryId, int Delta) : HomeCommand;
     public sealed record MoveToEdge(string EntryId, bool ToStart) : HomeCommand;         // Stick / Lower
     public sealed record MoveToGroup(string EntryId, string GroupId, int AtIndex) : HomeCommand;
+    /// <summary>A shortcut cell to another place in the shortcuts grid (its index among the grid's cells, in the order shown): the grid's order
+    /// becomes the user's (the fill's cells it passes become their pins, the fill gives up as many places).</summary>
+    public sealed record ReorderShortcut(string EntryId, int ToIndex) : HomeCommand;
     public sealed record SetSize(string EntryId, HomeSize Size) : HomeCommand;
     public sealed record CycleSize(string EntryId) : HomeCommand;
     public sealed record SetOptions(string EntryId, ImmutableSortedDictionary<string, string> Patch) : HomeCommand;
@@ -39,5 +42,5 @@ public static partial class HomeCommands
     /// and fill cells that are not in the document yet), and take-control needs the order shown.</summary>
     public static HomeDoc Apply(HomeDoc doc, HomeCommand command, BoardModel shown, HomeSourceRegistry sources,
         long nowMs, out HomeApplied applied)
-        => ApplyCore(doc, command, shown, sources, nowMs, out applied);
+        => HomeShortcuts.Normalize(ApplyCore(doc, command, shown, sources, nowMs, out applied));
 }

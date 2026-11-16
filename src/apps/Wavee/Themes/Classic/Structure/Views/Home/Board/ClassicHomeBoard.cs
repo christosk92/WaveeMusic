@@ -147,7 +147,8 @@ internal static class ClassicHomeBoard
             _template ??= (item, cell) => Item(item, cell);
             _reorder ??= new PackReorder<ClassicBoardItem>("home.tile")
             {
-                CanLift = static it => it.Row == ClassicBoardRow.Entry && it.Entry.Kind != BoardEntryKind.GroupHead,
+                // The shortcuts grid is the Pinned group's whole body: its cells move inside it, the grid itself stays.
+                CanLift = static it => it.Row == ClassicBoardRow.Entry && it.Entry.Kind != BoardEntryKind.GroupHead && !HomeShortcuts.IsGrid(it.Entry),
                 Enabled = () => _p!.Board.View.Editing.Peek() && !_p.Board.ReadOnly,
                 Keyboard = PackKeyboard.LiftMode,
                 LiftStyle = new DragVisualStyle { Scale = 1.03f },
@@ -211,10 +212,17 @@ internal static class ClassicHomeBoard
             var list = new List<ClassicBoardItem>(e.Length + 6);
             BoardEntry? group = null;
             bool sw = HomeShortcuts.HasSwitch(m);
-            int cell = 0;
+            bool grid = false;
             for (int i = 0; i < e.Length; i++)
             {
                 var x = e[i];
+                // The shortcuts (the pins, the fill, the history tile) are ONE item, the grid, where the first of them stands.
+                if (HomeShortcuts.IsGridCell(x))
+                {
+                    if (grid) continue;
+                    grid = true;
+                    x = HomeShortcuts.GridEntry(x);
+                }
                 if (x.Kind == BoardEntryKind.GroupHead)
                 {
                     if (group is not null && editing && !readOnly) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
@@ -224,7 +232,7 @@ internal static class ClassicHomeBoard
                         list.Add(new ClassicBoardItem("home:empty:" + x.GroupId, x, ClassicBoardRow.Empty));
                     continue;
                 }
-                list.Add(new ClassicBoardItem(HomeBoardKeys.Tile(x.Id), x, ClassicBoardRow.Entry, sw && HomeShortcuts.IsShortcutCell(x) ? cell++ : -1));
+                list.Add(new ClassicBoardItem(HomeBoardKeys.Tile(x.Id), x, ClassicBoardRow.Entry));
             }
             if (group is not null && editing && !readOnly) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
             if (group is not null && !editing && !readOnly) list.Add(new ClassicBoardItem("home:end", group, ClassicBoardRow.End));
@@ -247,6 +255,12 @@ internal static class ClassicHomeBoard
             }
             var e = it.Entry;
             if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeBoardRules.EntryOf(e, lay, 0f, 0f);
+            // The shortcuts grid: a band at its own height (its tallest page), no chip strip (its cells carry their own chips).
+            if (HomeShortcuts.IsGrid(e))
+            {
+                float grid = ExtentOf(e.Id).Value;
+                return new PackEntry(PackEntryKind.Row, Extent: grid > 0f ? grid : ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
+            }
             float open2 = _p.Board.View.OpenId.Value == e.Id ? ClassicHomeBoardRules.OpenExtent(e.Source, lay) : 0f;
             float full = 0f;
             if (ClassicHomeBoardRules.SizeOf(e) == HomeSize.Full)
@@ -285,10 +299,9 @@ internal static class ClassicHomeBoard
             if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeTiles.GroupHead(board, e, lay, it.Switch);
             if (board.View.OpenId.Value == e.Id)
                 return ClassicHomeTiles.Open(board, e, cell, lay, board.Options(e));
-            // A shortcut cell of a switchable grid: the shortcut, or the Recently played item at its place (the cells cross-fade, the grid keeps its size).
-            if (it.Cell >= 0) return ClassicHomeTiles.ShortcutCell(board.Tile(e, cell, _formRule!), it.Cell, board, lay);
-            if (ClassicHomeBoardRules.SizeOf(e) != HomeSize.Full) return board.Tile(e, cell, _formRule!);
-            var tile = board.Tile(e, cell, s_full);
+            bool grid = HomeShortcuts.IsGrid(e);
+            if (!grid && ClassicHomeBoardRules.SizeOf(e) != HomeSize.Full) return board.Tile(e, cell, _formRule!);
+            var tile = grid ? ShortcutGrid.Create(board, Shortcuts(), _width.Peek()) : board.Tile(e, cell, s_full);
             // A shelf: the chapter lays out at its own height inside the packed box, and that height becomes the box (by the re-flow). The strip above it
             // in Edit Home is the tile's own (its chips), so the measure is the body under it.
             var extent = ExtentOf(e.Id);
@@ -309,6 +322,30 @@ internal static class ClassicHomeBoard
                     },
                 ],
             };
+        }
+
+        ShortcutGridSpec? _shortcuts;
+        ClassicHomeBoardLayout? _shortcutsLay;
+
+        static readonly Func<PackBox, HomeTileForm> s_small = static _ => HomeTileForm.S;
+
+        /// <summary>Classic's shortcuts grid: the tier's columns, the speed-dial cell's row, the board's gap; each cell its pin's speed-dial cell (the
+        /// Recently played item at its place while the head's switch shows that face); the cells lift in Edit Home; the pager is the head's.</summary>
+        ShortcutGridSpec Shortcuts()
+        {
+            var p = _p!;
+            if (_shortcuts is { } s && ReferenceEquals(_shortcutsLay, p.Lay)) return s;
+            _shortcutsLay = p.Lay;
+            var lay = p.Lay;
+            var board = p.Board;
+            return _shortcuts = new ShortcutGridSpec(
+                Columns: w => lay.ShortcutCols.Columns(w, lay.Gap),
+                Unit: _ => lay.ShortcutUnit,
+                Gap: lay.Gap,
+                Cell: (e, index, cell) => HomeShortcuts.HasSwitch(board.Model.Peek())
+                    ? ClassicHomeTiles.ShortcutCell(board.Tile(e, cell, s_small), index, board, lay)
+                    : board.Tile(e, cell, s_small),
+                CanReorder: () => board.View.Editing.Value && !board.ReadOnly);   // a subscribing read: the page grids wire their lift when Edit Home starts
         }
 
         void Commit(PackMove m)

@@ -60,6 +60,13 @@ public sealed record ZuneHomeBoardLayout
     /// <summary>A wide tile's span.</summary>
     public (byte Cols, byte Rows) L { get; init; } = (4, 2);
 
+    /// <summary>The shortcuts grid (owner 2026-11-16, "one grid, edit inside it"): Start's square tiles, as many across as the tier's steps allow with
+    /// a tile at least <see cref="ShortcutMinCell"/> (Compact 3, Small 5, Standard 8, Huge 10): wide enough for the name under its scrim.</summary>
+    public int ShortcutMaxCols { get; init; } = 8;
+
+    /// <inheritdoc cref="ShortcutMaxCols"/>
+    public float ShortcutMinCell { get; init; } = 96f;
+
     /// <summary>The narrowest a turned-over tile is (columns): its back carries the choices as words.</summary>
     public byte OpenMinCols { get; init; } = 4;
 
@@ -120,11 +127,11 @@ public static class ZuneHomeBoardTiers
 
     private static readonly ZuneHomeBoardLayout[] s_records =
     [
-        new() { Tier = WidthTier.Compact, ColumnSteps = [4], GroupGap = 20f, EmptyRow = 88f, PivotGap = 22f, ItemArt = 56f, ItemRowH = 64f },
-        new() { Tier = WidthTier.Small, ColumnSteps = [6, 8] },
+        new() { Tier = WidthTier.Compact, ColumnSteps = [4], GroupGap = 20f, EmptyRow = 88f, PivotGap = 22f, ItemArt = 56f, ItemRowH = 64f, ShortcutMaxCols = 3, ShortcutMinCell = 100f },
+        new() { Tier = WidthTier.Small, ColumnSteps = [6, 8], ShortcutMaxCols = 5, ShortcutMinCell = 110f },
         new() { Tier = WidthTier.Standard, ColumnSteps = [8, 12] },
-        new() { Tier = WidthTier.Huge, ColumnSteps = [12], GroupGap = 32f },
-        new() { Tier = WidthTier.Huge4K, ColumnSteps = [16], GroupGap = 32f },
+        new() { Tier = WidthTier.Huge, ColumnSteps = [12], GroupGap = 32f, ShortcutMaxCols = 10, ShortcutMinCell = 120f },
+        new() { Tier = WidthTier.Huge4K, ColumnSteps = [16], GroupGap = 32f, ShortcutMaxCols = 10, ShortcutMinCell = 160f },
     ];
 }
 

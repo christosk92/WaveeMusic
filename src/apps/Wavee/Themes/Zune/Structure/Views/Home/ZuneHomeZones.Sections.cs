@@ -235,14 +235,14 @@ internal static partial class ZuneHomeZones
         var words = new List<Element>(3)
         {
             K.HeadingText(zone.Title ?? ""),
-            Embed.Comp(() => new PageCounter(controller)) with { Key = "zune-cluster-pages" },
+            Embed.Comp(() => new PageCounter(new ShelfPagerSource(controller))) with { Key = "zune-cluster-pages" },
         };
         if (lay.Subtitles && zone.Subtitle is { Length: > 0 } sub) words.Add(K.Caption(sub) with { Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f) });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = words.ToArray() };
     }
 
     /// <summary>"01/02": the page and the count in the heading's light voice, tertiary, never shrunk.</summary>
-    sealed class PageCounter(ShelfController controller) : Component
+    internal sealed class PageCounter(IPager controller) : Component
     {
         public override Element Render()
         {

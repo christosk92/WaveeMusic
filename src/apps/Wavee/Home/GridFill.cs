@@ -178,16 +178,23 @@ public static class GridFill
 
     /// <summary>The live pagers by section (the zone key): the inspector's `home do=page` drives one. A chapter registers the controller it
     /// owns while it is mounted; in memory only.</summary>
-    public static readonly Dictionary<string, ShelfController> Pagers = new(StringComparer.Ordinal);
+    public static readonly Dictionary<string, IPager> Pagers = new(StringComparer.Ordinal);
+    static readonly Dictionary<string, object> s_identity = new(StringComparer.Ordinal);
 
     /// <summary>Register <paramref name="controller"/> as section <paramref name="key"/>'s pager; the returned cleanup removes it (if it is still
     /// that one). A chapter calls it from an effect.</summary>
-    public static Action Register(string key, ShelfController controller)
+    public static Action Register(string key, ShelfController controller) => Register(key, new ShelfPagerSource(controller), controller);
+
+    /// <summary>Register <paramref name="pager"/> as section <paramref name="key"/>'s pager (the shortcuts grid's own pages).</summary>
+    public static Action Register(string key, IPager pager) => Register(key, pager, pager);
+
+    static Action Register(string key, IPager pager, object identity)
     {
-        Pagers[key] = controller;
+        Pagers[key] = pager;
+        s_identity[key] = identity;
         return () =>
         {
-            if (Pagers.TryGetValue(key, out var c) && ReferenceEquals(c, controller)) Pagers.Remove(key);
+            if (s_identity.TryGetValue(key, out var c) && ReferenceEquals(c, identity)) { Pagers.Remove(key); s_identity.Remove(key); }
         };
     }
 }

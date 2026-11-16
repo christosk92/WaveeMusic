@@ -48,6 +48,7 @@ public static partial class HomeCommands
             HomeCommand.MoveBy m => MoveBy(doc, shown, m.EntryId, m.Delta, ref applied),
             HomeCommand.MoveToEdge m => MoveToEdge(doc, shown, m.EntryId, m.ToStart, ref applied),
             HomeCommand.MoveToGroup m => MoveToGroup(doc, shown, m.EntryId, m.GroupId, m.AtIndex, ref applied),
+            HomeCommand.ReorderShortcut r => ReorderShortcut(doc, shown, r.EntryId, r.ToIndex, ref applied),
             HomeCommand.SetSize s => SetSize(doc, shown, sources, s.EntryId, s.Size, cycle: false, ref applied),
             HomeCommand.CycleSize c => SetSize(doc, shown, sources, c.EntryId, HomeSize.Auto, cycle: true, ref applied),
             HomeCommand.SetOptions o => SetOptions(doc, shown, o.EntryId, o.Patch, ref applied),
@@ -349,6 +350,58 @@ public static partial class HomeCommands
 
     /// <summary>Neighbouring Fill items of one kind merge back into one (the first's id, the sum of their sizes); an empty one goes. Run after
     /// every command, so a pin moved out from between two parts leaves one fill, as before.</summary>
+    /// <summary>The shortcuts grid in a new order (owner 2026-11-16, "one grid, edit inside it"): the cell moves to <paramref name="to"/> among the
+    /// grid's cells as shown, and the grid's order becomes the user's: every cell before the fill's end is written in that order (a fill cell becomes
+    /// the user's pin, the fill gives up its place, so the grid keeps its count), the fill (what Spotify adds next) stays after them.</summary>
+    static HomeDoc ReorderShortcut(HomeDoc doc, BoardModel shown, string entryId, int to, ref HomeApplied applied)
+    {
+        int pg = doc.GroupIndex(HomeDocs.Pinned);
+        if (pg < 0) return doc;
+        var cells = HomeShortcuts.Cells(shown);
+        int from = -1;
+        for (int i = 0; i < cells.Count; i++) if (cells[i].Id == entryId) { from = i; break; }
+        if (from < 0 || (uint)to >= (uint)cells.Count || from == to) return doc;
+        var moving = cells[from];
+        cells.RemoveAt(from);
+        cells.Insert(to, moving);
+
+        var items = doc.Groups[pg].Items;
+        var byId = new Dictionary<string, HomeItem>(StringComparer.Ordinal);
+        foreach (var it in items) byId[it.Id] = it;
+        var ordered = ImmutableArray.CreateBuilder<HomeItem>(cells.Count);
+        int materialized = 0;
+        string? movedId = null;
+        foreach (var c in cells)
+        {
+            HomeItem item;
+            if (c.Kind == BoardEntryKind.FillCell && c.Raw is PinSource p)
+            {
+                item = new HomeItem(HomeDocs.NewItemId(), p, HomeSize.Auto, ImmutableSortedDictionary<string, string>.Empty);
+                materialized++;
+            }
+            else if (byId.TryGetValue(c.Id, out var own)) item = own;
+            else continue;
+            if (c.Id == entryId) movedId = item.Id;
+            ordered.Add(item);
+        }
+        var b = ImmutableArray.CreateBuilder<HomeItem>(items.Length + materialized);
+        bool placed = false;
+        foreach (var it in items)
+        {
+            bool cell = it.Source is PinSource or WidgetSource { Widget: "recents" };
+            if (cell || it.Source is FillSource)
+            {
+                if (!placed) { b.AddRange(ordered); placed = true; }
+                if (it.Source is FillSource f) b.Add(it with { Source = f with { Max = Math.Max(0, f.Max - materialized) } });
+                continue;
+            }
+            b.Add(it);
+        }
+        if (!placed) b.AddRange(ordered);
+        applied = applied with { Changed = true, ItemId = movedId, GroupId = HomeDocs.Pinned };
+        return WithItems(doc, pg, b.ToImmutable());
+    }
+
     static HomeDoc NormalizeFills(HomeDoc doc)
     {
         var result = doc;

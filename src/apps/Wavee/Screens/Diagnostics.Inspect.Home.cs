@@ -387,7 +387,7 @@ public static partial class Diagnostics
                     // A paged section (the preview cards' pages, GridFill.Pagers): `key=` its zone key or any unique part of it (the section uri),
                     // `page=` a page from 1, or `dir=right` (the next) / `dir=left` (the previous). Settles (or traces with `trace=N`) after the slide.
                     string want = a.Str("key", "");
-                    ShelfController? pager = null;
+                    IPager? pager = null;
                     string? found = null;
                     foreach (var (k, c) in GridFill.Pagers)
                     {

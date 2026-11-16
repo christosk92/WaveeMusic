@@ -263,7 +263,7 @@ internal static partial class WinUiHomeZones
         Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
-            : Embed.Comp(() => new WinUiHomeShelfTools(controller, leadingDivider, pips)) with { Key = leadingDivider ? "tools+link" : "tools" };
+            : Embed.Comp(() => new WinUiHomeShelfTools(new ShelfPagerSource(controller), leadingDivider, pips)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
         if (pager is null) return link;
         return new BoxEl
@@ -504,7 +504,7 @@ internal static partial class WinUiHomeZones
     /// <summary>The shelf pager in the header's tools slot: ‹ pips › — the stock pips between two stock chevrons, every action routed back through the controller.
     /// Reads the controller's four value signals, so only this leaf re-renders on a page change. <paramref name="leadingDivider"/> puts the 16-px vertical
     /// divider between the header's "See all" link and the pager — it comes and goes WITH the pager, so a one-page shelf shows the bare link.</summary>
-    sealed class WinUiHomeShelfTools(ShelfController controller, bool leadingDivider, bool pips = true) : Component
+    internal sealed class WinUiHomeShelfTools(IPager controller, bool leadingDivider, bool pips = true) : Component
     {
         public override Element Render()
         {

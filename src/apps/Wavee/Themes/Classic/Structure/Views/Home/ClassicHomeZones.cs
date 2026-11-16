@@ -256,7 +256,7 @@ internal static partial class ClassicHomeZones
         Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
-            : Embed.Comp(() => new ClassicHomeShelfTools(controller, leadingDivider, counter, arrows)) with { Key = leadingDivider ? "tools+link" : "tools" };
+            : Embed.Comp(() => new ClassicHomeShelfTools(new ShelfPagerSource(controller), leadingDivider, counter, arrows)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
         if (pager is null) return link;
         return new BoxEl
@@ -420,7 +420,7 @@ internal static partial class ClassicHomeZones
     /// signals, so only this leaf re-renders on a page change. <paramref name="leadingDivider"/> puts the 16-px
     /// vertical divider between the header's "See all" link and the pager — it comes and goes WITH the pager, so a
     /// one-page shelf shows the bare link.</summary>
-    sealed class ClassicHomeShelfTools(ShelfController controller, bool leadingDivider, bool counter = false, bool arrows = true) : Component
+    internal sealed class ClassicHomeShelfTools(IPager controller, bool leadingDivider, bool counter = false, bool arrows = true) : Component
     {
         public override Element Render()
         {
