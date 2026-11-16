@@ -135,17 +135,18 @@ public readonly partial struct Playlist
     public static Element CoverSlot(Playlist p, float size)
         => p.IsValid && p.EditableMetadata && p.Uri.Provider == EntityProvider.Spotify
             ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover" }
-            : CoverArt(p, size, handOver: true);
+            : CoverArt(p, size, handOver: true, connect: true);
 
     /// <summary>The playlist's own cover (the `Playlist.CoverArt` view) — a provider <c>spotify:mosaic:</c> token (a profile card's cover-less public
     /// playlist) paints as the server-composed 2×2 — else a 2×2 mosaic of member album covers (≥ 4), else the first,
     /// else the neutral placeholder (0.2.9 <c>PlaylistPicker.CoverOf</c> minus the generated art).
     /// <paramref name="handOver"/>: the page's head, where a fresh answer can change the art in place (a regenerated Mix): it crossfades from the
-    /// shown cover (<see cref="PlaylistCoverArtProps.HandOver"/>).</summary>
-    internal static Element CoverArt(Playlist p, float size, int decodePx = 0, bool handOver = false)
-        => ViewSlots.View(ViewKeys.PlaylistCoverArt, handOver ? HeadFace(p, size, decodePx) : CoverFace(p, size, decodePx));
+    /// shown cover (<see cref="PlaylistCoverArtProps.HandOver"/>).
+    /// <paramref name="connect"/>: the hero's cover, the connected navigation flight's dest (<see cref="HeadFace"/>); never the rail's strip cover.</summary>
+    internal static Element CoverArt(Playlist p, float size, int decodePx = 0, bool handOver = false, bool connect = false)
+        => ViewSlots.View(ViewKeys.PlaylistCoverArt, connect ? HeadFace(p, size, decodePx) : CoverFace(p, size, decodePx) with { HandOver = handOver });
 
-    /// <summary>The page head's face: it hands over, and its own picture is the connected navigation flight's dest (<see cref="PlaylistCoverArtProps.Connect"/>).</summary>
+    /// <summary>The hero's face: it hands over, and its own picture is the connected navigation flight's dest (<see cref="PlaylistCoverArtProps.Connect"/>).</summary>
     static PlaylistCoverArtProps HeadFace(Playlist p, float size, int decodePx)
     {
         var face = CoverFace(p, size, decodePx);
