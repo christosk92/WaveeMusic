@@ -143,7 +143,15 @@ public readonly partial struct Playlist
     /// <paramref name="handOver"/>: the page's head, where a fresh answer can change the art in place (a regenerated Mix): it crossfades from the
     /// shown cover (<see cref="PlaylistCoverArtProps.HandOver"/>).</summary>
     internal static Element CoverArt(Playlist p, float size, int decodePx = 0, bool handOver = false)
-        => ViewSlots.View(ViewKeys.PlaylistCoverArt, CoverFace(p, size, decodePx) with { HandOver = handOver });
+        => ViewSlots.View(ViewKeys.PlaylistCoverArt, handOver ? HeadFace(p, size, decodePx) : CoverFace(p, size, decodePx));
+
+    /// <summary>The page head's face: it hands over, and its own picture is the connected navigation flight's dest (<see cref="PlaylistCoverArtProps.Connect"/>).</summary>
+    static PlaylistCoverArtProps HeadFace(Playlist p, float size, int decodePx)
+    {
+        var face = CoverFace(p, size, decodePx);
+        bool own = face.Single is { Length: > 0 } single && string.Equals(single, Controls.ArtUrl(p.ImageId), StringComparison.Ordinal);
+        return face with { HandOver = true, Connect = own ? Design.MorphKeys.ForUri(p.Uri.Text) : null };
+    }
 
     /// <summary>Which image the cover paints (the model's side of the picture): the server mosaic's four tiles, the art, the first four distinct member
     /// album covers, or the first one.</summary>
@@ -226,7 +234,7 @@ public readonly partial struct Playlist
             float scale = UseContext(Viewport.Scale);
             int decodePx = HeaderCoverDecodePx(size, scale);
             return ViewSlots.View(ViewKeys.PlaylistCoverEditor,
-                new PlaylistCoverEditorProps(CoverFace(new Playlist(props.Slot), size, decodePx) with { HandOver = true }, _busy, _pick, _apply));
+                new PlaylistCoverEditorProps(HeadFace(new Playlist(props.Slot), size, decodePx), _busy, _pick, _apply));
         }
 
         void Pick() => PlaylistCover.Pick(new Playlist(_slot));

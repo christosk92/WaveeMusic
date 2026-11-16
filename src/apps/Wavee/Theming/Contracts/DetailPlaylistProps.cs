@@ -29,6 +29,10 @@ public sealed record PlaylistCoverArtProps(float Size, int DecodePx, string[]? M
     /// crossfades in over it) instead of blanking to the placeholder. False for a card or a row, whose art never changes in place.</summary>
     public bool HandOver { get; init; }
 
+    /// <summary>The page head's flight key (<c>Design.MorphKeys.ForUri</c>) on the <see cref="Single"/> image when it is the playlist's own picture: the
+    /// connected navigation flight lands on it. Null for a mosaic, a member's cover standing in, a card or a row.</summary>
+    public string? Connect { get; init; }
+
     /// <inheritdoc />
     public bool Equals(PlaylistCoverArtProps? other) => ReferenceEquals(this, other);
 
