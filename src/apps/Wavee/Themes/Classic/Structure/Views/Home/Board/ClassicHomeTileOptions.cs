@@ -82,7 +82,10 @@ internal static class ClassicHomeTileOptions
                 kids.Add(RadioButtons.Create(labels, new Signal<int>(at), i => { if ((uint)i < (uint)shown.Count) p.Set(opt.Key, shown[i].Value); })
                     with { Key = "home:options:" + opt.Key });
             }
-            if (p.Live && p.ToggleLive is { } toggle && p.Paused is { } paused)
+            // Live updates: its own switch only where the source's schema does not already carry the "live" option.
+            bool liveInSchema = false;
+            foreach (var o in p.Options) if (o.Key == "live") liveInSchema = true;
+            if (p.Live && !liveInSchema && p.ToggleLive is { } toggle && p.Paused is { } paused)
                 kids.Add(ToggleSwitch.Create(new Signal<bool>(!paused()), _ => toggle(), header: Loc.Get(Strings.Theme.Classic.Home.Board.LiveUpdates))
                     with { Key = "home:options:live" });
             return new BoxEl

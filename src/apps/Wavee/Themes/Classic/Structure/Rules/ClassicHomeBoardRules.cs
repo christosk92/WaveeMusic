@@ -156,7 +156,7 @@ public static class ClassicHomeBoardRules
     public const float ProgressH = 3f;
 
     /// <summary>An open tile's options: its head (the name, Done) and one row per radio value, a label row per option.</summary>
-    public const float OptionsHeadH = 48f, OptionLabelH = 28f, OptionRadioRowH = 36f, OptionToggleH = 44f;
+    public const float OptionsHeadH = 48f, OptionLabelH = 28f, OptionRadioRowH = 36f, OptionToggleH = 68f;
 
     /// <summary>A shelf's estimate where nothing better is known (a header and one row of covers).</summary>
     public const float FullFallback = 300f;
@@ -236,7 +236,9 @@ public static class ClassicHomeBoardRules
         float h = OptionsHeadH + CardPad;
         foreach (var o in source.Options)
             h += o.Kind == OptionKind.Toggle ? OptionToggleH : OptionLabelH + OptionRadioRowH * o.Values.Length;
-        if (source.Live) h += OptionToggleH;
+        bool liveInSchema = false;
+        foreach (var o in source.Options) if (o.Key == "live") liveInSchema = true;
+        if (source.Live && !liveInSchema) h += OptionToggleH;
         return MathF.Max(h, lay.M.Rows * lay.Unit + (lay.M.Rows - 1) * lay.Gap);
     }
 }
