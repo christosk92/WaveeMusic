@@ -297,7 +297,7 @@ internal static class ZuneHomeDaylist
                 Key = "zune-daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight,
                 Children = [R.Type.DenseMeta(basis.Length > 0 ? basis : " ") with
                 {
-                    Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 }],
             });
         }

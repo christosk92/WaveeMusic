@@ -101,7 +101,8 @@ internal static partial class ZuneHomeZones
         ColorF plate = coloured ? H.MutedPlate(ColorScience.ToColor(k.Accent)) : default;
         bool dark = coloured && H.PlateWantsDarkInk(plate);
         Prop<ColorF> ink = dark ? ColorContrast.NearBlackInk : Prop.Of(static () => R.OnMedia.Ink);
-        Prop<ColorF> inkSoft = dark ? ColorContrast.NearBlackInk : Prop.Of(static () => R.OnMedia.InkSecondary);
+        // The small line takes the full ink too: the secondary on-media ink misses 4.5 : 1 on the paler plates.
+        Prop<ColorF> inkSoft = ink;
         return new BoxEl
         {
             Key = "zune-mood-plate:" + k.Uri, Height = H.MoodPlateH, Direction = 1, Justify = FlexJustify.SpaceBetween, MinWidth = 0f,
