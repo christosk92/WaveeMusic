@@ -58,7 +58,16 @@ public sealed class SidebarFileStore
     Action<SidebarWriteResult>? _writeCompleted;
     SidebarPersistenceFault _lastReportedWriteFault;
 
-    public SidebarFileStore(string path) => _path = path;
+    readonly string _label;
+
+    public SidebarFileStore(string path) : this(path, "sidebar") { }
+
+    /// <summary><paramref name="label"/> names the store in its log lines ("home" for Home's document).</summary>
+    public SidebarFileStore(string path, string label)
+    {
+        _path = path;
+        _label = label;
+    }
 
     public string FilePath => _path;
     public string BakPath => _path + ".bak";
@@ -84,13 +93,13 @@ public sealed class SidebarFileStore
     /// <summary>The rotated backup's bytes — tried when the primary does not parse.</summary>
     public SidebarFileRead ReadBak() => ReadAt(BakPath);
 
-    static SidebarFileRead ReadAt(string path)
+    SidebarFileRead ReadAt(string path)
     {
         if (!File.Exists(path)) return SidebarFileRead.Missing;
         try { return new SidebarFileRead(SidebarFileReadOutcome.Ok, File.ReadAllBytes(path)); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Log.Warn("sidebar", "sidebar.file.unreadable " + ex.GetType().Name);
+            Log.Warn(_label, _label + ".file.unreadable " + ex.GetType().Name);
             return new SidebarFileRead(SidebarFileReadOutcome.Unreadable, null);
         }
     }
@@ -102,7 +111,7 @@ public sealed class SidebarFileStore
         lock (_writeGate)
         {
             try { if (File.Exists(_path)) File.Move(_path, CorruptPath, overwrite: true); }
-            catch (Exception ex) { Log.Warn("sidebar", "sidebar.file.set_aside_failed", ex); }
+            catch (Exception ex) { Log.Warn(_label, _label + ".file.set_aside_failed", ex); }
         }
     }
 
@@ -190,7 +199,7 @@ public sealed class SidebarFileStore
             {
                 const string safe = "The sidebar layout could not be saved.";
                 completion = new SidebarWriteResult(false, SidebarPersistenceFault.IoFailure, 0, Environment.TickCount64 - start, safe);
-                Log.Warn("sidebar", "sidebar.layout.write_exception", ex);
+                Log.Warn(_label, _label + ".layout.write_exception", ex);
                 try { if (File.Exists(TmpPath)) File.Delete(TmpPath); } catch (Exception) { }
             }
         }
@@ -222,12 +231,12 @@ public sealed class SidebarFileStore
         }
 
         if (!result.Success)
-            Log.Warn("sidebar", $"sidebar.layout.save_failed fault={FaultName(result.Fault)} bytes={result.Bytes} elapsedMs={result.ElapsedMs}");
+            Log.Warn(_label, $"{_label}.layout.save_failed fault={FaultName(result.Fault)} bytes={result.Bytes} elapsedMs={result.ElapsedMs}");
         else if (previous != SidebarPersistenceFault.None)
-            Log.Info("sidebar", $"sidebar.layout.save_recovered previousFault={FaultName(previous)} bytes={result.Bytes} elapsedMs={result.ElapsedMs}");
+            Log.Info(_label, $"{_label}.layout.save_recovered previousFault={FaultName(previous)} bytes={result.Bytes} elapsedMs={result.ElapsedMs}");
 
         try { completed?.Invoke(result); }
-        catch (Exception ex) { Log.Warn("sidebar", "sidebar.layout.completion_failed", ex); }
+        catch (Exception ex) { Log.Warn(_label, _label + ".layout.completion_failed", ex); }
     }
 
     static string FaultName(SidebarPersistenceFault fault) => fault switch
