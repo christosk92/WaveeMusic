@@ -433,7 +433,7 @@ internal static partial class ZuneHomeZones
         };
         Element card = new BoxEl
         {
-            Key = "zune-video-card:" + e.Uri, Direction = (byte)(row ? 0 : 1), Gap = H.QuickGap / 2f + H.OfferGap / 2f, MinWidth = 0f,
+            Key = "zune-video-card:" + e.Uri, Direction = (byte)(row ? 0 : 1), Gap = H.ClusterGap, MinWidth = 0f,
             AlignItems = row ? FlexAlign.Start : FlexAlign.Stretch, Children = [still, copy],
         };
         return K.Section(Heading(zone, lay), card);
