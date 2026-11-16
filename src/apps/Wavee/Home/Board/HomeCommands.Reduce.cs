@@ -281,7 +281,10 @@ public static partial class HomeCommands
 
     /// <summary>Make the entry a document item: a feed section or fold takes control of the whole feed, a fill cell becomes
     /// the user's pin where it is shown. Returns the item id (the entry id), or null when the entry cannot be owned.</summary>
-    static HomeDoc Own(HomeDoc doc, BoardModel shown, string entryId, ref HomeApplied applied, out string? itemId)
+    /// <param name="through">A fill cell is owned IN PLACE: with it, every cell of its fill run shown ahead of it, and up to this shown index
+    /// (a move's destination inside the run), become the user's pins in the order shown, so the order seen is the order saved (a pin can only
+    /// stand ahead of the Fill item, never between its cells).</param>
+    static HomeDoc Own(HomeDoc doc, BoardModel shown, string entryId, ref HomeApplied applied, out string? itemId, int through = -1)
     {
         itemId = null;
         if (doc.Find(entryId).Group >= 0) { itemId = entryId; return doc; }
@@ -308,12 +311,23 @@ public static partial class HomeCommands
                 var items = doc.Groups[g].Items;
                 int fill = -1;
                 for (int i = 0; i < items.Length; i++) if (items[i].Source is FillSource) { fill = i; break; }
-                // In place: before the Fill item, after the cells shown ahead of this one (they stay the fill's).
                 int index = fill >= 0 ? fill : items.Length;
-                var item = new HomeItem(entryId, p, HomeSize.Auto, s_noOptions);
+                // In place: the run's cells from its start through this one (or through the move's destination) become pins in the order shown,
+                // before the Fill item; the cells after them stay the fill's.
+                int start = at;
+                while (start > 0 && shown.Entries[start - 1].Kind == BoardEntryKind.FillCell && shown.Entries[start - 1].GroupId == e.GroupId) start--;
+                int last = Math.Max(at, through);
+                int end = at;
+                while (end + 1 < shown.Entries.Length && end < last && shown.Entries[end + 1].Kind == BoardEntryKind.FillCell
+                       && shown.Entries[end + 1].GroupId == e.GroupId) end++;
+                var add = ImmutableArray.CreateBuilder<HomeItem>();
+                for (int k = start; k <= end && doc.ItemCount + add.Count < HomeDoc.MaxItems; k++)
+                    if (shown.Entries[k].Raw is PinSource kp && doc.Find(shown.Entries[k].Id).Group < 0)
+                        add.Add(new HomeItem(shown.Entries[k].Id, kp, HomeSize.Auto, s_noOptions));
+                if (add.Count == 0) return doc;
                 applied = applied with { Changed = true, ItemId = entryId, GroupId = e.GroupId };
                 itemId = entryId;
-                return WithItems(doc, g, items.Insert(index, item));
+                return WithItems(doc, g, items.InsertRange(index, add.ToImmutable()));
             }
             default:
                 return doc;
@@ -356,7 +370,7 @@ public static partial class HomeCommands
         var target = shown.Entries[to];
         bool later = to > from;
 
-        var owned = Own(doc, shown, entryId, ref applied, out string? id);
+        var owned = Own(doc, shown, entryId, ref applied, out string? id, through: to);
         if (id is null) return doc;
         // A target in the feed is owned too (one take-control covers both); a target fill cell stands for the Fill item.
         string? targetItem = null;
@@ -372,7 +386,13 @@ public static partial class HomeCommands
                 if (target.Kind == BoardEntryKind.Fold && later && !target.Members.IsDefaultOrEmpty) targetItem = FeedPrefix + target.Members[^1].Key;
                 break;
             }
-            case BoardEntryKind.FillCell: targetItem = FillItemOf(owned, target.GroupId); break;
+            case BoardEntryKind.FillCell:
+            {
+                // A fill cell target is owned in place too (its run through it), so the item lands exactly beside it.
+                owned = Own(owned, shown, targetId, ref applied, out string? tid, through: to);
+                targetItem = tid ?? FillItemOf(owned, target.GroupId);
+                break;
+            }
             default: targetItem = targetId; break;
         }
 
@@ -410,7 +430,8 @@ public static partial class HomeCommands
     static HomeDoc MoveBy(HomeDoc doc, BoardModel shown, string entryId, int delta, ref HomeApplied applied)
     {
         if (delta == 0) return doc;
-        var owned = Own(doc, shown, entryId, ref applied, out string? id);
+        int at = shown.IndexOf(entryId);
+        var owned = Own(doc, shown, entryId, ref applied, out string? id, through: at < 0 ? -1 : at + delta);
         if (id is null) return doc;
         var d = owned;
         bool moved = false;
