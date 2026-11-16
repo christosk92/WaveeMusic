@@ -371,13 +371,14 @@ public static partial class Diagnostics
             _acts = Inspect.SpecOf(cmd.Verb)?.Acts ?? false;
             _hit = null;
             CaptureAnnouncements();   // Diagnostics.Inspect.Home.cs: the said[] of this verb starts here
+            PerfBegin(in cmd);        // Diagnostics.Inspect.Perf.cs: the frames this verb runs are recorded under its label
             try { return Dispatch(in cmd); }
             catch (Exception ex)
             {
                 Log.Warn("inspect", "command '" + cmd.Name + "' failed", ex);
                 return Inspect.Reply.Fail(cmd.Id, cmd.Name, ex.GetType().Name + ": " + ex.Message);
             }
-            finally { _acts = false; }
+            finally { _acts = false; PerfEnd(); }
         }
 
         string Dispatch(in Inspect.Command cmd)
@@ -428,6 +429,8 @@ public static partial class Diagnostics
                     return Tiers(id, name, a);   // the policy needs no mount; the facts do
                 case Inspect.Verb.Crossings:
                     return Crossings(id, name, a);   // mounts a row at a time
+                case Inspect.Verb.Perf:
+                    return Perf(id, name, a);   // on needs a mount; report and off read what was recorded
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
@@ -493,6 +496,7 @@ public static partial class Diagnostics
                         Move(p);
                         RunFrames(1);
                         _hit = HitKey(p);   // what the press lands on (a hover can raise a part over the target)
+                        if (cmd.Verb == Inspect.Verb.Hover) RunFrames(Math.Max(0, DwellFrames(a.Int("dwell", 0)) - 1));   // the rest (Diagnostics.Inspect.Pointer.cs)
                         if (cmd.Verb == Inspect.Verb.Click)
                         {
                             int button = a.Str("button", "left") == "right" ? 1 : 0;
@@ -701,6 +705,10 @@ public static partial class Diagnostics
                     return Focus(id, name, a);
                 case Inspect.Verb.Window:
                     return Window(id, name, a, shell);
+                case Inspect.Verb.Film:
+                    return Film(id, name, a, shell);
+                case Inspect.Verb.Pointer:
+                    return Pointer(id, name, a);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
@@ -884,6 +892,7 @@ public static partial class Diagnostics
             FluentGpu.Dsl.Materials.EnergySaver = materials == "off";
             float dt = a.Float("dt", 16f);
             if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
+            _dtMs = dt;   // `perf`'s default budget (Diagnostics.Inspect.Perf.cs)
             // `mini=1` (#197): the mini player window's content ALONE at w x h (its shape follows the size), `face=<0..7>` its face. The
             // mini player reads as open, so its animated faces run as they do in the window.
             // `deskW`/`deskH`: the window sits at the bottom-right corner of a screen that size, so its menus (which escape the window into
@@ -897,6 +906,8 @@ public static partial class Diagnostics
             _frames++;
             _mounts++;
             mounted = true;
+            if (a.Str("media") == "fake")   // Diagnostics.Inspect.Media.cs: the fake video and audio source, before anything opens a player
+                _fakeMedia = new FakeMedia(_shell.Host, a.Int("mediaOpenMs", 120), a.Float("mediaStartCostMs", 0f), a.Float("mediaFrameCostMs", 0f));
             if (a.Has("route") || a.Has("uri") || a.Has("deeplink"))
             {
                 if (!Navigate(a, out error)) return false;
@@ -977,6 +988,8 @@ public static partial class Diagnostics
             if (!keepRoute) InspectKit.ResetTabs();
             _scriptedVideo?.Dispose();
             _scriptedVideo = null;
+            _fakeMedia?.Dispose();
+            _fakeMedia = null;
             InspectKit.ResetVideo(_fakePlayer);
             _fakePlayer = null;
             InspectKit.ResetPlayback();

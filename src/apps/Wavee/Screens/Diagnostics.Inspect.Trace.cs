@@ -89,6 +89,9 @@ public static partial class Diagnostics
             /// <summary>`flights=true`: each row carries the connected navigation flights (a card's cover flying into its page's hero) and the
             /// summary their take-off, landing and hand-off (<see cref="FlightSummary"/>).</summary>
             public bool Flights;
+            /// <summary>`curves=true`: the reply carries each watched key's motion curve (x, y, w, h, opacity per frame) and the steps,
+            /// reversals, stalls and snaps in it (<see cref="InspectMotion"/>, Diagnostics.Inspect.Film.cs).</summary>
+            public bool Curves;
         }
 
         /// <summary>The trace options an args bag spells: <c>frames</c> (or <paramref name="frames"/> from an action's
@@ -113,6 +116,7 @@ public static partial class Diagnostics
             o.Rows = a.Bool("rows", true);
             o.Census = a.Bool("census", false);
             o.Flights = a.Bool("flights", false);
+            o.Curves = a.Bool("curves", false);
             if (a.Has("wheel"))
             {
                 if (!TryWheelSequence(string.Join(",", a.List("wheel")), out o.Wheel)) { error = "wheel is a number or a comma list of numbers (notches, + toward the end)"; return false; }
@@ -638,6 +642,7 @@ public static partial class Diagnostics
             }
             WriteSummary(w, result.Summary);
             if (result.Flight is { } flight) WriteFlightSummary(w, flight);   // `inspect.py --gate` reads it
+            if (o.Curves) InspectMotion.Write(w, result);
             // the gate's counts: snapped watched keys, and remounts in and outside a swap family; a theme switch's own frames apart
             var switchFrames = new HashSet<int>();
             foreach (Row r in result.Rows) if (r.Switch) switchFrames.Add(r.Frame);
@@ -1003,6 +1008,7 @@ public static partial class Diagnostics
                     }
                 }
                 result.Rows.Add(row);
+                _traceAfterFrameHook?.Invoke(f);   // `film`: this frame's pixels
             }
             o.Window = window;
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o, result.Baseline);
