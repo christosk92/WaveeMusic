@@ -49,6 +49,9 @@ public static class WinUiHomeRules
     /// <summary>The header row's tools gap: the link, a 16-px divider and the pager.</summary>
     public const float ToolsDividerH = 16f;
 
+    /// <summary>A paging shelf's header tools (the pager's chevrons): 36 tall.</summary>
+    public const float PagerToolsH = 36f;
+
     /// <summary>The header row's gap between its text and its tools.</summary>
     public const float HeaderGap = 12f;
 

@@ -34,7 +34,8 @@ internal static class WinUiHomeTiles
     public static Element GroupHead(BoardEntry e, WinUiHomeBoardLayout lay) => new BoxEl
     {
         Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
-        Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+        // The label hugs its words (it does not stretch with the row), so a width change moves nothing in it.
+        Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, AlignSelf = FlexAlign.Start }],
     };
 
     /// <summary>The empty Pinned group: a dashed row at the group's height with how to pin (spec 8.1 "Empty states").</summary>
@@ -73,11 +74,14 @@ internal static class WinUiHomeTiles
 
     /// <summary>A card around <paramref name="content"/>: the plate, the reserved ⋯ corner, focus, the keys and the context request. A full row has no
     /// plate (it is a chapter on the page, as today): its ⋯ stands in a lane at its header's end.</summary>
-    static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null)
+    static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null, bool moreInContent = false)
     {
-        float moreBox = WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox;
         bool full = f.Form == HomeTileForm.Full;
-        var more = Embed.Comp(new MoreProps(f, moreBox), static () => new TileMore()) with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
+        // A full row whose chapter has a header carries the menu button at the header's end (passed in by the template): the body keeps the
+        // chapter's full width, so it lays out exactly as the page's chapter does (its first-frame estimates hold, nothing re-lays next frame).
+        if (full && moreInContent)
+            return new BoxEl { Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] };
+        var more = More(ctx, f);
         string id = f.Entry.Id;
         var verbs = f.Verbs;
         // The card carries no context handler of its own: a touch hold is the grid wrapper's (it gates the lift, so the hold can become a
@@ -112,6 +116,19 @@ internal static class WinUiHomeTiles
             ],
         };
     }
+
+    /// <summary>The card's menu button (its tools key).</summary>
+    static Element More(in ViewContext ctx, HomeTileFrame f)
+        => Embed.Comp(new MoreProps(f, WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox), static () => new TileMore())
+            // A resize re-flows the tile's box by animation while its content lays out at the new width at once: the button rides the card's
+            // edge by its own FLIP instead of jumping to it.
+            with { Key = HomeBoardKeys.Tools(f.Entry.Id), Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Reflow };
+
+    /// <summary>A full row that is today's chapter: the menu button ends its header row (a headerless chapter keeps the lane).</summary>
+    static Element FullChapter(in ViewContext ctx, HomeTileFrame f, Zone zone, WinUiHomeLayout home)
+        => WinUiHomeZones.HasHeader(zone.Kind)
+            ? Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home, More(ctx, f)), moreInContent: true)
+            : Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
 
     /// <summary>A card's padded column.</summary>
     static BoxEl Pad(params Element[] kids) => new()
@@ -333,11 +350,11 @@ internal static class WinUiHomeTiles
                     Children =
                     [
                         WinUiHomeZones.ModuleHeader(r.Zone.Title ?? title, home.HeaderSubtitles ? r.Zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
-                            HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), p.OpenHistory), home),
+                            HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), p.OpenHistory), home, More(ctx, f)),
                         ctx.View(ViewKeys.HomeZoneRecentGrid, r),
                     ],
                 };
-                return Card(ctx, f, body);
+                return Card(ctx, f, body, moreInContent: true);
             }
             case HomeTileForm.S:
                 return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.History, WinUiHomeBoardRules.RowArt), () => title, () => week), p.OpenHistory));
@@ -366,7 +383,7 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         var zone = p.Zone;
         var home = WinUiHomeTiers.Of(ctx.Tier());
-        if (f.Form == HomeTileForm.Full) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        if (f.Form == HomeTileForm.Full) return FullChapter(ctx, f, zone, home);
         string title = zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow);
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.RefineSparkle, title, null) };
@@ -418,7 +435,7 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         var zone = p.Zone;
         var home = WinUiHomeTiers.Of(ctx.Tier());
-        if (f.Form == HomeTileForm.Full) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        if (f.Form == HomeTileForm.Full) return FullChapter(ctx, f, zone, home);
         string title = zone.Title ?? f.Entry.Title;
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.Library, title, zone.Subtitle is { Length: > 0 } sub ? () => sub : null) };
