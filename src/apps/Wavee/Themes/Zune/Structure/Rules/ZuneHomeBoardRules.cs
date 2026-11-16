@@ -258,6 +258,15 @@ public static class ZuneHomeBoardRules
         return HomeTileForm.S;
     }
 
+    /// <summary>The form a PIN's box carries: a pin is named in every box wider than one cell (spec D15, WP Start's medium and wide tiles), so a small
+    /// tile the bento grew into a wider box draws the medium face with its name; the wide face needs four columns and two rows; only a 1 x 1 is
+    /// art alone.</summary>
+    public static HomeTileForm PinFormOf(in PackBox box, ZuneHomeBoardLayout lay)
+    {
+        if (box.Cols >= lay.L.Cols && box.Rows >= lay.M.Rows - 0.1f) return HomeTileForm.L;
+        return box.Cols >= lay.M.Cols || box.Rows >= lay.M.Rows - 0.1f ? HomeTileForm.M : HomeTileForm.S;
+    }
+
     /// <summary>A hidden entry (a placed section the answer lacks, a hidden feed section) keeps its place and takes no room.</summary>
     public static bool IsHidden(BoardEntry e) => e.Hidden;
 

@@ -275,14 +275,19 @@ internal static class ZuneHomeTiles
 
     // ══ faces ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The art filling its box (object-fit: cover); a drawn cover (Liked Songs' heart plate) at the box's longer edge, centred and cropped.</summary>
+    /// <summary>The art filling its box (object-fit: cover); a drawn cover (Liked Songs' heart plate) at the box's shorter edge, centred on the art plate.</summary>
     static Element Art(HomeTileFrame f, string? url, Func<float, Element>? drawn = null)
     {
         if (drawn is { } d)
         {
             var box = f.Cell?.Box.Peek() ?? default;
-            float edge = MathF.Max(1f, MathF.Max(box.Width, box.Height));   // it fills the box (cropped by the tile), as a cover does
-            return new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, ClipToBounds = true, Children = [d(edge)] };
+            // At the box's shorter edge, centred on the art plate (a larger drawing would set the stack's height past the tile's box).
+            float edge = MathF.Max(1f, MathF.Min(box.Width, box.Height));
+            return new BoxEl
+            {
+                Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, ClipToBounds = true, Fill = R.Layer.ArtPlaceholder,
+                Children = [d(edge)],
+            };
         }
         return url is { Length: > 0 }
             ? Controls.CoverFill(url, 0f, B.ArtDecodePx)
@@ -406,17 +411,32 @@ internal static class ZuneHomeTiles
     {
         var f = p.Frame;
         string? cover = p.Cover();
+        // The entity's name, else the board's title for the entry (Liked Songs has no entity row to name it).
+        string entryTitle = f.Entry.Title;
+        Func<string> name = () => p.Name() is { Length: > 0 } n ? n : entryTitle;
         Element face = f.Form switch
         {
-            HomeTileForm.S => Clickable(new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [Art(f, cover, p.CoverArt)] }, p.Open),
-            HomeTileForm.M => Clickable(new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [Art(f, cover, p.CoverArt), ScrimName(p.Name)] }, p.Open),
+            // A 1 x 1 is the art alone; with no art (nothing to tell it by) it carries its name on the plate.
+            HomeTileForm.S => Clickable(new BoxEl
+            {
+                Grow = 1f, Direction = 1, ZStack = true,
+                Children = cover is { Length: > 0 } || p.CoverArt is not null
+                    ? [Art(f, cover, p.CoverArt)]
+                    : [Art(f, null), new BoxEl
+                    {
+                        Direction = 1, Justify = FlexJustify.End, Padding = new Edges4(B.SmallPad, B.SmallPad, B.SmallPad, B.SmallPad), HitTestVisible = false,
+                        Children = [R.Type.MicroMeta("") with { Text = Prop.Of(name), MaxLines = 3, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+                    }],
+            }, p.Open),
+            HomeTileForm.M => Clickable(new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [Art(f, cover, p.CoverArt), ScrimName(name)] }, p.Open),
             _ => Clickable(new BoxEl
             {
                 Grow = 1f, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Square(f, Art(f, cover, p.CoverArt)), Panel(p.Name, p.Line)],
+                Children = [Square(f, Art(f, cover, p.CoverArt)), Panel(name, p.Line)],
             }, p.Open),
         };
-        return Tile(f, face);
+        // A 1 x 1 is the art alone (Start's small tile): its name is its tooltip and its automation name.
+        return Tile(f, f.Form == HomeTileForm.S ? Controls.Named(face, name()) : face);
     }
 
     // ══ Home.Tile.NowPlaying ════════════════════════════════════════════════════════════════════════════════════════
@@ -606,14 +626,17 @@ internal static class ZuneHomeTiles
             return Tile(f, Clickable(new BoxEl
             {
                 Grow = 1f, Direction = 1, ZStack = true,
-                Children = f.Form == HomeTileForm.S ? [Art(f, card.ImageUrl)] : [Art(f, card.ImageUrl), ScrimName(() => title, p.Eyebrow)],
+                Children = f.Form == HomeTileForm.S ? [Art(f, card.ImageUrl)] : [Art(f, card.ImageUrl), ScrimName(() => title, s_yourDaylist)],
             }, open));
         return Tile(f, Clickable(new BoxEl
         {
             Grow = 1f, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [Square(f, Art(f, card.ImageUrl)), Panel(() => title, p.Eyebrow)],
+            Children = [Square(f, Art(f, card.ImageUrl)), Panel(() => title, s_yourDaylist)],
         }, open));
     }
+
+    /// <summary>The daylist's line: what the card is (the page title above is the greeting).</summary>
+    static readonly Func<string> s_yourDaylist = static () => Loc.Get(Strings.Home.YourDaylist);
 
     // ══ Home.Tile.Section ═══════════════════════════════════════════════════════════════════════════════════════════
 

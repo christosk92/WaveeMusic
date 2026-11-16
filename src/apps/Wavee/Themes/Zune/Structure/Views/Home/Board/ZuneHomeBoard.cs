@@ -178,7 +178,7 @@ internal static class ZuneHomeBoard
         PackReorder<ZuneBoardItem>? _reorder;
         PackGridOptions<ZuneBoardItem>? _resting, _customizing;
         Func<ZuneBoardItem, PackCell, Element>? _template;
-        Func<PackBox, HomeTileForm>? _formRule;
+        Func<PackBox, HomeTileForm>? _formRule, _pinFormRule;
         TimerHandle _revealTimer;
         bool _rendered, _wasAll;
 
@@ -235,6 +235,7 @@ internal static class ZuneHomeBoard
             UseLayoutEffect(() => { if (back && view.RingId.Peek() is not null) _revealTimer.RestartIn(B.RecedeMs + 50f); }, DepKey.From(back ? 1 : 0));
 
             _formRule ??= box => ZuneHomeBoardRules.FormOf(in box, _p!.Lay);
+            _pinFormRule ??= box => ZuneHomeBoardRules.PinFormOf(in box, _p!.Lay);
             _template ??= (item, cell) => Item(item, cell);
             _reorder ??= new PackReorder<ZuneBoardItem>("home.tile")
             {
@@ -406,9 +407,10 @@ internal static class ZuneHomeBoard
             if (ZuneHomeBoardRules.SizeOf(e) != HomeSize.Full)
             {
                 // Every tile can turn over: the front is the tile its box carries, the back its options (only the open tile builds it).
-                if (e.Source is not { Options.Length: > 0 }) return board.Tile(e, cell, _formRule!);
+                var rule = e.Raw is PinSource ? _pinFormRule! : _formRule!;
+                if (e.Source is not { Options.Length: > 0 }) return board.Tile(e, cell, rule);
                 var entry = e;
-                return TileMotion.TurnOver(TurnedOf(e.Id), () => board.Tile(entry, cell, _formRule!), () => board.Options(entry));
+                return TileMotion.TurnOver(TurnedOf(e.Id), () => board.Tile(entry, cell, rule), () => board.Options(entry));
             }
             // A band: its body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
