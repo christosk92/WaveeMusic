@@ -42,6 +42,12 @@ public sealed record ClassicHomeBoardLayout
     /// <summary>A group title's row: the chapter header's title and the air under it (44).</summary>
     public required float GroupHead { get; init; }
 
+    /// <summary>The Pinned group's head, the concept's "Your shortcuts": the title row (Compact: then the switch on a line of its own) and the air under it.</summary>
+    public required float ShortcutsHead { get; init; }
+
+    /// <summary>The shortcuts switch's height (the selector's own 34; Compact's target floor, 40).</summary>
+    public required float FaceSwitchH { get; init; }
+
     /// <summary>The empty Pinned group's dashed drop row (one unit; two at Compact, where its sentence wraps).</summary>
     public required float EmptyRow { get; init; }
 
@@ -109,7 +115,7 @@ public static class ClassicHomeBoardTiers
         WidthTier.Compact => Base with
         {
             Tier = WidthTier.Compact, Columns = ClassicGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, ChipBox = 40f,
-            InlineFrom = float.PositiveInfinity, ButtonsInStrip = true, AddCardW = 220f,
+            InlineFrom = float.PositiveInfinity, ButtonsInStrip = true, AddCardW = 220f, ShortcutsHead = 100f, FaceSwitchH = 40f,
         },
         WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new ClassicGridBand(260f, 2), InlineFrom = float.PositiveInfinity },
         WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new ClassicGridBand(240f, 4) },
@@ -121,7 +127,7 @@ public static class ClassicHomeBoardTiers
     static readonly ClassicHomeBoardLayout Base = new()
     {
         Tier = WidthTier.Standard, Columns = new ClassicGridBand(240f, 4),
-        Unit = UnitH, Gap = GapW, GroupGap = 24f, GroupHead = 44f, EmptyRow = UnitH, AddRow = 40f, AddRowOpen = 176f, EndRow = 40f,
+        Unit = UnitH, Gap = GapW, GroupGap = 24f, GroupHead = 44f, ShortcutsHead = 44f, FaceSwitchH = 34f, EmptyRow = UnitH, AddRow = 40f, AddRowOpen = 176f, EndRow = 40f,
         S = (1, 1), M = (1, 3), L = (2, 3), OpenMinCols = 2, ChipStrip = 40f, ChipBox = 32f,
         InlineFrom = 1080f, ButtonsInStrip = false, FindW = 200f, AddCardW = 240f,
     };
@@ -222,7 +228,7 @@ public static class ClassicHomeBoardRules
     /// the open tile's (0: not open).</summary>
     public static PackEntry EntryOf(BoardEntry e, ClassicHomeBoardLayout lay, float fullExtent, float openExtent)
     {
-        if (e.Kind == BoardEntryKind.GroupHead) return new PackEntry(PackEntryKind.GroupHead, Extent: lay.GroupHead);
+        if (e.Kind == BoardEntryKind.GroupHead) return new PackEntry(PackEntryKind.GroupHead, Extent: e.GroupId == HomeDocs.Pinned ? lay.ShortcutsHead : lay.GroupHead);
         if (e.Hidden || IsHidden(e)) return new PackEntry(PackEntryKind.Tile, Flags: PackFlags.Hidden);
         var size = SizeOf(e);
         var flags = e.Size == HomeSize.Auto ? PackFlags.Auto : PackFlags.None;

@@ -282,7 +282,7 @@ internal static class ClassicHomeBoard
                 case ClassicBoardRow.Add: return ClassicHomeAddRow.Create(board, lay, it.Entry);
             }
             var e = it.Entry;
-            if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeTiles.GroupHead(board, e, it.Switch);
+            if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeTiles.GroupHead(board, e, lay, it.Switch);
             if (board.View.OpenId.Value == e.Id)
                 return ClassicHomeTiles.Open(board, e, cell, lay, board.Options(e));
             // A shortcut cell of a switchable grid: the shortcut, or the Recently played item at its place (the cells cross-fade, the grid keeps its size).

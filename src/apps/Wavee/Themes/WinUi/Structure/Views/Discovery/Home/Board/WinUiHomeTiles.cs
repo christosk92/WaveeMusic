@@ -45,14 +45,23 @@ internal static class WinUiHomeTiles
     {
         string key = HomeBoardKeys.Group(e.GroupId);
         string? sub = home.HeaderSubtitles ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null;
-        Element? link = switchable ? HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents) with { Key = key + ":history", Shrink = 0f } : null;
+        // The switch and the link change places at the Compact edge (beside the title, under it): each crossing cross-fades them, never a rebuilt part.
+        Element? link = switchable
+            ? new BoxEl
+            {
+                Key = key + ":history", Shrink = 0f,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Children = [HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents)],
+            }
+            : null;
         BoxEl? face = switchable
             ? new BoxEl
             {
                 Key = key + ":face", Shrink = 0f,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
                 Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
                                               new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
-                                             options: s_faceOptions ??= FaceOptions())],
+                                             options: FaceOptions(lay.FaceSwitchH))],
             }
             : null;
         bool stacked = lay.Tier == WidthTier.Compact;
@@ -66,13 +75,11 @@ internal static class WinUiHomeTiles
         };
     }
 
-    static Segmented.SegmentedOptions? s_faceOptions;
-
     /// <summary>The switch's look: the stock Fluent segmented control (a filled track, the selected segment raised), its segments padded so the words
     /// never touch (the theme's own Segmented preset is the facet band's underline pivot). The style reads the live tokens when it is built.</summary>
-    static Segmented.SegmentedOptions FaceOptions() => new()
+    static Segmented.SegmentedOptions FaceOptions(float height) => new()
     {
-        Style = Segmented.FluentStyle() with { Height = WinUiHomeBoardRules.FaceSwitchH, ItemPadding = new Edges4(Spacing.M, 0f, Spacing.M, 0f) },
+        Style = Segmented.FluentStyle() with { Height = height, ItemPadding = new Edges4(Spacing.M, 0f, Spacing.M, 0f) },
     };
 
     /// <summary>A shortcut cell of a switchable grid (<see cref="HomeShortcuts"/>): the shortcut's own tile, or the Recently played item at its place.</summary>

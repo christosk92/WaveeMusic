@@ -30,46 +30,49 @@ internal static class ClassicHomeTiles
     // ══ the board's chrome ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A group title: the chapter header's title at the foot of its row. Pinned's title is also where a cover dragged onto Home pins.</summary>
-    public static Element GroupHead(HomeBoardProps board, BoardEntry e, bool switchable = false)
+    public static Element GroupHead(HomeBoardProps board, BoardEntry e, ClassicHomeBoardLayout lay, bool switchable = false)
     {
         string key = HomeBoardKeys.Group(e.GroupId);
         bool shortcuts = e.GroupId == HomeDocs.Pinned;
+        // Compact stacks the head: the title and the link, then the switch on its own line (the subtitle steps aside), at the 40 target floor.
+        bool stacked = lay.Tier == WidthTier.Compact;
+        var face = new BoxEl
+        {
+            Key = key + ":face", Shrink = 0f, AlignSelf = FlexAlign.Start,
+            // The switch and the link change places at the Compact edge (beside the title, under it): each crossing cross-fades them, never a rebuilt part.
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
+                                          new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
+                                         options: FaceOptions(lay.FaceSwitchH))],
+        };
+        var link = new BoxEl
+        {
+            Key = key + ":history", Shrink = 0f,
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            Children = [HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents)],
+        };
         // The Pinned group is the concept's "Your shortcuts": its subtitle on the title's baseline, and while the history tile closes the grid, Classic's
         // selector bar (two words over the accent underline) to switch the grid to Recently played and the "Listening history" link.
-        Element? tools = switchable
-            ? new BoxEl
-            {
-                Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = key + ":face", Shrink = 0f,
-                        Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
-                                                      new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
-                                                     options: s_faceOptions ??= FaceOptions())],
-                    },
-                    HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents) with { Key = key + ":history" },
-                ],
-            }
-            : null;
+        Element? tools = !switchable ? null
+            : stacked ? link
+            : new BoxEl { Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face, link] };
+        var header = HomeModules.ModuleHeader(e.Title, shortcuts && !stacked ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null, tools, open: null) with { Key = key + ":title" };
         var title = new BoxEl
         {
-            Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
-            Children = [HomeModules.ModuleHeader(e.Title, shortcuts ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null, tools, open: null) with { Key = key + ":title" }],
+            Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Gap = Spacing.S, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+            Children = switchable && stacked ? [header, face] : [header],
         };
         return e.GroupId == HomeDocs.Pinned && !board.ReadOnly ? title with { DropTarget = PinDrop(board) } : title;
     }
 
     /// <summary>The empty Pinned group: a dashed row at the group's height, "Drop here to pin. Or use the pin action on any library item." It takes a
     /// cover dragged onto Home.</summary>
-    static Segmented.SegmentedOptions? s_faceOptions;
-
     /// <summary>The switch's look: the theme's own selector, words over the accent underline (the concept's), its words spaced apart.</summary>
-    static Segmented.SegmentedOptions FaceOptions() => new()
+    static Segmented.SegmentedOptions FaceOptions(float height) => new()
     {
         Style = Segmented.DefaultStyle with
         {
+            Height = height,
             ItemPadding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
             // Classic's selector bar is the words alone: no track, no raised segment; the accent underline marks the face shown.
             Background = ColorF.Transparent, Border = ColorF.Transparent, SelectedBackground = ColorF.Transparent, SelectedBorder = null,

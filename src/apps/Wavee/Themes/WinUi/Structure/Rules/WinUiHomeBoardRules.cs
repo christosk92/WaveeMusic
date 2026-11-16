@@ -44,6 +44,9 @@ public sealed record WinUiHomeBoardLayout
     /// the "Listening history" link, and the air under it (Compact: the title row, then the switch on its own line).</summary>
     public required float ShortcutsHead { get; init; }
 
+    /// <summary>The shortcuts grid's Shortcuts / Recently played switch's height: the header's tools row (32), Compact's target floor (40).</summary>
+    public required float FaceSwitchH { get; init; }
+
     /// <summary>The empty Pinned group's dashed row (one unit; two at Compact, where its sentence wraps).</summary>
     public required float EmptyRow { get; init; }
 
@@ -84,7 +87,7 @@ public static class WinUiHomeBoardTiers
     /// <summary>The record for content tier <paramref name="content"/> (4K reads Huge's).</summary>
     public static WinUiHomeBoardLayout For(WidthTier content) => (WidthTier)Math.Min((int)content, (int)WidthTier.Huge) switch
     {
-        WidthTier.Compact => Base with { Tier = WidthTier.Compact, Columns = WinUiGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, MoreBox = 40f, ShortcutsHead = 90f },
+        WidthTier.Compact => Base with { Tier = WidthTier.Compact, Columns = WinUiGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, MoreBox = 40f, ShortcutsHead = 96f, FaceSwitchH = 40f },
         WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new WinUiGridBand(260f, 2) },
         WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new WinUiGridBand(240f, 4) },
         _ => Base with { Tier = WidthTier.Huge, Columns = new WinUiGridBand(280f, 6) },
@@ -95,7 +98,7 @@ public static class WinUiHomeBoardTiers
     static readonly WinUiHomeBoardLayout Base = new()
     {
         Tier = WidthTier.Standard, Columns = new WinUiGridBand(240f, 4),
-        Unit = UnitH, Gap = GapW, GroupGap = 20f, GroupHead = 34f, ShortcutsHead = 56f, EmptyRow = UnitH,
+        Unit = UnitH, Gap = GapW, GroupGap = 20f, GroupHead = 34f, ShortcutsHead = 56f, FaceSwitchH = 32f, EmptyRow = UnitH,
         S = (1, 1), M = (1, 3), L = (2, 3), OpenMinCols = 2, MoreBox = 32f,
         PreviewW = 220f, CandidateW = 252f,
     };
@@ -198,9 +201,6 @@ public static class WinUiHomeBoardRules
 
     /// <summary>A full-row tile's estimate where nothing better is known (a shelf's header and one row of covers).</summary>
     public const float FullFallback = 320f;
-
-    /// <summary>The shortcuts grid's Shortcuts / Recently played switch: its height (the header's tools row).</summary>
-    public const float FaceSwitchH = 32f;
 
     /// <summary>The theme's auto size of a source (spec 4.3).</summary>
     public static HomeSize AutoOf(HomeSourceDef? source) => source?.CanonicalAuto is { } a && a != HomeSize.Auto ? a : HomeSize.S;
