@@ -882,9 +882,10 @@ public static partial class Design
 
     // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION ═══════════════════════════════════════════════════════════════
 
-    /// <summary>The connected navigation flight's key (<c>SharedTransition.BeginNav</c>, a card's cover flying into its page's hero
-    /// and back): the album uri ITSELF (<c>spotify:album:…</c>), no prefix, so the card, the hero and the shell agree with nothing
-    /// built per card. The card passes its data's uri, the hero its identity's subject, the shell the route's subject.
+    /// <summary>The connected navigation flight's key (<c>SharedTransition.BeginNav</c>, a picture flying into the header of the
+    /// page it opens and back): the entity's uri ITSELF (an album, playlist, artist, show, episode or user), no prefix, so the
+    /// source, the header and the shell agree with nothing built per card. The source passes its data's uri, the header its
+    /// identity's subject, the shell the route's subject.
     ///
     /// <para>A key may repeat down a page (the same album on two shelves): the engine flies from the tagged cover INSIDE the card
     /// the user activated and to the one on the page it opens, never "every node with the key", and hides only those two slots.</para>
@@ -896,8 +897,19 @@ public static partial class Design
     /// <c>MorphId</c> column and has nothing to do with connected animation.</para></summary>
     public static class MorphKeys
     {
-        /// <summary>The flight key for a cover showing <paramref name="uri"/>: the uri when it is an album's, else null (slice 1 flies albums only).</summary>
-        public static string? ForUri(string? uri) => uri is { Length: > 14 } && uri.StartsWith("spotify:album:", StringComparison.Ordinal) ? uri : null;
+        /// <summary>The flight key for a picture of <paramref name="uri"/>: the uri itself when it names a page with a header picture
+        /// (<c>spotify:album:</c>, <c>spotify:playlist:</c>, <c>spotify:artist:</c>, <c>spotify:show:</c>, <c>spotify:episode:</c>,
+        /// or <c>spotify:user:&lt;id&gt;</c> with nothing after the id), else null: a track plays, and the Liked collection, a legacy
+        /// <c>spotify:user:&lt;u&gt;:playlist:&lt;p&gt;</c> and a concert have no one picture to fly. Prefix tests only, no allocation.</summary>
+        public static string? ForUri(string? uri)
+        {
+            if (uri is null) return null;
+            if (HasId(uri, "spotify:album:") || HasId(uri, "spotify:playlist:") || HasId(uri, "spotify:artist:")
+                || HasId(uri, "spotify:show:") || HasId(uri, "spotify:episode:")) return uri;
+            return HasId(uri, "spotify:user:") && uri.IndexOf(':', "spotify:user:".Length) < 0 ? uri : null;
+        }
+
+        static bool HasId(string uri, string prefix) => uri.Length > prefix.Length && uri.StartsWith(prefix, StringComparison.Ordinal);
 
         /// <inheritdoc cref="MorphKeys"/>
         public static string? For(EntityKind kind, string? id) => id is { Length: > 0 }
