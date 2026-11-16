@@ -160,7 +160,7 @@ internal static class WinUiHomeAddBand
                 {
                     Key = "home:add:none", Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, Spacing.M, 0f, Spacing.M),
                     Children = [Ui.Body(searching ? Strings.Theme.Winui.Home.Board.NoMatch(q: q) : Loc.Get(Strings.Theme.Winui.Home.Board.NothingOfKind)).Secondary()
-                                 with { Role = AutomationRole.Text }],
+                                 ],
                 };
             else
             {
@@ -186,9 +186,9 @@ internal static class WinUiHomeAddBand
                         [
                             new BoxEl
                             {
-                                Key = "home:add:head", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = FlexWrap.Wrap,
+                                Key = "home:add:head", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
                                 MinHeight = WinUiHomeBoardRules.BandHeadH,
-                                Children = [selector with { Shrink = 1f, MinWidth = 0f }, search, close],
+                                Children = [new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [selector] }, search, close],
                             },
                             row,
                             Ui.Caption(Loc.Get(Strings.Theme.Winui.Home.Board.BandHint)).Secondary() with { Wrap = TextWrap.Wrap, MinWidth = 0f },

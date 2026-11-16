@@ -33,7 +33,7 @@ internal static class WinUiHomeTiles
     /// <summary>A group head: a quiet 14 semibold label at the foot of its row (spec 4.2).</summary>
     public static Element GroupHead(BoardEntry e, WinUiHomeBoardLayout lay) => new BoxEl
     {
-        Direction = 1, MinWidth = 0f, Grow = 1f, JustifyContent = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+        Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
         Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
     };
 
@@ -82,19 +82,24 @@ internal static class WinUiHomeTiles
             {
                 Key = key, Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = Spacing.XS, Focusable = true,
                 OnKeyDown = keys, OnContextRequested = _ => TileMore.OpenFor(f),
-                Children = [content with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f }, more],
+                Children = [new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] }, more],
             };
         return new BoxEl
         {
             Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true, Corners = Radii.CardAll, ClipToBounds = true,
-            Fill = Tok.FillCardDefault, BorderColor = Prop.Of(() => f.View.RingId.Value == id ? Tok.AccentDefault : Tok.StrokeCardDefault),
-            BorderWidth = Prop.Of(() => f.View.RingId.Value == id ? WinUiHomeBoardRules.RingW : 1f), Focusable = true,
+            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f, Focusable = true,
             BrushTransitionMs = Design.Motion.Faster,
             OnKeyDown = keys, OnContextRequested = _ => TileMore.OpenFor(f),
             OnHoldReleased = _ => TileMore.OpenFor(f),
             Children =
             [
                 content,
+                // The ring around a tile just added: an accent outline for a moment (a bound visibility; nothing relayouts).
+                new BoxEl
+                {
+                    Corners = Radii.CardAll, BorderColor = Tok.AccentDefault, BorderWidth = WinUiHomeBoardRules.RingW, HitTestVisible = false,
+                    Visible = Prop.Of(() => f.View.RingId.Value == id),
+                },
                 new BoxEl { AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, WinUiHomeBoardRules.MoreInset, WinUiHomeBoardRules.MoreInset, 0f), Children = [more] },
             ],
         };
@@ -128,11 +133,11 @@ internal static class WinUiHomeTiles
     };
 
     /// <summary>A row tile's line: the art, the name over one line (spec 4.2 `s`).</summary>
-    static Element RowFace(Element art, Func<string> title, Func<string> line, Element? end = null)
+    static BoxEl RowFace(Element art, Func<string> title, Func<string> line, Element? end = null)
     {
         var text = new BoxEl
         {
-            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, JustifyContent = FlexJustify.Center,
+            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
             Children =
             [
                 Ui.BodyStrong("") with { Text = Prop.Of(title), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
@@ -171,7 +176,7 @@ internal static class WinUiHomeTiles
 
     static Element Cover(string? url, float edge, bool round)
         => url is { Length: > 0 }
-            ? Ui.Image(url, edge, edge, round ? edge * WinUiHomeBoardRules.Half : Radii.Control, Tok.FillSubtleSecondary) with { Shrink = 0f }
+            ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [Ui.Image(url, edge, edge, round ? edge * WinUiHomeBoardRules.Half : Radii.Control, Tok.FillSubtleSecondary)] }
             : new BoxEl { Width = edge, Height = edge, Shrink = 0f, Corners = round ? Radii.Circle(edge) : Radii.ControlAll, Fill = Tok.FillSubtleSecondary };
 
     // ══ Home.Tile.Pin ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -191,7 +196,7 @@ internal static class WinUiHomeTiles
                 float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;
                 var head = new BoxEl
                 {
-                    Direction = wide ? 0 : 1, Gap = Spacing.M, MinWidth = 0f, Grow = 1f,
+                    Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, MinWidth = 0f, Grow = 1f,
                     Children =
                     [
                         Cover(cover, art, p.Round),
@@ -217,7 +222,7 @@ internal static class WinUiHomeTiles
 
     static BoxEl Clickable(BoxEl box, Action open) => box with
     {
-        OnClick = open, Cursor = CursorKind.Hand, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, Role = AutomationRole.Button,
+        OnClick = open, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, Role = AutomationRole.Button,
     };
 
     // ══ Home.Tile.NowPlaying ════════════════════════════════════════════════════════════════════════════════════════
@@ -260,7 +265,7 @@ internal static class WinUiHomeTiles
             Direction = 1, Grow = 1f, MinWidth = 0f,
             Children =
             [
-                Pad(new BoxEl { Direction = wide ? 0 : 1, Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(p.Cover(), art, false), text] }),
+                Pad(new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(p.Cover(), art, false), text] }),
                 new BoxEl { Height = WinUiHomeBoardRules.ProgressH, Shrink = 0f, Direction = 1, Children = [p.ProgressLine()] },
             ],
         };
@@ -393,7 +398,7 @@ internal static class WinUiHomeTiles
                     : new BoxEl(),
             ],
         };
-        var row = new BoxEl { Direction = wide ? 0 : 1, Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(card.ImageUrl, art, false), text] };
+        var row = new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(card.ImageUrl, art, false), text] };
         return Card(f, Pad(row));
     }
 
@@ -466,7 +471,7 @@ internal static class WinUiHomeTiles
             {
                 s_live[id] = this;
                 return () => { if (s_live.TryGetValue(id, out var x) && ReferenceEquals(x, this)) s_live.Remove(id); };
-            }, DepKey.From(id));
+            }, DepKey.From(id.GetHashCode()));
             return ToolTip.Wrap(Controls.MoreButton(Toggle, requestsContext: false, restOpacity: 1f) with
             {
                 OnRealized = h => _anchor = h, Role = AutomationRole.Button,

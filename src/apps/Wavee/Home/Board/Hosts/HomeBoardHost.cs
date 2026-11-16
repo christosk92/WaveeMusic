@@ -59,6 +59,8 @@ public sealed class HomeBoardHost
         _model = model;
         _overlay = overlay;
         _props = null;
+        // Commands address entries of the board as shown (feed sections, fill cells).
+        HomeBoardStore.Instance.Shown = () => model.Peek();
     }
 
     /// <summary>The board as projected right now: the document x the All answer (a subscribing read of both).</summary>

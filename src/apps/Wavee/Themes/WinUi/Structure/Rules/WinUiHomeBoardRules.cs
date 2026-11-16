@@ -11,6 +11,7 @@
 // out once), then the body's measured height (`WinUiHomeBoard`): the box follows the body by the 250 ms re-flow, never by a snap.
 
 using FluentGpu.Animation;
+using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
 using Wavee.Theming;

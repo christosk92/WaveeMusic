@@ -67,7 +67,7 @@ internal static class WinUiHomeBoardTools
                     t.PreferredPlacement = TeachingTip.PlacementMode.BottomLeft;
                 });
                 _tip.ClosedAction = () => { if (!board.View.TipSeen.Peek()) board.View.MarkTipSeen(); _tip = null; };
-            }, DepKey.From(seen, open));
+            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0));
 
             var add = Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.AddWidgets), () => WinUiHomeAddBand.Toggle(board),
                     open ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Medium, Icons.Add)

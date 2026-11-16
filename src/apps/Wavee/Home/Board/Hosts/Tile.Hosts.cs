@@ -51,7 +51,7 @@ public sealed class HomeTileHost : Component
         var form = UseComputed(() => _p!.FormRule(_p.Cell?.Box.Value ?? default)).Value;
         var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay, p.View);
         var e = p.Entry;
-        if (e.Kind == BoardEntryKind.Placeholder)
+        if (e.Kind == BoardEntryKind.Placeholder || e.Hidden && e.Source is not null)
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Loading, Name = e.Title });
         if (e.Paused && e.Live && e.Raw is WidgetSource { Widget: "nowPlaying" })
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Paused, Name = e.Title });
@@ -95,7 +95,7 @@ public sealed class PinTileHost : Component
         string uri = SidebarPinId.UriOf(pinId);
         if (pinId == "liked" || uri.Length == 0 && EntityUri.IsLikedCollection(pinId)) uri = EntityUri.LikedCollection;
         var id = uri.Length > 0 ? EntityUri.Parse(uri) : default;
-        var target = id.IsValid ? Entities.Ref(id) : default;
+        var target = id.IsValid ? Entities.Ref(id.Id) : default;
 
         string hintName = p.NameHint, hintCover = p.CoverHint;
         Controls.CardData? card = target.IsNone ? null : Search.CardDataOf(target, HomeCardNav.HomeOrigin);
@@ -128,7 +128,7 @@ public sealed class PinTileHost : Component
         _ = Entities.ScopeEpoch.Value;
         var card = new HomeCard(r);
         string kind = Search.KindWordOf(r.Kind, default);
-        string sub = r.Kind is EntityKind.Playlist or EntityKind.Collection ? card.OwnerName : card.Subtitle;
+        string? sub = r.Kind is EntityKind.Playlist or EntityKind.Collection ? card.OwnerName : card.Subtitle;
         return sub is { Length: > 0 } && kind.Length > 0 ? kind + " · " + sub : sub is { Length: > 0 } ? sub : kind;
     }
 
@@ -158,7 +158,7 @@ public sealed class NowPlayingTileHost : Component
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
-        bool lyric = p.Frame.Entry.Raw is not null && HomeBoardStore.Instance.OptionOf(p.Frame.Entry.Id, "lyric") == "on";
+        bool lyric = p.Frame.Entry.Options.TryGetValue("lyric", out var l) && l == "on";
         return Slots.View(ViewKeys.HomeTileNowPlaying, new HomeNowPlayingTileProps
         {
             Frame = p.Frame, HasTrack = s_has, Title = s_title, Line = s_line, Cover = s_cover, ProgressLine = s_progress,
@@ -261,19 +261,28 @@ public sealed class HomeTileOptionsHost : Component
         var verbs = p.Verbs;
         var source = e.Source;
         string id = e.Id;
-        var store = HomeBoardStore.Instance;
         return Slots.View(ViewKeys.HomeTileOptions, new HomeTileOptionsProps
         {
             Entry = e,
             Title = e.Title,
             Options = source?.Options ?? [],
-            Value = key => store.OptionOf(id, key) ?? DefaultOf(source, key),
+            Value = key => OptionOf(id, key) ?? DefaultOf(source, key),
             Set = verbs.SetOption,
             Live = e.Live,
-            Paused = () => store.OptionOf(id, "live") == "0",
+            Paused = () => OptionOf(id, "live") == "0",
             ToggleLive = e.Live ? () => verbs.ToggleLive(id) : null,
             Done = () => verbs.Close(refocus: true),
         });
+    }
+
+    /// <summary>An item's saved option (a subscribing read of the document), or null.</summary>
+    static string? OptionOf(string id, string key)
+    {
+        var doc = HomeBoardStore.Instance.Doc.Value;
+        foreach (var g in doc.Groups)
+            foreach (var it in g.Items)
+                if (it.Id == id) return it.Options.TryGetValue(key, out var v) ? v : null;
+        return null;
     }
 
     static string DefaultOf(HomeSourceDef? source, string key)

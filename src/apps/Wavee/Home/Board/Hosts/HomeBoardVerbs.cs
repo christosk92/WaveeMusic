@@ -6,7 +6,6 @@
 //
 // Themes never mutate anything; they call these. The inspector's `home do=` verbs call the same object.
 
-using FluentGpu.Collections;
 using FluentGpu.Controls;
 using FluentGpu.Input;
 using FluentGpu.Localization;
@@ -155,7 +154,7 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     public void SetOption(string key, string value)
     {
         if (_view.OpenId.Peek() is not { } id) return;
-        Store.Dispatch(new HomeCommand.SetOptions(id, ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal).Add(key, value)));
+        Store.Dispatch(new HomeCommand.SetOptions(id, System.Collections.Immutable.ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal).Add(key, value)));
     }
 
     /// <inheritdoc/>
@@ -165,7 +164,7 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
         if (e is null) return;
         bool paused = !e.Paused;
         Store.Dispatch(new HomeCommand.SetOptions(entryId,
-            ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal).Add("live", paused ? "0" : "1")));
+            System.Collections.Immutable.ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal).Add("live", paused ? "0" : "1")));
         Say(Loc.Get(paused ? Strings.Home.BoardVerbs.LivePaused : Strings.Home.BoardVerbs.LiveResumed));
     }
 
@@ -229,11 +228,14 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     /// <summary>The theme's confirmation: an info-bar toast with Undo (WinUI, Classic), else the announcement alone (Zune: the tile is the answer).</summary>
     void Confirm(string text)
     {
-        if (ShellPolicy.Now.HomeConfirm == HomeConfirmPolicy.Toast)
+        // ThemePolicies.HomeConfirm (lane A, wave 2) decides per theme; until it lands every theme confirms with the info bar.
+        if (ConfirmByToast())
             Notify.Say(text, InfoBarSeverity.Informational, Loc.Get(Strings.Home.BoardVerbs.UndoAction), Undo,
                        dedupeKey: "home.undo." + Store.Doc.Peek().Rev, durationMs: 7000f);
         else Say(text);
     }
+
+    static bool ConfirmByToast() => true;
 
     static string SizeWord(HomeSize size) => Loc.Get(size switch
     {
