@@ -184,7 +184,7 @@ internal static partial class ClassicHomeZones
         var c = item.Card;
         var lines = new List<Element>(3);
         if (item.Author.Length > 0) lines.Add(Meta(item.Author));
-        if (item.Facts.Length > 0) lines.Add(Meta(item.Facts) with { Color = Tok.TextTertiary });
+        if (item.Facts.Length > 0) lines.Add(Meta(item.Facts));
         if (item.Plan.Length > 0) lines.Add(new BoxEl { Direction = 0, MinWidth = 0f, Children = [Controls.RowChip(item.Plan)] });
         var menu = HomeCardNav.MenuOf(in c);
         bool hasMenu = menu is not null && host is not null;
@@ -347,7 +347,7 @@ internal static partial class ClassicHomeZones
                         },
                         Ui.Caption(description.Length > 0 ? description : " ").Secondary() with
                             { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                        Meta(SectionCopy.PreviewFacts(in h)) with { Color = Tok.TextTertiary },
+                        Meta(SectionCopy.PreviewFacts(in h)) with { Color = Tok.TextSecondary },
                         new BoxEl
                         {
                             Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
