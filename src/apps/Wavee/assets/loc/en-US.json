@@ -3155,6 +3155,7 @@
           "unavailable": "Not available any more",
           "paused": "Live updates are paused",
           "offline": "Offline",
+          "failed": "Couldn't load this from Spotify",
           "unknown": "Made by a newer Wavee",
           "more": "More options",
           "customize": "Customize widget",

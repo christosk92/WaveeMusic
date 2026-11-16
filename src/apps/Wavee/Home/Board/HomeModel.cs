@@ -27,6 +27,11 @@ public enum SectionTemplate : byte
 /// section before the first answer.</summary>
 public enum BoardEntryKind : byte { GroupHead, Item, FeedSection, FillCell, Fold, Placeholder }
 
+/// <summary>Where Spotify's answer for the feed stands: on hand, still coming, failed, or out of reach offline. Anything but
+/// <see cref="Ready"/> draws the feed slot as <see cref="BoardEntryKind.Placeholder"/> entries carrying it (the board's own
+/// vacancy) while pins and local widgets keep working.</summary>
+public enum HomeFeedState : byte { Ready, Loading, Error, Offline }
+
 /// <summary>One entry of the board, in reading order. <see cref="Id"/> is the entry's identity across projections and
 /// the tail of its node key (<c>home:tile:&lt;Id&gt;</c>, <c>home:group:&lt;GroupId&gt;</c> for a head).
 /// <see cref="Source"/> is null for a group head and for an unknown source; <see cref="Raw"/> is the document's source
@@ -51,6 +56,9 @@ public sealed record BoardEntry(string Id, BoardEntryKind Kind, string GroupId, 
     /// <summary>The bridge's zone for a feed or placed section (until the chooser lands; then the section tile builds
     /// its own from <see cref="SectionSlot"/>). Null for every other kind.</summary>
     public HomeUi.Zone? Zone { get; init; }
+
+    /// <summary>A <see cref="BoardEntryKind.Placeholder"/>'s reason: the feed's state (Loading before the first answer, Error, Offline).</summary>
+    public HomeFeedState Feed { get; init; }
 }
 
 /// <summary>The board as projected right now: every group head and every entry in reading order. <see cref="Rev"/> is
