@@ -3145,7 +3145,6 @@
         "board": {
           "emptyPinned": "Nothing pinned yet. Right-click an album, playlist or artist and choose Pin to Home.",
           "grabbed": "{name}, grabbed. Move it, then drop it.",
-          "dropped": "Dropped {name}, {where}",
           "cancelled": "{name} is back in its place",
           "play": "Play",
           "nowPlaying": "Now playing",

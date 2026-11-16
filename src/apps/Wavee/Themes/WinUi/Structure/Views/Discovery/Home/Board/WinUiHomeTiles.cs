@@ -77,14 +77,13 @@ internal static class WinUiHomeTiles
         var more = Embed.Comp(new MoreProps(f, moreBox), static () => new TileMore()) with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
         string id = f.Entry.Id;
         var verbs = f.Verbs;
-        // Right-click and a pen's barrel: the menu. A touch hold is the grid wrapper's (it gates the lift); this handler leaves it alone so the
-        // hold can become a drag. Keys reach the focused wrapper, so Alt+Shift+arrows and the Menu key are the board's (`WinUiHomeBoard.HandleKey`).
-        Action<ContextRequestEventArgs> menu = e => { if (e.Trigger != ContextRequestTrigger.Hold) TileMore.OpenFor(f); };
+        // The card carries no context handler of its own: a touch hold is the grid wrapper's (it gates the lift, so the hold can become a
+        // drag), and a right-click or the Menu key reaches the board, which opens the menu of the tile under the pointer or in focus
+        // (`WinUiHomeBoard`).
         if (full)
             return new BoxEl
             {
                 Key = key, Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = Spacing.XS,
-                OnContextRequested = menu,
                 Children = [new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] }, more],
             };
         return new BoxEl
@@ -92,7 +91,6 @@ internal static class WinUiHomeTiles
             Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true, Corners = Radii.CardAll, ClipToBounds = true,
             Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
             BrushTransitionMs = Design.Motion.Faster,
-            OnContextRequested = menu,
             Children =
             [
                 content,

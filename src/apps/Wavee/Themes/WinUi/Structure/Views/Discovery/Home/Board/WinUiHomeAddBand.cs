@@ -81,7 +81,7 @@ internal static class WinUiHomeAddBand
     static string KindId(int i) => i switch { 1 => "spotify", 2 => "library", 3 => "extensions", _ => "widgets" };
 
     /// <summary>The disclosure: keyed `home:add`, its height eases open and shut (the board under it slides).</summary>
-    public static Element Disclosure(HomeBoardProps board, WinUiHomeBoardLayout lay, bool open)
+    public static BoxEl Disclosure(HomeBoardProps board, WinUiHomeBoardLayout lay, bool open)
     {
         s_board = board;
         return new BoxEl
