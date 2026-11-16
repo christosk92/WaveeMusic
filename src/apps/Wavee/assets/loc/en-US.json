@@ -2961,6 +2961,7 @@
         "board": {
           "$comment": "Classic's pinned Home (spec 8.3): Edit Home on the tiles, the sidebar's edit vocabulary in Home's header row.",
           "homeOptions": "Home options",
+          "pinMenu": "Pin",
           "editHome": "Edit Home",
           "showOnHome": "Show on Home",
           "customizeHome": "Customize Home",

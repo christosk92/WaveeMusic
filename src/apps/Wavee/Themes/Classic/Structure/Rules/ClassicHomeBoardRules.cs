@@ -177,6 +177,9 @@ public static class ClassicHomeBoardRules
     /// <summary>The find strip under the bar: its count line, the cards' row height and its padding.</summary>
     public const float FindCountH = 24f, FindRowH = 112f;
 
+    /// <summary>The pin mark before a card's subtitle when its entity is on Home (state at rest).</summary>
+    public const float PinMarkGlyph = 12f;
+
     /// <summary>"/" (VK_OEM_2): the find field.</summary>
     public const int SlashKey = 191;
 
