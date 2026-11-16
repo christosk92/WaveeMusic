@@ -30,7 +30,7 @@ public sealed class HomeBoardStore
     /// <summary>True once <see cref="Boot"/> ran: the sidebar's account edge forwards to Home only from then on.</summary>
     public static bool Booted { get; private set; }
 
-    /// <summary>Provided at the shell root beside HomeLayout.Slot.</summary>
+    /// <summary>Provided at the shell root (Shell.UI.cs).</summary>
     public static readonly Context<HomeBoardStore> Slot = new(null!);
 
     readonly Signal<HomeDoc> _doc = new(HomeDocs.Default());

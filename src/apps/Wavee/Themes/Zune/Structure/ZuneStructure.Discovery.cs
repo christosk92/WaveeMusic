@@ -5,7 +5,7 @@
 //   Home      Pages.Home (`Views\Home\ZuneHomePage.cs`: the pinned board on All, the zones and the paired rows elsewhere), the board (`Views\Home\Board`),
 //             the fourteen `Home.Zone.<Kind>` bodies and Home.Charts (`ZuneHomeZones`), Home.Zone.RecentGrid (the history group), Home.Daylist and
 //             Home.DaylistClock (`ZuneHomeDaylist`), Pages.HomeSection (`ZuneHomeSection`). Home.FacetRow is Nothing: the facet words are the
-//             band's row 2 (published by the core host, `HomeHost`). Pages.HomeCustomize stays the Common block (`CommonBlocks.Register`).
+//             band's row 2 (published by the core host, `HomeHost`).
 //   Browse    Pages.Browse and Browse.Charts (`Views\Browse\ZuneBrowseDirectory.cs`), Pages.BrowseCategory (`ZuneBrowseCategory`), Pages.BrowseSection
 //             (the Home drill page's template under its own id).
 //   Search    Pages.Search (`Views\Search\ZuneSearchPage.cs`): the facet body alone; the facet strip is the band's row 2 (published by
@@ -23,8 +23,6 @@ public sealed partial class ZuneStructure
     {
         // Home.
         views.Add(ViewKeys.HomePage, ZuneHomePage.Template, "zune.home.page");
-        // No quickplay strip: the pinned board's Pinned group and its bands replaced it (the key goes with lane A's cleanup).
-        CommonNothing.Register(views, ViewKeys.HomeQuickplay);
         views.Add(ViewKeys.HomeZoneRecentGrid, ZuneHomeHistory.HistoryTemplate, "zune.home.zone.recent-grid");
         // The pinned Home board (contract 1.117, spec 8.2): the board with its title, all items and the undo word; the app bar is the board's tools
         // (the page lays it over its foot); the tiles; the tile's back.

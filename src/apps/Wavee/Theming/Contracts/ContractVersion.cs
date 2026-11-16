@@ -314,7 +314,8 @@
 // 1.117 (the pinned Home board): `Home.Board` and the `Home.Tile.*` keys (`ViewKeys.HomeBoard.cs`, `HomeBoardProps.cs`: the board's props,
 // `IHomeBoardVerbs`, the catalogue view, the tile frame and one props record per tile source, `HomeTileForm`, `HomeTileVacancy`), the node
 // keys `HomeBoardKeys`, `Home.BoardTools` (the board's tools in the page's head row), and the optional `HomePageProps.Board` / `BoardTools` (what the page mounts
-// where its zone column stood and in its head row, on the All facet).
+// where its zone column stood and in its head row, on the All facet). `Pages.HomeCustomize` (`HomeCustomizeProps`) and `Home.Quickplay`
+// (`HomeQuickplayProps`) are gone: the board's own edit flows and its Pinned group replaced them (removed before any external theme existed, as 1.2 did).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

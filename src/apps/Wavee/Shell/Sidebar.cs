@@ -2783,7 +2783,7 @@ public static class SidebarPinId
     /// <summary>Real pages that are never pins. The first three are tooling/editor surfaces; the last is a report
     /// reached from a dialog.</summary>
     static readonly string[] UnpinnableRoutes =
-        ["settings", "api-console", "home-customize", "playback-diagnostics"];
+        ["settings", "api-console", "playback-diagnostics"];
 
     /// <summary>One dated event. Its page is real and navigable, but a concert happens and is then over, so a pin
     /// would decay into a dead row — the durable destinations are the hub ("concerts") and an artist's schedule

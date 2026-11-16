@@ -312,7 +312,7 @@ public static class ZonePlanner
         var zones = new List<Zone>();
         switch (facetKind)
         {
-            case Facet.All: PlanAll(sections, titles, placed, zones, nowMs, following, subs); break;
+            // All is the pinned board's (HomeProjection over SectionChooser): no zone plan.
             case Facet.Music: PlanMusic(sections, titles, placed, zones, nowMs, subs); break;
             case Facet.Audiobooks: PlanAudiobooks(sections, zones, placed); break;
         }
@@ -322,68 +322,6 @@ public static class ZonePlanner
         foreach (var z in zones)
             if (!isHidden(z.Kind)) kept.Add(z);
         return kept;
-    }
-
-    // ── All ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    static void PlanAll(IReadOnlyList<SectionInput> sections, ZoneTitles titles, HashSet<long> placed, List<Zone> zones, long nowMs,
-        IReadOnlyList<SectionInput>? following = null, ZoneSubtitles? subs = null)
-    {
-        var roles = Classify(sections, nowMs, allFacet: true);
-
-        // D6: DaylistSource looks across every section (not only a HomeSpotlight band) for the daylist card — the
-        // live All feed folds it into a Made-for-you shelf instead. Claiming its DedupeKey here, before
-        // AddCoverShelf/AddWideAndReleases/etc. run their own PageDedupe passes, is what pulls it out of that shelf.
-        if (DaylistSource.Find(sections) is { } found && placed.Add(found.Card.DedupeKey))
-        {
-            var section = SectionBySlot(sections, found.SectionSlot);
-            zones.Add(new Zone(ZoneKind.Daylist, "home:daylist", section?.Title, section?.Subtitle,
-                [found.Card], found.Card, SectionSlot: found.SectionSlot, TotalCount: section?.TotalCount ?? 0));
-        }
-
-        // Jump back in is deduped against everything placed above it EXCEPT the Recents grid: the two overlap by
-        // design (the grid is the last few plays, Jump back in the longer tail), and deduping against the grid
-        // leaves it a stub.
-        var placedBeforeRecents = new HashSet<long>(placed);
-        if (FirstOf(sections, roles, SectionRole.Recents) is { } rc)
-        {
-            // Recently played caps at 7 cards — the 8th grid cell is always the fixed HistoryItem
-            // (Items.HistoryItem / Cards.HistoryItem), not another played card (plan §4/§8).
-            var cards = PageDedupe.Place(placed, rc.Cards, RecentsCap);
-            if (cards.Count > 0)
-                zones.Add(new Zone(ZoneKind.RecentGrid, "home:recents", titles.RecentlyPlayed, rc.Subtitle, cards, SectionSlot: rc.Slot, TotalCount: rc.TotalCount));
-        }
-        var recentsKeys = new HashSet<long>(placed);
-        recentsKeys.ExceptWith(placedBeforeRecents);
-
-        AddCoverShelf(AllOf(sections, roles, SectionRole.Personal), titles.MadeForYou, "home:made-for-you", placed, zones,
-            leadIsDiscoverWeekly: true, fallbackSubtitle: subs?.MadeForYou);
-
-        AddWideAndReleases(sections, roles, titles, placed, zones, following, subs?.NewMusic);
-
-        AddClusterCards(AllOf(sections, roles, SectionRole.Cluster), titles, "home:cluster", placed, zones, subs?.BecauseYouLike);
-
-        var jbi = FirstMixed(sections, roles);
-        if (jbi is { } j)
-        {
-            var jbiPlaced = new HashSet<long>(placed);
-            jbiPlaced.ExceptWith(recentsKeys);
-            var cards = PageDedupe.Place(jbiPlaced, j.Cards, 0);
-            foreach (var c in cards) placed.Add(c.DedupeKey);
-            if (cards.Count > 0)
-                zones.Add(new Zone(ZoneKind.MixedCovers, "home:jump-back-in", titles.JumpBackIn, j.Subtitle ?? subs?.JumpBackIn, cards, SectionSlot: j.Slot));
-        }
-
-        if (RadioMerge.Merge(AllOf(sections, roles, SectionRole.Radio), titles.RadioAndMixes, placed, subs?.Radio) is { } radio) zones.Add(radio);
-
-        // The canvas's All page ends on a fixed rhythm (…Jump back in → Radio & mixes → Browse; "no two neighbouring
-        // shelves share a template"): every other generic band — the feed's editorial and topical rows — folds into
-        // Browse's navigation tiles after the server's own browse band, in server order, instead of each becoming
-        // one more 6-up cover shelf.
-        var browse = AllOf(sections, roles, SectionRole.Browse);
-        foreach (var s in sections)
-            if (roles[s.Slot] == SectionRole.Generic && !(jbi is { } jj && jj.Slot == s.Slot)) browse.Add(s);
-        AddBrowse(browse, titles.Browse, "home:browse", placed, zones, subs?.Browse);
     }
 
     // ── Music ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -429,60 +367,6 @@ public static class ZonePlanner
     }
 
     // ── shared zone builders ────────────────────────────────────────────────────────────────────────────────────
-
-    static void AddCoverShelf(IReadOnlyList<SectionInput> personalSections, string title, string key, HashSet<long> placed, List<Zone> zones,
-        bool leadIsDiscoverWeekly, string? fallbackSubtitle = null)
-    {
-        if (personalSections.Count == 0) return;
-        var items = new List<HomeCard>();
-        HomeCard? lead = null;
-        foreach (var s in personalSections)
-            foreach (var c in PageDedupe.Place(placed, s.Cards, 0))
-            {
-                if (leadIsDiscoverWeekly && lead is null && IsDiscoverWeekly(c)) lead = c;
-                items.Add(c);
-            }
-        if (lead is { } l) { items.Remove(l); items.Insert(0, l); }
-        if (items.Count > 0)
-            zones.Add(new Zone(ZoneKind.CoverShelf, key, title, personalSections[0].Subtitle ?? fallbackSubtitle, items, lead, SectionSlot: personalSections[0].Slot));
-    }
-
-    static void AddWideAndReleases(IReadOnlyList<SectionInput> sections, Dictionary<int, SectionRole> roles, ZoneTitles titles,
-        HashSet<long> placed, List<Zone> zones, IReadOnlyList<SectionInput>? following = null, string? fallbackSubtitle = null)
-    {
-        var wide = AllOf(sections, roles, SectionRole.WideEditorial);
-        if (wide.Count > 0)
-        {
-            var items = new List<HomeCard>();
-            foreach (var s in wide) items.AddRange(PageDedupe.Place(placed, s.Cards, 0));
-            int rr = items.FindIndex(static c => c.Format == "release-radar");
-            if (rr > 0) { var card = items[rr]; items.RemoveAt(rr); items.Insert(0, card); }
-            if (items.Count > 0)
-                // The server names this shelf ("It's New Music Friday!"), so only the server's own subtitle fits it: the
-                // New-music fallback line would mislabel an editorial band that is not about new music. (The
-                // "Soundtrack your…" mood mixes never land here — they are `descripto`, Personal, Made for you.)
-                zones.Add(new Zone(ZoneKind.WideTiles, "home:wide", wide[0].Title, wide[0].Subtitle, items, SectionSlot: wide[0].Slot));
-        }
-
-        var releases = AllOf(sections, roles, SectionRole.Releases);
-        var releaseItems = new List<HomeCard>();
-        foreach (var s in releases) releaseItems.AddRange(PageDedupe.Place(placed, s.Cards, 0));
-
-        // Data work #3: the "From artists you follow" list under New Music Friday also takes the
-        // "music-following-chip" document's own sections, once HomeScreen has prefetched them — the All feed
-        // itself never carries a per-followed-artist release row. Folded in AFTER the server's own releases-role
-        // sections (server order first), through the same page-wide `placed` dedupe, so a card the All feed
-        // already placed elsewhere never doubles up here.
-        if (following is { Count: > 0 })
-            foreach (var s in following) releaseItems.AddRange(PageDedupe.Place(placed, s.Cards, 0));
-
-        if (releaseItems.Count > 0)
-        {
-            int slot = releases.Count > 0 ? releases[0].Slot : following is { Count: > 0 } ? following[0].Slot : -1;
-            string? subtitle = (releases.Count > 0 ? releases[0].Subtitle : null) ?? fallbackSubtitle;
-            zones.Add(new Zone(ZoneKind.ReleaseList, "home:releases", titles.FromArtistsYouFollow, subtitle, releaseItems, SectionSlot: slot));
-        }
-    }
 
     static void AddClusterCards(IReadOnlyList<SectionInput> clusterSections, ZoneTitles titles, string key, HashSet<long> placed, List<Zone> zones,
         string? fallbackSubtitle = null)
@@ -555,38 +439,6 @@ public static class ZonePlanner
         var list = new List<SectionInput>();
         foreach (var s in sections) if (roles[s.Slot] == role) list.Add(s);
         return list;
-    }
-
-    static SectionInput? FirstOf(IReadOnlyList<SectionInput> sections, Dictionary<int, SectionRole> roles, SectionRole role)
-    {
-        foreach (var s in sections) if (roles[s.Slot] == role) return s;
-        return null;
-    }
-
-    /// <summary>The section <see cref="DaylistSource.Find"/> hoisted its card out of — carries over that section's
-    /// own server title/subtitle/total-count for the Daylist zone (D6).</summary>
-    static SectionInput? SectionBySlot(IReadOnlyList<SectionInput> sections, int slot)
-    {
-        foreach (var s in sections) if (s.Slot == slot) return s;
-        return null;
-    }
-
-    /// <summary>The first Generic-role section whose usable cards mix ≥2 distinct <see cref="HomeCardKind"/>s — the
-    /// plan's "Jump back in" rule (see the file banner's ASSUMPTIONS).</summary>
-    static SectionInput? FirstMixed(IReadOnlyList<SectionInput> sections, Dictionary<int, SectionRole> roles)
-    {
-        foreach (var s in sections)
-        {
-            if (roles[s.Slot] != SectionRole.Generic) continue;
-            HomeCardKind? first = null;
-            foreach (var c in s.Cards)
-            {
-                if (!SectionRoles.IsUsable(c)) continue;
-                if (first is null) first = c.Kind;
-                else if (c.Kind != first) return s;
-            }
-        }
-        return null;
     }
 
     static bool IsDiscoverWeekly(HomeCard c) => c.Format == "discover-weekly" && c.HeaderImageUrl is not null;

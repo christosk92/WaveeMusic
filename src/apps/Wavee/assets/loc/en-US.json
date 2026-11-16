@@ -923,29 +923,7 @@
     },
     "customize": "Customize home",
     "customizer": {
-      "title": "Customize home",
-      "eyebrow": "Your home",
-      "reset": "Reset",
-      "done": "Done",
-      "back": "Back",
-      "hiddenHint": "Hidden modules stay in this list so you can bring them back. Drag to reorder.",
-      "corrupt": "Home layout could not be read",
-      "corruptSub": "Your previous file was kept. Start fresh to replace it, or keep using the default layout.",
-      "faultDiscard": "Start fresh",
-      "hero": "Hero",
-      "weeklyPair": "Discover Weekly & Release Radar",
-      "undo": {
-        "hide": "Hide module",
-        "show": "Show module",
-        "move": "Reorder module",
-        "reset": "Reset Home layout"
-      },
-      "dragCaption": "Reorder",
-      "position": "{index} of {count}",
-      "reorderGrabbed": "Picked up {name}. {position}.",
-      "reorderMoved": "{name}. {position}.",
-      "reorderDropped": "Moved {name}. {position}.",
-      "reorderCancelled": "Cancelled. {name} stayed where it was."
+      "title": "Customize home"
     }
   },
   "search": {

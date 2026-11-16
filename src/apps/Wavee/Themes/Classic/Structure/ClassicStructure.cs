@@ -184,7 +184,6 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneMoodPlates, ClassicHomeZones.BodyTemplate, "classic.home.zone.mood-plates");
         views.Add(ViewKeys.HomeZoneBookShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.book-shelf");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
-        CommonNothing.Register(views, ViewKeys.HomeQuickplay);   // P5 Z5: Classic has no quickplay strip (its pins are the sidebar's)
         // The pinned Home board (contract 1.117; spec 8.3): Edit Home on the tiles, the sidebar's edit bar in the facet row's end.
         views.Add(ViewKeys.HomeBoard, ClassicHomeBoard.Template, "classic.home.board");
         views.Add(ViewKeys.HomeBoardTools, ClassicHomeEditBar.Template, "classic.home.board-tools");

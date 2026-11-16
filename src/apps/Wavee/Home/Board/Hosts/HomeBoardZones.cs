@@ -1,7 +1,7 @@
 // ── Home/Board/Hosts/HomeBoardZones.cs — the zones the widget tiles draw (pinned-home-tech.md 1.4, 2.5) ─────────────────────────────
 //
-// Role: CORE. The Daylist, Recently played and New releases widgets draw today's bodies, which take a `Zone`: the planner's Daylist, RecentGrid and
-// ReleaseList zones of the All answer (the release list from the `music-following-chip` answer `HomeScreen` prefetches). One plan per answer version,
+// Role: CORE. The Daylist, Recently played and New releases widgets draw today's bodies, which take a `Zone`: the Daylist, RecentGrid and
+// ReleaseList zones of the All answer (HomeProjection.WidgetZones, by the section chooser) (the release list from the `music-following-chip` answer `HomeScreen` prefetches). One plan per answer version,
 // cached; a subscribing read (the tile hosts re-render when the answer lands). A section tile's zone is the projection's own (`BoardEntry.Zone`).
 
 using System.Collections.Generic;
@@ -45,16 +45,7 @@ public static class HomeBoardZones
         if (!h.Knows(HomeFields.Sections)) return s_plan = new Plan(null, null, null);
         var inputs = SectionReader.Read(h);
         IReadOnlyList<SectionInput>? following = fh.Knows(HomeFields.Sections) ? SectionReader.Read(fh) : null;
-        var zones = ZonePlanner.Plan(inputs, "", HomeZoneTitles.Localized(), null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following,
-                                     HomeScreen.LocalizedSubtitles());
-        Zone? daylist = null, recents = null, releases = null;
-        foreach (var z in zones)
-            switch (z.Kind)
-            {
-                case ZoneKind.Daylist: daylist ??= z; break;
-                case ZoneKind.RecentGrid: recents ??= z; break;
-                case ZoneKind.ReleaseList: releases ??= z; break;
-            }
+        var (daylist, recents, releases) = HomeProjection.WidgetZones(inputs, following, HomeZoneTitles.Localized(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         return s_plan = new Plan(daylist, recents, releases);
     }
 }

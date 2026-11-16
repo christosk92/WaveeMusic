@@ -92,10 +92,12 @@ public static class HomeProjection
                 if (s.Uri.Length > 0 && !keys.Add(s.Uri)) continue;
                 var choice = SectionChooser.Choose(s, nowMs);
                 if (choice.Template is SectionTemplate.None or SectionTemplate.ShortcutFill or SectionTemplate.RecentsData or SectionTemplate.DaylistHero) continue;
-                var zone = SectionChooser.ToZone(s, choice, titles);
-                bool oneCardBaseline = choice.Template == SectionTemplate.PreviewCard && zone.Items.Count == 1;
+                var zone = Drawable(SectionChooser.ToZone(s, choice, titles));
+                bool oneCardBaseline = choice.Template == SectionTemplate.PreviewCard && zone.Items.Count == 1;   // folds whether or not its preview landed
                 if (choice.Template == SectionTemplate.WideTiles && wideAt < 0) wideAt = feed.Count;
-                feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", choice.Template, s.Slot, zone, oneCardBaseline, s));
+                // A preview card whose preview has not landed draws as a shelf (Drawable): its box is the shelf's.
+                var template = choice.Template == SectionTemplate.PreviewCard && zone.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : choice.Template;
+                feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", template, s.Slot, zone, oneCardBaseline, s));
             }
             // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf.
             if (FollowingReleases(followingReleases, titles) is { } releases)
@@ -212,6 +214,61 @@ public static class HomeProjection
     readonly record struct FeedCandidate(SectionRef Ref, string Title, SectionTemplate Template, int Slot, Zone? Zone, bool OneCardBaseline,
         SectionInput? Input);
 
+    /// <summary>The zones the three data widgets draw, from the All answer by the chooser (the sections they take room from in the feed):
+    /// the daylist (the section a daylist leads, its lead card), Recently played (the recently played section, capped at the planner's RecentsCap) and New releases (the release-window sections' albums, then the Following answer's, deduped).</summary>
+    public static (Zone? Daylist, Zone? Recents, Zone? Releases) WidgetZones(IReadOnlyList<SectionInput> answer,
+        IReadOnlyList<SectionInput>? followingReleases, ZoneTitles titles, long nowMs)
+    {
+        Zone? daylist = null, recents = null;
+        // The daylist card wherever the answer put it (DaylistSource: a spotlight band's, else the first daylist card in any shelf).
+        if (DaylistSource.Find(answer) is { } found)
+        {
+            SectionInput? from = null;
+            foreach (var s in answer) if (s.Slot == found.SectionSlot) { from = s; break; }
+            daylist = new Zone(ZoneKind.Daylist, "home:daylist", from?.Title, from?.Subtitle, [found.Card], found.Card,
+                SectionSlot: found.SectionSlot, TotalCount: from?.TotalCount ?? 0);
+        }
+        var releaseCards = new List<HomeCard>();
+        var seen = new HashSet<long>();
+        int releaseSlot = -1;
+        foreach (var s in answer)
+        {
+            var choice = SectionChooser.Choose(s, nowMs);
+            switch (choice.Template)
+            {
+                case SectionTemplate.DaylistHero when daylist is null:
+                    daylist = SectionChooser.ToZone(s, choice, titles);
+                    break;
+                case SectionTemplate.RecentsData when recents is null:
+                {
+                    // As the planner had it: up to RecentsCap cards, the daylist's card left to the daylist.
+                    var cards = new List<HomeCard>(ZonePlanner.RecentsCap);
+                    long daylistKey = daylist?.Lead is { } lead ? lead.DedupeKey : long.MinValue;
+                    foreach (var c in s.Cards)
+                        if (SectionRoles.IsUsable(c) && c.DedupeKey != daylistKey && cards.Count < ZonePlanner.RecentsCap) cards.Add(c);
+                    if (cards.Count > 0)
+                        recents = new Zone(ZoneKind.RecentGrid, "home:recents", titles.RecentlyPlayed, s.Subtitle, cards, SectionSlot: s.Slot, TotalCount: s.TotalCount);
+                    break;
+                }
+                case SectionTemplate.ReleaseList:
+                    if (releaseSlot < 0) releaseSlot = s.Slot;
+                    foreach (var c in s.Cards) if (SectionRoles.IsUsable(c) && seen.Add(c.DedupeKey)) releaseCards.Add(c);
+                    break;
+            }
+        }
+        if (followingReleases is { Count: > 0 })
+        {
+            if (releaseSlot < 0) releaseSlot = followingReleases[0].Slot;
+            foreach (var s in followingReleases)
+                foreach (var c in s.Cards)
+                    if (SectionRoles.IsUsable(c) && c.Kind == HomeCardKind.Album && seen.Add(c.DedupeKey)) releaseCards.Add(c);
+        }
+        Zone? releases = releaseCards.Count > 0
+            ? new Zone(ZoneKind.ReleaseList, "home:releases", titles.FromArtistsYouFollow, null, releaseCards, SectionSlot: releaseSlot, TotalCount: releaseCards.Count)
+            : null;
+        return (daylist, recents, releases);
+    }
+
     /// <summary>The Following release list: every album card of the music-following-chip answer, deduped, as one release list.</summary>
     static Zone? FollowingReleases(IReadOnlyList<SectionInput>? following, ZoneTitles titles)
     {
@@ -255,13 +312,11 @@ public static class HomeProjection
                     members.Add(r);
                     if (t_inputs is not null && t_inputs.TryGetValue(r.Key, out var input)) inputs.Add(input);
                 }
-                Zone? zone = titles is not null && inputs.Count == j - i
-                    ? new Zone(ZoneKind.ClusterCards, "home:fold:" + members[0].Key, titles.BecauseYouLike, null, [],
-                        Clusters: ClusterFold.Fold(inputs, titles), SectionSlot: inputs[0].Slot)
-                    : first.Zone;
+                Zone? zone = titles is not null && inputs.Count == j - i ? FoldZone(members[0].Key, inputs, titles) : first.Zone;
                 into.Add(first with
                 {
-                    Id = HomeCommands.FoldPrefix + members[0].Key, Kind = BoardEntryKind.Fold, Template = SectionTemplate.PreviewGrid,
+                    Id = HomeCommands.FoldPrefix + members[0].Key, Kind = BoardEntryKind.Fold,
+                    Template = zone?.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : SectionTemplate.PreviewGrid,
                     OnlyHide = true, Members = members.ToImmutable(), Zone = zone, Title = zone?.Title ?? first.Title,
                 });
                 i = j;
@@ -272,6 +327,28 @@ public static class HomeProjection
         }
         run.Clear();
     }
+
+    /// <summary>The fold's one zone: the members' clusters ("Because you like"), each its card and its preview tracks. Before any member's
+    /// preview has landed there is no cluster to draw: the members' cards stand as one shelf under the same title (never a heading over
+    /// nothing), and the clusters replace it when the previews land.</summary>
+    static Zone FoldZone(string firstKey, List<SectionInput> inputs, ZoneTitles titles)
+    {
+        var clusters = ClusterFold.Fold(inputs, titles);
+        if (clusters.Count > 0)
+            return new Zone(ZoneKind.ClusterCards, "home:fold:" + firstKey, titles.BecauseYouLike, null, [], Clusters: clusters, SectionSlot: inputs[0].Slot);
+        var cards = new List<HomeCard>(inputs.Count);
+        var seen = new HashSet<long>();
+        foreach (var s in inputs)
+            foreach (var c in s.Cards)
+                if (SectionRoles.IsUsable(c) && seen.Add(c.DedupeKey)) { cards.Add(c); break; }
+        return new Zone(ZoneKind.CoverShelf, "home:fold:" + firstKey, titles.BecauseYouLike, null, cards, SectionSlot: inputs[0].Slot, TotalCount: cards.Count);
+    }
+
+    /// <summary>A cluster zone with no cluster to draw (its preview tracks have not landed) draws its cards as a shelf instead.</summary>
+    static Zone Drawable(Zone z)
+        => z.Kind == ZoneKind.ClusterCards && z.Clusters is not { Count: > 0 } && z.Items.Count > 0
+            ? z with { Kind = ZoneKind.CoverShelf, Clusters = null }
+            : z;
 
     static bool Foldable(BoardEntry e) => !e.Hidden && e.Size == HomeSize.Auto && !e.Members.IsDefaultOrEmpty;
 }

@@ -38,7 +38,7 @@ public static partial class Shell
 
     public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
+    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, CustomizeHome }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -109,7 +109,8 @@ public static partial class Shell
             HomeFacetRow("home.audiobooks", Loc.Get(Strings.Palette.HomeAudiobooks), Icons.Microphone, "audiobooks-chip"),
             SetRow("home.followingOn", Loc.Get(Strings.Palette.HomeFollowingOn), Icons.Friends, PaletteSettingsVerb.HomeFollowingOn),
             SetRow("home.followingOff", Loc.Get(Strings.Palette.HomeFollowingOff), Icons.Friends, PaletteSettingsVerb.HomeFollowingOff),
-            NavRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, RouteKind.HomeCustomize),
+            // The theme's own way to change Home: WinUI's add band, Classic's Edit Home, Zune's customize (HomeVerbs.OpenCustomize).
+            SetRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, PaletteSettingsVerb.CustomizeHome),
         ];
 
         /// <summary>A fresh index for one open: the builtins, then the active theme's option commands
@@ -339,6 +340,9 @@ public static partial class Shell
                         break;
                     case PaletteSettingsVerb.EditSidebar:
                         Sidebar.EnterEdit();
+                        break;
+                    case PaletteSettingsVerb.CustomizeHome:
+                        HomeUi.HomeVerbs.OpenCustomize();
                         break;
                 }
                 break;

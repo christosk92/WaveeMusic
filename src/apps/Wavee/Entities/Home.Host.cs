@@ -44,7 +44,6 @@ public readonly partial struct Home
         Shell.SetPage(Shell.RouteKind.Home, Wavee.HomeUi.HomeScreen.PageFor);
         Shell.SetPage(Shell.RouteKind.HomeSection, HomeSectionPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseSection, BrowseSectionPageFor);
-        Shell.SetPage(Shell.RouteKind.HomeCustomize, CustomizePageFor);
         Shell.SetPage(Shell.RouteKind.Search, Search.PageFor);
         Shell.SetPage(Shell.RouteKind.Browse, Browse.DirectoryPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseCategory, Browse.CategoryPageFor);
@@ -58,7 +57,6 @@ public readonly partial struct Home
 
     static Element HomeSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), route, browse: false);
     static Element BrowseSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), route, browse: true);
-    static Element CustomizePageFor(in Shell.Route route) => Wavee.HomeUi.CustomizeScreen.For();
 
     static string SectionRouteUri(in Shell.Route route) => SectionRouteSubject.Of(route.Subject);
     static string? SectionRouteTitle(in Shell.Route route) => route.Arg.IsEmpty ? null : Entities.Strings.Resolve(route.Arg);

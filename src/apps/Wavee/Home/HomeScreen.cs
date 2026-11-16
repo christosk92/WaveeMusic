@@ -77,7 +77,6 @@ public sealed class HomeScreen : Component
         var p = UseProps<Props>();
         int tab = p.Tab;
         _host.Tab = tab;
-        var layout = UseRequiredContext(HomeLayout.Slot);
         string scope = UseContext(Shell.PageScrollScope);
         var overlay = UseContext(Overlay.Service);
 
@@ -91,7 +90,7 @@ public sealed class HomeScreen : Component
 
         // ── the screen model: DERIVED over the table signals. No publish, no stamps, no writes. ──
         var facetSig = UseComputed(() => _host.Switch.Value.Published);
-        var model = UseComputed(() => Compute(facetSig.Value, layout.Doc.Value));
+        var model = UseComputed(() => Compute(facetSig.Value));
         var verdict = UseComputed(() => Verdict(facetSig.Value, model.Value));
 
         // ── "shown this session" + words + the shimmer shape memo: written by an effect on the Ready edge, never
@@ -141,8 +140,8 @@ public sealed class HomeScreen : Component
             Switch = _host.Switch,
             Pending = () => !board && verdict.Value == LoadState.Pending,
             Failed = () => !board && verdict.Value == LoadState.Failed,
-            Content = () => model.Value ?? Seed(facetSig.Value, layout.Doc.Value),
-            Seed = () => Seed(facetSig.Value, layout.Doc.Value),
+            Content = () => model.Value ?? Seed(facetSig.Value),
+            Seed = () => Seed(facetSig.Value),
             OnContent = NoteContent,
             RetryFirstLoad = _host.RetryFirstLoad,
             Overlay = overlay,
@@ -155,7 +154,17 @@ public sealed class HomeScreen : Component
 
     // ══ THE SCREEN MODEL (derived, never published by hand) ═══════════════════════════════════════════════════════
 
-    ScreenModel? Compute(string facet, LayoutDoc layoutDoc)
+    /// <summary>All's zones: the board's drawn sections (feed, placed, folded), in board order.</summary>
+    IReadOnlyList<Zone> BoardZones()
+    {
+        var m = _board.Project();
+        var zones = new List<Zone>();
+        foreach (var e in m.Entries)
+            if (!e.Hidden && e.Zone is { } z) zones.Add(z);
+        return zones;
+    }
+
+    ScreenModel? Compute(string facet)
     {
         // A sign-in re-boots the entity scope: every table (and its Changed signal) is replaced, so subscribe to the
         // scope epoch first or the model stays bound to the dead scope's signals and never sees the feed land.
@@ -177,10 +186,13 @@ public sealed class HomeScreen : Component
             _ = fh.Version; _ = fh.SectionVersion;
             if (fh.Knows(HomeFields.Sections)) following = SectionReader.Read(fh);
         }
-        IReadOnlyList<Zone> zones = IsPodcastsFacet(facet)
-            ? PodcastPlanner.Plan(inputs, titles, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
-            : ZonePlanner.Plan(inputs, facet, titles, facet.Length == 0 ? kind => LayoutZoneOf(kind) is { } lz && layoutDoc.IsHidden(lz) : null,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following, LocalizedSubtitles());
+        // All is the pinned board's (it draws its own entries): the model's zones are the board's sections, for the page's wash and the
+        // facet log; the other facets keep their planners.
+        IReadOnlyList<Zone> zones = facet.Length == 0
+            ? BoardZones()
+            : IsPodcastsFacet(facet)
+                ? PodcastPlanner.Plan(inputs, titles, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+                : ZonePlanner.Plan(inputs, facet, titles, null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following, LocalizedSubtitles());
         if (zones.Count == 0) zones = [new Zone(ZoneKind.EmptyFacet, "home:empty:" + facet, null, null, Array.Empty<HomeCard>())];
         return new ScreenModel(facet, zones, SectionReader.Greeting(h), SectionReader.Chips(h));
     }
@@ -232,20 +244,6 @@ public sealed class HomeScreen : Component
 
     static bool IsPodcastsFacet(string facet) => facet is "podcasts-chip" or "podcasts-following-chip";
 
-    static LayoutZone? LayoutZoneOf(ZoneKind k) => k switch
-    {
-        ZoneKind.Daylist => LayoutZone.Daylist,
-        ZoneKind.RecentGrid => LayoutZone.Recents,
-        ZoneKind.CoverShelf => LayoutZone.MadeForYou,
-        ZoneKind.WideTiles => LayoutZone.NewMusic,
-        ZoneKind.ReleaseList => LayoutZone.Releases,
-        ZoneKind.ClusterCards => LayoutZone.BecauseYouLike,
-        ZoneKind.MixedCovers => LayoutZone.JumpBackIn,
-        ZoneKind.RadioShelf => LayoutZone.Radio,
-        ZoneKind.BrowseTiles => LayoutZone.Browse,
-        _ => null,
-    };
-
     // ══ THE FACET CONTENT LOG ═══════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The page view built the facet content for <paramref name="m"/>: log it on the edge (one line per published facet).
@@ -265,16 +263,16 @@ public sealed class HomeScreen : Component
 
     /// <summary>The Pending/shimmer document: the facet's OWN last-known zone shape when this tab has shown it
     /// before this session (F30), else a generic first-paint shape per facet family. All opens on the daylist card
-    /// (ZonePlanner.PlanAll is the only planner that emits a Daylist zone) unless the Home layout hides it; the other
+    /// (the board's daylist widget leads it); the other
     /// music facets open on the Recents grid; Podcasts on its own lead. Rendered through the SAME zone column (the page view's `ClassicHomeZones.Column`) as the
     /// live page, so the skeleton is derived from the real tree (the daylist card's SkeletonProxy draws its silhouette
     /// for the blank seed card).</summary>
-    ScreenModel Seed(string facet, LayoutDoc layoutDoc)
+    ScreenModel Seed(string facet)
     {
         ZoneKind[] kinds = _host.TryLastShape(facet, out var known) ? known
             : IsPodcastsFacet(facet)
                 ? [ZoneKind.EpisodeLead, ZoneKind.ContinueEpisodes, ZoneKind.ShowGrid]
-                : facet.Length == 0 && !layoutDoc.IsHidden(LayoutZone.Daylist)
+                : facet.Length == 0
                     ? [ZoneKind.Daylist, ZoneKind.RecentGrid, ZoneKind.CoverShelf, ZoneKind.CoverShelf]
                     : [ZoneKind.RecentGrid, ZoneKind.CoverShelf, ZoneKind.CoverShelf];
 
