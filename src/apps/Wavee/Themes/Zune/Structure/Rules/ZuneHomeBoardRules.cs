@@ -163,9 +163,9 @@ public static class ZuneHomeBoardRules
 
     /// <summary>The scrim under a medium tile's name: its height (the 28 lead and the name), its alpha at the foot.</summary>
     public const float ScrimH = 64f;
-    public const byte ScrimAlpha = 199;
+    public const byte ScrimAlpha = 230;
 
-    /// <summary>The medium form's name scrim: black from 0 to 78 % at the foot.</summary>
+    /// <summary>The medium form's name scrim: black from 0 to 90 % at the foot (white names read on a pale cover too).</summary>
     public static readonly GradientSpec NameScrim = FluentGpu.Dsl.Ui.GradientDown(
         new GradientStop(0f, ColorF.FromRgba(0, 0, 0, 0)),
         new GradientStop(1f, ColorF.FromRgba(0, 0, 0, ScrimAlpha)));
