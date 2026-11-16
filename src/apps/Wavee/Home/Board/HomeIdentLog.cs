@@ -43,14 +43,15 @@ public static class HomeIdentLog
             {
                 string fp = p.Fp.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
                 string tpl = p.Template.ToString();
+                string reason = p.Reason + " [cards " + p.Usable + "/" + p.Cards + ", unsupported " + p.Unsupported + ", duplicates " + p.Duplicates + "]";
                 int at = entries.FindIndex(e => e.Day == day && e.Facet == facet && e.Key == p.Key);
                 if (at >= 0)
                 {
                     var e = entries[at];
-                    if (e.Fp == fp && e.Index == p.Index && e.Template == tpl && e.Reason == p.Reason) continue;
-                    e.Fp = fp; e.Index = p.Index; e.Template = tpl; e.Family = p.Family; e.Reason = p.Reason;
+                    if (e.Fp == fp && e.Index == p.Index && e.Template == tpl && e.Reason == reason) continue;
+                    e.Fp = fp; e.Index = p.Index; e.Template = tpl; e.Family = p.Family; e.Reason = reason;
                 }
-                else entries.Add(new IdentEntryDto { Day = day, Facet = facet, Index = p.Index, Key = p.Key, Fp = fp, Family = p.Family, Template = tpl, Reason = p.Reason });
+                else entries.Add(new IdentEntryDto { Day = day, Facet = facet, Index = p.Index, Key = p.Key, Fp = fp, Family = p.Family, Template = tpl, Reason = reason });
                 changed = true;
             }
             if (!changed) return;
