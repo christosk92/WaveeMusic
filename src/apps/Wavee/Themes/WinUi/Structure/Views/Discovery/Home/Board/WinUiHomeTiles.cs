@@ -38,11 +38,14 @@ internal static class WinUiHomeTiles
     };
 
     /// <summary>The empty Pinned group: a dashed row at the group's height with how to pin (spec 8.1 "Empty states").</summary>
-    public static Element EmptyPinned(WinUiHomeBoardLayout lay) => new BoxEl
+    public static Element EmptyPinned(WinUiHomeBoardLayout lay) => EmptyPinned(SurfacePlate.For(PlateKind.Outline));
+
+    /// <summary>The empty row in the dashed outline plate the Recently played grid's history tile wears (one outline vocabulary).</summary>
+    static Element EmptyPinned(SurfacePlate plate) => new BoxEl
     {
         Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
         Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.S),
-        Corners = Radii.CardAll, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f, BorderDashOn = WinUiHomeBoardRules.DashOn, BorderDashOff = WinUiHomeBoardRules.DashOff,
+        Corners = Radii.CardAll, BorderColor = plate.Stroke, BorderWidth = plate.StrokeWidth, BorderDashOn = plate.Dash, BorderDashOff = plate.Dash,
         Children =
         [
             Ui.Icon(Icons.Pin, WinUiHomeBoardRules.WidgetGlyph, Tok.TextSecondary) with { Shrink = 0f },
@@ -121,15 +124,16 @@ internal static class WinUiHomeTiles
     };
 
     /// <summary>A row tile's line: the art, the name over one line (spec 4.2 `s`).</summary>
-    static BoxEl RowFace(Element art, Func<string> title, Func<string> line, Element? end = null)
+    static BoxEl RowFace(Element art, Func<string> title, Func<string> line, Element? end = null, bool pinned = false)
     {
+        Element caption = Ui.Caption("").Secondary() with { Text = Prop.Of(line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         var text = new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
             Children =
             [
                 Ui.BodyStrong("") with { Text = Prop.Of(title), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                Ui.Caption("").Secondary() with { Text = Prop.Of(line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                pinned ? PinnedLine(caption) : caption,
             ],
         };
         return new BoxEl
@@ -140,6 +144,17 @@ internal static class WinUiHomeTiles
             Children = end is null ? [art, text] : [art, text, end],
         };
     }
+
+    /// <summary>A user pin's line, led by the pin mark (state at rest: "yours first, then Spotify's shortcuts", the concept's meta glyph).</summary>
+    static Element PinnedLine(Element caption) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
+        Children =
+        [
+            Ui.Icon(Icons.Pin, WinUiHomeBoardRules.PinMarkGlyph, Tok.AccentTextPrimary) with { Shrink = 0f },
+            new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [caption] },
+        ],
+    };
 
     /// <summary>A widget head inside a card: a glyph, the title, a line.</summary>
     static Element WidgetHead(string glyph, string title, Func<string>? line) => new BoxEl
@@ -179,7 +194,7 @@ internal static class WinUiHomeTiles
         switch (f.Form)
         {
             case HomeTileForm.S:
-                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line), p.Open));
+                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line, pinned: p.UserPin), p.Open));
             default:
             {
                 bool wide = f.Form != HomeTileForm.M;
@@ -196,7 +211,9 @@ internal static class WinUiHomeTiles
                             Children =
                             [
                                 Ui.BodyStrong("") with { Text = Prop.Of(p.Name), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                                p.UserPin
+                                    ? PinnedLine(Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f })
+                                    : Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                                 new BoxEl { Grow = 1f },
                                 p.Play is { } play
                                     ? Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.Play), play, ButtonAppearance.Accent, ControlSize.Medium, Icons.Play) with { AlignSelf = FlexAlign.Start }
