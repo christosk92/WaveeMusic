@@ -70,6 +70,9 @@ public static partial class Diagnostics
 
             // the pinned Home (Diagnostics.Inspect.Lint.Pack.cs): a grid with an empty cell gates; edit tools over content are todo
             public const string PackHole = "pack.hole", PackTools = "pack.tools";
+
+            // the pinned Home's sections (Diagnostics.Inspect.Home.Explain.cs): one title drawn over two sections gates
+            public const string HomeDuplicate = "home.duplicate";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -129,6 +132,7 @@ public static partial class Diagnostics
             new(Rules.PictureText, "", Level.Todo, "text the scene shows that never reaches the frame (its box paints one colour), less edge fades and sticky plates"),
             new(Rules.PackHole, "", Level.Gate, "a pack grid group with an empty cell, an overlap, a ragged band or a tile below its class (PackLayout.Verify over the whole board), or a settled tile off its packed rect"),
             new(Rules.PackTools, "", Level.Todo, "a tile's edit tools (home:tile:<id>:tools) drawn over text or a control of its own content"),
+            new(Rules.HomeDuplicate, "", Level.Gate, "two Home sections drawn under one title (two folds both 'Because you like'); home do=explain says why"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>
@@ -575,6 +579,9 @@ public static partial class Diagnostics
 
             /// <summary>The pack grids the page mounts (the pinned Home's board), as <c>pack.hole</c> reads them; empty in an old snapshot.</summary>
             public IReadOnlyList<PackShot> Packs { get; init; } = [];
+
+            /// <summary>The Home sections the board renders, in reading order (entry id, drawn title), as <c>home.duplicate</c> reads them; empty off Home.</summary>
+            public IReadOnlyList<(string Entry, string Title)> HomeSections { get; init; } = [];
 
             /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
             public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
@@ -1165,6 +1172,7 @@ public static partial class Diagnostics
                     Rules.PictureText => UnpaintedTextRule(s, found),
                     Rules.PackHole => PackHoleRule(s, found),
                     Rules.PackTools => PackToolsRule(s, found),
+                    Rules.HomeDuplicate => HomeDuplicateRule(s, found),
                     _ => 0,
                 };
                 checks[spec.Id] = looked;

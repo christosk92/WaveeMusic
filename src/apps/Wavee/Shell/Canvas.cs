@@ -101,9 +101,22 @@ public static partial class CanvasVideo
     // headless inspector has none).
     static FluentGpu.Media.Windows.MfMediaPlayer? s_backend;
 
+    // The inspector's fake media (Screens/Diagnostics.Inspect.Media.cs, `mount media=fake`): the backend the player is built over instead of
+    // Media Foundation, so a canvas's open latency and its UI-thread cost can be staged headless. Null in the app.
+    static IMediaBackend? s_inspectBackend;
+
+    /// <summary>Inspector only: build the canvas player over <paramref name="backend"/> (null: Media Foundation again). The current player is
+    /// dropped, so the next <see cref="Player"/> read builds over the new backend. UI thread, between mounts.</summary>
+    internal static void UseInspectBackend(IMediaBackend? backend)
+    {
+        if (ReferenceEquals(s_inspectBackend, backend)) return;
+        s_inspectBackend = backend;
+        if (s_player is { } old) { s_player = null; _ = old.DisposeAsync(); }
+    }
+
     static MediaPlayer Build()
     {
-        var p = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, s_backend ??= new FluentGpu.Media.Windows.MfMediaPlayer()).Build();
+        var p = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, s_inspectBackend ?? (s_backend ??= new FluentGpu.Media.Windows.MfMediaPlayer())).Build();
         p.SetMuted(true);
         return p;
     }
