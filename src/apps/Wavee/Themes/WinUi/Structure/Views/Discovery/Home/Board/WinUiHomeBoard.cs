@@ -96,6 +96,15 @@ internal static class WinUiHomeBoard
         {
             if (h <= 0f) return;
             if (MathF.Abs(h - PackedOf(id)) <= WinUiHomeBoardRules.ExtentSlop) { _seen.Remove(id); return; }
+            // A body that outgrew its box (a form change at a tier crossing: the daylist card stacking at Compact) takes its height at once, so its
+            // content is never cut while it waits; only a shrink (or a body's transient first pass) waits for the bodies to settle.
+            if (h > PackedOf(id))
+            {
+                _seen.Remove(id);
+                _packed[id] = h;
+                ExtentOf(id).Value = h;
+                return;
+            }
             _seen[id] = h;
             _lastSeenMs = Environment.TickCount64;
             _settling.Value = true;
