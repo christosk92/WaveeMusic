@@ -76,6 +76,7 @@ internal static class WinUiHomeBoard
             var p = UseProps<BoardProps>();
             _p = p;
             var board = p.Board;
+            board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
 
             _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(_width.Peek()));
@@ -109,6 +110,12 @@ internal static class WinUiHomeBoard
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
+                // The Menu key / Shift+F10 on the focused tile (its wrapper holds focus): that tile's menu.
+                OnContextRequested = e =>
+                {
+                    if (e.Trigger == ContextRequestTrigger.Keyboard && _p?.Board.Grid.FocusedKey is { } fk && IdOf(fk) is { Length: > 0 } id)
+                        WinUiHomeTiles.TileMore.OpenFor(id);
+                },
                 Children =
                 [
                     WinUiHomeAddBand.Disclosure(board, p.Lay, bandOpen),
@@ -242,16 +249,37 @@ internal static class WinUiHomeBoard
             return "";
         }
 
-        internal static string IdOf(string key) => key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : "";
-
-        /// <summary>The board's keys while focus is inside it (guarded by the text-editor test): Ctrl+Z undoes; "/" opens the add band's search;
-        /// Escape unwinds (the open tile, then the band).</summary>
-        void OnKey(KeyEventArgs e)
+        /// <summary>The board's keys while focus is inside Home's board or its head tools (single keys stand aside for a text editor): Ctrl+Z
+        /// undoes; "/" opens the add band's search; Escape unwinds (the open tile, then the band).</summary>
+        internal static void HandleKey(KeyEventArgs e, HomeBoardProps board)
         {
-            if (e.Handled || _p is null) return;
-            var board = _p.Board;
-            if (e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
-            if (WinUiHomeAddBand.EditorFocused()) return;
+            if (e.Handled) return;
+            bool editor = board.EditorFocused();
+            if (!editor && e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
+            if (editor && e.KeyCode != Keys.Escape) return;
+            // The focused tile (the grid's wrapper holds focus; plain arrows move focus there, Alt+Shift+arrows bubble here): Start's chord moves it,
+            // the Menu key or Shift+F10 opens its menu.
+            if (board.Grid.FocusedKey is { } fk && IdOf(fk) is { Length: > 0 } id)
+            {
+                if (e.Alt && e.Shift && !e.Ctrl)
+                {
+                    switch (e.KeyCode)
+                    {
+                        case Keys.Left: board.Verbs.MoveBy(id, -1); e.Handled = true; return;
+                        case Keys.Right: board.Verbs.MoveBy(id, 1); e.Handled = true; return;
+                        case Keys.Up or Keys.Down:
+                            if (board.Grid.Neighbour(fk, 0, e.KeyCode == Keys.Up ? -1 : 1) is { } nk && IdOf(nk) is { Length: > 0 } target)
+                                board.Verbs.MoveOnto(id, target);
+                            e.Handled = true;
+                            return;
+                    }
+                }
+                if (e.KeyCode == Keys.Apps || e.Shift && !e.Ctrl && !e.Alt && e.KeyCode == Keys.F10)
+                {
+                    if (WinUiHomeTiles.TileMore.OpenFor(id)) e.Handled = true;
+                    return;
+                }
+            }
             if (!e.Ctrl && !e.Alt && e.KeyCode == WinUiHomeAddBand.SlashKey)
             {
                 WinUiHomeAddBand.OpenSearch(board);
@@ -263,6 +291,15 @@ internal static class WinUiHomeBoard
                 if (board.View.OpenId.Peek() is not null) { board.Verbs.Close(refocus: true); e.Handled = true; return; }
                 if (board.View.Add.Peek().Kind == HomeAddSurfaceKind.Band) { WinUiHomeAddBand.Close(board); e.Handled = true; }
             }
+        }
+
+        internal static string IdOf(string key) => key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : "";
+
+        /// <summary>The board's keys while focus is inside it (guarded by the text-editor test): Ctrl+Z undoes; "/" opens the add band's search;
+        /// Escape unwinds (the open tile, then the band).</summary>
+        void OnKey(KeyEventArgs e)
+        {
+            if (_p is not null) HandleKey(e, _p.Board);
         }
     }
 }

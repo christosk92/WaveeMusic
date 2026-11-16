@@ -81,6 +81,7 @@ internal static class WinUiHomeBoardTools
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Shrink = 0f,
+                OnKeyDown = e => WinUiHomeBoard.BoardView.HandleKey(e, board),
                 Children = [add, more],
             };
         }

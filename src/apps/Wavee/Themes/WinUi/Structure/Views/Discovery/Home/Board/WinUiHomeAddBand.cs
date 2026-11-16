@@ -99,6 +99,8 @@ internal static class WinUiHomeAddBand
     {
         BandProps? _p;
         NodeHandle _firstPin;
+        string _lastQuery = "";
+        bool _justCleared;   // the search box cleared itself on this Escape: that Escape does not also close the band
 
         public override Element Render()
         {
@@ -141,7 +143,7 @@ internal static class WinUiHomeAddBand
             }) with { Key = "home:add:kinds" };
 
             var search = AutoSuggestBox.Create([], Loc.Get(Strings.Theme.Winui.Home.Board.SearchPlaceholder), WinUiHomeBoardRules.SearchMaxW,
-                text: board.View.Query, onChange: OnQuery, onQuerySubmitted: _ => FocusFirstPin(hooks), field: field,
+                text: board.View.Query, onChange: OnQuery, onQuerySubmitted: _ => FocusFirstPin(hooks), field: field, debounceMs: 0f,
                 grow: 1f, maxFillWidth: WinUiHomeBoardRules.SearchMaxW, suggestionPresentation: AutoSuggestBoxSuggestionPresentation.Inline);
 
             var close = ToolTip.Wrap(Controls.IconAction(Icons.ChromeClose, () => Close(board)) with { Key = "home:add:close" },
@@ -174,6 +176,9 @@ internal static class WinUiHomeAddBand
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 Padding = new Edges4(0f, 0f, 0f, WinUiHomeBoardRules.BandFoot),
+                // The band's content fades in while its box opens (the Expander's content transition); the box's own height is the reveal.
+                Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
+                Transition = MotionTokenDef.Eased(Design.Motion.Fast, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
                 OnKeyDown = e => OnKey(e, board),
                 Children =
                 [
@@ -188,7 +193,12 @@ internal static class WinUiHomeAddBand
                             {
                                 Key = "home:add:head", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
                                 MinHeight = WinUiHomeBoardRules.BandHeadH,
-                                Children = [new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [selector] }, search, close],
+                                Children =
+                                [
+                                    new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [selector] },
+                                    new BoxEl { Key = "home:add:search", Direction = 1, Width = WinUiHomeBoardRules.SearchMaxW, Shrink = 1f, MinWidth = 0f, Children = [search] },
+                                    close,
+                                ],
                             },
                             row,
                             Ui.Caption(Loc.Get(Strings.Theme.Winui.Home.Board.BandHint)).Secondary() with { Wrap = TextWrap.Wrap, MinWidth = 0f },
@@ -203,9 +213,12 @@ internal static class WinUiHomeAddBand
             if (_p is null) return;
             string q = text.Trim();
             var board = _p.Board;
-            bool was = s_kind.Peek() < 0 || board.View.Query.Peek().Trim().Length > 0;
-            if (q.Length > 0 && s_kind.Peek() >= 0 && !was) { s_kindBeforeSearch = s_kind.Peek(); s_kind.Value = -1; }
-            if (q.Length == 0 && s_kind.Peek() < 0) s_kind.Value = s_kindBeforeSearch;
+            // Typing the first character switches the selector to "All results"; clearing it returns to the kind it was on.
+            bool had = _lastQuery.Length > 0;
+            _lastQuery = q;
+            if (q.Length > 0 && !had) { s_kindBeforeSearch = Math.Max(0, s_kind.Peek()); s_kind.Value = -1; }
+            else if (q.Length == 0 && had) s_kind.Value = s_kindBeforeSearch;
+            _justCleared = q.Length == 0 && had;
             if (q.Length > 0)
             {
                 int n = board.Catalog.Find(board.Catalog.All(), q).Count;
@@ -219,10 +232,11 @@ internal static class WinUiHomeAddBand
         }
 
         /// <summary>Esc clears the search first, then closes the band.</summary>
-        static void OnKey(KeyEventArgs e, HomeBoardProps board)
+        void OnKey(KeyEventArgs e, HomeBoardProps board)
         {
             if (e.Handled || e.KeyCode != Keys.Escape) return;
-            if (board.View.Query.Peek().Length > 0) { board.View.Query.Value = ""; s_kind.Value = s_kindBeforeSearch; }
+            if (_justCleared) { _justCleared = false; e.Handled = true; return; }
+            if (board.View.Query.Peek().Length > 0) { board.View.Query.Value = ""; _lastQuery = ""; s_kind.Value = s_kindBeforeSearch; }
             else Close(board);
             e.Handled = true;
         }
@@ -253,7 +267,7 @@ internal static class WinUiHomeAddBand
             var arr = sizes;
             string id = c.Id;
             kids.Add(RadioButtons.Create(labels, new Signal<int>(at), i => { s_size[id] = arr[i]; s_kind.Value = s_kind.Peek(); },
-                                         maxColumns: labels.Length, isEnabled: !on));
+                                         maxColumns: 1, isEnabled: !on));
         }
         var pin = (on
             ? Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.Pinned), static () => { }, ButtonAppearance.Standard, ControlSize.Medium, isEnabled: false)

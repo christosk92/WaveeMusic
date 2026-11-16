@@ -61,6 +61,9 @@ public sealed class HomeBoardView
     /// <summary>The open add surface's search text.</summary>
     public Signal<string> Query { get; } = new("");
 
+    /// <summary>Set by a theme whose board has no edit mode (WinUI): the sentence the inspector's `home do=edit` answers with.</summary>
+    public string? NoEditMode { get; set; }
+
     /// <summary>The board grid's controller (rects, neighbours, bring-into-view); set by the host.</summary>
     public PackGridController? Grid { get; internal set; }
 

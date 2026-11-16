@@ -210,8 +210,8 @@ public static class WinUiHomeBoardRules
         return new PackEntry(PackEntryKind.Tile, c, r, flags, openExtent, lay.OpenMinCols);
     }
 
-    /// <summary>A placed section with no match in the answer keeps its place and takes no room.</summary>
-    public static bool IsHidden(BoardEntry e) => e.Kind == BoardEntryKind.Placeholder && e.Template == SectionTemplate.None;
+    /// <summary>A hidden entry (a placed section the answer lacks, a hidden feed section) keeps its place and takes no room.</summary>
+    public static bool IsHidden(BoardEntry e) => e.Hidden;
 
     /// <summary>The open tile's height: the head and one row per option (a radio group grows by its values under five), plus the live toggle.</summary>
     public static float OpenExtent(BoardEntry e, HomeSourceDef? source, WinUiHomeBoardLayout lay)

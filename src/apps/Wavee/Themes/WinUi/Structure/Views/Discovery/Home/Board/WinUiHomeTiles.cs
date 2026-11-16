@@ -77,21 +77,22 @@ internal static class WinUiHomeTiles
         var more = Embed.Comp(new MoreProps(f, moreBox), static () => new TileMore()) with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
         string id = f.Entry.Id;
         var verbs = f.Verbs;
-        Action<KeyEventArgs> keys = e => OnKey(e, f);
+        // Right-click and a pen's barrel: the menu. A touch hold is the grid wrapper's (it gates the lift); this handler leaves it alone so the
+        // hold can become a drag. Keys reach the focused wrapper, so Alt+Shift+arrows and the Menu key are the board's (`WinUiHomeBoard.HandleKey`).
+        Action<ContextRequestEventArgs> menu = e => { if (e.Trigger != ContextRequestTrigger.Hold) TileMore.OpenFor(f); };
         if (full)
             return new BoxEl
             {
-                Key = key, Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = Spacing.XS, Focusable = true,
-                OnKeyDown = keys, OnContextRequested = _ => TileMore.OpenFor(f),
+                Key = key, Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = Spacing.XS,
+                OnContextRequested = menu,
                 Children = [new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] }, more],
             };
         return new BoxEl
         {
             Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true, Corners = Radii.CardAll, ClipToBounds = true,
-            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f, Focusable = true,
+            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
             BrushTransitionMs = Design.Motion.Faster,
-            OnKeyDown = keys, OnContextRequested = _ => TileMore.OpenFor(f),
-            OnHoldReleased = _ => TileMore.OpenFor(f),
+            OnContextRequested = menu,
             Children =
             [
                 content,
@@ -101,35 +102,23 @@ internal static class WinUiHomeTiles
                     Corners = Radii.CardAll, BorderColor = Tok.AccentDefault, BorderWidth = WinUiHomeBoardRules.RingW, HitTestVisible = false,
                     Visible = Prop.Of(() => f.View.RingId.Value == id),
                 },
-                new BoxEl { AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, WinUiHomeBoardRules.MoreInset, WinUiHomeBoardRules.MoreInset, 0f), Children = [more] },
+                // The reserved corner: a full-bleed layer whose row hugs the ⋯ at its top end (a Start layer fills the stack; its child hugs).
+                new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
+                    Padding = new Edges4(0f, WinUiHomeBoardRules.MoreInset, WinUiHomeBoardRules.MoreInset, 0f), Children = [more],
+                },
             ],
         };
-    }
-
-    /// <summary>Alt+Shift+arrows move the card (Start's chord); the Menu key and Shift+F10 reach the menu through the context request.</summary>
-    static void OnKey(KeyEventArgs e, HomeTileFrame f)
-    {
-        if (e.Handled || !(e.Alt && e.Shift) || e.Ctrl) return;
-        var verbs = f.Verbs;
-        string id = f.Entry.Id;
-        switch (e.KeyCode)
-        {
-            case Keys.Left: verbs.MoveBy(id, -1); break;
-            case Keys.Right: verbs.MoveBy(id, 1); break;
-            case Keys.Up or Keys.Down:
-                if (f.Cell is { } && WinUiHomeTileMenu.Neighbour(f, e.KeyCode == Keys.Up ? -1 : 1) is { } target) verbs.MoveOnto(id, target);
-                else return;
-                break;
-            default: return;
-        }
-        e.Handled = true;
     }
 
     /// <summary>A card's padded column.</summary>
     static BoxEl Pad(params Element[] kids) => new()
     {
         Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S,
-        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.MoreReserve, WinUiHomeBoardRules.TilePad),
+        // The ⋯ lane is outside the card's content (a margin, not padding): the content's click target never runs under the tools.
+        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.TilePad),
+        Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
         Children = kids,
     };
 
@@ -148,7 +137,8 @@ internal static class WinUiHomeTiles
         return new BoxEl
         {
             Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
+            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, 0f, 0f),
+            Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
             Children = end is null ? [art, text] : [art, text, end],
         };
     }
@@ -187,10 +177,11 @@ internal static class WinUiHomeTiles
     {
         var f = p.Frame;
         string? cover = p.Cover();
+        Element Art(float edge) => p.CoverArt is { } drawn ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [drawn(edge)] } : Cover(cover, edge, p.Round);
         switch (f.Form)
         {
             case HomeTileForm.S:
-                return Card(ctx, f, Clickable(RowFace(Cover(cover, WinUiHomeBoardRules.RowArt, p.Round), p.Name, p.Line), p.Open));
+                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line), p.Open));
             default:
             {
                 bool wide = f.Form != HomeTileForm.M;
@@ -200,7 +191,7 @@ internal static class WinUiHomeTiles
                     Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, MinWidth = 0f, Grow = 1f,
                     Children =
                     [
-                        Cover(cover, art, p.Round),
+                        Art(art),
                         new BoxEl
                         {
                             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = Spacing.XXS,
@@ -457,10 +448,15 @@ internal static class WinUiHomeTiles
         OverlayHandle? _menu;
         HomeTileFrame? _f;
 
-        /// <summary>Open the menu of <paramref name="f"/>'s card (a context request, a touch hold released).</summary>
-        public static void OpenFor(HomeTileFrame f)
+        /// <summary>Open the menu of <paramref name="f"/>'s card (a context request).</summary>
+        public static void OpenFor(HomeTileFrame f) => OpenFor(f.Entry.Id);
+
+        /// <summary>Open the menu of the card of entry <paramref name="id"/> (the Menu key, Shift+F10 on the focused tile).</summary>
+        public static bool OpenFor(string id)
         {
-            if (s_live.TryGetValue(f.Entry.Id, out var m)) m.Toggle();
+            if (!s_live.TryGetValue(id, out var m)) return false;
+            m.Toggle();
+            return true;
         }
 
         public override Element Render()
