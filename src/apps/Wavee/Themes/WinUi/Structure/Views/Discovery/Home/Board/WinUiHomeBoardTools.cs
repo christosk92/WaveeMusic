@@ -5,6 +5,7 @@
 // (light dismiss off, it never blocks; closing it or opening the band remembers it, `theme.winui.state.homeTipSeen`).
 
 using System.Collections.Generic;
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -32,12 +33,34 @@ internal static class WinUiHomeBoardTools
 
     sealed record ToolsProps(HomeBoardProps Board);
 
+    sealed record TipClockProps(Signal<bool> Settled);
+
+    /// <summary>Counts the page's entrance out in PRESENTED frames (the host's frame tick: it re-renders once per frame while it counts, a leaf of no
+    /// size), then marks the tip settled and leaves the tree. Never wall time: a slow first paint cannot pull the tip (an overlay, whose mount solves
+    /// the root layout) into the entrance's first frames.</summary>
+    sealed class TipClock : Component
+    {
+        int _frames;
+
+        public override Element Render()
+        {
+            var p = UseProps<TipClockProps>();
+            _ = UseContext(FrameClock.Tick);
+            _frames++;
+            bool done = _frames >= WinUiHomeBoardRules.TipDelayFrames;
+            var settled = p.Settled;
+            UseEffect(() => { if (done) settled.Value = true; }, DepKey.From(done));
+            return new BoxEl();
+        }
+    }
+
     sealed class Tools : Component
     {
         NodeHandle _add, _more;
         OverlayHandle? _menu, _tip;
         bool _closingQuietly;
         readonly Signal<bool> _settled = new(false);
+
         ToolsProps? _p;
 
         public override Element Render()
@@ -58,7 +81,8 @@ internal static class WinUiHomeBoardTools
             // The first-run tip: shown once the page has settled (a moment after the mount, as the concept does), gone for good once closed or once
             // the band opens. It stands to the LEFT of "Add widgets", its top on the button's: the free run of the head row between the greeting and
             // the button, so it hides neither the Following button under it nor the daylist's clock column.
-            UseTimeout(() => _settled.Value = true, WinUiHomeBoardRules.TipDelayMs, DepKey.Empty);
+            // The tip opens once the page's entrance is over: a count of PRESENTED frames (posted one after another), never wall time, so it
+            // cannot land in the entrance's first frames on a slow first paint (it is an overlay: mounting it solves the root layout).
             bool settled = _settled.Value;
             // Over a vacancy (Spotify's feed loading, failed or offline) the tip waits: it never covers a state or counts as an open overlay then.
             bool vacancy = UseComputed(() => HasVacancy(board.Model.Value)).Value;
@@ -89,7 +113,8 @@ internal static class WinUiHomeBoardTools
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Shrink = 0f,
                 OnKeyDown = e => WinUiHomeBoard.BoardView.HandleKey(e, board),
-                Children = [add, more],
+                // The tip's clock: a leaf that counts the entrance out in presented frames, gone once it has.
+                Children = seen || settled ? [add, more] : [add, more, Embed.Comp(new TipClockProps(_settled), static () => new TipClock()) with { Key = "home:tools:tip-clock" }],
             };
         }
 
