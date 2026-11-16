@@ -48,7 +48,14 @@ internal static class ClassicHomeTiles
         // The Pinned group is the concept's "Your shortcuts": its subtitle on the title's baseline, and while the history tile closes the grid, Classic's
         // selector bar (two words over the accent underline) to switch the grid to Recently played. No "Listening history" link: the grid's own history
         // tile is the way in (owner 2026-11-16).
-        Element? tools = !switchable || stacked ? null : face;
+        // The grid's pager while it pages: "1 of 2" and the previous and next buttons (Compact: the count alone; the pages swipe).
+        Element pager = shortcuts
+            ? Embed.Comp(() => new ClassicHomeZones.ClassicHomeShelfTools(board.View.ShortcutsPager, leadingDivider: false, counter: true, arrows: !stacked))
+                with { Key = key + ":pager" }
+            : new BoxEl();
+        Element? tools = !shortcuts ? null
+            : !switchable || stacked ? pager
+            : new BoxEl { Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face, pager] };
         var header = HomeModules.ModuleHeader(e.Title, shortcuts && !stacked ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null, tools, open: null) with { Key = key + ":title" };
         var title = new BoxEl
         {

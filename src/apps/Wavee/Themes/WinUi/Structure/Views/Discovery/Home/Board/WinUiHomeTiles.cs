@@ -58,7 +58,12 @@ internal static class WinUiHomeTiles
             }
             : null;
         bool stacked = lay.Tier == WidthTier.Compact;
-        Element? tools = stacked || face is null ? null : face.Value;
+        // The grid's pager: the previous and next buttons at the head's end while it pages (the pips stand under the grid).
+        Element pager = Embed.Comp(() => new WinUiHomeZones.WinUiHomeShelfTools(board.View.ShortcutsPager, leadingDivider: false, pips: false))
+            with { Key = key + ":pager" };
+        Element? tools = stacked || face is null
+            ? pager
+            : new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face.Value, pager] };
         var header = WinUiHomeZones.ModuleHeader(e.Title, sub, tools, home) with { Key = key + ":title" };
         return new BoxEl
         {

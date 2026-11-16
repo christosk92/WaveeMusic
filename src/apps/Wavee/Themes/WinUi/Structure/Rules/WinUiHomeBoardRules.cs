@@ -62,6 +62,16 @@ public sealed record WinUiHomeBoardLayout
     /// <summary>The narrowest an open tile is (columns): its options' fields want two columns where there are two.</summary>
     public required byte OpenMinCols { get; init; }
 
+    /// <summary>The shortcuts grid (owner 2026-11-16, "one grid, edit inside it"): its columns (a floor-fit inside the tier: 2 at Compact, 3 at
+    /// Standard, 4 at Huge), its row (a 48 cover in a 64 row), the pips' row under it while it pages.</summary>
+    public required WinUiGridBand ShortcutCols { get; init; }
+
+    /// <inheritdoc cref="ShortcutCols"/>
+    public required float ShortcutUnit { get; init; }
+
+    /// <inheritdoc cref="ShortcutCols"/>
+    public required float ShortcutPipsH { get; init; }
+
     /// <summary>The ⋯ corner every form reserves (a 32 button and its 4 inset; 40 at Compact, the target floor).</summary>
     public required float MoreBox { get; init; }
 
@@ -87,10 +97,11 @@ public static class WinUiHomeBoardTiers
     /// <summary>The record for content tier <paramref name="content"/> (4K reads Huge's).</summary>
     public static WinUiHomeBoardLayout For(WidthTier content) => (WidthTier)Math.Min((int)content, (int)WidthTier.Huge) switch
     {
-        WidthTier.Compact => Base with { Tier = WidthTier.Compact, Columns = WinUiGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, MoreBox = 40f, ShortcutsHead = 96f, FaceSwitchH = 40f },
-        WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new WinUiGridBand(260f, 2) },
-        WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new WinUiGridBand(240f, 4) },
-        _ => Base with { Tier = WidthTier.Huge, Columns = new WinUiGridBand(280f, 6) },
+        WidthTier.Compact => Base with { Tier = WidthTier.Compact, Columns = WinUiGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, MoreBox = 40f, ShortcutsHead = 96f, FaceSwitchH = 40f,
+                                         ShortcutCols = WinUiGridBand.Fixed(2) },
+        WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new WinUiGridBand(260f, 2), ShortcutCols = new WinUiGridBand(220f, 3) },
+        WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new WinUiGridBand(240f, 4), ShortcutCols = new WinUiGridBand(280f, 3) },
+        _ => Base with { Tier = WidthTier.Huge, Columns = new WinUiGridBand(280f, 6), ShortcutCols = new WinUiGridBand(300f, 4) },
     };
 
     const float UnitH = 72f, GapW = 12f;
@@ -101,6 +112,7 @@ public static class WinUiHomeBoardTiers
         Unit = UnitH, Gap = GapW, GroupGap = 20f, GroupHead = 34f, ShortcutsHead = 56f, FaceSwitchH = 32f, EmptyRow = UnitH,
         S = (1, 1), M = (1, 3), L = (2, 3), OpenMinCols = 2, MoreBox = 32f,
         PreviewW = 220f, CandidateW = 252f,
+        ShortcutCols = new WinUiGridBand(280f, 3), ShortcutUnit = 64f, ShortcutPipsH = 24f,
     };
 }
 

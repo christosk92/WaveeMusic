@@ -264,7 +264,7 @@ internal static partial class WinUiHomeZones
         Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
-            : Embed.Comp(() => new WinUiHomeShelfTools(controller, leadingDivider, pips)) with { Key = leadingDivider ? "tools+link" : "tools" };
+            : Embed.Comp(() => new WinUiHomeShelfTools(new ShelfPagerSource(controller), leadingDivider, pips)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
         if (pager is null) return link;
         return new BoxEl
@@ -362,7 +362,8 @@ internal static partial class WinUiHomeZones
         float squareAspect = wide ? R.Space.WideTileAspect : 1f;
         Func<float, float> cardHeight = wide ? s_wideCardHeight : CoverCardHeight(HomeCards.CaptionLinesOf(items));
 
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length + (leadWide ? WinUiHomeRules.LeadSpan - 1 : 0), band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open, the lead cell's too
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
@@ -370,7 +371,7 @@ internal static partial class WinUiHomeZones
             // The header owns the pager (the controller) where the tier pages the shelf; a tier that does not shows none.
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
             gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
@@ -385,7 +386,7 @@ internal static partial class WinUiHomeZones
             leadMinColumns: wide ? 0 : WinUiHomeRules.LeadMinColumns)
            // ONE key at every tier: the card band, the column cap, the pager and the card height are live props, so a width change re-fits the SAME shelf
            // (its cards, its page and the header's controller survive) instead of remounting it.
-           with { Key = "home-shelf:" + zone.Key };
+           with { Key = "home-shelf:" + zone.Key });
     }
 
     /// <summary>The height a zone's chapter lays out at, at a content width: the header (its title and subtitle lines, its tools' floor) and the header
@@ -507,7 +508,7 @@ internal static partial class WinUiHomeZones
     /// <summary>The shelf pager in the header's tools slot: ‹ pips › — the stock pips between two stock chevrons, every action routed back through the controller.
     /// Reads the controller's four value signals, so only this leaf re-renders on a page change. <paramref name="leadingDivider"/> puts the 16-px vertical
     /// divider between the header's "See all" link and the pager — it comes and goes WITH the pager, so a one-page shelf shows the bare link.</summary>
-    sealed class WinUiHomeShelfTools(ShelfController controller, bool leadingDivider, bool pips = true) : Component
+    internal sealed class WinUiHomeShelfTools(IPager controller, bool leadingDivider, bool pips = true) : Component
     {
         public override Element Render()
         {

@@ -193,18 +193,19 @@ internal static partial class WinUiHomeZones
             items[i] = new BookItem(c, c.Title, c.Author ?? HomeCards.PlainText(c.Subtitle), SectionCopy.BookFacts(in c, culture), c.Signifier ?? "", c.ImageUrl);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<BookItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length, band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<BookItem>(items,
             (item, i, cardW) => BookCell(in item, cardW, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,
             cardHeight: s_bookHeight,
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
             gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank ? "home-book-blank:" + i.ToString(CultureInfo.InvariantCulture) : "home-book:" + item.Card.Uri)
-            with { Key = "home-books:" + zone.Key };
+            with { Key = "home-books:" + zone.Key });
     }
 
     static Element BookCell(in BookItem item, float cardW, IOverlayService? host)
@@ -248,13 +249,13 @@ internal static partial class WinUiHomeZones
         var pips = new BoxEl
         {
             Direction = 0, Height = WinUiHomeRules.PipsRowH, MinWidth = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = controller is null ? [] : [Embed.Comp(() => new ClusterPips(controller)) with { Key = "cluster-pips" }],
+            Children = controller is null ? [] : [Embed.Comp(() => new ClusterPips(new ShelfPagerSource(controller))) with { Key = "cluster-pips" }],
         };
         return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = WinUiHomeRules.CardGap, Children = [shelf, pips] };
     }
 
     /// <summary>The pips under the preview cards: the stock pips over the chapter's controller (the selected one larger), each a page.</summary>
-    sealed class ClusterPips(ShelfController controller) : Component
+    internal sealed class ClusterPips(IPager controller) : Component
     {
         public override Element Render()
         {

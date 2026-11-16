@@ -29,10 +29,10 @@ using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
 
-/// <summary>What the WinUI grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head. <see cref="Cell"/> is a shortcut
-/// cell's place in the shortcuts grid (the Recently played item that face shows there), -1 for everything else; <see cref="Switch"/> says the Pinned
-/// group carries the history tile, so its head offers the Shortcuts / Recently played switch and its cells cross-fade (<see cref="HomeShortcuts"/>).</summary>
-internal sealed record WinUiBoardItem(string Key, BoardEntry Entry, bool EmptyRow, int Cell = -1, bool Switch = false);
+/// <summary>What the WinUI grid packs: a board entry (the shortcuts grid one of them), or the empty Pinned row the theme adds after an empty group head.
+/// <see cref="Switch"/> says the Pinned group carries the history tile, so its head offers the Shortcuts / Recently played switch and the grid's cells
+/// cross-fade (<see cref="HomeShortcuts"/>).</summary>
+internal sealed record WinUiBoardItem(string Key, BoardEntry Entry, bool EmptyRow, bool Switch = false);
 
 /// <summary>WinUI's pinned Home board.</summary>
 internal static class WinUiHomeBoard
@@ -64,6 +64,9 @@ internal static class WinUiHomeBoard
         PackGridOptions<WinUiBoardItem>? _options;
         Func<WinUiBoardItem, PackCell, Element>? _template;
         Func<PackBox, HomeTileForm>? _formRule;
+        ShortcutGridSpec? _shortcuts;
+
+        static readonly Func<PackBox, HomeTileForm> s_small = static _ => HomeTileForm.S;
 
         static readonly Func<PackBox, HomeTileForm> s_full = static _ => HomeTileForm.Full;
 
@@ -138,8 +141,8 @@ internal static class WinUiHomeBoard
             _reorder ??= new PackReorder<WinUiBoardItem>("home.tile")
             {
                 // A shortcut cell showing Recently played is not the shortcut it stands for: it does not lift until the grid shows the shortcuts again.
-                CanLift = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead
-                                && !(it.Cell >= 0 && _p!.Board.View.ShortcutsFace.Peek() == HomeShortcuts.RecentsFace),
+                // The shortcuts grid is the Pinned group's whole body: its cells move inside it, the grid itself stays.
+                CanLift = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead && !HomeShortcuts.IsGrid(it.Entry),
                 LiftStyle = new DragVisualStyle { Scale = 1.03f },
                 Slot = static rect => WinUiHomeTiles.Slot(rect),
                 AcceptKinds = [WinUiHomeAddBand.DragKind],
@@ -192,12 +195,18 @@ internal static class WinUiHomeBoard
             var e = m.Entries;
             var list = new List<WinUiBoardItem>(e.Length + 1);
             bool sw = HomeShortcuts.HasSwitch(m);
-            int cell = 0;
+            bool grid = false;
             for (int i = 0; i < e.Length; i++)
             {
                 var x = e[i];
-                int at = sw && HomeShortcuts.IsShortcutCell(x) ? cell++ : -1;
-                list.Add(new WinUiBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false, at,
+                // The shortcuts (the pins, the fill, the history tile) are ONE item, the grid, where the first of them stands.
+                if (HomeShortcuts.IsGridCell(x))
+                {
+                    if (grid) continue;
+                    grid = true;
+                    x = HomeShortcuts.GridEntry(x);
+                }
+                list.Add(new WinUiBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false,
                                             sw && x.GroupId == HomeDocs.Pinned));
                 // An empty Pinned group says how to pin (spec 8.1 "Empty states"): a dashed row at the group's height.
                 if (x.Kind == BoardEntryKind.GroupHead && x.GroupId == "pinned" && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
@@ -219,7 +228,10 @@ internal static class WinUiHomeBoard
                 // A full row packs at its chapter's own height (the numbers its body reserves with), so it mounts in its box and nothing
                 // re-packs; a body whose height is its content's is measured and the box follows by the re-flow.
                 full = ExtentOf(e.Id).Value;
-                if (full <= 0f) full = FullEstimate(e, _p.Home, WidthNow(_width.Value), lay);
+                if (full <= 0f)
+                    full = HomeShortcuts.IsGrid(e)
+                        ? ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), WidthNow(_width.Value))
+                        : FullEstimate(e, _p.Home, WidthNow(_width.Value), lay);
                 _packed[e.Id] = full;
             }
             return WinUiHomeBoardRules.EntryOf(e, lay, full, open, false);
@@ -251,11 +263,9 @@ internal static class WinUiHomeBoard
                 return e.GroupId == HomeDocs.Pinned ? WinUiHomeTiles.ShortcutsHead(e, _p.Lay, _p.Home, board, it.Switch) : WinUiHomeTiles.GroupHead(e, _p.Lay);
             if (board.View.OpenId.Value == e.Id)
                 return WinUiHomeTiles.Open(e, board.Options(e));
-            // A shortcut cell of a switchable grid: the shortcut, or the Recently played item at its place (the cells cross-fade, the grid keeps its size).
-            if (it.Cell >= 0) return WinUiHomeTiles.ShortcutCell(board.Tile(e, cell, _formRule!), it.Cell, board);
             // A full row always draws its full form (its height is its body's); every other size draws what its box can carry.
             if (WinUiHomeBoardRules.SizeOf(e) != HomeSize.Full) return board.Tile(e, cell, _formRule!);
-            var tile = board.Tile(e, cell, s_full);
+            var tile = HomeShortcuts.IsGrid(e) ? ShortcutGrid.Create(board, Shortcuts(), WidthNow(_width.Peek())) : board.Tile(e, cell, s_full);
             // A full row: the body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
             string id = e.Id;
@@ -275,6 +285,33 @@ internal static class WinUiHomeBoard
                 ],
             };
         }
+
+        /// <summary>WinUI's shortcuts grid: the tier's columns, a 64 row (a 48 cover), the board's gap; each cell its pin's row tile (the Recently played
+        /// item at its place while the head's switch shows that face); a cell always drags (WinUI has no edit mode); the strip's own edge chevrons on
+        /// hover, the pips under it.</summary>
+        ShortcutGridSpec Shortcuts()
+        {
+            var p = _p!;
+            if (_shortcuts is { } s && ReferenceEquals(s_specLay, p.Lay)) return s;
+            s_specLay = p.Lay;
+            var lay = p.Lay;
+            var board = p.Board;
+            return _shortcuts = new ShortcutGridSpec(
+                Columns: w => lay.ShortcutCols.Columns(w, lay.Gap),
+                Unit: _ => lay.ShortcutUnit,
+                Gap: lay.Gap,
+                Cell: (e, index, cell) => HomeShortcuts.HasSwitch(board.Model.Peek())
+                    ? WinUiHomeTiles.ShortcutCell(board.Tile(e, cell, s_small), index, board)
+                    : board.Tile(e, cell, s_small),
+                CanReorder: static () => true,
+                // FlipView's hover-revealed edge buttons over the pages.
+                Edge: static (prev, pager) => IconButton.Create(prev ? Icons.ChevronLeft : Icons.ChevronRight, prev ? pager.Prev : pager.Next)
+                    with { Key = prev ? "home:shortcuts-edge:prev" : "home:shortcuts-edge:next" },
+                Below: static c => Embed.Comp(() => new WinUiHomeZones.ClusterPips(c)) with { Key = "home:shortcuts-pips" },
+                BelowH: lay.ShortcutPipsH);
+        }
+
+        WinUiHomeBoardLayout? s_specLay;
 
         void Commit(PackMove m)
         {

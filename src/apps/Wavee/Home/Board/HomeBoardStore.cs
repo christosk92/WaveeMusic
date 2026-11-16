@@ -169,7 +169,7 @@ public sealed class HomeBoardStore
     /// <summary>Replace the document outright (migration's first answer, the inspector's homedoc=): no undo entry.</summary>
     public void ReplaceSilently(HomeDoc doc)
     {
-        Publish(doc);
+        Publish(HomeShortcuts.Normalize(doc));
         Changed?.Invoke(new HomeApplied(true, null, null, ""));
     }
 
@@ -278,6 +278,15 @@ public sealed class HomeBoardStore
             default:
                 doc = HomeDocs.Default(); ReadOnly = true; LoadOutcome = "unreadable";
                 break;
+        }
+        // Every pin is a shortcut of the Pinned group's grid, at its one size (a document from before the grid had pins placed and sized among the
+        // widgets): the first load moves them in, in order, and saves it.
+        var shortcuts = HomeShortcuts.Normalize(doc);
+        if (!ReferenceEquals(shortcuts, doc))
+        {
+            doc = shortcuts;
+            if (!ReadOnly) _file?.Commit(HomeDocWire.Write(doc));
+            Log.Info("home", "home.board.shortcuts_normalized");
         }
         var old = _doc.Peek();
         _doc.Value = doc;

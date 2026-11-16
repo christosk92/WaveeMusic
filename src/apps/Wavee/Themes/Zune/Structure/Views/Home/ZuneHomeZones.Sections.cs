@@ -154,20 +154,21 @@ internal static partial class ZuneHomeZones
             items[i] = new BookItem(c, c.Title, c.Author ?? HomeCards.PlainText(c.Subtitle), SectionCopy.BookFacts(in c, culture), c.Signifier ?? "", c.ImageUrl);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<BookItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length, lay.ShelfMinW, lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, lay.ShelfCols, lay.ShelfCols > 0 ? 0f : lay.ShelfCardW, H.ShelfGap,
+            band2 => PagedShelf.Create<BookItem>(items,
             (item, i, cardW) => BookCell(in item, cardW, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,
             cardHeight: s_bookHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
-            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
-            maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
+            minCardW: lay.ShelfMinW, maxCardW: band2.MaxCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
+            maxColumns: band2.MaxColumns, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank ? "zune-book-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-book:" + item.Card.Uri)
-            with { Key = "zune-home-books:" + zone.Key };
+            with { Key = "zune-home-books:" + zone.Key });
     }
 
     static Element BookCell(in BookItem item, float cardW, IOverlayService? host)
@@ -235,14 +236,14 @@ internal static partial class ZuneHomeZones
         var words = new List<Element>(3)
         {
             K.HeadingText(zone.Title ?? ""),
-            Embed.Comp(() => new PageCounter(controller)) with { Key = "zune-cluster-pages" },
+            Embed.Comp(() => new PageCounter(new ShelfPagerSource(controller))) with { Key = "zune-cluster-pages" },
         };
         if (lay.Subtitles && zone.Subtitle is { Length: > 0 } sub) words.Add(K.Caption(sub) with { Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f) });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = words.ToArray() };
     }
 
     /// <summary>"01/02": the page and the count in the heading's light voice, tertiary, never shrunk.</summary>
-    sealed class PageCounter(ShelfController controller) : Component
+    internal sealed class PageCounter(IPager controller) : Component
     {
         public override Element Render()
         {

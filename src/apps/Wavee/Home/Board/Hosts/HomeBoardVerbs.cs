@@ -120,6 +120,10 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     public void MoveOnto(string entryId, string targetEntryId) => Moved(Store.Dispatch(new HomeCommand.MoveOnto(entryId, targetEntryId)), entryId);
 
     /// <inheritdoc/>
+    public void ReorderShortcut(string entryId, int toIndex)
+        => Moved(Store.Dispatch(new HomeCommand.ReorderShortcut(entryId, toIndex)), entryId);
+
+    /// <inheritdoc/>
     public void MoveBy(string entryId, int delta)
         => Moved(Store.Dispatch(new HomeCommand.MoveBy(entryId, delta), tag: "step:" + entryId), entryId);
 

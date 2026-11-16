@@ -90,7 +90,8 @@ internal static partial class ZuneHomeZones
             items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), c.Kind == HomeCardKind.Artist);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length, lay.ShelfMinW, lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, lay.ShelfCols, lay.ShelfCols > 0 ? 0f : lay.ShelfCardW, H.ShelfGap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, 1f, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
@@ -99,15 +100,15 @@ internal static partial class ZuneHomeZones
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             // Standard: the fixed 154 card. Elsewhere the shelf FITS: up to the tier's columns share the width, none narrower than the tier's floor
             // (one node at every tier: these are live props of the shelf).
-            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
-            maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
+            minCardW: lay.ShelfMinW, maxCardW: band2.MaxCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
+            maxColumns: band2.MaxColumns, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
                 ? "zune-shelf-blank:" + i.ToString(CultureInfo.InvariantCulture)
                 : "zune-shelf-card:" + item.Card.Uri)
-            with { Key = "zune-home-shelf:" + zone.Key };
+            with { Key = "zune-home-shelf:" + zone.Key });
     }
 
     /// <summary>The wide tiles (Z-Home "new music"): 16:9 covers, the tier's columns across the page (one key at every count: a live prop).</summary>
@@ -121,21 +122,22 @@ internal static partial class ZuneHomeZones
             items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced("wide:" + zone.Key, items.Length, lay.WideMinW, H.WideMaxW, lay.WideCols, 0f, H.WideGap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, R.Space.WideTileAspect, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
             cardHeight: s_wideHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
-            minCardW: lay.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
+            minCardW: lay.WideMinW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, gap: H.WideGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
                 ? "zune-wide-blank:" + i.ToString(CultureInfo.InvariantCulture)
                 : "zune-wide-card:" + item.Card.Uri)
-            with { Key = "zune-home-wide:" + zone.Key };
+            with { Key = "zune-home-wide:" + zone.Key });
     }
 
     static Element Cell(in HomeCards.ShelfItem item, float cardW, float aspect, IOverlayService? host)

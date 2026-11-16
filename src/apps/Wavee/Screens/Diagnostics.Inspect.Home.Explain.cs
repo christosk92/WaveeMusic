@@ -111,7 +111,7 @@ public static partial class Diagnostics
                     }
                     w.WriteBoolean("realized", board.IsRealized(e.Id));
                 }
-                if (e.Zone is { } zz && GridFill.Pagers.TryGetValue(zz.Key, out FluentGpu.Controls.ShelfController? pager))
+                if (e.Zone is { } zz && GridFill.Pagers.TryGetValue(zz.Key, out IPager? pager))
                 {
                     w.WriteStartObject("pager");
                     w.WriteNumber("page", pager.Page.Peek() + 1);
