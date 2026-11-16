@@ -40,10 +40,13 @@ internal static class ZuneHomeAllItems
 {
     const string Widgets = "widgets", Spotify = "spotify", Library = "library";
     static readonly string[] s_pivots = [Widgets, Spotify, Library];
-    static readonly string[] s_noSuggest = [];
 
     /// <summary>The search field is open (the round search button, "/").</summary>
     static readonly Signal<bool> s_searching = new(false);
+
+    /// <summary>The round search button's node and the section's input hooks (Escape returns focus to the button when it closes the field).</summary>
+    static NodeHandle s_ringNode;
+    static InputHooks? s_hooks;
 
     /// <summary>A request to focus the field (bumped by "/" and the search button).</summary>
     static readonly Signal<int> s_focusField = new(0);
@@ -86,7 +89,12 @@ internal static class ZuneHomeAllItems
         var view = board.View;
         if (view.Add.Peek().Kind != HomeAddSurfaceKind.AllItems) return false;
         if (view.Query.Peek().Length > 0) view.Query.Value = "";
-        else if (s_searching.Peek()) s_searching.Value = false;
+        else if (s_searching.Peek())
+        {
+            s_searching.Value = false;
+            // Focus stays in the section (on the round search button), so the next Escape leaves all items.
+            if (!s_ringNode.IsNull) s_hooks?.FocusNode?.Invoke(s_ringNode, true);
+        }
         else Close(board, null);
         return true;
     }
@@ -129,15 +137,35 @@ internal static class ZuneHomeAllItems
         Func<HomeCandidate, PackCell, Element>? _template;
         string _lastQuery = "";
         int _focusedAsk, _tries;
+        bool _ringNext;
         Field<string>? _field;
         InputHooks? _hooks;
         TimerHandle _focusTimer;
         readonly Action _focusNow;
 
-        public SectionView() => _focusNow = FocusNow;
+        TimerHandle _sayTimer;
+        readonly Action _sayCount;
+
+        public SectionView()
+        {
+            _focusNow = FocusNow;
+            _sayCount = SayCount;
+        }
+
+        /// <summary>The count, spoken once the typing pauses.</summary>
+        void SayCount()
+        {
+            if (_p is null) return;
+            string q = _p.Board.View.Query.Peek().Trim();
+            if (q.Length == 0) return;
+            var board = _p.Board;
+            int n = board.Catalog.Find(board.Catalog.All(), q).Count;
+            board.Verbs.Say(n > 0 ? Strings.Theme.Zune.Home.Results(n: n) : Strings.Theme.Zune.Home.NoMatch(q: q));
+        }
 
         void FocusNow()
         {
+            if (_ringNext) { _ringNext = false; if (!s_ringNode.IsNull) _hooks?.FocusNode?.Invoke(s_ringNode, true); return; }
             if (_field?.Node.Peek() is { IsNull: false } n) { _hooks?.FocusNode?.Invoke(n, true); return; }
             if (++_tries < B.FocusRetries) _focusTimer.RestartIn(B.FocusRetryMs);
         }
@@ -156,7 +184,9 @@ internal static class ZuneHomeAllItems
             // a few frames, never a render loop).
             _field = field;
             _hooks = hooks;
+            s_hooks = hooks;
             _focusTimer = UseTimeout(_focusNow, B.FocusRetryMs);
+            _sayTimer = UseTimeout(_sayCount, B.SayAfterMs);
             UseLayoutEffect(() => { if (focusAsk > _focusedAsk) { _focusedAsk = focusAsk; _tries = 0; _focusTimer.RestartIn(B.FocusRetryMs); } },
                 DepKey.From(focusAsk));
 
@@ -185,9 +215,22 @@ internal static class ZuneHomeAllItems
                     Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
                     Children =
                     [
-                        AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Theme.Zune.Home.Search), text: view.Query, onChange: OnQuery, field: field,
-                            queryIcon: Icons.Search, grow: 1f, maxFillWidth: lay.ItemsMaxW, minHeight: B.FieldH, debounceMs: 0f,
-                            cornerRadius: 0f),
+                        // The field's editor is the field's node (focus lands in it: "/" and the round button type at once).
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                            Children =
+                            [
+                                // The plain editor (no clear button: Escape clears, and the button would sit under the 40 target floor at Compact).
+                                Embed.Comp(() => new EditableText
+                                {
+                                    Placeholder = Loc.Get(Strings.Theme.Zune.Home.Search), Width = float.NaN, Height = B.FieldH,
+                                    Text = view.Query, OnTextChanged = OnQuery, Field = field.Binding,
+                                    // Escape in the field clears it; focus moves to the round search button, so the next Escape closes the field.
+                                    OnCancel = () => { _ringNext = true; _tries = 0; _focusTimer.RestartIn(B.FocusRetryMs); },
+                                }),
+                            ],
+                        },
                     ],
                 });
             // The list: keyed per pivot (or the search), so a switch slides the new rows in as a pivot does.
@@ -230,9 +273,7 @@ internal static class ZuneHomeAllItems
             if (q == _lastQuery) return;
             _lastQuery = q;
             if (q.Length == 0) return;
-            var board = _p.Board;
-            int n = board.Catalog.Find(board.Catalog.All(), q).Count;
-            board.Verbs.Say(n > 0 ? Strings.Theme.Zune.Home.Results(n: n) : Strings.Theme.Zune.Home.NoMatch(q: q));
+            _sayTimer.RestartIn(B.SayAfterMs);
         }
 
         /// <summary>The pivots on one line (bleeding under a fade), the round search button and the back ring.</summary>
@@ -281,7 +322,7 @@ internal static class ZuneHomeAllItems
                     {
                         if (s_searching.Peek()) { board.View.Query.Value = ""; s_searching.Value = false; }
                         else { s_searching.Value = true; s_focusField.Value = s_focusField.Peek() + 1; }
-                    }),
+                    }, static h => s_ringNode = h),
                     Ring(B.BackRingKey, Icons.Back, Loc.Get(Strings.Theme.Zune.Home.Back), false, () => Close(board, null)),
                 ],
             };
@@ -403,8 +444,9 @@ internal static class ZuneHomeAllItems
     };
 
     /// <summary>A 44 ring button (filled in the accent when on), its glyph centred.</summary>
-    static Element Ring(string key, string glyph, string label, bool on, Action act) => Controls.Named(new BoxEl
+    static Element Ring(string key, string glyph, string label, bool on, Action act, Action<NodeHandle>? realized = null) => Controls.Named(new BoxEl
     {
+        OnRealized = realized,
         Key = key, Width = B.ItemsRing, Height = B.ItemsRing, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = CornerRadius4.All(B.ItemsRing / 2f), BorderWidth = B.BadgeStroke, BorderColor = on ? Prop.Of(static () => R.Ink.AccentAction) : Tok.TextPrimary,
         Fill = on ? Prop.Of(static () => R.Ink.AccentAction) : ColorF.Transparent,

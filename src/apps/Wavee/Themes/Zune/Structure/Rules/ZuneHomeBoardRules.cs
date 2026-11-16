@@ -224,6 +224,9 @@ public static class ZuneHomeBoardRules
     public const float FocusRetryMs = 16f;
     public const int FocusRetries = 10;
 
+    /// <summary>The search's count is spoken once the typing pauses this long.</summary>
+    public const float SayAfterMs = 400f;
+
     /// <summary>"/" (VK_OEM_2): all items' search.</summary>
     public const int SlashKey = 191;
 
