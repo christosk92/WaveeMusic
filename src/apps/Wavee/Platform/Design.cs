@@ -919,6 +919,16 @@ public static partial class Design
 
         static bool HasId(string uri, string prefix) => uri.Length > prefix.Length && uri.StartsWith(prefix, StringComparison.Ordinal);
 
+        /// <summary>The flight key of a GENERATED cover of <paramref name="uri"/> (Liked Songs' gradient and heart, an image-less playlist's mosaic):
+        /// Liked Songs keys by its collection uri (any account's spelling of it), anything else as <see cref="ForUri(string?)"/>. Null: none.</summary>
+        public static string? ForGenerated(string? uri)
+            => uri is { Length: > 0 } && EntityUri.IsLikedCollection(uri) ? EntityUri.LikedCollection : ForUri(uri);
+
+        /// <summary>The tag for a generated cover: <paramref name="key"/> marked as a WHOLE picture (<c>ConnectedAnimation.WholeKey</c>), so the
+        /// flight carries the cover's whole subtree (one continuous picture from the card to the header) instead of the largest image inside it.
+        /// Allocates one string: call it where the cover is built, never per frame.</summary>
+        public static string? Whole(string? key) => key is { Length: > 0 } ? ConnectedAnimation.WholeKey(key) : null;
+
         /// <inheritdoc cref="MorphKeys"/>
         public static string? For(EntityKind kind, string? id) => id is { Length: > 0 }
             ? kind switch

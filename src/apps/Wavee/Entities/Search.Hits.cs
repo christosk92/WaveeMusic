@@ -64,10 +64,11 @@ public readonly partial struct Search
     /// <summary>A top-result card's art at a fixed size: <paramref name="url"/> (<see cref="CoverOf"/>) over its flat tile, or, for Liked Songs (a
     /// playlist hit or a collection hit, told by its uri), its generated cover (the account's treatment, no picker). Liked Songs has no image url, so
     /// the url alone drew an empty tile (the owner, 2026-11-15: "liked songs here in winui is empty blob"). The card clips the art to its corners.
-    /// <paramref name="connect"/>: the art's flight key (<c>Design.MorphKeys.ForUri</c>), never on the generated cover (not one picture).</summary>
+    /// <paramref name="connect"/>: the art's flight key (<c>Design.MorphKeys.ForUri</c>); the generated cover flies whole under Liked Songs' key.</summary>
     internal static Element ArtOf(EntityRef hit, string? url, float width, float height, float corners, string? connect = null)
         => url is not { Length: > 0 } && EntityUri.IsLikedCollection(hit.Id.Text)
-            ? User.LikedCover(MathF.Max(width, height), corners, picker: false)
+            ? User.LikedCover(MathF.Max(width, height), corners, picker: false,
+                              MathF.Min(width, height) >= Design.MorphKeys.MinSourceEdge ? EntityUri.LikedCollection : null)
             : Controls.Artwork(url, width, height, corners, connect: connect);
 
     /// <summary>The kind word a hit's subtitle leads with — "Song" / "Music video" for a track (§9 gap 7: the loc keys,

@@ -145,7 +145,8 @@ internal static class WinUiSurface
         if (float.IsNaN(width))
         {
             // The cover flies into the album page's hero when the card opens it (Design.MorphKeys.ForUri; the engine finds it under the card the user activated).
-            Element fill = d.CoverOverride
+            // A generated cover (Liked Songs, an image-less playlist's mosaic) flies too, as one whole picture (Design.MorphKeys.Whole).
+            Element fill = GeneratedCover(d, float.PositiveInfinity)
                 ?? Controls.ArtworkFill(d.CoverUrl, circular ? Radii.Full : Radii.Card, aspect: d.CoverAspect) with { MorphId = Design.MorphKeys.ForUri(d.Uri) };
             // The overlay is mounted whenever the corner is (chrome ⊂ overlay), so three arms cover every case.
             Element[] cover = fab is null ? [fill] : corner is null ? [fill, fab.Value] : [fill, fab.Value, corner.Value];
@@ -171,7 +172,7 @@ internal static class WinUiSurface
         var (coverW, coverH) = SurfaceParts.ShelfCover(width, liveWidth, padX, d.CoverAspect);
         // A square card keeps its 256 decode and its edge; a wide tile takes the derived height and the 512 decode.
         bool square = d.CoverAspect == 1f;
-        Element art = d.CoverOverride
+        Element art = GeneratedCover(d, float.PositiveInfinity)
             ?? Controls.Artwork(d.CoverUrl, float.NaN, float.NaN, circular ? Radii.Full : Radii.Card,
                                 decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx, connect: Design.MorphKeys.ForUri(d.Uri));
         return new BoxEl
@@ -189,13 +190,21 @@ internal static class WinUiSurface
     /// <see cref="SurfaceRules.MenuReservesWidth"/>) — 12 apart, centred, 8 padding, over the shape's floor. A label-less
     /// shape (the rail tile) is the art alone, centred in its floor square.
     /// <paramref name="text"/> is the host's cached text column (built here when null).</summary>
+    /// <summary>The data's generated cover (<c>CoverOverride</c>), tagged as a whole picture with its entity's flight key when it shows one
+    /// from <see cref="Design.MorphKeys.MinSourceEdge"/> up; null when the data has none.</summary>
+    static Element? GeneratedCover(Controls.CardData d, float edge)
+        => d.CoverOverride is not { } cover ? null
+            : edge >= Design.MorphKeys.MinSourceEdge && Design.MorphKeys.ForGenerated(d.Uri) is { } key ? cover with { MorphId = Design.MorphKeys.Whole(key) }
+            : cover;
+
     static Element RowBody(Controls.CardData d, in SurfaceShape s, bool overlay, bool chrome, bool hasMenu, Action? onPlay,
                                   Element? text = null)
     {
         float edge = s.ArtEdge;
         // The art flies into the page the row opens (Design.MorphKeys.ForUri): a row in a popup that closes on the click opts out (SurfaceShape.Connect).
-        Element art = d.CoverOverride ?? Controls.Artwork(d.CoverUrl, edge, edge, d.Circular ? edge / 2f : Radii.Control,
-                                                          connect: s.Connect ? Design.MorphKeys.ForUri(d.Uri, edge) : null);
+        Element art = (s.Connect ? GeneratedCover(d, edge) : d.CoverOverride)
+                      ?? Controls.Artwork(d.CoverUrl, edge, edge, d.Circular ? edge / 2f : Radii.Control,
+                                          connect: s.Connect ? Design.MorphKeys.ForUri(d.Uri, edge) : null);
         var artBox = new BoxEl
         {
             ZStack = true, Width = edge, Height = edge, Shrink = 0f, ClipToBounds = !d.Circular,

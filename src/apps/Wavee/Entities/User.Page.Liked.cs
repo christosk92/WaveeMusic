@@ -103,7 +103,8 @@ public readonly partial struct User
 
             // The cover slot: the dynamic treatment WITH its style picker on the vertical hero (ch 03 item 23). The wide arm has no rail and
             // no collapsed strip, so no cover (tuned Classic D16: the head is the title and the meta over the page bar).
-            Func<float, Element> cover = static size => LikedCover(size, Radii.Card, picker: true);
+            // The hero's cover is the connected navigation flight's dest (Liked Songs' collection uri, the whole generated picture).
+            Func<float, Element> cover = static size => LikedCover(size, Radii.Card, picker: true, EntityUri.LikedCollection);
             // The small cover (WinUI's sticky bar, a collapsed strip): the same treatment, no picker. Liked Songs has no image url, so a small
             // cover that fell back to the identity's url was an empty placeholder tile (the owner, 2026-11-15: "liked songs here in winui is
             // empty blob"). Square: every host clips the slot to its own corners.

@@ -31,10 +31,15 @@ public static partial class Shell
     /// <summary>Set by <see cref="ConnectFromActivated"/>: the next forward commit flies the largest picture inside the activated element.</summary>
     static bool s_fromActivated;
 
-    /// <summary>The next forward navigation flies the largest picture inside the element the user activated, tagged or not: a bound row's
-    /// template cannot carry a per-item tag (the episode reader's rows). Call it just before the navigation, from an open action whose
-    /// row's picture is the entity's own. Consumed (and cleared) by that commit; any other commit clears it.</summary>
-    internal static void ConnectFromActivated() => s_fromActivated = true;
+    /// <summary>Run <paramref name="navigate"/> so that the forward navigation it commits flies the largest picture inside the element the
+    /// user activated, tagged or not: a bound row's template cannot carry a per-item tag (the episode reader's rows). For an open action
+    /// whose row's picture is the entity's own. Cleared after it, whether or not it navigated.</summary>
+    internal static void ConnectFromActivated<T>(Action<T> navigate, T arg)
+    {
+        s_fromActivated = true;
+        try { navigate(arg); }
+        finally { s_fromActivated = false; }
+    }
 
     /// <summary>A forward commit (<see cref="Commit"/>): fly the activated picture into <paramref name="to"/>'s header.</summary>
     static void ArmForward(in Route to)
@@ -66,7 +71,8 @@ public static partial class Shell
     /// episode or user), else null. Discography and ProfileList carry an entity subject but have no header picture: they never
     /// fly. One string per navigation.</summary>
     static string? KeyOf(in Route r) => r.Kind is RouteKind.Album or RouteKind.Prerelease or RouteKind.Playlist or RouteKind.Artist
-        or RouteKind.Show or RouteKind.Episode or RouteKind.User ? Design.MorphKeys.ForUri(r.Subject.Text) : null;
+        or RouteKind.Show or RouteKind.Episode or RouteKind.User ? Design.MorphKeys.ForUri(r.Subject.Text)
+        : r.Kind == RouteKind.Liked ? EntityUri.LikedCollection : null;   // Liked Songs' generated cover flies whole under its collection uri
 
     /// <summary>Is the swap to <paramref name="next"/> the one a flyer is up for, under a structure that wants the page quiet?</summary>
     static bool SwapsUnderFlight(in Route next)

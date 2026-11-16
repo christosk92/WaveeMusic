@@ -115,8 +115,10 @@ public readonly partial struct Episode
     internal const int SeedDateKey = 20000101;
     internal const int SeedDurationMs = 180_000;
 
-    /// <summary>The row's default verb: the episode page. A template reads it as the open action when the host states none.</summary>
-    internal static readonly Action<Episode> OpenPageAction = OpenPage;
+    /// <summary>The row's default verb: the episode page. A template reads it as the open action when the host states none. The reader's
+    /// rows are bound templates and cannot carry a per-item flight tag, so the row's own picture (its art, the largest picture in the
+    /// activated row) flies into the episode's header (<see cref="Shell.ConnectFromActivated"/>).</summary>
+    internal static readonly Action<Episode> OpenPageAction = static e => Shell.ConnectFromActivated(OpenPage, e);
 
     // ══ 2. THE PURE PIECES (pinned by EpisodeRowRulesTests) ══════════════════════════════════════════════════════════
 

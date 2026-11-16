@@ -134,8 +134,19 @@ public readonly partial struct Playlist
     /// tier crossing that resizes the cover keeps the editor's node (owner rule: no tier, form or count in a key).</summary>
     public static Element CoverSlot(Playlist p, float size)
         => p.IsValid && p.EditableMetadata && p.Uri.Provider == EntityProvider.Spotify
-            ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover" }
-            : CoverArt(p, size, handOver: true, connect: true);
+            ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover", MorphId = GeneratedConnect(p) }
+            : CoverArt(p, size, handOver: true, connect: true) with { MorphId = GeneratedConnect(p) };
+
+    /// <summary>The hero's flight tag when its cover is GENERATED (a mosaic of member covers, a member's cover standing in, the placeholder): the
+    /// whole cover is the connected navigation flight's dest (<see cref="Design.MorphKeys.Whole"/>). Null when the cover is the playlist's own
+    /// picture, whose image carries the tag (<see cref="HeadFace"/>).</summary>
+    static string? GeneratedConnect(Playlist p)
+    {
+        if (!p.IsValid) return null;
+        var face = CoverFace(p, 0f, 0);
+        bool own = face.Single is { Length: > 0 } single && string.Equals(single, Controls.ArtUrl(p.ImageId), StringComparison.Ordinal);
+        return own ? null : Design.MorphKeys.Whole(Design.MorphKeys.ForUri(p.Uri.Text));
+    }
 
     /// <summary>The playlist's own cover (the `Playlist.CoverArt` view) — a provider <c>spotify:mosaic:</c> token (a profile card's cover-less public
     /// playlist) paints as the server-composed 2×2 — else a 2×2 mosaic of member album covers (≥ 4), else the first,

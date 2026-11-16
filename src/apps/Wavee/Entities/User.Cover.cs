@@ -43,16 +43,18 @@ public readonly partial struct User
         => picker
             ? ViewSlots.View(Contracts.ViewKeys.LikedCoverPicker, new Contracts.LikedCoverPickerProps
             {
-                Size = size, Radius = radius, MorphKey = morphKey,
+                Size = size, Radius = radius, MorphKey = null,   // the art carries the flight tag (below), whole
                 Art = LikedCover(size, radius, picker: false, morphKey),
                 Flyout = static () => Embed.Comp(static () => new LikedCoverStyleFlyout()),
             }) with
             {
                 Key = "liked-cover-pick" + (morphKey is { Length: > 0 } pm ? ":" + pm : ""),
             }
-            : Embed.Comp(new LikedArtProps(size, radius, morphKey), static () => new LikedCoverArt()) with
+            : Embed.Comp(new LikedArtProps(size, radius, null), static () => new LikedCoverArt()) with
             {
                 Key = "liked-cover" + (morphKey is { Length: > 0 } cm ? ":" + cm : ""),
+                // The connected navigation flight carries the cover whole (its gradient, heart and tiles are one picture).
+                MorphId = Design.MorphKeys.Whole(morphKey),
             };
 
     /// <summary>The cover's geometry, re-pushed on every parent render (equal values coalesce).</summary>
