@@ -62,12 +62,13 @@ internal static class ClassicHomeEditBar
             var field = UseField(view.Query);
             bool editing = view.Editing.Value;
             bool asking = view.ConfirmingReset.Value;
+            bool inline = p.Lay.BarInline(ClassicHomeBoard.Width.Value);
             int moreAsk = s_focusMore.Value;
             int findAsk = s_focusFind.Value;
             UseLayoutEffect(() => { if (moreAsk > 0 && !_more.IsNull) hooks.FocusNode?.Invoke(_more, true); }, DepKey.From(moreAsk));
             UseLayoutEffect(() =>
             {
-                if (findAsk > 0 && p.Lay.BarInline && field.Node.Peek() is { IsNull: false } n) hooks.FocusNode?.Invoke(n, true);
+                if (findAsk > 0 && inline && field.Node.Peek() is { IsNull: false } n) hooks.FocusNode?.Invoke(n, true);
             }, DepKey.From(findAsk));
 
             if (!editing)
@@ -101,8 +102,8 @@ internal static class ClassicHomeEditBar
             else
             {
                 var kids = new List<Element>(8) { ClassicEditBarParts.Pencil() };
-                if (p.Lay.BarInline) kids.Add(ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome)));
-                if (p.Lay.BarInline) kids.Add(FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" });
+                if (inline) kids.Add(ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome)));
+                if (inline) kids.Add(FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" });
                 kids.Add(ClassicEditBarParts.Undo(board.Verbs.Undo, undo.CanUndo));
                 kids.Add(ClassicEditBarParts.Redo(board.Verbs.Redo, undo.CanRedo));
                 kids.Add(ClassicEditBarParts.Reset(Loc.Get("sidebar.edit.reset")) with
@@ -196,8 +197,10 @@ internal static class ClassicHomeEditBar
                     if (x.Kind != BoardEntryKind.GroupHead && !x.Hidden) { board.Grid.Focus(HomeBoardKeys.Tile(x.Id)); break; }
             },
         };
-        if (!fill) options = options with { Width = width };
-        var box = TextBox.Create(board.View.Query, q => ClassicHomeFind.Type(board, q), options);
+        Element box = fill
+            // The field takes the strip's width (a TextBox's width is a number: the measured one, re-pushed when it changes).
+            ? Responsive.Of(w => TextBox.Create(board.View.Query, q => ClassicHomeFind.Type(board, q), options with { Width = MathF.Max(w, 0f) }), grow: 1f)
+            : TextBox.Create(board.View.Query, q => ClassicHomeFind.Type(board, q), options with { Width = width });
         return new BoxEl
         {
             Direction = 0, Shrink = fill ? 0f : 1f, Grow = fill ? 1f : 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,

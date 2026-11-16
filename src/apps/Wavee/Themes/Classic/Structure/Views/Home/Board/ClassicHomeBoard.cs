@@ -63,6 +63,11 @@ internal static class ClassicHomeBoard
 
     internal sealed record BoardProps(HomeBoardProps Board, ClassicHomeBoardLayout Lay, ClassicHomeLayout Home);
 
+    static readonly Signal<float> s_width = new(0f);
+
+    /// <summary>The mounted board's width (the edit bar in the facet row reads it: its caption and find field stand inline only where the row has room).</summary>
+    internal static IReadSignal<float> Width => s_width;
+
     /// <summary>The live board (the edit bar in the facet row reaches it: Edit Home's entry and exit move focus between the two).</summary>
     internal static BoardView? Live { get; private set; }
 
@@ -90,7 +95,11 @@ internal static class ClassicHomeBoard
 
         public BoardView()
         {
-            _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
+            _onBounds = r =>
+            {
+                if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W;
+                if (r.W > 0f && MathF.Abs(r.W - s_width.Peek()) > 0.25f) s_width.Value = r.W;
+            };
         }
 
         internal HomeBoardProps Board => _p!.Board;

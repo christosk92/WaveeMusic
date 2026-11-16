@@ -90,13 +90,14 @@ internal static class ClassicHomeFind
             var hooks = UseContext(InputHooks.Current);
             var field = UseField(view.Query);
             bool editing = view.Editing.Value;
+            bool inline = lay.BarInline(ClassicHomeBoard.Width.Value);
             string q = view.Query.Value.Trim();
             bool finding = view.Add.Value.Kind == HomeAddSurfaceKind.Find && q.Length > 0;
             int findAsk = ClassicHomeEditBar.FindAsk.Value;
             int firstAsk = s_focusFirst.Value;
             UseLayoutEffect(() =>
             {
-                if (findAsk > 0 && !lay.BarInline && field.Node.Peek() is { IsNull: false } n) hooks.FocusNode?.Invoke(n, true);
+                if (findAsk > 0 && !inline && field.Node.Peek() is { IsNull: false } n) hooks.FocusNode?.Invoke(n, true);
             }, DepKey.From(findAsk));
             UseLayoutEffect(() => { if (firstAsk > 0 && !_first.IsNull) hooks.FocusNode?.Invoke(_first, true); }, DepKey.From(firstAsk));
             UseTimeout(() =>
@@ -106,7 +107,7 @@ internal static class ClassicHomeFind
             }, SayAfterMs, DepKey.From(StringComparer.Ordinal.GetHashCode(q)));
 
             var kids = new List<Element>(3);
-            if (editing && !lay.BarInline)
+            if (editing && !inline)
                 kids.Add(ClassicHomeEditBar.FindField(board, float.NaN, field) with { Key = "home:find:field" });
             if (editing && finding)
             {
