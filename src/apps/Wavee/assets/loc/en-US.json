@@ -647,6 +647,94 @@
       "sizeFull": "a full row",
       "sizeAuto": "its default size"
     },
+    "board": {
+      "group": {
+        "today": "Today",
+        "pinned": "Pinned",
+        "spotify": "From Spotify"
+      },
+      "option": {
+        "live": "Live updates",
+        "on": "On",
+        "off": "Off",
+        "lyric": "Lyric line",
+        "from": "From",
+        "fromArtists": "Artists you follow"
+      },
+      "source": {
+        "nowPlaying": {
+          "title": "Now playing",
+          "description": "What's playing, with its controls.",
+          "terms": "now playing player transport music"
+        },
+        "daylist": {
+          "title": "Daylist",
+          "description": "Your daylist, as the day turns.",
+          "terms": "daylist clock today"
+        },
+        "recents": {
+          "title": "Recently played",
+          "description": "What you played lately, and your week.",
+          "terms": "recent recently played history week"
+        },
+        "upNext": {
+          "title": "Up next",
+          "description": "The queue, shortest at the small size.",
+          "terms": "queue up next"
+        },
+        "releases": {
+          "title": "New releases",
+          "description": "New music from the artists you follow.",
+          "terms": "new releases music follow"
+        },
+        "pin": {
+          "title": "Pinned item",
+          "description": "An album, artist, playlist, show or page you pinned.",
+          "terms": "pin pinned"
+        },
+        "section": {
+          "title": "Spotify section",
+          "description": "A section Spotify sends for you, kept by identity.",
+          "terms": "section shelf"
+        },
+        "fill": {
+          "title": "Spotify shortcuts",
+          "description": "Spotify's shortcuts, filling the space after your pins.",
+          "terms": "shortcut shortcuts"
+        }
+      },
+      "catalog": {
+        "terms": {
+          "widgets": "widget",
+          "spotify": "spotify section shelf",
+          "library": "library"
+        },
+        "kind": {
+          "playlist": "Playlist",
+          "album": "Album",
+          "artist": "Artist",
+          "show": "Podcast",
+          "page": "Page"
+        }
+      },
+      "search": {
+        "none": "Nothing to add matches {query}.",
+        "count": "{count, plural, one {# result} other {# results}} for {query}."
+      },
+      "undo": {
+        "pin": "Pin",
+        "unpin": "Unpin",
+        "add": "Add",
+        "remove": "Remove",
+        "hide": "Hide",
+        "show": "Show",
+        "keep": "Keep on Home",
+        "size": "Resize",
+        "options": "Change options",
+        "reset": "Reset Home",
+        "move": "Move"
+      }
+    },
     "playFailed": "Couldn't play that. Try again.",
     "facetFailed": "Couldn't load that view. Showing the previous one.",
     "goodMorning": "Good morning",

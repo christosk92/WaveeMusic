@@ -206,4 +206,43 @@ public sealed partial class NavModel
         }
         return last + 1;
     }
+
+    // ── Home's pins as band pins (Zune: BandPinsFrom = Home, design 1.6) ─────────────────────────────────────────────────
+
+    IReadOnlyList<BandPin> _homeBandPins = [];
+    int _homeBandPinsVersion = -1, _homeBandPinsMax = -1;
+
+    /// <summary>The user's pins of Home's Pinned group, in order, as band pins: open and play verbs and the playing fact as
+    /// <see cref="BandPins"/> builds them. Cached on <see cref="HomeBoardStore.PinsVersion"/> (subscribes the caller).</summary>
+    public IReadOnlyList<BandPin> HomeBandPins(int max)
+    {
+        var store = HomeBoardStore.Instance;
+        int version = store.PinsVersion.Value;
+        max = Math.Max(0, max);
+        if (version == _homeBandPinsVersion && max == _homeBandPinsMax) return _homeBandPins;
+        _homeBandPinsVersion = version;
+        _homeBandPinsMax = max;
+        _homeBandPins = BandPinsFromHome(store.PinnedSources(max));
+        return _homeBandPins;
+    }
+
+    /// <summary>Band pins for Home pin sources (no cache).</summary>
+    public IReadOnlyList<BandPin> BandPinsFromHome(IReadOnlyList<PinSource> pins)
+    {
+        if (pins.Count == 0) return [];
+        var list = new List<BandPin>(pins.Count);
+        foreach (var p in pins)
+        {
+            string routeKey = HomePinId.RouteOf(p.PinId), uri = HomePinId.UriOf(p.PinId), name = p.NameHint;
+            if (routeKey.Length == 0) continue;
+            var kind = SidebarPinId.KindOf(p.PinId);
+            bool playable = uri.Length > 0 && kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album or SidebarEntryKind.Artist or SidebarEntryKind.Show;
+            if (name.Length == 0) name = PinName(p.PinId);
+            list.Add(new BandPin(p.PinId, name, p.CoverHint.Length > 0 ? p.CoverHint : null, kind == SidebarEntryKind.Artist,
+                Go: () => Navigate(routeKey, name),
+                Play: playable ? () => Play(uri) : null,
+                Playing: uri.Length > 0 ? () => ReadPlaying().Active && PlayingRelatesTo(uri) : static () => false));
+        }
+        return list;
+    }
 }

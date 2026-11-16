@@ -114,6 +114,24 @@ public static partial class Sidebar
 
     static string? s_demoDir;
 
+    /// <summary>The folder the sidebar's files live in (set at <see cref="Boot"/>): Home's document lives beside them.</summary>
+    public static string ProfileDir => s_profileDir.Length > 0 ? s_profileDir : DefaultProfileDir();
+
+    /// <summary>The live account's pins in order, folders left out, at most <paramref name="max"/>, as Home pin sources:
+    /// the seed of a new account's Home (HomeMigration step 4).</summary>
+    public static IReadOnlyList<PinSource> BandPinSeeds(int max)
+    {
+        var list = new List<PinSource>();
+        var pins = Pins;
+        for (int i = 0; i < pins.Count && list.Count < max; i++)
+        {
+            var pin = pins[i];
+            if (pin.Kind == SidebarEntryKind.Folder || HomePinId.Canonical(pin.Id) is not { } id) continue;
+            list.Add(new PinSource(id, pin.Name, pin.Cover));
+        }
+        return list;
+    }
+
     static void LoadDeviceFile()
     {
         LayoutFileFault = false;
@@ -1438,6 +1456,9 @@ public sealed class SidebarProjectionBinder
 
     readonly BuildSlot _slotA = new(), _slotB = new();
     BuildSlot _publishedStage;
+
+    /// <summary>The library as last published, before the chip, sort and search shape it (Home's catalogue reads it).</summary>
+    public IReadOnlyList<SidebarLibraryEntry> LibraryAll => _publishedStage.All;
 
     BuildSlot BuildTarget => ReferenceEquals(_publishedStage, _slotA) ? _slotB : _slotA;
 

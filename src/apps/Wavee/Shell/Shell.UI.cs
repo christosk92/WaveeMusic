@@ -592,9 +592,11 @@ public static partial class Shell
             // HomeScreen and CustomizeScreen both read it and a customize edit is visible on Home the same frame.
             // The engine's toast lane reads its geometry (side margin, card widths, the action's size) from the band the window is in: a thunk over the
             // facts, so the lane follows a tier crossing although this root renders once (`OverlayFit.ToastLane`, the structure's `ToastDock.Lane`).
+            // HomeBoardStore (pinned Home): the per-account Home document, provided beside it.
             return Ctx.Provide(HomeLayout.Slot, HomeLayout.Instance,
+                Ctx.Provide(HomeBoardStore.Slot, HomeBoardStore.Instance,
                 Ctx.Provide(ShellMaterial.Slot, MaterialState,
-                    Ctx.Provide(Toast.Lane, OverlayFit.ToastLane, OverlayHost.Create(frame))));
+                    Ctx.Provide(Toast.Lane, OverlayFit.ToastLane, OverlayHost.Create(frame)))));
         }
 
         /// <summary>The props of the structure's frame: the live values as read-only signals and Funcs, the behaviour this host wired
