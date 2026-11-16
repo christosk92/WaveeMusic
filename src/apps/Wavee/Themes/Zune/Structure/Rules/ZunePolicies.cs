@@ -92,8 +92,13 @@ public static partial class ZunePolicies
             DetailTiers = detailTiers,
             ArtistTiers = artistTiers,
             LibraryTiers = libraryTiers,
+            Home = HomeBoard,
         };
     }
+
+    /// <summary>The pinned Home (design 1.6, spec 8.2): the menus' "pin to home" is one row; a pin is confirmed by nothing but the tile itself (on Home
+    /// the page goes to it, elsewhere the band's pinned strip gains it); the band's pinned strip reads Home's Pinned group.</summary>
+    public static HomePolicy HomeBoard { get; } = new(HomePinMenu.Row, HomeConfirm.None, BandPinsSource.Home);
 
     // The family hooks (each later lane implements its own in `Rules\ZunePolicies.<Family>.cs`).
 
