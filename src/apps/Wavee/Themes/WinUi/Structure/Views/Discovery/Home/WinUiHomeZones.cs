@@ -360,7 +360,8 @@ internal static partial class WinUiHomeZones
         float squareAspect = wide ? R.Space.WideTileAspect : 1f;
         Func<float, float> cardHeight = wide ? s_wideCardHeight : CoverCardHeight(HomeCards.CaptionLinesOf(items));
 
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length + (leadWide ? WinUiHomeRules.LeadSpan - 1 : 0), band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open, the lead cell's too
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
@@ -368,7 +369,7 @@ internal static partial class WinUiHomeZones
             // The header owns the pager (the controller) where the tier pages the shelf; a tier that does not shows none.
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
             gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
@@ -383,7 +384,7 @@ internal static partial class WinUiHomeZones
             leadMinColumns: wide ? 0 : WinUiHomeRules.LeadMinColumns)
            // ONE key at every tier: the card band, the column cap, the pager and the card height are live props, so a width change re-fits the SAME shelf
            // (its cards, its page and the header's controller survive) instead of remounting it.
-           with { Key = "home-shelf:" + zone.Key };
+           with { Key = "home-shelf:" + zone.Key });
     }
 
     /// <summary>The height a zone's chapter lays out at, at a content width: the header (its title and subtitle lines, its tools' floor) and the header

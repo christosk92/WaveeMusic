@@ -206,18 +206,19 @@ internal static partial class WinUiHomeZones
             items[i] = new BookItem(c, c.Title, c.Author ?? HomeCards.PlainText(c.Subtitle), SectionCopy.BookFacts(in c, culture), c.Signifier ?? "", c.ImageUrl);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<BookItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length, band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<BookItem>(items,
             (item, i, cardW) => BookCell(in item, cardW, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,
             cardHeight: s_bookHeight,
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
             gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank ? "home-book-blank:" + i.ToString(CultureInfo.InvariantCulture) : "home-book:" + item.Card.Uri)
-            with { Key = "home-books:" + zone.Key };
+            with { Key = "home-books:" + zone.Key });
     }
 
     static Element BookCell(in BookItem item, float cardW, IOverlayService? host)
