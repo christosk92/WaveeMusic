@@ -612,13 +612,6 @@ public static partial class Diagnostics
                         if (kind == "runtime") return RuntimeState(id, name, a);
                         // The video's screen cannot (or again can) carry HDCP: the guard's verdict without a real screen (Diagnostics.Inspect.Hdcp.cs).
                         if (kind == "hdcp") return HdcpState(id, name, a);
-                        // The pinned Home's next answer (the `second` fixture) lands: at the top, or held until the page is at the top.
-                        if (kind == "home-refresh")
-                        {
-                            if (HomeBoardInspect.StageFixture is not { } stage) return Inspect.Reply.Fail(id, name, "home-refresh needs the data lane's fixtures (Entities.StageHomeFixture is not installed in this build)");
-                            if (!stage("second")) return Inspect.Reply.Fail(id, name, "the second answer could not be staged");
-                            return Settled(id, name, a);
-                        }
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
@@ -843,7 +836,6 @@ public static partial class Diagnostics
 
             Unmount();
             ClearLeaks(a.Bool("keepRoute", false));
-            if (!StageHome(a, out error)) return false;   // Diagnostics.Inspect.Home.cs: home= and homedoc=
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
             if (a.Bool("setup", false) || a.Str("setup") == "signin")
@@ -855,6 +847,9 @@ public static partial class Diagnostics
                 if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
             }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
+            // `home=<fixture>`: the Home subjects re-seeded from that fixture; every mount names one (default mock), so a previous mount's never leaks.
+            if (!Entities.StageHomeFixture(a.Str("home", "mock"))) { error = "home fixture '" + a.Str("home", "mock") + "' is not bundled"; return false; }
+            if (!StageHome(a, out error)) return false;   // Diagnostics.Inspect.Home.cs: homedoc= (over the fixture's answer)
             string gpu = a.Str("gpu", "hardware").ToLowerInvariant();   // hardware falls back to WARP on a machine without an adapter (D3D12Device.InitDevice)
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;

@@ -131,17 +131,11 @@ public static partial class Diagnostics
 
         public static readonly string[] HomeDocNames = ["default", "keep", "pins0", "pins200", "gonepin", "custom", "mixed", "v2hidden", "toonew", "corrupt", "unknown"];
 
-        /// <summary>Before the mount: the Home fixture (`home=`) and the starting document (`homedoc=`, default `default`).</summary>
+        /// <summary>Before the mount: the starting document (`homedoc=`, default `default`). The fixture (`home=`) is staged by the mount
+        /// itself (Entities.StageHomeFixture), before this runs.</summary>
         bool StageHome(Inspect.Args a, out string error)
         {
             error = "";
-            string fixture = a.Str("home", "").ToLowerInvariant();
-            if (fixture.Length > 0)
-            {
-                if (Array.IndexOf(HomeBoardInspect.FixtureNames, fixture) < 0) { error = "home is " + string.Join("|", HomeBoardInspect.FixtureNames); return false; }
-                if (HomeBoardInspect.StageFixture is { } stage) { if (!stage(fixture)) { error = "home=" + fixture + " could not be staged"; return false; } }
-                else if (fixture != "mock") { error = "home=" + fixture + " needs the data lane's fixtures (Entities.StageHomeFixture is not installed in this build)"; return false; }
-            }
             string doc = a.Str("homedoc", "default").ToLowerInvariant();
             if (Array.IndexOf(HomeDocNames, doc) < 0) { error = "homedoc is " + string.Join("|", HomeDocNames); return false; }
             StageHomeDoc(doc);
@@ -690,47 +684,62 @@ public static partial class Diagnostics
             w.WriteEndArray();
         }
 
-        /// <summary>`home do=plan facet=`: per section of the facet's answer, its identity, kind, card count, the template and zone the
-        /// projection gave it, and whether the document placed or hid it.</summary>
+        /// <summary>`home do=plan facet=`: the planner dump. Per section of the facet's answer (SectionChooser.Plan): index, key, fp, family,
+        /// typename, counts, template, zone, reason, then the board entry it became and whether the document placed or hid it; then the
+        /// identity log's readings and lines (HomeIdentLog).</summary>
         static void WritePlan(Utf8JsonWriter w, string facet, HomeBoardStore store)
         {
             var answer = HomeProjection.AnswerOnHand(facet);
             var doc = store.Doc.Peek();
             var shown = facet.Length == 0 ? store.ShownNow() : BoardModel.Empty;
+            var plan = SectionChooser.Plan(answer, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             w.WriteString("facet", facet);
             w.WriteNumber("sections", answer.Count);
             w.WriteStartArray("plan");
-            for (int i = 0; i < answer.Count; i++)
+            for (int i = 0; i < plan.Count; i++)
             {
-                var s = answer[i];
-                var r = HomeProjection.RefOf(s);
+                var p = plan[i];
+                var r = new SectionRef(p.Key, p.Fp, p.Family);
                 w.WriteStartObject();
-                w.WriteNumber("index", i);
-                w.WriteString("key", r.Key);
-                w.WriteString("fp", r.Fp.ToString("x16", CultureInfo.InvariantCulture));
-                w.WriteString("family", r.Family);
-                w.WriteString("typename", s.Kind.ToString());
-                w.WriteString("title", s.Title ?? "");
-                w.WriteNumber("cards", s.Cards.Count);
-                w.WriteNumber("total", s.TotalCount);
-                BoardEntry? hit = null;
-                foreach (var e in shown.Entries) if (e.SectionSlot == s.Slot && e.Raw is SpotifySectionSource) { hit = e; break; }
-                if (hit is not null)
+                w.WriteNumber("index", p.Index);
+                w.WriteString("key", p.Key);
+                w.WriteString("fp", p.Fp.ToString("x16", CultureInfo.InvariantCulture));
+                w.WriteString("family", p.Family);
+                w.WriteString("typename", p.TypeName);
+                w.WriteString("title", answer[i].Title ?? "");
+                w.WriteStartObject("counts");
+                w.WriteNumber("cards", p.Cards);
+                w.WriteNumber("usable", p.Usable);
+                w.WriteNumber("unsupported", p.Unsupported);
+                w.WriteNumber("duplicates", p.Duplicates);
+                w.WriteNumber("total", p.Total);
+                w.WriteEndObject();
+                w.WriteString("template", p.Template.ToString());
+                w.WriteString("zone", p.Zone.ToString());
+                w.WriteString("reason", p.Reason);
+                string? entry = null;
+                foreach (var e in shown.Entries)
                 {
-                    w.WriteString("entry", hit.Id);
-                    w.WriteString("template", hit.Template.ToString());
-                    if (hit.Zone is { } z) w.WriteString("zone", z.Kind.ToString());
-                    w.WriteString("reason", "bridge: ZonePlanner zone");
+                    if (e.Raw is SpotifySectionSource ss && ss.Ref.Key == p.Key) { entry = e.Id; break; }
+                    if (!e.Members.IsDefaultOrEmpty && e.Members.Contains(r)) { entry = e.Id; break; }
                 }
-                else w.WriteString("reason", s.Kind == SectionKind.HomeShorts ? "the fill's shortcuts" : "folded or taken by a widget (bridge)");
+                if (entry is not null) w.WriteString("entry", entry); else w.WriteNull("entry");
                 bool placed = false;
-                foreach (var g in doc.Groups) foreach (var it in g.Items) if (it.Source is SpotifySectionSource ss && ss.Ref.Key == r.Key) placed = true;
+                foreach (var g in doc.Groups) foreach (var it in g.Items) if (it.Source is SpotifySectionSource ss && ss.Ref.Key == p.Key) placed = true;
                 w.WriteBoolean("placed", placed);
                 w.WriteBoolean("hidden", HomeCommands.IsHidden(doc, r));
                 w.WriteEndObject();
             }
             w.WriteEndArray();
-            w.WriteNull("identityLog");   // the data lane's HomeIdentLog
+            w.WriteStartArray("identity");
+            foreach (var f in HomeIdentLog.Readings())
+            {
+                w.WriteStartObject();
+                w.WriteString("reading", f.ToString());
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteNumber("identityLines", HomeIdentLog.Lines().Count);
         }
     }
 }

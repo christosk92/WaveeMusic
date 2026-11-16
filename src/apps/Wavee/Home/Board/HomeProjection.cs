@@ -6,11 +6,11 @@
 // "feed:<key>". The Fill item expands to the shortcut section's cards that are not pinned (or removed from the fill), up
 // to Max, as FillCell entries "fill:<pin id>". Adjacency folds join a run of two or more one-card baseline sections into
 // one PreviewGrid entry; nothing is reordered. Two synthetic sections keep what All shows today: the Following release
-// list (inside the planner's zones while the bridge runs) and the Charts block, last.
+// list (wavee:following-releases, after the editorial shelf) and the Charts block (wavee:charts), last.
 //
-// THE BRIDGE (design 2.5): until the data lane's SectionChooser lands, the feed entries come from today's
-// ZonePlanner.Plan zones, one entry per zone, each carrying its Zone (BoardEntry.Zone), keyed by the zone's key. The
-// daylist and recents zones are the widgets' and take no room in the feed.
+// Each feed entry carries its Zone (BoardEntry.Zone): SectionChooser.ToZone, keyed by the section uri, so a section tile
+// mounts today's Home.Zone.* template for it. The daylist, the recently played section and the shortcuts are the widgets'
+// and the fill's, and take no room in the feed.
 
 using System.Collections.Immutable;
 using FluentGpu.Localization;
@@ -22,15 +22,8 @@ public static class HomeProjection
 {
     public const string ChartsKey = "wavee:charts", FollowingReleasesKey = "wavee:following-releases";
 
-    /// <summary>A section's identity. The data lane's SectionIdentity.Of replaces this provisional one (key = the uri,
-    /// fp and family over the section kind and title) at its merge.</summary>
-    public static Func<SectionInput, SectionRef> RefOf { get; set; } = ProvisionalRef;
-
-    static SectionRef ProvisionalRef(SectionInput s)
-    {
-        string family = s.Kind + "|" + (s.Title ?? "");
-        return new SectionRef(s.Uri, Fnv(family), family);
-    }
+    /// <summary>A section's identity (SectionIdentity.Of: key, fingerprint, family).</summary>
+    public static Func<SectionInput, SectionRef> RefOf { get; set; } = SectionIdentity.Of;
 
     public static ulong Fnv(string text)
     {
@@ -65,24 +58,29 @@ public static class HomeProjection
         IReadOnlyList<SectionInput>? followingReleases, ChartTilesModel? charts,
         HomeSourceRegistry sources, ZoneTitles? titles, long nowMs)
     {
-        // The feed, from the bridge: one entry per planned zone.
+        // The feed: one entry per section the chooser gives a drawable template, in Spotify's order (design 2.3, 2.4). The
+        // shortcuts feed the fill, the recently played section the recents widget, the daylist the daylist widget: no room.
         var feed = new List<FeedCandidate>();
         if (answer.Count > 0 && titles is not null)
         {
-            var bySlot = new Dictionary<int, SectionInput>();
-            foreach (var s in answer) bySlot[s.Slot] = s;
-            var zones = ZonePlanner.Plan(answer, "", titles, null, nowMs, followingReleases);
-            foreach (var z in zones)
+            int wideAt = -1;
+            foreach (var s in answer)
             {
-                var template = TemplateOf(z.Kind);
-                if (template is SectionTemplate.None or SectionTemplate.DaylistHero or SectionTemplate.RecentsData) continue;
-                SectionRef r = z.SectionSlot >= 0 && bySlot.TryGetValue(z.SectionSlot, out var src) && src.Uri.Length > 0
-                    ? RefOf(src) with { Key = z.Key }
-                    : new SectionRef(z.Key, Fnv(z.Kind.ToString()), z.Kind.ToString());
-                feed.Add(new FeedCandidate(r, z.Title ?? "", template, z.SectionSlot, z, false));   // the planner already folds its clusters
+                var choice = SectionChooser.Choose(s, nowMs);
+                if (choice.Template is SectionTemplate.None or SectionTemplate.ShortcutFill or SectionTemplate.RecentsData or SectionTemplate.DaylistHero) continue;
+                var zone = SectionChooser.ToZone(s, choice, titles);
+                bool oneCardBaseline = choice.Template == SectionTemplate.PreviewCard && zone.Items.Count == 1;
+                if (choice.Template == SectionTemplate.WideTiles && wideAt < 0) wideAt = feed.Count;
+                feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", choice.Template, s.Slot, zone, oneCardBaseline, s));
             }
+            // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf.
+            if (FollowingReleases(followingReleases, titles) is { } releases)
+                feed.Insert(wideAt >= 0 ? wideAt + 1 : Math.Min(1, feed.Count),
+                    new FeedCandidate(new SectionRef(FollowingReleasesKey, Fnv(FollowingReleasesKey), FollowingReleasesKey), releases.Title ?? "",
+                        SectionTemplate.ReleaseList, releases.SectionSlot, releases, false, null));
+            // Synthetic: the Charts block, last.
             if (charts is not null)
-                feed.Add(new FeedCandidate(new SectionRef(ChartsKey, Fnv(ChartsKey), ChartsKey), "", SectionTemplate.CoverShelf, -1, null, false));
+                feed.Add(new FeedCandidate(new SectionRef(ChartsKey, Fnv(ChartsKey), ChartsKey), "", SectionTemplate.CoverShelf, -1, null, false, null));
         }
 
         // The shortcuts the fill draws from.
@@ -110,6 +108,9 @@ public static class HomeProjection
 
         var feedByKey = new Dictionary<string, FeedCandidate>(StringComparer.Ordinal);
         foreach (var f in feed) feedByKey.TryAdd(f.Ref.Key, f);
+        t_inputs ??= new Dictionary<string, SectionInput>(StringComparer.Ordinal);
+        t_inputs.Clear();
+        foreach (var f in feed) if (f.Input is { } input) t_inputs.TryAdd(f.Ref.Key, input);
 
         var entries = ImmutableArray.CreateBuilder<BoardEntry>();
         foreach (var g in doc.Groups)
@@ -142,7 +143,7 @@ public static class HomeProjection
                         break;
                     }
                     case FillSource fill:
-                        Flush(entries, run);
+                        Flush(entries, run, titles);
                         int n = 0;
                         foreach (var p in shortcuts)
                         {
@@ -156,7 +157,7 @@ public static class HomeProjection
                         break;
                     default:
                     {
-                        Flush(entries, run);
+                        Flush(entries, run, titles);
                         bool live = def?.Live == true;
                         bool paused = live && it.Options.TryGetValue("live", out var lv) && lv == "0";
                         string name = it.Source switch
@@ -172,12 +173,30 @@ public static class HomeProjection
                     }
                 }
             }
-            Flush(entries, run);
+            Flush(entries, run, titles);
         }
         return new BoardModel(entries.ToImmutable(), doc.Rev);
     }
 
-    readonly record struct FeedCandidate(SectionRef Ref, string Title, SectionTemplate Template, int Slot, Zone? Zone, bool OneCardBaseline);
+    readonly record struct FeedCandidate(SectionRef Ref, string Title, SectionTemplate Template, int Slot, Zone? Zone, bool OneCardBaseline,
+        SectionInput? Input);
+
+    /// <summary>The Following release list: every album card of the music-following-chip answer, deduped, as one release list.</summary>
+    static Zone? FollowingReleases(IReadOnlyList<SectionInput>? following, ZoneTitles titles)
+    {
+        if (following is not { Count: > 0 }) return null;
+        var seen = new HashSet<long>();
+        var cards = new List<HomeCard>();
+        foreach (var s in following)
+            foreach (var c in s.Cards)
+                if (SectionRoles.IsUsable(c) && c.Kind == HomeCardKind.Album && seen.Add(c.DedupeKey)) cards.Add(c);
+        if (cards.Count == 0) return null;
+        return new Zone(ZoneKind.ReleaseList, "home:section:" + FollowingReleasesKey, titles.FromArtistsYouFollow, null, cards,
+            SectionSlot: following[0].Slot, TotalCount: cards.Count);
+    }
+
+    /// <summary>The section inputs behind the feed entries (by section key): a fold builds its one cluster zone from them.</summary>
+    [ThreadStatic] static Dictionary<string, SectionInput>? t_inputs;
 
     static BoardEntry FeedEntry(string id, BoardEntryKind kind, string groupId, HomeSourceDef? def, in FeedCandidate f, HomeSize size,
         ImmutableSortedDictionary<string, string> options)
@@ -187,7 +206,7 @@ public static class HomeProjection
 
     /// <summary>Emit a run of section entries, folding two or more neighbouring one-card baseline sections (at their auto
     /// size) into one preview grid. Nothing is reordered.</summary>
-    static void Flush(ImmutableArray<BoardEntry>.Builder into, List<BoardEntry> run)
+    static void Flush(ImmutableArray<BoardEntry>.Builder into, List<BoardEntry> run, ZoneTitles? titles)
     {
         int i = 0;
         while (i < run.Count)
@@ -198,11 +217,21 @@ public static class HomeProjection
             {
                 var first = run[i];
                 var members = ImmutableArray.CreateBuilder<SectionRef>(j - i);
-                for (int k = i; k < j; k++) members.Add(((SpotifySectionSource)run[k].Raw!).Ref);
+                var inputs = new List<SectionInput>(j - i);
+                for (int k = i; k < j; k++)
+                {
+                    var r = ((SpotifySectionSource)run[k].Raw!).Ref;
+                    members.Add(r);
+                    if (t_inputs is not null && t_inputs.TryGetValue(r.Key, out var input)) inputs.Add(input);
+                }
+                Zone? zone = titles is not null && inputs.Count == j - i
+                    ? new Zone(ZoneKind.ClusterCards, "home:fold:" + members[0].Key, titles.BecauseYouLike, null, [],
+                        Clusters: ClusterFold.Fold(inputs, titles), SectionSlot: inputs[0].Slot)
+                    : first.Zone;
                 into.Add(first with
                 {
                     Id = HomeCommands.FoldPrefix + members[0].Key, Kind = BoardEntryKind.Fold, Template = SectionTemplate.PreviewGrid,
-                    OnlyHide = true, Members = members.ToImmutable(),
+                    OnlyHide = true, Members = members.ToImmutable(), Zone = zone, Title = zone?.Title ?? first.Title,
                 });
                 i = j;
                 continue;
@@ -214,22 +243,6 @@ public static class HomeProjection
     }
 
     static bool Foldable(BoardEntry e) => !e.Hidden && e.Size == HomeSize.Auto && !e.Members.IsDefaultOrEmpty;
-
-    /// <summary>The bridge's template for a planner zone.</summary>
-    public static SectionTemplate TemplateOf(ZoneKind k) => k switch
-    {
-        ZoneKind.Daylist => SectionTemplate.DaylistHero,
-        ZoneKind.RecentGrid => SectionTemplate.RecentsData,
-        ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf => SectionTemplate.CoverShelf,
-        ZoneKind.WideTiles => SectionTemplate.WideTiles,
-        ZoneKind.ReleaseList => SectionTemplate.ReleaseList,
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => SectionTemplate.PreviewGrid,
-        ZoneKind.BrowseTiles => SectionTemplate.PlainShelf,
-        ZoneKind.ShowGrid => SectionTemplate.ShowGrid,
-        ZoneKind.VideoTiles => SectionTemplate.VideoTiles,
-        ZoneKind.EpisodeRows or ZoneKind.EpisodeLead or ZoneKind.ContinueEpisodes => SectionTemplate.EpisodeRows,
-        _ => SectionTemplate.None,
-    };
 }
 
 /// <summary>The planner's chapter titles, localized: the board host and the inspector build the projection's titles here.</summary>

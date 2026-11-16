@@ -241,6 +241,17 @@ public sealed class SectionTable : Table
 
     public Column<byte> IdentityAuthority;
 
+    // ── the band's own structure (pinned Home, design 2.1) ───────────────────────────────────────────────────────────
+    //
+    // What the section identity (`SectionIdentity`) and the template chooser (`SectionChooser`) read and the old fold
+    // dropped: the wire's `data.__typename` AS TEXT beside the folded `Form` (an unknown typename stays visible to the
+    // planner dump), the title TEMPLATE (`translatedBaseText`, "More like {0}": an opaque token, never matched against
+    // words), the header entity (an artist, a show or book, a genre) and the icon name. Written with the Identity group.
+
+    public Column<StringId> TypeName, TitleBase, Icon;
+    public Column<StringId> HeaderUri, HeaderName, HeaderImage;
+    public Column<uint> HeaderAccent;
+
     // ── the per-section CARD FACTS (Wave 5, §2b) ──────────────────────────────────────────────────────────────────────
     //
     // What a home card paints that no ENTITY column holds: the payload accent of an album / artist / show card, the
@@ -284,6 +295,12 @@ public sealed class SectionTable : Table
     {
         ClearText(ref Title, slot);
         ClearText(ref Subtitle, slot);
+        ClearText(ref TypeName, slot);
+        ClearText(ref TitleBase, slot);
+        ClearText(ref Icon, slot);
+        ClearText(ref HeaderUri, slot);
+        ClearText(ref HeaderName, slot);
+        ClearText(ref HeaderImage, slot);
         ReleaseFacts(slot);
     }
 
@@ -301,6 +318,13 @@ public sealed class SectionTable : Table
         Accent.EnsureCapacity(capacity);
         Flags.EnsureCapacity(capacity);
         IdentityAuthority.EnsureCapacity(capacity);
+        TypeName.EnsureCapacity(capacity);
+        TitleBase.EnsureCapacity(capacity);
+        Icon.EnsureCapacity(capacity);
+        HeaderUri.EnsureCapacity(capacity);
+        HeaderName.EnsureCapacity(capacity);
+        HeaderImage.EnsureCapacity(capacity);
+        HeaderAccent.EnsureCapacity(capacity);
         FactStart.EnsureCapacity(capacity);
         FactCount.EnsureCapacity(capacity);
         FactCap.EnsureCapacity(capacity);
@@ -586,6 +610,16 @@ public readonly partial struct Section(int slot) : IEquatable<Section>
     public StringId TitleId => T.Title[Slot];
     public StringId SubtitleId => T.Subtitle[Slot];
     public SectionKind Kind => (SectionKind)T.Form[Slot];
+    /// <summary>The wire's <c>data.__typename</c> ("HomeGenericSectionData"); empty for a band no Home fold wrote.</summary>
+    public StringId TypeNameId => T.TypeName[Slot];
+    /// <summary>The title template (<c>translatedBaseText</c>, "More like {0}"): an identity token, never displayed.</summary>
+    public StringId TitleBaseId => T.TitleBase[Slot];
+    public StringId IconId => T.Icon[Slot];
+    /// <summary>The header entity (an artist, a show or book, a genre): uri, name, image, dark colour.</summary>
+    public StringId HeaderUriId => T.HeaderUri[Slot];
+    public StringId HeaderNameId => T.HeaderName[Slot];
+    public StringId HeaderImageId => T.HeaderImage[Slot];
+    public uint HeaderAccent => T.HeaderAccent[Slot];
     public uint Accent => T.Accent[Slot];
     /// <summary>The decoded <see cref="SectionFlags"/>.</summary>
     public SectionFlags Flags => (SectionFlags)T.Flags[Slot];
@@ -743,6 +777,10 @@ public struct StagedSection : IStagedRow
     /// <c>s.Slot(table, in row.Id)</c> — and no format-to-arena-then-parse-back round trip.</summary>
     public StagedId Id;
     public TextRef Title, Subtitle;
+    /// <summary>The band's own structure (<see cref="SectionTable.TypeName"/>): the wire typename, the title template,
+    /// the icon name and the header entity. Left empty by every fold but the Home one.</summary>
+    public TextRef TypeName, TitleBase, Icon, HeaderUri, HeaderName, HeaderImage;
+    public uint HeaderAccent;
     public int Total, Raw, Cards, NextOffset;
     public uint Accent;
     public ushort Unsupported, Duplicates;
@@ -981,6 +1019,13 @@ public readonly partial struct Home
                 // (defect 1, file header).
                 t.SetText(ref t.Title, slot, s.Intern(row.Title));
                 t.SetText(ref t.Subtitle, slot, s.Intern(row.Subtitle));
+                t.SetText(ref t.TypeName, slot, s.Intern(row.TypeName));
+                t.SetText(ref t.TitleBase, slot, s.Intern(row.TitleBase));
+                t.SetText(ref t.Icon, slot, s.Intern(row.Icon));
+                t.SetText(ref t.HeaderUri, slot, s.Intern(row.HeaderUri));
+                t.SetText(ref t.HeaderName, slot, s.Intern(row.HeaderName));
+                t.SetText(ref t.HeaderImage, slot, s.Intern(row.HeaderImage));
+                t.HeaderAccent[slot] = row.HeaderAccent;
                 t.Form[slot] = row.Kind;
                 t.Flags[slot] = row.Flags;
                 t.Total[slot] = row.Total;

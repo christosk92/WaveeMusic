@@ -237,12 +237,12 @@ public static partial class Diagnostics
             Arg("scale", ArgType.Float, "DPI scale, 0 < scale <= 4", "1"),
             Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, ThemeChoices),
             Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
-            Arg("home", ArgType.Enum, "the Home fixture the tables are seeded from (the data lane's; mock is today's seed)", null, "mock|capture|new|free|podcast|region|synthetic|second"),
             Arg("homedoc", ArgType.Enum, "the pinned Home document the mount starts from (keep: the profile's file as it is)", "default", "default|keep|pins0|pins200|gonepin|custom|mixed|v2hidden|toonew|corrupt|unknown"),
             Arg("gpu", ArgType.Enum, "hardware (the default: the hardware adapter, WARP when the machine has none) or warp (WARP forced): the offscreen D3D12 surface (render works); none: no pixels", "hardware", "hardware|warp|none"),
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
             Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
+            Arg("home", ArgType.Enum, "the Home fixture: mock (the hybrid seed), capture (the redacted 1.3.8.620 answers, every facet), or a derived / synthetic All (Entities.Fake.Home.cs)", "mock", "mock|capture|new|free|podcast|region|synthetic|second"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
             Arg("player", ArgType.Enum, "fake: bind an idle engine player to the video surface (no frames); scripted: a player whose scripted source follows the deck (metadata, a first frame, a play intent; every video track an in-place switch)", null, "fake|scripted", requires: "video"),
             Arg("videoOpenMs", ArgType.Int, "player=scripted: how long each open takes to its first frame on the 16 ms frame clock (metadata at half of it)", "240", requires: "video"),
@@ -333,7 +333,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "home-refresh", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =

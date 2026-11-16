@@ -76,11 +76,4 @@ public static class HomeBoardInspect
     {
         if (ReferenceEquals(Current, board)) Current = null;
     }
-
-    /// <summary>Stages a Home fixture by name (home=mock|capture|new|free|podcast|region|synthetic|second): the data lane's
-    /// Entities.StageHomeFixture installs it. Null until then (the inspector says so).</summary>
-    public static Func<string, bool>? StageFixture { get; set; }
-
-    /// <summary>The fixture names <see cref="StageFixture"/> takes.</summary>
-    public static readonly string[] FixtureNames = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second"];
 }

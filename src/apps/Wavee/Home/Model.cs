@@ -34,7 +34,23 @@ public enum ZoneKind : byte
 /// <see cref="SectionKind.HomeBaseline"/> band (<c>Edges.SectionPreviewTracks</c>), empty until the lookup answers
 /// and empty forever for every other band kind. <see cref="ZonePlanner"/>'s <c>ClusterFold</c> is the one reader.</para></summary>
 public sealed record SectionInput(int Slot, string Uri, string? Title, string? Subtitle, SectionKind Kind,
-    IReadOnlyList<HomeCard> Cards, int TotalCount, IReadOnlyList<HomeCard> Preview);
+    IReadOnlyList<HomeCard> Cards, int TotalCount, IReadOnlyList<HomeCard> Preview)
+{
+    /// <summary>The wire's <c>data.__typename</c> as sent ("HomeGenericSectionData"), "" when no Home fold wrote it.
+    /// <see cref="Kind"/> is the folded form; this keeps an unknown typename visible (pinned-home design 2.1).</summary>
+    public string TypeName { get; init; } = "";
+    /// <summary>The title template (<c>translatedBaseText</c>, "More like {0}"). An opaque identity token
+    /// (<c>SectionIdentity</c>): hashed, never matched against words, never displayed.</summary>
+    public string? TitleBase { get; init; }
+    /// <summary>The server's <c>iconName</c> ("" in every capture so far).</summary>
+    public string? Icon { get; init; }
+    /// <summary>The header entity: an artist ("For fans of {0}"), a show or book ("More like {0}"), a genre.</summary>
+    public string? HeaderUri { get; init; }
+    public string? HeaderName { get; init; }
+    public string? HeaderImage { get; init; }
+    /// <summary>The header entity's dark colour (ARGB), 0 for none.</summary>
+    public uint HeaderAccent { get; init; }
+}
 
 /// <summary>One rendered chapter of the Home screen. <see cref="Lead"/> is the wide/2-cell lead item (Discover
 /// Weekly, the first radio station with a header image, a podcast's newest video episode); <see cref="Clusters"/> is
@@ -133,6 +149,9 @@ public static class SectionReader
         for (int i = 0; i < slots.Length; i++) result[i] = Of(new Section(slots[i]));
 
         cache.Sections = result;
+        // Phase 0's identity log (Home/Board/HomeIdentLog.cs): every answer read is noted; it upserts per (day, facet,
+        // section), so the reads a landing card or preview causes refine the line instead of adding one.
+        HomeIdentLog.Note(h.FacetId.IsEmpty ? "" : Entities.Strings.Resolve(h.FacetId), result, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         cache.HomeVersion = hv;
         cache.SectionEdgeVersion = sv;
         cache.CardFold = fold;
@@ -147,7 +166,18 @@ public static class SectionReader
         string uri = s.Id is { IsEmpty: false } id ? id.Text : "";
         string? title = s.TitleId.IsEmpty ? null : Entities.Strings.Resolve(s.TitleId);
         string? subtitle = s.SubtitleId.IsEmpty ? null : Entities.Strings.Resolve(s.SubtitleId);
-        return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, CardsOf(s), s.Total, PreviewOf(s));
+        return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, CardsOf(s), s.Total, PreviewOf(s))
+        {
+            TypeName = s.TypeNameId.IsEmpty ? "" : Entities.Strings.Resolve(s.TypeNameId),
+            TitleBase = TextOrNull(s.TitleBaseId),
+            Icon = TextOrNull(s.IconId),
+            HeaderUri = TextOrNull(s.HeaderUriId),
+            HeaderName = TextOrNull(s.HeaderNameId),
+            HeaderImage = TextOrNull(s.HeaderImageId),
+            HeaderAccent = s.HeaderAccent,
+        };
+
+        static string? TextOrNull(FluentGpu.Foundation.StringId id) => id.IsEmpty ? null : Entities.Strings.Resolve(id);
     }
 
     static IReadOnlyList<HomeCard> CardsOf(Section s)
