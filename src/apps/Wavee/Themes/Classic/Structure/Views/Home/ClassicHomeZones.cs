@@ -49,7 +49,8 @@
 //   ShowGrid                                  PagedShelf of HomeCards.ShelfCell (+ 2-span lead cell)       tools: See all · ‹ pips ›
 //   WideTiles/VideoTiles                      PagedShelf of 16:9 HomeCards.ShelfCell                       tools: See all · ‹ pips ›
 //   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of Surface(Row)       (sub-block)
-//   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
+//   SpineShelf                                the Spine Shelf (ClassicHomeShelf over Home/SpineShelf): one open card + spines
+//   PodcastGroups                             GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
 //   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block (Home.Charts)
 //   LeadGrid/CompactGrid/ArtistCircles/
 //   CappedShelf                               the Home rhythm templates (ClassicHomeZones.Rhythm.cs)        tools: See all N
@@ -186,10 +187,11 @@ internal static partial class ClassicHomeZones
     }
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
 
-    /// <summary>A body that pages its tall cards (the preview cards): its header carries "1 of 2" and the previous and next buttons at every tier.</summary>
-    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+    /// <summary>A body that pages its tall items (the Spine Shelf's pages, the podcast groups): its header carries "1 of 2" and the previous and next
+    /// buttons at every tier.</summary>
+    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
 
     /// <summary>Header + clipped body inside the zone scope, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout)
@@ -305,7 +307,8 @@ internal static partial class ClassicHomeZones
         ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
         ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
+        ZoneKind.SpineShelf => ClassicHomeShelf.Body(zone, layout, controller),
+        ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes),
         ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue),

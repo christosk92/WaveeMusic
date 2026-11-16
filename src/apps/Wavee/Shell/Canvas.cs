@@ -107,6 +107,9 @@ public static partial class CanvasVideo
 
     /// <summary>Inspector only: build the canvas player over <paramref name="backend"/> (null: Media Foundation again). The current player is
     /// dropped, so the next <see cref="Player"/> read builds over the new backend. UI thread, between mounts.</summary>
+    /// <summary>The inspector's fake backend while a `media=fake` mount is up (null otherwise): the Spine Shelf's players use it too.</summary>
+    internal static IMediaBackend? InspectBackend => s_inspectBackend;
+
     internal static void UseInspectBackend(IMediaBackend? backend)
     {
         if (ReferenceEquals(s_inspectBackend, backend)) return;

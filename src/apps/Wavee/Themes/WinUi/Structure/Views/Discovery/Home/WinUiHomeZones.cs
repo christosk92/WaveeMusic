@@ -28,7 +28,8 @@
 //   CoverShelf/MixedCovers/RadioShelf/ShowGrid  PagedShelf of HomeCards.ShelfCell (+ 2-span lead cell)                       tools: See all · ‹ pips ›
 //   WideTiles/VideoTiles                      PagedShelf of 16:9 HomeCards.ShelfCell                                         tools: See all · ‹ pips ›
 //   ReleaseList                               GridEl of Surface(Row) 56 high, the "New" chip and the when at the end         tools: See all
-//   ClusterCards/PodcastGroups                GridEl of Ui.Card(avatar + name, then three Surface(Row(40)))
+//   SpineShelf                                the Spine Shelf (WinUiHomeShelf over Home/SpineShelf): one open card + spines   tools: ‹ › (pages)
+//   PodcastGroups                             GridEl of Ui.Card(avatar + name, then three Surface(Row(40)))
 //   BrowseTiles                               GridEl of SettingsCard tiles + the Charts sub-block (Home.Charts)
 //   LeadGrid/CompactGrid/ArtistCircles/
 //   CappedShelf                               the Home rhythm templates (WinUiHomeZones.Rhythm.cs)                           tools: See all N
@@ -133,7 +134,7 @@ internal static partial class WinUiHomeZones
 
     static int IndexOfCluster(IReadOnlyList<Zone> zones)
     {
-        for (int i = 0; i < zones.Count; i++) if (zones[i].Kind is ZoneKind.ClusterCards or ZoneKind.PodcastGroups) return i;
+        for (int i = 0; i < zones.Count; i++) if (zones[i].Kind is ZoneKind.PodcastGroups) return i;
         return -1;
     }
 
@@ -191,10 +192,10 @@ internal static partial class WinUiHomeZones
     internal static bool HasHeader(ZoneKind kind) => kind is not (ZoneKind.Daylist or ZoneKind.EmptyFacet);
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
 
-    /// <summary>A body that pages its tall cards (the preview cards): its header carries the previous and next buttons at every tier.</summary>
-    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+    /// <summary>A body that pages its tall items (the Spine Shelf's pages, the podcast groups): its header carries the previous and next buttons at every tier.</summary>
+    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
 
     /// <summary>Header + body, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout, Element? headerTail = null)
@@ -311,7 +312,8 @@ internal static partial class WinUiHomeZones
         ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
         ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
+        ZoneKind.SpineShelf => WinUiHomeShelf.Body(zone, layout, controller),
+        ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes, WinUiHomeRules.CardGap),
         ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue, WinUiHomeRules.CardGap),
@@ -426,12 +428,13 @@ internal static partial class WinUiHomeZones
                 return VideoCardExtent(layout) is var v && v > 0f ? head + v : 0f;
             case ZoneKind.MoodPlates:
                 return MoodPlatesExtent(zone, layout, width) is var m && m > 0f ? head + m : 0f;
-            case ZoneKind.ClusterCards:
+            case ZoneKind.SpineShelf:
             {
-                float g = ClusterGridExtent(zone, layout, width, out int pages);
+                float g = WinUiHomeShelf.Extent(zone, layout);
                 if (g <= 0f) return 0f;
-                // A paging section's header carries its previous and next buttons.
-                if (pages > 1) head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
+                // A paging shelf's header carries its previous and next buttons.
+                if (zone.Clusters is { } cs && SpineShelfRules.Pages(cs.Count) > 1)
+                    head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
                 return head + g;
             }
             case ZoneKind.LeadGrid or ZoneKind.CompactGrid or ZoneKind.ArtistCircles or ZoneKind.CappedShelf:

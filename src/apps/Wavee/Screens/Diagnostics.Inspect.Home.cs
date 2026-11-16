@@ -338,7 +338,7 @@ public static partial class Diagnostics
 
         // ══ the `home` verb ═════════════════════════════════════════════════════════════════════════════════════════
 
-        public static readonly string[] HomeDos = ["status", "doc", "plan", "explain", "verify", "edit", "pin", "unpin", "add", "remove", "size", "move", "open", "close", "option", "surface", "search", "undo", "redo", "reset"];
+        public static readonly string[] HomeDos = ["status", "doc", "plan", "explain", "verify", "edit", "pin", "unpin", "add", "remove", "size", "move", "open", "close", "option", "surface", "search", "undo", "redo", "reset", "shelf"];
 
         string Home(int id, string name, Inspect.Args a)
         {
@@ -382,6 +382,56 @@ public static partial class Diagnostics
                 }
                 case "plan":
                     return Inspect.Reply.Ok(id, name, w => WritePlan(w, a.Str("facet", ""), store));
+                case "shelf":
+                {
+                    // A Spine Shelf (Home/SpineShelf): `key=` any unique part of its key (the zone key, `#n` for a page; the first match otherwise),
+                    // then one act through the handlers the pointer and keys call: `spine=<n>` (open item n, 1-based), `dwell=<n>` (rest on spine n: the meter, then it
+                    // opens after DwellMs), `tile=<n>` (point at song n of the open card; 0 leaves), `leave=true` (the pointer leaves the shelf),
+                    // `press=left|right|up|down|home|end|enter` (the focused spine's keys). Settles (or traces with `trace=N`).
+                    string want = a.Str("key", "");
+                    SpineShelf? shelf = null;
+                    foreach (var s in ShelfRegistry.Live)
+                    {
+                        if (!s.Shown || want.Length > 0 && !s.Key.Contains(want, StringComparison.Ordinal)) continue;
+                        if (shelf is null || string.CompareOrdinal(s.Key, shelf.Key) < 0) shelf = s;
+                    }
+                    if (shelf is null) return Fail(ShelfRegistry.Live.Count == 0 ? "no shelf is mounted" : "no shown shelf's key holds '" + want + "'");
+                    if (a.Has("spine")) shelf.OpenAt(a.Int("spine", 1) - 1);
+                    if (a.Has("dwell")) shelf.DwellStart(a.Int("dwell", 1) - 1);
+                    if (a.Has("tile")) shelf.HoverTile(a.Int("tile", 0) - 1);
+                    if (a.Bool("leave", false)) { shelf.DwellCancel(shelf.Dwelling); shelf.HoverTile(-1); }
+                    if (a.Has("press"))
+                    {
+                        int code = a.Str("press", "").ToLowerInvariant() switch
+                        {
+                            "left" => Keys.Left, "right" => Keys.Right, "up" => Keys.Up, "down" => Keys.Down,
+                            "home" => Keys.Home, "end" => Keys.End, "enter" => Keys.Enter, _ => 0,
+                        };
+                        if (code == 0) return Fail("press= wants left|right|up|down|home|end|enter");
+                        shelf.OnKey(new KeyEventArgs(code));
+                    }
+                    var hit = shelf;
+                    return Settled(id, name, a, w =>
+                    {
+                        w.WriteString("key", hit.Key);
+                        w.WriteNumber("items", hit.Items);
+                        w.WriteNumber("open", hit.OpenIndex + 1);
+                        w.WriteNumber("tile", hit.LiveTile + 1);
+                        w.WriteNumber("dwell", hit.Dwelling + 1);
+                        w.WriteString("form", hit.Standing ? "standing" : "row");
+                        w.WriteString("live", ShelfPreview.Live.Peek());
+                        w.WriteString("showing", ShelfPreview.Showing.Peek());
+                        w.WriteBoolean("clip", ShelfPreview.ClipPlaying.Peek());
+                        w.WriteStartArray("songs");
+                        if (hit.OpenItem is { } oi)
+                            foreach (var song in oi.Songs)
+                                w.WriteStringValue(song.IsBlank ? "" : song.Title + (song.HasCanvas ? " [canvas]" : "") + (song.Clip is null ? "" : " [clip]"));
+                        w.WriteEndArray();
+                        w.WriteStartArray("shelves");
+                        foreach (var s in ShelfRegistry.Live) if (s.Shown) w.WriteStringValue(s.Key);
+                        w.WriteEndArray();
+                    });
+                }
                 case "explain":   // Diagnostics.Inspect.Home.Explain.cs
                     return Inspect.Reply.Ok(id, name, w => WriteExplain(w, a.Str("facet", ""), store, board));
                 case "page":

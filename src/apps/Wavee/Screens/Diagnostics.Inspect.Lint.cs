@@ -133,7 +133,7 @@ public static partial class Diagnostics
             new(Rules.PictureText, "", Level.Todo, "text the scene shows that never reaches the frame (its box paints one colour), less edge fades and sticky plates"),
             new(Rules.PackHole, "", Level.Gate, "a pack grid group with an empty cell, an overlap, a ragged band or a tile below its class (PackLayout.Verify over the whole board), or a settled tile off its packed rect"),
             new(Rules.PackTools, "", Level.Todo, "a tile's edit tools (home:tile:<id>:tools) drawn over text or a control of its own content"),
-            new(Rules.HomeDuplicate, "", Level.Todo, "two Home sections drawn under one title (two folds both 'Because you like'); home do=explain says why"),
+            new(Rules.HomeDuplicate, "", Level.Gate, "two Home sections drawn under one title (two folds both 'Because you like'; Spotify's own same-titled sections exempt); home do=explain says why"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>

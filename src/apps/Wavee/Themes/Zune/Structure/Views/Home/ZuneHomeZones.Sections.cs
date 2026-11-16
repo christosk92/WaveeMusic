@@ -5,7 +5,7 @@
 //   MoodPlates     flat plates in the plate rule Browse's tiles use (muted, mid-dark), "Spring music for you." small at the top, the name
 //                  40 light lowercase at the foot; a name longer than its plate bleeds off its edge under a fade, it never shrinks
 //   BookShelf      the 154 cover shelf: the author, "★ 4.7 · 20 hr 56 min", what the plan covers as a quiet lowercase line
-//   ClusterCards   groups: the artist's picture, "for fans of" and the name as a link; the playlist (cover, its name 26 light as written,
+//   PodcastGroups  groups: the show's picture, "for fans of" and the name as a link; the playlist (cover, its name 26 light as written,
 //                  the description, "playlist · spotify · 50 songs", the play and save rings); 4 rows; pages of two rows at most, "01/02" by the heading
 //   VideoTiles(1)  the episode's still, flat and square-cornered, "video" and the length on it, the progress line; the show, the title in
 //                  the 26 light voice as written (it wraps), "20 jul · 1 hr 24 min · not started", the play and save rings

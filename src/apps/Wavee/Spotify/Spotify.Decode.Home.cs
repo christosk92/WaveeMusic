@@ -277,14 +277,18 @@ public static partial class Spotify
                 }
             }
 
-            /// <summary>One <c>previewItems.items[]</c> element: <c>{ __typename: TrackResponseWrapper, data: {
-            /// __typename: Track, uri, name, albumOfTrack: { coverArt: { sources: [...] } } } }</c> — the reader on
-            /// the element's object. A thin <c>Track</c> row at <see cref="Authority.Seed"/>; no name or no uri
-            /// answers nothing (S4's rule, the same as every other mention in this file).</summary>
+            /// <summary>One <c>previewItems.items[]</c> element: <c>{ __typename: TrackResponseWrapper, data: { __typename: Track, uri, name,
+            /// albumOfTrack: { coverArt: { sources, extractedColors } }, canvas: { uri, type, url, fileId, thumbnail }, previews: {
+            /// audioPreviews: { items: [{ url }] } } } }</c> — the reader on the element's object. A thin <c>Track</c> row at
+            /// <see cref="Authority.Seed"/>; no name or no uri answers nothing (S4's rule, the same as every other mention in this file). The
+            /// canvas is staged as a seed (Entities/Canvas.cs), the audio clip and the cover's colour as the track's preview row
+            /// (Entities/TrackPreview.cs): the Spine Shelf's song tiles.</summary>
             static StagedId TrackOf(ref Utf8JsonReader r, Staging s)
             {
                 StagedId uri = default;
-                TextRef name = default, image = default;
+                TextRef name = default, image = default, audio = default;
+                uint accent = 0;
+                StagedCanvas canvas = default;
                 for (int d = r.CurrentDepth; Next(ref r, d);)
                 {
                     if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
@@ -292,7 +296,9 @@ public static partial class Spotify
                     {
                         if (r.ValueTextEquals("uri"u8)) { r.Read(); if (uri.IsEmpty) uri = JsonId(ref r, s); }
                         else if (r.ValueTextEquals("name"u8)) { r.Read(); if (name.IsEmpty) name = s.AddJson(ref r); }
-                        else if (r.ValueTextEquals("albumOfTrack"u8)) image = AlbumCover(ref r, s);
+                        else if (r.ValueTextEquals("albumOfTrack"u8)) image = AlbumCover(ref r, s, ref accent);
+                        else if (r.ValueTextEquals("canvas"u8)) Canvas(ref r, s, ref canvas);
+                        else if (r.ValueTextEquals("previews"u8)) audio = AudioPreview(ref r, s);
                         else SkipValue(ref r);
                     }
                 }
@@ -301,12 +307,94 @@ public static partial class Spotify
                 n.Uri = uri;
                 n.Name = name;
                 n.Image = image;
-                return Stage(s, in n, Authority.Seed);
+                var id = Stage(s, in n, Authority.Seed);
+                if (id.IsEmpty) return id;
+                if (!canvas.Url.IsEmpty)
+                {
+                    canvas.Track = id;
+                    canvas.Seed = true;
+                    s.Canvases.Add() = canvas;
+                }
+                if (!audio.IsEmpty || accent != 0) s.TrackPreviews.Add() = new StagedTrackPreview { Track = id, AudioUrl = audio, Accent = accent };
+                return id;
             }
 
-            /// <summary><c>albumOfTrack: { coverArt: { sources: [...] } }</c> — the reader on the PROPERTY NAME
-            /// <c>"albumOfTrack"</c>.</summary>
-            static TextRef AlbumCover(ref Utf8JsonReader r, Staging s)
+            /// <summary><c>canvas: { uri, type, url, fileId, thumbnail: { sources } }</c> or null — the reader on the PROPERTY NAME
+            /// <c>"canvas"</c>. Only a video kind is kept (an image canvas is no canvas to the shelf); the still is the widest thumbnail.</summary>
+            static void Canvas(ref Utf8JsonReader r, Staging s, ref StagedCanvas c)
+            {
+                TextRef url = default, poster = default, canvasUri = default;
+                CanvasKind kind = CanvasKind.Image;
+                int pw = 0, ph = 0;
+                if (!r.Read()) return;
+                if (r.TokenType != JsonTokenType.StartObject) { if (r.TokenType == JsonTokenType.StartArray) r.Skip(); return; }
+                for (int d = r.CurrentDepth; Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("url"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String) url = s.AddJson(ref r); }
+                    else if (r.ValueTextEquals("uri"u8)) { r.Read(); if (r.TokenType == JsonTokenType.String) canvasUri = s.AddJson(ref r); }
+                    else if (r.ValueTextEquals("type"u8))
+                    {
+                        r.Read();
+                        kind = r.ValueTextEquals("VIDEO_LOOPING_RANDOM"u8) ? CanvasKind.VideoLoopingRandom
+                             : r.ValueTextEquals("VIDEO_LOOPING"u8) ? CanvasKind.VideoLooping
+                             : r.ValueTextEquals("VIDEO"u8) ? CanvasKind.Video
+                             : CanvasKind.Image;
+                    }
+                    else if (r.ValueTextEquals("thumbnail"u8))
+                    {
+                        for (int th = Fields(ref r); Next(ref r, th);)
+                        {
+                            if (!r.ValueTextEquals("sources"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                            for (int list = r.CurrentDepth; Element(ref r, list);)
+                            {
+                                TextRef u = default;
+                                int w = 0, h = 0;
+                                for (int e = r.CurrentDepth; Next(ref r, e);)
+                                {
+                                    if (r.ValueTextEquals("url"u8)) { r.Read(); u = s.AddJson(ref r); }
+                                    else if (r.ValueTextEquals("width"u8)) { r.Read(); w = (int)Num(ref r); }
+                                    else if (r.ValueTextEquals("height"u8)) { r.Read(); h = (int)Num(ref r); }
+                                    else SkipValue(ref r);
+                                }
+                                if (!u.IsEmpty && w >= pw) { poster = u; pw = w; ph = h; }
+                            }
+                        }
+                    }
+                    else SkipValue(ref r);
+                }
+                if (url.IsEmpty || kind == CanvasKind.Image) return;
+                c.Url = url;
+                c.Poster = poster;
+                c.CanvasUri = canvasUri;
+                c.Kind = kind;
+                c.PosterW = (ushort)Math.Clamp(pw, 0, ushort.MaxValue);
+                c.PosterH = (ushort)Math.Clamp(ph, 0, ushort.MaxValue);
+            }
+
+            /// <summary><c>previews: { audioPreviews: { items: [{ url }] } }</c> — the first clip's url; the reader on the PROPERTY NAME.</summary>
+            static TextRef AudioPreview(ref Utf8JsonReader r, Staging s)
+            {
+                TextRef url = default;
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (!r.ValueTextEquals("audioPreviews"u8)) { SkipValue(ref r); continue; }
+                    for (int a = Fields(ref r); Next(ref r, a);)
+                    {
+                        if (!r.ValueTextEquals("items"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                        for (int list = r.CurrentDepth; Element(ref r, list);)
+                            for (int e = r.CurrentDepth; Next(ref r, e);)
+                            {
+                                if (r.ValueTextEquals("url"u8)) { r.Read(); if (url.IsEmpty && r.TokenType == JsonTokenType.String) url = s.AddJson(ref r); }
+                                else SkipValue(ref r);
+                            }
+                    }
+                }
+                return url;
+            }
+
+            /// <summary><c>albumOfTrack: { coverArt: { sources, extractedColors } }</c> — the reader on the PROPERTY NAME
+            /// <c>"albumOfTrack"</c>; the cover's dark colour into <paramref name="accent"/>.</summary>
+            static TextRef AlbumCover(ref Utf8JsonReader r, Staging s, ref uint accent)
             {
                 TextRef image = default;
                 for (int d = Fields(ref r); Next(ref r, d);)
@@ -315,6 +403,7 @@ public static partial class Spotify
                     for (int c = Fields(ref r); Next(ref r, c);)
                     {
                         if (r.ValueTextEquals("sources"u8) && EnterArray(ref r)) image = WidestUpTo300(ref r, s);
+                        else if (r.ValueTextEquals("extractedColors"u8)) accent = HomeFeedFold.ColorDark(ref r);
                         else SkipValue(ref r);
                     }
                 }
@@ -1042,7 +1131,7 @@ public static partial class Spotify
             }
 
             /// <summary><c>extractedColors: { colorDark: { hex, isFallback } }</c> → ARGB, 0 for none or a fallback.</summary>
-            static uint ColorDark(ref Utf8JsonReader r)
+            internal static uint ColorDark(ref Utf8JsonReader r)
             {
                 uint colour = 0;
                 for (int d = Fields(ref r); Next(ref r, d);)

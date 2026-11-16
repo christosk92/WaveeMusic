@@ -42,7 +42,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.HomeZoneCoverShelf, WinUiHomeZones.BodyTemplate, "winui.home.zone.cover-shelf");
         views.Add(ViewKeys.HomeZoneWideTiles, WinUiHomeZones.BodyTemplate, "winui.home.zone.wide-tiles");
         views.Add(ViewKeys.HomeZoneReleaseList, WinUiHomeZones.BodyTemplate, "winui.home.zone.release-list");
-        views.Add(ViewKeys.HomeZoneClusterCards, WinUiHomeZones.BodyTemplate, "winui.home.zone.cluster-cards");
+        views.Add(ViewKeys.HomeZoneSpineShelf, WinUiHomeZones.BodyTemplate, "winui.home.zone.spine-shelf");
         views.Add(ViewKeys.HomeZoneMixedCovers, WinUiHomeZones.BodyTemplate, "winui.home.zone.mixed-covers");
         views.Add(ViewKeys.HomeZoneRadioShelf, WinUiHomeZones.BodyTemplate, "winui.home.zone.radio-shelf");
         views.Add(ViewKeys.HomeZoneBrowseTiles, WinUiHomeZones.BodyTemplate, "winui.home.zone.browse-tiles");
