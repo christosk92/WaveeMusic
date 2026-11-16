@@ -880,6 +880,7 @@ public static partial class Shell
             // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
             var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
             s_beginNav = UseContext(SharedTransition.BeginNav);   // the connected flight's trigger (Shell.Connected.cs), read by the nav verbs
+            s_navOrigin = UseContext(SharedTransition.NavOriginRect);   // where a growing page grows from (Shell.Connected.cs)
             // The band's chrome lands from the host's after-animations phase (PageChromeChannel.ArmLanding), so its height eases instead of snapping.
             UseContext(InputHooks.Current).SetAfterAnimations(s_chromeLanding, PageChromeChannel.LandIfDue);
             UseSignalEffect(() =>
@@ -928,6 +929,7 @@ public static partial class Shell
                             new BoxEl
                             {
                                 Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                                OnRealized = static h => s_pageBox = h,   // the pages' box: a growing page's pivot is measured against it
                                 Children = [Flow.KeepAlive(static () => Current.Value, static r => SlotKey(r), static r => PageBody(r), s_keepAlive)],
                             },
                             new BoxEl
@@ -975,12 +977,15 @@ public static partial class Shell
         // would wash out a composited video hole, so a video-safe swap cuts.
         if (FgMotion.ReducedMotion) return videoSafe ? null : pageMotion.ReducedFade;
         if (videoSafe) return RecipeForVideoSafe(motion);
-        if (IsSameKindSwap(oldToken, next)) return Design.Nav.SameKindSwap;
+        // An artist from an artist grows out of its card without the overlap (Shell.Connected.cs, GrowTransition); Back keeps the plain fade.
+        if (IsSameKindSwap(oldToken, next)) return GrowTransition(in next, Design.Nav.SameKindSwap, sameKind: true) ?? Design.Nav.SameKindSwap;
         // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
         LayoutTransition chosen = pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own
             ? own : RecipeFor(motion);
-        // Under a connected flight the page keeps its recipe's fades and loses its travel: the cover is the only thing that moves.
-        if (oldToken is Route && SwapsUnderFlight(in next)) chosen = Design.Nav.Quiet(in chosen);
+        // A page that grows out of its item (the artist) scales from it, the other page keeping its fade (Shell.Connected.cs). Under a connected
+        // flight the page keeps its recipe's fades and loses its travel: the cover is the only thing that moves.
+        if (oldToken is Route && GrowTransition(in next, in chosen, sameKind: false) is { } grown) chosen = grown;
+        else if (oldToken is Route && SwapsUnderFlight(in next)) chosen = Design.Nav.Quiet(in chosen);
         return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in chosen) : chosen;
     }
 
@@ -1003,7 +1008,7 @@ public static partial class Shell
         Route from = oldToken is Route r ? r : Route.None;
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
         if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
-        if (oldToken is Route && DropsCascadeUnderFlight(in next)) return null;   // the quiet swap under a flight: no staggered rise (a kind may keep it)
+        if (oldToken is Route && SwapsUnderFlight(in next)) return null;   // the quiet swap under a flight: no staggered rise
         if (Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is not { } cascade || cascade(SwapOf(from, next, Motion.Peek())) is not { } units)
             return null;
         return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in units) : units;

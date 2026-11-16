@@ -1147,12 +1147,16 @@ public static partial class Diagnostics
             float x0 = 0f, y0 = 0f, x1 = pres.W, y1 = pres.H;
             for (var n = node; !n.IsNull; n = scene.Parent(n))
             {
-                var t = scene.Paint(n).LocalTransform;
+                ref NodePaint p = ref scene.Paint(n);
+                var t = p.LocalTransform;
                 RectF b = scene.Bounds(n);
-                float ox = b.X + t.Dx, oy = b.Y + t.Dy;
+                // The transform applies about the node's origin (the recorder's T(o)·L·T(-o)): a page scaled from its centre stays centred.
+                float cx = b.W * p.OriginX, cy = b.H * p.OriginY;
+                float ox = b.X + t.Dx + cx, oy = b.Y + t.Dy + cy;
                 var parent = scene.Parent(n);
                 if (!parent.IsNull) { ox += scene.Paint(parent).ChildShiftX; oy += scene.Paint(parent).ChildShiftY; }
-                (x0, y0, x1, y1) = (t.M11 * x0 + t.M21 * y0 + ox, t.M12 * x0 + t.M22 * y0 + oy, t.M11 * x1 + t.M21 * y1 + ox, t.M12 * x1 + t.M22 * y1 + oy);
+                (x0, y0, x1, y1) = (t.M11 * (x0 - cx) + t.M21 * (y0 - cy) + ox, t.M12 * (x0 - cx) + t.M22 * (y0 - cy) + oy,
+                                    t.M11 * (x1 - cx) + t.M21 * (y1 - cy) + ox, t.M12 * (x1 - cx) + t.M22 * (y1 - cy) + oy);
             }
             float flowDy = pres.Y - scene.AbsoluteRect(node).Y;   // the presented flow's shift, which the chain does not hold
             return new RectF(MathF.Min(x0, x1), MathF.Min(y0, y1) + flowDy, MathF.Abs(x1 - x0), MathF.Abs(y1 - y0));

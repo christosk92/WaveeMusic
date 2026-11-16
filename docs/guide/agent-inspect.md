@@ -1101,13 +1101,18 @@ Each **row**: `f` (frame in the trace), `abs`, `animating`, `ms` (`wall`, `cpu` 
 `drawNodes`, `imageApplied`, `gc0/1/2`), `nodes` (`w` = index into `watch`, `lay` and `pres` = `[x,y,w,h]` laid-out and presented rects,
 `track` = a track is live on the node or an ancestor, `shown`, `op` = opacity multiplied up the chain) and `scroll` (`offset`,
 `lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img, radius, destRadius, mix, standIn, clip, refinds}]`:
-the flight's key (any entity's uri: an album, playlist, artist, show, episode or user; `spotify:collection:tracks` for Liked Songs),
+the flight's key (any entity's uri: an album, playlist, show, episode or user; `spotify:collection:tracks` for Liked Songs; an artist never flies),
 `pending|flying|landed|handingOff|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect, the shadow's opacity,
 whether each end's slot is hidden, the texture the flyer shows (it cuts to the dest's own rendition of the same picture once ready), the
-flyer's corner radius this frame and the dest's (a circle opening into a header travels with the size), the dest picture's share when the
-two ends show different pictures (an avatar becoming a header photograph, a generated cover: they dissolve on the flight's spring; -1 one
-picture), whether a landed flyer stands in for a dest picture not drawable yet (a cold artist page), the flyer's visible part (a card a
+flyer's corner radius this frame and the dest's (a circle opening into a square cover travels with the size), the dest picture's share when the
+two ends show different pictures (a Home card's wide art becoming the square cover, a generated cover: they dissolve on the flight's spring; -1 one
+picture), whether a landed flyer stands in for a dest picture not drawable yet (a cold page), the flyer's visible part (a card a
 scroller's edge cuts), and how often the dest was found again (`refinds`: the loaded header replacing the skeleton's plate).
+
+An artist's page flies nothing: it GROWS out of the item that opened it (WinUI, `PageMotionPolicy.GrowInto`), and on Back shrinks toward it.
+Watch the page roots (`prefix=page:`): a node's `pres` composes every scale on its chain about each node's own transform origin, so the
+pivot of a scaled page is `(pres.x - s*lay.x) / (1 - s)` with `s = pres.w / lay.w` (and the same in y), and on a forward grow it is the
+clicked item's centre on every frame (`flights=true` shows none).
 
 The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFramesInferred` (measures with no dirty marks), measure and component
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
@@ -1124,7 +1129,7 @@ prints the summary as text: the motion counts, the remounts, the snaps, instants
 
 With `flights=true` the reply also carries `flight{flights, startedAt, landedAt, handedOffAt, takeoffDelta, handoffDelta,
 maxStepDip, radiusDelta, mixAtHandOff, stoodInFrames, refound, standingIn, abandoned, unfinished}`: the frame the flyer first showed,
-landed and handed off (the real node shown: the flyer gone on a cut, or `handingOff` starting its fade over the artist header), the largest
+landed and handed off (the real node shown: the flyer gone on a cut, or `handingOff` starting its fade over a header whose copy lies on it), the largest
 edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on the hand-off frame,
 the largest edge step between two frames, the radius and mix on the hand-off frame, the frames it stood in, whether the dest was found
 again, whether the trace ended while it stood in (`standingIn`: not `unfinished`), and whether a flight was abandoned (a new navigation

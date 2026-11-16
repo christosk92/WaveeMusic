@@ -205,9 +205,7 @@ internal static class WinUiAlbumTrailing
         Corners = Radii.ControlAll, FocusVisualMargin = Design.FocusInsetRow,
         Children =
         [
-            // A tagged box (the picture is inside it): it flies into the artist's header.
-            PersonPicture.Create("", WinUiDetailRules.FansPortrait, displayName: c.Title, imageSourcePath: c.CoverUrl)
-                with { MorphId = Design.MorphKeys.ForUri(c.Uri, WinUiDetailRules.FansPortrait) },
+            PersonPicture.Create("", WinUiDetailRules.FansPortrait, displayName: c.Title, imageSourcePath: c.CoverUrl),
             new BoxEl
             {
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,

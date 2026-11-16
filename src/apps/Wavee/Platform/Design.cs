@@ -883,12 +883,15 @@ public static partial class Design
     // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION ═══════════════════════════════════════════════════════════════
 
     /// <summary>The connected navigation flight's key (<c>SharedTransition.BeginNav</c>, a picture flying into the header of the
-    /// page it opens and back): the entity's uri ITSELF (an album, playlist, artist, show, episode or user), no prefix, so the
+    /// page it opens and back): the entity's uri ITSELF (an album, playlist, show, episode or user), no prefix, so the
     /// source, the header and the shell agree with nothing built per card. The source passes its data's uri, the header its
     /// identity's subject, the shell the route's subject.
     ///
     /// <para>A key may repeat down a page (the same album on two shelves): the engine flies from the tagged cover INSIDE the card
     /// the user activated and to the one on the page it opens, never "every node with the key", and hides only those two slots.</para>
+    ///
+    /// <para>An artist's picture never flies (the owner, 2026-11-16: "dont copy the image"): its header photograph is not the card's avatar,
+    /// so the artist page grows out of the item instead (<c>PageMotionPolicy.GrowInto</c>) and <see cref="ForUri(string?)"/> tags nothing for it.</para>
     ///
     /// <para><see cref="For"/> is the older prefixed convention (<c>album:</c>, <c>pl:</c>) still minted by Recents and the Liked
     /// covers. Its keys can never equal a raw uri, so they stay inert; they go in the slice that brings the flight to Classic.</para>
@@ -898,14 +901,14 @@ public static partial class Design
     public static class MorphKeys
     {
         /// <summary>The flight key for a picture of <paramref name="uri"/>: the uri itself when it names a page with a header picture
-        /// (<c>spotify:album:</c>, <c>spotify:playlist:</c>, <c>spotify:artist:</c>, <c>spotify:show:</c>, <c>spotify:episode:</c>,
-        /// or <c>spotify:user:&lt;id&gt;</c> with nothing after the id), else null: a track plays, and the Liked collection, a legacy
+        /// (<c>spotify:album:</c>, <c>spotify:playlist:</c>, <c>spotify:show:</c>, <c>spotify:episode:</c>, or <c>spotify:user:&lt;id&gt;</c>
+        /// with nothing after the id), else null: a track plays, an artist's page grows instead, and the Liked collection, a legacy
         /// <c>spotify:user:&lt;u&gt;:playlist:&lt;p&gt;</c> and a concert have no one picture to fly. Prefix tests only, no allocation.</summary>
         public static string? ForUri(string? uri)
         {
             if (uri is null) return null;
-            if (HasId(uri, "spotify:album:") || HasId(uri, "spotify:playlist:") || HasId(uri, "spotify:artist:")
-                || HasId(uri, "spotify:show:") || HasId(uri, "spotify:episode:")) return uri;
+            if (HasId(uri, "spotify:album:") || HasId(uri, "spotify:playlist:") || HasId(uri, "spotify:show:")
+                || HasId(uri, "spotify:episode:")) return uri;
             return HasId(uri, "spotify:user:") && uri.IndexOf(':', "spotify:user:".Length) < 0 ? uri : null;
         }
 
