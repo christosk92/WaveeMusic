@@ -82,6 +82,7 @@ public sealed class HomeBoardHost
         _ = Entities.ScopeEpoch.Value;
         _ = Home.Changed.Value;
         _ = Entities.Current.Edges.SectionCards.Changed.Value;
+        _ = Entities.Current.Edges.SectionPreviewTracks.Changed.Value;   // a preview card's (and a fold's) clusters land with their preview tracks
         var h = Entities.HomeFeed("");
         _ = h.Version; _ = h.SectionVersion;
         IReadOnlyList<SectionInput> answer = h.Knows(HomeFields.Sections) ? SectionReader.Read(h) : [];
