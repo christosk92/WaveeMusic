@@ -22,7 +22,7 @@ public static partial class Diagnostics
 
         /// <summary>Glide the pointer from where it is (the window's centre when it has gone nowhere) to <paramref name="to"/>: one move
         /// per frame over <paramref name="steps"/> frames, the last one on the target.</summary>
-        void Glide(Point2 to, int steps)
+        void Glide(Point2 to, int steps, bool ease = false)
         {
             Shell.HeadlessShell shell = _shell!;
             RectF win = InspectKit.WindowRect(shell);
@@ -31,6 +31,7 @@ public static partial class Diagnostics
             for (int i = 1; i <= steps; i++)
             {
                 float t = (float)i / steps;
+                if (ease) t = t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3f) / 2f;   // cubic in-out, the live driver's pace
                 Move(new Point2(from.X + (to.X - from.X) * t, from.Y + (to.Y - from.Y) * t));
                 RunFrames(1);
             }
@@ -45,6 +46,7 @@ public static partial class Diagnostics
             if (path.Count == 0) return Inspect.Reply.Fail(id, name, "pointer wants path=[target@dwellMs, ...] (a key, at:x:y or leave)");
             int steps = Math.Clamp(a.Int("steps", 6), 1, 600);
             int defaultDwell = Math.Clamp(a.Int("dwell", 0), 0, 60_000);
+            bool ease = a.Str("ease", "linear") == "inout";
             var legs = new List<(string Target, Point2 At, string? Hit, int Frames, string? Note)>();
             foreach (string raw in path)
             {
@@ -76,7 +78,7 @@ public static partial class Diagnostics
                     p = aim.Point;
                     note = aim.Note.Length > 0 ? aim.Note : null;
                 }
-                Glide(p, steps);
+                Glide(p, steps, ease);
                 string? hit = target == "leave" ? null : HitKey(p);
                 if (target == "leave") _pointer = null;
                 int frames = DwellFrames(dwell);

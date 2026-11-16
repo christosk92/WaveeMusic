@@ -836,7 +836,7 @@ public static partial class Shell
     static readonly DragChipProps s_dragChipProps = new() { Preview = static state => Drag.Preview(state) };
 
     /// <summary>The FPS HUD's rule: developer mode AND the overlay toggle, never in presentation mode.</summary>
-    static readonly FpsProps s_fpsProps = new() { Shown = static () => Diagnostics.FpsOverlayOn() };
+    static readonly FpsProps s_fpsProps = new() { Shown = static () => Diagnostics.FpsOverlayOn(), DriveCursor = static () => Diagnostics.DriveCursorLayer() };
 
     // ══ 3. THE CONTENT HOST ═══════════════════════════════════════════════════════════════════════════════════════
 

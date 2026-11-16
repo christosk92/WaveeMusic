@@ -368,7 +368,8 @@ public static partial class Diagnostics
             {
                 Positional = ["w", "h"], NeedsMount = true,
                 Args = Join([Arg("w", ArgType.Float, "window width (DIP)"), Arg("h", ArgType.Float, "window height (DIP)"),
-                             Arg("loop", ArgType.Bool, "commit the size through the OS modal size loop, as crossing narrows", "false")], s_settleArgs),
+                             Arg("loop", ArgType.Bool, "commit the size through the OS modal size loop, as crossing narrows", "false"),
+                             IntArg("ms", "glide to the size over this many ms (one size per frame, eased in-out, as a hand drags the edge; the live driver plays the same); 0 = at once", "0", 0, 10_000)], s_settleArgs),
             },
             new(Verb.Frames, "frames", "Run exactly n frames on the 16 ms fake clock", "frames 60")
             {
@@ -673,7 +674,8 @@ public static partial class Diagnostics
                 NeedsMount = true, Acts = true,
                 Args = Join([Arg("path", ArgType.List, "waypoints: key[@ms], at:x:y[@ms] or leave[@ms]"),
                              IntArg("steps", "frames each glide takes (one move per frame)", "6", 1, 600),
-                             IntArg("dwell", "ms rested at a waypoint that names none", "0", 0, 60_000)], s_settleArgs),
+                             IntArg("dwell", "ms rested at a waypoint that names none", "0", 0, 60_000),
+                             Arg("ease", ArgType.Enum, "the glide's pace: linear (even steps) or inout (a hand's start and stop: cubic ease in-out, as the live driver records)", "linear", "linear|inout")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
