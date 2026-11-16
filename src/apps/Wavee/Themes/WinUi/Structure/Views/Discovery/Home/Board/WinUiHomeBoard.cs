@@ -76,6 +76,7 @@ internal static class WinUiHomeBoard
             var p = UseProps<BoardProps>();
             _p = p;
             var board = p.Board;
+            board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
 
             _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(_width.Peek()));

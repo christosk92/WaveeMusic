@@ -34,6 +34,10 @@ public sealed record HomeTileHostProps(BoardEntry Entry, PackCell? Cell, Func<Pa
 public sealed class HomeTileHost : Component
 {
     HomeTileHostProps? _p;
+    static readonly Dictionary<string, HomeTileForm> s_forms = new(StringComparer.Ordinal);
+
+    /// <summary>The form the realized tile of an entry drew last (the inspector's `home do=status`).</summary>
+    public static HomeTileForm? FormOf(string entryId) => s_forms.TryGetValue(entryId, out var f) ? f : null;
 
     /// <summary>The tile of an entry.</summary>
     public static Element For(BoardEntry entry, PackCell? cell, Func<PackBox, HomeTileForm> form, IHomeBoardVerbs verbs, IOverlayService? overlay, HomeBoardView view)
@@ -50,8 +54,9 @@ public sealed class HomeTileHost : Component
         // The form follows the box, but only its edges re-render the tile (a memo with an equality cut-off over the cell's box signal).
         var form = UseComputed(() => _p!.FormRule(_p.Cell?.Box.Value ?? default)).Value;
         var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay, p.View);
+        if (p.Cell is not null) s_forms[p.Entry.Id] = form;
         var e = p.Entry;
-        if (e.Kind == BoardEntryKind.Placeholder || e.Hidden && e.Source is not null)
+        if (e.Kind == BoardEntryKind.Placeholder)
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Loading, Name = e.Title });
         if (e.Paused && e.Live && e.Raw is WidgetSource { Widget: "nowPlaying" })
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Paused, Name = e.Title });

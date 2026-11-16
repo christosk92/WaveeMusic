@@ -228,14 +228,11 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     /// <summary>The theme's confirmation: an info-bar toast with Undo (WinUI, Classic), else the announcement alone (Zune: the tile is the answer).</summary>
     void Confirm(string text)
     {
-        // ThemePolicies.HomeConfirm (lane A, wave 2) decides per theme; until it lands every theme confirms with the info bar.
-        if (ConfirmByToast())
+        if (ShellPolicy.Now.Home.Confirm == Theming.HomeConfirm.Toast)
             Notify.Say(text, InfoBarSeverity.Informational, Loc.Get(Strings.Home.BoardVerbs.UndoAction), Undo,
                        dedupeKey: "home.undo." + Store.Doc.Peek().Rev, durationMs: 7000f);
         else Say(text);
     }
-
-    static bool ConfirmByToast() => true;
 
     static string SizeWord(HomeSize size) => Loc.Get(size switch
     {
