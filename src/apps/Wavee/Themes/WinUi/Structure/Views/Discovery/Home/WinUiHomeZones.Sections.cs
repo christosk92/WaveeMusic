@@ -211,7 +211,8 @@ internal static partial class WinUiHomeZones
     static Element MoreLink(int count, bool open, Action toggle)
         => new BoxEl
         {
-            Direction = 0, MinWidth = 0f,
+            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space).
+            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start,
             Children = [HyperlinkButton.Create(open ? Loc.Get(Strings.Home.ShowFewer) : Strings.Home.ShowMore(count), toggle) with { Shrink = 0f }],
         };
 

@@ -221,7 +221,8 @@ internal static partial class ZuneHomeZones
     static Element MoreLink(string key, int count, bool open, Action toggle, ZuneHomeLayout lay)
         => new BoxEl
         {
-            Direction = 0, MinWidth = 0f,
+            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space).
+            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start,
             Children = [K.Link("zune-cluster-more-link:" + key, open ? Loc.Get(Strings.Home.ShowFewer) : Strings.Home.ShowMore(count), toggle, lay.LinkTarget)],
         };
 
