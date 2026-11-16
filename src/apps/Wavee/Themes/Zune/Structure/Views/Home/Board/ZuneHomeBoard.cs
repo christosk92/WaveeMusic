@@ -256,6 +256,9 @@ internal static class ZuneHomeBoard
                 Scroll = board.Scroll,
                 Reorder = _reorder,
                 Automation = it => Automation(it),
+                // A band's heading sits on the page gutter, the tile's own left edge: a glyph that hangs left of its box ("j") keeps its ink.
+                InkOutset = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead && ZuneHomeBoardRules.SizeOf(it.Entry) == HomeSize.Full
+                    ? B.BandInkOutset : default,
                 Key = HomeBoardKeys.Board,
             };
             // While customizing the arrows move the selected tile (the board's keys), so the grid leaves them alone.

@@ -192,6 +192,9 @@ public static class ZuneHomeBoardRules
     /// <summary>A tile's play ring (36).</summary>
     public const float TileRing = 36f;
 
+    /// <summary>How far a band's clip reaches left of its box: a heading on the gutter whose first glyph hangs left ("jump back in") keeps its ink.</summary>
+    public static Edges4 BandInkOutset => new(4f, 0f, 0f, 0f);
+
     /// <summary>A full band's height before its body has laid out once, where nothing better is known (a heading row and one shelf of covers).</summary>
     public const float FullFallback = 300f;
 
