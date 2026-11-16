@@ -18,11 +18,13 @@ using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Forms;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -55,6 +57,8 @@ internal static class ZuneHomeAllItems
         if (view.Add.Peek().Kind == HomeAddSurfaceKind.AllItems) return;
         if (view.OpenId.Peek() is not null) board.Verbs.Close(refocus: false);
         view.Add.Value = new HomeAddSurface(HomeAddSurfaceKind.AllItems, Widgets);
+        // The next section of the panorama starts at its top, under the title.
+        board.Scroll.ScrollTo(0d);
         board.Verbs.Say(Loc.Get(Strings.Theme.Zune.Home.AllItemsSaid));
     }
 
@@ -124,6 +128,19 @@ internal static class ZuneHomeAllItems
         PackGridOptions<HomeCandidate>? _options;
         Func<HomeCandidate, PackCell, Element>? _template;
         string _lastQuery = "";
+        int _focusedAsk, _tries;
+        Field<string>? _field;
+        InputHooks? _hooks;
+        TimerHandle _focusTimer;
+        readonly Action _focusNow;
+
+        public SectionView() => _focusNow = FocusNow;
+
+        void FocusNow()
+        {
+            if (_field?.Node.Peek() is { IsNull: false } n) { _hooks?.FocusNode?.Invoke(n, true); return; }
+            if (++_tries < B.FocusRetries) _focusTimer.RestartIn(B.FocusRetryMs);
+        }
 
         public override Element Render()
         {
@@ -135,10 +152,13 @@ internal static class ZuneHomeAllItems
             var hooks = UseContext(InputHooks.Current);
             var field = UseField(view.Query);
             int focusAsk = s_focusField.Value;
-            UseLayoutEffect(() =>
-            {
-                if (focusAsk > 0 && field.Node.Peek() is { IsNull: false } n) hooks.FocusNode?.Invoke(n, true);
-            }, DepKey.From(focusAsk));
+            // The field mounts with the request (the round button opens it): focus lands once its editor is realized (a short timer that retries
+            // a few frames, never a render loop).
+            _field = field;
+            _hooks = hooks;
+            _focusTimer = UseTimeout(_focusNow, B.FocusRetryMs);
+            UseLayoutEffect(() => { if (focusAsk > _focusedAsk) { _focusedAsk = focusAsk; _tries = 0; _focusTimer.RestartIn(B.FocusRetryMs); } },
+                DepKey.From(focusAsk));
 
             string pivot = view.Add.Value.Arg is { Length: > 0 } a ? a : Widgets;
             bool searching = s_searching.Value;

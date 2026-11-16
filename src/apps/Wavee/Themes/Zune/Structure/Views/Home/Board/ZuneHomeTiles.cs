@@ -52,14 +52,16 @@ internal static class ZuneHomeTiles
             var p = UseProps<HeadProps>();
             return new BoxEl
             {
-                Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = B.UndoGap,
+                Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start,
                 OnHoverMove = _ => { if (!_hover.Peek()) _hover.Value = true; },
                 OnPointerExit = () => { if (_hover.Peek()) _hover.Value = false; },
                 Children =
                 [
                     new BoxEl
                     {
-                        Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
+                        // The title hugs its words (the undo word follows them) and yields only when the line is too short: then it bleeds under the fade.
+                        // Its fade band is padding: a title that fits fades nothing; one that does not runs under it.
+                        Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Padding = new Edges4(0f, 0f, B.TitleFade, 0f),
                         EdgeFade = new EdgeFadeSpec(EdgeMask.Right, 0f, 0f, B.TitleFade, 0f),
                         Children =
                         [
@@ -152,11 +154,12 @@ internal static class ZuneHomeTiles
 
             bool full = f.Form == HomeTileForm.Full;
             var kids = new List<Element>(4) { preview ? p.Face : TileMotion.Tilt(p.Face) };
-            if (recede)
-                // A tap on a receded tile selects it: a layer over the face takes it (nothing opens while customizing).
+            if (!preview)
+                // A tap on a receded tile selects it: a layer over the face takes it (nothing opens while customizing). Always mounted, so it rides the
+                // tile's recede instead of arriving in the middle of it; it takes the pointer only while the tile is receded.
                 kids.Add(new BoxEl
                 {
-                    Key = "home:tile-select", Cursor = CursorId.Hand, OnClick = _select, Role = AutomationRole.None,
+                    Key = "home:tile-select", Cursor = recede ? CursorId.Hand : null, OnClick = _select, Role = AutomationRole.None, HitTestVisible = recede, Focusable = false,
                     Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
                 });
             if (selected)
@@ -173,7 +176,7 @@ internal static class ZuneHomeTiles
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true, ClipToBounds = !full,
-                Fill = p.Plate && !full ? R.Layer.ContentSurface : ColorF.Transparent,
+                Fill = p.Plate && !full ? Tok.FillSubtleSecondary : ColorF.Transparent,
                 ScaleX = _initialScale, ScaleY = _initialScale, Opacity = _initialOpacity,
                 OnRealized = _onRealized,
                 // Press and hold enters customize with this tile (the selected tile's hold is the grid's: hold, then drag).
@@ -322,13 +325,13 @@ internal static class ZuneHomeTiles
     };
 
     /// <summary>The wide form's text panel beside the art: the name in the 22/28 light voice, its line, then <paramref name="foot"/>.</summary>
-    static Element Panel(Func<string> name, Func<string> line, Element? foot = null) => new BoxEl
+    static Element Panel(Func<string> name, Func<string> line, Element? foot = null, TextCase nameCase = TextCase.AsWritten) => new BoxEl
     {
         Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = B.TextGap,
         Padding = new Edges4(B.TilePad + 2f, B.TilePad, B.BadgeLane, B.TilePad),
         Children =
         [
-            R.Type.SheetTitle("") with { Text = Prop.Of(name), MaxLines = 3, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            R.Type.SheetTitle("") with { Text = Prop.Of(name), Case = nameCase, MaxLines = 3, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             R.Type.DenseMeta("") with { Text = Prop.Of(line), Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             new BoxEl { Grow = 1f },
             foot ?? new BoxEl(),
@@ -363,6 +366,31 @@ internal static class ZuneHomeTiles
     {
         Direction = 1, Grow = 1f, MinWidth = 0f, Gap = B.ListGap, Padding = new Edges4(B.TilePad, B.SmallPad, B.TilePad, B.TilePad), Children = kids,
     };
+
+    /// <summary>The rows a widget lists: two in a medium tile, four in a wide one (two columns of two).</summary>
+    static int Rows(HomeTileForm form) => form == HomeTileForm.M ? B.ListRowsM : B.ListRowsL;
+
+    /// <summary>A widget's head over its rows: one column in a medium tile, two columns in a wide one.</summary>
+    static Element[] Listed(List<Element> kids, HomeTileForm form)
+    {
+        if (form != HomeTileForm.L || kids.Count <= 1 + B.ListRowsM) return kids.ToArray();
+        var left = new List<Element>(B.ListRowsM);
+        var right = new List<Element>(B.ListRowsM);
+        for (int i = 1; i < kids.Count; i++) (i <= B.ListRowsM ? left : right).Add(kids[i]);
+        return
+        [
+            kids[0],
+            new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, Gap = B.ListColGap, AlignItems = FlexAlign.Start,
+                Children =
+                [
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Gap = B.ListGap, Children = left.ToArray() },
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Gap = B.ListGap, Children = right.ToArray() },
+                ],
+            },
+        ];
+    }
 
     static SurfaceShape ListShape => Shape.Row(B.ListArt) with { MinHeight = B.ListRowH };
 
@@ -459,7 +487,7 @@ internal static class ZuneHomeTiles
                             Children =
                             [
                                 Clickable(new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Children = [Square(f, Art(f, p.Cover()))] }, p.Open),
-                                Panel(name, p.Line, foot),
+                                Panel(name, p.Line, foot, p.HasTrack() ? TextCase.AsWritten : R.Case.For(LabelKind.Label)),
                             ],
                         },
                         progress,
@@ -497,12 +525,12 @@ internal static class ZuneHomeTiles
             string n = rows.Length.ToString(CultureInfo.CurrentCulture);
             return Tile(f, Clickable(new BoxEl { Grow = 1f, Direction = 1, Children = [SmallWidget(Icons.List, () => n)] }, p.OpenQueue));
         }
-        int max = f.Form == HomeTileForm.M ? 2 : 4;
+        int max = Rows(f.Form);
         var kids = new List<Element> { Head(Icons.List, title, () => count) };
         for (int i = 0; i < rows.Length && i < max; i++)
             kids.Add(Controls.Surface(rows[i].Data, ListShape) with { Key = "upnext:" + rows[i].Key });
         if (rows.Length == 0) kids.Add(R.Type.DenseMeta(Loc.Get(Strings.Theme.Zune.Home.QueueEmpty)) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label) });
-        return Tile(f, Pad(kids.ToArray()));
+        return Tile(f, Pad(Listed(kids, f.Form)));
     }
 
     // ══ Home.Tile.Recents ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -525,7 +553,7 @@ internal static class ZuneHomeTiles
             }
             default:
             {
-                int max = f.Form == HomeTileForm.M ? 2 : 4;
+                int max = Rows(f.Form);
                 var kids = new List<Element> { Head(Icons.History, title, () => week) };
                 for (int i = 0; i < r.Cells.Count && i < max; i++)
                 {
@@ -535,7 +563,7 @@ internal static class ZuneHomeTiles
                         () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Circular: cell.Round) { Menu = HomeCardNav.MenuOf(in c) };
                     kids.Add(Controls.Surface(data, ListShape) with { Key = "recents:" + (c.IsBlank ? i.ToString(CultureInfo.InvariantCulture) : c.Uri) });
                 }
-                return Tile(f, Pad(kids.ToArray()));
+                return Tile(f, Pad(Listed(kids, f.Form)));
             }
         }
     }
@@ -550,10 +578,10 @@ internal static class ZuneHomeTiles
         if (f.Form == HomeTileForm.Full)
             return Tile(f, ZuneHomePage.Body(zone, f.Overlay, ZuneHomeTiers.Of(ctx.Tier())), plate: false);
         string title = zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow);
-        int max = f.Form == HomeTileForm.M ? 2 : 4;
+        int max = Rows(f.Form);
         var kids = new List<Element> { Head(Icons.RefineSparkle, title) };
         for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
-        return Tile(f, Pad(kids.ToArray()));
+        return Tile(f, Pad(Listed(kids, f.Form)));
     }
 
     static Element CardRow(HomeCard card, int i)

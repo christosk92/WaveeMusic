@@ -179,6 +179,10 @@ public static class ZuneHomeBoardRules
     /// <summary>List rows inside a tile: 44 rows of 36 art, 4 apart.</summary>
     public const float ListRowH = 44f, ListArt = 36f, ListGap = 4f;
 
+    /// <summary>A widget lists two rows in a medium tile, four (two columns of two, 12 apart) in a wide one.</summary>
+    public const int ListRowsM = 2, ListRowsL = 4;
+    public const float ListColGap = 12f;
+
     /// <summary>The now-playing tile's progress line (3).</summary>
     public const float ProgressH = 3f;
 
@@ -215,6 +219,10 @@ public static class ZuneHomeBoardRules
 
     /// <summary>A row's square glyph (28) on its accent plate.</summary>
     public const float ItemGlyph = 28f;
+
+    /// <summary>The search field's focus request: retried every 16 ms, at most 10 times, until its editor is realized.</summary>
+    public const float FocusRetryMs = 16f;
+    public const int FocusRetries = 10;
 
     /// <summary>"/" (VK_OEM_2): all items' search.</summary>
     public const int SlashKey = 191;
