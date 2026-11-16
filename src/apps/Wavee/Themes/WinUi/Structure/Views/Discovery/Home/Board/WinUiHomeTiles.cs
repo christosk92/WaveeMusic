@@ -125,9 +125,9 @@ internal static class WinUiHomeTiles
     /// <summary>The card's menu button (its tools key).</summary>
     static Element More(in ViewContext ctx, HomeTileFrame f, MoreMenu menu = MoreMenu.Full)
         => Embed.Comp(new MoreProps(f, WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox) { Menu = menu }, static () => new TileMore())
-            // A resize re-flows the tile's box by animation while its content lays out at the new width at once: the button rides the card's
-            // edge by its own FLIP instead of jumping to it.
-            with { Key = HomeBoardKeys.Tools(f.Entry.Id), Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Reflow };
+            // Laid out by alignment inside the tile: the grid's re-flow re-lays the tile's content at its gliding size, so the button rides the
+            // card's edge with it (a FLIP of its own here fought that and stepped).
+            with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
 
     /// <summary>A full row that is today's chapter: the menu button ends its header row (a headerless chapter keeps the lane).</summary>
     static Element FullChapter(in ViewContext ctx, HomeTileFrame f, Zone zone, WinUiHomeLayout home)

@@ -162,8 +162,9 @@ public static class WinUiHomeBoardRules
     /// <summary>The page offset past which the first-run tip waits (the head row is leaving the viewport).</summary>
     public const double TipScrollMax = 48d;
 
-    /// <summary>The first-run tip waits this long after the mount (the page's entrance has played): 600 ms, the concept's.</summary>
-    public const float TipDelayMs = 600f;
+    /// <summary>The first-run tip waits this many presented frames after the mount (the page's entrance has played): about 600 ms at 60 Hz, the
+    /// concept's delay, counted in frames so a slow first paint cannot pull it into the entrance.</summary>
+    public const int TipDelayFrames = 36;
 
     /// <summary>The search result count is spoken once typing pauses this long (not on every keystroke).</summary>
     public const float SpeakCountMs = 600f;
