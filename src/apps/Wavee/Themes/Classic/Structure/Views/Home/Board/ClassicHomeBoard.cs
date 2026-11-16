@@ -176,7 +176,15 @@ internal static class ClassicHomeBoard
                 Children =
                 [
                     ClassicHomeFind.Strip(board, p.Lay),
-                    PackGrid.Create(items, _template, _options),
+                    // The grid's height follows its pack, which a shelf's measured height reaches a frame or more after the width changed: that
+                    // height eases through real layout here, so the page below (and the page's own extent) grows and shrinks every frame instead
+                    // of stepping late by the difference.
+                    new BoxEl
+                    {
+                        Key = "home:board-height", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                        Layout = ClassicTierMotion.HeightReflow,
+                        Children = [PackGrid.Create(items, _template, _options)],
+                    },
                     Embed.Comp(new RingProps(board.View), static () => new RingClear()) with { Key = "home:ring-clear" },
                 ],
             };
