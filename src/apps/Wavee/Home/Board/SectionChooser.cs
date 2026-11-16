@@ -10,7 +10,8 @@
 //   a daylist playlist in the lead                → DaylistHero
 //   HomeFeedBaselineSectionData                   → by its card: an untitled album = ReleaseList, an episode = VideoTiles
 //                                                   or EpisodeRows, a book = BookShelf, a show = ShowGrid, else PreviewCard
-//   mostly episodes                               → VideoTiles (video with a thumbnail) or EpisodeRows
+//   mostly episodes                               → VideoTiles (video with a thumbnail) or EpisodeRows (each the other's alternate,
+//                                                   the baseline's one episode too: a run of episodes alternates a card and a row)
 //   mostly audiobooks                             → BookShelf
 //   mostly shows                                  → CappedShelf    (alternate: ShowGrid, the paged shelf)
 //   half or more colour-plate mixes (descripto)   → MoodPlates     (alternate: CompactGrid)
@@ -104,8 +105,8 @@ public static class SectionChooser
             {
                 HomeCardKind.Album when string.IsNullOrEmpty(s.Title) => new(SectionTemplate.ReleaseList, ZoneKind.ReleaseList, "baseline: an untitled album (a followed release)"),
                 HomeCardKind.Episode => c.HasVideo && c.VideoThumbUrl is not null
-                    ? new(SectionTemplate.VideoTiles, ZoneKind.VideoTiles, "baseline: a video episode")
-                    : new(SectionTemplate.EpisodeRows, ZoneKind.EpisodeRows, "baseline: an episode"),
+                    ? Pick(SectionTemplate.VideoTiles, "baseline: a video episode", SectionTemplate.EpisodeRows)
+                    : Pick(SectionTemplate.EpisodeRows, "baseline: an episode", SectionTemplate.VideoTiles),
                 HomeCardKind.Audiobook => new(SectionTemplate.BookShelf, ZoneKind.BookShelf, "baseline: a book"),
                 HomeCardKind.Podcast => new(SectionTemplate.ShowGrid, ZoneKind.ShowGrid, "baseline: a show"),
                 _ => new(SectionTemplate.PreviewCard, ZoneKind.ClusterCards,
@@ -115,8 +116,8 @@ public static class SectionChooser
 
         if (episodes * 2 > usable)
             return video * 2 >= episodes
-                ? new(SectionTemplate.VideoTiles, ZoneKind.VideoTiles, $"episodes, {video} of {episodes} with video")
-                : new(SectionTemplate.EpisodeRows, ZoneKind.EpisodeRows, $"episodes, {video} of {episodes} with video");
+                ? Pick(SectionTemplate.VideoTiles, $"episodes, {video} of {episodes} with video", SectionTemplate.EpisodeRows)
+                : Pick(SectionTemplate.EpisodeRows, $"episodes, {video} of {episodes} with video", SectionTemplate.VideoTiles);
         if (books * 2 > usable) return new(SectionTemplate.BookShelf, ZoneKind.BookShelf, $"audiobooks ({books} of {usable})");
         if (shows * 2 > usable) return Pick(SectionTemplate.CappedShelf, $"shows ({shows} of {usable})", SectionTemplate.ShowGrid);
         if (plates * 2 >= usable) return Pick(SectionTemplate.MoodPlates, $"colour-plate mixes ({plates} of {usable})", SectionTemplate.CompactGrid);
