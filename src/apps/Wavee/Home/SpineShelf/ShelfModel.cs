@@ -74,8 +74,8 @@ public static class SpineShelfRules
     public const float OpenMs = 520f;
     /// <summary>A song tile widening and narrowing.</summary>
     public const float TileMs = 380f;
-    /// <summary>The spine/face cross-fade and the face's delay behind the opening edge.</summary>
-    public const float FadeMs = 240f, FaceDelayMs = 180f;
+    /// <summary>The spine/face cross-fade.</summary>
+    public const float FadeMs = 240f;
     /// <summary>Resting on a spine this long opens it (the meter fills over it).</summary>
     public const float DwellMs = 700f;
     /// <summary>A clip's length: the progress line fills over it.</summary>
@@ -99,9 +99,12 @@ public static class ShelfModel
         foreach (var c in clusters)
         {
             if (c.Header is not { } h) continue;
-            var songs = new ShelfSong[SpineShelfRules.Songs];
+            // Until the lookup answers: five flat placeholders at the tiles' size. Once it has: exactly the songs it named (a short answer's tiles
+            // share the row), or none (the cover tile).
+            bool answered = c.Rows.Count > 0 || Answered(c.FooterSectionSlot) || LookupDone();
+            var songs = new ShelfSong[answered ? Math.Max(1, c.Rows.Count) : SpineShelfRules.Songs];
             for (int i = 0; i < songs.Length; i++) songs[i] = i < c.Rows.Count ? SongOf(c.Rows[i]) : ShelfSong.Blank;
-            bool none = c.Rows.Count == 0 && (Answered(c.FooterSectionSlot) || LookupDone());
+            bool none = c.Rows.Count == 0 && answered;
             items.Add(new ShelfItem(h.Uri, h, h.Title, c.Over, c.Reason, SectionCopy.PreviewFacts(in h), h.Accent, songs) { NoSongs = none, Ordinal = items.Count });
         }
         return items.ToArray();

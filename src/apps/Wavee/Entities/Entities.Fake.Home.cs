@@ -308,40 +308,35 @@ public static partial class Entities
             StageSectionIds(s, "spotify:section:wavee-mockup-releases", "From artists you follow", SectionKind.HomeGeneric,
                 [vaultboy, troye, puth, richBrianRelease, rose, henryMoodieRelease], total: 6, nextOffset: SectionPaging.Complete);
 
-            // -- "Because you like..." baseline clusters (ClusterFold, owned by A1, groups these at render time) --
+            // -- "Because you like...": four one-card baseline sections, as Spotify sends them (the filled title, ONE playlist card, its preview
+            //    songs from feedBaselineLookup): the board gathers them into the one Spine Shelf. --
             var troyeRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4ourTrQDXAVJ", "Troye Sivan Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3WGpXCj9YhhfX11TToZcXP/en", 50, PlaylistFormat.Radio);
-            var popTerjineun = MockPlaylist(s, "spotify:playlist:37i9dQZF1DX8WYwNpUjJBr", "Pop 터지는 팝콘 한 입",
-                "https://i.scdn.co/image/ab67706f000000024b2cb319c9b6d646fdf27e8c", 50, PlaylistFormat.Editorial);
-            var emailsAlbum = MockAlbum(s, "spotify:album:2g4aJTa5ejGpp0O0GKzWAQ", "emails i can't send fwd:",
-                "https://i.scdn.co/image/ab67616d00001e020f45623be014a592a5815827", (int)(now0 - 200 * 86_400));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like", SectionKind.HomeBaseline,
-                [MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35)), troyeRadio, popTerjineun, emailsAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3);
+            MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like Troye Sivan", SectionKind.HomeBaseline,
+                [troyeRadio], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3);
 
             var roseRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4vmmujp8nGFY", "ROSÉ Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3eVa5w3URK5duf6eyVDbu9/en", 50, PlaylistFormat.Radio);
-            var romanticizing = MockPlaylist(s, "spotify:playlist:37i9dQZF1DWWAv76uXmtxB", "romanticizing life",
-                "https://i.scdn.co/image/ab67706f00000002939028c1e5124638af3ecaf1", 60, PlaylistFormat.Editorial);
             var rosieAlbumUri = "spotify:album:7kFyd5oyJdVX2pIi6P4iHE";
             var rosieAlbum = MockAlbum(s, rosieAlbumUri, "rosie",
                 "https://i.scdn.co/image/ab67616d00001e027be65ce6672ed7e5aac6e966", (int)(now0 - 150 * 86_400));
             albumArtistLinks.Add((rosieAlbumUri, roseArtistUri));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like", SectionKind.HomeBaseline,
-                [MockArtist(s, roseArtistUri, "ROSÉ", Cover(37)), roseRadio, romanticizing, rosieAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 9);
+            MockArtist(s, roseArtistUri, "ROSÉ", Cover(37));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like ROSÉ", SectionKind.HomeBaseline,
+                [roseRadio], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 9);
 
-            var sadHour = MockPlaylist(s, "spotify:playlist:37i9dQZF1DWSqBruwoIXkA", "sad hour",
-                "https://i.scdn.co/image/ab67706f000000021ec2ef7e5cc1221d4b45354e", 150, PlaylistFormat.Editorial);
             var thisIsHenry = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO4j9SIr", "This Is Henry Moodie",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/7hr9W3IjXcm3UlLY7guLk5/nl", 50, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of", SectionKind.HomeBaseline,
-                [MockArtist(s, henryArtistUri, "Henry Moodie", Cover(38)), sadHour, thisIsHenry, dm4], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 15);
+            MockArtist(s, henryArtistUri, "Henry Moodie", Cover(38));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of Henry Moodie", SectionKind.HomeBaseline,
+                [thisIsHenry], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 15);
 
             var thisIsSavage = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO2drKmY", "This Is Savage Garden",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/3NRFinRTEqUCfaTTZmk8ek/en-GB", 50, PlaylistFormat.Editorial);
-            var guiltyPleasures = MockPlaylist(s, "spotify:playlist:37i9dQZF1DX4pUKG1kS0Ac", "Guilty Pleasures",
-                "https://i.scdn.co/image/ab67706f000000027773630113d067b9590817f4", 150, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of", SectionKind.HomeBaseline,
-                [MockArtist(s, "spotify:artist:hmSavageGarden", "Savage Garden", Cover(40)), thisIsSavage, guiltyPleasures], total: 3, nextOffset: SectionPaging.Complete, firstPreviewTrack: 21);
+            MockArtist(s, "spotify:artist:hmSavageGarden", "Savage Garden", Cover(40));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of Savage Garden", SectionKind.HomeBaseline,
+                [thisIsSavage], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 21);
 
             // -- RecentGrid support: WLUWD and 90's Nederlandstalig are two of the real uris `s_recentsSeed` (above)
             // points at, staged here (no section membership needed) purely so the RecentGrid renders a real title/

@@ -215,6 +215,11 @@ public sealed class SpineShelf : Component
     /// <summary>An unset extent (the parent's stretch decides).</summary>
     static readonly Prop<float> Free = float.NaN;
 
+    /// <summary>The face fades in as its item starts to widen (with no delay its wash covers the widening card at once: a delayed face left the card
+    /// an empty ground for 200 ms, seen in the film of an open).</summary>
+    static readonly EnterExit s_faceEnter = new(Opacity: 0f, Active: true);
+    static readonly MotionTokenDef s_faceFade = MotionTokenDef.Eased(SpineShelfRules.FadeMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
+
     static readonly SpringParams s_fadeIn = SpringParams.FromResponse(SpineShelfRules.FadeMs / 1000f, 1f);
     const int S = SpineShelfRules.Songs;
 
@@ -269,10 +274,6 @@ public sealed class SpineShelf : Component
         var widthSig = measured;
         float W() { float w = widthSig.Value; return w > 1f ? w : _seed; }
         float FaceW() => g.FaceW(W(), n);
-        float TileSpan() => MathF.Max(0f, FaceW() - 2f * g.FacePad - (S - 1) * g.TileGap);
-        float RestW() => TileSpan() / S;
-        float LiveW() => TileSpan() * SpineShelfRules.LiveShare / (S - 1 + SpineShelfRules.LiveShare);
-        float OtherW() => TileSpan() / (S - 1 + SpineShelfRules.LiveShare);
 
         _dwellTimer = UseTimeout(DwellFired, SpineShelfRules.DwellMs, DepKey.Empty);
         _tileTimer = UseTimeout(TileSettled, SpineShelfRules.TileMs, DepKey.Empty);
@@ -296,7 +297,7 @@ public sealed class SpineShelf : Component
         var row = new Element[n];
         bool sameFrame = _builtG.Equals(g) && ReferenceEquals(_builtSkin, skin) && _built.Length == n;
         for (int i = 0; i < n; i++)
-            row[i] = sameFrame && _builtItems[i].Equals(items[i]) ? _built[i] : Item(items[i], i, i == openNow, g, skin, FaceW, RestW, LiveW, OtherW);
+            row[i] = sameFrame && _builtItems[i].Equals(items[i]) ? _built[i] : Item(items[i], i, i == openNow, g, skin, FaceW);
         _built = row; _builtItems = items; _builtG = g; _builtSkin = skin;
 
         // A canvas file that lands while its tile waits re-presents it (CanvasVideo.Files.Epoch).
@@ -322,8 +323,14 @@ public sealed class SpineShelf : Component
         TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve));
 
     Element Item(ShelfItem item, int i, bool open, SpineShelfGeometry g, SpineShelfSkin skin,
-                 Func<float> faceW, Func<float> restW, Func<float> liveW, Func<float> otherW)
+                 Func<float> faceW)
     {
+        // The tiles share the face's inner width: as many as the lookup named (five, fewer for a short answer), one wider while live.
+        int count = Math.Max(1, item.Songs.Length);
+        float TileSpan() => MathF.Max(0f, faceW() - 2f * g.FacePad - (count - 1) * g.TileGap);
+        float restW() => TileSpan() / count;
+        float liveW() => count == 1 ? TileSpan() : TileSpan() * SpineShelfRules.LiveShare / (count - 1 + SpineShelfRules.LiveShare);
+        float otherW() => TileSpan() / (count - 1 + SpineShelfRules.LiveShare);
         var openSig = _open;
         var closing = _closing;
         int index = i;
@@ -343,15 +350,17 @@ public sealed class SpineShelf : Component
         if (item.NoSongs) tiles = [CoverTile(item, g)];
         else
         {
-            tiles = new Element[S];
-            for (int j = 0; j < S; j++) tiles[j] = Tile(item, i, j, g, skin, restW, liveW, otherW);
+            tiles = new Element[item.Songs.Length];
+            for (int j = 0; j < tiles.Length; j++) tiles[j] = Tile(item, i, j, g, skin, restW, liveW, otherW);
         }
         var face = new BoxEl
         {
             Key = "shelf:face:" + item.Key, Direction = 1, MinWidth = 0f, Shrink = 0f,
             Width = g.Standing ? Free : Prop.Of(faceW), Height = g.FaceH, IsolateLayout = true,
             JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
-            Padding = Edges4.All(g.FacePad), Gap = g.HeadGap, Gradient = skin.FaceWash(item), Opacity = open ? 1f : 0f,
+            Padding = Edges4.All(g.FacePad), Gap = g.HeadGap, Gradient = skin.FaceWash(item),
+            // Out of layout while closed (Visible below); it fades in when it comes back (the Enter, behind the opening edge) and out before it leaves.
+            Enter = s_faceEnter, Transition = s_faceFade,
             HitTestVisible = Prop.Of(() => openSig.Value == index),
             // Only the open face (and one still fading out) is in layout: a closed face costs no measure (a resize re-lays out one face, not n).
             Visible = Prop.Of(() => openSig.Value == index || closing.Value == index),
@@ -378,7 +387,8 @@ public sealed class SpineShelf : Component
 
         return new BoxEl
         {
-            Key = "shelf:item:" + item.Key, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(g.Radius), MinWidth = 0f,
+            // The card ground under both layers: while the spine and the face cross-fade, the item is never see-through (the washes fade to it).
+            Key = "shelf:item:" + item.Key, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(g.Radius), MinWidth = 0f, Fill = Tok.FillSolidBase,
             Shrink = 0f, Grow = 0f,
             Width = g.Standing ? Free : Prop.Of(() => openSig.Value == index ? faceW() : g.SpineW),
             Height = g.Standing ? Prop.Of(() => openSig.Value == index ? g.OpenH : g.RowH) : (Prop<float>)g.Height,
@@ -518,8 +528,6 @@ public sealed class SpineShelf : Component
             Fade(a, _spine, old, 1f, 0f);
             Fade(a, _face, old, 0f, 0f);
             Fade(a, _spine, i, 0f, 0f);
-            if ((uint)i < (uint)_face.Length && !_face[i].IsNull)
-                a.Spring(_face[i], AnimChannel.Opacity, 1f, s_fadeIn, delayMs: SpineShelfRules.FaceDelayMs);
         }
         _closing.Value = old;
         _closeTimer.RestartIn(SpineShelfRules.OpenMs);
@@ -617,7 +625,7 @@ public sealed class SpineShelf : Component
     {
         int open = _open.Peek();
         if (j < 0) { TileLeave(_live.Peek()); return; }
-        if ((uint)open >= (uint)_items.Length || (uint)j >= S) return;
+        if ((uint)open >= (uint)_items.Length || (uint)j >= (uint)_items[open].Songs.Length) return;
         var song = _items[open].Songs[j];
         TileEnter(open * S + j, TileKey(open * S + j), in song);
     }
