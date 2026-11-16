@@ -118,6 +118,7 @@ public static partial class Diagnostics
             WriteEdges(w, "edges", s.Edges);
             if (s.MirrorEdges.Count > 0) WriteEdges(w, "mirrorEdges", s.MirrorEdges);
             WritePacks(w, s.Packs);   // Diagnostics.Inspect.Lint.Pack.cs; absent in an old snapshot
+            WriteHomeSections(w, s.HomeSections);   // Diagnostics.Inspect.Home.Explain.cs; absent in an old snapshot
             w.WriteStartArray("policies");
             foreach (LintPolicy p in s.Policies)
             {
@@ -395,6 +396,7 @@ public static partial class Diagnostics
                     Edges = ReadEdges(root, head),
                     MirrorEdges = ReadEdges(root, head, "mirrorEdges"),
                     Packs = ReadPacks(root),
+                    HomeSections = ReadHomeSections(root),
                     Policies = ReadPolicies(root, head),
                     TopBleeds = head.Strings(root, "topBleeds") ?? [],
                     HitBlockers = ReadRects(root, "hitBlockers", head),

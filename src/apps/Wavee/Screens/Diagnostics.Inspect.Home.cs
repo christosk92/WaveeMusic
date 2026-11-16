@@ -338,7 +338,7 @@ public static partial class Diagnostics
 
         // ══ the `home` verb ═════════════════════════════════════════════════════════════════════════════════════════
 
-        public static readonly string[] HomeDos = ["status", "doc", "plan", "verify", "edit", "pin", "unpin", "add", "remove", "size", "move", "open", "close", "option", "surface", "search", "undo", "redo", "reset"];
+        public static readonly string[] HomeDos = ["status", "doc", "plan", "explain", "verify", "edit", "pin", "unpin", "add", "remove", "size", "move", "open", "close", "option", "surface", "search", "undo", "redo", "reset"];
 
         string Home(int id, string name, Inspect.Args a)
         {
@@ -382,6 +382,8 @@ public static partial class Diagnostics
                 }
                 case "plan":
                     return Inspect.Reply.Ok(id, name, w => WritePlan(w, a.Str("facet", ""), store));
+                case "explain":   // Diagnostics.Inspect.Home.Explain.cs
+                    return Inspect.Reply.Ok(id, name, w => WriteExplain(w, a.Str("facet", ""), store, board));
                 case "page":
                 {
                     // A paged section (the preview cards' pages, GridFill.Pagers): `key=` its zone key or any unique part of it (the section uri),
