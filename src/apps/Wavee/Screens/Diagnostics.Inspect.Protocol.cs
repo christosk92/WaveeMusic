@@ -241,6 +241,7 @@ public static partial class Diagnostics
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
             Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
+            Arg("home", ArgType.Enum, "the Home fixture: mock (the hybrid seed), capture (the redacted 1.3.8.620 answers, every facet), or a derived / synthetic All (Entities.Fake.Home.cs)", "mock", "mock|capture|new|free|podcast|region|synthetic|second"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
             Arg("player", ArgType.Enum, "fake: bind an idle engine player to the video surface (no frames); scripted: a player whose scripted source follows the deck (metadata, a first frame, a play intent; every video track an in-place switch)", null, "fake|scripted", requires: "video"),
             Arg("videoOpenMs", ArgType.Int, "player=scripted: how long each open takes to its first frame on the 16 ms frame clock (metadata at half of it)", "240", requires: "video"),
@@ -331,7 +332,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =

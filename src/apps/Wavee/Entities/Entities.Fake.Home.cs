@@ -777,7 +777,8 @@ public static partial class Entities
         t.Seat(slot, stamp);                 // the simulated request seats the row; its conclusion gives the seat back
 
         string facetId = Entities.Strings.Resolve(h.FacetId);
-        bool fail = facetId.Length > 0 && FakeHomeFacetTiming.Failing.Contains(facetId);
+        // The failing facet is the mock's demo; a captured fixture answers every facet.
+        bool fail = HomeFixture == "mock" && facetId.Length > 0 && FakeHomeFacetTiming.Failing.Contains(facetId);
 
         if (s_fakeSwitchTimers.TryGetValue(slot, out var stale)) stale.Dispose();
         s_fakeSwitchTimers[slot] = new System.Threading.Timer(
@@ -1379,6 +1380,93 @@ public static partial class Entities
 
     /// <summary>A stable lowercase-hex <c>item_id</c> per fixture index (uris repeat in a real list; the id never does).</summary>
     static string ItemIdOf(int i) => "5eed" + ((uint)Wrap(i, 1 << 20)).ToString("x8");
+
+    // ── 7. Home fixtures by name (pinned-home design 2.6 step 3; the inspector's `mount … home=<name>`) ─────────────
+    //
+    // `mock` is the seed above (the bundled hybrid capture plus the mockup sections), so today's baselines keep their
+    // meaning. Every other name re-seeds the Home subjects from `assets/spotify/fixtures/`: the redacted answers of the
+    // official 1.3.8.620 client (All and every chip facet, `home.<facet>.json`), decoded by the SAME fold the live
+    // provider calls, and the `feedBaselineLookup` answers (`lookup.<facet>.json`) through the live preview fold. The
+    // derived and synthetic names replace only All (`home.all.<name>.json`; each file says in its `_fixture` header what
+    // was edited). `state kind=home-refresh` lands `home.all.second.json` over All: the next answer, for identity.
+
+    /// <summary>The fixture names <see cref="StageHomeFixture"/> takes.</summary>
+    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second"];
+
+    /// <summary>The Home fixture the tables hold now.</summary>
+    public static string HomeFixture { get; private set; } = "mock";
+
+    static readonly string[] s_fixtureFacets =
+        ["", "music-chip", "music-following-chip", "podcasts-chip", "podcasts-following-chip", "audiobooks-chip"];
+
+    /// <summary>Re-seed the Home subjects from the named fixture. False for an unknown name or a fixture file that is
+    /// missing (a stripped build). A no-op when the tables already hold it.</summary>
+    public static bool StageHomeFixture(string name)
+    {
+        if (Array.IndexOf(HomeFixtures, name) < 0) return false;
+        if (name == HomeFixture) return true;
+        if (name == "mock")
+        {
+            long now0 = Platform.Clock.SeedEpoch;
+            SeedHomeDocument(now0);
+            SeedHomeMockupAll(now0);
+            SeedHomeFacets();
+            SeedHomeMockupFacets(now0);
+            HomeFixture = name;
+            Current.PublishAll();
+            return true;
+        }
+        foreach (string facet in s_fixtureFacets)
+        {
+            string file = facet.Length > 0 ? "home." + facet + ".json"
+                : name == "capture" ? "home.all.json" : "home.all." + name + ".json";
+            if (!LandHomeAnswer(facet, file)) return false;
+        }
+        HomeFixture = name;
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=home-refresh`: the next answer for All (one section removed, one added, two swapped) lands
+    /// over the one the page shows, as a refresh would.</summary>
+    public static bool StageHomeRefresh()
+    {
+        if (!LandHomeAnswer("", "home.all.second.json")) return false;
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>One facet's captured answer, then its baseline lookup (when the capture has one), through the live folds.</summary>
+    static bool LandHomeAnswer(string facet, string file)
+    {
+        byte[]? answer = ReadBundledCapture(Path.Combine("fixtures", file));
+        if (answer is null) return false;
+        string subject = facet.Length == 0 ? Home.FeedUri : Home.FacetPrefix + facet;
+        var s = Staging.Rent();
+        try
+        {
+            Spotify.Decode.HomeFeed(answer, System.Text.Encoding.UTF8.GetBytes(subject), s);
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+
+        var home = HomeFeed(facet.AsSpan());
+        byte[]? lookup = ReadBundledCapture(Path.Combine("fixtures", "lookup." + (facet.Length == 0 ? "all" : facet) + ".json"));
+        HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
+        if (lookup is not null && links.Length > 0)
+        {
+            var p = Staging.Rent();
+            try
+            {
+                Spotify.Decode.FeedBaselineLookup(lookup, links, p);
+                Commit(p);
+            }
+            finally { Staging.Return(p); }
+        }
+        // The lookup is answered (or there is none to make): the fake registers no provider that could answer it.
+        if (home.IsValid) Current.Edges.HomePreviews.ReplaceRun(home.Slot, ReadOnlySpan<int>.Empty, default);
+        return true;
+    }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 

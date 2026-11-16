@@ -836,6 +836,8 @@ public static partial class Diagnostics
                 if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
             }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
+            // `home=<fixture>`: the Home subjects re-seeded from that fixture; every mount names one (default mock), so a previous mount's never leaks.
+            if (!Entities.StageHomeFixture(a.Str("home", "mock"))) { error = "home fixture '" + a.Str("home", "mock") + "' is not bundled"; return false; }
             string gpu = a.Str("gpu", "hardware").ToLowerInvariant();   // hardware falls back to WARP on a machine without an adapter (D3D12Device.InitDevice)
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;

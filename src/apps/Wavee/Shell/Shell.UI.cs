@@ -1112,6 +1112,8 @@ public static partial class Shell
             // The album's credits (Entities.Fake.Album.cs): al2's members' credits asked and unanswered, then answered (`goto` al2 first).
             case "cold-credits": Entities.StageColdCredits(); return true;
             case "credits-land": Entities.LandFakeCredits(); return true;
+            // Home's next answer over the one the page shows (Entities.Fake.Home.cs): identity across answers.
+            case "home-refresh": return Entities.StageHomeRefresh();
             default: return false;
         }
     }
