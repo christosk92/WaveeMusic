@@ -10,6 +10,7 @@
 // tier record at the fitted width, and the board takes that same number (`FullExtent`, the estimate a full row packs at before its body has laid
 // out once), then the body's measured height (`WinUiHomeBoard`): the box follows the body by the 250 ms re-flow, never by a snap.
 
+using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
 using Wavee.Theming;
@@ -109,6 +110,34 @@ public static class WinUiHomeBoardRules
 
     /// <summary>The ⋯ button's own edge and its inset from the tile's corner.</summary>
     public const float MoreEdge = 32f, MoreInset = 4f;
+
+    /// <summary>A card's cover (96) and a double card's (the card's height less its padding: 216).</summary>
+    public const float CardArt = 96f, WideArt = 216f;
+
+    /// <summary>The list rows a card (3) and a double card (4) show under their head.</summary>
+    public const int CardRows = 3, WideRows = 4;
+
+    /// <summary>A dashed outline's runs (the empty row, the drop slot).</summary>
+    public const float DashOn = 4f, DashOff = 4f;
+
+    /// <summary>A choice with fewer values than this is vertical RadioButtons; from it on, a ComboBox (Learn: RadioButtons under five, ComboBox from five).</summary>
+    public const int RadioMax = 5;
+
+    /// <summary>"/" (VK_OEM_2): the add band's search.</summary>
+    public const int SlashKey = 191;
+
+    /// <summary>The add band opening and folding: its height eases (the engine's flow reveal), the board under it rides it; reduced motion fades.</summary>
+    public static LayoutTransition BandReveal => new(TransitionChannels.Size, TransitionDynamics.Tween(WinUiDiscoveryMotion.ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.FlowReveal);
+
+    /// <summary>The band under reduced motion: the same height change, as a short fade with no travel.</summary>
+    public static LayoutTransition BandFade => new(TransitionChannels.Size, TransitionDynamics.Tween(ReducedMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+
+    /// <summary>Reduced motion's fade.</summary>
+    public const float ReducedMs = 120f;
+
+    /// <summary>Half (a round cover's corner is half its edge).</summary>
+    public const float Half = 0.5f;
 
     /// <summary>The ring around a tile just added: 2 DIP, shown for 1.8 s.</summary>
     public const float RingW = 2f;

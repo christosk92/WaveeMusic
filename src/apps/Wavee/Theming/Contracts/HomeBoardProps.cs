@@ -71,6 +71,9 @@ public sealed record HomeBoardProps
 
     /// <summary>The overlay service the menus open on.</summary>
     public IOverlayService? Overlay { get; init; }
+
+    /// <summary>A text editor holds focus (the board's single-key shortcuts, "/" and Delete, stand aside).</summary>
+    public Func<bool> EditorFocused { get; init; } = static () => false;
 }
 
 /// <summary>Every flow of spec section 8 ends in one of these. Each mutating verb is one document command and one undo entry (or
@@ -162,11 +165,12 @@ public sealed record HomeCatalogView
 
 /// <summary>What every tile knows about itself: its entry, its packed cell, the form it draws, the verbs and the overlay.</summary>
 /// <param name="Entry">The board entry.</param>
-/// <param name="Cell">The packed cell (its box and phase as signals).</param>
+/// <param name="Cell">The packed cell (its box and phase as signals); null for a preview outside the grid (the add band's live candidate).</param>
 /// <param name="Form">The form the box carries.</param>
 /// <param name="Verbs">The board's verbs (a tile's own ⋯ calls them).</param>
 /// <param name="Overlay">The overlay service its menus open on.</param>
-public sealed record HomeTileFrame(BoardEntry Entry, PackCell Cell, HomeTileForm Form, IHomeBoardVerbs Verbs, IOverlayService? Overlay);
+/// <param name="View">The board's view state (the ring, the open tile).</param>
+public sealed record HomeTileFrame(BoardEntry Entry, PackCell? Cell, HomeTileForm Form, IHomeBoardVerbs Verbs, IOverlayService? Overlay, HomeBoardView View);
 
 /// <summary>The props of <see cref="ViewKeys.HomeTilePin"/>.</summary>
 public sealed record HomePinTileProps

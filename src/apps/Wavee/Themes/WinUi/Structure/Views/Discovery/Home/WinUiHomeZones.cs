@@ -174,6 +174,14 @@ internal static class WinUiHomeZones
         };
     }
 
+    /// <summary>A zone's chapter content alone (the header and the body; a shelf through its pager-owning component), with no FLIP or entrance box of
+    /// its own: the pinned board's full-row section tile, whose packed wrapper is the box that moves.</summary>
+    internal static Element ChapterContent(Zone zone, IOverlayService? overlay, WinUiHomeLayout layout)
+        => IsShelf(zone.Kind)
+            ? Embed.Comp(new ShelfChapterProps(zone, overlay, layout), static () => new WinUiHomeShelfChapter())
+                with { SkeletonProxy = () => Chapter(zone, overlay, controller: null, layout) }
+            : Chapter(zone, overlay, controller: null, layout);
+
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
         or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles;
 

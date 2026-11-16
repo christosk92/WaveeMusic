@@ -5,7 +5,9 @@
 // query, Classic's reset question. One instance per Home tab, held by `HomeBoardHost` for its lifetime; `Reset` on a theme switch, an
 // account switch or leaving Home.
 
+using FluentGpu.Controls;
 using FluentGpu.Signals;
+using Wavee.Theming;
 
 namespace Wavee;
 
@@ -59,8 +61,25 @@ public sealed class HomeBoardView
     /// <summary>The open add surface's search text.</summary>
     public Signal<string> Query { get; } = new("");
 
+    /// <summary>The board grid's controller (rects, neighbours, bring-into-view); set by the host.</summary>
+    public PackGridController? Grid { get; internal set; }
+
     /// <summary>Classic's reset question in the edit bar.</summary>
     public Signal<bool> ConfirmingReset { get; } = new(false);
+
+    static readonly StateKey<bool> s_tipSeen = new("homeTipSeen", false, false, true);
+    Signal<bool>? _tipSeen;
+
+    /// <summary>The first-run tip was closed once (the active theme's <c>theme.&lt;id&gt;.state.homeTipSeen</c>; WinUI's TeachingTip reads it).</summary>
+    public IReadSignal<bool> TipSeen => _tipSeen ??= new Signal<bool>(ThemeState.Get(s_tipSeen));
+
+    /// <summary>Remember that the first-run tip was closed.</summary>
+    public void MarkTipSeen()
+    {
+        ThemeState.Set(s_tipSeen, true);
+        _ = TipSeen;
+        _tipSeen!.Value = true;
+    }
 
     /// <summary>Back to rest: nothing open, nothing selected, no mode, no surface.</summary>
     public void Reset()

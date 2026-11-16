@@ -35,6 +35,7 @@ public sealed class HomeBoardHost
     {
         _scroll = scroll;
         _verbs = new HomeBoardVerbs(_view, _grid, () => _model?.Peek() ?? BoardModel.Empty);
+        _view.Grid = _grid;
         Board = () => Slots.View(ViewKeys.HomeBoard, Props());
         Tools = () => Slots.View(ViewKeys.HomeBoardTools, Props());
     }
@@ -90,14 +91,15 @@ public sealed class HomeBoardHost
             Model = model,
             View = _view,
             Verbs = _verbs,
-            Tile = (entry, cell, form) => HomeTileHost.For(entry, cell, form, _verbs, overlay),
+            Tile = (entry, cell, form) => HomeTileHost.For(entry, cell, form, _verbs, overlay, _view),
             Options = entry => HomeTileHost.OptionsFor(entry, _verbs, _view),
-            Catalog = HomeCatalogViews.Create(model),
+            Catalog = HomeCatalogViews.Create(model, _verbs, overlay, _view),
             Undo = HomeBoardStore.Instance.UndoState,
             Grid = _grid,
             Scroll = _scroll,
             ReadOnly = HomeBoardStore.Instance.ReadOnly,
             Overlay = overlay,
+            EditorFocused = Shell.FocusedIsTextEditor,
         };
     }
 }

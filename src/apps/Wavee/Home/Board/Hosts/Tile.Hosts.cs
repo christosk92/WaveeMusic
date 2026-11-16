@@ -19,7 +19,7 @@ namespace Wavee;
 /// <summary>The props of a tile host: the entry by value (a re-projection with an equal entry is a no-op at the embed boundary), the cell, the
 /// theme's form rule, the verbs and the overlay by reference. The rule is the theme's lambda, rebuilt with its board's render: it is NOT part of
 /// equality (the same rule over the same cell gives the same form).</summary>
-public sealed record HomeTileHostProps(BoardEntry Entry, PackCell Cell, Func<PackBox, HomeTileForm> FormRule, IHomeBoardVerbs Verbs, IOverlayService? Overlay)
+public sealed record HomeTileHostProps(BoardEntry Entry, PackCell? Cell, Func<PackBox, HomeTileForm> FormRule, IHomeBoardVerbs Verbs, IOverlayService? Overlay, HomeBoardView View)
 {
     /// <inheritdoc/>
     public bool Equals(HomeTileHostProps? o)
@@ -36,8 +36,8 @@ public sealed class HomeTileHost : Component
     HomeTileHostProps? _p;
 
     /// <summary>The tile of an entry.</summary>
-    public static Element For(BoardEntry entry, PackCell cell, Func<PackBox, HomeTileForm> form, IHomeBoardVerbs verbs, IOverlayService? overlay)
-        => Embed.Comp(new HomeTileHostProps(entry, cell, form, verbs, overlay), static () => new HomeTileHost());
+    public static Element For(BoardEntry entry, PackCell? cell, Func<PackBox, HomeTileForm> form, IHomeBoardVerbs verbs, IOverlayService? overlay, HomeBoardView view)
+        => Embed.Comp(new HomeTileHostProps(entry, cell, form, verbs, overlay, view), static () => new HomeTileHost());
 
     /// <summary>The options body of the open entry.</summary>
     public static Element OptionsFor(BoardEntry entry, IHomeBoardVerbs verbs, HomeBoardView view)
@@ -48,8 +48,8 @@ public sealed class HomeTileHost : Component
         var p = UseProps<HomeTileHostProps>();
         _p = p;
         // The form follows the box, but only its edges re-render the tile (a memo with an equality cut-off over the cell's box signal).
-        var form = UseComputed(() => _p!.FormRule(_p.Cell.Box.Value)).Value;
-        var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay);
+        var form = UseComputed(() => _p!.FormRule(_p.Cell?.Box.Value ?? default)).Value;
+        var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay, p.View);
         var e = p.Entry;
         if (e.Kind == BoardEntryKind.Placeholder)
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Loading, Name = e.Title });

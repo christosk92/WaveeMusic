@@ -27,6 +27,18 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.HomeDaylistClock, WinUiHomeDaylistClock.Template, "winui.home.daylist-clock");
         views.Add(ViewKeys.HomeZoneRecentGrid, WinUiHomeRecents.Template, "winui.home.zone.recent-grid");
         views.Add(ViewKeys.HomeCharts, WinUiHomeCharts.Template, "winui.home.charts");
+        // The pinned Home board (contract 1.117): the grid, the head-row tools, the tiles, the options presenter.
+        views.Add(ViewKeys.HomeBoard, WinUiHomeBoard.Template, "winui.home.board");
+        views.Add(ViewKeys.HomeBoardTools, WinUiHomeBoardTools.Template, "winui.home.board-tools");
+        views.Add(ViewKeys.HomeTilePin, WinUiHomeTiles.Pin, "winui.home.tile.pin");
+        views.Add(ViewKeys.HomeTileNowPlaying, WinUiHomeTiles.NowPlaying, "winui.home.tile.now-playing");
+        views.Add(ViewKeys.HomeTileUpNext, WinUiHomeTiles.UpNext, "winui.home.tile.up-next");
+        views.Add(ViewKeys.HomeTileRecents, WinUiHomeTiles.Recents, "winui.home.tile.recents");
+        views.Add(ViewKeys.HomeTileReleases, WinUiHomeTiles.Releases, "winui.home.tile.releases");
+        views.Add(ViewKeys.HomeTileDaylist, WinUiHomeTiles.Daylist, "winui.home.tile.daylist");
+        views.Add(ViewKeys.HomeTileSection, WinUiHomeTiles.Section, "winui.home.tile.section");
+        views.Add(ViewKeys.HomeTileOptions, WinUiHomeTileOptions.Template, "winui.home.tile.options");
+        views.Add(ViewKeys.HomeTileVacant, WinUiHomeTiles.Vacant, "winui.home.tile.vacant");
         views.Add(ViewKeys.HomeZoneCoverShelf, WinUiHomeZones.BodyTemplate, "winui.home.zone.cover-shelf");
         views.Add(ViewKeys.HomeZoneWideTiles, WinUiHomeZones.BodyTemplate, "winui.home.zone.wide-tiles");
         views.Add(ViewKeys.HomeZoneReleaseList, WinUiHomeZones.BodyTemplate, "winui.home.zone.release-list");
