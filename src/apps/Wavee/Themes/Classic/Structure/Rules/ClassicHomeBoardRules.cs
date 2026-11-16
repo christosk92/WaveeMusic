@@ -72,6 +72,13 @@ public sealed record ClassicHomeBoardLayout
     /// <summary>The narrowest an open tile is (columns): its radio rows want two columns where there are two.</summary>
     public required byte OpenMinCols { get; init; }
 
+    /// <summary>The shortcuts grid (owner 2026-11-16, "one grid, edit inside it"): its columns (a floor-fit inside the tier: 2 at Compact, 3 at
+    /// Standard, 4 at Huge) and its row (the speed-dial cell's).</summary>
+    public required ClassicGridBand ShortcutCols { get; init; }
+
+    /// <inheritdoc cref="ShortcutCols"/>
+    public required float ShortcutUnit { get; init; }
+
     /// <summary>The chip strip above a block of two units or more in Edit Home.</summary>
     public required float ChipStrip { get; init; }
 
@@ -116,10 +123,11 @@ public static class ClassicHomeBoardTiers
         {
             Tier = WidthTier.Compact, Columns = ClassicGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, ChipBox = 40f,
             InlineFrom = float.PositiveInfinity, ButtonsInStrip = true, AddCardW = 220f, ShortcutsHead = 100f, FaceSwitchH = 40f,
+            ShortcutCols = ClassicGridBand.Fixed(2),
         },
-        WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new ClassicGridBand(260f, 2), InlineFrom = float.PositiveInfinity },
+        WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new ClassicGridBand(260f, 2), InlineFrom = float.PositiveInfinity, ShortcutCols = new ClassicGridBand(220f, 3) },
         WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new ClassicGridBand(240f, 4) },
-        _ => Base with { Tier = WidthTier.Huge, Columns = new ClassicGridBand(280f, 6), FindW = 240f },
+        _ => Base with { Tier = WidthTier.Huge, Columns = new ClassicGridBand(280f, 6), FindW = 240f, ShortcutCols = new ClassicGridBand(300f, 4) },
     };
 
     const float UnitH = 64f, GapW = 12f;
@@ -130,6 +138,7 @@ public static class ClassicHomeBoardTiers
         Unit = UnitH, Gap = GapW, GroupGap = 24f, GroupHead = 44f, ShortcutsHead = 44f, FaceSwitchH = 34f, EmptyRow = UnitH, AddRow = 40f, AddRowOpen = 176f, EndRow = 40f,
         S = (1, 1), M = (1, 3), L = (2, 3), OpenMinCols = 2, ChipStrip = 40f, ChipBox = 32f,
         InlineFrom = 1080f, ButtonsInStrip = false, FindW = 200f, AddCardW = 240f,
+        ShortcutCols = new ClassicGridBand(280f, 3), ShortcutUnit = UnitH,
     };
 }
 

@@ -105,6 +105,9 @@ public interface IHomeBoardVerbs
     /// <summary>Move onto another entry (after a later one, before an earlier one).</summary>
     void MoveOnto(string entryId, string targetEntryId);
 
+    /// <summary>A shortcut cell to another place in the shortcuts grid (its index among the grid's cells, in the order shown).</summary>
+    void ReorderShortcut(string entryId, int toIndex);
+
     /// <summary>One or more steps in order (tag <c>step:&lt;id&gt;</c>).</summary>
     void MoveBy(string entryId, int delta);
 

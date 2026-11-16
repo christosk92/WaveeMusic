@@ -170,7 +170,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneCoverShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.cover-shelf");
         views.Add(ViewKeys.HomeZoneWideTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.wide-tiles");
         views.Add(ViewKeys.HomeZoneReleaseList, ClassicHomeZones.BodyTemplate, "classic.home.zone.release-list");
-        views.Add(ViewKeys.HomeZoneClusterCards, ClassicHomeZones.BodyTemplate, "classic.home.zone.cluster-cards");
+        views.Add(ViewKeys.HomeZoneSpineShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.spine-shelf");
         views.Add(ViewKeys.HomeZoneMixedCovers, ClassicHomeZones.BodyTemplate, "classic.home.zone.mixed-covers");
         views.Add(ViewKeys.HomeZoneRadioShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.radio-shelf");
         views.Add(ViewKeys.HomeZoneBrowseTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.browse-tiles");

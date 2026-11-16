@@ -49,7 +49,8 @@
 //   ShowGrid                                  PagedShelf of HomeCards.ShelfCell (+ 2-span lead cell)       tools: See all · ‹ pips ›
 //   WideTiles/VideoTiles                      PagedShelf of 16:9 HomeCards.ShelfCell                       tools: See all · ‹ pips ›
 //   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of Surface(Row)       (sub-block)
-//   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
+//   SpineShelf                                the Spine Shelf (ClassicHomeShelf over Home/SpineShelf): one open card + spines
+//   PodcastGroups                             GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
 //   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block (Home.Charts)
 //   LeadGrid/CompactGrid/ArtistCircles/
 //   CappedShelf                               the Home rhythm templates (ClassicHomeZones.Rhythm.cs)        tools: See all N
@@ -186,10 +187,11 @@ internal static partial class ClassicHomeZones
     }
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
 
-    /// <summary>A body that pages its tall cards (the preview cards): its header carries "1 of 2" and the previous and next buttons at every tier.</summary>
-    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+    /// <summary>A body that pages its tall items (the Spine Shelf's pages, the podcast groups): its header carries "1 of 2" and the previous and next
+    /// buttons at every tier.</summary>
+    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
 
     /// <summary>Header + clipped body inside the zone scope, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout)
@@ -256,7 +258,7 @@ internal static partial class ClassicHomeZones
         Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
-            : Embed.Comp(() => new ClassicHomeShelfTools(controller, leadingDivider, counter, arrows)) with { Key = leadingDivider ? "tools+link" : "tools" };
+            : Embed.Comp(() => new ClassicHomeShelfTools(new ShelfPagerSource(controller), leadingDivider, counter, arrows)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
         if (pager is null) return link;
         return new BoxEl
@@ -305,7 +307,8 @@ internal static partial class ClassicHomeZones
         ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
         ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
+        ZoneKind.SpineShelf => ClassicHomeShelf.Body(zone, layout, controller),
+        ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes),
         ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue),
@@ -366,7 +369,8 @@ internal static partial class ClassicHomeZones
         // top-aligned). The extent is a live prop of the mounted shelf, like its band: a crossing that drops the lead re-sizes the same strip.
         Func<float, float> cardHeight = wide ? s_wideCardHeight : CoverCardHeight(HomeCards.CaptionLinesOf(items));
 
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length + (leadWide ? ClassicHomeRules.LeadSpan - 1 : 0), band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open, the lead cell's too
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
@@ -374,7 +378,7 @@ internal static partial class ClassicHomeZones
             // The header owns the pager (the controller) where the tier pages the shelf; a tier that does not (a Compact strip) shows none.
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
             gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
@@ -390,7 +394,7 @@ internal static partial class ClassicHomeZones
             leadMinColumns: wide ? 0 : ClassicHomeRules.LeadMinColumns)
            // ONE key at every tier: the card band, the column cap, the pager and the card height are live props, so a crossing re-fits the SAME shelf
            // (its cards, its page and the header's controller survive) instead of remounting it.
-           with { Key = "home-shelf:" + zone.Key };
+           with { Key = "home-shelf:" + zone.Key });
     }
 
     /// <summary>The shelf band of a zone kind in <paramref name="layout"/>: the wide tiles' or the covers'.</summary>
@@ -420,7 +424,7 @@ internal static partial class ClassicHomeZones
     /// signals, so only this leaf re-renders on a page change. <paramref name="leadingDivider"/> puts the 16-px
     /// vertical divider between the header's "See all" link and the pager — it comes and goes WITH the pager, so a
     /// one-page shelf shows the bare link.</summary>
-    sealed class ClassicHomeShelfTools(ShelfController controller, bool leadingDivider, bool counter = false, bool arrows = true) : Component
+    internal sealed class ClassicHomeShelfTools(IPager controller, bool leadingDivider, bool counter = false, bool arrows = true) : Component
     {
         public override Element Render()
         {

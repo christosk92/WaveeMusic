@@ -9,7 +9,8 @@
 //   no drawable card                              → None           (omitted, named in the plan with its typename)
 //   a daylist playlist in the lead                → DaylistHero
 //   HomeFeedBaselineSectionData                   → by its card: an untitled album = ReleaseList, an episode = VideoTiles
-//                                                   or EpisodeRows, a book = BookShelf, a show = ShowGrid, else PreviewCard
+//                                                   or EpisodeRows, a book = BookShelf, a show = ShowGrid, else SpineShelf
+//                                                   (a run of these is ONE shelf: HomeProjection folds it)
 //   mostly episodes                               → VideoTiles (video with a thumbnail) or EpisodeRows (each the other's alternate,
 //                                                   the baseline's one episode too: a run of episodes alternates a card and a row)
 //   mostly audiobooks                             → BookShelf
@@ -109,8 +110,8 @@ public static class SectionChooser
                     : Pick(SectionTemplate.EpisodeRows, "baseline: an episode", SectionTemplate.VideoTiles),
                 HomeCardKind.Audiobook => new(SectionTemplate.BookShelf, ZoneKind.BookShelf, "baseline: a book"),
                 HomeCardKind.Podcast => new(SectionTemplate.ShowGrid, ZoneKind.ShowGrid, "baseline: a show"),
-                _ => new(SectionTemplate.PreviewCard, ZoneKind.ClusterCards,
-                    s.Preview.Count > 0 ? "baseline: a card with preview tracks" : "baseline: a card (preview tracks not landed)"),
+                _ => new(SectionTemplate.SpineShelf, ZoneKind.SpineShelf,
+                    s.Preview.Count > 0 ? "baseline: a card with preview songs" : "baseline: a card (preview songs not landed)"),
             };
         }
 
@@ -172,7 +173,7 @@ public static class SectionChooser
         SectionTemplate.ReleaseList => ZoneKind.ReleaseList,
         SectionTemplate.VideoTiles => ZoneKind.VideoTiles,
         SectionTemplate.EpisodeRows => ZoneKind.EpisodeRows,
-        SectionTemplate.PreviewCard or SectionTemplate.PreviewGrid => ZoneKind.ClusterCards,
+        SectionTemplate.SpineShelf => ZoneKind.SpineShelf,
         _ => ZoneKind.CoverShelf,
     };
 
@@ -187,7 +188,7 @@ public static class SectionChooser
         int total = Math.Max(s.TotalCount, cards.Count);
         return choice.Zone switch
         {
-            ZoneKind.ClusterCards => new Zone(ZoneKind.ClusterCards, key, title, s.Subtitle, cards,
+            ZoneKind.SpineShelf => new Zone(ZoneKind.SpineShelf, key, title, s.Subtitle, cards,
                 Clusters: ClusterFold.Fold([s], titles), SectionSlot: s.Slot, TotalCount: total),
             ZoneKind.Daylist => new Zone(ZoneKind.Daylist, key, s.Title, s.Subtitle, cards, cards.Count > 0 ? cards[0] : null,
                 SectionSlot: s.Slot, TotalCount: total),

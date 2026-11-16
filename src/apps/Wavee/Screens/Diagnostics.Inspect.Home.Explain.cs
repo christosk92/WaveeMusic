@@ -83,11 +83,11 @@ public static partial class Diagnostics
                     w.WriteStartObject("fold");
                     w.WriteNumber("members", e.Members.Length);
                     string before = Neighbour(entries, i, -1), after = Neighbour(entries, i, +1);
-                    w.WriteString("why", e.Members.Length + " neighbouring one-card baseline sections (PreviewCard, 1 card each, auto size) are folded into one "
+                    w.WriteString("why", e.Members.Length + " one-card baseline sections of the run (SpineShelf, 1 card each, auto size) are gathered into one "
                         + e.Template + " under the app's own heading '" + (e.Zone?.Title ?? e.Title) + "' (HomeProjection.Fold): Spotify sends no such title");
                     w.WriteString("runStartsAfter", before);
                     w.WriteString("runEndsBefore", after);
-                    w.WriteString("rule", "a fold joins ADJACENT foldable entries only: a run breaks at any entry that is not a one-card baseline section at its auto size (an episode section, a placed item, a hidden or resized one)");
+                    w.WriteString("rule", "a fold gathers EVERY foldable entry of its run (one-card baseline sections at their auto size, wherever they stand in it) at the first one's place; a run is bounded by a placed non-section item (a widget, a pin), and the entries between members keep their order after the shelf");
                     w.WriteEndObject();
                     w.WriteStartArray("sections");
                     foreach (var m in e.Members) WriteSectionCore(w, m, byKey, now, null);
@@ -111,7 +111,7 @@ public static partial class Diagnostics
                     }
                     w.WriteBoolean("realized", board.IsRealized(e.Id));
                 }
-                if (e.Zone is { } zz && GridFill.Pagers.TryGetValue(zz.Key, out FluentGpu.Controls.ShelfController? pager))
+                if (e.Zone is { } zz && GridFill.Pagers.TryGetValue(zz.Key, out IPager? pager))
                 {
                     w.WriteStartObject("pager");
                     w.WriteNumber("page", pager.Page.Peek() + 1);
@@ -237,7 +237,8 @@ public static partial class Diagnostics
 
     public static partial class InspectLint
     {
-        /// <summary><c>home.duplicate</c> (todo, error; promote it to gate once the fixtures are clean): two sections the Home board renders under one title (case and spaces folded). The owner
+        /// <summary><c>home.duplicate</c> (gate, error): two sections the Home board renders under one title (case and spaces folded), unless both are Spotify's own
+        /// sections under its own titles. The owner
         /// saw two "Because you like" folds on a live answer that no check caught; `home do=explain` says why each copy is there.</summary>
         static int HomeDuplicateRule(Snapshot s, List<Finding> into)
         {
@@ -253,6 +254,9 @@ public static partial class Diagnostics
             foreach (var (t, l) in byTitle)
             {
                 if (l.Count < 2) continue;
+                // Spotify's own: two of its sections that it titles alike (live1: "Popular with listeners of The Pog State", one of audiobooks, one of
+                // shows) are its answer, drawn as sent; only a title the app composes (a fold's, a widget's) or repeats is a duplicate.
+                if (l.TrueForAll(static x => x.Entry.StartsWith(HomeCommands.FeedPrefix, StringComparison.Ordinal))) continue;
                 var keys = l.ConvertAll(x => "home:tile:" + x.Entry);
                 into.Add(new Finding(Rules.HomeDuplicate, Severity.Error,
                     $"'{l[0].Title}' titles {l.Count} Home sections ({string.Join(", ", l.ConvertAll(x => x.Entry))}): a person reads one section twice; home do=explain names why each is there",

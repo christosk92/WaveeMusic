@@ -7,7 +7,8 @@
 //   CoverShelf · MixedCovers · RadioShelf · ShowGrid   a shelf of 154 covers 16 apart (an artist's art round), chevrons in the heading row
 //   WideTiles · VideoTiles                            a shelf of 16:9 tiles, the tier's columns across (4 at Standard), 16 apart
 //   ReleaseList                                       64 rows of 56 art: the name, its kind line, the "when" 80 wide at the end
-//   ClusterCards · PodcastGroups                      the tier's columns (2 at Standard, 24 apart) of a 28 title over three 48 rows of 40 art
+//   SpineShelf                                        the Spine Shelf (ZuneHomeZones.Shelf over Home/SpineShelf): flat spines, one open card
+//   PodcastGroups                                     the tier's columns (2 at Standard, 24 apart) of a 28 title over three 48 rows of 40 art
 //   BrowseTiles                                       flat 88 plates (the tier's columns, 12 apart) 2 : 1 beside the charts (`Home.Charts`)
 //   EpisodeLead · EpisodeRows · ContinueEpisodes      the shared episode rows (72 floor, 56 art), one column (a pair puts two side by side)
 //   LeadGrid · CompactGrid · ArtistCircles ·
@@ -54,7 +55,8 @@ internal static partial class ZuneHomeZones
         ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, lay),
         ZoneKind.CappedShelf => CappedShelf(zone, overlay, lay),
         ZoneKind.ReleaseList => ReleaseList(zone, lay, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => Clusters(zone, lay),
+        ZoneKind.SpineShelf => Shelf(zone, lay),
+        ZoneKind.PodcastGroups => Clusters(zone, lay),
         ZoneKind.BrowseTiles => BrowseTiles(zone, lay),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows or ZoneKind.ContinueEpisodes => Episodes(zone, lay),
         ZoneKind.EmptyFacet => EmptyFacet(zone),
@@ -68,7 +70,7 @@ internal static partial class ZuneHomeZones
     {
         var seeAll = HomeVerbs.SeeAll(zone);
         Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, HomeVerbs.SeeAllLabel(zone), seeAll, lay.LinkTarget);
-        if (zone.Header is { } entity && zone.Kind is not (ZoneKind.ReleaseList or ZoneKind.ClusterCards)) return EntityHeading(entity, tools, lay);
+        if (zone.Header is { } entity && zone.Kind is not (ZoneKind.ReleaseList or ZoneKind.SpineShelf)) return EntityHeading(entity, tools, lay);
         return K.Heading(zone.Title ?? fallbackTitle ?? "", lay.Subtitles ? zone.Subtitle : null, tools);
     }
 
@@ -88,7 +90,8 @@ internal static partial class ZuneHomeZones
             items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), c.Kind == HomeCardKind.Artist);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length, lay.ShelfMinW, lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, lay.ShelfCols, lay.ShelfCols > 0 ? 0f : lay.ShelfCardW, H.ShelfGap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, 1f, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
@@ -97,15 +100,15 @@ internal static partial class ZuneHomeZones
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             // Standard: the fixed 154 card. Elsewhere the shelf FITS: up to the tier's columns share the width, none narrower than the tier's floor
             // (one node at every tier: these are live props of the shelf).
-            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
-            maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
+            minCardW: lay.ShelfMinW, maxCardW: band2.MaxCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
+            maxColumns: band2.MaxColumns, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
                 ? "zune-shelf-blank:" + i.ToString(CultureInfo.InvariantCulture)
                 : "zune-shelf-card:" + item.Card.Uri)
-            with { Key = "zune-home-shelf:" + zone.Key };
+            with { Key = "zune-home-shelf:" + zone.Key });
     }
 
     /// <summary>The wide tiles (Z-Home "new music"): 16:9 covers, the tier's columns across the page (one key at every count: a live prop).</summary>
@@ -119,21 +122,22 @@ internal static partial class ZuneHomeZones
             items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced("wide:" + zone.Key, items.Length, lay.WideMinW, H.WideMaxW, lay.WideCols, 0f, H.WideGap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, R.Space.WideTileAspect, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
             cardHeight: s_wideHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
-            minCardW: lay.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
+            minCardW: lay.WideMinW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, gap: H.WideGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
                 ? "zune-wide-blank:" + i.ToString(CultureInfo.InvariantCulture)
                 : "zune-wide-card:" + item.Card.Uri)
-            with { Key = "zune-home-wide:" + zone.Key };
+            with { Key = "zune-home-wide:" + zone.Key });
     }
 
     static Element Cell(in HomeCards.ShelfItem item, float cardW, float aspect, IOverlayService? host)

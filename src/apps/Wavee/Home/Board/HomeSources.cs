@@ -144,7 +144,8 @@ public sealed class HomeSourceRegistry
             new HomeSourceDef
             {
                 Id = Pin, TitleKey = "home.board.source.pin.title", DescriptionKey = "home.board.source.pin.description",
-                SearchTermsKey = "home.board.source.pin.terms", Sizes = [HomeSize.S, HomeSize.M, HomeSize.L],
+                // A pin is a shortcut: one cell of the Pinned group's grid, never resized (owner 2026-11-16, "one grid, edit inside it").
+                SearchTermsKey = "home.board.source.pin.terms", Sizes = [HomeSize.S],
                 CanonicalAuto = HomeSize.S, Budget = HomeBudget.Event, DefaultGroup = HomeDocs.Pinned, Glyph = "pin",
             },
             new HomeSourceDef

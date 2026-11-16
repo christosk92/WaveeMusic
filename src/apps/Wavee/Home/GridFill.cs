@@ -173,21 +173,52 @@ public static class GridFill
             with { Key = "grid-pages:" + key };
     }
 
+    /// <summary>A card shelf's band at a width, balanced over its pages (owner 2026-11-17: a shelf's page holds only its own cards): where the cards
+    /// take more than one page at the band's fit, the columns are the cards spread evenly over those pages, <c>ceil(cells / ceil(cells / fit))</c>
+    /// (6 at 4 are two pages of 3, not 4 and the last page slid back over two of the first), each card the width's share. One page, a strip of fixed
+    /// cards, or columns that already divide evenly keep the band.</summary>
+    public readonly record struct ShelfBand(int MaxColumns, float MaxCardW);
+
+    /// <summary>The band <see cref="ShelfBand"/> describes for <paramref name="cells"/> cells (a wide lead counts its span) at <paramref name="width"/>.</summary>
+    public static ShelfBand Balance(float width, int cells, float minCardW, float maxCardW, int maxColumns, float fixedCardW, float gap)
+    {
+        if (fixedCardW > 0f || width <= 1f || cells <= 1) return new ShelfBand(maxColumns, maxCardW);
+        int fit = FluentGpu.Scene.FillRowVirtualLayout.Fit(width, minCardW, maxCardW, gap, 0, 0f, maxColumns).PerPage;
+        if (cells <= fit) return new ShelfBand(maxColumns, maxCardW);
+        int pages = (cells + fit - 1) / fit;
+        int cols = (cells + pages - 1) / pages;
+        return cols >= fit ? new ShelfBand(maxColumns, maxCardW) : new ShelfBand(cols, PageMaxW);
+    }
+
+    /// <summary>A paged card shelf at its balanced band (<see cref="Balance"/>): <paramref name="shelf"/> builds the ONE shelf with the band's
+    /// column cap and card ceiling, both live props of the mounted shelf, so a width that changes the balance re-fits the same shelf (its cards,
+    /// its page, the header's controller survive). Rebuilt only when the band changes.</summary>
+    public static Element Balanced(string key, int cells, float minCardW, float maxCardW, int maxColumns, float fixedCardW, float gap,
+        Func<ShelfBand, Element> shelf)
+        => FluentGpu.Controls.Responsive.Of("balanced:" + key, w => Balance(w, cells, minCardW, maxCardW, maxColumns, fixedCardW, gap), shelf);
+
     /// <summary>A page cell's width band: one page across whatever the section is wide.</summary>
     const float PageMinW = 1f, PageMaxW = 1_000_000f;
 
     /// <summary>The live pagers by section (the zone key): the inspector's `home do=page` drives one. A chapter registers the controller it
     /// owns while it is mounted; in memory only.</summary>
-    public static readonly Dictionary<string, ShelfController> Pagers = new(StringComparer.Ordinal);
+    public static readonly Dictionary<string, IPager> Pagers = new(StringComparer.Ordinal);
+    static readonly Dictionary<string, object> s_identity = new(StringComparer.Ordinal);
 
     /// <summary>Register <paramref name="controller"/> as section <paramref name="key"/>'s pager; the returned cleanup removes it (if it is still
     /// that one). A chapter calls it from an effect.</summary>
-    public static Action Register(string key, ShelfController controller)
+    public static Action Register(string key, ShelfController controller) => Register(key, new ShelfPagerSource(controller), controller);
+
+    /// <summary>Register <paramref name="pager"/> as section <paramref name="key"/>'s pager (the shortcuts grid's own pages).</summary>
+    public static Action Register(string key, IPager pager) => Register(key, pager, pager);
+
+    static Action Register(string key, IPager pager, object identity)
     {
-        Pagers[key] = controller;
+        Pagers[key] = pager;
+        s_identity[key] = identity;
         return () =>
         {
-            if (Pagers.TryGetValue(key, out var c) && ReferenceEquals(c, controller)) Pagers.Remove(key);
+            if (s_identity.TryGetValue(key, out var c) && ReferenceEquals(c, identity)) { Pagers.Remove(key); s_identity.Remove(key); }
         };
     }
 }

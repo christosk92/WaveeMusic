@@ -70,6 +70,12 @@ internal static class ZuneHomeTiles
                 Word(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts), HomeShortcuts.ShortcutsFace, "face-shortcuts"),
                 // No "see all" after the words: the grid's own history tile is the way to the listening history (owner 2026-11-16).
                 Word(Loc.Get(Strings.Theme.Zune.Discovery.History), HomeShortcuts.RecentsFace, "face-history"),
+                // The grid's page while it pages: "01/02" in the heading's light voice (the pages swipe, the edge chevrons turn them).
+                new BoxEl
+                {
+                    Shrink = 0f, AlignSelf = FlexAlign.End,
+                    Children = [Embed.Comp(() => new ZuneHomeZones.PageCounter(p.Board.View.ShortcutsPager)) with { Key = key + ":pages" }],
+                },
             ],
         };
     }

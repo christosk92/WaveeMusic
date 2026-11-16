@@ -5,7 +5,7 @@
 //   MoodPlates     a grid of plates, each the mix's colour graded toward the page the way the daylist hero is, the name in the section
 //                  voice on the calm side over its first sentence                                                   tools: See all N
 //   BookShelf      Classic's shelf of the house surface: author, "★ 4.7 · 20 hr 56 min", the plan as a pill; every card 4 lines
-//   ClusterCards   Ui.Card: the artist's picture with the name (a link) over "For fans of", the playlist (cover, name, description,
+//   PodcastGroups  Ui.Card: the show's picture with the name (a link) over the reason, the show (cover, name, description,
 //                  "Playlist · Spotify · 50 songs", Play), 4 rows; pages of two rows at most, no empty slot (GridFill)
 //   VideoTiles(1)  one episode as a video card: the still with "Video" and the length on it, the progress hairline, the show, the
 //                  title, its facts, Play and Save
@@ -163,18 +163,19 @@ internal static partial class ClassicHomeZones
             items[i] = new BookItem(c, c.Title, c.Author ?? HomeCards.PlainText(c.Subtitle), SectionCopy.BookFacts(in c, culture), c.Signifier ?? "", c.ImageUrl);
         }
         var host = HostOf(overlay);
-        return PagedShelf.Create<BookItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length, band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<BookItem>(items,
             (item, i, cardW) => BookCell(in item, cardW, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardWidthBound: true,
             cardHeight: s_bookHeight,
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
             gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank ? "home-book-blank:" + i.ToString(CultureInfo.InvariantCulture) : "home-book:" + item.Card.Uri)
-            with { Key = "home-books:" + zone.Key };
+            with { Key = "home-books:" + zone.Key });
     }
 
     static Element BookCell(in BookItem item, float cardW, IOverlayService? host)

@@ -24,7 +24,7 @@ namespace Wavee.HomeUi;
 /// (plan "Zone → controls → metrics").</summary>
 public enum ZoneKind : byte
 {
-    Daylist, RecentGrid, CoverShelf, WideTiles, ReleaseList, ClusterCards, MixedCovers, RadioShelf,
+    Daylist, RecentGrid, CoverShelf, WideTiles, ReleaseList, SpineShelf, MixedCovers, RadioShelf,
     BrowseTiles, EpisodeLead, ContinueEpisodes, ShowGrid, VideoTiles, EpisodeRows, PodcastGroups, EmptyFacet,
     /// <summary>Colour-plate mixes ("Soundtrack your Monday afternoon", format <c>descripto</c>): flat plates with the mix name (home-gap P6).</summary>
     MoodPlates,
@@ -66,7 +66,7 @@ public sealed record SectionInput(int Slot, string Uri, string? Title, string? S
 
 /// <summary>One rendered chapter of the Home screen. <see cref="Lead"/> is the wide/2-cell lead item (Discover
 /// Weekly, the first radio station with a header image, a podcast's newest video episode); <see cref="Clusters"/> is
-/// only set for <see cref="ZoneKind.ClusterCards"/>/<see cref="ZoneKind.PodcastGroups"/>.</summary>
+/// only set for <see cref="ZoneKind.SpineShelf"/>/<see cref="ZoneKind.PodcastGroups"/>.</summary>
 public sealed record Zone(ZoneKind Kind, string Key, string? Title, string? Subtitle, IReadOnlyList<HomeCard> Items,
     HomeCard? Lead = null, IReadOnlyList<ZoneCluster>? Clusters = null, int SectionSlot = -1, int TotalCount = 0)
 {
@@ -90,7 +90,7 @@ public sealed record HeaderEntity(string Uri, string Name, string? Image, string
     }
 }
 
-/// <summary>One grouped-list card inside a <see cref="ZoneKind.ClusterCards"/>/<see cref="ZoneKind.PodcastGroups"/>
+/// <summary>One item of a <see cref="ZoneKind.SpineShelf"/> (a card and its preview songs) or a <see cref="ZoneKind.PodcastGroups"/> card
 /// zone — "More like {Name}" / "For fans of {Name}" / "Popular with listeners of {Name}". Named <c>ZoneCluster</c>,
 /// not <c>Cluster</c>: a protobuf <c>Cluster</c> type already exists in this codebase.
 /// <para><see cref="Header"/> (D2) is the card the cluster itself opens to — the baseline section's own card (a

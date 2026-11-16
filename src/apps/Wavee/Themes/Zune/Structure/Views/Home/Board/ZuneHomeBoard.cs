@@ -40,9 +40,8 @@ using B = Wavee.Themes.Zune.ZuneHomeBoardRules;
 namespace Wavee.Themes.Zune;
 
 /// <summary>What the Zune grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head.</summary>
-/// <para><see cref="Cell"/> is a shortcut cell's place in the shortcuts group (the history item that face shows there), -1 for everything else;
-/// <see cref="Switch"/> says the Pinned group carries the history tile, so its head is the two pivot words (<see cref="HomeShortcuts"/>).</para>
-internal sealed record ZuneBoardItem(string Key, BoardEntry Entry, bool EmptyRow, int Cell = -1, bool Switch = false);
+/// <para><see cref="Switch"/> says the Pinned group carries the history tile, so its head is the two pivot words (<see cref="HomeShortcuts"/>).</para>
+internal sealed record ZuneBoardItem(string Key, BoardEntry Entry, bool EmptyRow, bool Switch = false);
 
 /// <summary>Zune's pinned Home board.</summary>
 internal static class ZuneHomeBoard
@@ -185,6 +184,7 @@ internal static class ZuneHomeBoard
         bool _rendered, _wasAll;
 
         static readonly Func<PackBox, HomeTileForm> s_full = static _ => HomeTileForm.Full;
+        static readonly Func<PackBox, HomeTileForm> s_medium = static _ => HomeTileForm.M;
 
         public BoardView()
         {
@@ -243,7 +243,9 @@ internal static class ZuneHomeBoard
             {
                 // Only the selected tile drags, and only while customizing (Start's: the selected tile moves, the others flow round it).
                 Enabled = () => _p!.Board.View.Editing.Value,
-                CanLift = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead && _p!.Board.View.SelectedId.Value == it.Entry.Id,
+                // The shortcuts grid is the Pinned group's whole body: its cells move inside it, the grid itself stays.
+                CanLift = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead && !HomeShortcuts.IsGrid(it.Entry)
+                                && _p!.Board.View.SelectedId.Value == it.Entry.Id,
                 LiftStyle = new DragVisualStyle { Scale = 1.03f },
                 Slot = static rect => ZuneHomeTiles.Slot(rect),
                 OnCommit = m => Commit(m),
@@ -363,12 +365,18 @@ internal static class ZuneHomeBoard
             var e = m.Entries;
             var list = new List<ZuneBoardItem>(e.Length + 1);
             bool sw = HomeShortcuts.HasSwitch(m);
-            int cell = 0;
+            bool grid = false;
             for (int i = 0; i < e.Length; i++)
             {
                 var x = e[i];
-                int at = sw && HomeShortcuts.IsShortcutCell(x) ? cell++ : -1;
-                list.Add(new ZuneBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false, at,
+                // The shortcuts (the pins, the fill, the history tile) are ONE item, the grid, where the first of them stands.
+                if (HomeShortcuts.IsGridCell(x))
+                {
+                    if (grid) continue;
+                    grid = true;
+                    x = HomeShortcuts.GridEntry(x);
+                }
+                list.Add(new ZuneBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false,
                                            sw && x.GroupId == HomeDocs.Pinned));
                 // An empty Pinned group says how to pin (spec 8.2 "Empty states"): large light words at the group's height.
                 if (x.Kind == BoardEntryKind.GroupHead && x.GroupId == "pinned" && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
@@ -383,6 +391,12 @@ internal static class ZuneHomeBoard
             if (it.EmptyRow) return new PackEntry(PackEntryKind.Row, Extent: lay.EmptyRow);
             var e = it.Entry;
             if (e.Kind == BoardEntryKind.GroupHead) return ZuneHomeBoardRules.EntryOf(e, lay, 0f, 0f);
+            // The shortcuts grid: a band at its own height (its tallest page).
+            if (HomeShortcuts.IsGrid(e))
+            {
+                float grid = ExtentOf(e.Id).Value;
+                return new PackEntry(PackEntryKind.Row, Extent: grid > 0f ? grid : ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
+            }
             float open = _p.Board.View.OpenId.Value == e.Id ? ZuneHomeBoardRules.OpenExtent(e.Source) : 0f;
             float full = 0f;
             if (ZuneHomeBoardRules.SizeOf(e) == HomeSize.Full)
@@ -413,20 +427,18 @@ internal static class ZuneHomeBoard
             if (it.EmptyRow) return ZuneHomeTiles.EmptyPinned();
             var e = it.Entry;
             if (e.Kind == BoardEntryKind.GroupHead) return ZuneHomeTiles.GroupHead(board, e, _p.Lay, it.Switch);
-            if (ZuneHomeBoardRules.SizeOf(e) != HomeSize.Full)
+            bool grid = HomeShortcuts.IsGrid(e);
+            if (!grid && ZuneHomeBoardRules.SizeOf(e) != HomeSize.Full)
             {
                 // Every tile can turn over: the front is the tile its box carries, the back its options (only the open tile builds it).
                 var rule = e.Raw is PinSource ? _pinFormRule! : _formRule!;
-                // A shortcut of a switchable group: the shortcut, or the history item at its place (the tiles cross-fade at their size).
-                if (it.Cell >= 0 && e.Source is not { Options.Length: > 0 })
-                    return ZuneHomeTiles.ShortcutCell(board.Tile(e, cell, rule), it.Cell, board, cell, _p.Lay);
                 if (e.Source is not { Options.Length: > 0 }) return board.Tile(e, cell, rule);
                 var entry = e;
                 return TileMotion.TurnOver(TurnedOf(e.Id), () => board.Tile(entry, cell, rule), () => board.Options(entry));
             }
             // A band: its body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
-            var tile = board.Tile(e, cell, s_full);
+            var tile = grid ? ShortcutGrid.Create(board, Shortcuts(), _width.Peek()) : board.Tile(e, cell, s_full);
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -440,6 +452,40 @@ internal static class ZuneHomeBoard
                     },
                 ],
             };
+        }
+
+        ShortcutGridSpec? _shortcuts;
+        ZuneHomeBoardLayout? _shortcutsLay;
+
+        /// <summary>Zune's shortcuts grid: Start's square tiles, the tier's count across (each at least its floor), 8 apart; each tile the pin's own
+        /// medium face (art with the name over a scrim), the history item at its place while the head shows history; in customize only the
+        /// selected tile drags (Start's); the strip's edge chevrons turn the pages, the head counts them.</summary>
+        ShortcutGridSpec Shortcuts()
+        {
+            var p = _p!;
+            if (_shortcuts is { } s && ReferenceEquals(_shortcutsLay, p.Lay)) return s;
+            _shortcutsLay = p.Lay;
+            var lay = p.Lay;
+            var board = p.Board;
+            return _shortcuts = new ShortcutGridSpec(
+                Columns: w => Math.Clamp((int)MathF.Floor((w + lay.Gap) / (lay.ShortcutMinCell + lay.Gap)), 1, lay.ShortcutMaxCols),
+                Unit: static cellW => cellW,
+                Gap: lay.Gap,
+                Cell: (e, index, cell) =>
+                {
+                    // A shortcut is Start's medium face at every tile (the art, the name over a scrim at its foot), the history tile its own.
+                    var rule = HomeShortcuts.IsHistoryCell(e) ? _formRule! : s_medium;
+                    return HomeShortcuts.HasSwitch(board.Model.Peek())
+                        ? ZuneHomeTiles.ShortcutCell(board.Tile(e, cell, rule), index, board, cell, _p!.Lay)
+                        : board.Tile(e, cell, rule);
+                },
+                CanReorder: () => board.View.Editing.Value && !board.ReadOnly,   // a subscribing read: the page grids wire their lift when Edit Home starts
+                // Zune's shelf chevrons (the circle in its 40 target) at the pages' edges, on hover.
+                Edge: static (prev, pager) => IconButton.Create(prev ? Icons.ChevronLeft : Icons.ChevronRight, prev ? pager.Prev : pager.Next,
+                                                                 parts: ZuneDiscoveryKit.ChevronTargets)
+                    with { Key = prev ? "home:shortcuts-edge:prev" : "home:shortcuts-edge:next" },
+                // Start's: only the selected tile drags (a subscribing read: the page grids re-wire their lift when the selection moves).
+                CanLift: e => board.View.SelectedId.Value == e.Id);
         }
 
         void Commit(PackMove m)

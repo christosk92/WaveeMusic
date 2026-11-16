@@ -43,8 +43,8 @@ public static partial class ViewKeys
     public static readonly ViewKey<HomeZoneProps> HomeZoneWideTiles = new("Home.Zone.WideTiles");
     /// <summary>The release list's body ("From artists you follow"). Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneReleaseList = new("Home.Zone.ReleaseList");
-    /// <summary>The cluster cards' body ("Because you like"). Props: <see cref="HomeZoneProps"/>.</summary>
-    public static readonly ViewKey<HomeZoneProps> HomeZoneClusterCards = new("Home.Zone.ClusterCards");
+    /// <summary>The Spine Shelf ("Because you like"): one open card and its preview songs, the rest as spines. Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneSpineShelf = new("Home.Zone.SpineShelf");
     /// <summary>A mixed-covers shelf's body ("Jump back in"). Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneMixedCovers = new("Home.Zone.MixedCovers");
     /// <summary>A radio shelf's body. Props: <see cref="HomeZoneProps"/>.</summary>
@@ -95,7 +95,7 @@ public static class HomeZoneKeys
             case ZoneKind.CoverShelf: key = ViewKeys.HomeZoneCoverShelf; return true;
             case ZoneKind.WideTiles: key = ViewKeys.HomeZoneWideTiles; return true;
             case ZoneKind.ReleaseList: key = ViewKeys.HomeZoneReleaseList; return true;
-            case ZoneKind.ClusterCards: key = ViewKeys.HomeZoneClusterCards; return true;
+            case ZoneKind.SpineShelf: key = ViewKeys.HomeZoneSpineShelf; return true;
             case ZoneKind.MixedCovers: key = ViewKeys.HomeZoneMixedCovers; return true;
             case ZoneKind.RadioShelf: key = ViewKeys.HomeZoneRadioShelf; return true;
             case ZoneKind.BrowseTiles: key = ViewKeys.HomeZoneBrowseTiles; return true;
