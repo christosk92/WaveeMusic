@@ -12,6 +12,7 @@ The server code is in `src/apps/Wavee/Screens/Diagnostics.Inspect*.cs`, and the 
 ```powershell
 # from WaveeMusic\, after `dotnet build src/apps/Wavee/Wavee.csproj`
 python -I tools/inspect.py -c "mount w=400 h=860 theme=zune" -c "tiers"     # the client starts and stops the server
+python -I tools/inspect.py --gate-perf -c "mount w=1440 h=960 theme=winui gpu=warp" -c "perf on" -c "resize 1200 900" -c "perf report"   # a frame-cost verdict
 src\apps\Wavee\bin\Debug\net11.0\Wavee.exe --inspect      # or talk to it yourself on stdin/stdout
 Wavee.exe --inspect --pipe wavee-inspect                                      # or over \\.\pipe\wavee-inspect
 ```
@@ -207,7 +208,14 @@ the profile's file as it is, for a second process on one `--profile`). `pins0`: 
 every size of every MVP source; `v2hidden`: no v3 file and a `home-layout.json` v2 with hidden zones (the migration runs);
 `toonew`: a version 4 file (Home shows the default, the file stays byte for byte, `readOnly: true`); `corrupt`: an unreadable
 file (set aside as `.corrupt`); `unknown`: an unknown source kind, option key and members (they round-trip byte for byte).
-`reset` puts the default document back.
+`reset` puts the default document back. `home=live1` is a redacted live answer (2026-11-16); `tools/home-fixture.py` makes
+the next one from a `cmd=homecap` folder (the procedure, with its safety rules: the fgpu skill's `verify/debug-home.md`).
+
+`media=fake` builds every media player over a fake backend (`Diagnostics.Inspect.Media.cs`): the Spotify Canvas player and any
+`MediaPlayer` built without its own backend (an audio preview, a tile's video). `mediaOpenMs` (default 120: the open's latency to
+its first frame on the 16 ms clock, metadata at half), `mediaStartCostMs` (a synchronous UI-thread stall inside each open: the start
+hiccup), `mediaFrameCostMs` (UI-thread work in every video pump while it plays). Each open logs `[inspect.media] open #n`
+(`status log=inspect.media`); the next mount ends it.
 
 Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and a mount after the first does not
 inherit what the last one changed. It puts back:
@@ -371,7 +379,10 @@ Home, and makes Classic dark the active theme.
 - `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
   sends nothing after a `quit` and says how many lines it left.
 
-### `click`, `hover {key | x,y, nth?, force?, stableMax?, mods?, button?}`
+### `click`, `hover {key | x,y, nth?, force?, stableMax?, mods?, button?, dwell?}`
+
+`hover ... dwell=700` rests the pointer 700 ms on the frame clock after it arrives, then settles: a rest-to-open timer or a hover
+preview fires inside the rest. `pointer` (below) moves through several targets.
 
 These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no checks). Not both: `x` or `y` beside
 `key` is refused, and so are `nth` and `force` without `key`.
@@ -489,6 +500,18 @@ hold key=home:tile:d-recents ms=600 pointer=mouse          # Zune: customize on 
 hold key=home:tile:<a> ms=500 pointer=touch then=drag dy=160   # WinUI: lift and move
 ```
 
+### `pointer {path, steps?, dwell?}`
+
+Pointer realism for hover-driven UI. The pointer glides from where it is to each waypoint over `steps` frames (default 6), one
+real `PointerMove` per frame through the window's input queue (hover enter and exit, rest timers, previews all see it), rests the
+waypoint's `@ms` on the 16 ms clock (or `dwell`), then goes on. Waypoints: a key (its visible centre; refused like `hover` when
+not actionable), `at:x:y` (window DIP) or `leave` (off the window: the pointer-left-window edge). Then it settles (`trace=N`
+works). Reply `legs[{target, x, y, hit, frames, note?}]`.
+
+```text
+pointer path=[home:tile:d-daylist@300,home:tile:d-recents@700,leave@200] steps=6
+```
+
 ### `focus {key, nth?}` and `said {clear?}`
 
 `focus` moves keyboard focus to a node (the focus ring shows, as after Tab) without a click; `after.focused` names it. `said`
@@ -508,6 +531,7 @@ its undo are proved, the motion and the view state are not). Acting ones settle 
 | `status` | | the board as the user has it: `theme, editing, selected, open, add{surface, kind, query, results}, columns, undo{can, label, at, depth}, redo{can, depth}, readOnly, rev, items, hidden, legacyHidden, seededFromSidebar, file{path, outcome, exists, bytes, fnv, bak, corrupt}, groups[{id, title, items[{id, key, kind, source, title, size, auto, template?, hidden?, form?, span?, rect?, realized?, hasOptions, live, paused}]}]` |
 | `doc` | `path=` | the document's JSON (and writes it, indented, to the file) and `file{}` |
 | `plan` | `facet=` | the planner dump: per section `index, key, fp, family, typename, title, counts{cards, usable, unsupported, duplicates, total}, template, zone, reason, entry, placed, hidden`, then the identity log's readings |
+| `explain` | `facet=` | why Home shows what it shows: per rendered section (feed, placed, fold) `entry, key, kind, group, drawnTitle, template, zone, zoneKind, form?, span?, realized?, pager{page, pages}?`, Spotify's identity `spotify{uri, index, typename, title, titleBase, headerUri, kind, cards, total, firstCard}`, `identity{key, fp, family}`, the chooser's `chooser{template, zone, reason, alternates[]}` and `rhythm{decision: kept\|moved, why, final}`; a fold has `fold{members, why, runStartsAfter, runEndsBefore, rule}` and its members' sections; then `findings[]` (`duplicate-title`, `duplicate-family`: `what, entries[], hint`). The lint rule `home.duplicate` (todo, error) fails the same titles on any lint of Home |
 | `verify` | | the board's own proof: `PackLayout.Verify` over every group at the live width, and the realized rects against the pack: `columns, count, faults[]` |
 | `edit` | `on=`, `item=` | Classic's Edit Home / Zune's customize (a selected tile); WinUI refuses |
 | `pin` / `unpin` | `uri=` (an entity uri or a route key), `group=` | the verb the menus call, confirmation included |
@@ -1158,6 +1182,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`, and each node keeps its label from frame to frame (a node mounting or leaving earlier in reading order renumbers nothing; a new node takes a label no node held the frame before, or a lone key's replaced node's). |
 | `scroll` | `main` (the shown vertical scroller with the most room, re-picked each frame) or a node key (the first scroller under it). |
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
+| `curves` | `curves=true`: per watched key its motion curve (`curves[{key, frames, x\|y\|w\|h\|opacity: {v[], spark}}]`, only the channels that moved) and `motionFindings[{key, channel, kind, frame, delta, before, after}]`: `step` (one frame moves over 2.5x both neighbours), `reversal` (it turns back within 2 frames: a spring's overshoot does on purpose), `stall` (a still frame between visible moves), `snap` (the whole change in one frame); `motionCounts`. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
 | `flights` | `true`: each row carries the connected navigation flights (a card's cover flying into its page's hero, and back) and the summary their take-off and hand-off (`flight`, below). Off by default. |
@@ -1217,7 +1242,67 @@ carries `connected{flights, pending}`. A forward flight: `click key=lazy-cell:8 
 `disco:0:spotify:artist:ar3`; Back: `key alt+left trace=45 keys=hero-cover,lazy-cell:8 flights=true`. Click a card on its label, not its
 centre: the centre of a WinUI card's cover is its play button.
 
+### `perf {do, budget?, judge?, census?, rows?, items?, path?, reset?}`
+
+A frame-cost capture around any verbs (`Diagnostics.Inspect.Perf.cs`). `perf on` (needs a mount; later mounts are followed) records
+every frame any later verb runs, its own frames and its settle, under that verb's label; `perf report` judges them; `perf off`
+stops. The milliseconds are real CPU wall time of the frame's phases on the UI thread, while the motion plays on the 16 ms clock:
+a Debug build's numbers, relative, not the shipped ones. JIT time (`FrameStats.JitMs`) is subtracted (NativeAOT ships none);
+`submit` and `gpu` on `gpu=warp` are WARP's CPU rasteriser, reported apart (`gpuMaxMsWarp`), never judged as GPU numbers.
+
+| Arg | Meaning |
+|---|---|
+| `do` | `on`, `off`, `report` (default), `status` (positional: `perf on`) |
+| `budget` | ms. Default: the display the mount's `dt` stands for (16.67 at dt=16; dt=8.333 for 120 Hz) |
+| `judge` | `ui` (default: flush + layout + anim + record + postSubmit, JIT subtracted) or `total` (adds submit) |
+| `census` | `on`: the host's render census names the components of a slow flush (costs frame time: judge with it off) |
+| `rows`, `items`, `path` | report: the rows listed (`over`, default: the over-budget and alloc frames; `all`; `none`), the most per list, and a JSON file of every row |
+| `reset` | report: forget the frames after it |
+
+`perf report` replies `frames, budgetMs, budgetFrom, judged, devices, note, gate{over, alloc, failed}`, `verbs[{verb, frames,
+animating, presents, over, maxMs, p95Ms, medianMs, maxFrame, jitMs, submitMaxMs, gpuMaxMs|gpuMaxMsWarp, measures, hotAllocBytes}]`,
+`over[{frame, verb, ms, top, topMs, why}]` (the top phase and what is behind it: the relayout scopes and their measures for a
+layout, the components for a flush, the effect owner for postSubmit), `alloc[{frame, verb, bytes, why}]` (a STEADY animation frame,
+something animating and no component, reactive unit, bind write or measure, that allocated on the hot phases 6-13),
+`allocOtherFrames` and `rows[{f, verb, ms{ui, jit, flush, layout, anim, record, postSubmit, submit, gpu}, measures, scopedMarks,
+escapes, components, hotAlloc, animating, presented, scopes[{key, measures, kind}], census?}]`. A scope's key is the node's own, or
+`key >n` for the keyed node n levels above it. `tools/inspect.py --gate-perf [MS]` exits 1 on any over or alloc frame (2 on
+`ok:false` or no report); `MS` sets the budget of every `perf report` line that names none. Warm the path first (run the
+interaction once before `perf on`) and compare against a base build: in Debug, Home's full relayouts on a resize run near 16 ms.
+
+```text
+mount w=1440 h=960 theme=winui route=home gpu=warp
+home do=page key=nmf page=2
+home do=page key=nmf page=1                # warm: JIT and decodes paid here
+perf on
+home do=page key=nmf page=2
+perf report                                # gate{over:0, alloc:0}: a 2.2 ms worst frame (Debug, WARP)
+```
+
+### `film {frames, every?, path, cols?, scale?, crop?, framesDir?, keys?, prefix?, ...}`
+
+Motion you can look at (`Diagnostics.Inspect.Film.cs`). Traces `frames` frames from where the host stands, so start the motion
+with the acting verb's `settle=false`, and keeps every `every`-th frame (and the last) in ONE contact-sheet PNG at `path`: `cols`
+cells per row, each frame scaled by `scale` (default 0.5) and labelled `f12 +208ms` (frame and time on the 16 ms clock). `crop=<key>`
+keeps that node's drawn rect (8 DIP around it, as it stood when the film began; it must be on the window); `framesDir=<dir>` also
+writes each kept frame whole. With `keys`/`prefix` (and every trace option) the reply carries the motion `curves` (see `trace
+curves=true`). Needs pixels: `gpu=warp` or `gpu=hardware`. Reply: `path, traced, cells, crop?, every, clock, cellFrames[], watch[],
+curves[]?, motionFindings[]?, motionCounts?, settledAt, snaps, instants, remounted`.
+
+```text
+scroll key=home:scroll dy=14
+home do=page key=nmf page=2 settle=false
+film frames=36 every=3 cols=4 scale=0.6 crop=home:tile:feed:spotify:section:wavee-mockup-nmf path=C:/WAVEE/scratch/x/pager.png keys=[home-shelf-card:spotify:playlist:37i9dQZEVXbp4UblnlhiEI]
+```
+
 ## Typical workflows
+
+### Hunt a hiccup
+
+The recipe for any Home motion (the fgpu skill's `verify/debug-home.md`; `fg hiccup "<acting verb>" --undo "<verb>"` writes and
+runs it): warm the path, `perf on`, the interaction, `perf report` under `--gate-perf --gate error`; then the interaction with
+`settle=false` and a `film` of it; `media=fake mediaStartCostMs=40` stages a slow video start; `home do=explain` says why a
+section is there.
 
 ### Audit a page at four sizes
 

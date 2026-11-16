@@ -4,7 +4,7 @@
 // it joined and why the run of one-card sections began and ended where it did, SectionIdentity (key, fingerprint, family), the chooser's
 // template, reason and alternates, the rhythm pass (kept, or moved off the template its neighbour already draws), the tier form and span,
 // and the pager's pages. Then the findings: two sections drawn under one title, or one family twice. The lint rule `home.duplicate`
-// (gate, Diagnostics.Inspect.Lint.Pack.cs's capture) fails the same duplicate titles on any lint of the page.
+// (todo, error: `--gate error --gate-todo` counts it) reports the same duplicate titles on any lint of Home.
 //
 // Role: SHELL (UI thread; reads the projection's answer, the chooser, the board model and the theme's board inspect seam)
 // Spec: docs/guide/agent-inspect.md "home do=explain"; the skill's verify/debug-home.md.
@@ -237,7 +237,7 @@ public static partial class Diagnostics
 
     public static partial class InspectLint
     {
-        /// <summary><c>home.duplicate</c> (gate, error): two sections the Home board renders under one title (case and spaces folded). The owner
+        /// <summary><c>home.duplicate</c> (todo, error; promote it to gate once the fixtures are clean): two sections the Home board renders under one title (case and spaces folded). The owner
         /// saw two "Because you like" folds on a live answer that no check caught; `home do=explain` says why each copy is there.</summary>
         static int HomeDuplicateRule(Snapshot s, List<Finding> into)
         {

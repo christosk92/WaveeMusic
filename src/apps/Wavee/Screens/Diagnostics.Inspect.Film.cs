@@ -112,8 +112,11 @@ public static partial class Diagnostics
                 double a = Math.Abs(d[i]);
                 if (!Moving(i))
                 {
-                    // a still frame with motion on both sides: the motion paused for a frame (a hitch)
-                    if (Moving(i - 1) && Moving(i + 1) && Math.Sign(d[i - 1]) == Math.Sign(d[i + 1]))
+                    // a still frame with motion on both sides: the motion paused for a frame (a hitch). Not in a settling tail: the moves on both
+                    // sides must be visible ones (3/8 of a snap: 1.5 DIP, 0.11 opacity), not a spring's last pixel steps
+                    double visible = scale.Snap * 0.375;
+                    if (Moving(i - 1) && Moving(i + 1) && Math.Sign(d[i - 1]) == Math.Sign(d[i + 1])
+                        && Math.Min(Math.Abs(d[i - 1]), Math.Abs(d[i + 1])) >= visible)
                         into.Add(new Finding(key, ch, "stall", frames[i + 1], d[i], d[i - 1], d[i + 1]));
                     continue;
                 }
