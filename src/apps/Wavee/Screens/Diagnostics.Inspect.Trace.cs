@@ -199,10 +199,13 @@ public static partial class Diagnostics
                                                   double LastShown, string Motion, bool User);
 
         /// <summary>One connected navigation flight on one frame (the engine's probe, <c>AppHost.TryGetNavFlight</c>): its key, phase
-        /// (pending, flying, landed, abandoned), direction, the flyer's presented rect, the dest's rest rect, the shadow's opacity and
-        /// whether each end's slot is hidden, and the image the flyer draws.</summary>
+        /// (pending, flying, landed, handingOff, abandoned), direction, the flyer's presented rect, the dest's rest rect, the shadow's opacity
+        /// and whether each end's slot is hidden, the image the flyer draws, its corner radius and the dest's, the second picture's share
+        /// (-1: one picture), whether a landed flyer stands in for a dest picture not drawable yet, its visible part, and how often the dest
+        /// was found again.</summary>
         public readonly record struct FlightSample(string Key, string Phase, bool Back, RectF Pres, RectF Dest, RectF Source, float Shadow,
-                                                  bool SrcHidden, bool DestHidden, RectF TakeOff, int ImageId);
+                                                  bool SrcHidden, bool DestHidden, RectF TakeOff, int ImageId, float Radius, float DestRadius,
+                                                  float Mix, bool StandIn, RectF Clip, int Refinds);
 
         /// <summary>The flights over a trace: the frame a flyer first showed, the frame its springs landed, the frame it handed off (the flyer
         /// gone, no flight left), the largest edge difference between the flyer and the source on the first frame that drew it (the engine's record,
@@ -210,11 +213,13 @@ public static partial class Diagnostics
         /// (DIP), the largest edge step of the flyer between two frames, and whether one was abandoned. -1: never.</summary>
         public sealed class FlightSummary
         {
-            public int StartedAt = -1, LandedAt = -1, HandedOffAt = -1, Flights;
-            public float TakeoffDelta, HandoffDelta, MaxStepDip;
-            public bool Abandoned;
-            /// <summary>Started and neither handed off nor abandoned within the trace.</summary>
-            public bool Unfinished => StartedAt >= 0 && HandedOffAt < 0 && !Abandoned;
+            public int StartedAt = -1, LandedAt = -1, HandedOffAt = -1, Flights, StoodInFrames;
+            public float TakeoffDelta, HandoffDelta, MaxStepDip, RadiusDelta, MixAtHandOff = -1f;
+            public bool Abandoned, Refound;
+            /// <summary>The trace ended while a landed flyer stood in for its dest's picture (a cold page still loading): not unfinished.</summary>
+            public bool StandingIn;
+            /// <summary>Started and neither handed off nor abandoned within the trace, nor standing in at its end.</summary>
+            public bool Unfinished => StartedAt >= 0 && HandedOffAt < 0 && !Abandoned && !StandingIn;
         }
 
         public sealed class Row
@@ -316,26 +321,45 @@ public static partial class Diagnostics
                     if (f.Phase == "abandoned") { s.Abandoned = true; continue; }
                     cur = f;
                 }
-                if (cur is { } c)
+                if (cur is { } c && c.Phase == "handingOff")
                 {
-                    if (s.StartedAt < 0 && c.Phase != "pending")
+                    // A fading hand-off: the real node shows from this frame and the flyer fades out over it where it stands.
+                    if (prev is not null && s.HandedOffAt < 0 && !s.Abandoned) HandOff(s, r.Frame, prev.Value);
+                    prev = null;
+                    s.StandingIn = false;
+                }
+                else if (cur is { } c2)
+                {
+                    if (s.StartedAt < 0 && c2.Phase != "pending")
                     {
                         s.StartedAt = r.Frame;
-                        s.TakeoffDelta = EdgeDelta(c.TakeOff, c.Source);   // the engine's own record of the first frame that drew it
+                        s.TakeoffDelta = EdgeDelta(c2.TakeOff, c2.Source);   // the engine's own record of the first frame that drew it
                     }
-                    if (c.Phase == "landed" && s.LandedAt < 0) s.LandedAt = r.Frame;
-                    if (prev is { } p && p.Phase != "pending" && c.Phase != "pending") s.MaxStepDip = MathF.Max(s.MaxStepDip, EdgeDelta(c.Pres, p.Pres));
-                    s.HandoffDelta = EdgeDelta(c.Pres, c.Dest);
-                    prev = c;
+                    if (c2.Phase == "landed" && s.LandedAt < 0) s.LandedAt = r.Frame;
+                    if (prev is { } p && p.Phase != "pending" && c2.Phase != "pending") s.MaxStepDip = MathF.Max(s.MaxStepDip, EdgeDelta(c2.Pres, p.Pres));
+                    if (c2.StandIn) s.StoodInFrames++;
+                    s.StandingIn = c2.StandIn;
+                    if (c2.Refinds > 0) s.Refound = true;
+                    prev = c2;
                 }
                 else if (prev is not null && s.HandedOffAt < 0 && !s.Abandoned)
                 {
-                    s.HandedOffAt = r.Frame;
-                    if (s.LandedAt < 0) s.LandedAt = r.Frame;   // landed and handed off in one frame (the probe never saw it landed)
+                    HandOff(s, r.Frame, prev.Value);
                     prev = null;
+                    s.StandingIn = false;
                 }
             }
             return s;
+        }
+
+        // The hand-off frame: the flyer's last pose against the dest's rest rect, its radius against the dest's, the second picture's share.
+        static void HandOff(FlightSummary s, int frame, in FlightSample last)
+        {
+            s.HandedOffAt = frame;
+            if (s.LandedAt < 0) s.LandedAt = frame;   // landed and handed off in one frame (the probe never saw it landed)
+            s.HandoffDelta = EdgeDelta(last.Pres, last.Dest);
+            s.RadiusDelta = MathF.Abs(last.Radius - last.DestRadius);
+            s.MixAtHandOff = last.Mix;
         }
 
         static void WriteFlightSummary(Utf8JsonWriter w, FlightSummary s)
@@ -348,6 +372,11 @@ public static partial class Diagnostics
             w.WriteNumber("takeoffDelta", Math.Round(s.TakeoffDelta, 3));
             w.WriteNumber("handoffDelta", Math.Round(s.HandoffDelta, 3));
             w.WriteNumber("maxStepDip", Math.Round(s.MaxStepDip, 2));
+            w.WriteNumber("radiusDelta", Math.Round(s.RadiusDelta, 3));
+            w.WriteNumber("mixAtHandOff", Math.Round(s.MixAtHandOff, 3));
+            w.WriteNumber("stoodInFrames", s.StoodInFrames);
+            w.WriteBoolean("refound", s.Refound);
+            w.WriteBoolean("standingIn", s.StandingIn);
             w.WriteBoolean("abandoned", s.Abandoned);
             w.WriteBoolean("unfinished", s.Unfinished);
             w.WriteEndObject();
@@ -708,6 +737,12 @@ public static partial class Diagnostics
                     w.WriteBoolean("srcHidden", f.SrcHidden);
                     w.WriteBoolean("destHidden", f.DestHidden);
                     w.WriteNumber("img", f.ImageId);   // the texture the flyer draws: it cuts to the dest's own rendition once that is ready
+                    Ms(w, "radius", f.Radius);
+                    Ms(w, "destRadius", f.DestRadius);
+                    Ms(w, "mix", f.Mix);
+                    w.WriteBoolean("standIn", f.StandIn);
+                    Arr(w, "clip", f.Clip);
+                    if (f.Refinds > 0) w.WriteNumber("refinds", f.Refinds);
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
@@ -1062,7 +1097,7 @@ public static partial class Diagnostics
             for (int i = 0; i < shell.Host.NavFlightCount; i++)
                 if (shell.Host.TryGetNavFlight(i, out FluentGpu.Animation.ConnectedNavFlightInfo f))
                     list.Add(new InspectTrace.FlightSample(f.Key, PhaseName(f.Phase), f.Back, f.Presented, f.Dest, f.Source, f.ShadowOpacity,
-                        f.SourceHidden, f.DestHidden, f.TakeOff, f.ImageId));
+                        f.SourceHidden, f.DestHidden, f.TakeOff, f.ImageId, f.Radius, f.DestRadius, f.Mix, f.StandingIn, f.Clip, f.Refinds));
             return list;
         }
 
@@ -1071,6 +1106,7 @@ public static partial class Diagnostics
             FluentGpu.Animation.ConnectedNavPhase.Pending => "pending",
             FluentGpu.Animation.ConnectedNavPhase.Flying => "flying",
             FluentGpu.Animation.ConnectedNavPhase.Landed => "landed",
+            FluentGpu.Animation.ConnectedNavPhase.HandingOff => "handingOff",
             _ => "abandoned",
         };
 

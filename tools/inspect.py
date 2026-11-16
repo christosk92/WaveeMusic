@@ -354,7 +354,9 @@ class Gate:
     - a trace (`trace` or `trace=N` on an acting verb) moved more than --max-moved watched keys at once (`counts.movedAtOnce`: a snap
       with no track, or an instant run of tracked moves one frame carried), or remounted a watched key outside a swap family.
     - a trace with `flights=true` whose connected navigation flight took off or handed off more than 0.5 DIP from its source or dest
-      (`flight.takeoffDelta`, `flight.handoffDelta`), or started and neither handed off nor was abandoned (`flight.unfinished`).
+      (`flight.takeoffDelta`, `flight.handoffDelta`), handed off with its radius more than 0.5 DIP from the dest's (`flight.radiusDelta`) or
+      its two pictures still mixed (`flight.mixAtHandOff` between 0.01 and 0.99), or started and neither handed off nor was abandoned
+      (`flight.unfinished`; a flyer standing in for a picture still loading at the trace's end is `standingIn`, not unfinished).
     Warnings (printed, not counted): a lint whose listing or judgement was narrowed (rules, min, outcomes, limit, root), a crossing that
     crossed no edge or ran without its control, a trace that watched no nodes. Else 0."""
 
@@ -437,9 +439,12 @@ class Gate:
         fl = t.get("flight")
         if isinstance(fl, dict) and fl.get("startedAt", -1) >= 0:
             # a connected navigation flight (`flights=true`): it takes off on the source and hands off on the dest, within half a DIP, and ends
-            for name in ("takeoffDelta", "handoffDelta"):
+            for name in ("takeoffDelta", "handoffDelta", "radiusDelta"):
                 if fl.get(name, 0) > 0.5:
                     self.motion.append("%s: the flight's %s is %.2f DIP (max 0.5)" % (where, name, fl[name]))
+            mix = fl.get("mixAtHandOff", -1)
+            if fl.get("handedOffAt", -1) >= 0 and 0.01 < mix < 0.99:
+                self.motion.append("%s: the flight handed off with its two pictures mixed at %.2f (a dissolve must finish first)" % (where, mix))
             if fl.get("unfinished"):
                 self.motion.append("%s: a flight started at frame %d and neither handed off nor was abandoned" % (where, fl["startedAt"]))
 
