@@ -38,11 +38,14 @@ internal static class WinUiHomeTiles
     };
 
     /// <summary>The empty Pinned group: a dashed row at the group's height with how to pin (spec 8.1 "Empty states").</summary>
-    public static Element EmptyPinned(WinUiHomeBoardLayout lay) => new BoxEl
+    public static Element EmptyPinned(WinUiHomeBoardLayout lay) => EmptyPinned(SurfacePlate.For(PlateKind.Outline));
+
+    /// <summary>The empty row in the dashed outline plate the Recently played grid's history tile wears (one outline vocabulary).</summary>
+    static Element EmptyPinned(SurfacePlate plate) => new BoxEl
     {
         Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
         Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.S),
-        Corners = Radii.CardAll, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f, BorderDashOn = WinUiHomeBoardRules.DashOn, BorderDashOff = WinUiHomeBoardRules.DashOff,
+        Corners = Radii.CardAll, BorderColor = plate.Stroke, BorderWidth = plate.StrokeWidth, BorderDashOn = plate.Dash, BorderDashOff = plate.Dash,
         Children =
         [
             Ui.Icon(Icons.Pin, WinUiHomeBoardRules.WidgetGlyph, Tok.TextSecondary) with { Shrink = 0f },
