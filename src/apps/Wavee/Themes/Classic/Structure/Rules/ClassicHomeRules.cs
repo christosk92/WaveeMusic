@@ -91,8 +91,8 @@ public static class ClassicHomeRules
     public const int ReleaseRowsMax = 6;
     public const int ClusterRows = 4;
 
-    /// <summary>The preview cards shown before "Show more" (home-gap P4): two rows of the tier's columns. A card's playlist cover and the reason's avatar.</summary>
-    public const int ClusterVisibleRows = 2;
+    /// <summary>A lone preview card on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
     public const float PreviewCover = 72f, ReasonAvatar = 32f;
 
     /// <summary>A section header that hangs off an entity: its height (the cover beside two lines) and the cover.</summary>
@@ -101,6 +101,19 @@ public static class ClassicHomeRules
     /// <summary>A mood plate (home-gap P6): its height, its inset, how many a shelf shows; the plate's colour fades to this share toward its right edge.</summary>
     public const float MoodPlateH = 88f, MoodPlatePad = 16f, MoodPlateFadeTo = 0.45f;
     public const int MoodPlatesMax = 8;
+
+    /// <summary>The Home rhythm lead card's copy band (home-rhythm.html #a-classic): the inset, the name's 28 line over two 16 caption lines,
+    /// Play at its end. Fixed, so the card's height is known before it lays out.</summary>
+    public const float LeadCopyH = 88f, LeadCopyPadX = 16f, LeadCopyPadTop = 12f, LeadCopyPadBottom = 16f, LeadCopyGap = 12f;
+
+    /// <summary>The lead's art: never under this height beside the grid; stacked (Compact) it is this wide for one tall (16 : 8).</summary>
+    public const float LeadArtMin = 120f, LeadArtAspect = 2f;
+
+    /// <summary>The lead art's decode target.</summary>
+    public const int LeadArtDecodePx = 960;
+
+    /// <summary>A capped card's title lines (two title lines over one caption line).</summary>
+    public const int CappedTitleLines = 2;
 
     /// <summary>A book card's caption lines (home-gap P8): author, rating and length, the plan pill.</summary>
     public const int BookCaptionLines = 4;

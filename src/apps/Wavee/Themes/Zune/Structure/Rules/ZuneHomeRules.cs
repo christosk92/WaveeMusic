@@ -139,11 +139,14 @@ public static class ZuneHomeRules
     /// <summary>At most this many release rows.</summary>
     public const int ReleaseRowsMax = 6;
 
-    /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art, the narrowest column.</summary>
-    public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f, ClusterMinCol = 200f;
+    /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art.</summary>
+    public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f;
 
-    /// <summary>Rows per cluster (home-gap P4: four), and the rows of clusters shown before "show more".</summary>
-    public const int ClusterRows = 4, ClusterVisibleRows = 2;
+    /// <summary>Rows per cluster (home-gap P4: four).</summary>
+    public const int ClusterRows = 4;
+
+    /// <summary>A lone group on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
 
     /// <summary>A preview group's playlist cover, the reason's avatar, the gap in the group's offer (home-gap P4).</summary>
     public const float PreviewCover = 72f, ReasonAvatar = 24f, OfferGap = 14f;
@@ -154,6 +157,20 @@ public static class ZuneHomeRules
     /// <summary>The mood plates (home-gap P6): the plate, how many a shelf shows, the plate's insets. The name is 40 light and bleeds off the plate.</summary>
     public const float MoodPlateH = 120f;
     public const int MoodPlatesMax = 8;
+
+    /// <summary>The Home rhythm lead (home-rhythm.html #a-zune): no plate, the art over the name in the 40 light voice (lowercase, one line that
+    /// runs off its edge under a fade, never shrunk), its line, the play ring. The art is never under this height beside the grid; stacked
+    /// (Compact) it is this wide for one tall.</summary>
+    public const float LeadArtMin = 120f, LeadArtAspect = 2f, LeadCopyTop = 10f, LeadCopyGap = 4f, LeadRingTop = 10f;
+
+    /// <summary>The lead art's decode target.</summary>
+    public const int LeadArtDecodePx = 960;
+
+    /// <summary>A capped card's title lines (two title lines over one caption line) and the compact tiles' gap.</summary>
+    public const int CappedTitleLines = 2;
+
+    /// <inheritdoc cref="CappedTitleLines"/>
+    public const float CompactGap = 8f;
 
     /// <summary>A book's caption lines (home-gap P8): the author, the rating and length, the plan.</summary>
     public const int BookCaptionLines = 3;
@@ -297,6 +314,15 @@ public enum ZuneDaylistTitle : byte
 
     /// <summary>The hero, 64/72 (Huge).</summary>
     Hero,
+}
+
+/// <summary>A Home rhythm capped grid (the compact tiles, the circles, the capped shelf) in one tier: as many columns as fit at
+/// <see cref="MinCol"/> up to <see cref="MaxCols"/>, and <see cref="Rows"/> rows of them (never a ragged row).</summary>
+public readonly record struct ZuneCappedBand(float MinCol, int MaxCols, int Rows)
+{
+    /// <summary>The columns at <paramref name="width"/>, 1..<see cref="MaxCols"/>; one before the width is measured.</summary>
+    public int Columns(float width, float gap)
+        => width <= 0f ? 1 : Math.Clamp((int)MathF.Floor((width + gap) / (MinCol + gap)), 1, Math.Max(1, MaxCols));
 }
 
 /// <summary>What Zune's Home lays out in one CONTENT tier (and, under a window too short for the strip, in the one-row form of it).
@@ -484,6 +510,27 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <inheritdoc cref="ChartsBeside"/>
     public float ChartRankW { get; init; } = ZuneHomeRules.ChartRankW;
 
+    /// <summary>The Home rhythm lead grid: the lead beside the grid (half each) or stacked over it, and the grid's fixed columns and rows.</summary>
+    public bool LeadBeside { get; init; } = true;
+
+    /// <inheritdoc cref="LeadBeside"/>
+    public int LeadCols { get; init; } = 3;
+
+    /// <inheritdoc cref="LeadBeside"/>
+    public int LeadRows { get; init; } = 2;
+
+    /// <summary>The compact tiles (the cover beside the text, no plate), their art; the round covers; the capped shelf (one row of six at Standard).</summary>
+    public ZuneCappedBand Compact { get; init; } = new(200f, 5, 2);
+
+    /// <inheritdoc cref="Compact"/>
+    public float CompactArt { get; init; } = 48f;
+
+    /// <inheritdoc cref="Compact"/>
+    public ZuneCappedBand Circles { get; init; } = new(110f, 8, 1);
+
+    /// <inheritdoc cref="Compact"/>
+    public ZuneCappedBand Capped { get; init; } = new(150f, 6, 1);
+
     /// <summary>A heading row carries its subtitle.</summary>
     public bool Subtitles { get; init; } = true;
 
@@ -507,6 +554,7 @@ public static class ZuneHomeTiers
         DaylistH = 220f, DaylistArtW = 440f, ClockW = 320f, DaylistTitle = ZuneDaylistTitle.Hero, DaylistPad = 40f, DaylistRings = 3, ClockBarW = 52f,
         ShelfCols = 8, ShelfMinW = 140f, WideCols = 6, ClusterCols = 3, TileCols = 8, TileH = 120f, TileBig = true,
         ReleaseWhenW = 96f, ClusterTitleH = 32f, ClusterRowH = 64f, ChartRowH = 64f, ChartRankW = 36f,
+        LeadCols = 4, Compact = new ZuneCappedBand(220f, 5, 2), Circles = new ZuneCappedBand(130f, 10, 1), Capped = new ZuneCappedBand(170f, 8, 1),
     };
 
     // The wide bled daylist (Small; Standard under the strip's content rung): the art the strip's ground under the scrim, the copy a full-width column
@@ -538,6 +586,8 @@ public static class ZuneHomeTiers
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,
+            LeadBeside = false, LeadCols = 2, LeadRows = 2, Compact = new ZuneCappedBand(120f, 2, 3), CompactArt = 40f,
+            Circles = new ZuneCappedBand(90f, 3, 2), Capped = new ZuneCappedBand(120f, 2, 2),
         },
         // Small (Z-Frame-Small, Z-Home-Small): 18 between zones; pins and history side by side, three 88 tiles each (the name alone), no new group;
         // the shelf five across, the wide tiles four; the release list beside "because you like" (32 apart; 52 rows, 40 art, the "when" 72), the Browse
@@ -550,6 +600,7 @@ public static class ZuneHomeTiers
             DaylistPad = 24f,
             PairBeside = true, PairGap = 32f, ShelfCols = 5, ShelfMinW = 100f, WideCols = 4, WideMinW = 120f, ClusterCols = 1, TileCols = 4,
             ReleaseRowH = 52f, ReleaseArt = 40f, ReleaseWhenW = 72f, ClusterRowH = 52f, ClusterArt = 40f, ChartsBeside = false,
+            LeadCols = 2, Compact = new ZuneCappedBand(180f, 3, 2), Circles = new ZuneCappedBand(96f, 6, 1), Capped = new ZuneCappedBand(130f, 4, 1),
         }),
         // Standard (Z-Home): the tuned page (the defaults).
         Std(WidthTier.Standard),

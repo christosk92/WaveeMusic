@@ -30,6 +30,8 @@
 //   ReleaseList                               GridEl of Surface(Row) 56 high, the "New" chip and the when at the end         tools: See all
 //   ClusterCards/PodcastGroups                GridEl of Ui.Card(avatar + name, then three Surface(Row(40)))
 //   BrowseTiles                               GridEl of SettingsCard tiles + the Charts sub-block (Home.Charts)
+//   LeadGrid/CompactGrid/ArtistCircles/
+//   CappedShelf                               the Home rhythm templates (WinUiHomeZones.Rhythm.cs)                           tools: See all N
 //   EpisodeLead/EpisodeRows                   GridEl of Surface(Episode.RowData, EpisodeRow)
 //   ContinueEpisodes                          GridEl of the same row + the resume rung (CardData.Below)
 //   EmptyFacet                                Controls.Vacancy(Empty, ... -> Browse)                                         no header
@@ -189,13 +191,16 @@ internal static partial class WinUiHomeZones
     internal static bool HasHeader(ZoneKind kind) => kind is not (ZoneKind.Daylist or ZoneKind.EmptyFacet);
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
+
+    /// <summary>A body that pages its tall cards (the preview cards): its header carries the previous and next buttons at every tier.</summary>
+    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.ClusterCards or ZoneKind.PodcastGroups;
 
     /// <summary>Header + body, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout, Element? headerTail = null)
     {
         Element body = Body(zone, overlay, controller, layout);
-        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null, layout, headerTail);
+        Element? header = Header(zone, controller is not null && (IsPagedGrid(zone.Kind) || ShelfBandOf(zone.Kind, layout).Pager) ? controller : null, layout, headerTail);
         if (header is null) return body;
         return new BoxEl
         {
@@ -223,7 +228,7 @@ internal static partial class WinUiHomeZones
                                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null,
                                     ShelfHeaderTools(HomeVerbs.SeeAll(zone), null, HomeVerbs.SeeAllLabel(zone)), layout, tail);
             default:
-                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone));
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone), pips: !IsPagedGrid(zone.Kind));
                 return zone.Header is { } entity
                     ? EntityHeader(entity, tools, layout, tail)
                     : ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, tools, layout, tail);
@@ -253,12 +258,12 @@ internal static partial class WinUiHomeZones
 
     /// <summary>A shelf header's tools: the "See all" link (when the zone has a backing section), then — while the shelf pages — a 16-px vertical divider and the
     /// pager (‹ pips ›). Null when the header has neither.</summary>
-    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label)
+    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label, bool pips = true)
     {
         Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
-            : Embed.Comp(() => new WinUiHomeShelfTools(controller, leadingDivider)) with { Key = leadingDivider ? "tools+link" : "tools" };
+            : Embed.Comp(() => new WinUiHomeShelfTools(controller, leadingDivider, pips)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
         if (pager is null) return link;
         return new BoxEl
@@ -301,11 +306,15 @@ internal static partial class WinUiHomeZones
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
         ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
         ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
+        ZoneKind.LeadGrid => LeadGrid(zone, overlay, layout),
+        ZoneKind.CompactGrid => CompactGrid(zone, overlay, layout),
+        ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
+        ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
+        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
-        ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes),
-        ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue),
+        ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes, WinUiHomeRules.CardGap),
+        ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue, WinUiHomeRules.CardGap),
         ZoneKind.EmptyFacet => EmptyFacet(zone),
         _ => new BoxEl(),
     };
@@ -410,8 +419,7 @@ internal static partial class WinUiHomeZones
             {
                 int n = Math.Min(zone.Items.Count, WinUiHomeRules.ReleaseRowsMax);
                 if (n == 0) return 0f;
-                int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Releases.Floor, WinUiHomeRules.ReleaseColGap, layout.Releases.MaxCols), 1, n);
-                int rows = (n + cols - 1) / cols;
+                int rows = GridFill.Rows(n, GridFill.Columns(n, layout.Releases.Columns(width, WinUiHomeRules.ReleaseColGap)));
                 return head + rows * WinUiHomeRules.ReleaseRowH + (rows - 1) * WinUiHomeRules.ReleaseRowGap;
             }
             case ZoneKind.VideoTiles when IsOneEpisode(zone):
@@ -419,7 +427,15 @@ internal static partial class WinUiHomeZones
             case ZoneKind.MoodPlates:
                 return MoodPlatesExtent(zone, layout, width) is var m && m > 0f ? head + m : 0f;
             case ZoneKind.ClusterCards:
-                return ClusterGridExtent(zone, layout, width) is var g && g > 0f ? head + g : 0f;
+            {
+                float g = ClusterGridExtent(zone, layout, width, out int pages);
+                if (g <= 0f) return 0f;
+                // A paging section's header carries its previous and next buttons.
+                if (pages > 1) head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
+                return head + g;
+            }
+            case ZoneKind.LeadGrid or ZoneKind.CompactGrid or ZoneKind.ArtistCircles or ZoneKind.CappedShelf:
+                return RhythmExtent(zone, layout, width) is var r && r > 0f ? head + r : 0f;
             case ZoneKind.BookShelf:
             {
                 var band = layout.Shelf;
@@ -488,7 +504,7 @@ internal static partial class WinUiHomeZones
     /// <summary>The shelf pager in the header's tools slot: ‹ pips › — the stock pips between two stock chevrons, every action routed back through the controller.
     /// Reads the controller's four value signals, so only this leaf re-renders on a page change. <paramref name="leadingDivider"/> puts the 16-px vertical
     /// divider between the header's "See all" link and the pager — it comes and goes WITH the pager, so a one-page shelf shows the bare link.</summary>
-    sealed class WinUiHomeShelfTools(ShelfController controller, bool leadingDivider) : Component
+    sealed class WinUiHomeShelfTools(ShelfController controller, bool leadingDivider, bool pips = true) : Component
     {
         public override Element Render()
         {
@@ -500,7 +516,7 @@ internal static partial class WinUiHomeZones
             var kids = new List<Element>(4);
             if (leadingDivider) kids.Add(ToolsDivider());
             kids.Add(IconButton.Create(Icons.ChevronLeft, controller.Prev, isEnabled: canPrev));
-            kids.Add(PipsPager.Controlled(count, page, controller.GoTo));
+            if (pips) kids.Add(PipsPager.Controlled(count, page, controller.GoTo));
             kids.Add(IconButton.Create(Icons.ChevronRight, controller.Next, isEnabled: canNext));
             return new BoxEl
             {
@@ -534,6 +550,8 @@ internal static partial class WinUiHomeZones
         public override Element Render()
         {
             var p = UseProps<ShelfChapterProps>();
+            string key = p.Zone.Key;
+            UseEffect(() => GridFill.Register(key, _controller));
             return Chapter(p.Zone, p.Overlay, _controller, p.Layout, p.Tail);
         }
     }
@@ -558,11 +576,10 @@ internal static partial class WinUiHomeZones
                                         ReleaseListRules.TypeLabel(c), ReleaseListRules.DateLabel(c, nowMs, tz, culture));
             rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
         }
-        return new GridEl
-        {
-            MinColWidth = layout.Releases.Floor, MaxColumns = layout.Releases.MaxCols,
-            ColGap = WinUiHomeRules.ReleaseColGap, RowGap = WinUiHomeRules.ReleaseRowGap, RowHeight = WinUiHomeRules.ReleaseRowH, Children = rows,
-        };
+        var band = layout.Releases;
+        return GridFill.Responsive("releases:" + zone.Key, n, w => band.Columns(w, WinUiHomeRules.ReleaseColGap),
+            (cols, w) => GridFill.Build(rows, cols, w, WinUiHomeRules.ReleaseColGap, WinUiHomeRules.ReleaseRowGap, WinUiHomeRules.ReleaseRowH),
+            FirstWidth(band, WinUiHomeRules.ReleaseColGap));
     }
 
     /// <summary>Everything a release row shows: the card, its strings and its art (the row's <see cref="ItemMemo"/> key).</summary>
@@ -610,11 +627,8 @@ internal static partial class WinUiHomeZones
             Direction = 1, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Stretch,
             Children =
             [
-                new GridEl
-                {
-                    MinColWidth = layout.Tiles.Floor, MaxColumns = layout.Tiles.MaxCols,
-                    ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, Children = tiles,
-                },
+                GridFill.Responsive("browse-tiles:" + zone.Key, tiles.Length, w => layout.Tiles.Columns(w, WinUiHomeRules.CardGap),
+                    (cols, w) => GridFill.Build(tiles, cols, w, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap), FirstWidth(layout.Tiles, WinUiHomeRules.CardGap)),
                 ChartsBlock(),
             ],
         };
@@ -647,18 +661,16 @@ internal static partial class WinUiHomeZones
 
     // ── 2.6 episodes: Shape.EpisodeRow fed by Episode.RowData — the podcast caption, the resume rung, the episode menu ────────────
 
-    static Element EpisodeGrid(Zone zone, WinUiGridBand band)
+    static Element EpisodeGrid(Zone zone, WinUiGridBand band, float gap)
     {
         var cards = ShelfLead.Merge(zone.Items, zone.Lead);   // the lead episode is row 1, once
         if (cards.Count == 0) return new BoxEl();
         var clock = Episode.RowClock.Now();                    // one clock per grid: every row agrees on "Today"
         var rows = new Element[cards.Count];
         for (int i = 0; i < rows.Length; i++) rows[i] = EpisodeRow(cards[i], clock);
-        return new GridEl
-        {
-            MinColWidth = band.Floor, MaxColumns = band.MaxCols,
-            ColGap = WinUiHomeRules.CardGap, RowGap = Spacing.XS, Children = rows,   // RowHeight auto: two-line titles + a progress rung
-        };
+        // Rows auto-height: two-line titles and a progress rung.
+        return GridFill.Responsive("episodes:" + zone.Key, rows.Length, w => band.Columns(w, gap),
+            (cols, w) => GridFill.Build(rows, cols, w, gap, Spacing.XS), FirstWidth(band, gap));
     }
 
     /// <summary>One Home episode row: the card's own facts (its section facts win over the columns — a resume point or an explicit mark the feed stated) through

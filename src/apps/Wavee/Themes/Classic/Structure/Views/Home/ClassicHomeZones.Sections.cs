@@ -6,7 +6,7 @@
 //                  voice on the calm side over its first sentence                                                   tools: See all N
 //   BookShelf      Classic's shelf of the house surface: author, "★ 4.7 · 20 hr 56 min", the plan as a pill; every card 4 lines
 //   ClusterCards   Ui.Card: the artist's picture with the name (a link) over "For fans of", the playlist (cover, name, description,
-//                  "Playlist · Spotify · 50 songs", Play), 4 rows; two rows of cards, the rest behind "Show N more" (a drawer)
+//                  "Playlist · Spotify · 50 songs", Play), 4 rows; pages of two rows at most, no empty slot (GridFill)
 //   VideoTiles(1)  one episode as a video card: the still with "Video" and the length on it, the progress hairline, the show, the
 //                  title, its facts, Play and Save
 //   entity header  a section that hangs off something: its cover, the lead words over its name as a link (a taller sticky header)
@@ -100,11 +100,9 @@ internal static partial class ClassicHomeZones
             var c = zone.Items[i];
             plates[i] = ItemMemo.Of(hooks, new PlateKey(c, c.Uri, c.Title, SectionCopy.PlateLine(in c), c.Accent), s_plate);
         }
-        return new GridEl
-        {
-            Key = "mood-plates:" + zone.Key, MinColWidth = layout.Tiles.MinCol, MaxColumns = Math.Min(layout.Tiles.MaxCols, ClassicHomeRules.MoodPlatesMax / 2),
-            ColGap = Spacing.M, RowGap = Spacing.M, RowHeight = ClassicHomeRules.MoodPlateH, Children = plates,
-        };
+        var band = layout.Tiles with { MaxCols = Math.Min(layout.Tiles.MaxCols, ClassicHomeRules.MoodPlatesMax / 2) };
+        return GridFill.Responsive("mood-plates:" + zone.Key, n, w => band.Columns(w, Spacing.M),
+            (cols, w) => GridFill.Build(plates, cols, w, Spacing.M, Spacing.M, ClassicHomeRules.MoodPlateH), FirstWidth(band, Spacing.M));
     }
 
     /// <summary>One plate: the mix's colour graded toward the card fill (the hero's way), the name 20 semibold and its line in the on-media inks
@@ -197,74 +195,27 @@ internal static partial class ClassicHomeZones
 
     // ── preview cards (P4) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>"Because you like": two rows of cards in the tier's columns, the rest behind "Show N more".</summary>
-    static Element ClusterGrid(Zone zone, ClassicHomeLayout layout)
+    /// <summary>"Because you like": the cards on pages of two rows at most (GridFill: no empty slot, the last row's cards grow, a lone last card
+    /// in its wide form), one page at a time, sliding sideways; "1 of 2" and the previous and next buttons in the header. Every page is laid
+    /// out, so the section keeps the tallest page's height.</summary>
+    static Element ClusterGrid(Zone zone, ClassicHomeLayout layout, ShelfController? controller)
     {
         var clusters = zone.Clusters;
         if (clusters is not { Count: > 0 }) return new BoxEl();
-        int visible = Math.Min(clusters.Count, layout.Clusters.MaxCols * ClassicHomeRules.ClusterVisibleRows);
-        var cards = new Element[visible];
-        for (int i = 0; i < visible; i++) cards[i] = ClusterCard(clusters[i]);
-        var grid = ClusterCells(cards, layout);
-        if (visible >= clusters.Count) return grid;
-        var rest = new ZoneCluster[clusters.Count - visible];
-        for (int i = 0; i < rest.Length; i++) rest[i] = clusters[visible + i];
-        return new BoxEl
-        {
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = Spacing.M,
-            Children =
-            [
-                grid,
-                Embed.Comp(new MoreProps(zone.Key, rest, layout), static () => new ClusterMore())
-                    with { SkeletonProxy = () => MoreLink(rest.Length, open: false, static () => { }) },
-            ],
-        };
+        var band = layout.Clusters;
+        string key = zone.Key;
+        return FluentGpu.Controls.Responsive.Of("clusters:" + key, w => band.Columns(w, Spacing.M), fit =>
+            GridFill.Paged(key, clusters, GridFill.Pages(clusters.Count, fit, clusters), Spacing.M, Spacing.M, float.NaN,
+                static c => ClusterCard(c), static c => ClusterCard(c, wide: true), controller, ShelfPager.None, Icons.ChevronLeft, Icons.ChevronRight),
+            fallback: FirstWidth(band, Spacing.M));
     }
 
-    static GridEl ClusterCells(Element[] cards, ClassicHomeLayout layout) => new()
-    {
-        MinColWidth = layout.Clusters.MinCol, MaxColumns = layout.Clusters.MaxCols, ColGap = Spacing.M, RowGap = Spacing.M, Children = cards,
-    };
+    /// <summary>A responsive grid's first-frame width (before its box is measured): the band's widest fit.</summary>
+    static float FirstWidth(ClassicGridBand band, float gap) => MathF.Max(band.MinCol, 1f) * band.MaxCols + gap * (band.MaxCols - 1);
 
-    static Element MoreLink(int count, bool open, Action toggle)
-        => new BoxEl
-        {
-            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space).
-            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start,
-            Children = [HyperlinkButton.Create(open ? Loc.Get(Strings.Home.ShowFewer) : Strings.Home.ShowMore(count), toggle) with { Shrink = 0f }],
-        };
-
-    sealed record MoreProps(string Key, IReadOnlyList<ZoneCluster> Rest, ClassicHomeLayout Layout)
-    {
-        public bool Equals(MoreProps? o) => o is not null && Key == o.Key && Layout.Equals(o.Layout) && Rest.SequenceEqual(o.Rest);
-        public override int GetHashCode() => Key.GetHashCode();
-    }
-
-    /// <summary>The cards past two rows: a drawer that mounts to open and unmounts to close (the reveal motion), the link under it.</summary>
-    sealed class ClusterMore : Component
-    {
-        public override Element Render()
-        {
-            var p = UseProps<MoreProps>();
-            var (open, set) = UseState(false);
-            var kids = new List<Element>(2);
-            if (open)
-            {
-                var cards = new Element[p.Rest.Count];
-                for (int i = 0; i < cards.Length; i++) cards[i] = ClusterCard(p.Rest[i]);
-                kids.Add(new BoxEl
-                {
-                    Key = "cluster-more:" + p.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
-                    Animate = Design.Reveal.Drawer, Children = [ClusterCells(cards, p.Layout)],
-                });
-            }
-            kids.Add(MoreLink(p.Rest.Count, open, () => set(!open)) with { Key = "cluster-more-link:" + p.Key });
-            return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = Spacing.M, Children = kids.ToArray() };
-        }
-    }
-
-    /// <summary>One preview card: who it is for, the playlist it offers, its first four rows.</summary>
-    static Element ClusterCard(ZoneCluster cluster)
+    /// <summary>One preview card: who it is for, the playlist it offers, its first four rows. <paramref name="wide"/> (a lone card on the last
+    /// row): who and the offer on the left, the rows in two columns beside them.</summary>
+    static Element ClusterCard(ZoneCluster cluster, bool wide = false)
     {
         var kids = new List<Element>(3) { Reason(cluster) };
         if (cluster.Header is { } h) kids.Add(Offer(h));
@@ -280,6 +231,17 @@ internal static partial class ClassicHomeZones
                 Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
                 { Menu = HomeCardNav.MenuOf(in c) };
             rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(ClassicHomeRules.ClusterArt))] };
+        }
+        if (wide)
+        {
+            var side = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.M, Children = kids.ToArray() };
+            var grid = new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children = [new GridEl { Columns = RhythmCards.Stars(ClassicHomeRules.WideClusterRowCols), ColGap = Spacing.M, Children = rows }],
+            };
+            return Ui.Card(new BoxEl { Direction = 0, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Start, Children = [side, grid] })
+                with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch };
         }
         kids.Add(new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows });
         return Ui.Card(kids.ToArray()) with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.M };

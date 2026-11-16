@@ -30,6 +30,14 @@ public enum ZoneKind : byte
     MoodPlates,
     /// <summary>Audiobooks as books: author, rating, length and what the plan covers under each cover (home-gap P8).</summary>
     BookShelf,
+    /// <summary>A personal set ("Made For"): one lead card (its header art, name, line and Play) beside a small grid of the rest (Home rhythm A).</summary>
+    LeadGrid,
+    /// <summary>Small tiles with the cover beside the text, two to five columns by width (Home rhythm A: top mixes, station lists).</summary>
+    CompactGrid,
+    /// <summary>A row of round covers, the name centred under each (Home rhythm A: artist sets and artist stations).</summary>
+    ArtistCircles,
+    /// <summary>One capped row of cards, two title lines, "See all N" instead of a sideways scroll (Home rhythm A: long mixed lists, shows).</summary>
+    CappedShelf,
 }
 
 /// <summary>One server band, read straight off <see cref="SectionTable"/> by <see cref="SectionReader"/>. Never

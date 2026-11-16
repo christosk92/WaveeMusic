@@ -56,6 +56,10 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.HomeZoneEmptyFacet, ZuneHomeZones.BodyTemplate, "zune.home.zone.empty-facet");
         views.Add(ViewKeys.HomeZoneMoodPlates, ZuneHomeZones.BodyTemplate, "zune.home.zone.mood-plates");
         views.Add(ViewKeys.HomeZoneBookShelf, ZuneHomeZones.BodyTemplate, "zune.home.zone.book-shelf");
+        views.Add(ViewKeys.HomeZoneLeadGrid, ZuneHomeZones.BodyTemplate, "zune.home.zone.lead-grid");
+        views.Add(ViewKeys.HomeZoneCompactGrid, ZuneHomeZones.BodyTemplate, "zune.home.zone.compact-grid");
+        views.Add(ViewKeys.HomeZoneArtistCircles, ZuneHomeZones.BodyTemplate, "zune.home.zone.artist-circles");
+        views.Add(ViewKeys.HomeZoneCappedShelf, ZuneHomeZones.BodyTemplate, "zune.home.zone.capped-shelf");
         views.Add(ViewKeys.HomeSection, ZuneHomeSection.Template, "zune.home.section");
         CommonNothing.Register(views, ViewKeys.HomeFacetRow);
 

@@ -18,6 +18,14 @@ public enum SectionTemplate : byte
 {
     None, ShortcutFill, RecentsData, DaylistHero, CoverShelf, EntityShelf, MoodPlates, WideTiles, ReleaseList,
     ShowGrid, VideoTiles, EpisodeRows, BookShelf, PreviewCard, PreviewGrid, PlainShelf,
+    /// <summary>Home rhythm (solution A): a personal set as one lead card beside a small grid of the rest.</summary>
+    LeadGrid,
+    /// <summary>Home rhythm: small tiles, the cover beside the text, in two to five columns.</summary>
+    CompactGrid,
+    /// <summary>Home rhythm: a row of round covers with the name centred under each (artist sets, artist stations).</summary>
+    ArtistCircles,
+    /// <summary>Home rhythm: one capped row of cards with two title lines and "See all N" instead of a sideways scroll.</summary>
+    CappedShelf,
 }
 
 /// <summary>What one board entry is. <see cref="GroupHead"/> heads a group; <see cref="Item"/> is a document item
@@ -56,6 +64,10 @@ public sealed record BoardEntry(string Id, BoardEntryKind Kind, string GroupId, 
     /// <summary>The bridge's zone for a feed or placed section (until the chooser lands; then the section tile builds
     /// its own from <see cref="SectionSlot"/>). Null for every other kind.</summary>
     public HomeUi.Zone? Zone { get; init; }
+
+    /// <summary>The templates a feed section may take instead of <see cref="Template"/> when its neighbour already draws that one
+    /// (<see cref="SectionRhythm"/>), best first; empty where the structure allows no other.</summary>
+    public ImmutableArray<SectionTemplate> Alternates { get; init; } = ImmutableArray<SectionTemplate>.Empty;
 
     /// <summary>A <see cref="BoardEntryKind.FillCell"/>'s Fill item (the document item that drew it); null for every other kind.</summary>
     public string? Parent { get; init; }

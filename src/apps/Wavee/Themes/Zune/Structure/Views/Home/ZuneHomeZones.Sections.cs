@@ -6,7 +6,7 @@
 //                  40 light lowercase at the foot; a name longer than its plate bleeds off its edge under a fade, it never shrinks
 //   BookShelf      the 154 cover shelf: the author, "★ 4.7 · 20 hr 56 min", what the plan covers as a quiet lowercase line
 //   ClusterCards   groups: the artist's picture, "for fans of" and the name as a link; the playlist (cover, its name 26 light as written,
-//                  the description, "playlist · spotify · 50 songs", the play and save rings); 4 rows; two rows of groups, "show N more"
+//                  the description, "playlist · spotify · 50 songs", the play and save rings); 4 rows; pages of two rows at most, "01/02" by the heading
 //   VideoTiles(1)  the episode's still, flat and square-cornered, "video" and the length on it, the progress line; the show, the title in
 //                  the 26 light voice as written (it wraps), "20 jul · 1 hr 24 min · not started", the play and save rings
 //   entity heading a section that hangs off something: its cover, the lead words lowercase over its name in its own case as a link
@@ -84,11 +84,9 @@ internal static partial class ZuneHomeZones
             var c = zone.Items[i];
             plates[i] = ItemMemo.Of(hooks, new PlateKey(c, c.Uri, c.Title, SectionCopy.PlateLine(in c), c.Accent), s_moodPlate);
         }
-        Element grid = new GridEl
-        {
-            Key = "zune-mood-plates:" + zone.Key, MinColWidth = H.TileMinCol, MaxColumns = Math.Min(lay.TileCols, H.MoodPlatesMax / 2),
-            ColGap = H.TileGap, RowGap = H.TileGap, RowHeight = H.MoodPlateH, Children = plates,
-        };
+        var band = new ZuneCappedBand(H.TileMinCol, Math.Min(lay.TileCols, H.MoodPlatesMax / 2), 0);
+        Element grid = GridFill.Responsive("zune-mood-plates:" + zone.Key, n, w => band.Columns(w, H.TileGap),
+            (cols, w) => GridFill.Build(plates, cols, w, H.TileGap, H.TileGap, H.MoodPlateH), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
         return K.Section(Heading(zone, lay), grid);
     }
 
@@ -186,81 +184,79 @@ internal static partial class ZuneHomeZones
 
     // ── the preview groups (P4) ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>"because you like": two rows of groups in the tier's columns, the rest behind "show N more" (a drawer).</summary>
+    /// <summary>"because you like": the groups on pages of two rows at most (GridFill: no empty slot, the last row's groups grow, a lone last group
+    /// in its wide form), one page at a time, sliding sideways by swipe, wheel, keys and the edge chevrons; a light "01/02" beside the heading
+    /// (display type, never shrunk). Every page is laid out, so the section keeps the tallest page's height. The section owns its pager.</summary>
     static Element Clusters(Zone zone, ZuneHomeLayout lay)
+        => Embed.Comp(new ClustersProps(zone, lay), static () => new ClustersView()) with { SkeletonProxy = () => ClustersTree(zone, lay, null) };
+
+    sealed record ClustersProps(Zone Zone, ZuneHomeLayout Layout);
+
+    /// <summary>Owns the section's ONE pager controller (stable for its life, as the shelf requires) and registers it for the inspector.</summary>
+    sealed class ClustersView : Component
+    {
+        readonly ShelfController _controller = new();
+
+        public override Element Render()
+        {
+            var p = UseProps<ClustersProps>();
+            string key = p.Zone.Key;
+            UseEffect(() => GridFill.Register(key, _controller));
+            return ClustersTree(p.Zone, p.Layout, _controller);
+        }
+    }
+
+    static Element ClustersTree(Zone zone, ZuneHomeLayout lay, ShelfController? controller)
     {
         var clusters = zone.Clusters;
-        int count = clusters?.Count ?? 0;
-        int visible = Math.Min(count, Math.Max(1, lay.ClusterCols) * H.ClusterVisibleRows);
+        if (clusters is not { Count: > 0 }) return K.Section(K.Heading(zone.Title ?? "", lay.Subtitles ? zone.Subtitle : null, null), new BoxEl());
         var rowShape = Shape.Row(lay.ClusterArt) with { MinHeight = lay.ClusterRowH };
-        var cells = new Element[visible];
-        for (int i = 0; i < visible; i++) cells[i] = Cluster(clusters![i], i, lay, rowShape);
-        Element body = ClusterGrid("zune-home-clusters:" + zone.Key, cells, lay);
-        if (visible < count)
-        {
-            var rest = new ZoneCluster[count - visible];
-            for (int i = 0; i < rest.Length; i++) rest[i] = clusters![visible + i];
-            body = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = H.ClusterGap,
-                Children =
-                [
-                    body,
-                    Embed.Comp(new MoreProps(zone.Key, rest, visible, lay), static () => new ClusterMore())
-                        with { SkeletonProxy = () => MoreLink(zone.Key, rest.Length, open: false, static () => { }, lay) },
-                ],
-            };
-        }
-        return K.Section(K.Heading(zone.Title ?? "", lay.Subtitles ? zone.Subtitle : null, null), body);
+        var pages = GridFill.Pages(clusters.Count, lay.ClusterCols, clusters);
+        Element body = GridFill.Paged(zone.Key, clusters, pages, H.ClusterGap, H.ClusterGap, float.NaN,
+            c => Cluster(c, IndexOf(clusters, c), lay, rowShape), c => Cluster(c, IndexOf(clusters, c), lay, rowShape, wide: true),
+            controller, ShelfPager.HoverEdge, Icons.ChevronLeft, Icons.ChevronRight, K.ChevronTargets);
+        return K.Section(ClustersHeading(zone, lay, pages.Length > 1 ? controller : null), body);
     }
 
-    static GridEl ClusterGrid(string key, Element[] cells, ZuneHomeLayout lay) => new()
+    static int IndexOf(IReadOnlyList<ZoneCluster> list, ZoneCluster c)
     {
-        Key = key, MinColWidth = H.ClusterMinCol, MaxColumns = lay.ClusterCols, ColGap = H.ClusterGap, RowGap = H.ClusterGap, Children = cells,
-    };
+        for (int i = 0; i < list.Count; i++) if (ReferenceEquals(list[i], c)) return i;
+        return -1;
+    }
 
-    static Element MoreLink(string key, int count, bool open, Action toggle, ZuneHomeLayout lay)
-        => new BoxEl
+    /// <summary>The heading, the page counter beside it while there are pages ("01/02" in the heading's light voice), the subtitle after.</summary>
+    static Element ClustersHeading(Zone zone, ZuneHomeLayout lay, ShelfController? controller)
+    {
+        if (controller is null) return K.Heading(zone.Title ?? "", lay.Subtitles ? zone.Subtitle : null, null);
+        var words = new List<Element>(3)
         {
-            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space).
-            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start,
-            Children = [K.Link("zune-cluster-more-link:" + key, open ? Loc.Get(Strings.Home.ShowFewer) : Strings.Home.ShowMore(count), toggle, lay.LinkTarget)],
+            K.HeadingText(zone.Title ?? ""),
+            Embed.Comp(() => new PageCounter(controller)) with { Key = "zune-cluster-pages" },
         };
-
-    sealed record MoreProps(string Key, IReadOnlyList<ZoneCluster> Rest, int First, ZuneHomeLayout Layout)
-    {
-        public bool Equals(MoreProps? o) => o is not null && Key == o.Key && First == o.First && Layout.Equals(o.Layout) && Rest.SequenceEqual(o.Rest);
-        public override int GetHashCode() => Key.GetHashCode();
+        if (lay.Subtitles && zone.Subtitle is { Length: > 0 } sub) words.Add(K.Caption(sub) with { Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f) });
+        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = words.ToArray() };
     }
 
-    /// <summary>The groups past two rows: a drawer that mounts to open and unmounts to close (the reveal motion), the link under it.</summary>
-    sealed class ClusterMore : Component
+    /// <summary>"01/02": the page and the count in the heading's light voice, tertiary, never shrunk.</summary>
+    sealed class PageCounter(ShelfController controller) : Component
     {
         public override Element Render()
         {
-            var p = UseProps<MoreProps>();
-            var (open, set) = UseState(false);
-            var kids = new List<Element>(2);
-            if (open)
+            int count = controller.PageCount.Value;
+            int page = controller.Page.Value;
+            string text = count <= 1 ? "" : (page + 1).ToString("00", CultureInfo.InvariantCulture) + "/" + count.ToString("00", CultureInfo.InvariantCulture);
+            return R.Type.Heading(text) with
             {
-                var rowShape = Shape.Row(p.Layout.ClusterArt) with { MinHeight = p.Layout.ClusterRowH };
-                var cells = new Element[p.Rest.Count];
-                for (int i = 0; i < cells.Length; i++) cells[i] = Cluster(p.Rest[i], p.First + i, p.Layout, rowShape);
-                kids.Add(new BoxEl
-                {
-                    Key = "zune-cluster-more:" + p.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
-                    Animate = Design.Reveal.Drawer, Children = [ClusterGrid("zune-home-clusters-more:" + p.Key, cells, p.Layout)],
-                });
-            }
-            kids.Add(MoreLink(p.Key, p.Rest.Count, open, () => set(!open), p.Layout));
-            return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = H.ClusterGap, Children = kids.ToArray() };
+                Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f, Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f),
+            };
         }
     }
 
-    static Element Cluster(ZoneCluster cluster, int index, ZuneHomeLayout lay, SurfaceShape rowShape)
+    static Element Cluster(ZoneCluster cluster, int index, ZuneHomeLayout lay, SurfaceShape rowShape, bool wide = false)
     {
         var kids = new List<Element>(4) { ReasonRow(cluster, lay) };
         if (cluster.Header is { } h) kids.Add(Offer(h, index, lay));
+        int head = kids.Count;
         int n = Math.Min(cluster.Rows.Count, H.ClusterRows);
         for (int i = 0; i < n; i++)
         {
@@ -276,10 +272,20 @@ internal static partial class ZuneHomeZones
                 Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in rowShape), Children = [Controls.Surface(data, rowShape)],
             });
         }
+        string key = "zune-cluster:" + index.ToString(CultureInfo.InvariantCulture) + ":" + cluster.Name;
+        if (wide)
+        {
+            var side = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = H.ClusterRowGap, AlignItems = FlexAlign.Stretch, Children = kids.GetRange(0, head).ToArray() };
+            var rows = new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children = [new GridEl { Columns = RhythmCards.Stars(H.WideClusterRowCols), ColGap = H.ClusterGap, RowGap = H.ClusterRowGap, Children = kids.GetRange(head, kids.Count - head).ToArray() }],
+            };
+            return new BoxEl { Key = key, Direction = 0, Gap = H.ClusterGap, MinWidth = 0f, AlignItems = FlexAlign.Start, Children = [side, rows] };
+        }
         return new BoxEl
         {
-            Key = "zune-cluster:" + index.ToString(CultureInfo.InvariantCulture) + ":" + cluster.Name,
-            Direction = 1, Gap = H.ClusterRowGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray(),
+            Key = key, Direction = 1, Gap = H.ClusterRowGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray(),
         };
     }
 

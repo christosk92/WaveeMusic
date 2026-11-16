@@ -589,10 +589,10 @@ public static partial class Diagnostics
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
                              Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
             },
-            new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); acting ones settle", "home do=pin uri=spotify:album:al2")
+            new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
                 Positional = ["do"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page"),
                              Arg("path", ArgType.Path, "doc: also write the document's JSON to this file"),
                              Arg("facet", ArgType.String, "plan: the facet (empty: All)", ""),
                              Arg("on", ArgType.Bool, "edit: on or off", "true"),
@@ -605,9 +605,10 @@ public static partial class Diagnostics
                              Arg("by", ArgType.Int, "move: steps through the order (negative: back)"),
                              Arg("to", ArgType.Enum, "move: to the group's start or end", null, "start|end"),
                              Arg("onto", ArgType.String, "move: onto this entry (later: after it; earlier: before it; a group head: its start)"),
-                             Arg("dir", ArgType.Enum, "move: one step toward a side (up and down: onto the nearest tile)", null, "left|right|up|down"),
+                             Arg("dir", ArgType.Enum, "move: one step toward a side (up and down: onto the nearest tile); page: left is the previous page, right the next", null, "left|right|up|down"),
+                             Arg("page", ArgType.Int, "page: the page to show, from 1 (key: the section's zone key or a unique part of it)", "1"),
                              Arg("refocus", ArgType.Bool, "close: focus goes back to the tile", "true"),
-                             Arg("key", ArgType.String, "option: the option's key"),
+                             Arg("key", ArgType.String, "option: the option's key; page: the paged section"),
                              Arg("value", ArgType.String, "option: the value"),
                              Arg("open", ArgType.Bool, "surface: open or close", "true"),
                              Arg("kind", ArgType.Enum, "surface: which", "band", "band|allitems|addrow|find"),
