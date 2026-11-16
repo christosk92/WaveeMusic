@@ -55,7 +55,8 @@ internal static class WinUiLibraryShowPane
         {
             Width = WinUiShowRules.CompactCover, Height = WinUiShowRules.CompactCover, Shrink = 0f, Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius),
             ClipToBounds = true, Shadow = Elevation.Card, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = p.Open,
-            Children = [Controls.Artwork(p.CoverUrl, WinUiShowRules.CompactCover, WinUiShowRules.CompactCover, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(WinUiShowRules.CompactCover))],
+            Children = [Controls.Artwork(p.CoverUrl, WinUiShowRules.CompactCover, WinUiShowRules.CompactCover, WinUiDetailRules.CoverRadius,
+                                         decodePx: WinUiDetailRules.CoverDecode(WinUiShowRules.CompactCover), connect: Design.MorphKeys.ForUri(p.Uri))],
         };
         Element head = new BoxEl
         {

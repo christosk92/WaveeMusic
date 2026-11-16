@@ -31,8 +31,11 @@ internal static class WinUiArtistHero
     internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
     /// <summary>The card for a <paramref name="cardW"/>-wide band in window tier <paramref name="tier"/>: the photograph (flat neutral without one), the veil, the copy
-    /// and, at every tier but Compact, the actions inside it. At Compact the actions are <see cref="CompactActionsSlot"/>, the page's row under the card.</summary>
-    public static Element Card(in Artist.HeroText text, string uri, string? photoUrl, float cardW, WidthTier tier, in Acts acts, WinUiArtistLatch? latch = null)
+    /// and, at every tier but Compact, the actions inside it. At Compact the actions are <see cref="CompactActionsSlot"/>, the page's row under the card.
+    /// <paramref name="connect"/>: the artist's flight key (<c>Design.MorphKeys.ForUri</c>). The loaded card is the flight's end (its rect and corners, its
+    /// photograph the picture); on the skeleton arm the sized plate is, so a pending page offers the header's rect on the click frame.</summary>
+    public static Element Card(in Artist.HeroText text, string uri, string? photoUrl, float cardW, WidthTier tier, in Acts acts, WinUiArtistLatch? latch = null,
+                               string? connect = null)
     {
         var form = WinUiArtistRules.HeroOf(tier);
         float height = form.Height;
@@ -56,7 +59,7 @@ internal static class WinUiArtistHero
             // The skeleton arm states the card's size: the deriver makes a plate only of a SIZED childless box, so the stretching placeholder derived to
             // nothing and the loading page drew the copy's bars alone, a small block where the 260-tall card lands (owner video 2026-10-25).
             : shimmer
-                ? new BoxEl { Width = w, Height = height, Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius) }
+                ? new BoxEl { Width = w, Height = height, Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius), MorphId = connect }
                 : new BoxEl { Fill = Design.WatchedPlaceholder(photoUrl) };
         Element veil = new BoxEl
         {
@@ -89,6 +92,7 @@ internal static class WinUiArtistHero
         return new BoxEl
         {
             Key = "artist-hero", Height = height, ZStack = true, ClipToBounds = true, Animate = WinUiArtistMotion.HeroHeight, OnRealized = latch?.MarkHeroLive,
+            MorphId = shimmer ? null : connect,
             Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius), Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children = [photo, veil, boost, overlay],
         };

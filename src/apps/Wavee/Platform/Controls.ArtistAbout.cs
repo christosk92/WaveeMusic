@@ -128,6 +128,7 @@ public static partial class Controls
                 new BoxEl
                 {
                     Width = 84f, Height = 84f, Shrink = 0f, Corners = CornerRadius4.All(42f), ClipToBounds = true,
+                    MorphId = Design.MorphKeys.ForUri(artist.Uri.Text),   // a tagged box: the portrait flies into the artist's header
                     Children = [PersonPicture.Create("", 84f, displayName: name, imageSourcePath: ArtUrl(artist.ImageId))],
                 },
                 new BoxEl

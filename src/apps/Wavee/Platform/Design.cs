@@ -909,6 +909,14 @@ public static partial class Design
             return HasId(uri, "spotify:user:") && uri.IndexOf(':', "spotify:user:".Length) < 0 ? uri : null;
         }
 
+        /// <summary>The smallest picture that flies (owner, 2026-11-16): a source whose shorter edge is under it (the sidebar's
+        /// thumbs, a 24 avatar beside a name) keeps the plain swap. Rows from 40 up fly.</summary>
+        public const float MinSourceEdge = 40f;
+
+        /// <summary><see cref="ForUri(string?)"/> for a source picture <paramref name="edge"/> DIP on its shorter side: null under
+        /// <see cref="MinSourceEdge"/>.</summary>
+        public static string? ForUri(string? uri, float edge) => edge >= MinSourceEdge ? ForUri(uri) : null;
+
         static bool HasId(string uri, string prefix) => uri.Length > prefix.Length && uri.StartsWith(prefix, StringComparison.Ordinal);
 
         /// <inheritdoc cref="MorphKeys"/>

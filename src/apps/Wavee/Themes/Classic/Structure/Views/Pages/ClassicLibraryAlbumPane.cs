@@ -128,7 +128,8 @@ internal static class ClassicLibraryAlbumPane
             Direction = 1, Grow = 1f, ClipToBounds = true,
             Children =
             [
-                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta, layout),
+                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta, layout,
+                                                 Design.MorphKeys.ForUri(p.Uri)),
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
                     Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = box }) with { Key = p.SaveKey },
                     ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f, layout.PaneInsetLeft, layout.PaneTrail),

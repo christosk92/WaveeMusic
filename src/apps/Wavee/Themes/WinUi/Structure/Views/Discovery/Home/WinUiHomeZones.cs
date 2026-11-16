@@ -579,7 +579,8 @@ internal static class WinUiHomeZones
         {
             Header = k.Title,
             Description = k.Sub.Length > 0 ? k.Sub : null,
-            HeaderIconElement = Controls.Artwork(k.Image, WinUiHomeRules.TileArt, WinUiHomeRules.TileArt, Radii.Control),
+            HeaderIconElement = Controls.Artwork(k.Image, WinUiHomeRules.TileArt, WinUiHomeRules.TileArt, Radii.Control,
+                                                 connect: Design.MorphKeys.ForUri(k.Uri)),
             IsClickEnabled = true,
             OnClick = () => HomeCardNav.Open(in c),
             Style = Controls.TileCardStyle, Parts = Controls.TileCardParts,
