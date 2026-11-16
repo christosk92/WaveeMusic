@@ -140,6 +140,9 @@ public static class WinUiHomeBoardRules
     /// <summary>Reduced motion's fade.</summary>
     public const float ReducedMs = 120f;
 
+    /// <summary>The pin mark on a card whose entity is on Home (12, the meta line's glyph).</summary>
+    public const float PinMarkGlyph = 12f;
+
     /// <summary>Half (a round cover's corner is half its edge).</summary>
     public const float Half = 0.5f;
 
@@ -158,6 +161,12 @@ public static class WinUiHomeBoardRules
 
     /// <summary>The page offset past which the first-run tip waits (the head row is leaving the viewport).</summary>
     public const double TipScrollMax = 48d;
+
+    /// <summary>The first-run tip waits this long after the mount (the page's entrance has played): 600 ms, the concept's.</summary>
+    public const float TipDelayMs = 600f;
+
+    /// <summary>The search result count is spoken once typing pauses this long (not on every keystroke).</summary>
+    public const float SpeakCountMs = 600f;
 
     /// <summary>The teaching tip's width.</summary>
     public const float TipW = 330f;
@@ -220,7 +229,6 @@ public static class WinUiHomeBoardRules
         float h = OptionsHeadH + CardPad;
         foreach (var o in source.Options)
             h += o.Kind == OptionKind.Choice && o.Values.Length < 5 ? OptionRadioRowH * o.Values.Length + OptionRowH - OptionRadioRowH : OptionRowH;
-        if (source.Live) h += OptionRowH;
         return MathF.Max(h, lay.M.Rows * lay.Unit + (lay.M.Rows - 1) * lay.Gap);
     }
 }
