@@ -78,7 +78,7 @@ public static class GridFill
                 Key = c.Key is { Length: > 0 } k ? "fill:" + k : null,
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = rowH,
                 // The cell's width less a hair, then grown: rounding never pushes a full row's last card onto the next line.
-                Basis = MathF.Max(0f, (inLast ? last : cell) - Slack), Grow = 1f, Shrink = 1f,
+                Width = MathF.Max(0f, (inLast ? last : cell) - Slack), Grow = 1f, Shrink = 0f,
                 // The wrap's gap is the column gap; a row after the first steps by the row gap instead.
                 Margin = i >= cols ? new Edges4(0f, rowGap - colGap, 0f, 0f) : default,
                 Children = [c],
@@ -88,7 +88,7 @@ public static class GridFill
     }
 
     /// <summary>What a card's basis gives back to rounding (it grows into it).</summary>
-    const float Slack = 0.5f;
+    const float Slack = 1f;
 
     // ── pages of tall cards ─────────────────────────────────────────────────────────────────────────────────────────────
 
