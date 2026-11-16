@@ -29,10 +29,10 @@ using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
 
-/// <summary>What the WinUI grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head. <see cref="Cell"/> is a shortcut
-/// cell's place in the shortcuts grid (the Recently played item that face shows there), -1 for everything else; <see cref="Switch"/> says the Pinned
-/// group carries the history tile, so its head offers the Shortcuts / Recently played switch and its cells cross-fade (<see cref="HomeShortcuts"/>).</summary>
-internal sealed record WinUiBoardItem(string Key, BoardEntry Entry, bool EmptyRow, int Cell = -1, bool Switch = false);
+/// <summary>What the WinUI grid packs: a board entry (the shortcuts grid one of them), or the empty Pinned row the theme adds after an empty group head.
+/// <see cref="Switch"/> says the Pinned group carries the history tile, so its head offers the Shortcuts / Recently played switch and the grid's cells
+/// cross-fade (<see cref="HomeShortcuts"/>).</summary>
+internal sealed record WinUiBoardItem(string Key, BoardEntry Entry, bool EmptyRow, bool Switch = false);
 
 /// <summary>WinUI's pinned Home board.</summary>
 internal static class WinUiHomeBoard
@@ -206,7 +206,7 @@ internal static class WinUiHomeBoard
                     grid = true;
                     x = HomeShortcuts.GridEntry(x);
                 }
-                list.Add(new WinUiBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false, -1,
+                list.Add(new WinUiBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false,
                                             sw && x.GroupId == HomeDocs.Pinned));
                 // An empty Pinned group says how to pin (spec 8.1 "Empty states"): a dashed row at the group's height.
                 if (x.Kind == BoardEntryKind.GroupHead && x.GroupId == "pinned" && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))

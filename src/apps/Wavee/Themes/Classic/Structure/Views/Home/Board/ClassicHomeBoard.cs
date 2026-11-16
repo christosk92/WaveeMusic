@@ -47,9 +47,8 @@ internal enum ClassicBoardRow : byte
     End,
 }
 
-/// <summary>What the Classic grid packs. <see cref="Cell"/> is a shortcut cell's place in the shortcuts grid (the Recently played item that face shows
-/// there), -1 for everything else; <see cref="Switch"/> says the Pinned group carries the history tile (<see cref="HomeShortcuts"/>).</summary>
-internal sealed record ClassicBoardItem(string Key, BoardEntry Entry, ClassicBoardRow Row, int Cell = -1, bool Switch = false);
+/// <summary>What the Classic grid packs. <see cref="Switch"/> says the Pinned group carries the history tile (<see cref="HomeShortcuts"/>).</summary>
+internal sealed record ClassicBoardItem(string Key, BoardEntry Entry, ClassicBoardRow Row, bool Switch = false);
 
 /// <summary>Classic's pinned Home board.</summary>
 internal static class ClassicHomeBoard

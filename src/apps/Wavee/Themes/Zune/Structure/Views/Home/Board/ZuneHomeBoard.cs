@@ -40,9 +40,8 @@ using B = Wavee.Themes.Zune.ZuneHomeBoardRules;
 namespace Wavee.Themes.Zune;
 
 /// <summary>What the Zune grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head.</summary>
-/// <para><see cref="Cell"/> is a shortcut cell's place in the shortcuts group (the history item that face shows there), -1 for everything else;
-/// <see cref="Switch"/> says the Pinned group carries the history tile, so its head is the two pivot words (<see cref="HomeShortcuts"/>).</para>
-internal sealed record ZuneBoardItem(string Key, BoardEntry Entry, bool EmptyRow, int Cell = -1, bool Switch = false);
+/// <para><see cref="Switch"/> says the Pinned group carries the history tile, so its head is the two pivot words (<see cref="HomeShortcuts"/>).</para>
+internal sealed record ZuneBoardItem(string Key, BoardEntry Entry, bool EmptyRow, bool Switch = false);
 
 /// <summary>Zune's pinned Home board.</summary>
 internal static class ZuneHomeBoard
@@ -377,7 +376,7 @@ internal static class ZuneHomeBoard
                     grid = true;
                     x = HomeShortcuts.GridEntry(x);
                 }
-                list.Add(new ZuneBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false, -1,
+                list.Add(new ZuneBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false,
                                            sw && x.GroupId == HomeDocs.Pinned));
                 // An empty Pinned group says how to pin (spec 8.2 "Empty states"): large light words at the group's height.
                 if (x.Kind == BoardEntryKind.GroupHead && x.GroupId == "pinned" && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
