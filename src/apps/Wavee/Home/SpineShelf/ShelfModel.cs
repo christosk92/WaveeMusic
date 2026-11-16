@@ -74,6 +74,9 @@ public static class SpineShelfRules
     public const float OpenMs = 520f;
     /// <summary>A song tile widening and narrowing.</summary>
     public const float TileMs = 380f;
+    /// <summary>One frame: the media of a tile opens this long after its widening has come to rest.</summary>
+    public const float RestFrameMs = 17f;
+
     /// <summary>The spine/face cross-fade.</summary>
     public const float FadeMs = 240f;
     /// <summary>Resting on a spine this long opens it (the meter fills over it).</summary>

@@ -98,7 +98,7 @@ public static class ShelfPreview
         if (s_media && !ClipPlaying.Peek() && ClipAllowed(in s_song) && s_clip is { } clipPlayer)
         {
             clipPlayer.SetVolume(Playback.Muted.Peek() ? 0f : Playback.Volume.Peek() * SpineShelfRules.ClipVolume);
-            OpenClip(clipPlayer, s_song.Clip!);
+            OpenClip(clipPlayer, s_song.Clip!, tile);
         }
         if (Showing.Peek() == tile) return;
         if (!s_media || s_video is not { } player || s_song.Canvas is not { } url) return;
@@ -142,12 +142,17 @@ public static class ShelfPreview
         }
     }
 
-    static async void OpenClip(MediaPlayer player, string url)
+    /// <summary>The live tile's clip has started (UI thread): the shelf starts its progress line then, never on the frame of the open, so an
+    /// engine's synchronous start cost lands on a frame where nothing of the shelf moves.</summary>
+    public static event Action<string>? ClipStarted;
+
+    static async void OpenClip(MediaPlayer player, string url, string tile)
     {
         ClipPlaying.Value = true;
         try
         {
             await player.OpenAsync(MediaSource.FromUri(url).WithKind(MediaKind.MfVideoOrFile), new MediaOpenOptions { StartPaused = false });
+            CanvasVideo.Files.Post(() => { if (Live.Peek() == tile) ClipStarted?.Invoke(tile); });
         }
         catch (Exception ex)
         {

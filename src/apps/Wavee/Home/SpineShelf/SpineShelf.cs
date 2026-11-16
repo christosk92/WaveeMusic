@@ -206,7 +206,8 @@ public sealed class SpineShelf : Component
     InputHooks? _hooks;
     TimerHandle _dwellTimer, _tileTimer, _closeTimer;
     bool _armed;
-    NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [];
+    NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [], _tile = [];
+    Action? _tileRested;
     Element[] _built = [];
     ShelfItem[] _builtItems = [];
     SpineShelfGeometry _builtG;
@@ -253,6 +254,7 @@ public sealed class SpineShelf : Component
         {
             _item = new NodeHandle[n]; _spine = new NodeHandle[n]; _face = new NodeHandle[n]; _meter = new NodeHandle[n];
             _progress = new NodeHandle[n * S];
+            _tile = new NodeHandle[n * S];
         }
 
         // The open item: remembered per shelf identity, else the first in Spotify's order.
@@ -284,10 +286,12 @@ public sealed class SpineShelf : Component
         UseEffect(() =>
         {
             ShelfRegistry.Live.Add(this);
+            ShelfPreview.ClipStarted += OnClipStarted;
             if (_open.Peek() < _items.Length) ShelfPreview.Prepare(_items[_open.Peek()]);
             return () =>
             {
                 ShelfRegistry.Live.Remove(this);
+                ShelfPreview.ClipStarted -= OnClipStarted;
                 if (ShelfPreview.Live.Peek().StartsWith(key + "|", StringComparison.Ordinal)) ShelfPreview.Leave();
             };
         }, DepKey.Empty);
@@ -476,6 +480,7 @@ public sealed class SpineShelf : Component
             OnHoverMove = _ => TileEnter(code, tile, in s),
             OnPointerExit = () => TileLeave(code),
             OnFocusChanged = f => { if (f) TileEnter(code, tile, in s); else TileLeave(code); },
+            OnRealized = h => { if (code < _tile.Length) _tile[code] = h; },
             Children = [mediaLayer, scrim, caption, progress],
         };
     }
@@ -583,7 +588,16 @@ public sealed class SpineShelf : Component
         _live.Value = code;
         _settling = code;
         ShelfPreview.Enter(tile, in song);
-        _tileTimer.RestartIn(SpineShelfRules.TileMs);
+        // The media opens on the first frame AFTER the tile has come to rest (its width row settled): an engine's synchronous start cost then
+        // lands on a frame where nothing of the shelf moves, never on the widening's last frame. Without a row (reduced motion) the timer stands.
+        if (_anim is { } a && (uint)code < (uint)_tile.Length && !_tile[code].IsNull)
+        {
+            var node = _tile[code];
+            _tileRested ??= () => _tileTimer.RestartIn(SpineShelfRules.RestFrameMs);
+            a.WhenSettled(node, AnimChannel.SizeW, _tileRested);
+            _tileTimer.RestartIn(SpineShelfRules.TileMs + SpineShelfRules.RestFrameMs);   // the fallback when no row runs
+        }
+        else _tileTimer.RestartIn(SpineShelfRules.TileMs);
     }
 
     /// <summary>The pointer (or focus) left tile <paramref name="code"/>: the video and the clip stop first, then the tile narrows.</summary>
@@ -604,11 +618,17 @@ public sealed class SpineShelf : Component
         int code = _settling;
         if (code < 0 || code != _live.Peek()) return;
         _settled = code;
-        // The clip and its progress line start once the tile has widened (ShelfPreview.Settled opens it then).
-        var song = _items[code / S].Songs[code % S];
-        if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull && ShelfPreview.ClipAllowed(in song))
-            a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 1f, SpineShelfRules.ClipMs, Easing.Linear);
+        // The clip opens once the tile has widened (ShelfPreview.Settled); its progress line starts when it plays (ClipStarted).
         ShelfPreview.Settled(TileKey(code));
+    }
+
+    /// <summary>The live tile's clip started: its progress line fills over the clip's length.</summary>
+    void OnClipStarted(string tile)
+    {
+        int code = _live.Peek();
+        if (code < 0 || tile != TileKey(code)) return;
+        if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull)
+            a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 1f, SpineShelfRules.ClipMs, Easing.Linear);
     }
 
     /// <summary>A canvas file landed: a settled live tile that waited for it presents it now.</summary>
