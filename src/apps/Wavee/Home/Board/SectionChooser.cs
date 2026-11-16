@@ -12,7 +12,7 @@
 //   mostly episodes                               → VideoTiles (video with a thumbnail) or EpisodeRows
 //   mostly audiobooks / mostly shows              → BookShelf / ShowGrid
 //   half or more colour-plate mixes (descripto)   → MoodPlates
-//   two thirds or more carry an editorial header  → WideTiles (a generated mix's header image does not count)
+//   two thirds or more carry an editorial header  → WideTiles (a generated mix's or artist set's header image does not count)
 //   albums in the release window                  → ReleaseList
 //   a typename this build knows                   → EntityShelf (with a header entity) or CoverShelf
 //   ANYTHING ELSE, an unknown typename included   → PlainShelf, a cover shelf of whatever cards decode
@@ -61,8 +61,9 @@ public static class SectionChooser
                 case HomeCardKind.Podcast: shows++; break;
             }
             if (c.Format == "descripto") plates++;
-            // Every generated mix and station carries a desktop header image now (1.3.8.620 capture), so a header counts
-            // toward wide tiles only on an editorial card: a shelf of mixes or stations stays a cover shelf.
+            // Every generated mix and station carries a desktop header image now (1.3.8.620 capture), and so does every
+            // "This Is" set (format artistsets, live answer 2026-11-16), so a header counts toward wide tiles only on an
+            // editorial card: a shelf of mixes, stations or artist sets stays a cover shelf at the standard card size.
             if (c.HeaderImageUrl is not null && !Generated(c.Format)) headers++;
         }
         if (usable == 0) return new(SectionTemplate.None, ZoneKind.EmptyFacet, "no drawable card (" + type + ")");
@@ -143,9 +144,10 @@ public static class SectionChooser
         return plan;
     }
 
-    /// <summary>A format the server generates per listener (mixes, stations, the daylist, Discover Weekly, Release Radar).</summary>
+    /// <summary>A format whose desktop header image is a generated design, not an editorial picture: what the server generates per
+    /// listener (mixes, stations, the daylist, Discover Weekly, Release Radar) and the per-artist "This Is" sets (artistsets).</summary>
     static bool Generated(string? f) => f is "daily-mix" or "discover-weekly" or "release-radar" or "daylist" or "topic-mix"
-        or "descripto" or "inspiredby-mix" or "artist-mix-reader" or "";
+        or "descripto" or "inspiredby-mix" or "artist-mix-reader" or "artistsets" or "";
 
     /// <summary>The typename a band folded without one (an older fold, a fixture) stands for.</summary>
     static string TypeNameOf(SectionKind kind) => kind switch

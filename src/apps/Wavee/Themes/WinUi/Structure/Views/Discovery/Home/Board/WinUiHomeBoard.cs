@@ -29,8 +29,10 @@ using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
 
-/// <summary>What the WinUI grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head.</summary>
-internal sealed record WinUiBoardItem(string Key, BoardEntry Entry, bool EmptyRow);
+/// <summary>What the WinUI grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head. <see cref="Cell"/> is a shortcut
+/// cell's place in the shortcuts grid (the Recently played item that face shows there), -1 for everything else; <see cref="Switch"/> says the Pinned
+/// group carries the history tile, so its head offers the Shortcuts / Recently played switch and its cells cross-fade (<see cref="HomeShortcuts"/>).</summary>
+internal sealed record WinUiBoardItem(string Key, BoardEntry Entry, bool EmptyRow, int Cell = -1, bool Switch = false);
 
 /// <summary>WinUI's pinned Home board.</summary>
 internal static class WinUiHomeBoard
@@ -126,7 +128,9 @@ internal static class WinUiHomeBoard
             _template ??= (item, cell) => Item(item, cell);
             _reorder ??= new PackReorder<WinUiBoardItem>("home.tile")
             {
-                CanLift = static it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead,
+                // A shortcut cell showing Recently played is not the shortcut it stands for: it does not lift until the grid shows the shortcuts again.
+                CanLift = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead
+                                && !(it.Cell >= 0 && _p!.Board.View.ShortcutsFace.Peek() == HomeShortcuts.RecentsFace),
                 LiftStyle = new DragVisualStyle { Scale = 1.03f },
                 Slot = static rect => WinUiHomeTiles.Slot(rect),
                 AcceptKinds = [WinUiHomeAddBand.DragKind],
@@ -178,10 +182,14 @@ internal static class WinUiHomeBoard
         {
             var e = m.Entries;
             var list = new List<WinUiBoardItem>(e.Length + 1);
+            bool sw = HomeShortcuts.HasSwitch(m);
+            int cell = 0;
             for (int i = 0; i < e.Length; i++)
             {
                 var x = e[i];
-                list.Add(new WinUiBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false));
+                int at = sw && HomeShortcuts.IsShortcutCell(x) ? cell++ : -1;
+                list.Add(new WinUiBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false, at,
+                                            sw && x.GroupId == HomeDocs.Pinned));
                 // An empty Pinned group says how to pin (spec 8.1 "Empty states"): a dashed row at the group's height.
                 if (x.Kind == BoardEntryKind.GroupHead && x.GroupId == "pinned" && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
                     list.Add(new WinUiBoardItem("home:empty:" + x.GroupId, x, true));
@@ -230,9 +238,12 @@ internal static class WinUiHomeBoard
             var board = _p!.Board;
             if (it.EmptyRow) return WinUiHomeTiles.EmptyPinned(_p.Lay);
             var e = it.Entry;
-            if (e.Kind == BoardEntryKind.GroupHead) return WinUiHomeTiles.GroupHead(e, _p.Lay);
+            if (e.Kind == BoardEntryKind.GroupHead)
+                return e.GroupId == HomeDocs.Pinned ? WinUiHomeTiles.ShortcutsHead(e, _p.Lay, _p.Home, board, it.Switch) : WinUiHomeTiles.GroupHead(e, _p.Lay);
             if (board.View.OpenId.Value == e.Id)
                 return WinUiHomeTiles.Open(e, board.Options(e));
+            // A shortcut cell of a switchable grid: the shortcut, or the Recently played item at its place (the cells cross-fade, the grid keeps its size).
+            if (it.Cell >= 0) return WinUiHomeTiles.ShortcutCell(board.Tile(e, cell, _formRule!), it.Cell, board);
             // A full row always draws its full form (its height is its body's); every other size draws what its box can carry.
             if (WinUiHomeBoardRules.SizeOf(e) != HomeSize.Full) return board.Tile(e, cell, _formRule!);
             var tile = board.Tile(e, cell, s_full);

@@ -1391,7 +1391,7 @@ public static partial class Entities
     // was edited). `state kind=home-refresh` lands `home.all.second.json` over All: the next answer, for identity.
 
     /// <summary>The fixture names <see cref="StageHomeFixture"/> takes.</summary>
-    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second"];
+    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second", "live1"];
 
     /// <summary>The Home fixture the tables hold now.</summary>
     public static string HomeFixture { get; private set; } = "mock";
@@ -1423,7 +1423,7 @@ public static partial class Entities
             // A derived fixture may replace a facet too (`home.<facet>.<name>.json`: the synthetic following list carries a pre-save).
             if (facet.Length > 0 && name != "capture" && ReadBundledCapture(Path.Combine("fixtures", "home." + facet + "." + name + ".json")) is not null)
                 file = "home." + facet + "." + name + ".json";
-            if (!LandHomeAnswer(facet, file)) return false;
+            if (!LandHomeAnswer(facet, file, name)) return false;
         }
         HomeFixture = name;
         Current.PublishAll();
@@ -1440,7 +1440,7 @@ public static partial class Entities
     }
 
     /// <summary>One facet's captured answer, then its baseline lookup (when the capture has one), through the live folds.</summary>
-    static bool LandHomeAnswer(string facet, string file)
+    static bool LandHomeAnswer(string facet, string file, string fixture = "capture")
     {
         byte[]? answer = ReadBundledCapture(Path.Combine("fixtures", file));
         if (answer is null) return false;
@@ -1454,7 +1454,10 @@ public static partial class Entities
         finally { Staging.Return(s); }
 
         var home = HomeFeed(facet.AsSpan());
-        byte[]? lookup = ReadBundledCapture(Path.Combine("fixtures", "lookup." + (facet.Length == 0 ? "all" : facet) + ".json"));
+        // A fixture of its own day carries its own lookups (`lookup.<facet>.<name>.json`); the derived ones share the capture's.
+        string facetName = facet.Length == 0 ? "all" : facet;
+        byte[]? lookup = (fixture != "capture" ? ReadBundledCapture(Path.Combine("fixtures", "lookup." + facetName + "." + fixture + ".json")) : null)
+            ?? ReadBundledCapture(Path.Combine("fixtures", "lookup." + facetName + ".json"));
         HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
         if (lookup is not null && links.Length > 0)
         {

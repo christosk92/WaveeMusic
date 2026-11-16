@@ -38,6 +38,97 @@ internal static class WinUiHomeTiles
         Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, AlignSelf = FlexAlign.Start }],
     };
 
+    /// <summary>The Pinned group's head, the concept's "Your shortcuts": the chapter title over "What you reach for most, picked by Spotify", and, while the
+    /// group carries the history tile, the Shortcuts / Recently played switch and the "Listening history" link at its end (Compact: the switch on a line of
+    /// its own under the title row). The row's height is the rules' <see cref="WinUiHomeBoardLayout.ShortcutsHead"/>.</summary>
+    public static Element ShortcutsHead(BoardEntry e, WinUiHomeBoardLayout lay, WinUiHomeLayout home, HomeBoardProps board, bool switchable)
+    {
+        string key = HomeBoardKeys.Group(e.GroupId);
+        string? sub = home.HeaderSubtitles ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null;
+        Element? link = switchable ? HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents) with { Key = key + ":history", Shrink = 0f } : null;
+        BoxEl? face = switchable
+            ? new BoxEl
+            {
+                Key = key + ":face", Shrink = 0f,
+                Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
+                                              new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
+                                             options: s_faceOptions ??= FaceOptions())],
+            }
+            : null;
+        bool stacked = lay.Tier == WidthTier.Compact;
+        Element? tools = stacked || face is null || link is null ? link
+            : new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face.Value, link.Value] };
+        var header = WinUiHomeZones.ModuleHeader(e.Title, sub, tools, home) with { Key = key + ":title" };
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Gap = Spacing.S, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+            Children = stacked && face is not null ? [header, face.Value with { AlignSelf = FlexAlign.Start }] : [header],
+        };
+    }
+
+    static Segmented.SegmentedOptions? s_faceOptions;
+
+    /// <summary>The switch's look: the stock Fluent segmented control (a filled track, the selected segment raised), its segments padded so the words
+    /// never touch (the theme's own Segmented preset is the facet band's underline pivot). The style reads the live tokens when it is built.</summary>
+    static Segmented.SegmentedOptions FaceOptions() => new()
+    {
+        Style = Segmented.FluentStyle() with { Height = WinUiHomeBoardRules.FaceSwitchH, ItemPadding = new Edges4(Spacing.M, 0f, Spacing.M, 0f) },
+    };
+
+    /// <summary>A shortcut cell of a switchable grid (<see cref="HomeShortcuts"/>): the shortcut's own tile, or the Recently played item at its place.</summary>
+    public static Element ShortcutCell(Element tile, int index, HomeBoardProps board)
+        => Embed.Comp(new FaceProps(tile, index, board), static () => new ShortcutFace());
+
+    internal sealed record FaceProps(Element Tile, int Index, HomeBoardProps Board);
+
+    static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The cell's two faces in one place: the face the switch shows is a keyed layer that fades in while the other fades out (the box is the
+    /// pack's, so nothing moves). A place past the end of Recently played keeps its shortcut.</summary>
+    internal sealed class ShortcutFace : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<FaceProps>();
+            Element shown = p.Tile;
+            string key = "face:s";
+            if (p.Board.View.ShortcutsFace.Value == HomeShortcuts.RecentsFace && p.Board.Recents?.Invoke() is { } r && p.Index < r.Cells.Count)
+            {
+                shown = RecentFace(r.Cells[p.Index]);
+                key = "face:r";
+            }
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [shown],
+                        Enter = s_fade, Exit = s_fade, Transition = MotionTok.ControlNormal,
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>A Recently played item in a shortcut cell: the row tile's plate and face (its cover, the name, its detail line), no menu corner.</summary>
+    static Element RecentFace(RecentsCell cell)
+    {
+        var c = cell.Card;
+        float edge = WinUiHomeBoardRules.RowArt;
+        Element art = c.Kind == HomeCardKind.Liked
+            ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [Sidebar.Cover.Liked(edge)] }
+            : Cover(c.ImageUrl, edge, cell.Round);
+        string title = cell.Title, detail = cell.Detail;
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinWidth = 0f, Corners = Radii.CardAll, ClipToBounds = true,
+            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
+            Children = [Clickable(RowFace(art, () => title, () => detail), () => HomeCardNav.Open(in c))],
+        };
+    }
+
     /// <summary>The empty Pinned group: a dashed row at the group's height with how to pin (spec 8.1 "Empty states").</summary>
     public static Element EmptyPinned(WinUiHomeBoardLayout lay) => EmptyPinned(SurfacePlate.For(PlateKind.Outline));
 
@@ -75,7 +166,7 @@ internal static class WinUiHomeTiles
     /// <summary>A card around <paramref name="content"/>: the plate, the reserved ⋯ corner, focus, the keys and the context request. A full row has no
     /// plate (it is a chapter on the page, as today): its ⋯ stands in a lane at its header's end.</summary>
     static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null, bool moreInContent = false,
-                        MoreMenu menu = MoreMenu.Full)
+                        MoreMenu menu = MoreMenu.Full, bool outline = false)
     {
         bool full = f.Form == HomeTileForm.Full;
         // A full row whose chapter has a header carries the menu button at the header's end (passed in by the template): the body keeps the
@@ -94,10 +185,13 @@ internal static class WinUiHomeTiles
                 Key = key, Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = Spacing.XS,
                 Children = [new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] }, more],
             };
+        var plate = outline ? SurfacePlate.For(PlateKind.Outline) : default;
         return new BoxEl
         {
             Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true, Corners = Radii.CardAll, ClipToBounds = true,
-            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
+            // The outline card is the shortcuts grid's closing tile (the history tile): the dashed plate the Recently played grid's own history tile wears.
+            Fill = outline ? default : Tok.FillCardDefault, BorderColor = outline ? plate.Stroke : Tok.StrokeCardDefault,
+            BorderWidth = outline ? plate.StrokeWidth : 1f, BorderDashOn = outline ? plate.Dash : 0f, BorderDashOff = outline ? plate.Dash : 0f,
             BrushTransitionMs = Design.Motion.Faster,
             Children =
             [
@@ -360,6 +454,27 @@ internal static class WinUiHomeTiles
                     ],
                 };
                 return Card(ctx, f, body, moreInContent: true);
+            }
+            case HomeTileForm.S when HomeShortcuts.IsHistoryCell(f.Entry):
+            {
+                // The shortcuts grid's closing tile (the concept's): the headphones plate, "Listening history", the week's strip and its count, dashed.
+                var line = new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = [WinUiHomeRecents.WeekStrip(r.Week, DateTime.Today), WinUiHomeZones.Meta(week) with { Shrink = 1f }],
+                };
+                var text = new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
+                    Children = [Ui.BodyStrong(Loc.Get(Strings.Home.ListeningHistory)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, line],
+                };
+                var face = new BoxEl
+                {
+                    Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, 0f, 0f), Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
+                    Children = [GlyphPlate(Icons.Headphones, WinUiHomeBoardRules.RowArt), text],
+                };
+                return Card(ctx, f, Clickable(face, p.OpenHistory), outline: true);
             }
             case HomeTileForm.S:
                 return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.History, WinUiHomeBoardRules.RowArt), () => title, () => week), p.OpenHistory));

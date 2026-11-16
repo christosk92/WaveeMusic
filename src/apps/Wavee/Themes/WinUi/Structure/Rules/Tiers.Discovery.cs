@@ -5,13 +5,14 @@
 //
 //   tier      greeting   daylist                                         Jump back in           shelves (covers)          pairs
 //   Compact   28/36      stack: 96 cover, copy, 40 buttons, clock footer  1 column, 4 apart      2 columns, 12 apart       none
-//   Small     28/36      120 cover, copy, the clock a line on the eyebrow 2 columns, 8 apart     4 columns, 12 apart       none
-//   Standard  40/52      272 cover | copy | 300 clock rows (24 apart)     4 columns, 8 apart     6 columns, 16 apart       none
+//   Small     28/36      120 cover, copy, the clock a line on the eyebrow 2 columns, 8 apart     120-180 covers, 12 apart  none
+//   Standard  40/52      272 cover | copy | 300 clock rows (24 apart)     4 columns, 8 apart     150-200 covers, 16 apart  none
 //   Huge      40/52      288 cover | copy | 320 clock rows                6 columns, 8 apart     10 columns, 20 apart;     daylist 2 : releases 1;
 //                                                                                                 14 once the page is wide  clusters 1 : continue 1
 //
 // NO PAGE CAP at Huge or 4K (owner Q2): the grids fill the region, and the shelves' column counts are floor-fits inside the tier (`WinUiShelfBand`: a
-// minimum card and a most-columns cap), so 2560 holds 10 covers and 3840 with a docked pane holds 14. The page's insets are the frame's
+// minimum card and a most-columns cap), so 2560 holds 10 covers and 3840 with a docked pane holds 14. A cover never grows past the band's widest card
+// (the concept's shelf: six ~160 covers across at 1440, more covers, not bigger ones, on a wider page; owner 2026-11-16 "4 huge cards per row"). The page's insets are the frame's
 // (`WinUiTiers.InsetOf`: 16 / 24 / 36 / 48 by window tier), never a number here.
 //
 // A COLUMN CHANGE FLIPS: every grid cell and zone carries `WinUiDiscoveryMotion.Shove` / `Reflow` (250 ms), so a width change moves the cards to their new
@@ -217,6 +218,10 @@ public sealed record WinUiHomeLayout
 
     /// <summary>The browse tiles' columns.</summary>
     public required WinUiGridBand Tiles { get; init; }
+    /// <summary>The time-of-day mood plates (home-gap P6): the plates' column rule and how many plates the shelf shows (two rows of the
+    /// widest fit; the concept's five across at 1440).</summary>
+    public required WinUiGridBand Plates { get; init; }
+    public required int PlatesMax { get; init; }
 
     /// <summary>The episode rows' columns (a lead and a list).</summary>
     public required WinUiGridBand Episodes { get; init; }
@@ -282,7 +287,7 @@ public static class WinUiHomeTiers
         Shelf = new WinUiShelfBand(120f, 9999f, 2, FixedCardW: 0f, Gap: 12f, Pager: false), ShelfLead = false,
         WideShelf = new WinUiShelfBand(220f, 9999f, 1, FixedCardW: 0f, Gap: 12f, Pager: false),
         Recents = WinUiGridBand.Fixed(1), RecentsRows = 4, RecentsGap = 4f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = WinUiGridBand.Fixed(1), Clusters = WinUiGridBand.Fixed(1), Tiles = WinUiGridBand.Fixed(2),
+        Releases = WinUiGridBand.Fixed(1), Clusters = WinUiGridBand.Fixed(1), Tiles = WinUiGridBand.Fixed(2), Plates = WinUiGridBand.Fixed(2), PlatesMax = 6,
         Episodes = WinUiGridBand.Fixed(1), Continue = WinUiGridBand.Fixed(1),
         SectionMinCell = 124f,
     };
@@ -299,10 +304,10 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Line, Ring = 16f, LabelW = 0f, PlayGrows = false,
         },
         DaylistBeside = false, ClustersBeside = false,
-        Shelf = new WinUiShelfBand(120f, 9999f, 4, FixedCardW: 0f, Gap: 12f, Pager: true), ShelfLead = false,
-        WideShelf = new WinUiShelfBand(180f, 9999f, 3, FixedCardW: 0f, Gap: 12f, Pager: true),
+        Shelf = new WinUiShelfBand(120f, 180f, 8, FixedCardW: 0f, Gap: 12f, Pager: true), ShelfLead = false,
+        WideShelf = new WinUiShelfBand(180f, 260f, 6, FixedCardW: 0f, Gap: 12f, Pager: true),
         Recents = WinUiGridBand.Fixed(2), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = new WinUiGridBand(280f, 2), Clusters = new WinUiGridBand(260f, 2), Tiles = new WinUiGridBand(180f, 3),
+        Releases = new WinUiGridBand(280f, 2), Clusters = new WinUiGridBand(260f, 2), Tiles = new WinUiGridBand(180f, 3), Plates = new WinUiGridBand(160f, 4), PlatesMax = 8,
         Episodes = new WinUiGridBand(280f, 2), Continue = new WinUiGridBand(260f, 2),
         SectionMinCell = 156f,
     };
@@ -319,10 +324,10 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Rows, Ring = 28f, LabelW = 92f, PlayGrows = false,
         },
         DaylistBeside = false, ClustersBeside = false,
-        Shelf = new WinUiShelfBand(150f, 9999f, 6, FixedCardW: 0f, Gap: CoverGap, Pager: true), ShelfLead = false,
-        WideShelf = new WinUiShelfBand(220f, 9999f, 4, FixedCardW: 0f, Gap: CoverGap, Pager: true),
+        Shelf = new WinUiShelfBand(150f, 200f, 12, FixedCardW: 0f, Gap: CoverGap, Pager: true), ShelfLead = false,
+        WideShelf = new WinUiShelfBand(220f, 300f, 8, FixedCardW: 0f, Gap: CoverGap, Pager: true),
         Recents = new WinUiGridBand(240f, 4), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = new WinUiGridBand(320f, 2), Clusters = new WinUiGridBand(300f, 3), Tiles = new WinUiGridBand(220f, 4),
+        Releases = new WinUiGridBand(320f, 2), Clusters = new WinUiGridBand(300f, 3), Tiles = new WinUiGridBand(220f, 4), Plates = new WinUiGridBand(180f, 5), PlatesMax = 10,
         Episodes = new WinUiGridBand(320f, 2), Continue = new WinUiGridBand(300f, 3),
         SectionMinCell = 176f,
     };
@@ -340,10 +345,10 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Rows, Ring = 28f, LabelW = 92f, PlayGrows = false,
         },
         DaylistBeside = true, ClustersBeside = true,
-        Shelf = new WinUiShelfBand(190f, 9999f, 14, FixedCardW: 0f, Gap: 20f, Pager: true), ShelfLead = false,
-        WideShelf = new WinUiShelfBand(300f, 9999f, 8, FixedCardW: 0f, Gap: 20f, Pager: true),
+        Shelf = new WinUiShelfBand(190f, 240f, 14, FixedCardW: 0f, Gap: 20f, Pager: true), ShelfLead = false,
+        WideShelf = new WinUiShelfBand(300f, 380f, 10, FixedCardW: 0f, Gap: 20f, Pager: true),
         Recents = new WinUiGridBand(300f, 6), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = WinUiGridBand.Fixed(1), Clusters = new WinUiGridBand(260f, 3), Tiles = new WinUiGridBand(220f, 7),
+        Releases = WinUiGridBand.Fixed(1), Clusters = new WinUiGridBand(260f, 3), Tiles = new WinUiGridBand(220f, 7), Plates = new WinUiGridBand(200f, 5), PlatesMax = 10,
         Episodes = new WinUiGridBand(320f, 3), Continue = new WinUiGridBand(260f, 3),
         SectionMinCell = 190f,
     };

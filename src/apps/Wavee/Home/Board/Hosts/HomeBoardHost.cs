@@ -105,6 +105,11 @@ public sealed class HomeBoardHost
         store.ResolveLegacy(SectionReader.Read(h));
     }
 
+    RecentGrid.Cache? _recents;
+
+    /// <summary>Recently played for the shortcuts grid's other face: the Recents zone of the All answer, folded once per Recents version.</summary>
+    HomeRecentsProps RecentsNow() => RecentGrid.PropsOf(HomeBoardZones.RecentsZone(), ref _recents);
+
     HomeBoardProps Props()
     {
         if (_props is { } p) return p;
@@ -125,6 +130,7 @@ public sealed class HomeBoardHost
             ReadOnly = HomeBoardStore.Instance.ReadOnly,
             Overlay = overlay,
             EditorFocused = Shell.FocusedIsTextEditor,
+            Recents = RecentsNow,
         };
     }
 }

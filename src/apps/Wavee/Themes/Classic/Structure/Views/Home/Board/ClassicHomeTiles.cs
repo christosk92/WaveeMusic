@@ -10,6 +10,7 @@
 
 using System.Collections.Generic;
 using System.Globalization;
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -29,18 +30,105 @@ internal static class ClassicHomeTiles
     // ══ the board's chrome ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A group title: the chapter header's title at the foot of its row. Pinned's title is also where a cover dragged onto Home pins.</summary>
-    public static Element GroupHead(HomeBoardProps board, BoardEntry e)
+    public static Element GroupHead(HomeBoardProps board, BoardEntry e, bool switchable = false)
     {
+        string key = HomeBoardKeys.Group(e.GroupId);
+        bool shortcuts = e.GroupId == HomeDocs.Pinned;
+        // The Pinned group is the concept's "Your shortcuts": its subtitle on the title's baseline, and while the history tile closes the grid, Classic's
+        // selector bar (two words over the accent underline) to switch the grid to Recently played and the "Listening history" link.
+        Element? tools = switchable
+            ? new BoxEl
+            {
+                Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = key + ":face", Shrink = 0f,
+                        Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
+                                                      new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
+                                                     options: s_faceOptions ??= FaceOptions())],
+                    },
+                    HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents) with { Key = key + ":history" },
+                ],
+            }
+            : null;
         var title = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
-            Children = [HomeModules.ModuleHeader(e.Title, null, null, open: null) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title" }],
+            Children = [HomeModules.ModuleHeader(e.Title, shortcuts ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null, tools, open: null) with { Key = key + ":title" }],
         };
         return e.GroupId == HomeDocs.Pinned && !board.ReadOnly ? title with { DropTarget = PinDrop(board) } : title;
     }
 
     /// <summary>The empty Pinned group: a dashed row at the group's height, "Drop here to pin. Or use the pin action on any library item." It takes a
     /// cover dragged onto Home.</summary>
+    static Segmented.SegmentedOptions? s_faceOptions;
+
+    /// <summary>The switch's look: the theme's own selector, words over the accent underline (the concept's), its words spaced apart.</summary>
+    static Segmented.SegmentedOptions FaceOptions() => new()
+    {
+        Style = Segmented.DefaultStyle with
+        {
+            ItemPadding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+            // Classic's selector bar is the words alone: no track, no raised segment; the accent underline marks the face shown.
+            Background = ColorF.Transparent, Border = ColorF.Transparent, SelectedBackground = ColorF.Transparent, SelectedBorder = null,
+            SelectedHover = Tok.FillSubtleSecondary, SelectedPressed = Tok.FillSubtleTertiary,
+        },
+    };
+
+    /// <summary>A shortcut cell of a switchable grid (<see cref="HomeShortcuts"/>): the shortcut's own tile, or the Recently played item at its place. Edit
+    /// Home always shows the shortcuts (they are what it moves).</summary>
+    public static Element ShortcutCell(Element tile, int index, HomeBoardProps board, ClassicHomeBoardLayout lay)
+        => Embed.Comp(new FaceProps(tile, index, board, lay), static () => new ShortcutFace());
+
+    internal sealed record FaceProps(Element Tile, int Index, HomeBoardProps Board, ClassicHomeBoardLayout Lay);
+
+    static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The cell's two faces in one place: the face the switch shows is a keyed layer that fades in while the other fades out.</summary>
+    internal sealed class ShortcutFace : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<FaceProps>();
+            var view = p.Board.View;
+            Element shown = p.Tile;
+            string key = "face:s";
+            if (view.ShortcutsFace.Value == HomeShortcuts.RecentsFace && !view.Editing.Value && p.Board.Recents?.Invoke() is { } r && p.Index < r.Cells.Count)
+            {
+                shown = RecentFace(r.Cells[p.Index], p.Lay);
+                key = "face:r";
+            }
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [shown],
+                        Enter = s_fade, Exit = s_fade, Transition = MotionTok.ControlNormal,
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>A Recently played item in a speed-dial cell: the cell's plate and face (the cover flush left, the name, its detail line).</summary>
+    static Element RecentFace(RecentsCell cell, ClassicHomeBoardLayout lay)
+    {
+        var c = cell.Card;
+        Element art = c.Kind == HomeCardKind.Liked ? CellGlyph(Icons.HeartFill, lay) : CellArt(c.ImageUrl, lay, cell.Round);
+        string title = cell.Title, detail = cell.Detail;
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinWidth = 0f, Corners = Radii.CardAll, ClipToBounds = true,
+            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
+            Children = [Clickable(CellFace(art, () => title, () => detail), () => HomeCardNav.Open(in c))],
+        };
+    }
+
     public static Element EmptyPinned(HomeBoardProps board, ClassicHomeBoardLayout lay) => new BoxEl
     {
         Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
@@ -121,7 +209,7 @@ internal static class ClassicHomeTiles
 
     /// <summary>A tile around <paramref name="content"/>: the strip (Edit Home), the plate (a card) or none (a shelf), the dashed edit outline, the ring of
     /// a tile just added, the menu on a context request. In Edit Home the content stops taking the pointer: the wrapper lifts, the chips act.</summary>
-    static Element Frame(in ViewContext ctx, HomeTileFrame f, Element content)
+    static Element Frame(in ViewContext ctx, HomeTileFrame f, Element content, bool outline = false)
     {
         var lay = ClassicHomeBoardTiers.Of(ctx.Tier());
         var view = f.View;
@@ -152,11 +240,15 @@ internal static class ClassicHomeTiles
                 ],
             }
             : body;
+        // The outline plate is the shortcuts grid's closing tile (the history tile): the dashed plate the Recently played grid's own history tile wears.
+        var outlined = outline ? SurfacePlate.For(PlateKind.Outline) : default;
         var plate = new BoxEl
         {
             Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, ZStack = true, Corners = Radii.CardAll, ClipToBounds = !full,
-            Fill = full ? ColorF.Transparent : Tok.FillCardDefault,
-            BorderColor = full ? ColorF.Transparent : Tok.StrokeCardDefault, BorderWidth = full ? 0f : 1f,
+            Fill = full || outline ? ColorF.Transparent : Tok.FillCardDefault,
+            BorderColor = full ? ColorF.Transparent : outline ? outlined.Stroke : Tok.StrokeCardDefault,
+            BorderWidth = full ? 0f : outline ? outlined.StrokeWidth : 1f,
+            BorderDashOn = outline ? outlined.Dash : 0f, BorderDashOff = outline ? outlined.Dash : 0f,
             Children =
             [
                 face,
@@ -390,6 +482,27 @@ internal static class ClassicHomeTiles
         {
             case HomeTileForm.Full:
                 return Frame(ctx, f, ClassicHomeZones.TileChapter(r.Zone, f.Overlay, ClassicHomeTiers.Of(ctx.Tier())));
+            case HomeTileForm.S when HomeShortcuts.IsHistoryCell(f.Entry):
+            {
+                // The shortcuts grid's closing tile (the concept's): the headphones, "Listening history", the week's strip and its count, dashed.
+                var line = new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = [ClassicHomeRecents.WeekStrip(r.Week, DateTime.Today), ClassicHomeZones.Meta(week) with { Shrink = 1f }],
+                };
+                var text = new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
+                    Children = [Ui.BodyStrong(Loc.Get(Strings.Home.ListeningHistory)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, line],
+                };
+                var face = new BoxEl
+                {
+                    Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Padding = new Edges4(0f, 0f, ClassicHomeBoardRules.TilePad, 0f),
+                    Children = [CellGlyph(Icons.Headphones, lay), text],
+                };
+                return Frame(ctx, f, Clickable(face, p.OpenHistory), outline: true);
+            }
             case HomeTileForm.S:
                 return Frame(ctx, f, Clickable(CellFace(CellGlyph(Icons.History, lay), () => title, () => week), p.OpenHistory));
             default:

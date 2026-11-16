@@ -207,8 +207,8 @@ public static class ClassicHomeBoardRules
     /// <summary>The theme's auto size of a source (spec 4.3: a pin is a speed-dial cell; a widget a card; Recents wide; sections a shelf).</summary>
     public static HomeSize AutoOf(HomeSourceDef? source) => source?.CanonicalAuto is { } a && a != HomeSize.Auto ? a : HomeSize.S;
 
-    /// <summary>The size an entry packs at: its own, else the theme's auto.</summary>
-    public static HomeSize SizeOf(BoardEntry e) => e.Size != HomeSize.Auto ? e.Size : AutoOf(e.Source);
+    /// <summary>The size an entry packs at: its own, else the theme's auto. The shortcuts grid's history tile is always a speed-dial cell.</summary>
+    public static HomeSize SizeOf(BoardEntry e) => HomeShortcuts.IsHistoryCell(e) ? HomeSize.S : e.Size != HomeSize.Auto ? e.Size : AutoOf(e.Source);
 
     /// <summary>The form a packed box can carry (spec 4.2): the class is the floor; a card the fill made two columns wide draws the wide form, a cell that
     /// got three units draws the card. A shelf is never decided here: it always draws its full form.</summary>

@@ -17,7 +17,7 @@ namespace Wavee;
 
 /// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
 /// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here }
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here, HomeCap }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
 /// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
@@ -210,6 +210,11 @@ public static class EvidenceReport
                 verb = new DiagVerb(DiagCommand.Theme, Mode: m);
                 return true;
             }
+            case "homecap":
+                // The raw Home answers (All and every chip) and their baseline lookups, saved as sent: the source of a
+                // redacted Home fixture (assets/spotify/fixtures). Local evidence only; never uploaded.
+                verb = new DiagVerb(DiagCommand.HomeCap, Tag: SanitizeTag(tag.Length == 0 ? "homecap" : tag));
+                return true;
             case "here":
                 verb = new DiagVerb(DiagCommand.Here);   // pull playback to this device (Connect takeover)
                 return true;

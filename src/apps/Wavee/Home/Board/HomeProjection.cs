@@ -177,8 +177,8 @@ public static class HomeProjection
                     }
                     case FillSource fill:
                         Flush(entries, run, titles);
-                        int n = 0;
-                        while (n < fill.Max && fillCursor < shortcuts.Count)
+                        int n = 0, max = HomeShortcuts.ClosedByHistory(g) ? Math.Max(0, fill.Max - 1) : fill.Max;
+                        while (n < max && fillCursor < shortcuts.Count)
                         {
                             var p = shortcuts[fillCursor++];
                             if (pinned.Contains(p.PinId) || HomeCommands.IsHidden(doc, new SectionRef(p.PinId, 0, HomeCommands.FillFamily))) continue;

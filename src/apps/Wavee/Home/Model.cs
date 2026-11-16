@@ -196,18 +196,42 @@ public static class SectionReader
         string uri = s.Id is { IsEmpty: false } id ? Home.SectionUriOf(id.Text) : "";
         string? title = s.TitleId.IsEmpty ? null : Entities.Strings.Resolve(s.TitleId);
         string? subtitle = s.SubtitleId.IsEmpty ? null : Entities.Strings.Resolve(s.SubtitleId);
-        return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, CardsOf(s), s.Total, PreviewOf(s))
+        var cards = CardsOf(s);
+        string? headerName = TextOrNull(s.HeaderNameId);
+        title = FillTemplate(title, headerName, cards);
+        return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, cards, s.Total, PreviewOf(s))
         {
             TypeName = s.TypeNameId.IsEmpty ? "" : Entities.Strings.Resolve(s.TypeNameId),
             TitleBase = TextOrNull(s.TitleBaseId),
             Icon = TextOrNull(s.IconId),
             HeaderUri = TextOrNull(s.HeaderUriId),
-            HeaderName = TextOrNull(s.HeaderNameId),
+            HeaderName = headerName,
             HeaderImage = TextOrNull(s.HeaderImageId),
             HeaderAccent = s.HeaderAccent,
         };
 
         static string? TextOrNull(FluentGpu.Foundation.StringId id) => id.IsEmpty ? null : Entities.Strings.Resolve(id);
+    }
+
+    /// <summary>A title the server sent as its bare template (<c>transformedLabel: null</c>: "New episode from {0}") filled the
+    /// way the server fills the rest: the header entity's name, or, when the header is an <c>UnknownType</c> (the live
+    /// episode spotlight), the name the lead card hangs off (an episode's show, else the card's owner). With nothing to fill
+    /// it, the placeholder and the words that lead into it are kept out of sight: the template's own text up to the slot.
+    /// Structure only; no words are matched.</summary>
+    internal static string? FillTemplate(string? title, string? headerName, IReadOnlyList<HomeCard> cards)
+    {
+        if (title is null || title.IndexOf("{0}", StringComparison.Ordinal) < 0) return title;
+        string? fill = headerName;
+        for (int i = 0; fill is null && i < cards.Count; i++)
+        {
+            var c = cards[i];
+            if (c.IsBlank) continue;
+            fill = c.ShowName ?? c.OwnerName;
+            break;
+        }
+        if (fill is { Length: > 0 }) return title.Replace("{0}", fill, StringComparison.Ordinal);
+        string head = title[..title.IndexOf("{0}", StringComparison.Ordinal)].TrimEnd();
+        return head.Length > 0 ? head : null;
     }
 
     static IReadOnlyList<HomeCard> CardsOf(Section s)

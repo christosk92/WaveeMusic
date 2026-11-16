@@ -74,6 +74,10 @@ public sealed record HomeBoardProps
 
     /// <summary>A text editor holds focus (the board's single-key shortcuts, "/" and Delete, stand aside).</summary>
     public Func<bool> EditorFocused { get; init; } = static () => false;
+
+    /// <summary>Recently played as the Recents grid folds it (a subscribing read of Recents): the cells the shortcuts grid's other face shows in
+    /// its places (<see cref="HomeBoardView.ShortcutsFace"/>), and the week its history tile closes the grid with.</summary>
+    public Func<HomeRecentsProps>? Recents { get; init; }
 }
 
 /// <summary>Every flow of spec section 8 ends in one of these. Each mutating verb is one document command and one undo entry (or

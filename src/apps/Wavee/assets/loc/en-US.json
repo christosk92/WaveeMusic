@@ -665,8 +665,13 @@
       "readOnly": "This Home was saved by a newer Wavee. It shows the default here and can't be changed.",
       "group": {
         "today": "Today",
-        "pinned": "Pinned",
+        "pinned": "Your shortcuts",
+        "pinnedSub": "What you reach for most, picked by Spotify",
         "spotify": "From Spotify"
+      },
+      "shortcutsFace": {
+        "shortcuts": "Shortcuts",
+        "recents": "Recently played"
       },
       "option": {
         "live": "Live updates",

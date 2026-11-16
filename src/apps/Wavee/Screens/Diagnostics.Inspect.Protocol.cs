@@ -242,7 +242,7 @@ public static partial class Diagnostics
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
             Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
-            Arg("home", ArgType.Enum, "the Home fixture: mock (the hybrid seed), capture (the redacted 1.3.8.620 answers, every facet), or a derived / synthetic All (Entities.Fake.Home.cs)", "mock", "mock|capture|new|free|podcast|region|synthetic|second"),
+            Arg("home", ArgType.Enum, "the Home fixture: mock (the hybrid seed), capture (the redacted 1.3.8.620 answers, every facet), or a derived / synthetic All, or live1 (a redacted live answer of 2026-11-16, every facet; Entities.Fake.Home.cs)", "mock", "mock|capture|new|free|podcast|region|synthetic|second|live1"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
             Arg("player", ArgType.Enum, "fake: bind an idle engine player to the video surface (no frames); scripted: a player whose scripted source follows the deck (metadata, a first frame, a play intent; every video track an in-place switch)", null, "fake|scripted", requires: "video"),
             Arg("videoOpenMs", ArgType.Int, "player=scripted: how long each open takes to its first frame on the 16 ms frame clock (metadata at half of it)", "240", requires: "video"),

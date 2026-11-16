@@ -239,6 +239,10 @@ public static class ZuneHomeBoardRules
     /// <summary>The menu and labels opening (the bar's height eases).</summary>
     public static LayoutTransition BarReveal => new(TransitionChannels.Size, TransitionDynamics.Tween(RecedeMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
+    /// <summary>The shortcuts group's head (the concept's pivot words): the gap between "shortcuts", "history" and "see all", how far "see all" stands
+    /// up from the words' foot (onto their baseline), and the heart on Liked Songs' flat accent plate when the history face shows it.</summary>
+    public const float FaceWordGap = 20f, FaceLinkDrop = 8f, FaceHeartGlyph = 32f;
+
     /// <summary>The theme's auto size of a source (spec 4.3): a pin is medium in Zune (a small tile hides the name); a fill cell small.</summary>
     public static HomeSize AutoOf(BoardEntry e)
     {
@@ -246,8 +250,8 @@ public static class ZuneHomeBoardRules
         return e.Source?.CanonicalAuto is { } a && a != HomeSize.Auto ? a : HomeSize.S;
     }
 
-    /// <summary>The size an entry packs at: its own, else the theme's auto.</summary>
-    public static HomeSize SizeOf(BoardEntry e) => e.Size != HomeSize.Auto ? e.Size : AutoOf(e);
+    /// <summary>The size an entry packs at: its own, else the theme's auto. The shortcuts group's history tile is always a small tile (its week's count).</summary>
+    public static HomeSize SizeOf(BoardEntry e) => HomeShortcuts.IsHistoryCell(e) ? HomeSize.S : e.Size != HomeSize.Auto ? e.Size : AutoOf(e);
 
     /// <summary>The form a packed box can carry (the concept's: 4 columns and 2 rows draw the wide form, 2 and 2 the medium, else the small). A band is never
     /// decided here: it always draws its full form.</summary>

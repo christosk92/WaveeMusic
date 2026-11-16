@@ -38,10 +38,110 @@ internal static class ZuneHomeTiles
 
     /// <summary>A group head: the 40/48 light title, lowercase, ONE line that bleeds under a fade at the board's edge (never smaller), its undo word
     /// at its end.</summary>
-    public static Element GroupHead(HomeBoardProps board, BoardEntry e, ZuneHomeBoardLayout lay)
-        => Embed.Comp(new HeadProps(board, e.GroupId, e.Title), static () => new HeadView());
+    public static Element GroupHead(HomeBoardProps board, BoardEntry e, ZuneHomeBoardLayout lay, bool switchable = false)
+        => Embed.Comp(new HeadProps(board, e.GroupId, e.Title, switchable), static () => new HeadView());
 
-    internal sealed record HeadProps(HomeBoardProps Board, string GroupId, string Title);
+    internal sealed record HeadProps(HomeBoardProps Board, string GroupId, string Title, bool Switch = false);
+
+    /// <summary>The shortcuts group's head (the concept's): two pivot words in the group voice, "shortcuts" and "history", the lit one is the face the tiles
+    /// show and the other one switches to it; then "see all" (the listening history). One line that bleeds under the fade like every group title.</summary>
+    static Element FaceWords(HeadProps p)
+    {
+        var face = p.Board.View.ShortcutsFace;
+        string key = HomeBoardKeys.Group(p.GroupId);
+        Element Word(string text, int index, string tail) => new BoxEl
+        {
+            Key = key + ":" + tail, Shrink = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Tab, Focusable = true,
+            OnClick = () => face.Value = index,
+            Children =
+            [
+                R.Type.PageHero(text) with
+                {
+                    Case = R.Case.For(LabelKind.Heading), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+                    Color = Prop.Of(() => face.Value == index ? Tok.TextPrimary : Tok.TextTertiary),
+                },
+            ],
+        };
+        return new BoxEl
+        {
+            Direction = 0, Shrink = 0f, Gap = B.FaceWordGap, AlignItems = FlexAlign.End,
+            Children =
+            [
+                Word(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts), HomeShortcuts.ShortcutsFace, "face-shortcuts"),
+                Word(Loc.Get(Strings.Theme.Zune.Discovery.History), HomeShortcuts.RecentsFace, "face-history"),
+                new BoxEl
+                {
+                    Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, B.FaceLinkDrop),
+                    Children = [K.Link(key + ":history", Loc.Get(Strings.Home.SeeAll), HomeVerbs.OpenRecents)],
+                },
+            ],
+        };
+    }
+
+    /// <summary>A shortcut of a switchable group (<see cref="HomeShortcuts"/>): the shortcut's own tile, or the history item at its place, at the tile's size.
+    /// Customizing always shows the shortcuts (they are what it moves).</summary>
+    public static Element ShortcutCell(Element tile, int index, HomeBoardProps board, PackCell cell, ZuneHomeBoardLayout lay)
+        => Embed.Comp(new FaceProps(tile, index, board, cell, lay), static () => new ShortcutFace());
+
+    internal sealed record FaceProps(Element Tile, int Index, HomeBoardProps Board, PackCell Cell, ZuneHomeBoardLayout Lay);
+
+    static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The tile's two faces in one place: the face the head shows is a keyed layer that fades in while the other fades out.</summary>
+    internal sealed class ShortcutFace : Component
+    {
+        FaceProps? _p;
+
+        public override Element Render()
+        {
+            var p = UseProps<FaceProps>();
+            _p = p;
+            var view = p.Board.View;
+            Element shown = p.Tile;
+            string key = "face:s";
+            if (view.ShortcutsFace.Value == HomeShortcuts.RecentsFace && !view.Editing.Value && p.Board.Recents?.Invoke() is { } r && p.Index < r.Cells.Count)
+            {
+                // The form follows the box only at its edges (a memo with an equality cut-off), as the tile host's does.
+                var form = UseComputed(() => B.PinFormOf(_p!.Cell.Box.Value, _p.Lay)).Value;
+                shown = RecentFace(r.Cells[p.Index], form);
+                key = "face:r";
+            }
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [shown],
+                        Enter = s_fade, Exit = s_fade, Transition = MotionTok.ControlNormal,
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>A history item on a shortcut's tile: its art (Liked Songs the flat accent plate with its heart), named under the scrim where the tile is
+    /// wider than a cell, its name the tooltip on a 1 x 1 (Start's small tile).</summary>
+    static Element RecentFace(RecentsCell cell, HomeTileForm form)
+    {
+        var c = cell.Card;
+        string title = cell.Title;
+        Element art = c.Kind == HomeCardKind.Liked
+            ? new BoxEl
+            {
+                Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Tok.AccentDefault,
+                Children = [Ui.Icon(Icons.HeartFill, B.FaceHeartGlyph, Tok.TextOnAccentPrimary)],
+            }
+            : c.ImageUrl is { Length: > 0 } url ? Controls.CoverFill(url, 0f, B.ArtDecodePx) : new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, Fill = R.Layer.ArtPlaceholder };
+        var face = new BoxEl
+        {
+            Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true, Cursor = CursorId.Hand, Role = AutomationRole.Button,
+            OnClick = () => HomeCardNav.Open(in c),
+            Children = form == HomeTileForm.S ? [art] : [art, ScrimName(() => title)],
+        };
+        return form == HomeTileForm.S ? ToolTip.Wrap(face, title, grow: 1f) : face;
+    }
 
     sealed class HeadView : Component
     {
@@ -65,11 +165,13 @@ internal static class ZuneHomeTiles
                         EdgeFade = new EdgeFadeSpec(EdgeMask.Right, 0f, 0f, B.TitleFade, 0f),
                         Children =
                         [
-                            R.Type.PageHero(p.Title) with
-                            {
-                                Key = HomeBoardKeys.Group(p.GroupId) + ":title", Case = R.Case.For(LabelKind.Heading),
-                                MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
-                            },
+                            p.Switch
+                                ? FaceWords(p)
+                                : R.Type.PageHero(p.Title) with
+                                {
+                                    Key = HomeBoardKeys.Group(p.GroupId) + ":title", Case = R.Case.For(LabelKind.Heading),
+                                    MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+                                },
                         ],
                     },
                     ZuneHomeUndoWord.Word(p.Board, p.GroupId, _hover),
@@ -435,8 +537,9 @@ internal static class ZuneHomeTiles
                 Children = [Square(f, Art(f, cover, p.CoverArt)), Panel(name, p.Line)],
             }, p.Open),
         };
-        // A 1 x 1 is the art alone (Start's small tile): its name is its tooltip and its automation name.
-        return Tile(f, f.Form == HomeTileForm.S ? Controls.Named(face, name()) : face);
+        // A 1 x 1 is the art alone (Start's small tile): its name is its tooltip and its automation name. The tooltip's wrapper grows to the tile's box
+        // (a non-growing wrapper laid the art out 0 tall: every 1 x 1 drew an empty plate).
+        return Tile(f, f.Form == HomeTileForm.S ? ToolTip.Wrap(face, name(), grow: 1f) : face);
     }
 
     // ══ Home.Tile.NowPlaying ════════════════════════════════════════════════════════════════════════════════════════

@@ -40,6 +40,10 @@ public sealed record WinUiHomeBoardLayout
     /// <summary>A group head's row: the 14 semibold label and the air under it (34).</summary>
     public required float GroupHead { get; init; }
 
+    /// <summary>The Pinned group's head, the concept's "Your shortcuts": the chapter title over its subtitle beside the Shortcuts / Recently played switch and
+    /// the "Listening history" link, and the air under it (Compact: the title row, then the switch on its own line).</summary>
+    public required float ShortcutsHead { get; init; }
+
     /// <summary>The empty Pinned group's dashed row (one unit; two at Compact, where its sentence wraps).</summary>
     public required float EmptyRow { get; init; }
 
@@ -80,7 +84,7 @@ public static class WinUiHomeBoardTiers
     /// <summary>The record for content tier <paramref name="content"/> (4K reads Huge's).</summary>
     public static WinUiHomeBoardLayout For(WidthTier content) => (WidthTier)Math.Min((int)content, (int)WidthTier.Huge) switch
     {
-        WidthTier.Compact => Base with { Tier = WidthTier.Compact, Columns = WinUiGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, MoreBox = 40f },
+        WidthTier.Compact => Base with { Tier = WidthTier.Compact, Columns = WinUiGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, MoreBox = 40f, ShortcutsHead = 90f },
         WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new WinUiGridBand(260f, 2) },
         WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new WinUiGridBand(240f, 4) },
         _ => Base with { Tier = WidthTier.Huge, Columns = new WinUiGridBand(280f, 6) },
@@ -91,7 +95,7 @@ public static class WinUiHomeBoardTiers
     static readonly WinUiHomeBoardLayout Base = new()
     {
         Tier = WidthTier.Standard, Columns = new WinUiGridBand(240f, 4),
-        Unit = UnitH, Gap = GapW, GroupGap = 20f, GroupHead = 34f, EmptyRow = UnitH,
+        Unit = UnitH, Gap = GapW, GroupGap = 20f, GroupHead = 34f, ShortcutsHead = 56f, EmptyRow = UnitH,
         S = (1, 1), M = (1, 3), L = (2, 3), OpenMinCols = 2, MoreBox = 32f,
         PreviewW = 220f, CandidateW = 252f,
     };
@@ -194,11 +198,14 @@ public static class WinUiHomeBoardRules
     /// <summary>A full-row tile's estimate where nothing better is known (a shelf's header and one row of covers).</summary>
     public const float FullFallback = 320f;
 
+    /// <summary>The shortcuts grid's Shortcuts / Recently played switch: its height (the header's tools row).</summary>
+    public const float FaceSwitchH = 32f;
+
     /// <summary>The theme's auto size of a source (spec 4.3).</summary>
     public static HomeSize AutoOf(HomeSourceDef? source) => source?.CanonicalAuto is { } a && a != HomeSize.Auto ? a : HomeSize.S;
 
-    /// <summary>The size an entry packs at: its own, else the theme's auto.</summary>
-    public static HomeSize SizeOf(BoardEntry e) => e.Size != HomeSize.Auto ? e.Size : AutoOf(e.Source);
+    /// <summary>The size an entry packs at: its own, else the theme's auto. The history tile of the shortcuts grid is always a row tile.</summary>
+    public static HomeSize SizeOf(BoardEntry e) => HomeShortcuts.IsHistoryCell(e) ? HomeSize.S : e.Size != HomeSize.Auto ? e.Size : AutoOf(e.Source);
 
     /// <summary>The form a packed box can carry (spec 4.2): the class is the floor; a card the fill made two columns wide draws the wide form, a
     /// row tile that got three units draws the card. A full row is never decided here: it always draws its full form.</summary>
@@ -215,7 +222,7 @@ public static class WinUiHomeBoardRules
         switch (e.Kind)
         {
             case BoardEntryKind.GroupHead:
-                return new PackEntry(PackEntryKind.GroupHead, Extent: lay.GroupHead);
+                return new PackEntry(PackEntryKind.GroupHead, Extent: e.GroupId == HomeDocs.Pinned ? lay.ShortcutsHead : lay.GroupHead);
         }
         if (IsHidden(e)) return new PackEntry(PackEntryKind.Tile, Flags: PackFlags.Hidden);
         var size = SizeOf(e);

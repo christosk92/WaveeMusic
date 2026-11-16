@@ -75,10 +75,9 @@ internal static partial class WinUiHomeZones
     /// <summary>The mood plates' grid at <paramref name="width"/>: its rows of plates and the gaps between them.</summary>
     static float MoodPlatesExtent(Zone zone, WinUiHomeLayout layout, float width)
     {
-        int n = Math.Min(zone.Items.Count, WinUiHomeRules.MoodPlatesMax);
+        int n = Math.Min(zone.Items.Count, layout.PlatesMax);
         if (n == 0) return 0f;
-        int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Tiles.Floor, WinUiHomeRules.CardGap,
-            Math.Min(layout.Tiles.MaxCols, WinUiHomeRules.MoodPlatesMax / 2)), 1, n);
+        int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Plates.Floor, WinUiHomeRules.CardGap, layout.Plates.MaxCols), 1, n);
         int rows = (n + cols - 1) / cols;
         return rows * WinUiHomeRules.MoodPlateH + (rows - 1) * WinUiHomeRules.CardGap;
     }
@@ -129,10 +128,10 @@ internal static partial class WinUiHomeZones
 
     static readonly Func<PlateKey, Element> s_plate = static k => Plate(in k);
 
-    /// <summary>"Soundtrack your Monday afternoon": up to eight flat plates in the tier's tile columns, one height.</summary>
+    /// <summary>"Soundtrack your Monday afternoon": up to the tier's plate count of flat plates in its plate columns, one height.</summary>
     static Element MoodPlates(Zone zone, WinUiHomeLayout layout, RenderContext? hooks)
     {
-        int n = Math.Min(zone.Items.Count, WinUiHomeRules.MoodPlatesMax);
+        int n = Math.Min(zone.Items.Count, layout.PlatesMax);
         if (n == 0) return new BoxEl();
         var plates = new Element[n];
         for (int i = 0; i < n; i++)
@@ -142,7 +141,7 @@ internal static partial class WinUiHomeZones
         }
         return new GridEl
         {
-            Key = "mood-plates:" + zone.Key, MinColWidth = layout.Tiles.Floor, MaxColumns = Math.Min(layout.Tiles.MaxCols, WinUiHomeRules.MoodPlatesMax / 2),
+            Key = "mood-plates:" + zone.Key, MinColWidth = layout.Plates.Floor, MaxColumns = layout.Plates.MaxCols,
             ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, RowHeight = WinUiHomeRules.MoodPlateH, Children = plates,
         };
     }

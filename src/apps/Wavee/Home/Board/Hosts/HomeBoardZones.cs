@@ -24,7 +24,10 @@ public static class HomeBoardZones
     public static Zone DaylistZone(BoardEntry e) => Current().Daylist ?? s_noDaylist;
 
     /// <summary>The Recently played zone.</summary>
-    public static Zone RecentsZone(BoardEntry e) => Current().Recents ?? s_noRecents;
+    public static Zone RecentsZone(BoardEntry e) => RecentsZone();
+
+    /// <summary>The Recently played zone (the shortcuts grid's other face reads it with no entry of its own).</summary>
+    public static Zone RecentsZone() => Current().Recents ?? s_noRecents;
 
     /// <summary>The Following release list.</summary>
     public static Zone ReleasesZone(BoardEntry e) => Current().Releases ?? s_noReleases;

@@ -67,6 +67,10 @@ public sealed class HomeBoardView
     /// <summary>The board grid's controller (rects, neighbours, bring-into-view); set by the host.</summary>
     public PackGridController? Grid { get; internal set; }
 
+    /// <summary>The shortcuts grid's face (the concept's "Your shortcuts" switch): 0 the shortcuts (the user's pins, then Spotify's fill), 1 the
+    /// Recently played cells in the same places. Every theme's Pinned group reads it; the grid keeps its size, its cells cross-fade.</summary>
+    public Signal<int> ShortcutsFace { get; } = new(0);
+
     /// <summary>Classic's reset question in the edit bar.</summary>
     public Signal<bool> ConfirmingReset { get; } = new(false);
 

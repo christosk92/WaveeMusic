@@ -40,7 +40,9 @@ using B = Wavee.Themes.Zune.ZuneHomeBoardRules;
 namespace Wavee.Themes.Zune;
 
 /// <summary>What the Zune grid packs: a board entry, or the empty Pinned row the theme adds after an empty group head.</summary>
-internal sealed record ZuneBoardItem(string Key, BoardEntry Entry, bool EmptyRow);
+/// <para><see cref="Cell"/> is a shortcut cell's place in the shortcuts group (the history item that face shows there), -1 for everything else;
+/// <see cref="Switch"/> says the Pinned group carries the history tile, so its head is the two pivot words (<see cref="HomeShortcuts"/>).</para>
+internal sealed record ZuneBoardItem(string Key, BoardEntry Entry, bool EmptyRow, int Cell = -1, bool Switch = false);
 
 /// <summary>Zune's pinned Home board.</summary>
 internal static class ZuneHomeBoard
@@ -360,10 +362,14 @@ internal static class ZuneHomeBoard
         {
             var e = m.Entries;
             var list = new List<ZuneBoardItem>(e.Length + 1);
+            bool sw = HomeShortcuts.HasSwitch(m);
+            int cell = 0;
             for (int i = 0; i < e.Length; i++)
             {
                 var x = e[i];
-                list.Add(new ZuneBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false));
+                int at = sw && HomeShortcuts.IsShortcutCell(x) ? cell++ : -1;
+                list.Add(new ZuneBoardItem(x.Kind == BoardEntryKind.GroupHead ? HomeBoardKeys.Group(x.GroupId) : HomeBoardKeys.Tile(x.Id), x, false, at,
+                                           sw && x.GroupId == HomeDocs.Pinned));
                 // An empty Pinned group says how to pin (spec 8.2 "Empty states"): large light words at the group's height.
                 if (x.Kind == BoardEntryKind.GroupHead && x.GroupId == "pinned" && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
                     list.Add(new ZuneBoardItem(B.EmptyKey, x, true));
@@ -406,11 +412,14 @@ internal static class ZuneHomeBoard
             var board = _p!.Board;
             if (it.EmptyRow) return ZuneHomeTiles.EmptyPinned();
             var e = it.Entry;
-            if (e.Kind == BoardEntryKind.GroupHead) return ZuneHomeTiles.GroupHead(board, e, _p.Lay);
+            if (e.Kind == BoardEntryKind.GroupHead) return ZuneHomeTiles.GroupHead(board, e, _p.Lay, it.Switch);
             if (ZuneHomeBoardRules.SizeOf(e) != HomeSize.Full)
             {
                 // Every tile can turn over: the front is the tile its box carries, the back its options (only the open tile builds it).
                 var rule = e.Raw is PinSource ? _pinFormRule! : _formRule!;
+                // A shortcut of a switchable group: the shortcut, or the history item at its place (the tiles cross-fade at their size).
+                if (it.Cell >= 0 && e.Source is not { Options.Length: > 0 })
+                    return ZuneHomeTiles.ShortcutCell(board.Tile(e, cell, rule), it.Cell, board, cell, _p.Lay);
                 if (e.Source is not { Options.Length: > 0 }) return board.Tile(e, cell, rule);
                 var entry = e;
                 return TileMotion.TurnOver(TurnedOf(e.Id), () => board.Tile(entry, cell, rule), () => board.Options(entry));

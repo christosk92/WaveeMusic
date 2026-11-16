@@ -77,9 +77,9 @@ public static class WinUiHomeRules
     /// <summary>A preview card's playlist cover and the reason line's avatar (home-gap P4).</summary>
     public const float PreviewCover = 96f, ReasonAvatar = 20f;
 
-    /// <summary>A mood plate (home-gap P6): its height, its inset, how many plates a shelf shows (two rows of four).</summary>
+    /// <summary>A mood plate (home-gap P6): its height and its inset. How many plates a shelf shows and their columns are the tier's
+    /// (<c>WinUiHomeLayout.Plates</c> / <c>PlatesMax</c>).</summary>
     public const float MoodPlateH = 96f, MoodPlatePad = 14f;
-    public const int MoodPlatesMax = 8;
     /// <summary>A coloured plate's hover and press: that share of the way toward the on-media ink.</summary>
     public const float PlateHoverMix = 0.08f, PlatePressMix = 0.14f;
 

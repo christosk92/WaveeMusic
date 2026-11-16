@@ -71,6 +71,7 @@ public static partial class Diagnostics
                 case DiagCommand.Viewports: WriteViewports(); break;
                 case DiagCommand.Probe: SetProbe(v.Level); break;
                 case DiagCommand.Xm: QueryExtensions(v.Uris ?? [], v.Kinds ?? [], v.Tag); break;
+                case DiagCommand.HomeCap: CaptureHome(v.Tag); break;
                 case DiagCommand.Shot or DiagCommand.Present or DiagCommand.Seek or DiagCommand.Stage or DiagCommand.Rail or DiagCommand.Reveal or DiagCommand.Video
                     or DiagCommand.Theme or DiagCommand.Mini or DiagCommand.Here:
                     StoreShot.Apply(v);   // the Store screenshot capture (StoreShot.cs)
@@ -374,6 +375,58 @@ public static partial class Diagnostics
         /// or no counted plays — written to logs\evidence\xm-&lt;yyyyMMdd-HHmmss&gt;-&lt;tag&gt;.tsv with every payload as hex,
         /// plus one always-on <c>[evidence] xm</c> line with the per-kind counts. Reads no table and writes none; the POST
         /// runs on a worker (the api calls block; the UI thread never does).</summary>
+        /// <summary>UI THREAD. <c>cmd=homecap</c>: every Home facet's raw answer (<c>home.&lt;facet&gt;.json</c>, the
+        /// feed as <c>all</c>) and, for a facet the tables already hold, its baseline lookup (<c>lookup.&lt;facet&gt;.json</c>,
+        /// the card uris the live request would send), written under <c>evidence/home-&lt;tag&gt;/</c>. The bodies are the
+        /// account's own: they stay on this machine until redacted into a fixture.</summary>
+        public static void CaptureHome(string tag)
+        {
+            string dir = Path.Combine(Root, "home-" + EvidenceReport.BundleFolderName(DateTime.Now, tag));
+            string[] facets = ["", "music-chip", "music-following-chip", "podcasts-chip", "podcasts-following-chip", "audiobooks-chip"];
+            var lookups = new string[]?[facets.Length];
+            for (int i = 0; i < facets.Length; i++)
+            {
+                var home = Entities.HomeFeed(facets[i].AsSpan());
+                HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
+                if (links.Length == 0) continue;
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                var uris = new List<string>();
+                foreach (var l in links) if (uris.Count < 120 && seen.Add(l.CardUri)) uris.Add(l.CardUri);
+                lookups[i] = uris.ToArray();
+            }
+            string timeZone = Spotify.Api.LocalTimeZone;
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(dir);
+                    var sb = new StringBuilder();
+                    for (int i = 0; i < facets.Length; i++)
+                    {
+                        string name = facets[i].Length == 0 ? "all" : facets[i];
+                        var r = Spotify.Api.HomeQuery(facets[i], timeZone, CancellationToken.None);
+                        if (r.Ok) File.WriteAllBytes(Path.Combine(dir, "home." + name + ".json"), r.Body);
+                        sb.Append(name).Append(" home=").Append(r.Status.ToString(CultureInfo.InvariantCulture));
+                        if (lookups[i] is { } uris)
+                        {
+                            var l = Spotify.Api.FeedBaselineLookupQuery(uris, CancellationToken.None);
+                            if (l.Ok) File.WriteAllBytes(Path.Combine(dir, "lookup." + name + ".json"), l.Body);
+                            sb.Append(" lookup=").Append(l.Status.ToString(CultureInfo.InvariantCulture));
+                        }
+                        sb.Append("; ");
+                    }
+                    Log.Info("evidence", "[evidence] homecap " + sb + "dir=" + dir);
+                    Reply("homecap", "ok", dir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                                              or HttpRequestException)
+                {
+                    Log.Warn("evidence", "[evidence] homecap failed", ex);
+                    Reply("homecap", "failed", dir);
+                }
+            });
+        }
+
         public static void QueryExtensions(string[] uris, int[] kinds, string tag)
         {
             if (uris.Length == 0 || kinds.Length == 0) { Reply("xm", "usage", ""); return; }

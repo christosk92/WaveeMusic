@@ -47,8 +47,9 @@ internal enum ClassicBoardRow : byte
     End,
 }
 
-/// <summary>What the Classic grid packs.</summary>
-internal sealed record ClassicBoardItem(string Key, BoardEntry Entry, ClassicBoardRow Row);
+/// <summary>What the Classic grid packs. <see cref="Cell"/> is a shortcut cell's place in the shortcuts grid (the Recently played item that face shows
+/// there), -1 for everything else; <see cref="Switch"/> says the Pinned group carries the history tile (<see cref="HomeShortcuts"/>).</summary>
+internal sealed record ClassicBoardItem(string Key, BoardEntry Entry, ClassicBoardRow Row, int Cell = -1, bool Switch = false);
 
 /// <summary>Classic's pinned Home board.</summary>
 internal static class ClassicHomeBoard
@@ -209,6 +210,8 @@ internal static class ClassicHomeBoard
             var e = m.Entries;
             var list = new List<ClassicBoardItem>(e.Length + 6);
             BoardEntry? group = null;
+            bool sw = HomeShortcuts.HasSwitch(m);
+            int cell = 0;
             for (int i = 0; i < e.Length; i++)
             {
                 var x = e[i];
@@ -216,12 +219,12 @@ internal static class ClassicHomeBoard
                 {
                     if (group is not null && editing && !readOnly) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
                     group = x;
-                    list.Add(new ClassicBoardItem(HomeBoardKeys.Group(x.GroupId), x, ClassicBoardRow.Entry));
+                    list.Add(new ClassicBoardItem(HomeBoardKeys.Group(x.GroupId), x, ClassicBoardRow.Entry, Switch: sw && x.GroupId == HomeDocs.Pinned));
                     if (x.GroupId == HomeDocs.Pinned && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
                         list.Add(new ClassicBoardItem("home:empty:" + x.GroupId, x, ClassicBoardRow.Empty));
                     continue;
                 }
-                list.Add(new ClassicBoardItem(HomeBoardKeys.Tile(x.Id), x, ClassicBoardRow.Entry));
+                list.Add(new ClassicBoardItem(HomeBoardKeys.Tile(x.Id), x, ClassicBoardRow.Entry, sw && HomeShortcuts.IsShortcutCell(x) ? cell++ : -1));
             }
             if (group is not null && editing && !readOnly) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
             if (group is not null && !editing && !readOnly) list.Add(new ClassicBoardItem("home:end", group, ClassicBoardRow.End));
@@ -279,9 +282,11 @@ internal static class ClassicHomeBoard
                 case ClassicBoardRow.Add: return ClassicHomeAddRow.Create(board, lay, it.Entry);
             }
             var e = it.Entry;
-            if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeTiles.GroupHead(board, e);
+            if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeTiles.GroupHead(board, e, it.Switch);
             if (board.View.OpenId.Value == e.Id)
                 return ClassicHomeTiles.Open(board, e, cell, lay, board.Options(e));
+            // A shortcut cell of a switchable grid: the shortcut, or the Recently played item at its place (the cells cross-fade, the grid keeps its size).
+            if (it.Cell >= 0) return ClassicHomeTiles.ShortcutCell(board.Tile(e, cell, _formRule!), it.Cell, board, lay);
             if (ClassicHomeBoardRules.SizeOf(e) != HomeSize.Full) return board.Tile(e, cell, _formRule!);
             var tile = board.Tile(e, cell, s_full);
             // A shelf: the chapter lays out at its own height inside the packed box, and that height becomes the box (by the re-flow). The strip above it
