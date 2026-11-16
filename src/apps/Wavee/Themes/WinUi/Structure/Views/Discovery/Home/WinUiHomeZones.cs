@@ -515,9 +515,10 @@ internal static partial class WinUiHomeZones
             if (count <= 1) return new BoxEl();
             var kids = new List<Element>(4);
             if (leadingDivider) kids.Add(ToolsDivider());
-            kids.Add(IconButton.Create(Icons.ChevronLeft, controller.Prev, isEnabled: canPrev));
+            // keyed for the inspector and the live driver (`click key=shelf-tools:next`; nth counts the ones on the window)
+            kids.Add(IconButton.Create(Icons.ChevronLeft, controller.Prev, isEnabled: canPrev) with { Key = "shelf-tools:prev" });
             if (pips) kids.Add(PipsPager.Controlled(count, page, controller.GoTo));
-            kids.Add(IconButton.Create(Icons.ChevronRight, controller.Next, isEnabled: canNext));
+            kids.Add(IconButton.Create(Icons.ChevronRight, controller.Next, isEnabled: canNext) with { Key = "shelf-tools:next" });
             return new BoxEl
             {
                 Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray(),

@@ -179,6 +179,9 @@ public static class SectionReader
             fold = fold * 31 + section.CardVersion;
             fold = fold * 31 + section.PreviewVersion;
         }
+        // Presentation mode redacts the account's name from Spotify's own titles ("Made For <name>"): a SUBSCRIBING read, so
+        // the bands re-read when a recording or a listing shot turns it on or off.
+        fold = fold * 31 + (Diagnostics.StoreShot.Presenting.Value ? 1u : 0u);
         if (cache.HomeVersion == hv && cache.SectionEdgeVersion == sv && cache.CardFold == fold) return cache.Sections;
 
         // Always a fresh array: a published ScreenModel may still hold the previous one.
@@ -207,6 +210,7 @@ public static class SectionReader
         var cards = CardsOf(s);
         string? headerName = TextOrNull(s.HeaderNameId);
         title = FillTemplate(title, headerName, cards);
+        if (Diagnostics.StoreShot.Presenting.Peek()) { title = Diagnostics.StoreShot.RedactAccount(title); subtitle = Diagnostics.StoreShot.RedactAccount(subtitle); }
         return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, cards, s.Total, PreviewOf(s))
         {
             TypeName = s.TypeNameId.IsEmpty ? "" : Entities.Strings.Resolve(s.TypeNameId),

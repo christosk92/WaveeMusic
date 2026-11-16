@@ -511,13 +511,16 @@ public static partial class Diagnostics
             return root.IsNull ? default : host.Scene.Bounds(root) with { X = 0f, Y = 0f };
         }
 
-        /// <summary>The <paramref name="nth"/> SHOWN node keyed exactly <paramref name="key"/> (reading order: top, then left).</summary>
-        static bool TryFind(AppHost host, string key, int nth, out NodeHandle node)
+        /// <summary>The <paramref name="nth"/> SHOWN node keyed exactly <paramref name="key"/> (reading order: top, then left);
+        /// <paramref name="onWindow"/> counts only the ones with a part on the window (what a hand can aim at).</summary>
+        static bool TryFind(AppHost host, string key, int nth, out NodeHandle node, bool onWindow = false)
         {
             SceneStore scene = host.Scene;
             var keyed = new List<(NodeHandle Node, string Key)>();
             scene.CopyDebugKeys(keyed);
-            keyed.RemoveAll(e => !string.Equals(e.Key, key, StringComparison.Ordinal) || !scene.IsShown(e.Node));
+            RectF win = WindowRect(host);
+            keyed.RemoveAll(e => !string.Equals(e.Key, key, StringComparison.Ordinal) || !scene.IsShown(e.Node)
+                || (onWindow && !Overlaps(scene.PresentedAbsoluteRect(e.Node), win)));
             keyed.Sort((a, b) =>
             {
                 RectF ra = scene.PresentedAbsoluteRect(a.Node), rb = scene.PresentedAbsoluteRect(b.Node);
@@ -533,7 +536,7 @@ public static partial class Diagnostics
         static bool TryAim(AppHost host, string key, int nth, out Point2 p, out string why)
         {
             p = default;
-            if (!TryFind(host, key, nth, out NodeHandle node)) { why = "no shown node keyed '" + key + "'" + (nth > 0 ? " (nth=" + nth.ToString(Inv) + ")" : ""); return false; }
+            if (!TryFind(host, key, nth, out NodeHandle node, onWindow: true)) { why = "no node keyed '" + key + "' on the window" + (nth > 0 ? " (nth=" + nth.ToString(Inv) + ")" : ""); return false; }
             RectF r = host.Scene.PresentedAbsoluteRect(node), win = WindowRect(host);
             float x0 = MathF.Max(r.X, win.X), y0 = MathF.Max(r.Y, win.Y), x1 = MathF.Min(r.X + r.W, win.X + win.W), y1 = MathF.Min(r.Y + r.H, win.Y + win.H);
             if (x1 - x0 < 2f || y1 - y0 < 2f) { why = "'" + key + "' is off the window"; return false; }
@@ -541,6 +544,8 @@ public static partial class Diagnostics
             why = "";
             return true;
         }
+
+        static bool Overlaps(in RectF r, in RectF win) => r.X < win.X + win.W && r.Y < win.Y + win.H && r.X + r.W > win.X && r.Y + r.H > win.Y;
 
         static string? HitKey(AppHost host, Point2 p)
         {
@@ -550,7 +555,8 @@ public static partial class Diagnostics
             return null;
         }
 
-        /// <summary>Null when the key is ready to be filmed, else what it still waits for.</summary>
+        /// <summary>Null when the key is ready to be filmed, else what it still waits for. Only what lies on the window is judged
+        /// (a cover below the fold is not requested yet).</summary>
         static string? NotReady(AppHost host, Op op)
         {
             if (!TryFind(host, op.Target, op.Nth, out NodeHandle root)) return "not shown";
@@ -560,6 +566,7 @@ public static partial class Diagnostics
             op.LastRect = r;
             if (moved) return "moving";
             ImageCache? images = FluentApp.EngineImages;
+            RectF win = WindowRect(host);
             var stack = new Stack<NodeHandle>();
             stack.Push(root);
             int videos = 0;
@@ -567,6 +574,7 @@ public static partial class Diagnostics
             {
                 NodeHandle n = stack.Pop();
                 if (n.IsNull || !scene.IsLive(n) || !scene.IsShown(n)) continue;
+                if (!Overlaps(scene.PresentedAbsoluteRect(n), win)) continue;   // off the window: not filmed
                 if (NodeDescriber.ElementTypeName(scene.ElementTypeId(n)) == "SkeletonRegion" && host.IsSkeletonPending(n)) return "skeleton";
                 ref NodePaint paint = ref scene.Paint(n);
                 if (op.Images && paint.VisualKind == VisualKind.Image && paint.ImageId > 0 && images is not null)

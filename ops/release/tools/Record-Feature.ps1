@@ -102,6 +102,14 @@ if (-not (Test-Path $pp) -and (Test-Path (Join-Path $ownerDir 'playplay'))) {
     Copy-Item -Recurse (Join-Path $ownerDir 'playplay') $pp   # local playback (the previews) needs it
 }
 $firstRun = -not (Test-Path (Join-Path $ProfileDir 'store.json'))
+# Settings the take must not show: Home's first-run teaching tip ("Make Home yours") counts as seen in every theme.
+$settingsPath = Join-Path $ProfileDir 'settings.json'
+$settings = if (Test-Path $settingsPath) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
+foreach ($t in 'classic', 'winui', 'zune') {
+    $k = "theme.$t.state.homeTipSeen"
+    if ($settings.PSObject.Properties.Name -contains $k) { $settings.$k = 'true' } else { $settings | Add-Member -NotePropertyName $k -NotePropertyValue 'true' }
+}
+[IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
 $startArgs = @{ ProfileDir = $ProfileDir; Exe = $Exe; X = $mon.Work.L; Y = $mon.Work.T; Width = [int]($Width * $mon.Scale); Height = [int]($Height * $mon.Scale) }
 if ($firstRun) { $startArgs.CopyLibrary = $true }
 $v = & (Join-Path $repo 'ops\tools\evidence\Start-VerifyWavee.ps1') @startArgs
