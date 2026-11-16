@@ -488,6 +488,9 @@ public enum HomeCardFlags : byte
     Explicit = 1 << 2,
     /// <summary><c>playability.playable == false</c> (ruled) or <c>restrictions.paywallContent == true</c>.</summary>
     Unplayable = 1 << 3,
+    /// <summary>The DJ card (<c>attributes.lexicon_set_type == your_dj</c>; its format token is empty). DJ is a separate
+    /// stream Wavee does not play, so no Home surface shows it (home-gap D5).</summary>
+    Dj = 1 << 4,
 }
 
 /// <summary>The synthetic-subject half of the scope (the partial <c>Entities.cs</c> left open for exactly this). They
@@ -667,6 +670,19 @@ public readonly partial struct Home(int slot) : IEquatable<Home>
     public const string FeedUri = "wavee:home";
     /// <summary>A facet feed's uri prefix (<c>wavee:home:&lt;facetId&gt;</c>).</summary>
     public const string FacetPrefix = "wavee:home:";
+
+    /// <summary>Between a section uri and a facet id in a facet band's row id (<c>spotify:section:…#music-chip</c>): a
+    /// chip's answer and All's carry the same section uri with different cards, so each facet keeps its own row
+    /// (Spotify.Decode.Home.cs <c>Band</c>). All's rows are the bare uri. Not base62, so it never occurs in a uri.</summary>
+    public const char FacetSectionMark = '#';
+
+    /// <summary>The section uri a band row speaks for: its row id without the facet tail. What identity, drill routes and
+    /// the wire use. PURE.</summary>
+    public static string SectionUriOf(string rowId)
+    {
+        int at = rowId.IndexOf(FacetSectionMark);
+        return at < 0 ? rowId : rowId[..at];
+    }
 
     static HomeTable T => Entities.Current.Homes;
     static Edges E => Entities.Current.Edges;
@@ -1492,6 +1508,9 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
     /// true otherwise, INCLUDING a card the server never ruled at all (an unruled card is never dimmed by omission —
     /// the same rule <see cref="Track.Rules"/> applies).</summary>
     public bool IsPlayable => (FlagsOf() & HomeCardFlags.Unplayable) == 0;
+
+    /// <summary>The DJ card, read off its lexicon set at decode (<see cref="HomeCardFlags.Dj"/>).</summary>
+    public bool IsDj => (FlagsOf() & HomeCardFlags.Dj) != 0;
 
     /// <summary>Unix ms the album/episode released, 0 = unknown. An album reads <c>Album.ReleaseAt</c> — the entity
     /// column every album page already trusts — rather than re-deriving from the card's own <c>date</c> fact; an

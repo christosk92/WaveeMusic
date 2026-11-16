@@ -10,6 +10,7 @@
 using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Hooks;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using Wavee.HomeUi;
@@ -36,7 +37,8 @@ public sealed class HomeBoardHost
         _scroll = scroll;
         _verbs = new HomeBoardVerbs(_view, _grid, () => _model?.Peek() ?? BoardModel.Empty);
         _view.Grid = _grid;
-        Board = () => Slots.View(ViewKeys.HomeBoard, Props());
+        Inspector = new HomeBoardInspector(this);
+        Board = () => Embed.Comp(new HomeBoardMountProps(Props(), this), static () => new HomeBoardMount()) with { Key = "home:board-mount" };
         Tools = () => Slots.View(ViewKeys.HomeBoardTools, Props());
     }
 
@@ -51,6 +53,15 @@ public sealed class HomeBoardHost
 
     /// <summary>The verbs.</summary>
     public IHomeBoardVerbs Verbs => _verbs;
+
+    /// <summary>The grid's controller.</summary>
+    public PackGridController Grid => _grid;
+
+    /// <summary>The board as the inspector drives it (registered while the board is mounted).</summary>
+    internal IHomeBoardInspect Inspector { get; }
+
+    /// <summary>The board as projected right now.</summary>
+    public BoardModel ModelNow => _model?.Peek() ?? BoardModel.Empty;
 
     /// <summary>Hand over the page's memo of <see cref="Project"/> and its overlay service (called every page render; idempotent).</summary>
     public void Bind(IReadSignal<BoardModel> model, IOverlayService? overlay)
@@ -79,7 +90,17 @@ public sealed class HomeBoardHost
         _ = fh.Version; _ = fh.SectionVersion;
         if (fh.Knows(HomeFields.Sections)) following = SectionReader.Read(fh);
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        return HomeProjection.Project(doc, answer, following, charts: null, HomeSourceRegistry.Default, HomeScreen.LocalizedTitles(), now);
+        return HomeProjection.Project(doc, answer, following, charts: null, HomeSourceRegistry.Default, HomeZoneTitles.Localized(), now);
+    }
+
+    /// <summary>Once the All answer is known, hand it to the store so a v2 document's hidden zones resolve to section families.</summary>
+    public static void ResolveLegacyOnAnswer()
+    {
+        var store = HomeBoardStore.Instance;
+        if (store.Doc.Peek().LegacyHidden.IsDefaultOrEmpty) return;
+        var h = Entities.HomeFeed("");
+        if (!h.Knows(HomeFields.Sections)) return;
+        store.ResolveLegacy(SectionReader.Read(h));
     }
 
     HomeBoardProps Props()

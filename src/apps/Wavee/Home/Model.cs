@@ -163,7 +163,8 @@ public static class SectionReader
     /// without staging a whole Home row).</summary>
     public static SectionInput Of(Section s)
     {
-        string uri = s.Id is { IsEmpty: false } id ? id.Text : "";
+        // A facet's band row is `<uri>#<facet>` (Home.FacetSectionMark): the input speaks for the section, so its uri is the bare one.
+        string uri = s.Id is { IsEmpty: false } id ? Home.SectionUriOf(id.Text) : "";
         string? title = s.TitleId.IsEmpty ? null : Entities.Strings.Resolve(s.TitleId);
         string? subtitle = s.SubtitleId.IsEmpty ? null : Entities.Strings.Resolve(s.SubtitleId);
         return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, CardsOf(s), s.Total, PreviewOf(s))

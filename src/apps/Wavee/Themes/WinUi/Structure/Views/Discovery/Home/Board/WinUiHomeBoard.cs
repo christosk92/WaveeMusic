@@ -51,6 +51,8 @@ internal static class WinUiHomeBoard
         readonly Signal<float> _width = new(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Action<RectF> _onBounds;
+        readonly Action<RectF> _onBand;
+        float _bandH;
         BoardProps? _p;
         PackReorder<WinUiBoardItem>? _reorder;
         PackGridOptions<WinUiBoardItem>? _options;
@@ -62,6 +64,7 @@ internal static class WinUiHomeBoard
         public BoardView()
         {
             _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
+            _onBand = r => _bandH = r.H;
         }
 
         /// <summary>A full row's measured height (0 until its body has laid out once).</summary>
@@ -76,6 +79,7 @@ internal static class WinUiHomeBoard
             var p = UseProps<BoardProps>();
             _p = p;
             var board = p.Board;
+            board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
 
             _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(_width.Peek()));
@@ -87,6 +91,8 @@ internal static class WinUiHomeBoard
                 Slot = static rect => WinUiHomeTiles.Slot(rect),
                 AcceptKinds = [WinUiHomeAddBand.DragKind],
                 CanAccept = static payload => payload is HomeCandidate,
+                // A candidate dragged in from the add band: a provisional tile at its chosen size under the pointer; the drop adds it there.
+                Materialize = static payload => payload is HomeCandidate c ? Provisional(c) : null,
                 OnCommit = m => Commit(m),
                 OnForeignCommit = (payload, index) => ForeignCommit(payload, index),
                 AnnounceText = a => Announce(a),
@@ -109,12 +115,23 @@ internal static class WinUiHomeBoard
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
+                // A card's menu: a right-click opens the menu of the tile under the pointer, the Menu key / Shift+F10 that of the tile in focus
+                // (its wrapper holds focus). A touch hold never arrives here: the wrapper's hold takes it, so the hold can become a drag.
+                OnContextRequested = OnContext,
                 Children =
                 [
-                    WinUiHomeAddBand.Disclosure(board, p.Lay, bandOpen),
+                    WinUiHomeAddBand.Disclosure(board, p.Lay, bandOpen) with { OnBoundsChanged = _onBand },
                     PackGrid.Create(items, _template, _options),
                 ],
             };
+        }
+
+        static WinUiBoardItem Provisional(HomeCandidate c)
+        {
+            var size = WinUiHomeAddBand.SizeChosen(c);
+            var e = new BoardEntry("provisional:" + c.Id, BoardEntryKind.Item, c.TargetGroupId, HomeSourceRegistry.Default.Of(c.Source), c.Source,
+                size, SectionTemplate.None, c.Title, false, false, false, c.Source is PinSource, false, -1);
+            return new WinUiBoardItem(HomeBoardKeys.Tile(e.Id), e, false);
         }
 
         static IReadOnlyList<WinUiBoardItem> ItemsOf(BoardModel m)
@@ -221,11 +238,23 @@ internal static class WinUiHomeBoard
             return a.Kind switch
             {
                 PackAnnounceKind.Grab => Strings.Theme.Winui.Home.Board.Grabbed(name: name),
-                PackAnnounceKind.Move => board.Verbs.Where(id),
-                PackAnnounceKind.Drop => Strings.Theme.Winui.Home.Board.Dropped(name: name, where: board.Verbs.Where(id)),
+                // The projected place while lifted (the document has not moved yet); the drop itself is the move verb's sentence.
+                PackAnnounceKind.Move => Strings.Home.BoardVerbs.Position(n: a.Position, count: a.Count, group: GroupTitleOf(board, id)),
                 PackAnnounceKind.Cancel => Strings.Theme.Winui.Home.Board.Cancelled(name: name),
                 _ => null,
             };
+        }
+
+        static string GroupTitleOf(HomeBoardProps board, string id)
+        {
+            var entries = board.Model.Peek().Entries;
+            string title = "";
+            for (int i = 0; i < entries.Length; i++)
+            {
+                if (entries[i].Kind == BoardEntryKind.GroupHead) title = entries[i].Title;
+                else if (entries[i].Id == id) return title;
+            }
+            return title;
         }
 
         PackAutomation Automation(WinUiBoardItem it)
@@ -242,16 +271,37 @@ internal static class WinUiHomeBoard
             return "";
         }
 
-        internal static string IdOf(string key) => key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : "";
-
-        /// <summary>The board's keys while focus is inside it (guarded by the text-editor test): Ctrl+Z undoes; "/" opens the add band's search;
-        /// Escape unwinds (the open tile, then the band).</summary>
-        void OnKey(KeyEventArgs e)
+        /// <summary>The board's keys while focus is inside Home's board or its head tools (single keys stand aside for a text editor): Ctrl+Z
+        /// undoes; "/" opens the add band's search; Escape unwinds (the open tile, then the band).</summary>
+        internal static void HandleKey(KeyEventArgs e, HomeBoardProps board)
         {
-            if (e.Handled || _p is null) return;
-            var board = _p.Board;
-            if (e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
-            if (WinUiHomeAddBand.EditorFocused()) return;
+            if (e.Handled) return;
+            bool editor = board.EditorFocused();
+            if (!editor && e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
+            if (editor && e.KeyCode != Keys.Escape) return;
+            // The focused tile (the grid's wrapper holds focus; plain arrows move focus there, Alt+Shift+arrows bubble here): Start's chord moves it,
+            // the Menu key or Shift+F10 opens its menu.
+            if (board.Grid.FocusedKey is { } fk && IdOf(fk) is { Length: > 0 } id)
+            {
+                if (e.Alt && e.Shift && !e.Ctrl)
+                {
+                    switch (e.KeyCode)
+                    {
+                        case Keys.Left: board.Verbs.MoveBy(id, -1); e.Handled = true; return;
+                        case Keys.Right: board.Verbs.MoveBy(id, 1); e.Handled = true; return;
+                        case Keys.Up or Keys.Down:
+                            if (board.Grid.Neighbour(fk, 0, e.KeyCode == Keys.Up ? -1 : 1) is { } nk && IdOf(nk) is { Length: > 0 } target)
+                                board.Verbs.MoveOnto(id, target);
+                            e.Handled = true;
+                            return;
+                    }
+                }
+                if (e.KeyCode == Keys.Apps || e.Shift && !e.Ctrl && !e.Alt && e.KeyCode == Keys.F10)
+                {
+                    if (WinUiHomeTiles.TileMore.OpenFor(id)) e.Handled = true;
+                    return;
+                }
+            }
             if (!e.Ctrl && !e.Alt && e.KeyCode == WinUiHomeAddBand.SlashKey)
             {
                 WinUiHomeAddBand.OpenSearch(board);
@@ -263,6 +313,24 @@ internal static class WinUiHomeBoard
                 if (board.View.OpenId.Peek() is not null) { board.Verbs.Close(refocus: true); e.Handled = true; return; }
                 if (board.View.Add.Peek().Kind == HomeAddSurfaceKind.Band) { WinUiHomeAddBand.Close(board); e.Handled = true; }
             }
+        }
+
+        internal static string IdOf(string key) => key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : "";
+
+        /// <summary>The board's keys while focus is inside it (guarded by the text-editor test): Ctrl+Z undoes; "/" opens the add band's search;
+        /// Escape unwinds (the open tile, then the band).</summary>
+        void OnContext(ContextRequestEventArgs e)
+        {
+            if (_p is not { } p) return;
+            var grid = p.Board.Grid;
+            // The position is local to this column: the grid stands under the add band.
+            string? key = e.Trigger == ContextRequestTrigger.Keyboard ? grid.FocusedKey : grid.KeyAt(e.Position.X, e.Position.Y - _bandH);
+            if (key is not null && IdOf(key) is { Length: > 0 } id) WinUiHomeTiles.TileMore.OpenFor(id);
+        }
+
+        void OnKey(KeyEventArgs e)
+        {
+            if (_p is not null) HandleKey(e, _p.Board);
         }
     }
 }

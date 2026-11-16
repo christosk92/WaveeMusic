@@ -3211,7 +3211,6 @@
         "board": {
           "emptyPinned": "Nothing pinned yet. Right-click an album, playlist or artist and choose Pin to Home.",
           "grabbed": "{name}, grabbed. Move it, then drop it.",
-          "dropped": "Dropped {name}, {where}",
           "cancelled": "{name} is back in its place",
           "play": "Play",
           "nowPlaying": "Now playing",
@@ -3265,7 +3264,7 @@
           "resetHome": "Reset Home",
           "customizeTitle": "Customize {name}",
           "done": "Done",
-          "liveUpdates": "Live updates"
+          "pinMenu": "Pin"
         }
       },
       "$comment": "WinUI (P6, Developer-only). W0 owns name, description, options and style (the six W-ThemeOptions options); each family lane writes only inside its own object below.",

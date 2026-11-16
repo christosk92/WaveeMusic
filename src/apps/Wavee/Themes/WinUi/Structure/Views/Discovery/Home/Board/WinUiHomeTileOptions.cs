@@ -1,7 +1,7 @@
 // ── Themes/WinUi/Structure/Views/Discovery/Home/Board/WinUiHomeTileOptions.cs — "Customize widget": the card becomes its settings (spec 8.1) ──
 //
 // The widget's customization state (Learn, widget states): the card is titled "Customize {widget}", one field per option (vertical RadioButtons under
-// five values, a ComboBox from five, a ToggleSwitch for a toggle and for live updates), "Done" in the accent. Each choice applies at once; the card grew to
+// five values, a ComboBox from five, a ToggleSwitch for a toggle; live updates is the schema's own "live" toggle), "Done" in the accent. Each choice applies at once; the card grew to
 // fit and the others slid aside (the grid packs it at `OpenExtent`). Done, Esc or opening another card closes it; one visit is one undo step; focus
 // returns to the card's ⋯.
 
@@ -44,10 +44,14 @@ internal static class WinUiHomeTileOptions
             string label = Loc.Get(opt.LabelKey);
             switch (opt.Kind)
             {
-                case OptionKind.Toggle:
-                    kids.Add(ToggleSwitch.Create(new Signal<bool>(current is "1" or "on" or "true"), on => p.Set(opt.Key, on ? "on" : "off"), header: label)
+                case OptionKind.Toggle when opt.Values.Length >= 2:
+                {
+                    // A toggle's first value is its "on", the second its "off" (the schema's order).
+                    string onValue = opt.Values[0].Value, offValue = opt.Values[1].Value;
+                    kids.Add(ToggleSwitch.Create(new Signal<bool>(current == onValue), on => p.Set(opt.Key, on ? onValue : offValue), header: label)
                         with { Key = "home:options:" + opt.Key });
                     break;
+                }
                 default:
                 {
                     var labels = new string[opt.Values.Length];
@@ -62,9 +66,6 @@ internal static class WinUiHomeTileOptions
                 }
             }
         }
-        if (p.Live && p.ToggleLive is { } toggle && p.Paused is { } paused)
-            kids.Add(ToggleSwitch.Create(new Signal<bool>(!paused()), _ => toggle(), header: Loc.Get(Strings.Theme.Winui.Home.Board.LiveUpdates))
-                with { Key = "home:options:live" });
         return new BoxEl
         {
             Key = "home:options", Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Stretch,

@@ -34,6 +34,10 @@ public sealed record HomeTileHostProps(BoardEntry Entry, PackCell? Cell, Func<Pa
 public sealed class HomeTileHost : Component
 {
     HomeTileHostProps? _p;
+    static readonly Dictionary<string, HomeTileForm> s_forms = new(StringComparer.Ordinal);
+
+    /// <summary>The form the realized tile of an entry drew last (the inspector's `home do=status`).</summary>
+    public static HomeTileForm? FormOf(string entryId) => s_forms.TryGetValue(entryId, out var f) ? f : null;
 
     /// <summary>The tile of an entry.</summary>
     public static Element For(BoardEntry entry, PackCell? cell, Func<PackBox, HomeTileForm> form, IHomeBoardVerbs verbs, IOverlayService? overlay, HomeBoardView view)
@@ -50,8 +54,9 @@ public sealed class HomeTileHost : Component
         // The form follows the box, but only its edges re-render the tile (a memo with an equality cut-off over the cell's box signal).
         var form = UseComputed(() => _p!.FormRule(_p.Cell?.Box.Value ?? default)).Value;
         var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay, p.View);
+        if (p.Cell is not null) s_forms[p.Entry.Id] = form;
         var e = p.Entry;
-        if (e.Kind == BoardEntryKind.Placeholder || e.Hidden && e.Source is not null)
+        if (e.Kind == BoardEntryKind.Placeholder)
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Loading, Name = e.Title });
         if (e.Paused && e.Live && e.Raw is WidgetSource { Widget: "nowPlaying" })
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Paused, Name = e.Title });
@@ -103,9 +108,10 @@ public sealed class PinTileHost : Component
         {
             Frame = p.Frame,
             Name = () => NameOf(target, hintName),
-            Line = () => LineOf(target),
+            Line = EntityUri.IsLikedCollection(uri) ? s_likedLine : () => LineOf(target),
             Cover = () => CoverOf(target, uri) ?? (hintCover.Length > 0 ? hintCover : null),
             Round = !target.IsNone && Search.RoundArt(target.Kind),
+            CoverArt = EntityUri.IsLikedCollection(uri) ? s_liked : null,
             UserPin = p.UserPin,
             Playing = uri.Length > 0 ? () => Controls.RelatesNow(uri) : static () => false,
             Open = card?.OnClick ?? (() => { if (pinId == "liked") Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked)); }),
@@ -113,6 +119,16 @@ public sealed class PinTileHost : Component
             Card = card,
         });
     }
+
+    static readonly Func<float, Element> s_liked = static edge => Sidebar.Cover.Liked(edge);
+
+    /// <summary>Liked Songs' line: its song count, as the Recently played grid words it (a subscribing read of the user's liked set).</summary>
+    static readonly Func<string> s_likedLine = static () =>
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Users.Changed.Value;
+        return Strings.Detail.SongCount(Math.Max(0, User.Me.LikedTrackSlots.Length));
+    };
 
     static string NameOf(EntityRef r, string hint)
     {
@@ -159,7 +175,7 @@ public sealed class NowPlayingTileHost : Component
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
-        bool lyric = p.Frame.Entry.Options.TryGetValue("lyric", out var l) && l == "on";
+        bool lyric = p.Frame.Entry.Options.TryGetValue("lyric", out var l) && l == "1";
         return Slots.View(ViewKeys.HomeTileNowPlaying, new HomeNowPlayingTileProps
         {
             Frame = p.Frame, HasTrack = s_has, Title = s_title, Line = s_line, Cover = s_cover, ProgressLine = s_progress,

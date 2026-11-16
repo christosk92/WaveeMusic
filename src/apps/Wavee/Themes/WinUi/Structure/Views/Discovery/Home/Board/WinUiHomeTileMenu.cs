@@ -71,12 +71,4 @@ internal static class WinUiHomeTileMenu
         _ when e.Raw is PinSource => Strings.Theme.Winui.Home.Board.UnpinFromHome,
         _ => Strings.Theme.Winui.Home.Board.UnpinWidget,
     });
-
-    /// <summary>The entry one step up or down from <paramref name="f"/>'s (the grid's nearest: overlapping columns first).</summary>
-    public static string? Neighbour(HomeTileFrame f, int dy)
-    {
-        var grid = f.View.Grid;
-        string? key = grid?.Neighbour(HomeBoardKeys.Tile(f.Entry.Id), 0, dy);
-        return key is not null && key.StartsWith("home:tile:", StringComparison.Ordinal) ? key["home:tile:".Length..] : null;
-    }
 }

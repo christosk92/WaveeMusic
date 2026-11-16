@@ -294,6 +294,19 @@ internal static class WinUiSurface
     /// <c>Caption</c> instead carries the meta as a tertiary tail on its own <c>CaptionLines</c>, so no separate line
     /// exists. A circular card centres the block under its circle. <paramref name="inner"/> is the shelf's inner width
     /// (NaN on a fluid grid card).</summary>
+    /// <summary>The subtitle, led by the pin mark when the card's entity is on Home (pinned Home: state at rest, the concept's pin before the meta
+    /// line); null when there is neither.</summary>
+    static Element? PinnedLine(Controls.CardData d)
+    {
+        if (!d.PinnedToHome) return d.Subtitle;
+        var mark = Ui.Icon(Icons.Pin, WinUiHomeBoardRules.PinMarkGlyph, Tok.AccentTextPrimary) with { Shrink = 0f };
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
+            Children = d.Subtitle is { } sub ? [mark, new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [sub] }] : [mark],
+        };
+    }
+
     static Element Labels(Controls.CardData d, in SurfaceShape s, float inner)
     {
         int lines = Math.Max(1, s.TitleLines);
@@ -313,7 +326,7 @@ internal static class WinUiSurface
         }
         else
         {
-            if (d.Subtitle is not null) kids.Add(d.Subtitle.Value);
+            if (PinnedLine(d) is { } sub) kids.Add(sub);
             if (d.Meta is { Length: > 0 } meta)
                 kids.Add(R.Type.TrackMeta(meta) with
                     { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
@@ -342,7 +355,7 @@ internal static class WinUiSurface
         var kids = new List<Element>(5);
         if (d.Eyebrow is not null) kids.Add(d.Eyebrow.Value);
         kids.Add(Title(d, title, lines, centred: false));
-        if (d.Subtitle is not null) kids.Add(d.Subtitle.Value);
+        if (PinnedLine(d) is { } sub) kids.Add(sub);
         if (d.MetaRow is not null) kids.Add(d.MetaRow.Value);
         if (d.Below is not null) kids.Add(d.Below.Value);
         return new BoxEl

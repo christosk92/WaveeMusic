@@ -129,6 +129,8 @@ public sealed class HomeScreen : Component
         // read one memo; nothing in this render reads it, so a board change never re-renders the page.
         var boardModel = UseComputed(() => _board.Project());
         _board.Bind(boardModel, overlay);
+        // The v2 layout's hidden zones resolve against the first answer (pinned-home-tech.md 1.2.4): once, when it lands.
+        UseEffect(() => HomeBoardHost.ResolveLegacyOnAnswer(), DepKey.From(model.Value is null ? 0 : 1));
         return Slots.View(ViewKeys.HomePage, new HomePageProps
         {
             Facet = facet,
@@ -202,7 +204,7 @@ public sealed class HomeScreen : Component
         return v;
     }
 
-    internal static ZoneTitles LocalizedTitles() => new(
+    static ZoneTitles LocalizedTitles() => new(
         MadeForYou: Loc.Get(Strings.Home.MadeForYou),
         BecauseYouLike: Loc.Get(Strings.Home.Zone.BecauseYouLike),
         MoreForYou: Loc.Get(Strings.Home.Zone.MoreForYou),

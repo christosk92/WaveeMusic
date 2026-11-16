@@ -81,7 +81,7 @@ internal static class WinUiHomeAddBand
     static string KindId(int i) => i switch { 1 => "spotify", 2 => "library", 3 => "extensions", _ => "widgets" };
 
     /// <summary>The disclosure: keyed `home:add`, its height eases open and shut (the board under it slides).</summary>
-    public static Element Disclosure(HomeBoardProps board, WinUiHomeBoardLayout lay, bool open)
+    public static BoxEl Disclosure(HomeBoardProps board, WinUiHomeBoardLayout lay, bool open)
     {
         s_board = board;
         return new BoxEl
@@ -99,6 +99,8 @@ internal static class WinUiHomeAddBand
     {
         BandProps? _p;
         NodeHandle _firstPin;
+        string _lastQuery = "";
+        bool _justCleared;   // the search box cleared itself on this Escape: that Escape does not also close the band
 
         public override Element Render()
         {
@@ -115,6 +117,14 @@ internal static class WinUiHomeAddBand
             }, DepKey.From(focusAsk));
 
             string q = board.View.Query.Value.Trim();
+            // The result count, spoken once typing pauses: every change of the query restarts the wait.
+            string spokenQ = q;
+            UseTimeout(() =>
+            {
+                if (spokenQ.Length == 0) return;
+                int found = board.Catalog.Find(board.Catalog.All(), spokenQ).Count;
+                board.Verbs.Say(found > 0 ? Strings.Theme.Winui.Home.Board.ResultsSaid(n: found, q: spokenQ) : Strings.Theme.Winui.Home.Board.NoMatchSaid(q: spokenQ));
+            }, WinUiHomeBoardRules.SpeakCountMs, DepKey.From(StringComparer.Ordinal.GetHashCode(q)));
             var all = board.Catalog.All();
             var hits = q.Length > 0 ? board.Catalog.Find(all, q) : all;
             var counts = board.Catalog.Count(hits);
@@ -140,9 +150,28 @@ internal static class WinUiHomeAddBand
                 board.View.Add.Value = new HomeAddSurface(HomeAddSurfaceKind.Band, KindId(Math.Max(0, s_kind.Peek())));
             }) with { Key = "home:add:kinds" };
 
-            var search = AutoSuggestBox.Create([], Loc.Get(Strings.Theme.Winui.Home.Board.SearchPlaceholder), WinUiHomeBoardRules.SearchMaxW,
-                text: board.View.Query, onChange: OnQuery, onQuerySubmitted: _ => FocusFirstPin(hooks), field: field,
-                grow: 1f, maxFillWidth: WinUiHomeBoardRules.SearchMaxW, suggestionPresentation: AutoSuggestBoxSuggestionPresentation.Inline);
+            // An AutoSuggestBox-style field with no suggestion popup (the band's own row is the result list): the stock TextBox (its clear button)
+            // led by the query glyph. Escape is the band's: it clears the text first, then closes the band (the stock box would only restore it).
+            var search = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                Children =
+                [
+                    Ui.Icon(Icons.Search, WinUiHomeBoardRules.WidgetGlyph, Tok.TextSecondary) with { Shrink = 0f },
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                        Children =
+                        [
+                            TextBox.Create(board.View.Query, OnQuery, new TextBox.TextBoxOptions
+                            {
+                                Placeholder = Loc.Get(Strings.Theme.Winui.Home.Board.SearchPlaceholder), Width = WinUiHomeBoardRules.SearchMaxW,
+                                OnCommit = _ => FocusFirstPin(hooks), OnCancel = () => OnSearchEscape(board), KeepTextOnEscape = true, Field = field,
+                            }),
+                        ],
+                    },
+                ],
+            };
 
             var close = ToolTip.Wrap(Controls.IconAction(Icons.ChromeClose, () => Close(board)) with { Key = "home:add:close" },
                                      Loc.Get(Strings.Theme.Winui.Home.Board.CloseBand));
@@ -174,6 +203,9 @@ internal static class WinUiHomeAddBand
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 Padding = new Edges4(0f, 0f, 0f, WinUiHomeBoardRules.BandFoot),
+                // The band's content fades in while its box opens (the Expander's content transition); the box's own height is the reveal.
+                Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
+                Transition = MotionTokenDef.Eased(Design.Motion.Fast, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
                 OnKeyDown = e => OnKey(e, board),
                 Children =
                 [
@@ -188,7 +220,12 @@ internal static class WinUiHomeAddBand
                             {
                                 Key = "home:add:head", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
                                 MinHeight = WinUiHomeBoardRules.BandHeadH,
-                                Children = [new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [selector] }, search, close],
+                                Children =
+                                [
+                                    new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [selector] },
+                                    new BoxEl { Key = "home:add:search", Direction = 1, Width = WinUiHomeBoardRules.SearchMaxW, Shrink = 1f, MinWidth = 0f, Children = [search] },
+                                    close,
+                                ],
                             },
                             row,
                             Ui.Caption(Loc.Get(Strings.Theme.Winui.Home.Board.BandHint)).Secondary() with { Wrap = TextWrap.Wrap, MinWidth = 0f },
@@ -203,14 +240,24 @@ internal static class WinUiHomeAddBand
             if (_p is null) return;
             string q = text.Trim();
             var board = _p.Board;
-            bool was = s_kind.Peek() < 0 || board.View.Query.Peek().Trim().Length > 0;
-            if (q.Length > 0 && s_kind.Peek() >= 0 && !was) { s_kindBeforeSearch = s_kind.Peek(); s_kind.Value = -1; }
-            if (q.Length == 0 && s_kind.Peek() < 0) s_kind.Value = s_kindBeforeSearch;
-            if (q.Length > 0)
+            // Typing the first character switches the selector to "All results"; clearing it returns to the kind it was on.
+            bool had = _lastQuery.Length > 0;
+            _lastQuery = q;
+            if (q.Length > 0 && !had) { s_kindBeforeSearch = Math.Max(0, s_kind.Peek()); s_kind.Value = -1; }
+            else if (q.Length == 0 && had) s_kind.Value = s_kindBeforeSearch;
+            _justCleared = q.Length == 0 && had;
+            // The count is spoken once typing pauses (the debounce in Render), never per keystroke.
+        }
+
+        /// <summary>Escape in the search: clear the text first; on an empty search, close the band.</summary>
+        void OnSearchEscape(HomeBoardProps board)
+        {
+            if (board.View.Query.Peek().Length > 0)
             {
-                int n = board.Catalog.Find(board.Catalog.All(), q).Count;
-                board.Verbs.Say(n > 0 ? Strings.Theme.Winui.Home.Board.ResultsSaid(n: n, q: q) : Strings.Theme.Winui.Home.Board.NoMatchSaid(q: q));
+                board.View.Query.Value = ""; _lastQuery = ""; s_kind.Value = s_kindBeforeSearch;
+                s_focusSearch.Value = s_focusSearch.Peek() + 1;   // the field keeps focus, so a second Escape reaches it and closes the band
             }
+            else Close(board);
         }
 
         void FocusFirstPin(InputHooks hooks)
@@ -219,10 +266,11 @@ internal static class WinUiHomeAddBand
         }
 
         /// <summary>Esc clears the search first, then closes the band.</summary>
-        static void OnKey(KeyEventArgs e, HomeBoardProps board)
+        void OnKey(KeyEventArgs e, HomeBoardProps board)
         {
             if (e.Handled || e.KeyCode != Keys.Escape) return;
-            if (board.View.Query.Peek().Length > 0) { board.View.Query.Value = ""; s_kind.Value = s_kindBeforeSearch; }
+            if (_justCleared) { _justCleared = false; e.Handled = true; return; }
+            if (board.View.Query.Peek().Length > 0) { board.View.Query.Value = ""; _lastQuery = ""; s_kind.Value = s_kindBeforeSearch; }
             else Close(board);
             e.Handled = true;
         }
@@ -253,7 +301,7 @@ internal static class WinUiHomeAddBand
             var arr = sizes;
             string id = c.Id;
             kids.Add(RadioButtons.Create(labels, new Signal<int>(at), i => { s_size[id] = arr[i]; s_kind.Value = s_kind.Peek(); },
-                                         maxColumns: labels.Length, isEnabled: !on));
+                                         maxColumns: 1, isEnabled: !on));
         }
         var pin = (on
             ? Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.Pinned), static () => { }, ButtonAppearance.Standard, ControlSize.Medium, isEnabled: false)
@@ -262,13 +310,22 @@ internal static class WinUiHomeAddBand
         kids.Add(new BoxEl { Grow = 1f });
         kids.Add(pin);
         var payload = c;
+        // The candidate is dragged DOWN onto Home: its draggable box stands in a column of its own, so a vertical gesture runs along the item's
+        // axis and the drag wins over the page's pan; a sideways gesture still scrolls the row (the engine's arena-lite rule).
         return new BoxEl
         {
-            Key = "home:add:cand:" + c.Id, Direction = 1, Width = lay.CandidateW, Shrink = 0f, Gap = Spacing.S, MinWidth = 0f,
+            Key = "home:add:cand:" + c.Id, Direction = 1, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+            Direction = 1, Width = lay.CandidateW, Shrink = 0f, Gap = Spacing.S, MinWidth = 0f,
             Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.M), Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
             Draggable = on ? null : new DragSource(DragKind, () => payload),
             Children = kids.ToArray(),
+                },
+            ],
         };
     }
 }
