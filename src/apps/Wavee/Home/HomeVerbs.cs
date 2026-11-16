@@ -46,9 +46,9 @@ public static class HomeVerbs
         if (route.Kind != Shell.RouteKind.NotFound) Shell.GoTo(route, HomeCardNav.HomeOrigin);
     }
 
-    /// <summary>A zone header's "See all" words: "See all 36" when the section says how many it holds beyond what shows, else "See all".</summary>
+    /// <summary>A zone header's "See all" words: "See all 36" when the section says how many it holds, else "See all".</summary>
     public static string SeeAllLabel(Zone zone)
-        => zone.TotalCount > zone.Items.Count && zone.TotalCount > 0 ? Strings.Home.SeeAllN(zone.TotalCount) : Loc.Get(Strings.Home.SeeAll);
+        => zone.TotalCount > 0 ? Strings.Home.SeeAllN(zone.TotalCount) : Loc.Get(Strings.Home.SeeAll);
 
     /// <summary>Shuffle STARTS the daylist shuffled; it never toggles (<c>HomeCardNav.Play</c> pauses a daylist that already plays).</summary>
     public static void ShuffleContext(string uri)

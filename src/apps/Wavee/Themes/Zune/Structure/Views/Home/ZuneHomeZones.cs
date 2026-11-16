@@ -106,7 +106,7 @@ internal static class ZuneHomeZones
         for (int i = 0; i < items.Length; i++)
         {
             var c = cards[i];
-            items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl);
+            items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl);
         }
         var host = HostOf(overlay);
         return PagedShelf.Create<HomeCards.ShelfItem>(items,

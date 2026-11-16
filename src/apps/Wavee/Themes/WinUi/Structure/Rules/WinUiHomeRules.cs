@@ -66,7 +66,28 @@ public static class WinUiHomeRules
     public const float ReleaseColGap = 24f, ReleaseRowGap = 4f, CardGap = 16f;
 
     /// <summary>How many release rows, cluster cards and cluster rows a body shows.</summary>
-    public const int ReleaseRowsMax = 6, ClusterMax = 6, ClusterRows = 3;
+    public const int ReleaseRowsMax = 6, ClusterRows = 4;
+
+    /// <summary>The preview cards shown before "Show more" (home-gap P4): two rows of the tier's columns.</summary>
+    public const int ClusterVisibleRows = 2;
+
+    /// <summary>A preview card's playlist cover and the reason line's avatar (home-gap P4).</summary>
+    public const float PreviewCover = 96f, ReasonAvatar = 20f;
+
+    /// <summary>A mood plate (home-gap P6): its height, its inset, how many plates a shelf shows (two rows of four).</summary>
+    public const float MoodPlateH = 96f, MoodPlatePad = 14f;
+    public const int MoodPlatesMax = 8;
+    /// <summary>A coloured plate's hover and press: that share of the way toward the on-media ink.</summary>
+    public const float PlateHoverMix = 0.08f, PlatePressMix = 0.14f;
+
+    /// <summary>A book card's caption lines (home-gap P8): author, rating and length, the plan pill. Every card reserves all of them.</summary>
+    public const int BookCaptionLines = 4;
+
+    /// <summary>The section header's entity cover ("Popular with listeners of" + the show, home-gap P8).</summary>
+    public const float EntityCover = 40f;
+
+    /// <summary>The video card (an episode on All): the still's width in a row, its badges' inset, the progress hairline.</summary>
+    public const float VideoStillW = 380f, VideoBadgeInset = 8f, VideoProgressH = 3f;
 
     /// <summary>The Recents cell's equalizer height, the history tile's 7-day strip box.</summary>
     public const float EqualizerH = 12f, HistoryStripW = 56f, HistoryStripH = 14f;

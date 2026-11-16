@@ -51,7 +51,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.WinUi;
 
 /// <summary>WinUI's Home zone column.</summary>
-internal static class WinUiHomeZones
+internal static partial class WinUiHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key whose body needs nothing but its zone.</summary>
     public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
@@ -183,7 +183,7 @@ internal static class WinUiHomeZones
             : Chapter(zone, overlay, controller: null, layout);
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf;
 
     /// <summary>Header + body, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout)
@@ -215,9 +215,12 @@ internal static class WinUiHomeZones
             case ZoneKind.ReleaseList:
                 return ModuleHeader(zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow),
                                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null,
-                                    ShelfHeaderTools(HomeVerbs.SeeAll(zone), null), layout);
+                                    ShelfHeaderTools(HomeVerbs.SeeAll(zone), null, HomeVerbs.SeeAllLabel(zone)), layout);
             default:
-                return ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller), layout);
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone));
+                return zone.Header is { } entity
+                    ? EntityHeader(entity, tools, layout)
+                    : ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, tools, layout);
         }
     }
 
@@ -243,9 +246,9 @@ internal static class WinUiHomeZones
 
     /// <summary>A shelf header's tools: the "See all" link (when the zone has a backing section), then — while the shelf pages — a 16-px vertical divider and the
     /// pager (‹ pips ›). Null when the header has neither.</summary>
-    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller)
+    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label)
     {
-        Element? link = seeAll is null ? null : HyperlinkButton.Create(Loc.Get(Strings.Home.SeeAll), seeAll) with { Shrink = 0f };
+        Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
             : Embed.Comp(() => new WinUiHomeShelfTools(controller, leadingDivider)) with { Key = leadingDivider ? "tools+link" : "tools" };
@@ -286,8 +289,11 @@ internal static class WinUiHomeZones
     internal static Element BodyTree(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout,
                                      RenderContext? hooks = null) => zone.Kind switch
     {
+        ZoneKind.VideoTiles when IsOneEpisode(zone) => VideoCard(zone.Items[0], layout),
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
+        ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
+        ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
@@ -319,7 +325,7 @@ internal static class WinUiHomeZones
             // Only an artist is a disc. A radio station's art is Spotify's own square design (its circles are drawn IN the image).
             bool circular = c.Kind == HomeCardKind.Artist;
             items[i] = wide
-                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl,
+                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl,
                                         meta: CardMeta.Of(c.OwnerName, c.TrackCount))
                 : leadWide && i == 0
                     ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl, captionLines: 2,
@@ -488,66 +494,6 @@ internal static class WinUiHomeZones
             Key = "release:" + k.Uri, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove,
             Children = [Controls.Surface(data, Shape.Row(WinUiHomeRules.ReleaseArt))],
         };
-    }
-
-    // ── 2.4 clusters: "Because you like" — Ui.Card(avatar + name, then <= 3 Surface(Row(40))) ──────────────────────────────────
-
-    static Element ClusterGrid(Zone zone, WinUiHomeLayout layout)
-    {
-        var clusters = zone.Clusters;
-        if (clusters is not { Count: > 0 }) return new BoxEl();
-        int n = Math.Min(clusters.Count, WinUiHomeRules.ClusterMax);
-        var cards = new Element[n];
-        for (int i = 0; i < n; i++) cards[i] = ClusterCard(clusters[i]);
-        return new GridEl
-        {
-            MinColWidth = layout.Clusters.Floor, MaxColumns = layout.Clusters.MaxCols,
-            ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, Children = cards,
-        };
-    }
-
-    static Element ClusterCard(ZoneCluster cluster)
-    {
-        // The header (W-Home): a 24 avatar and the name, 14/20 semibold; the cluster opens to its own baseline card when it has one.
-        var kids = new List<Element>(2);
-        if (cluster.Header is { } hc0 && hc0.ImageUrl is { Length: > 0 } avatarUrl)
-            kids.Add(new BoxEl
-            {
-                Width = WinUiHomeRules.ClusterAvatar, Height = WinUiHomeRules.ClusterAvatar, Shrink = 0f,
-                Children = [Controls.Artwork(avatarUrl, WinUiHomeRules.ClusterAvatar, WinUiHomeRules.ClusterAvatar, WinUiHomeRules.ClusterAvatar / 2f)],
-            });
-        kids.Add(Ui.BodyStrong(cluster.Name) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
-        Element header = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S + Spacing.XXS, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, Spacing.S), Children = kids.ToArray(),
-        };
-        if (cluster.Header is { } h)
-        {
-            var hc = h;
-            header = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
-                OnClick = () => HomeCardNav.Open(in hc), Children = [header],
-            };
-        }
-
-        var rowsSrc = cluster.Rows;
-        int n = Math.Min(rowsSrc.Count, WinUiHomeRules.ClusterRows);
-        var rows = new Element[n];
-        for (int i = 0; i < n; i++)
-        {
-            var c = rowsSrc[i];
-            string sub = HomeCards.PlainText(c.Subtitle);
-            var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
-                () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
-                { Menu = HomeCardNav.MenuOf(in c) };
-            rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(WinUiHomeRules.ClusterArt))] };
-        }
-
-        return Ui.Card(header, new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows })
-            with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.XS, Layout = WinUiDiscoveryMotion.Shove };
     }
 
     // ── 2.5 browse tiles: stock SettingsCards in the tile skin, then the Charts sub-block ─────────────────────────────────────────
