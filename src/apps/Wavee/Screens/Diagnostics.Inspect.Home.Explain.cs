@@ -237,7 +237,8 @@ public static partial class Diagnostics
 
     public static partial class InspectLint
     {
-        /// <summary><c>home.duplicate</c> (todo, error; promote it to gate once the fixtures are clean): two sections the Home board renders under one title (case and spaces folded). The owner
+        /// <summary><c>home.duplicate</c> (gate, error): two sections the Home board renders under one title (case and spaces folded), unless both are Spotify's own
+        /// sections under its own titles. The owner
         /// saw two "Because you like" folds on a live answer that no check caught; `home do=explain` says why each copy is there.</summary>
         static int HomeDuplicateRule(Snapshot s, List<Finding> into)
         {
@@ -253,6 +254,9 @@ public static partial class Diagnostics
             foreach (var (t, l) in byTitle)
             {
                 if (l.Count < 2) continue;
+                // Spotify's own: two of its sections that it titles alike (live1: "Popular with listeners of The Pog State", one of audiobooks, one of
+                // shows) are its answer, drawn as sent; only a title the app composes (a fold's, a widget's) or repeats is a duplicate.
+                if (l.TrueForAll(static x => x.Entry.StartsWith(HomeCommands.FeedPrefix, StringComparison.Ordinal))) continue;
                 var keys = l.ConvertAll(x => "home:tile:" + x.Entry);
                 into.Add(new Finding(Rules.HomeDuplicate, Severity.Error,
                     $"'{l[0].Title}' titles {l.Count} Home sections ({string.Join(", ", l.ConvertAll(x => x.Entry))}): a person reads one section twice; home do=explain names why each is there",

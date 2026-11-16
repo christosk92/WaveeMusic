@@ -179,6 +179,7 @@ public sealed class SpineShelf : Component
     // ── state (survives re-renders; the shelf re-renders only when its props change) ──
     Signal<int> _open = null!;   // created at the first render with the remembered item (a render never writes a signal)
     readonly Signal<int> _live = new(-1);   // item * Songs + song, -1 none
+    readonly Signal<int> _closing = new(-1);   // the item whose face is still fading out, -1 none (its face stays in layout until then)
     float _seed;   // the slot's known width on the first render (a pack grid tile), until the shelf's own measure lands
     int _dwell = -1, _focus, _settling = -1, _settled = -1;
     string _key = "";
@@ -186,7 +187,7 @@ public sealed class SpineShelf : Component
     SpineShelfGeometry _g;
     AnimEngine? _anim;
     InputHooks? _hooks;
-    TimerHandle _dwellTimer, _tileTimer;
+    TimerHandle _dwellTimer, _tileTimer, _closeTimer;
     bool _armed;
     NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [];
     Element[] _built = [];
@@ -258,7 +259,8 @@ public sealed class SpineShelf : Component
 
         _dwellTimer = UseTimeout(DwellFired, SpineShelfRules.DwellMs, DepKey.Empty);
         _tileTimer = UseTimeout(TileSettled, SpineShelfRules.TileMs, DepKey.Empty);
-        if (!_armed) { _armed = true; _dwellTimer.Cancel(); _tileTimer.Cancel(); }
+        _closeTimer = UseTimeout(CloseSettled, SpineShelfRules.OpenMs, DepKey.Empty);
+        if (!_armed) { _armed = true; _dwellTimer.Cancel(); _tileTimer.Cancel(); _closeTimer.Cancel(); }
 
         string key = p.Key;
         UseEffect(() =>
@@ -306,6 +308,7 @@ public sealed class SpineShelf : Component
                  Func<float> faceW, Func<float> restW, Func<float> liveW, Func<float> otherW)
     {
         var openSig = _open;
+        var closing = _closing;
         int index = i;
         string ik = _key + "|" + item.Key;
 
@@ -333,6 +336,8 @@ public sealed class SpineShelf : Component
             JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
             Padding = Edges4.All(g.FacePad), Gap = g.HeadGap, Gradient = skin.FaceWash(item), Opacity = open ? 1f : 0f,
             HitTestVisible = Prop.Of(() => openSig.Value == index),
+            // Only the open face (and one still fading out) is in layout: a closed face costs no measure (a resize re-lays out one face, not n).
+            Visible = Prop.Of(() => openSig.Value == index || closing.Value == index),
             OnRealized = h => { if (index < _face.Length) _face[index] = h; },
             Children =
             [
@@ -499,11 +504,16 @@ public sealed class SpineShelf : Component
             if ((uint)i < (uint)_face.Length && !_face[i].IsNull)
                 a.Spring(_face[i], AnimChannel.Opacity, 1f, s_fadeIn, delayMs: SpineShelfRules.FaceDelayMs);
         }
+        _closing.Value = old;
+        _closeTimer.RestartIn(SpineShelfRules.OpenMs);
         _open.Value = i;
         _focus = i;
         ShelfRegistry.Open[_key] = _items[i].Key;
         ShelfPreview.Prepare(_items[i]);
     }
+
+    /// <summary>The closed item's motion and fade are over: its face leaves layout.</summary>
+    void CloseSettled() => _closing.Value = -1;
 
     static void Fade(AnimEngine a, NodeHandle[] nodes, int i, float to, float delay)
     {

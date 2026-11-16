@@ -460,12 +460,25 @@ public static partial class Entities
             "wavee-mockup-cluster-troye", "wavee-mockup-cluster-rose", "wavee-mockup-cluster-henry",
             "wavee-mockup-cluster-savage", "wavee-mockup-jump-back-in", "wavee-mockup-radio",
         ];
+        // A capture section that a mockup band already stands for (the capture's own "Jump back in" beside the mockup's, whose cards include the
+        // long-titled album agents open) is left out: one Home never draws one title twice (lint home.duplicate).
         var home = HomeFeed();
         var existing = home.SectionSlots.ToArray();
-        var combined = new int[mockupUris.Length + existing.Length];
-        for (int i = 0; i < mockupUris.Length; i++) combined[i] = Section(("spotify:section:" + mockupUris[i]).AsSpan()).Slot;
-        existing.CopyTo(combined, mockupUris.Length);
-        Current.Edges.HomeSection.ReplaceRun(home.Slot, combined, default);
+        var combined = new List<int>(mockupUris.Length + existing.Length);
+        var mockTitles = new HashSet<StringId>();
+        for (int i = 0; i < mockupUris.Length; i++)
+        {
+            var band = Section(("spotify:section:" + mockupUris[i]).AsSpan());
+            combined.Add(band.Slot);
+            if (band.Kind == SectionKind.HomeGeneric && !band.TitleId.IsEmpty) mockTitles.Add(band.TitleId);
+        }
+        foreach (int slot in existing)
+        {
+            var band = new Section(slot);
+            if (band.IsValid && band.Kind == SectionKind.HomeGeneric && mockTitles.Contains(band.TitleId)) continue;
+            combined.Add(slot);
+        }
+        Current.Edges.HomeSection.ReplaceRun(home.Slot, combined.ToArray(), default);
         Current.Homes.Bump(home.Slot, (uint)HomeFields.All);
     }
 
