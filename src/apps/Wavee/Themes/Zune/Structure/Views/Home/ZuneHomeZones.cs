@@ -218,11 +218,9 @@ internal static partial class ZuneHomeZones
             tiles[i] = K.Plate(c.IsBlank ? "zune-tile-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-tile:" + c.Uri,
                 c.Title, c.Accent, c.ImageUrl, lay.TileH, () => HomeCardNav.Open(in c), lay.TileBig);
         }
-        Element grid = new GridEl
-        {
-            Key = "zune-home-tiles:" + zone.Key, MinColWidth = H.TileMinCol, MaxColumns = lay.TileCols, ColGap = H.TileGap, RowGap = H.TileGap,
-            Children = tiles,
-        };
+        var band = new ZuneCappedBand(H.TileMinCol, lay.TileCols, 0);
+        Element grid = GridFill.Responsive("zune-home-tiles:" + zone.Key, tiles.Length, w => band.Columns(w, H.TileGap),
+            cols => GridFill.Build(tiles, cols, H.TileGap, H.TileGap), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
         bool beside = lay.ChartsBeside;
         return new BoxEl
         {

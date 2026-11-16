@@ -65,7 +65,7 @@ internal static partial class WinUiHomeZones
         Element grid = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
-            Children = [new GridEl { Columns = RhythmCards.Stars(band.Cols), ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, Children = cells }],
+            Children = [GridFill.Build(cells, GridFill.Columns(n, band.Cols), WinUiHomeRules.CardGap, WinUiHomeRules.CardGap)],
         };
         return new BoxEl
         {
@@ -132,8 +132,9 @@ internal static partial class WinUiHomeZones
         int n = RhythmCards.Shown(band.Cols, band.Rows, count - 1);
         float gap = WinUiHomeRules.CardGap;
         float gridW = band.Beside ? (width - gap) / 2f : width;
-        int rows = RhythmCards.RowsOf(n, band.Cols);
-        float card = CardExtent(GridCardShape, RhythmCards.CellWidth(gridW, band.Cols, gap));
+        int cols = GridFill.Columns(n, band.Cols);
+        int rows = GridFill.Rows(n, cols);
+        float card = CardExtent(GridCardShape, GridFill.CellWidth(gridW, cols, gap));
         float grid = rows == 0 ? 0f : rows * card + (rows - 1) * gap;
         float inset = LeadInsetTop + SurfaceGeometry.ShelfPlatePad;
         if (band.Beside) return MathF.Max(grid, WinUiHomeRules.LeadArtMin + WinUiHomeRules.LeadCopyH + inset);
@@ -156,10 +157,7 @@ internal static partial class WinUiHomeZones
             int n = RhythmCards.Shown(c, band.Rows, cards.Count);
             var cells = new Element[n];
             for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
-            return new GridEl
-            {
-                Columns = RhythmCards.Stars(c), ColGap = gap, RowGap = gap, RowHeight = rowH, Children = cells,
-            };
+            return GridFill.Build(cells, GridFill.Columns(n, c), gap, gap, rowH);
         }, fallback: first);
     }
 
@@ -199,9 +197,11 @@ internal static partial class WinUiHomeZones
     {
         int count = RhythmCards.Usable(zone.Items).Count;
         if (count == 0) return 0f;
-        int cols = band.Columns.Columns(width, gap);
-        int rows = RhythmCards.RowsOf(RhythmCards.Shown(cols, band.Rows, count), cols);
-        float row = float.IsNaN(rowH) ? CardExtent(in shape, RhythmCards.CellWidth(width, cols, gap)) : rowH;
+        int fit = band.Columns.Columns(width, gap);
+        int n = RhythmCards.Shown(fit, band.Rows, count);
+        int cols = GridFill.Columns(n, fit);
+        int rows = GridFill.Rows(n, cols);
+        float row = float.IsNaN(rowH) ? CardExtent(in shape, GridFill.CellWidth(width, cols, gap)) : rowH;
         return rows * row + (rows - 1) * gap;
     }
 

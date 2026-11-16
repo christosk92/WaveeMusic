@@ -2,7 +2,7 @@
 //
 // LeadGrid, CompactGrid, ArtistCircles and CappedShelf are drawn by each theme in its own voice (`*HomeZones.Rhythm.cs`); what
 // they share is only this: one card's surface data (the same open, play, drag and menu every Home card has) and the counting a
-// capped grid does (it shows columns x rows cards, never a ragged row, and its cell width is the star track's).
+// capped grid does (it shows at most columns x rows cards; GridFill lays them out with no empty slot).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -24,22 +24,9 @@ public static class RhythmCards
             Circular: circular, Drag: HomeCardNav.DragOf(in cc), ShowMenu: hasMenu) { Menu = hasMenu ? menu : null };
     }
 
-    /// <summary>How many cards a capped grid of <paramref name="cols"/> x <paramref name="rows"/> shows from <paramref name="available"/>: whole
-    /// rows only (nine mixes in five columns are one row of five, the rest one click away under "See all"); fewer cards than one row show as
-    /// they are.</summary>
-    public static int Shown(int cols, int rows, int available)
-    {
-        cols = Math.Max(1, cols);
-        available = Math.Max(0, available);
-        if (available <= cols) return available;
-        return Math.Min(cols * Math.Max(1, rows), available / cols * cols);
-    }
-
-    /// <summary>The rows <paramref name="n"/> cards take at <paramref name="cols"/> columns.</summary>
-    public static int RowsOf(int n, int cols) => n <= 0 ? 0 : (n + Math.Max(1, cols) - 1) / Math.Max(1, cols);
-
-    /// <summary>A star track's width: <paramref name="cols"/> equal columns <paramref name="gap"/> apart across <paramref name="width"/>.</summary>
-    public static float CellWidth(float width, int cols, float gap) => cols <= 1 ? width : (width - (cols - 1) * gap) / cols;
+    /// <summary>How many cards a capped grid of <paramref name="rows"/> rows at <paramref name="cols"/> columns shows from
+    /// <paramref name="available"/> (GridFill then spreads them evenly over those rows, the last row growing).</summary>
+    public static int Shown(int cols, int rows, int available) => Math.Min(Math.Max(0, available), Math.Max(1, cols) * Math.Max(1, rows));
 
     /// <summary><paramref name="cols"/> equal star tracks.</summary>
     public static TrackSize[] Stars(int cols)

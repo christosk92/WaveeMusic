@@ -15,6 +15,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using FluentGpu.Foundation;
+using FluentGpu.Controls;
 using FluentGpu.Hooks;
 using FluentGpu.Pal;
 using Wavee.HomeUi;
@@ -381,6 +382,35 @@ public static partial class Diagnostics
                 }
                 case "plan":
                     return Inspect.Reply.Ok(id, name, w => WritePlan(w, a.Str("facet", ""), store));
+                case "page":
+                {
+                    // A paged section (the preview cards' pages, GridFill.Pagers): `key=` its zone key or any unique part of it (the section uri),
+                    // `page=` a page from 1, or `dir=right` (the next) / `dir=left` (the previous). Settles (or traces with `trace=N`) after the slide.
+                    string want = a.Str("key", "");
+                    ShelfController? pager = null;
+                    string? found = null;
+                    foreach (var (k, c) in GridFill.Pagers)
+                    {
+                        if (want.Length > 0 && !k.Contains(want, StringComparison.Ordinal)) continue;
+                        if (found is not null) return Fail("key '" + want + "' names more than one paged section (" + found + ", " + k + ")");
+                        found = k; pager = c;
+                    }
+                    if (pager is null) return Fail(GridFill.Pagers.Count == 0 ? "no paged section is mounted" : "no paged section's key holds '" + want + "'");
+                    int before = pager.Page.Peek();
+                    string dir = a.Str("dir", "");
+                    if (dir == "right") pager.Next();
+                    else if (dir == "left") pager.Prev();
+                    else pager.GoTo(Math.Max(0, a.Int("page", 1) - 1));
+                    var hit = pager;
+                    string at = found!;
+                    return Settled(id, name, a, w =>
+                    {
+                        w.WriteString("key", at);
+                        w.WriteNumber("from", before + 1);
+                        w.WriteNumber("page", hit.Page.Peek() + 1);
+                        w.WriteNumber("pages", hit.PageCount.Peek());
+                    });
+                }
                 case "verify":
                 {
                     if (board is null) return Fail("no board is mounted (route=home on a theme that draws the board)");

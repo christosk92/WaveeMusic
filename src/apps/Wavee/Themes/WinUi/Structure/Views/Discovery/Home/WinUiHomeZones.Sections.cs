@@ -5,7 +5,7 @@
 //   MoodPlates     a grid of flat colour plates (the mix's own colour), the name 20 semibold over its first sentence      tools: See all N
 //   BookShelf      PagedShelf of the house surface: author, "★ 4.7 · 20 hr 56 min", the plan as a pill; every card 4 lines tools: See all · pager
 //   ClusterCards   Ui.Card: the reason (avatar + "For fans of" + the artist as a link), the playlist (cover, name, description,
-//                  "Playlist · Spotify · 50 songs", Play), 4 rows; two rows of cards, the rest behind "Show N more" (a drawer)
+//                  "Playlist · Spotify · 50 songs", Play), 4 rows; pages of two rows at most, no empty slot (GridFill)
 //   VideoTiles(1)  one episode as a video card: the still (16:9) with "Video" and the length on it, the progress hairline, the
 //                  show, the title, "20 Jul · 1 hr 24 min · not started", Play and Save
 //   entity header  a section that hangs off something: its cover, the lead words over its name as a link
@@ -77,8 +77,7 @@ internal static partial class WinUiHomeZones
     {
         int n = Math.Min(zone.Items.Count, layout.PlatesMax);
         if (n == 0) return 0f;
-        int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Plates.Floor, WinUiHomeRules.CardGap, layout.Plates.MaxCols), 1, n);
-        int rows = (n + cols - 1) / cols;
+        int rows = GridFill.Rows(n, GridFill.Columns(n, layout.Plates.Columns(width, WinUiHomeRules.CardGap)));
         return rows * WinUiHomeRules.MoodPlateH + (rows - 1) * WinUiHomeRules.CardGap;
     }
 
@@ -91,36 +90,41 @@ internal static partial class WinUiHomeZones
         return pad.Top + pad.Bottom + WinUiHomeRules.VideoStillW / R.Space.WideTileAspect;
     }
 
-    /// <summary>The preview cards' grid at <paramref name="width"/>: each grid row as tall as its tallest card (the reason, the offer, its rows), then
-    /// the "Show more" row when cards are held back.</summary>
-    static float ClusterGridExtent(Zone zone, WinUiHomeLayout layout, float width)
+    /// <summary>The preview cards' pages at <paramref name="width"/>: the tallest page (every card's height is its data's) and, while there is
+    /// more than one, the pips row under it.</summary>
+    static float ClusterGridExtent(Zone zone, WinUiHomeLayout layout, float width, out int pageCount)
     {
+        pageCount = 0;
         var clusters = zone.Clusters;
         if (clusters is not { Count: > 0 }) return 0f;
-        int visible = Math.Min(clusters.Count, layout.Clusters.MaxCols * WinUiHomeRules.ClusterVisibleRows);
-        int cols = Math.Clamp(GridEl.AutoFillColumnCount(width, layout.Clusters.Floor, WinUiHomeRules.CardGap, layout.Clusters.MaxCols), 1, visible);
-        float rowH = Shape.Row(WinUiHomeRules.ClusterArt).MinHeight;
-        var pad = Spacing.CardPad;
-        float total = 0f;
-        for (int start = 0, r = 0; start < visible; start += cols, r++)
-        {
-            float tallest = 0f;
-            for (int i = start; i < Math.Min(start + cols, visible); i++)
-            {
-                var c = clusters[i];
-                float h = pad.Top + pad.Bottom + WinUiHomeRules.ReasonAvatar;
-                if (c.Header is not null) h += Spacing.M + WinUiHomeRules.PreviewCover;
-                h += Spacing.M + Math.Min(c.Rows.Count, WinUiHomeRules.ClusterRows) * rowH;
-                tallest = MathF.Max(tallest, h);
-            }
-            total += (r > 0 ? WinUiHomeRules.CardGap : 0f) + tallest;
-        }
-        if (visible < clusters.Count) total += WinUiHomeRules.CardGap + layout.HeaderToolsH;
-        return total;
+        var pages = GridFill.Pages(clusters.Count, layout.Clusters.Columns(width, WinUiHomeRules.CardGap), clusters);
+        pageCount = pages.Length;
+        float h = GridFill.PagesHeight(clusters, pages, WinUiHomeRules.CardGap, s_clusterExtent, s_wideClusterExtent);
+        return pages.Length > 1 ? h + WinUiHomeRules.CardGap + WinUiHomeRules.PipsRowH : h;
     }
 
+    static readonly Func<ZoneCluster, float> s_clusterExtent = ClusterExtent, s_wideClusterExtent = WideClusterExtent;
 
+    /// <summary>A preview card's height: the reason, the offer, its rows, inside the card's padding.</summary>
+    static float ClusterExtent(ZoneCluster c)
+    {
+        var pad = Spacing.CardPad;
+        float h = pad.Top + pad.Bottom + WinUiHomeRules.ReasonAvatar;
+        if (c.Header is not null) h += Spacing.M + WinUiHomeRules.PreviewCover;
+        return h + Spacing.M + Math.Min(c.Rows.Count, WinUiHomeRules.ClusterRows) * Shape.Row(WinUiHomeRules.ClusterArt).MinHeight;
+    }
 
+    /// <summary>A lone last preview card's height in its wide form: the reason over the offer beside its rows in two columns.</summary>
+    static float WideClusterExtent(ZoneCluster c)
+    {
+        var pad = Spacing.CardPad;
+        float left = WinUiHomeRules.ReasonAvatar + (c.Header is not null ? Spacing.M + WinUiHomeRules.PreviewCover : 0f);
+        float right = GridFill.Rows(Math.Min(c.Rows.Count, WinUiHomeRules.ClusterRows), WinUiHomeRules.WideClusterRowCols) * Shape.Row(WinUiHomeRules.ClusterArt).MinHeight;
+        return pad.Top + pad.Bottom + MathF.Max(left, right);
+    }
+
+    /// <summary>A responsive grid's first-frame width (before its box is measured): the band's widest fit.</summary>
+    static float FirstWidth(WinUiGridBand band, float gap) => band.Floor * band.MaxCols + gap * (band.MaxCols - 1);
 
     // ── mood plates (P6) ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -139,11 +143,10 @@ internal static partial class WinUiHomeZones
             var c = zone.Items[i];
             plates[i] = ItemMemo.Of(hooks, new PlateKey(c, c.Uri, c.Title, SectionCopy.PlateLine(in c), c.Accent), s_plate);
         }
-        return new GridEl
-        {
-            Key = "mood-plates:" + zone.Key, MinColWidth = layout.Plates.Floor, MaxColumns = layout.Plates.MaxCols,
-            ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, RowHeight = WinUiHomeRules.MoodPlateH, Children = plates,
-        };
+        var band = layout.Plates;
+        return GridFill.Responsive("mood-plates:" + zone.Key, n, w => band.Columns(w, WinUiHomeRules.CardGap),
+            cols => GridFill.Build(plates, cols, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap, WinUiHomeRules.MoodPlateH),
+            FirstWidth(band, WinUiHomeRules.CardGap));
     }
 
     /// <summary>One plate: the mix's own dark colour (the card fill where it has none), the name 20 semibold and its line in the on-media inks.</summary>
@@ -235,77 +238,48 @@ internal static partial class WinUiHomeZones
 
     // ── preview cards (P4) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>"Because you like": two rows of cards in the tier's columns, the rest behind "Show N more".</summary>
-    static Element ClusterGrid(Zone zone, WinUiHomeLayout layout)
+    /// <summary>"Because you like": the cards on pages of two rows at most (GridFill: no empty slot, the last row's cards grow, a lone last card in
+    /// its wide form), one page at a time, sliding sideways; the previous and next buttons in the header, the pips centred under the grid, the
+    /// edge chevrons on hover. The section keeps the tallest page's height.</summary>
+    static Element ClusterGrid(Zone zone, WinUiHomeLayout layout, ShelfController? controller)
     {
         var clusters = zone.Clusters;
         if (clusters is not { Count: > 0 }) return new BoxEl();
-        int visible = Math.Min(clusters.Count, layout.Clusters.MaxCols * WinUiHomeRules.ClusterVisibleRows);
-        var cards = new Element[visible];
-        for (int i = 0; i < visible; i++) cards[i] = ClusterCard(clusters[i]);
-        var grid = ClusterCells(cards, layout);
-        if (visible >= clusters.Count) return grid;
-        var rest = new ZoneCluster[clusters.Count - visible];
-        for (int i = 0; i < rest.Length; i++) rest[i] = clusters[visible + i];
-        return new BoxEl
-        {
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = WinUiHomeRules.CardGap,
-            Children =
-            [
-                grid,
-                Embed.Comp(new MoreProps(zone.Key, rest, layout), static () => new ClusterMore())
-                    with { SkeletonProxy = () => MoreLink(rest.Length, open: false, static () => { }, layout) },
-            ],
-        };
+        var band = layout.Clusters;
+        string key = zone.Key;
+        return FluentGpu.Controls.Responsive.Of("clusters:" + key, w => band.Columns(w, WinUiHomeRules.CardGap),
+            fit => ClusterPages(key, clusters, fit, controller), fallback: FirstWidth(band, WinUiHomeRules.CardGap));
     }
 
-    static GridEl ClusterCells(Element[] cards, WinUiHomeLayout layout) => new()
+    static Element ClusterPages(string key, IReadOnlyList<ZoneCluster> clusters, int fit, ShelfController? controller)
     {
-        MinColWidth = layout.Clusters.Floor, MaxColumns = layout.Clusters.MaxCols,
-        ColGap = WinUiHomeRules.CardGap, RowGap = WinUiHomeRules.CardGap, Children = cards,
-    };
-
-    static Element MoreLink(int count, bool open, Action toggle, WinUiHomeLayout layout)
-        => new BoxEl
+        var pages = GridFill.Pages(clusters.Count, fit, clusters);
+        float height = GridFill.PagesHeight(clusters, pages, WinUiHomeRules.CardGap, s_clusterExtent, s_wideClusterExtent);
+        var shelf = GridFill.Paged(key, clusters, pages, WinUiHomeRules.CardGap, WinUiHomeRules.CardGap, height,
+            static c => ClusterCard(c), static c => ClusterCard(c, wide: true), controller, ShelfPager.HoverEdge, Icons.ChevronLeft, Icons.ChevronRight);
+        if (pages.Length <= 1) return shelf;
+        var pips = new BoxEl
         {
-            // The link's own width (a stretched row would put its centre, where a pointer aims, in empty space); the tools' height, so the chapter's
-            // extent is known before it lays out.
-            Direction = 0, MinWidth = 0f, AlignSelf = FlexAlign.Start, Height = layout.HeaderToolsH, AlignItems = FlexAlign.Center,
-            Children = [HyperlinkButton.Create(open ? Loc.Get(Strings.Home.ShowFewer) : Strings.Home.ShowMore(count), toggle) with { Shrink = 0f }],
+            Direction = 0, Height = WinUiHomeRules.PipsRowH, MinWidth = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+            Children = controller is null ? [] : [Embed.Comp(() => new ClusterPips(controller)) with { Key = "cluster-pips" }],
         };
-
-    sealed record MoreProps(string Key, IReadOnlyList<ZoneCluster> Rest, WinUiHomeLayout Layout)
-    {
-        public bool Equals(MoreProps? o) => o is not null && Key == o.Key && Layout.Equals(o.Layout) && Rest.SequenceEqual(o.Rest);
-        public override int GetHashCode() => Key.GetHashCode();
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = WinUiHomeRules.CardGap, Children = [shelf, pips] };
     }
 
-    /// <summary>The cards past two rows: a drawer under the link that mounts to open and unmounts to close (the reveal motion), the link
-    /// under it. One click shows them all.</summary>
-    sealed class ClusterMore : Component
+    /// <summary>The pips under the preview cards: the stock pips over the chapter's controller (the selected one larger), each a page.</summary>
+    sealed class ClusterPips(ShelfController controller) : Component
     {
         public override Element Render()
         {
-            var p = UseProps<MoreProps>();
-            var (open, set) = UseState(false);
-            var kids = new List<Element>(2);
-            if (open)
-            {
-                var cards = new Element[p.Rest.Count];
-                for (int i = 0; i < cards.Length; i++) cards[i] = ClusterCard(p.Rest[i]);
-                kids.Add(new BoxEl
-                {
-                    Key = "cluster-more:" + p.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
-                    Animate = Design.Reveal.Drawer, Children = [ClusterCells(cards, p.Layout)],
-                });
-            }
-            kids.Add(MoreLink(p.Rest.Count, open, () => set(!open), p.Layout) with { Key = "cluster-more-link:" + p.Key });
-            return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = WinUiHomeRules.CardGap, Children = kids.ToArray() };
+            int count = controller.PageCount.Value;
+            int page = controller.Page.Value;
+            return count <= 1 ? new BoxEl() : PipsPager.Controlled(count, page, controller.GoTo);
         }
     }
 
-    /// <summary>One preview card: the reason, the playlist it offers, its first four rows.</summary>
-    static Element ClusterCard(ZoneCluster cluster)
+    /// <summary>One preview card: the reason, the playlist it offers, its first four rows. <paramref name="wide"/> (a lone card on the last row):
+    /// the reason over the offer on the left, the rows in two columns beside them.</summary>
+    static Element ClusterCard(ZoneCluster cluster, bool wide = false)
     {
         var kids = new List<Element>(3) { ReasonLine(cluster) };
         if (cluster.Header is { } h) kids.Add(Offer(h));
@@ -321,6 +295,17 @@ internal static partial class WinUiHomeZones
                 Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
                 { Menu = HomeCardNav.MenuOf(in c) };
             rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(WinUiHomeRules.ClusterArt))] };
+        }
+        if (wide)
+        {
+            var side = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.M, Children = kids.ToArray() };
+            var grid = new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children = [new GridEl { Columns = RhythmCards.Stars(WinUiHomeRules.WideClusterRowCols), ColGap = WinUiHomeRules.CardGap, Children = rows }],
+            };
+            return Ui.Card(new BoxEl { Direction = 0, MinWidth = 0f, Gap = WinUiHomeRules.CardGap, AlignItems = FlexAlign.Start, Children = [side, grid] })
+                with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Layout = WinUiDiscoveryMotion.Shove };
         }
         kids.Add(new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows });
         return Ui.Card(kids.ToArray()) with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.M, Layout = WinUiDiscoveryMotion.Shove };

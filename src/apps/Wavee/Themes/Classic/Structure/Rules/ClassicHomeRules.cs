@@ -91,8 +91,8 @@ public static class ClassicHomeRules
     public const int ReleaseRowsMax = 6;
     public const int ClusterRows = 4;
 
-    /// <summary>The preview cards shown before "Show more" (home-gap P4): two rows of the tier's columns. A card's playlist cover and the reason's avatar.</summary>
-    public const int ClusterVisibleRows = 2;
+    /// <summary>A lone preview card on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
     public const float PreviewCover = 72f, ReasonAvatar = 32f;
 
     /// <summary>A section header that hangs off an entity: its height (the cover beside two lines) and the cover.</summary>

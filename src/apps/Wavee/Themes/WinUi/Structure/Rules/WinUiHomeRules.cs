@@ -71,8 +71,11 @@ public static class WinUiHomeRules
     /// <summary>How many release rows, cluster cards and cluster rows a body shows.</summary>
     public const int ReleaseRowsMax = 6, ClusterRows = 4;
 
-    /// <summary>The preview cards shown before "Show more" (home-gap P4): two rows of the tier's columns.</summary>
-    public const int ClusterVisibleRows = 2;
+    /// <summary>A lone preview card on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
+
+    /// <summary>The pips row under paged preview cards.</summary>
+    public const float PipsRowH = 24f;
 
     /// <summary>A preview card's playlist cover and the reason line's avatar (home-gap P4).</summary>
     public const float PreviewCover = 96f, ReasonAvatar = 20f;

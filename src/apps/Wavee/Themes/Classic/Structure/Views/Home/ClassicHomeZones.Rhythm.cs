@@ -61,7 +61,7 @@ internal static partial class ClassicHomeZones
         Element grid = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
-            Children = [new GridEl { Columns = RhythmCards.Stars(band.Cols), ColGap = Spacing.M, RowGap = Spacing.M, Children = cells }],
+            Children = [GridFill.Build(cells, GridFill.Columns(n, band.Cols), Spacing.M, Spacing.M)],
         };
         return new BoxEl
         {
@@ -135,10 +135,7 @@ internal static partial class ClassicHomeZones
             int n = RhythmCards.Shown(c, band.Rows, cards.Count);
             var cells = new Element[n];
             for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
-            return new GridEl
-            {
-                Columns = RhythmCards.Stars(c), ColGap = gap, RowGap = gap, RowHeight = rowH, Children = cells,
-            };
+            return GridFill.Build(cells, GridFill.Columns(n, c), gap, gap, rowH);
         }, fallback: first);
     }
 

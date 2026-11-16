@@ -57,7 +57,7 @@ internal static partial class ZuneHomeZones
         Element grid = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
-            Children = [new GridEl { Columns = RhythmCards.Stars(lay.LeadCols), ColGap = H.ShelfGap, RowGap = H.ShelfGap, Children = cells }],
+            Children = [GridFill.Build(cells, GridFill.Columns(n, lay.LeadCols), H.ShelfGap, H.ShelfGap)],
         };
         var body = new BoxEl
         {
@@ -127,7 +127,7 @@ internal static partial class ZuneHomeZones
             int n = RhythmCards.Shown(c, band.Rows, cards.Count);
             var cells = new Element[n];
             for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
-            return new GridEl { Columns = RhythmCards.Stars(c), ColGap = gap, RowGap = gap, RowHeight = rowH, Children = cells };
+            return GridFill.Build(cells, GridFill.Columns(n, c), gap, gap, rowH);
         }, fallback: first);
         return K.Section(Heading(zone, lay), grid);
     }

@@ -139,11 +139,14 @@ public static class ZuneHomeRules
     /// <summary>At most this many release rows.</summary>
     public const int ReleaseRowsMax = 6;
 
-    /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art, the narrowest column.</summary>
-    public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f, ClusterMinCol = 200f;
+    /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art.</summary>
+    public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f;
 
-    /// <summary>Rows per cluster (home-gap P4: four), and the rows of clusters shown before "show more".</summary>
-    public const int ClusterRows = 4, ClusterVisibleRows = 2;
+    /// <summary>Rows per cluster (home-gap P4: four).</summary>
+    public const int ClusterRows = 4;
+
+    /// <summary>A lone group on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
 
     /// <summary>A preview group's playlist cover, the reason's avatar, the gap in the group's offer (home-gap P4).</summary>
     public const float PreviewCover = 72f, ReasonAvatar = 24f, OfferGap = 14f;

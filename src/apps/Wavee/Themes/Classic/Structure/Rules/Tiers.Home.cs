@@ -221,6 +221,10 @@ public sealed record ClassicHomeLayout
     public required ClassicGridBand Tiles { get; init; }
 
     /// <summary>The episode rows' columns (a lead and a list).</summary>
+    /// <summary>A paged section's header carries the previous and next buttons beside its "1 of 2" (false at Compact: its fixed header row
+    /// cannot hold the 40 target, and the pages swipe).</summary>
+    public bool PageArrows { get; init; } = true;
+
     /// <summary>A personal set's lead card and grid (Home rhythm A).</summary>
     public required ClassicLeadGridBand LeadGrid { get; init; }
 
@@ -341,6 +345,7 @@ public static class ClassicHomeTiers
         Recents = new ClassicGridBand(100f, 2), RecentsArt = 40f, RecentsRowH = 56f,
         Releases = new ClassicGridBand(280f, 1), Clusters = new ClassicGridBand(280f, 1), Tiles = new ClassicGridBand(220f, 1),
         Episodes = new ClassicGridBand(280f, 1), Continue = new ClassicGridBand(280f, 1),
+        PageArrows = false,
         LeadGrid = new ClassicLeadGridBand(Beside: false, Cols: 2, Rows: 2), Compact = new ClassicCappedBand(ClassicGridBand.Fixed(2), 3), CompactArt = 40f, CompactRowH = 56f,
         Circles = new ClassicCappedBand(ClassicGridBand.Fixed(3), 2), Capped = new ClassicCappedBand(ClassicGridBand.Fixed(2), 2),
         SectionMinCell = 124f,
