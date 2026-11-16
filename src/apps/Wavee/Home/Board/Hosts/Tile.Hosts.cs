@@ -111,6 +111,7 @@ public sealed class PinTileHost : Component
             Line = () => LineOf(target),
             Cover = () => CoverOf(target, uri) ?? (hintCover.Length > 0 ? hintCover : null),
             Round = !target.IsNone && Search.RoundArt(target.Kind),
+            CoverArt = EntityUri.IsLikedCollection(uri) ? s_liked : null,
             UserPin = p.UserPin,
             Playing = uri.Length > 0 ? () => Controls.RelatesNow(uri) : static () => false,
             Open = card?.OnClick ?? (() => { if (pinId == "liked") Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked)); }),
@@ -118,6 +119,8 @@ public sealed class PinTileHost : Component
             Card = card,
         });
     }
+
+    static readonly Func<float, Element> s_liked = static edge => Sidebar.Cover.Liked(edge);
 
     static string NameOf(EntityRef r, string hint)
     {

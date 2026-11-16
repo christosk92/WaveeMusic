@@ -116,7 +116,9 @@ internal static class WinUiHomeTiles
     static BoxEl Pad(params Element[] kids) => new()
     {
         Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S,
-        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.MoreReserve, WinUiHomeBoardRules.TilePad),
+        // The ⋯ lane is outside the card's content (a margin, not padding): the content's click target never runs under the tools.
+        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.TilePad),
+        Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
         Children = kids,
     };
 
@@ -135,7 +137,8 @@ internal static class WinUiHomeTiles
         return new BoxEl
         {
             Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
+            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, 0f, 0f),
+            Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
             Children = end is null ? [art, text] : [art, text, end],
         };
     }
@@ -174,10 +177,11 @@ internal static class WinUiHomeTiles
     {
         var f = p.Frame;
         string? cover = p.Cover();
+        Element Art(float edge) => p.CoverArt is { } drawn ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [drawn(edge)] } : Cover(cover, edge, p.Round);
         switch (f.Form)
         {
             case HomeTileForm.S:
-                return Card(ctx, f, Clickable(RowFace(Cover(cover, WinUiHomeBoardRules.RowArt, p.Round), p.Name, p.Line), p.Open));
+                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line), p.Open));
             default:
             {
                 bool wide = f.Form != HomeTileForm.M;
@@ -187,7 +191,7 @@ internal static class WinUiHomeTiles
                     Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, MinWidth = 0f, Grow = 1f,
                     Children =
                     [
-                        Cover(cover, art, p.Round),
+                        Art(art),
                         new BoxEl
                         {
                             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = Spacing.XXS,
