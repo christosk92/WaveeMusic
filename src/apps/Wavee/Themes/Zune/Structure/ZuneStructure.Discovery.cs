@@ -25,6 +25,18 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.HomePage, ZuneHomePage.Template, "zune.home.page");
         views.Add(ViewKeys.HomeQuickplay, ZuneHomeQuickplay.Template, "zune.home.quickplay");
         views.Add(ViewKeys.HomeZoneRecentGrid, ZuneHomeQuickplay.HistoryTemplate, "zune.home.zone.recent-grid");
+        // The pinned Home board (contract 1.117): Nothing until Zune draws its board (lane W registered these at I1).
+        CommonNothing.Register(views, ViewKeys.HomeBoard);
+        CommonNothing.Register(views, ViewKeys.HomeBoardTools);
+        CommonNothing.Register(views, ViewKeys.HomeTilePin);
+        CommonNothing.Register(views, ViewKeys.HomeTileNowPlaying);
+        CommonNothing.Register(views, ViewKeys.HomeTileUpNext);
+        CommonNothing.Register(views, ViewKeys.HomeTileRecents);
+        CommonNothing.Register(views, ViewKeys.HomeTileReleases);
+        CommonNothing.Register(views, ViewKeys.HomeTileDaylist);
+        CommonNothing.Register(views, ViewKeys.HomeTileSection);
+        CommonNothing.Register(views, ViewKeys.HomeTileOptions);
+        CommonNothing.Register(views, ViewKeys.HomeTileVacant);
         views.Add(ViewKeys.HomeDaylist, ZuneHomeDaylist.Template, "zune.home.daylist");
         views.Add(ViewKeys.HomeDaylistClock, ZuneHomeDaylist.ClockTemplate, "zune.home.daylist-clock");
         views.Add(ViewKeys.HomeCharts, ZuneHomeZones.ChartsTemplate, "zune.home.charts");

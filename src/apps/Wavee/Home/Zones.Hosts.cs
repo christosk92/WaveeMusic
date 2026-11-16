@@ -36,26 +36,31 @@ public sealed record RecentGridProps(Zone Zone)
 [CoreHost]
 public sealed class RecentGrid : Component
 {
-    sealed record Cache(Dictionary<string, long> When, RecentsWeek Week, uint Version);
+    /// <summary>What the grid folded from one Recents version: the "when" of each uri and the week.</summary>
+    internal sealed record Cache(Dictionary<string, long> When, RecentsWeek Week, uint Version);
     Cache? _cache;
 
     public override Element Render()
     {
         var p = UseProps<RecentGridProps>();
-        var items = p.Zone.Items;
-
         var handle = Recents.Me;
         UseEffect(() => { if (handle.Slot > 0) Entities.EnsureEdge(FetchEdge.Recents, handle.Slot); });
+        return Slots.View(ViewKeys.HomeZoneRecentGrid, PropsOf(p.Zone, ref _cache));
+    }
 
+    /// <summary>The grid's props for <paramref name="zone"/>: a SUBSCRIBING read of Recents, folded once per Recents version into
+    /// <paramref name="cache"/> (the caller's own field). The pinned board's Recently played tile reads the same (its host demands the edge as this does).</summary>
+    internal static HomeRecentsProps PropsOf(Zone zone, ref Cache? cache)
+    {
+        var handle = Recents.Me;
         _ = Recents.Changed.Value;   // subscribe
-        var cache = BuildCache(handle);
-
+        var c = BuildCache(handle, ref cache);
         long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var cells = RecentsCells.Of(items, cache.When, User.Me.LikedTrackSlots.Length, nowMs, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
-        return Slots.View(ViewKeys.HomeZoneRecentGrid, new HomeRecentsProps
+        var cells = RecentsCells.Of(zone.Items, c.When, User.Me.LikedTrackSlots.Length, nowMs, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+        return new HomeRecentsProps
         {
-            Zone = p.Zone, Cells = cells, Week = cache.Week, Playing = Playback.IsPlaying, RemoteDeviceName = RemoteDeviceName,
-        });
+            Zone = zone, Cells = cells, Week = c.Week, Playing = Playback.IsPlaying, RemoteDeviceName = RemoteDeviceName,
+        };
     }
 
     /// <summary>The Connect device the bar itself says it is "Playing on", or null while playback is local (or
@@ -69,10 +74,10 @@ public sealed class RecentGrid : Component
         return slot >= 0 ? rows[slot].Name : null;
     }
 
-    Cache BuildCache(Recents handle)
+    static Cache BuildCache(Recents handle, ref Cache? cache)
     {
         uint version = handle.Version;
-        if (_cache is { } c && c.Version == version) return c;
+        if (cache is { } c && c.Version == version) return c;
 
         var snapshot = RecentsSnapshot.Of(in handle);
         var when = new Dictionary<string, long>(snapshot.Count, StringComparer.Ordinal);
@@ -84,7 +89,7 @@ public sealed class RecentGrid : Component
             if (uri.Length > 0) when[uri] = snapshot.Rows[i].PlayedAtMs;
         }
         var week = WeekSummary.Of(snapshot.Rows, DateOnly.FromDateTime(DateTime.Now), TimeZoneInfo.Local);
-        return _cache = new Cache(when, week, version);
+        return cache = new Cache(when, week, version);
     }
 }
 

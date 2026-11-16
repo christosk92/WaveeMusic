@@ -82,6 +82,9 @@ public sealed class DaylistCard : Component
         return who is null ? part + " · " + yours : Strings.Home.HeroEyebrow(part, who, yours);
     }
 
+    /// <summary>The card's eyebrow as a subscribing read (the pinned board's Daylist tile binds it).</summary>
+    public static readonly Func<string> EyebrowText = static () => Eyebrow();
+
     /// <summary>The local-clock part of the greeting: "Good morning" / "Good afternoon" / "Good evening".</summary>
     static string GreetingPart() => DateTime.Now.Hour switch
     {
