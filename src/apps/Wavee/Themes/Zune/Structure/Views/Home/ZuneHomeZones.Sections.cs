@@ -110,9 +110,10 @@ internal static partial class ZuneHomeZones
             Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => HomeCardNav.Open(in c),
             Children =
             [
+                // The line wraps to a second line rather than cutting (the plate has the room above the 40 light name; nothing is shrunk).
                 R.Type.DenseMeta(k.Line.Length > 0 ? k.Line : " ") with
                 {
-                    Color = inkSoft, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                    Color = inkSoft, Case = R.Case.For(LabelKind.Label), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                     MinWidth = 0f, Margin = new Edges4(0f, 0f, H.TilePadX, 0f),
                 },
                 // The word is the art: never shrunk, never cut to an ellipsis; a long one runs off the plate's right edge through a fade.
