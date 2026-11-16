@@ -106,7 +106,15 @@ internal static class ClassicHomeBoard
             var p = UseProps<BoardProps>();
             _p = p;
             var board = p.Board;
-            var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value, _p.Board.View.Editing.Value, _p.Board.ReadOnly));
+            var items = UseComputed(() =>
+            {
+                var list = ItemsOf(_p!.Board.Model.Value, _p.Board.View.Editing.Value, _p.Board.ReadOnly);
+                // A re-projection that changes no row while a tile is lifted (a feed landing, a table filling in) keeps the list the lift was
+                // made on: a new list under a lift cancels it.
+                if (_reorder?.IsLifted == true && _lastItems is { } prev && SameRows(prev, list)) return prev;
+                _lastItems = list;
+                return list;
+            });
             UseLayoutEffect(() =>
             {
                 Live = this;
@@ -158,8 +166,22 @@ internal static class ClassicHomeBoard
                 [
                     ClassicHomeFind.Strip(board, p.Lay),
                     PackGrid.Create(items, _template, _options),
+                    Embed.Comp(new RingProps(board.View), static () => new RingClear()) with { Key = "home:ring-clear" },
                 ],
             };
+        }
+
+        IReadOnlyList<ClassicBoardItem>? _lastItems;
+
+        static bool SameRows(IReadOnlyList<ClassicBoardItem> a, IReadOnlyList<ClassicBoardItem> b)
+        {
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+            {
+                var x = a[i]; var y = b[i];
+                if (x.Key != y.Key || x.Row != y.Row || x.Entry.Size != y.Entry.Size || x.Entry.Hidden != y.Entry.Hidden) return false;
+            }
+            return true;
         }
 
         /// <summary>The grid's rows: every entry; after an empty Pinned head its drop row; in Edit Home an add row at every group's end; at rest the end link.</summary>
@@ -288,14 +310,25 @@ internal static class ClassicHomeBoard
             var board = _p!.Board;
             string id = IdOf(a.Key);
             string name = NameOf(board, id);
+            // While lifted the place is the projection's (the document moves only at the drop): the pack's own position and count in its group.
+            string where = a.Position > 0 ? Strings.Home.BoardVerbs.Position(n: a.Position, count: a.Count, group: GroupTitleAt(board.Model.Peek(), a.Group)) : "";
             return a.Kind switch
             {
-                PackAnnounceKind.Grab => Strings.Theme.Classic.Home.Board.Grabbed(name: name, where: board.Verbs.Where(id)),
-                PackAnnounceKind.Move => board.Verbs.Where(id),
-                PackAnnounceKind.Drop => Strings.Theme.Classic.Home.Board.Dropped(name: name, where: board.Verbs.Where(id)),
+                PackAnnounceKind.Grab => Strings.Theme.Classic.Home.Board.Grabbed(name: name, where: where),
+                PackAnnounceKind.Move => where,
+                // The drop's sentence is the verb's own ("Moved {name}, position n of m in {group}"), said once the document has moved.
+                PackAnnounceKind.Drop => null,
                 PackAnnounceKind.Cancel => Loc.Get(Strings.Theme.Classic.Home.Board.Cancelled),
                 _ => null,
             };
+        }
+
+        static string GroupTitleAt(BoardModel m, int ordinal)
+        {
+            int g = -1;
+            foreach (var e in m.Entries)
+                if (e.Kind == BoardEntryKind.GroupHead && ++g == ordinal) return e.Title;
+            return "";
         }
 
         PackAutomation Automation(ClassicBoardItem it)
@@ -386,7 +419,14 @@ internal static class ClassicHomeBoard
             var view = board.View;
             if (view.OpenId.Peek() is not null) { board.Verbs.Close(refocus: true); return true; }
             if (view.ConfirmingReset.Peek()) { view.ConfirmingReset.Value = false; return true; }
-            if (view.Add.Peek().IsOpen || view.Query.Peek().Length > 0) { view.Add.Value = HomeAddSurface.Closed; view.Query.Value = ""; return true; }
+            if (view.Add.Peek().IsOpen || view.Query.Peek().Length > 0)
+            {
+                var was = view.Add.Peek();
+                view.Add.Value = HomeAddSurface.Closed;
+                view.Query.Value = "";
+                if (was.Kind == HomeAddSurfaceKind.Row) ClassicHomeAddRow.FocusButton(was.Arg);
+                return true;
+            }
             if (view.Editing.Peek()) { SetEditing(false); return true; }
             return false;
         }
@@ -523,6 +563,21 @@ internal static class ClassicHomeBoard
             if (!confirm) { V.ConfirmingReset.Value = true; return; }
             V.ConfirmingReset.Value = false;
             Vb.Reset(HomeResetScope.Everything);
+        }
+    }
+
+    sealed record RingProps(HomeBoardView View);
+
+    /// <summary>The ring around a tile just added shows for 1.8 s (`RingMs`), then goes; it draws nothing itself.</summary>
+    sealed class RingClear : Component
+    {
+        public override Element Render()
+        {
+            var view = UseProps<RingProps>().View;
+            string? id = view.RingId.Value;
+            UseTimeout(() => { if (id is not null && view.RingId.Peek() == id) view.RingId.Value = null; }, ClassicHomeBoardRules.RingMs,
+                DepKey.From(id is null ? 0 : StringComparer.Ordinal.GetHashCode(id)));
+            return new BoxEl { Visible = false };
         }
     }
 

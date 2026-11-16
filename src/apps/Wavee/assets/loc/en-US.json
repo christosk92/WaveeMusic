@@ -3005,7 +3005,6 @@
           "liveUpdates": "Live updates",
           "tileMore": "More options",
           "grabbed": "Grabbed {name}, {where}",
-          "dropped": "Dropped {name} at {where}",
           "cancelled": "Move cancelled",
           "open": "Open",
           "play": "Play",

@@ -34,14 +34,17 @@ internal static class ClassicHomeFind
     internal static IReadSignal<int> FirstAsk => s_focusFirst;
 
     /// <summary>Type into the search: the strip opens on a query and folds on an empty one; the count is said.</summary>
-    public static void Type(HomeBoardProps board, string query, bool speak = true)
+    public static void Type(HomeBoardProps board, string query)
     {
         var view = board.View;
-        if (!ReferenceEquals(view.Query.Peek(), query) && view.Query.Peek() != query) view.Query.Value = query;
+        if (view.Query.Peek() != query) view.Query.Value = query;
         string q = query.Trim();
-        view.Add.Value = q.Length > 0 ? new HomeAddSurface(HomeAddSurfaceKind.Find) : view.Add.Peek().Kind == HomeAddSurfaceKind.Find ? HomeAddSurface.Closed : view.Add.Peek();
-        if (speak && q.Length > 0) board.Verbs.Say(Spoken(board, q, Results(board).Count));
+        if (q.Length > 0) view.Add.Value = new HomeAddSurface(HomeAddSurfaceKind.Find);
+        else if (view.Add.Peek().Kind == HomeAddSurfaceKind.Find) view.Add.Value = HomeAddSurface.Closed;
     }
+
+    /// <summary>The count is said once the typing pauses (one sentence for "mix", not one per letter).</summary>
+    const float SayAfterMs = 400f;
 
     /// <summary>"3 to add for mix" / "Nothing matches mix".</summary>
     public static string Spoken(HomeBoardProps board, string q, int n)
@@ -96,6 +99,11 @@ internal static class ClassicHomeFind
                 if (findAsk > 0 && !lay.BarInline && field.Node.Peek() is { IsNull: false } n) hooks.FocusNode?.Invoke(n, true);
             }, DepKey.From(findAsk));
             UseLayoutEffect(() => { if (firstAsk > 0 && !_first.IsNull) hooks.FocusNode?.Invoke(_first, true); }, DepKey.From(firstAsk));
+            UseTimeout(() =>
+            {
+                string now = view.Query.Peek().Trim();
+                if (now.Length > 0 && view.Editing.Peek()) board.Verbs.Say(Spoken(board, now, Results(board).Count));
+            }, SayAfterMs, DepKey.From(StringComparer.Ordinal.GetHashCode(q)));
 
             var kids = new List<Element>(3);
             if (editing && !lay.BarInline)

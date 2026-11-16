@@ -21,6 +21,11 @@ namespace Wavee.Themes.Classic;
 /// <summary>A group's add row.</summary>
 internal static class ClassicHomeAddRow
 {
+    static readonly FluentGpu.Signals.Signal<(string Group, int Ask)> s_focusButton = new(("", 0));
+
+    /// <summary>Return focus to a group's "Add to …" button (its strip folded by Esc).</summary>
+    public static void FocusButton(string groupId) => s_focusButton.Value = (groupId, s_focusButton.Peek().Ask + 1);
+
     /// <summary>How many library suggestions Pinned's row offers.</summary>
     const int LibraryMax = 8;
 
@@ -46,7 +51,8 @@ internal static class ClassicHomeAddRow
 
     sealed class Row : Component
     {
-        NodeHandle _first;
+        NodeHandle _first, _button;
+        readonly FluentGpu.Signals.Signal<bool> _settled = new(false);
 
         public override Element Render()
         {
@@ -57,15 +63,22 @@ internal static class ClassicHomeAddRow
             var add = view.Add.Value;
             bool open = add.Kind == HomeAddSurfaceKind.Row && add.Arg == p.GroupId;
             int firstAsk = ClassicHomeFind.FirstAsk.Value;
-            UseLayoutEffect(() => { if (open && !_first.IsNull) hooks.FocusNode?.Invoke(_first, true); }, DepKey.From(open ? 1 : 0, firstAsk));
+            // The cards come once the row has grown to its open height (the grid's re-flow), and fade in there: nothing is uncovered by a moving
+            // edge. Closing takes them away at once, then the row folds.
+            bool settled = _settled.Value;
+            UseTimeout(() => _settled.Value = open, open ? ClassicTierMotion.ReflowMs : 0f, DepKey.From(open ? 1 : 0));
+            if (!open && settled) settled = false;
+            UseLayoutEffect(() => { if (open && settled && !_first.IsNull) hooks.FocusNode?.Invoke(_first, true); }, DepKey.From(open && settled ? 1 : 0, firstAsk));
             string groupId = p.GroupId;
+            var ask = s_focusButton.Value;
+            UseLayoutEffect(() => { if (ask.Ask > 0 && ask.Group == groupId && !_button.IsNull) hooks.FocusNode?.Invoke(_button, true); }, DepKey.From(ask.Ask));
             var toggle = Button.Create(Strings.Theme.Classic.Home.Board.AddTo(group: p.Title),
                 () => view.Add.Value = open ? HomeAddSurface.Closed : new HomeAddSurface(HomeAddSurfaceKind.Row, groupId),
                 ButtonAppearance.Subtle, ControlSize.Medium, open ? Icons.ChevronUp : Icons.Add)
-                with { Key = "home:addrow:" + groupId + ":button", Shrink = 0f, AlignSelf = FlexAlign.Start, MinHeight = p.Lay.AddRow };
+                with { Key = "home:addrow:" + groupId + ":button", OnRealized = h => _button = h, Shrink = 0f, AlignSelf = FlexAlign.Start, MinHeight = p.Lay.AddRow };
             var kids = new List<Element>(2) { toggle };
             _first = default;
-            if (open)
+            if (open && settled)
             {
                 var cands = CandidatesOf(board.Catalog.All(), groupId);
                 if (cands.Count == 0)
@@ -76,7 +89,11 @@ internal static class ClassicHomeAddRow
                     string label = Loc.Get(Strings.Theme.Classic.Home.Board.Add);
                     for (int i = 0; i < cards.Length; i++) cards[i] = Card(board, p.Lay, cands[i], label, i == 0 ? h => _first = h : null);
                     kids.Add(Ui.ScrollView(new BoxEl { Direction = 0, Gap = p.Lay.Gap, Children = cards }, horizontal: true)
-                        with { Key = "home:addrow:strip", MinWidth = 0f, Height = ClassicHomeBoardRules.FindRowH, Grow = 0f });
+                        with
+                        {
+                            Key = "home:addrow:strip", MinWidth = 0f, Height = ClassicHomeBoardRules.FindRowH, Grow = 0f,
+                            Enter = new EnterExit(Opacity: 0f, Active: true), Transition = ClassicHomeBoardRules.FadeIn,
+                        });
                 }
             }
             return new BoxEl

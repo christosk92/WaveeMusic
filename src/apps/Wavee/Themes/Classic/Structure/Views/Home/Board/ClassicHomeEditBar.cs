@@ -187,23 +187,20 @@ internal static class ClassicHomeEditBar
             Placeholder = Loc.Get(Strings.Theme.Classic.Home.Board.FindPlaceholder),
             KeepTextOnEscape = true,
             Field = field,
+            OnCommit = _ => ClassicHomeFind.FocusFirst(),
+            // Esc blurs the field: with text it clears and folds the strip and stays in the field; empty, focus goes to the first tile (Edit Home stays on).
+            OnCancel = () =>
+            {
+                if (board.View.Query.Peek().Length > 0) { ClassicHomeFind.Type(board, ""); FocusFind(); return; }
+                foreach (var x in board.Model.Peek().Entries)
+                    if (x.Kind != BoardEntryKind.GroupHead && !x.Hidden) { board.Grid.Focus(HomeBoardKeys.Tile(x.Id)); break; }
+            },
         };
         if (!fill) options = options with { Width = width };
-        var box = TextBox.Create(board.View.Query, q => ClassicHomeFind.Type(board, q, speak: true), options);
+        var box = TextBox.Create(board.View.Query, q => ClassicHomeFind.Type(board, q), options);
         return new BoxEl
         {
             Direction = 0, Shrink = fill ? 0f : 1f, Grow = fill ? 1f : 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
-            OnKeyDown = e =>
-            {
-                if (e.Handled) return;
-                if (e.KeyCode == Keys.Enter) { ClassicHomeFind.FocusFirst(); e.Handled = true; return; }
-                if (e.KeyCode != Keys.Escape) return;
-                if (board.View.Query.Peek().Length > 0) { ClassicHomeFind.Type(board, "", speak: false); e.Handled = true; return; }
-                // The second Esc leaves the field: focus goes to the first tile, Edit Home stays on.
-                foreach (var x in board.Model.Peek().Entries)
-                    if (x.Kind != BoardEntryKind.GroupHead && !x.Hidden) { board.Grid.Focus(HomeBoardKeys.Tile(x.Id)); break; }
-                e.Handled = true;
-            },
             Children = [box],
         };
     }

@@ -185,6 +185,9 @@ public static class ClassicHomeBoardRules
         ? new(TransitionChannels.Size, TransitionDynamics.Tween(ReducedMs, Easing.SmoothOut), Size: SizeMode.FlowReveal)
         : new(TransitionChannels.Size, TransitionDynamics.Tween(ClassicTierMotion.ReflowMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
+    /// <summary>What arrives in a box that has already grown (an add row's cards, the find strip's results): a short fade, no travel.</summary>
+    public static MotionTokenDef FadeIn => MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
+
     /// <summary>A speed-dial cell's chip lane opening and folding at its right: its width eases, the name lane gives way.</summary>
     public static LayoutTransition ChipLane => new(TransitionChannels.Size,
         TransitionDynamics.Tween(Design.Reduced ? ReducedMs : ClassicTierMotion.ReflowMs, Easing.SmoothOut), Size: SizeMode.Reveal);
