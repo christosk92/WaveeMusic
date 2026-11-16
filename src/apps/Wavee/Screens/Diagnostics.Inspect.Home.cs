@@ -142,6 +142,22 @@ public static partial class Diagnostics
             return true;
         }
 
+        const string GoneAlbumUri = "spotify:album:gone0";
+
+        /// <summary>After the mount, for `homedoc=gonepin`: the gone album's own ask goes through the scripted transport and is answered as a
+        /// removed entity is (a 404), so the pin tile reads the row's real gone state (Entities.Fake.Answer.cs).</summary>
+        void LandHomeDoc(Inspect.Args a)
+        {
+            if (a.Str("homedoc", "default").ToLowerInvariant() != "gonepin") return;
+            const string uri = GoneAlbumUri;
+            for (int i = 0; i < 30 && Entities.ScriptedHeld == 0; i++) RunFrames(1);
+            int held = Entities.ScriptedHeld;
+            int settled = Entities.LandScripted(Entities.ScriptedAnswer.Fail);
+            Entities.EndScripted();
+            RunFrames(2);
+            Log.Info("home", "inspect.gonepin held=" + held + " settled=" + settled + " state=" + HomePinState.StateText("album:" + uri));
+        }
+
         /// <summary>Write the named document into the profile's home file and load it (the store's view state goes with it).</summary>
         static void StageHomeDoc(string name)
         {
@@ -185,6 +201,9 @@ public static partial class Diagnostics
             };
             File.WriteAllBytes(path, HomeDocWire.Write(doc));
             store.Load(path);
+            // gonepin: the scripted transport takes the gone album's provider BEFORE the board mounts, so the pin tile's own ask is sent and
+            // held there; LandHomeDoc answers it after the mount as a removed entity is answered.
+            if (name == "gonepin") Entities.BeginScripted(GoneAlbumUri);
             if (name is "custom" or "mixed") Customize(store, mixed: name == "mixed");
         }
 
@@ -393,7 +412,7 @@ public static partial class Diagnostics
                         if (board is not null) board.Unpin(pinId); else Run(new HomeCommand.Unpin(pinId));
                         return Acted(w => w.WriteString("pinId", pinId));
                     }
-                    string pinName = Sidebar.Model.PinName(pinId);
+                    string pinName = HomePinVerbs.NameOf(pinId);
                     string? group = a.Has("group") ? a.Str("group") : null;
                     if (board is not null) board.Pin(pinId, pinName, "", group);
                     else Run(new HomeCommand.Pin(pinId, pinName, "", group));
@@ -409,8 +428,8 @@ public static partial class Diagnostics
                     HomeCandidate? c = null;
                     foreach (var x in all) if (x.Id == source) { c = x; break; }
                     if (c is null && source.StartsWith("pin:", StringComparison.Ordinal) && HomePinId.Canonical(source[4..]) is { } pid)
-                        c = new HomeCandidate("pin:" + pid, HomeCatalogGroup.Library, new PinSource(pid, Sidebar.Model.PinName(pid), ""),
-                            Sidebar.Model.PinName(pid), "", HomeDocs.Pinned, false, null, false);
+                        c = new HomeCandidate("pin:" + pid, HomeCatalogGroup.Library, new PinSource(pid, HomePinVerbs.NameOf(pid), ""),
+                            HomePinVerbs.NameOf(pid), "", HomeDocs.Pinned, false, null, false);
                     if (c is null) return Fail("no candidate '" + source + "' (home do=search q=… lists ids)");
                     string group = a.Str("group", c.TargetGroupId);
                     HomeSize size = HomeSize.Auto;
@@ -678,6 +697,7 @@ public static partial class Diagnostics
                 w.WriteBoolean("live", e.Live);
                 w.WriteBoolean("paused", e.Paused);
                 if (e.UserPin) w.WriteBoolean("userPin", true);
+                if (e.Raw is PinSource pin && HomePinState.StateText(pin.PinId) is { Length: > 0 } pinState) w.WriteString("pinState", pinState);
                 w.WriteEndObject();
             }
             if (inGroup) { w.WriteEndArray(); w.WriteEndObject(); }

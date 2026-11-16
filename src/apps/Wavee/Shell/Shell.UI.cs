@@ -1088,10 +1088,17 @@ public static partial class Shell
         {
             case "none": case "":
                 s_inspectState.Value = "";
+                HomeProjection.FeedOverride.Value = null;
                 InspectOffline.Value = false;
                 LeaveInspectPending();
                 return true;
             case "offline-rows": InspectOffline.Value = true; return true;
+            // On Home, a failed or offline answer and a pending one are the board's own vacancy (the feed slot), not the page's: pins and
+            // local widgets keep working beside it.
+            case "error" or "offline" or "loading" when Current.Peek().Kind == RouteKind.Home:
+                s_inspectState.Value = "";
+                HomeProjection.FeedOverride.Value = kind switch { "error" => HomeFeedState.Error, "offline" => HomeFeedState.Offline, _ => HomeFeedState.Loading };
+                return true;
             case "empty": case "nomatch": case "error": case "offline": s_inspectState.Value = kind; return true;
             case "loading":
                 s_inspectState.Value = "";

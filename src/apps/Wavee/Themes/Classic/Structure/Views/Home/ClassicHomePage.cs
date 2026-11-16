@@ -90,7 +90,9 @@ internal static class ClassicHomePage
             Padding = new Edges4(gutter, layout.PageTop, gutter, R.Space.DockReserve + Spacing.XXXL),
             Children =
             [
-                ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row", Layout = ClassicTierMotion.Shove },
+                // On All the facet row ends with the board's tools (Home's ⋯; Edit Home's bar in its slot), handed through Classic's own channel.
+                Ctx.Provide(ClassicHomeFacetRow.BoardTools, props.BoardTools,
+                    ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row", Layout = ClassicTierMotion.Shove }),
                 content,
             ],
         };
@@ -137,7 +139,8 @@ internal static class ClassicHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),      // compositor-only (F18)
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),                          // E15
-                    Children = [ClassicHomeZones.Column(m, m.Facet, props.Overlay, layout)],
+                    // On All the pinned board stands where the zone column stood (the scroller, the band, the clip, the dim host stay the page's).
+                    Children = [props.Board is { } board ? board() : ClassicHomeZones.Column(m, m.Facet, props.Overlay, layout)],
                 },
             ],
         };
