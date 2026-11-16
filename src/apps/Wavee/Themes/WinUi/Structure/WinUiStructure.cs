@@ -94,7 +94,6 @@ public sealed partial class WinUiStructure : IStandInStructure
         ModulePage(ref module, ref moduleId);
         CommonBlocks.Register(views, module, moduleId);
         // No quickplay strip on Home: WinUI's pins are the nav pane's Pinned section (W-Home; W5 replaces this line if it draws one).
-        CommonNothing.Register(views, ViewKeys.HomeQuickplay);
     }
 
     // The registrars, one per family lane (P6-plan §4): each is implemented in `Structure\WinUiStructure.<Family>.cs`.

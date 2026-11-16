@@ -21,8 +21,22 @@ public static class HomeVerbs
     /// <summary>The empty facet's action: Browse.</summary>
     public static void OpenBrowse() => Shell.GoTo(new Shell.Route(Shell.RouteKind.Browse));
 
-    /// <summary>The "Customize Home" link's navigation (and the palette command's one line).</summary>
-    public static void OpenCustomize() => Shell.GoTo(new Shell.Route(Shell.RouteKind.HomeCustomize));
+    /// <summary>"Customize Home" (the facets' link, the palette command): Home's All facet with the theme's own way to change it open: WinUI's
+    /// add band, Classic's Edit Home, Zune's customize (<see cref="IHomeBoardInspect.Customize"/>). On Home already, at once; elsewhere Home
+    /// opens and the board enters it as it mounts.</summary>
+    public static void OpenCustomize()
+    {
+        var cur = Shell.Current.Peek();
+        if (cur.Kind == Shell.RouteKind.Home && Entities.Strings.Resolve(cur.Arg).Length == 0 && HomeBoardInspect.Current is { } board)
+        {
+            board.Customize();
+            return;
+        }
+        Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
+        // A board kept alive behind another page is still registered: it enters at once. A first visit enters as the board mounts.
+        if (HomeBoardInspect.Current is { } kept) kept.Customize();
+        else HomeBoardInspect.CustomizeOnMount = true;
+    }
 
     /// <summary>A daylist tag opens Search for it.</summary>
     public static void OpenTag(string tag)

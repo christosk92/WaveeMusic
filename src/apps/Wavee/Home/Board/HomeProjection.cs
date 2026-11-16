@@ -214,6 +214,61 @@ public static class HomeProjection
     readonly record struct FeedCandidate(SectionRef Ref, string Title, SectionTemplate Template, int Slot, Zone? Zone, bool OneCardBaseline,
         SectionInput? Input);
 
+    /// <summary>The zones the three data widgets draw, from the All answer by the chooser (the sections they take room from in the feed):
+    /// the daylist (the section a daylist leads, its lead card), Recently played (the recently played section, capped at the planner's RecentsCap) and New releases (the release-window sections' albums, then the Following answer's, deduped).</summary>
+    public static (Zone? Daylist, Zone? Recents, Zone? Releases) WidgetZones(IReadOnlyList<SectionInput> answer,
+        IReadOnlyList<SectionInput>? followingReleases, ZoneTitles titles, long nowMs)
+    {
+        Zone? daylist = null, recents = null;
+        // The daylist card wherever the answer put it (DaylistSource: a spotlight band's, else the first daylist card in any shelf).
+        if (DaylistSource.Find(answer) is { } found)
+        {
+            SectionInput? from = null;
+            foreach (var s in answer) if (s.Slot == found.SectionSlot) { from = s; break; }
+            daylist = new Zone(ZoneKind.Daylist, "home:daylist", from?.Title, from?.Subtitle, [found.Card], found.Card,
+                SectionSlot: found.SectionSlot, TotalCount: from?.TotalCount ?? 0);
+        }
+        var releaseCards = new List<HomeCard>();
+        var seen = new HashSet<long>();
+        int releaseSlot = -1;
+        foreach (var s in answer)
+        {
+            var choice = SectionChooser.Choose(s, nowMs);
+            switch (choice.Template)
+            {
+                case SectionTemplate.DaylistHero when daylist is null:
+                    daylist = SectionChooser.ToZone(s, choice, titles);
+                    break;
+                case SectionTemplate.RecentsData when recents is null:
+                {
+                    // As the planner had it: up to RecentsCap cards, the daylist's card left to the daylist.
+                    var cards = new List<HomeCard>(ZonePlanner.RecentsCap);
+                    long daylistKey = daylist?.Lead is { } lead ? lead.DedupeKey : long.MinValue;
+                    foreach (var c in s.Cards)
+                        if (SectionRoles.IsUsable(c) && c.DedupeKey != daylistKey && cards.Count < ZonePlanner.RecentsCap) cards.Add(c);
+                    if (cards.Count > 0)
+                        recents = new Zone(ZoneKind.RecentGrid, "home:recents", titles.RecentlyPlayed, s.Subtitle, cards, SectionSlot: s.Slot, TotalCount: s.TotalCount);
+                    break;
+                }
+                case SectionTemplate.ReleaseList:
+                    if (releaseSlot < 0) releaseSlot = s.Slot;
+                    foreach (var c in s.Cards) if (SectionRoles.IsUsable(c) && seen.Add(c.DedupeKey)) releaseCards.Add(c);
+                    break;
+            }
+        }
+        if (followingReleases is { Count: > 0 })
+        {
+            if (releaseSlot < 0) releaseSlot = followingReleases[0].Slot;
+            foreach (var s in followingReleases)
+                foreach (var c in s.Cards)
+                    if (SectionRoles.IsUsable(c) && c.Kind == HomeCardKind.Album && seen.Add(c.DedupeKey)) releaseCards.Add(c);
+        }
+        Zone? releases = releaseCards.Count > 0
+            ? new Zone(ZoneKind.ReleaseList, "home:releases", titles.FromArtistsYouFollow, null, releaseCards, SectionSlot: releaseSlot, TotalCount: releaseCards.Count)
+            : null;
+        return (daylist, recents, releases);
+    }
+
     /// <summary>The Following release list: every album card of the music-following-chip answer, deduped, as one release list.</summary>
     static Zone? FollowingReleases(IReadOnlyList<SectionInput>? following, ZoneTitles titles)
     {

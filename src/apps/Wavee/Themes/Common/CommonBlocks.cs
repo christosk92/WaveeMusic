@@ -5,7 +5,6 @@
 // and Common), so there is one copy of each view and a theme that wants its own simply registers its own template under the same key instead.
 //
 //   Pages.History          the navigation log                              CommonHistory
-//   Pages.HomeCustomize    the Home customizer                             CommonCustomize
 //   Shell.Fps              the frame-rate overlay (developer mode)         CommonFps
 //   Pages.Diagnostics.*    the playback, connect and capture pages         CommonDiagnostics
 //   Pages.Logs             the log files page                              CommonLogs
@@ -27,13 +26,11 @@ public static class CommonBlocks
 {
     /// <summary>Adds every Common view to <paramref name="views"/>. Called by a structure's <c>Register</c>. A structure that draws the module page in its own page
     /// column passes its template (and a template id) as <paramref name="module"/>: the view registry refuses a second template for a key, so the choice is made here.
-    /// So does a structure that draws History (<paramref name="history"/>) or the Home customizer (<paramref name="customize"/>) in its own voice.</summary>
+    /// So does a structure that draws History (<paramref name="history"/>) in its own voice.</summary>
     public static void Register(ViewRegistryBuilder views, ViewTemplate<ModulePageProps>? module = null, string moduleTemplateId = "common.module.page",
-        ViewTemplate<HistoryPageProps>? history = null, string historyTemplateId = "common.history",
-        ViewTemplate<HomeCustomizeProps>? customize = null, string customizeTemplateId = "common.customize")
+        ViewTemplate<HistoryPageProps>? history = null, string historyTemplateId = "common.history")
     {
         views.Add(ViewKeys.HistoryPage, history ?? CommonHistory.Template, historyTemplateId);
-        views.Add(ViewKeys.HomeCustomize, customize ?? CommonCustomize.Template, customizeTemplateId);
         views.Add(ViewKeys.ShellFps, CommonFps.Template, "common.fps");
         CommonDiagnostics.Register(views);
         CommonLogs.Register(views);

@@ -2,8 +2,8 @@
 //
 // The core hosts keep the data and the decisions: the facet machine and its effects (`HomeHost`), the screen model, the load verdict and
 // the shell-tint claim (`HomeScreen`), the daylist's reads and timers (`DaylistCard`, `DaylistClock`, `DaylistCountingClock`), the Recents
-// subscription (`RecentGrid`), the Featured Charts demand (`ChartsBlockView`), the drill page's demand and table sync (`SectionScreen`) and
-// the layout document's verbs (`CustomizeScreen`). A theme's view draws what these records carry. Every member is read-only (WVTH006);
+// subscription (`RecentGrid`), the Featured Charts demand (`ChartsBlockView`), the drill page's demand and table sync (`SectionScreen`). The All
+// facet's board has its own records (HomeBoardProps.cs). A theme's view draws what these records carry. Every member is read-only (WVTH006);
 // live values travel as read-only signals or Funcs the view binds, a writable cell as a `Func<Signal<T>>`.
 //
 // The verbs that name core state a theme may not reference (WVTH002: Shell, Playback, Entities...) are the static `HomeVerbs`
@@ -172,28 +172,6 @@ public sealed record HomeRecentsProps
 /// <summary>The props of <see cref="ViewKeys.HomeCharts"/>: where the Top 50 and Viral 50 tiles go.</summary>
 public sealed record HomeChartsProps(ChartTilesModel Model);
 
-/// <summary>The props of <see cref="ViewKeys.HomeQuickplay"/> (contract 1.28): what the quickplay strip shows. The host (`QuickplayHost`)
-/// hands the pins as the band's own tracked read (the user's order, capped by the structure's <c>MaxBandPins</c>), mounts the Recents zone's
-/// body through its core host (so the history reads Recents exactly as the Recently-played grid does, through
-/// <see cref="ViewKeys.HomeZoneRecentGrid"/>) and passes the release-list zone as it is.</summary>
-public sealed record HomeQuickplayProps
-{
-    /// <summary>The user's pins, in order (read tracked: a pin, an unpin or a move re-renders the strip).</summary>
-    public required Func<IReadOnlyList<BandPin>> Pins { get; init; }
-
-    /// <summary>Opens where the pins are edited; null where the structure offers no such place (the "edit" word is then not drawn).</summary>
-    public Action? EditPins { get; init; }
-
-    /// <summary>The history group: the Recents zone's body slot through its core host, or null when the facet has no Recents zone.</summary>
-    public Element? History { get; init; }
-
-    /// <summary>The "new" group's zone (the release list: "From artists you follow"), or null when the facet has none.</summary>
-    public Zone? Fresh { get; init; }
-
-    /// <summary>The overlay service the cards' menus open on.</summary>
-    public IOverlayService? Overlay { get; init; }
-}
-
 /// <summary>The props of <see cref="ViewKeys.HomeSection"/>. The host owns the demand, the table sync and the card source.</summary>
 public sealed record HomeSectionProps
 {
@@ -231,21 +209,3 @@ public sealed record HomeSectionProps
     public required Func<int, HomeCard, bool> IsEnabled { get; init; }
 }
 
-/// <summary>The props of <see cref="ViewKeys.HomeCustomize"/>: the layout document and the verbs that change it.</summary>
-public sealed record HomeCustomizeProps
-{
-    /// <summary>The live layout document (the ONE `HomeLayout` instance Home reads too).</summary>
-    public required LayoutDoc Doc { get; init; }
-
-    /// <summary>The drag-reorder behaviour object the host owns (its scene and render hooks are wired by the view's own render).</summary>
-    public required Reorderable Reorder { get; init; }
-
-    /// <summary>Toggle one zone's visibility.</summary>
-    public required Action<LayoutZone> Toggle { get; init; }
-
-    /// <summary>Move a row (drag drop or the keyboard's Up/Down).</summary>
-    public required Action<int, int> Move { get; init; }
-
-    /// <summary>Reset to the default layout.</summary>
-    public required Action Reset { get; init; }
-}

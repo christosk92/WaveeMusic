@@ -63,6 +63,13 @@ public interface IHomeBoardInspect
     void Redo();
     /// <summary>Reset; Classic's "everything" asks in its bar: <paramref name="confirm"/> answers it.</summary>
     void Reset(HomeResetScope scope, bool confirm);
+
+    /// <summary>The theme's way into changing Home ("Customize Home"): its edit mode (Classic's Edit Home, Zune's customize), or, where the
+    /// theme has none (WinUI), its add band.</summary>
+    void Customize()
+    {
+        if (Edit(true, null) is not null) Surface(true, "band", null);
+    }
 }
 
 public static class HomeBoardInspect
@@ -70,7 +77,16 @@ public static class HomeBoardInspect
     /// <summary>The mounted board, or null.</summary>
     public static IHomeBoardInspect? Current { get; private set; }
 
-    public static void Register(IHomeBoardInspect board) => Current = board;
+    public static void Register(IHomeBoardInspect board)
+    {
+        Current = board;
+        if (!CustomizeOnMount) return;
+        CustomizeOnMount = false;
+        board.Customize();
+    }
+
+    /// <summary>"Customize Home" asked from another page: the board enters the theme's way into changing Home when it next mounts.</summary>
+    public static bool CustomizeOnMount { get; set; }
 
     public static void Unregister(IHomeBoardInspect board)
     {

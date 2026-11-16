@@ -39,7 +39,7 @@ public static partial class Shell
         /// <summary>The destination index <paramref name="kind"/> lights, or -1.</summary>
         public static int IndexOf(RouteKind kind) => kind switch
         {
-            RouteKind.Home or RouteKind.HomeSection or RouteKind.HomeCustomize => Home,
+            RouteKind.Home or RouteKind.HomeSection => Home,
             // Concerts sit under Browse (ZC1: the concerts view of Browse's row 2, "browse" lit).
             RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.BrowseSection
                 or RouteKind.Concerts or RouteKind.ArtistConcerts or RouteKind.Concert => Browse,
