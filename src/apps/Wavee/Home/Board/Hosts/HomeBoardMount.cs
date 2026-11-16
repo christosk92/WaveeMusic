@@ -149,8 +149,8 @@ internal sealed class HomeBoardInspector : IHomeBoardInspect
     {
         View.Query.Value = query;
         var hits = Results;
+        // The board's add surface speaks the count itself once typing pauses (each theme words it): the inspector only reports the sentence.
         string spoken = query.Trim().Length > 0 ? HomeCatalog.Spoken(query.Trim(), hits.Count) : "";
-        if (spoken.Length > 0) Verbs.Say(spoken);
         return (hits, spoken);
     }
 

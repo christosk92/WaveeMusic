@@ -77,6 +77,10 @@ public sealed record ClassicHomeBoardLayout
     /// and the whole bar need about this much.</summary>
     public required float InlineFrom { get; init; }
 
+    /// <summary>Compact: the facet row's slot holds only Done; Undo, Redo, Reset, the find field and Reset everything's question take the strip's
+    /// line under the band (40 DIP targets), so the facet words keep their row.</summary>
+    public required bool ButtonsInStrip { get; init; }
+
     /// <summary>Whether the edit bar holds its caption and find field at a board width.</summary>
     public bool BarInline(float width) => width >= InlineFrom;
 
@@ -105,7 +109,7 @@ public static class ClassicHomeBoardTiers
         WidthTier.Compact => Base with
         {
             Tier = WidthTier.Compact, Columns = ClassicGridBand.Fixed(1), EmptyRow = 2f * UnitH + GapW, ChipBox = 40f,
-            InlineFrom = float.PositiveInfinity, AddCardW = 220f,
+            InlineFrom = float.PositiveInfinity, ButtonsInStrip = true, AddCardW = 220f,
         },
         WidthTier.Small => Base with { Tier = WidthTier.Small, Columns = new ClassicGridBand(260f, 2), InlineFrom = float.PositiveInfinity },
         WidthTier.Standard => Base with { Tier = WidthTier.Standard, Columns = new ClassicGridBand(240f, 4) },
@@ -119,7 +123,7 @@ public static class ClassicHomeBoardTiers
         Tier = WidthTier.Standard, Columns = new ClassicGridBand(240f, 4),
         Unit = UnitH, Gap = GapW, GroupGap = 24f, GroupHead = 44f, EmptyRow = UnitH, AddRow = 40f, AddRowOpen = 176f, EndRow = 40f,
         S = (1, 1), M = (1, 3), L = (2, 3), OpenMinCols = 2, ChipStrip = 40f, ChipBox = 32f,
-        InlineFrom = 1080f, FindW = 200f, AddCardW = 240f,
+        InlineFrom = 1080f, ButtonsInStrip = false, FindW = 200f, AddCardW = 240f,
     };
 }
 
@@ -172,6 +176,9 @@ public static class ClassicHomeBoardRules
 
     /// <summary>The find strip under the bar: its count line, the cards' row height and its padding.</summary>
     public const float FindCountH = 24f, FindRowH = 112f;
+
+    /// <summary>The pin mark before a card's subtitle when its entity is on Home (state at rest).</summary>
+    public const float PinMarkGlyph = 12f;
 
     /// <summary>"/" (VK_OEM_2): the find field.</summary>
     public const int SlashKey = 191;

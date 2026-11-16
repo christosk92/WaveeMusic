@@ -2961,6 +2961,7 @@
         "board": {
           "$comment": "Classic's pinned Home (spec 8.3): Edit Home on the tiles, the sidebar's edit vocabulary in Home's header row.",
           "homeOptions": "Home options",
+          "pinMenu": "Pin",
           "editHome": "Edit Home",
           "showOnHome": "Show on Home",
           "customizeHome": "Customize Home",
@@ -3016,6 +3017,7 @@
           "unavailable": "Not available any more",
           "paused": "Live updates are paused",
           "offline": "Offline",
+          "failed": "Couldn’t load this part of Home",
           "unknown": "Made by a newer Wavee",
           "kindWidget": "Widget",
           "kindSpotify": "From Spotify",
@@ -3265,7 +3267,8 @@
           "resetHome": "Reset Home",
           "customizeTitle": "Customize {name}",
           "done": "Done",
-          "pinMenu": "Pin"
+          "pinMenu": "Pin",
+          "feedName": "From Spotify"
         }
       },
       "$comment": "WinUI (P6, Developer-only). W0 owns name, description, options and style (the six W-ThemeOptions options); each family lane writes only inside its own object below.",

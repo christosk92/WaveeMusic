@@ -48,7 +48,7 @@ internal static class ClassicHomeEditBar
 
     sealed class Tools : Component
     {
-        NodeHandle _more, _reset, _done;
+        NodeHandle _more, _done;
         OverlayHandle? _menu;
         ToolsProps? _p;
 
@@ -85,20 +85,20 @@ internal static class ClassicHomeEditBar
             }
 
             var undo = board.Undo.Value;
+            var lay = p.Lay;
             Element[] row;
+            if (lay.ButtonsInStrip)
+            {
+                // Compact: the facet words keep the row; the slot holds Done (40 tall), and Undo, Redo, Reset, the field and the question take the
+                // strip's line under the band (`ClassicHomeFind`).
+                return Glide(HomeBoardKeys.Edit, ClassicEditBarParts.Done(() => ClassicHomeBoard.Live?.SetEditing(false), ControlSize.Large)
+                    with { Key = "home:edit:done", OnRealized = h => _done = h, Shrink = 0f }) with
+                {
+                    Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true), Transition = Fade, OnKeyDown = OnKey,
+                };
+            }
             if (asking)
-                row =
-                [
-                    ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAllTitle)) with { Shrink = 0f },
-                    Ui.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAllBody)).Secondary()
-                        with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f, Grow = 1f },
-                    Button.Accent(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAllConfirm), () =>
-                    {
-                        view.ConfirmingReset.Value = false;
-                        board.Verbs.Reset(HomeResetScope.Everything);
-                    }) with { Key = "home:edit:reset-yes", Shrink = 0f },
-                    Button.Create(Loc.Get(Strings.Theme.Classic.Home.Board.Cancel), () => view.ConfirmingReset.Value = false) with { Key = "home:edit:reset-no", Shrink = 0f },
-                ];
+                row = Question(board, ControlSize.Medium, wrap: false);
             else
             {
                 // The bar's two forms differ by the caption and the find field only (the board's width decides): those fade in and out as the declared
@@ -108,10 +108,7 @@ internal static class ClassicHomeEditBar
                 if (inline) kids.Add(Swap("home:edit:find-slot", FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" }));
                 kids.Add(Glide("home:edit:undo-slot", ClassicEditBarParts.Undo(board.Verbs.Undo, undo.CanUndo)));
                 kids.Add(Glide("home:edit:redo-slot", ClassicEditBarParts.Redo(board.Verbs.Redo, undo.CanRedo)));
-                kids.Add(Glide("home:edit:reset-slot", ClassicEditBarParts.Reset(Loc.Get("sidebar.edit.reset")) with
-                {
-                    Key = "home:edit:reset", OnClick = ResetMenu, OnRealized = h => _reset = h, Shrink = 0f,
-                }));
+                kids.Add(Glide("home:edit:reset-slot", ResetButton(board, ControlSize.Small)));
                 kids.Add(Glide("home:edit:done-slot", ClassicEditBarParts.Done(() => ClassicHomeBoard.Live?.SetEditing(false))
                     with { Key = "home:edit:done", OnRealized = h => _done = h, Shrink = 0f }));
                 row = kids.ToArray();
@@ -129,7 +126,7 @@ internal static class ClassicHomeEditBar
             };
         }
 
-        static Element Glide(string key, Element child) => new BoxEl
+        internal static BoxEl Glide(string key, Element child) => new BoxEl
         {
             Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Layout = ClassicTierMotion.Shove, Children = [child],
         };
@@ -176,8 +173,52 @@ internal static class ClassicHomeEditBar
             _menu.ClosedAction = () => _menu = null;
         }
 
-        /// <summary>"Reset ▾": this page at once; everything asks in the bar.</summary>
-        void ResetMenu()
+    }
+
+    /// <summary>Reset everything's question, in the bar's own row (or the Compact strip's, where it wraps): the sidebar's title and sentence,
+    /// [Reset everything] [Cancel].</summary>
+    internal static Element[] Question(HomeBoardProps board, ControlSize size, bool wrap)
+    {
+        var view = board.View;
+        return
+        [
+            ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAllTitle)) with { Shrink = 0f },
+            Ui.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAllBody)).Secondary() with
+            {
+                MaxLines = wrap ? 0 : 1, Wrap = wrap ? TextWrap.Wrap : TextWrap.NoWrap, Trim = wrap ? TextTrim.None : TextTrim.CharacterEllipsis,
+                Shrink = 1f, MinWidth = 0f, Grow = 1f,
+            },
+            Button.Create(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAllConfirm), () =>
+            {
+                view.ConfirmingReset.Value = false;
+                board.Verbs.Reset(HomeResetScope.Everything);
+            }, ButtonAppearance.Accent, size) with { Key = "home:edit:reset-yes", Shrink = 0f },
+            Button.Create(Loc.Get(Strings.Theme.Classic.Home.Board.Cancel), () => view.ConfirmingReset.Value = false, ButtonAppearance.Standard, size)
+                with { Key = "home:edit:reset-no", Shrink = 0f },
+        ];
+    }
+
+    /// <summary>"Reset" (its own anchor and menu): this page at once; everything asks in the bar.</summary>
+    internal static Element ResetButton(HomeBoardProps board, ControlSize size)
+        => Embed.Comp(new ResetProps(board, size), static () => new Reset()) with { Key = "home:edit:reset" };
+
+    sealed record ResetProps(HomeBoardProps Board, ControlSize Size);
+
+    sealed class Reset : Component
+    {
+        NodeHandle _anchor;
+        OverlayHandle? _menu;
+        ResetProps? _p;
+
+        public override Element Render()
+        {
+            var p = UseProps<ResetProps>();
+            _p = p;
+            return Button.Create(Loc.Get("sidebar.edit.reset"), static () => { }, ButtonAppearance.Subtle, p.Size)
+                with { OnClick = Open, OnRealized = h => _anchor = h, Shrink = 0f };
+        }
+
+        void Open()
         {
             if (_menu is { IsOpen: true } m) { m.Close(); return; }
             if (_p?.Board is not { Overlay: { } overlay } board) return;
@@ -187,7 +228,7 @@ internal static class ClassicHomeEditBar
                 new(Loc.Get(Strings.Theme.Classic.Home.Board.ResetAll), Invoke: () => board.View.ConfirmingReset.Value = true),
             };
             ToolTip.CloseOpen();
-            _menu = overlay.Open(() => _reset, () => MenuFlyout.Create(items, () => _menu?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
+            _menu = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss));
             _menu.ClosedAction = () => _menu = null;
         }

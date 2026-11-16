@@ -34,7 +34,8 @@ internal static class WinUiHomeTiles
     public static Element GroupHead(BoardEntry e, WinUiHomeBoardLayout lay) => new BoxEl
     {
         Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
-        Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+        // The label hugs its words (it does not stretch with the row), so a width change moves nothing in it.
+        Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, AlignSelf = FlexAlign.Start }],
     };
 
     /// <summary>The empty Pinned group: a dashed row at the group's height with how to pin (spec 8.1 "Empty states").</summary>
@@ -73,11 +74,15 @@ internal static class WinUiHomeTiles
 
     /// <summary>A card around <paramref name="content"/>: the plate, the reserved ⋯ corner, focus, the keys and the context request. A full row has no
     /// plate (it is a chapter on the page, as today): its ⋯ stands in a lane at its header's end.</summary>
-    static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null)
+    static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null, bool moreInContent = false,
+                        MoreMenu menu = MoreMenu.Full)
     {
-        float moreBox = WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox;
         bool full = f.Form == HomeTileForm.Full;
-        var more = Embed.Comp(new MoreProps(f, moreBox), static () => new TileMore()) with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
+        // A full row whose chapter has a header carries the menu button at the header's end (passed in by the template): the body keeps the
+        // chapter's full width, so it lays out exactly as the page's chapter does (its first-frame estimates hold, nothing re-lays next frame).
+        if (full && moreInContent)
+            return new BoxEl { Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] };
+        Element more = menu == MoreMenu.None ? new BoxEl() : More(ctx, f, menu);
         string id = f.Entry.Id;
         var verbs = f.Verbs;
         // The card carries no context handler of its own: a touch hold is the grid wrapper's (it gates the lift, so the hold can become a
@@ -112,6 +117,23 @@ internal static class WinUiHomeTiles
             ],
         };
     }
+
+    /// <summary>Which menu a card's button opens: the full one, only the remove row (a tile whose thing is gone), or none at all (a placeholder of
+    /// Spotify's feed: nothing on it can be acted on).</summary>
+    internal enum MoreMenu : byte { Full, RemoveOnly, None }
+
+    /// <summary>The card's menu button (its tools key).</summary>
+    static Element More(in ViewContext ctx, HomeTileFrame f, MoreMenu menu = MoreMenu.Full)
+        => Embed.Comp(new MoreProps(f, WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox) { Menu = menu }, static () => new TileMore())
+            // A resize re-flows the tile's box by animation while its content lays out at the new width at once: the button rides the card's
+            // edge by its own FLIP instead of jumping to it.
+            with { Key = HomeBoardKeys.Tools(f.Entry.Id), Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Reflow };
+
+    /// <summary>A full row that is today's chapter: the menu button ends its header row (a headerless chapter keeps the lane).</summary>
+    static Element FullChapter(in ViewContext ctx, HomeTileFrame f, Zone zone, WinUiHomeLayout home)
+        => WinUiHomeZones.HasHeader(zone.Kind)
+            ? Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home, More(ctx, f)), moreInContent: true)
+            : Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
 
     /// <summary>A card's padded column.</summary>
     static BoxEl Pad(params Element[] kids) => new()
@@ -333,11 +355,11 @@ internal static class WinUiHomeTiles
                     Children =
                     [
                         WinUiHomeZones.ModuleHeader(r.Zone.Title ?? title, home.HeaderSubtitles ? r.Zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
-                            HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), p.OpenHistory), home),
+                            HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), p.OpenHistory), home, More(ctx, f)),
                         ctx.View(ViewKeys.HomeZoneRecentGrid, r),
                     ],
                 };
-                return Card(ctx, f, body);
+                return Card(ctx, f, body, moreInContent: true);
             }
             case HomeTileForm.S:
                 return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.History, WinUiHomeBoardRules.RowArt), () => title, () => week), p.OpenHistory));
@@ -366,7 +388,7 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         var zone = p.Zone;
         var home = WinUiHomeTiers.Of(ctx.Tier());
-        if (f.Form == HomeTileForm.Full) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        if (f.Form == HomeTileForm.Full) return FullChapter(ctx, f, zone, home);
         string title = zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow);
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.RefineSparkle, title, null) };
@@ -418,7 +440,7 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         var zone = p.Zone;
         var home = WinUiHomeTiers.Of(ctx.Tier());
-        if (f.Form == HomeTileForm.Full) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        if (f.Form == HomeTileForm.Full) return FullChapter(ctx, f, zone, home);
         string title = zone.Title ?? f.Entry.Title;
         int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.Library, title, zone.Subtitle is { Length: > 0 } sub ? () => sub : null) };
@@ -434,8 +456,9 @@ internal static class WinUiHomeTiles
     public static Element Vacant(HomeTileVacantProps p, in ViewContext ctx)
     {
         var f = p.Frame;
+        // Loading: a flat placeholder at the loaded size, derived from the real chapter (a shelf of blank cards under a title bar), never a pulse.
         if (p.Reason == HomeTileVacancy.Loading)
-            return new BoxEl { Grow = 1f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary };
+            return LoadingShelf(f, WinUiHomeTiers.Of(ctx.Tier()));
         string line = Loc.Get(p.Reason switch
         {
             HomeTileVacancy.Unavailable => Strings.Theme.Winui.Home.Board.Unavailable,
@@ -444,15 +467,45 @@ internal static class WinUiHomeTiles
             HomeTileVacancy.Failed => Strings.Theme.Winui.Home.Board.Failed,
             _ => Strings.Theme.Winui.Home.Board.Unknown,
         });
-        string name = p.Name;
-        return Card(ctx, f, RowFace(GlyphPlate(Icons.Info, WinUiHomeBoardRules.RowArt), () => name, () => line));
+        // The face per vacancy: a gone or unknown thing keeps its name and offers only its removal; Spotify's feed that failed or is offline says
+        // so in its group's own words and offers nothing (the page's retry and the offline lane are the actions).
+        bool feed = p.Reason is HomeTileVacancy.Failed or HomeTileVacancy.Offline;
+        string name = p.Name.Length > 0 ? p.Name : Loc.Get(feed ? Strings.Theme.Winui.Home.Board.FeedName : Strings.Theme.Winui.Home.Board.Unavailable);
+        string glyph = p.Reason switch
+        {
+            HomeTileVacancy.Offline => Icons.Globe,
+            HomeTileVacancy.Failed => Icons.Warning,
+            HomeTileVacancy.Paused => Icons.Pause,
+            _ => Icons.Info,
+        };
+        var menu = feed ? MoreMenu.None : p.Reason == HomeTileVacancy.Paused ? MoreMenu.Full : MoreMenu.RemoveOnly;
+        return Card(ctx, f, RowFace(GlyphPlate(glyph, WinUiHomeBoardRules.RowArt), () => name, () => line), menu: menu);
+    }
+
+    /// <summary>A placeholder of Spotify's feed while its answer is on its way: the chapter's own skeleton (a shelf of blank cards under a title
+    /// bar) at the loaded size, flat.</summary>
+    static Element LoadingShelf(HomeTileFrame f, WinUiHomeLayout home)
+    {
+        var blanks = new HomeCard[WinUiHomeBoardRules.SeedCards];
+        for (int i = 0; i < blanks.Length; i++) blanks[i] = HomeCard.Blank(HomeCardKind.Playlist, i);
+        var seed = new Zone(ZoneKind.CoverShelf, "seed:" + f.Entry.Id, " ", null, blanks);
+        return new SkelRegionEl(
+            Pending: static () => true, Failed: static () => false,
+            Content: static () => new BoxEl(),
+            ShimmerSource: () => WinUiHomeZones.ChapterContent(seed, null, home),
+            OnFailed: static () => new BoxEl(),
+            Reveal: SkelReveal.None, Style: SkeletonStyle.Default with { BarColor = Tok.FillControlSecondary }, Group: f.Entry, SmoothResize: false);
     }
 
     // ══ the ⋯ ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     internal sealed record MoreProps(HomeTileFrame Frame, float Box)
     {
-        public bool Equals(MoreProps? o) => o is not null && Frame.Entry.Equals(o.Frame.Entry) && Frame.Form == o.Frame.Form && ReferenceEquals(Frame.Verbs, o.Frame.Verbs) && Box == o.Box;
+        /// <summary>Which rows the menu holds.</summary>
+        public MoreMenu Menu { get; init; }
+
+        public bool Equals(MoreProps? o) => o is not null && Frame.Entry.Equals(o.Frame.Entry) && Frame.Form == o.Frame.Form && ReferenceEquals(Frame.Verbs, o.Frame.Verbs)
+            && Box == o.Box && Menu == o.Menu;
         public override int GetHashCode() => Frame.Entry.GetHashCode();
     }
 
@@ -463,6 +516,7 @@ internal static class WinUiHomeTiles
         NodeHandle _anchor;
         OverlayHandle? _menu;
         HomeTileFrame? _f;
+        MoreMenu _menuKind;
 
         /// <summary>Open the menu of <paramref name="f"/>'s card (a context request).</summary>
         public static void OpenFor(HomeTileFrame f) => OpenFor(f.Entry.Id);
@@ -479,6 +533,7 @@ internal static class WinUiHomeTiles
         {
             var p = UseProps<MoreProps>();
             _f = p.Frame;
+            _menuKind = p.Menu;
             string id = p.Frame.Entry.Id;
             UseLayoutEffect(() =>
             {
@@ -496,7 +551,7 @@ internal static class WinUiHomeTiles
             if (_menu is { IsOpen: true } open) { open.Close(); return; }
             if (_f is not { } f || f.Overlay is not { } overlay) return;
             ToolTip.CloseOpen();
-            var items = WinUiHomeTileMenu.Items(f);
+            var items = _menuKind == MoreMenu.RemoveOnly ? WinUiHomeTileMenu.RemoveOnly(f) : WinUiHomeTileMenu.Items(f);
             _menu = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss));
             _menu.ClosedAction = () => _menu = null;

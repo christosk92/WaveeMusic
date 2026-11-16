@@ -36,4 +36,15 @@ internal static class ClassicEditBarParts
 
     /// <summary>The accent "Done".</summary>
     public static BoxEl Done(Action done) => Button.Accent(Loc.Get("sidebar.edit.done"), done);
+
+    /// <summary>The accent "Done" at a size (Home's bar at Compact: Large, the 40 target floor).</summary>
+    public static BoxEl Done(Action done, ControlSize size) => Button.Create(Loc.Get("sidebar.edit.done"), done, ButtonAppearance.Accent, size);
+
+    /// <summary>Undo as a <paramref name="box"/>-DIP glyph target (Home's bar at Compact: 40), with its tooltip.</summary>
+    public static Element Undo(Action undo, bool enabled, float box)
+        => ToolTip.Wrap(Controls.IconAction(Icons.Undo, undo, size: box, isEnabled: enabled), Loc.Get("sidebar.undo.undoAction"));
+
+    /// <summary>Redo as a <paramref name="box"/>-DIP glyph target, with its tooltip.</summary>
+    public static Element Redo(Action redo, bool enabled, float box)
+        => ToolTip.Wrap(Controls.IconAction(Icons.Redo, redo, size: box, isEnabled: enabled), Loc.Get("sidebar.undo.redo"));
 }

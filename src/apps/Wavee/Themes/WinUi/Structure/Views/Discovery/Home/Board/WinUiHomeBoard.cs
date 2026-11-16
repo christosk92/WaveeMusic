@@ -39,17 +39,21 @@ internal static class WinUiHomeBoard
     public static Element Template(HomeBoardProps props, in ViewContext ctx)
     {
         var facts = ctx.Tier();
-        return Embed.Comp(new BoardProps(props, WinUiHomeBoardTiers.Of(facts), WinUiHomeTiers.Of(facts)), static () => new BoardView())
+        // The board's first pack uses the region's own estimate of its width (the Recently played grid seeds the same way): measured one frame
+        // late, a zero width packed one column and the whole board re-packed and re-laid on the next frame.
+        float firstWidth = WinUiRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
+        return Embed.Comp(new BoardProps(props, WinUiHomeBoardTiers.Of(facts), WinUiHomeTiers.Of(facts), firstWidth), static () => new BoardView())
             with { Key = "home:board-root" };
     }
 
-    internal sealed record BoardProps(HomeBoardProps Board, WinUiHomeBoardLayout Lay, WinUiHomeLayout Home);
+    internal sealed record BoardProps(HomeBoardProps Board, WinUiHomeBoardLayout Lay, WinUiHomeLayout Home, float FirstWidth);
 
     /// <summary>The board's component: its width, the measured full rows, the items memo and the reorder.</summary>
     internal sealed class BoardView : Component
     {
         readonly Signal<float> _width = new(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
+        readonly Dictionary<string, float> _packed = new(StringComparer.Ordinal);   // the height each full row was last packed at
         readonly Action<RectF> _onBounds;
         readonly Action<RectF> _onBand;
         float _bandH;
@@ -74,15 +78,51 @@ internal static class WinUiHomeBoard
             return s;
         }
 
+        /// <summary>The board's width: measured, else the region's estimate (the first frame).</summary>
+        float WidthNow(float measured) => measured > 0f ? measured : _p?.FirstWidth ?? 0f;
+
+
+        float PackedOf(string id) => _packed.TryGetValue(id, out var h) ? h : 0f;
+
+        readonly Dictionary<string, float> _seen = new(StringComparer.Ordinal);   // a body's latest laid-out height, not yet applied
+        readonly Signal<bool> _settling = new(false);
+        long _lastSeenMs;
+        Action? _settle;
+
+        /// <summary>A full row's body laid out at <paramref name="h"/>: remember it; the settle tick applies it once the bodies hold still.</summary>
+        void Measured(string id, float h)
+        {
+            if (h <= 0f) return;
+            if (MathF.Abs(h - PackedOf(id)) <= WinUiHomeBoardRules.ExtentSlop) { _seen.Remove(id); return; }
+            _seen[id] = h;
+            _lastSeenMs = Environment.TickCount64;
+            _settling.Value = true;
+        }
+
+        /// <summary>The settle tick (only while a body differs from its box): when no body has changed for the settle time, every pending height is
+        /// written at once, so the board re-packs ONE time (and slides) instead of following each pass of a body's own layout.</summary>
+        void Settle()
+        {
+            if (Environment.TickCount64 - _lastSeenMs < WinUiHomeBoardRules.ExtentSettleMs) return;
+            foreach (var (id, h) in _seen) ExtentOf(id).Value = h;
+            _seen.Clear();
+            _settling.Value = false;
+        }
+
         public override Element Render()
         {
             var p = UseProps<BoardProps>();
             _p = p;
+            // The first pack is at the region's estimate of the board's width; the measurement then only writes when the width really differs, so
+            // a mount whose estimate holds re-packs nothing on its second frame. (First render: nothing reads the width yet.)
+            if (_width.Peek() <= 0f && p.FirstWidth > 0f) _width.Value = p.FirstWidth;
             var board = p.Board;
             board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
+            _settle ??= Settle;
+            UseInterval(_settle, WinUiHomeBoardRules.ExtentSettleTickMs, enabled: _settling.Value);
 
-            _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(_width.Peek()));
+            _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(WidthNow(_width.Peek())));
             _template ??= (item, cell) => Item(item, cell);
             _reorder ??= new PackReorder<WinUiBoardItem>("home.tile")
             {
@@ -101,7 +141,7 @@ internal static class WinUiHomeBoard
             {
                 KeyOf = static it => it.Key,
                 EntryOf = it => EntryOf(it),
-                Metrics = () => _p!.Lay.Metrics(_width.Value),
+                Metrics = () => _p!.Lay.Metrics(WidthNow(_width.Value)),
                 Controller = board.Grid,
                 Scroll = board.Scroll,
                 Reorder = _reorder,
@@ -159,24 +199,30 @@ internal static class WinUiHomeBoard
             float full = 0f;
             if (WinUiHomeBoardRules.SizeOf(e) == HomeSize.Full)
             {
+                // A full row packs at its chapter's own height (the numbers its body reserves with), so it mounts in its box and nothing
+                // re-packs; a body whose height is its content's is measured and the box follows by the re-flow.
                 full = ExtentOf(e.Id).Value;
-                if (full <= 0f) full = FullEstimate(e, _p.Home);
+                if (full <= 0f) full = FullEstimate(e, _p.Home, WidthNow(_width.Value), lay);
+                _packed[e.Id] = full;
             }
             return WinUiHomeBoardRules.EntryOf(e, lay, full, open, false);
         }
 
-        /// <summary>A full row's height before its body has laid out: the Home tier record's own numbers for the bodies it knows.</summary>
-        static float FullEstimate(BoardEntry e, WinUiHomeLayout home)
+        /// <summary>A full row's height before its body has laid out: its chapter's own extent at the row's content width (the ⋯ lane aside), else
+        /// the rules' fallback until it is measured.</summary>
+        static float FullEstimate(BoardEntry e, WinUiHomeLayout home, float rowW, WinUiHomeBoardLayout lay)
         {
-            float head = WinUiHomeRules.TitleLine + (home.HeaderSubtitles ? WinUiHomeRules.SubtitleLine : 0f) + home.HeaderGap;
-            if (e.Raw is WidgetSource w)
-                switch (w.Widget)
-                {
-                    case "daylist": return home.Daylist.Cover + 2f * home.Daylist.Pad;
-                    case "recents": return head + home.RecentsRows * home.RecentsRowH + (home.RecentsRows - 1) * home.RecentsGap;
-                    case "releases": return head + 4f * WinUiHomeRules.ReleaseRowH;
-                }
-            return WinUiHomeBoardRules.FullFallback;
+            Zone? zone = e.Raw switch
+            {
+                WidgetSource { Widget: "daylist" } => HomeBoardZones.DaylistZone(e),
+                WidgetSource { Widget: "recents" } => HomeBoardZones.RecentsZone(e),
+                WidgetSource { Widget: "releases" } => HomeBoardZones.ReleasesZone(e),
+                _ => e.Zone,
+            };
+            // A chapter with a header keeps the row's full width (the menu button rides its header); a headerless one gives up the lane.
+            float contentW = zone is not null && WinUiHomeZones.HasHeader(zone.Kind) ? rowW : rowW - Spacing.XS - lay.MoreBox;
+            float h = zone is null ? 0f : WinUiHomeZones.ChapterExtent(zone, home, contentW);
+            return h > 0f ? h : WinUiHomeBoardRules.FullFallback;
         }
 
         Element Item(WinUiBoardItem it, PackCell cell)
@@ -192,6 +238,7 @@ internal static class WinUiHomeBoard
             var tile = board.Tile(e, cell, s_full);
             // A full row: the body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
+            string id = e.Id;
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -200,7 +247,9 @@ internal static class WinUiHomeBoard
                     new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, Grow = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-                        OnBoundsChanged = r => { if (r.H > 0f && MathF.Abs(r.H - extent.Peek()) > 0.5f) extent.Value = r.H; },
+                        // A body that settles at a height other than the one it was packed at moves the box, once it has settled (a shelf lays
+                        // out in two passes; its first, header-only height must not re-pack the board).
+                        OnBoundsChanged = r => Measured(id, r.H),
                         Children = [tile],
                     },
                 ],
@@ -239,22 +288,21 @@ internal static class WinUiHomeBoard
             {
                 PackAnnounceKind.Grab => Strings.Theme.Winui.Home.Board.Grabbed(name: name),
                 // The projected place while lifted (the document has not moved yet); the drop itself is the move verb's sentence.
-                PackAnnounceKind.Move => Strings.Home.BoardVerbs.Position(n: a.Position, count: a.Count, group: GroupTitleOf(board, id)),
+                PackAnnounceKind.Move => Strings.Home.BoardVerbs.Position(n: a.Position, count: a.Count, group: GroupTitleAt(board, a.Group)),
                 PackAnnounceKind.Cancel => Strings.Theme.Winui.Home.Board.Cancelled(name: name),
                 _ => null,
             };
         }
 
-        static string GroupTitleOf(HomeBoardProps board, string id)
+        /// <summary>The title of the group the lifted tile is projected into (the pack's group ordinal: the n-th group head in order), not the
+        /// group it left.</summary>
+        static string GroupTitleAt(HomeBoardProps board, int group)
         {
             var entries = board.Model.Peek().Entries;
-            string title = "";
+            int n = -1;
             for (int i = 0; i < entries.Length; i++)
-            {
-                if (entries[i].Kind == BoardEntryKind.GroupHead) title = entries[i].Title;
-                else if (entries[i].Id == id) return title;
-            }
-            return title;
+                if (entries[i].Kind == BoardEntryKind.GroupHead && ++n == group) return entries[i].Title;
+            return "";
         }
 
         PackAutomation Automation(WinUiBoardItem it)
