@@ -84,16 +84,26 @@ internal static class ClassicHomePage
         // facet-row → first zone step); the zones space themselves at SectionGapWide inside the zone column.
         Element column = new BoxEl
         {
-            Key = "home:column", Direction = 1, Gap = layout.HeadGap,
+            Key = "home:column", Direction = 1,
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = layout.PageMaxW,
             AlignItems = FlexAlign.Stretch, ScrollScope = ClassicHomeRules.PageScope,
-            Padding = new Edges4(gutter, layout.PageTop, gutter, R.Space.DockReserve + Spacing.XXXL),
+            // The page top, the head gap and the dock's reserve are spacers, not padding and gap: each steps at a tier edge (the top 16 -> 12 and
+            // the player bar's reserve at the Compact edge), and a padding or a gap steps the column's height at once where a spacer's height
+            // eases through real layout (`HeightReflow`), so the page's extent glides with the parts that already glide (`Shove`).
+            Padding = new Edges4(gutter, 0f, gutter, 0f),
             Children =
             [
+                Spacer("home:page-top", layout.PageTop),
                 // On All the facet row ends with the board's tools (Home's ⋯; Edit Home's bar in its slot), handed through Classic's own channel.
-                Ctx.Provide(ClassicHomeFacetRow.BoardTools, props.BoardTools,
-                    ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row", Layout = ClassicTierMotion.Shove }),
+                // The row's glide rides a box of its own: a provider passes no layout transition to the view it wraps.
+                new BoxEl
+                {
+                    Key = "home:facet-row", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Layout = ClassicTierMotion.Shove,
+                    Children = [Ctx.Provide(ClassicHomeFacetRow.BoardTools, props.BoardTools, ctx.View(ViewKeys.HomeFacetRow, props.FacetRow))],
+                },
+                Spacer("home:head-gap", layout.HeadGap),
                 content,
+                Spacer("home:dock-reserve", R.Space.DockReserve + Spacing.XXXL),
             ],
         };
 
@@ -116,6 +126,12 @@ internal static class ClassicHomePage
             Children = [props.Wash, scroll],
         };
     }
+
+    /// <summary>A vertical spacer whose height eases through real layout when a tier changes it.</summary>
+    static Element Spacer(string key, float height) => new BoxEl
+    {
+        Key = key, Height = height, Shrink = 0f, HitTestVisible = false, Layout = ClassicTierMotion.HeightReflow,
+    };
 
     /// <summary>The facet content: one KEYED subtree per published facet — the swap IS the reconciler's keyed Exit/Enter reconcile
     /// (F13), not a timer — over ONE dim host for the whole zone column (F17/F18): opacity and hit-testing are compositor binds on the
