@@ -293,8 +293,11 @@ public static partial class HomeCardNav
         var section = new Section(s.Slot);
         if (section.Id.IsEmpty) return Shell.Route.None;
         var title = s.Title.AsSpan().Trim();
+        // A facet's band row (`<uri>#<facet>`) drills to the section itself: the bare uri is the row the walk fills.
+        string text = section.Id.Text;
+        var subject = text.IndexOf(Home.FacetSectionMark) < 0 ? new EntityUri(section.Id) : EntityUri.Parse(Home.SectionUriOf(text));
         return new Shell.Route(browse ? Shell.RouteKind.BrowseSection : Shell.RouteKind.HomeSection,
-            new EntityUri(section.Id), title.IsEmpty ? StringId.Empty : Entities.Strings.Intern(title));
+            subject, title.IsEmpty ? StringId.Empty : Entities.Strings.Intern(title));
     }
 }
 
