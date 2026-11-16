@@ -71,13 +71,16 @@ public sealed class HomeBoardStore
     /// <summary>Raised after every change of the document (a command, undo, redo, a load), on the UI thread.</summary>
     public event Action<HomeApplied>? Changed;
 
-    BoardModel ShownNow() => Shown?.Invoke() ?? HomeProjection.Bare(_doc.Peek(), Sources);
+    /// <summary>The board as shown: the mounted board's model, else the document over the answer on hand.</summary>
+    public BoardModel ShownNow() => Shown?.Invoke() ?? HomeProjection.Live(_doc.Peek(), Sources);
 
     // ══ commands ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>One undo entry (or coalesced by tag: keyboard steps of one item use "step:&lt;id&gt;").</summary>
     public HomeApplied Dispatch(HomeCommand command, string? tag = null)
     {
+        // A too-new file is read-only (spec 6.3): Home shows the default and nothing changes, so nothing seems saved that is not.
+        if (ReadOnly) return new HomeApplied(false, null, null, "home.board.readOnly");
         var before = _doc.Peek();
         var after = HomeCommands.Apply(before, command, ShownNow(), Sources, NowMs(), out var applied);
         if (!applied.Changed) return applied;
@@ -285,6 +288,13 @@ public sealed class HomeBoardStore
     }
 
     public void FlushNow() => _file?.FlushNow();
+
+    /// <summary>Write what is pending now and wait for it (before a process exits, before a file is replaced under the store).</summary>
+    public void Quiesce()
+    {
+        _file?.FlushNow();
+        _file?.WaitForWrites(3000);
+    }
 
     /// <summary>Block until the pending write landed (shutdown, the inspector between processes).</summary>
     public bool WaitForWrites(int timeoutMs = 5000) => _file?.WaitForWrites(timeoutMs) ?? true;

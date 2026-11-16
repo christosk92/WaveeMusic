@@ -627,6 +627,7 @@
   },
   "home": {
     "board": {
+      "readOnly": "This Home was saved by a newer Wavee. It shows the default here and can't be changed.",
       "group": {
         "today": "Today",
         "pinned": "Pinned",

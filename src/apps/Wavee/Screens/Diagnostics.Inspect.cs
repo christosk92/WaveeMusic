@@ -370,6 +370,7 @@ public static partial class Diagnostics
             if (!Inspect.Validate(in cmd, out string invalid)) return Inspect.Reply.Fail(cmd.Id, cmd.Name, invalid);
             _acts = Inspect.SpecOf(cmd.Verb)?.Acts ?? false;
             _hit = null;
+            CaptureAnnouncements();   // Diagnostics.Inspect.Home.cs: the said[] of this verb starts here
             try { return Dispatch(in cmd); }
             catch (Exception ex)
             {
@@ -390,7 +391,10 @@ public static partial class Diagnostics
             {
                 case Inspect.Verb.Help:
                     return Help(id, name, a);
+                case Inspect.Verb.Said:
+                    return Said(id, name, a);
                 case Inspect.Verb.Quit:
+                    HomeBoardStore.Instance.Quiesce();   // the pinned Home's pending write lands before the process ends
                     Unmount();
                     _quit = true;
                     return Inspect.Reply.Ok(id, name);
@@ -406,6 +410,7 @@ public static partial class Diagnostics
                 case Inspect.Verb.Reset:
                     Unmount();
                     ClearLeaks(keepRoute: false, keepOptions: false);
+                    StageHomeDoc("default");
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
@@ -607,6 +612,13 @@ public static partial class Diagnostics
                         if (kind == "runtime") return RuntimeState(id, name, a);
                         // The video's screen cannot (or again can) carry HDCP: the guard's verdict without a real screen (Diagnostics.Inspect.Hdcp.cs).
                         if (kind == "hdcp") return HdcpState(id, name, a);
+                        // The pinned Home's next answer (the `second` fixture) lands: at the top, or held until the page is at the top.
+                        if (kind == "home-refresh")
+                        {
+                            if (HomeBoardInspect.StageFixture is not { } stage) return Inspect.Reply.Fail(id, name, "home-refresh needs the data lane's fixtures (Entities.StageHomeFixture is not installed in this build)");
+                            if (!stage("second")) return Inspect.Reply.Fail(id, name, "the second answer could not be staged");
+                            return Settled(id, name, a);
+                        }
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
@@ -688,6 +700,12 @@ public static partial class Diagnostics
                     return Trace(id, name, a, shell);
                 case Inspect.Verb.Drag:
                     return Drag(id, name, a);
+                case Inspect.Verb.Home:
+                    return Home(id, name, a);
+                case Inspect.Verb.Hold:
+                    return Hold(id, name, a);
+                case Inspect.Verb.Focus:
+                    return Focus(id, name, a);
                 case Inspect.Verb.Window:
                     return Window(id, name, a, shell);
             }
@@ -825,6 +843,7 @@ public static partial class Diagnostics
 
             Unmount();
             ClearLeaks(a.Bool("keepRoute", false));
+            if (!StageHome(a, out error)) return false;   // Diagnostics.Inspect.Home.cs: home= and homedoc=
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
             if (a.Bool("setup", false) || a.Str("setup") == "signin")
@@ -1595,6 +1614,7 @@ public static partial class Diagnostics
             string? hit = _hit ?? (_pointer is { } p ? HitKey(p) : null);
             if (hit is not null) w.WriteString("hit", hit);
             else w.WriteNull("hit");
+            WriteSaid(w, "said", Math.Min(_saidVerbMark, _said.Count));   // what the verb announced
             w.WriteEndObject();
         }
 

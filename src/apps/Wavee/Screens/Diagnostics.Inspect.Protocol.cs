@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -237,6 +237,8 @@ public static partial class Diagnostics
             Arg("scale", ArgType.Float, "DPI scale, 0 < scale <= 4", "1"),
             Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, ThemeChoices),
             Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
+            Arg("home", ArgType.Enum, "the Home fixture the tables are seeded from (the data lane's; mock is today's seed)", null, "mock|capture|new|free|podcast|region|synthetic|second"),
+            Arg("homedoc", ArgType.Enum, "the pinned Home document the mount starts from (keep: the profile's file as it is)", "default", "default|keep|pins0|pins200|gonepin|custom|mixed|v2hidden|toonew|corrupt|unknown"),
             Arg("gpu", ArgType.Enum, "hardware (the default: the hardware adapter, WARP when the machine has none) or warp (WARP forced): the offscreen D3D12 surface (render works); none: no pixels", "hardware", "hardware|warp|none"),
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
             Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
@@ -331,7 +333,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "home-refresh", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -554,6 +556,10 @@ public static partial class Diagnostics
                 [
                     Arg("dx", ArgType.Float, "DIP the pointer travels along x (negative: left)", "0"),
                     Arg("dy", ArgType.Float, "DIP the pointer travels along y (negative: up)", "0"),
+                    Arg("to", ArgType.Key, "end on the visible centre of this node instead of dx,dy (a drag onto a tile)"),
+                    IntArg("holdMs", "ms the button stays down, still, before the pointer moves (a touch lift's hold)", "0", 0, 10_000),
+                    IntArg("pauseMs", "ms the pointer dwells at the end, button down, before the release (a reorder's dwell)", "0", 0, 10_000),
+                    Arg("pointer", ArgType.Enum, "mouse or touch (touch events, no hover move first)", "mouse", "mouse|touch"),
                     IntArg("steps", "frames the pointer moves over, one equal move per frame", "8", 1, 600),
                     Arg("button", ArgType.Enum, "the button", "left", "left|right"),
                     Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
@@ -583,6 +589,56 @@ public static partial class Diagnostics
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
                              Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
             },
+            new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); acting ones settle", "home do=pin uri=spotify:album:al2")
+            {
+                Positional = ["do"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset"),
+                             Arg("path", ArgType.Path, "doc: also write the document's JSON to this file"),
+                             Arg("facet", ArgType.String, "plan: the facet (empty: All)", ""),
+                             Arg("on", ArgType.Bool, "edit: on or off", "true"),
+                             Arg("item", ArgType.String, "the entry id (home do=status lists them; home:tile:<id> is accepted)"),
+                             Arg("uri", ArgType.String, "pin / unpin: an entity uri or a route key"),
+                             Arg("group", ArgType.String, "pin / add: the group (today|pinned|spotify)"),
+                             Arg("source", ArgType.String, "add: a catalogue id (widget.upNext, pin:<pin id>, section:<key>)"),
+                             Arg("at", ArgType.Int, "add: the index inside the group", "-1"),
+                             Arg("size", ArgType.Enum, "add / size: the size (size: next cycles)", null, "auto|s|m|l|full|next"),
+                             Arg("by", ArgType.Int, "move: steps through the order (negative: back)"),
+                             Arg("to", ArgType.Enum, "move: to the group's start or end", null, "start|end"),
+                             Arg("onto", ArgType.String, "move: onto this entry (later: after it; earlier: before it; a group head: its start)"),
+                             Arg("dir", ArgType.Enum, "move: one step toward a side (up and down: onto the nearest tile)", null, "left|right|up|down"),
+                             Arg("refocus", ArgType.Bool, "close: focus goes back to the tile", "true"),
+                             Arg("key", ArgType.String, "option: the option's key"),
+                             Arg("value", ArgType.String, "option: the value"),
+                             Arg("open", ArgType.Bool, "surface: open or close", "true"),
+                             Arg("kind", ArgType.Enum, "surface: which", "band", "band|allitems|addrow|find"),
+                             Arg("arg", ArgType.String, "surface: a selector kind, a pivot or a group id"),
+                             Arg("q", ArgType.String, "search: the text typed", ""),
+                             Arg("items", ArgType.Int, "search: the most hits listed", "40"),
+                             Arg("scope", ArgType.Enum, "reset: this page or everything", "page", "page|everything"),
+                             Arg("confirm", ArgType.Bool, "reset scope=everything: answer Classic's question yes", "false")], s_settleArgs),
+            },
+            new(Verb.Hold, "hold", "Press and hold: the button stays down ms on the frame clock (on a node's visible centre or a point), then a release there or a drag of dx,dy; then settle", "hold key=home:tile:d-recents ms=600 pointer=touch")
+            {
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join(s_aimArgs, s_stableArgs,
+                [
+                    IntArg("ms", "how long the press is held", "600", 16, 10_000),
+                    Arg("pointer", ArgType.Enum, "mouse or touch", "mouse", "mouse|touch"),
+                    Arg("then", ArgType.Enum, "after the hold: release where it pressed, or drag dx,dy", "release", "release|drag"),
+                    Arg("dx", ArgType.Float, "then=drag: DIP along x", "0"),
+                    Arg("dy", ArgType.Float, "then=drag: DIP along y", "0"),
+                    IntArg("steps", "then=drag: frames the pointer moves over", "8", 1, 600),
+                ], s_settleArgs),
+            },
+            new(Verb.Focus, "focus", "Move keyboard focus to a node (the focus ring shows, as after Tab) without a click; then settle", "focus key=home:tile:d-recents")
+            {
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("key", ArgType.Key, "the node (exact key)"), Arg("nth", ArgType.Int, "which match, in reading order", "0") with { Min = 0 }], s_settleArgs),
+            },
+            new(Verb.Said, "said", "The announcements (screen-reader text) since the last said: text, assertive, frame. Every acting verb's after{} carries its own as said[]", "said")
+            {
+                Args = [Arg("clear", ArgType.Bool, "forget what this read returns (false: the next said returns it again)", "true")],
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -609,6 +665,7 @@ public static partial class Diagnostics
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
+            "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

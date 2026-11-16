@@ -44,6 +44,23 @@ public static class HomeProjection
     public static BoardModel Bare(HomeDoc doc, HomeSourceRegistry sources)
         => Project(doc, [], null, null, sources, null, 0);
 
+    /// <summary>The document over the All answer on hand right now (the tables, no fetch): the store's and the inspector's
+    /// stand-in when no board is mounted. Not reactive: it peeks.</summary>
+    public static BoardModel Live(HomeDoc doc, HomeSourceRegistry sources)
+    {
+        var answer = AnswerOnHand("");
+        var following = AnswerOnHand("music-following-chip");
+        return Project(doc, answer, following.Count > 0 ? following : null, null, sources, HomeZoneTitles.Localized(),
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+    }
+
+    /// <summary>A facet's sections as the tables hold them now (empty before the first answer).</summary>
+    public static IReadOnlyList<SectionInput> AnswerOnHand(string facet)
+    {
+        var h = Entities.HomeFeed(facet);
+        return h.IsValid && h.Knows(HomeFields.Sections) ? SectionReader.Read(h) : [];
+    }
+
     public static BoardModel Project(HomeDoc doc, IReadOnlyList<SectionInput> answer,
         IReadOnlyList<SectionInput>? followingReleases, ChartTilesModel? charts,
         HomeSourceRegistry sources, ZoneTitles? titles, long nowMs)
@@ -213,4 +230,25 @@ public static class HomeProjection
         ZoneKind.EpisodeRows or ZoneKind.EpisodeLead or ZoneKind.ContinueEpisodes => SectionTemplate.EpisodeRows,
         _ => SectionTemplate.None,
     };
+}
+
+/// <summary>The planner's chapter titles, localized: the board host and the inspector build the projection's titles here.</summary>
+public static class HomeZoneTitles
+{
+    public static ZoneTitles Localized() => new(
+        MadeForYou: Loc.Get(Strings.Home.MadeForYou),
+        BecauseYouLike: Loc.Get(Strings.Home.Zone.BecauseYouLike),
+        MoreForYou: Loc.Get(Strings.Home.Zone.MoreForYou),
+        RadioAndMixes: Loc.Get(Strings.Home.Zone.RadioAndMixes),
+        Browse: Loc.Get(Strings.Home.Zone.Browse),
+        JumpBackIn: Loc.Get(Strings.Home.JumpBackIn),
+        RecentlyPlayed: Loc.Get(Strings.Sidebar.Section.RecentlyPlayed),
+        NewEpisodes: Loc.Get(Strings.Home.Zone.NewEpisodes),
+        ContinueListening: Loc.Get(Strings.Home.Zone.ContinueListening),
+        VideosYouMightLike: Loc.Get(Strings.Home.Zone.VideosYouMightLike),
+        EpisodesYouMightLike: Loc.Get(Strings.Home.Zone.EpisodesYouMightLike),
+        BecauseYouListenTo: Loc.Get(Strings.Home.Zone.BecauseYouListenTo),
+        FromArtistsYouFollow: Loc.Get(Strings.Home.Zone.FromArtistsYouFollow),
+        YourShows: Loc.Get(Strings.Home.Zone.YourShows),
+        ShowsYouMightLike: Loc.Get(Strings.Home.Zone.ShowsYouMightLike));
 }
