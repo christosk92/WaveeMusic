@@ -7,6 +7,7 @@ and prints the one reply line it gets back. Standard library only; runs under `p
     python -I tools/inspect.py -f audit.jsonl --pretty
     python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"
     python -I tools/inspect.py --trace -c "mount w=1440 h=900 theme=zune" -c "goto album:spotify:album:x settle=false trace=90"
+    python -I tools/inspect.py --gate-perf -c "mount ... gpu=warp" -c "perf on" -c "home do=page key=nmf page=2" -c "perf report"   # exit 1 on a frame over budget
     python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a failed gate-rule lint error, a jump or a rebuild; 2 on any ok:false or no lint
     python -I tools/inspect.py --gate warn --gate-todo -f lint.txt   # the todo rules (align, space, placeholder, keys, duplicate text, inkless targets) count too
     python -I tools/inspect.py --findings --gate error -c "mount w=1920 h=960 theme=zune route=home" -c "resize 1904 960" -c "crossing from=1904x960 to=1888x960"
@@ -502,6 +503,67 @@ class Gate:
         return "\n".join(lines)
 
 
+class PerfGate:
+    """--gate-perf [MS]: a verdict over every `perf report` reply (the server judges; Diagnostics.Inspect.Perf.cs). Exit 1 when a report
+    has a frame over budget (its judged ui cost, JIT subtracted, past `budgetMs`) or a steady animation frame that allocated on the hot
+    phases (`gate.failed`); 2 when a reply was ok:false or no perf report ran (a gate over nothing is no verdict). MS sets the budget of every
+    `perf report` text line that names none (default: the server's, the display the mount's dt stands for: 16.67 ms at dt=16)."""
+
+    def __init__(self, budget):
+        self.budget = budget
+        self.reports = 0
+        self.failed = []
+        self.over = 0
+        self.alloc = 0
+        self.lines = []
+
+    def rewrite(self, line):
+        """A `perf report` text line without budget= gets the gate's budget."""
+        if self.budget is None:
+            return line
+        words = line.strip().split()
+        if len(words) >= 2 and words[0] == "perf" and ("report" in words[1:2] or "do=report" in words) and not any(w.startswith("budget=") for w in words):
+            return line.rstrip() + " budget=%g" % self.budget
+        if len(words) == 1 and words[0] == "perf":
+            return "perf report budget=%g" % self.budget
+        return line
+
+    def see(self, reply):
+        obj = _object(reply) if reply else None
+        if obj is None:
+            return
+        if not obj.get("ok", False):
+            self.failed.append((obj.get("cmd", "?"), obj.get("error", "")))
+            return
+        if obj.get("cmd") != "perf" or not isinstance(obj.get("gate"), dict):
+            return
+        self.reports += 1
+        g = obj["gate"]
+        self.over += g.get("over", 0)
+        self.alloc += g.get("alloc", 0)
+        for o in obj.get("over", [])[:8]:
+            self.lines.append("over budget %.2f ms: frame %s of %s: %.2f ms, top %s %.2f ms: %s" % (
+                obj.get("budgetMs", 0), o.get("frame"), o.get("verb"), o.get("ms", 0), o.get("top"), o.get("topMs", 0), o.get("why", "")))
+        for a in obj.get("alloc", [])[:8]:
+            self.lines.append("hot alloc: frame %s of %s: %s bytes on a steady animation frame" % (a.get("frame"), a.get("verb"), a.get("bytes")))
+
+    def code(self):
+        if self.failed or self.reports == 0:
+            return 2
+        return 1 if self.over or self.alloc else 0
+
+    def summary(self):
+        code = self.code()
+        text = "gate-perf: %d perf report%s, %d frame%s over budget, %d hot-alloc frame%s; %d ok:false repl%s -> exit %d" % (
+            self.reports, "" if self.reports == 1 else "s", self.over, "" if self.over == 1 else "s", self.alloc, "" if self.alloc == 1 else "s",
+            len(self.failed), "y" if len(self.failed) == 1 else "ies", code)
+        if self.failed:
+            text += " (first: %s: %s)" % self.failed[0]
+        elif self.reports == 0:
+            text += " (no perf report ran: put `perf on` before the verbs and `perf report` after them)"
+        return chr(10).join(["gate-perf PERF: " + l for l in self.lines] + [text])
+
+
 def show(reply, pretty, findings=False, trace=False):
     if reply is None:
         return
@@ -548,6 +610,10 @@ def main():
     ap.add_argument("--gate-todo", action="store_true",
                     help="with --gate: failures of the todo-level rules (align, space, placeholder, keys, duplicate text, inkless targets, "
                          "target.size above Compact) count too")
+    ap.add_argument("--gate-perf", nargs="?", const=-1.0, type=float, default=None, metavar="MS",
+                    help="a frame-cost verdict over every `perf report` reply: exit 1 on a frame over budget or hot-phase allocation on a "
+                         "steady animation frame, 2 on ok:false or no perf report; MS sets the budget of a `perf report` line that names none "
+                         "(default: the server's, 16.67 ms at dt=16). Combines with --gate (the larger exit wins)")
     ap.add_argument("--max-moved", type=int, default=0, metavar="N",
                     help="with --gate: the most nodes a crossing may move at once past its control step (counts.excessSnapped + "
                          "excessJumped), and the most watched keys a trace may move at once (counts.movedAtOnce); default 0")
@@ -558,6 +624,7 @@ def main():
     if args.max_moved < 0:
         ap.error("--max-moved is 0 or more")
     gate = Gate(args.gate, args.gate_todo, args.max_moved) if args.gate else None
+    perf_gate = PerfGate(None if args.gate_perf is None or args.gate_perf < 0 else args.gate_perf) if args.gate_perf is not None else None
     server = None
     code = 0
     try:
@@ -574,10 +641,14 @@ def main():
             if server.ended:
                 left += 1 if line.strip() and not line.strip().startswith("#") else 0
                 continue
+            if perf_gate is not None:
+                line = perf_gate.rewrite(line)
             reply = server.send(line)
             show(reply, args.pretty, args.findings, args.trace)
             if gate is not None:
                 gate.see(reply)
+            if perf_gate is not None:
+                perf_gate.see(reply)
             obj = _object(reply) if reply else None
             if obj is not None and obj.get("ok") and obj.get("cmd", "").lower() in ("quit", "exit"):
                 server.ended = True   # the server is gone: the lines after `quit` are not sent
@@ -589,10 +660,12 @@ def main():
     except (SystemExit, Exception) as e:
         # The server did not come up, died or closed the stream, or a reply did not parse. Without --gate this ends the run as it
         # always did; with --gate it is a failed reply (exit 2), never a lint verdict, and the summary still prints.
-        if gate is None:
+        if gate is None and perf_gate is None:
             raise
         why = (str(e) or e.__class__.__name__).strip()
-        gate.failed.append(("server", why if len(why) <= 300 else why[:300] + "..."))
+        for g in (gate, perf_gate):
+            if g is not None:
+                g.failed.append(("server", why if len(why) <= 300 else why[:300] + "..."))
         if server is not None:
             server.ended = True
     finally:
@@ -602,6 +675,10 @@ def main():
         print(gate.summary())
         sys.stdout.flush()
         code = max(code, gate.code())
+    if perf_gate is not None:
+        print(perf_gate.summary())
+        sys.stdout.flush()
+        code = max(code, perf_gate.code())
     sys.exit(code)
 
 

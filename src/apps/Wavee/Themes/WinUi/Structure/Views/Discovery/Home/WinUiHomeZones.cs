@@ -400,7 +400,7 @@ internal static partial class WinUiHomeZones
         switch (zone.Kind)
         {
             case ZoneKind.Daylist:
-                return layout.Daylist.Form == WinUiDaylistForm.Triple ? layout.Daylist.Cover + layout.Daylist.Pad + layout.Daylist.Pad : 0f;
+                return WinUiHomeDaylist.Extent(layout);
             case ZoneKind.EmptyFacet:
                 return 0f;
             case ZoneKind.RecentGrid or ZoneKind.ReleaseList:

@@ -5,7 +5,7 @@
 //   MoodPlates     flat plates in the plate rule Browse's tiles use (muted, mid-dark), "Spring music for you." small at the top, the name
 //                  40 light lowercase at the foot; a name longer than its plate bleeds off its edge under a fade, it never shrinks
 //   BookShelf      the 154 cover shelf: the author, "★ 4.7 · 20 hr 56 min", what the plan covers as a quiet lowercase line
-//   ClusterCards   groups: the artist's picture, "for fans of" and the name as a link; the playlist (cover, its name 26 light as written,
+//   PodcastGroups  groups: the show's picture, "for fans of" and the name as a link; the playlist (cover, its name 26 light as written,
 //                  the description, "playlist · spotify · 50 songs", the play and save rings); 4 rows; pages of two rows at most, "01/02" by the heading
 //   VideoTiles(1)  the episode's still, flat and square-cornered, "video" and the length on it, the progress line; the show, the title in
 //                  the 26 light voice as written (it wraps), "20 jul · 1 hr 24 min · not started", the play and save rings
@@ -86,12 +86,13 @@ internal static partial class ZuneHomeZones
         }
         var band = new ZuneCappedBand(H.TileMinCol, Math.Min(lay.TileCols, H.MoodPlatesMax / 2), 0);
         Element grid = GridFill.Responsive("zune-mood-plates:" + zone.Key, n, w => band.Columns(w, H.TileGap),
-            (cols, w) => GridFill.Build(plates, cols, w, H.TileGap, H.TileGap, H.MoodPlateH), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
+            (cols, w) => GridFill.Build(plates, cols, w, H.TileGap, H.TileGap), band.MinCol * band.MaxCols + H.TileGap * (band.MaxCols - 1));
         return K.Section(Heading(zone, lay), grid);
     }
 
-    /// <summary>One plate: the mix's colour through the plate rule (the accent where it has none), its line at the top, its name 40 light at the foot
-    /// on one line that runs off the plate's edge under a fade.</summary>
+    /// <summary>One plate: the mix's colour through the plate rule (the accent where it has none), its line at the top, its name 40 light at the foot.
+    /// The name is never shrunk and never cut mid-glyph: it wraps at word breaks and the plate grows to hold it (every plate of a row takes the
+    /// row's height, the tallest name's); only a single word wider than the plate still runs off its edge, under a fade.</summary>
     static Element MoodPlate(in PlateKey k)
     {
         var c = k.Card;
@@ -103,7 +104,7 @@ internal static partial class ZuneHomeZones
         Prop<ColorF> inkSoft = ink;
         return new BoxEl
         {
-            Key = "zune-mood-plate:" + k.Uri, Height = H.MoodPlateH, Direction = 1, Justify = FlexJustify.SpaceBetween, MinWidth = 0f,
+            Key = "zune-mood-plate:" + k.Uri, MinHeight = H.MoodPlateH, Grow = 1f, Direction = 1, Justify = FlexJustify.SpaceBetween, MinWidth = 0f,
             ClipToBounds = true, Corners = R.Shape.All(ShapeRole.Tile), Padding = new Edges4(H.TilePadX, H.TilePadY, 0f, H.TilePadY),
             Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => HomeCardNav.Open(in c),
             Children =
@@ -114,13 +115,16 @@ internal static partial class ZuneHomeZones
                     Color = inkSoft, Case = R.Case.For(LabelKind.Label), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                     MinWidth = 0f, Margin = new Edges4(0f, 0f, H.TilePadX, 0f),
                 },
-                // The word is the art: never shrunk, never cut to an ellipsis; a long one runs off the plate's right edge through a fade.
+                // The word is the art: never shrunk, never cut to an ellipsis. The name wraps at its word breaks inside the plate's inset (the
+                // plate grows with it); a single word wider than the plate is the one thing that still runs off its right edge, through a fade.
                 new BoxEl
                 {
                     Direction = 0, MinWidth = 0f, ClipToBounds = true, EdgeFade = new EdgeFadeSpec(EdgeMask.Right, H.TilePadX * 2f),
+                    Padding = new Edges4(0f, 0f, H.TilePadX, 0f),
                     Children = [R.Type.HeroTitle(k.Title) with
                     {
-                        Color = ink, Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.None, Shrink = 0f,
+                        Color = ink, Case = R.Case.For(LabelKind.Navigation), MaxLines = 0, Wrap = TextWrap.Wrap, Trim = TextTrim.None,
+                        Shrink = 1f, MinWidth = 0f,
                     }],
                 },
             ],

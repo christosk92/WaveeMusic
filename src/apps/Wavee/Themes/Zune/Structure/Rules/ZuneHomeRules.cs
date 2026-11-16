@@ -154,7 +154,8 @@ public static class ZuneHomeRules
     /// <summary>The daylist's tags shown (each opens its own mix).</summary>
     public const int DaylistMaxTags = 6;
 
-    /// <summary>The mood plates (home-gap P6): the plate, how many a shelf shows, the plate's insets. The name is 40 light and bleeds off the plate.</summary>
+    /// <summary>The mood plates (home-gap P6): the plate's floor, how many a shelf shows, the plate's insets. The name is 40 light and wraps; the plate
+    /// grows with it.</summary>
     public const float MoodPlateH = 120f;
     public const int MoodPlatesMax = 8;
 

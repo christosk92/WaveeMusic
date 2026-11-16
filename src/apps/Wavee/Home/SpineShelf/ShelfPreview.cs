@@ -11,7 +11,7 @@
 //
 // The clip (owner call, scratch/pins/spine-shelf-tech.md): only when nothing plays (Playback.IsPlaying, which follows Connect too), at
 // ClipVolume × the user's volume, on its own MF engine. It never calls the player, the queue or Connect. A window with no video
-// compositor, and the headless inspector (Shell.IsTestHost), builds neither player: the hover state still runs, so the inspector proves it without media.
+// compositor builds neither player; the headless inspector builds them only over its fake backend (`mount media=fake`, CanvasVideo.InspectBackend).
 
 using FluentGpu.Media;
 
@@ -32,23 +32,34 @@ public static class ShelfPreview
     public static readonly Signal<bool> ClipPlaying = new(false);
 
     static FluentGpu.Media.Windows.MfMediaPlayer? s_videoBackend, s_clipBackend;
+    static IMediaBackend? s_builtOver;
     static MediaPlayer? s_video, s_clip;
     static string s_openFile = "";
     static ShelfSong s_song;
-    static bool s_media;
+    static bool s_media, s_fake;
 
     /// <summary>The canvas player (null in a window that composites no video).</summary>
     public static MediaPlayer? Video => s_video;
 
-    /// <summary>A shelf mounted in a window that composites video: build the players once (the warm-up).</summary>
+    /// <summary>A shelf mounted: build the players once (the warm-up: MF startup and the engine pair are paid here, never on a hover). In a
+    /// window that composites video, over their own Media Foundation backends (the canvas host's reasoning, Shell/Canvas.cs); in the
+    /// headless inspector only over its fake backend (`mount media=fake`, CanvasVideo.InspectBackend), and not at all without one.</summary>
     public static void Warm(bool composites)
     {
-        if (!composites || s_media) return;
+        var fake = CanvasVideo.InspectBackend;
+        if (s_media && ReferenceEquals(s_builtOver, fake)) return;
+        if (fake is null && (Shell.IsTestHost || !composites)) return;
+        Leave();
+        if (s_video is { } oldV) _ = oldV.DisposeAsync();
+        if (s_clip is { } oldC) _ = oldC.DisposeAsync();
+        s_builtOver = fake;
+        s_fake = fake is not null;
         s_media = true;
-        var v = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, s_videoBackend ??= new FluentGpu.Media.Windows.MfMediaPlayer()).Build();
+        s_openFile = "";
+        var v = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, fake ?? (s_videoBackend ??= new FluentGpu.Media.Windows.MfMediaPlayer())).Build();
         v.SetMuted(true);
         s_video = v;
-        s_clip = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, s_clipBackend ??= new FluentGpu.Media.Windows.MfMediaPlayer()).Build();
+        s_clip = MediaPlayer.Build().WithBackend(MediaKind.MfVideoOrFile, fake ?? (s_clipBackend ??= new FluentGpu.Media.Windows.MfMediaPlayer())).Build();
     }
 
     /// <summary>An item opened: fetch its songs' canvas files in the background and ask for their track rows (the artist line).</summary>
@@ -59,7 +70,7 @@ public static class ShelfPreview
         foreach (var s in item.Songs)
         {
             if (s.IsBlank) continue;
-            if (s_media && s.Canvas is { } url) CanvasVideo.Files.Ensure(url, priority: false);
+            if (s_media && !s_fake && s.Canvas is { } url) CanvasVideo.Files.Ensure(url, priority: false);
             if (s.Card.Kind == HomeCardKind.Track && n < slots.Length) slots[n++] = s.Card.Target.Slot;
         }
         if (n > 0) Entities.Ensure(Entities.Current.Tracks, slots[..n], (uint)TrackFields.Artists);
@@ -73,22 +84,26 @@ public static class ShelfPreview
         Leave();
         s_song = song;
         Live.Value = tile;
-        if (!s_media) return;
-        if (song.Canvas is { } url) CanvasVideo.Files.Ensure(url, priority: true);
-        if (song.Clip is { } clip && !Playback.IsPlaying.Peek() && s_clip is { } player)
-        {
-            float volume = Playback.Muted.Peek() ? 0f : Playback.Volume.Peek() * SpineShelfRules.ClipVolume;
-            player.SetVolume(volume);
-            OpenClip(player, clip);
-        }
+        if (s_media && !s_fake && song.Canvas is { } url) CanvasVideo.Files.Ensure(url, priority: true);
     }
 
-    /// <summary>The live tile finished widening: present its canvas when its file is on disk (the shelf calls again when a file lands).</summary>
+    /// <summary>Whether the clip plays for this hover (call 1: nothing else plays, and the song has one).</summary>
+    public static bool ClipAllowed(in ShelfSong song) => song.Clip is not null && !Playback.IsPlaying.Peek();
+
+    /// <summary>The live tile finished widening: the clip starts (an engine's open never lands on a frame of the widening), and the canvas is
+    /// presented when its file is on disk (the shelf calls again when a file lands).</summary>
     public static void Settled(string tile)
     {
-        if (Live.Peek() != tile || Showing.Peek() == tile) return;
+        if (Live.Peek() != tile) return;
+        if (s_media && !ClipPlaying.Peek() && ClipAllowed(in s_song) && s_clip is { } clipPlayer)
+        {
+            clipPlayer.SetVolume(Playback.Muted.Peek() ? 0f : Playback.Volume.Peek() * SpineShelfRules.ClipVolume);
+            OpenClip(clipPlayer, s_song.Clip!);
+        }
+        if (Showing.Peek() == tile) return;
         if (!s_media || s_video is not { } player || s_song.Canvas is not { } url) return;
-        string file = CanvasVideo.Files.Ensure(url, priority: true);
+        // The fake backend (the inspector) opens anything: it takes the url itself; a real one plays the cached file.
+        string file = s_fake ? url : CanvasVideo.Files.Ensure(url, priority: true);
         if (file.Length == 0) return;
         Showing.Value = tile;
         if (file != s_openFile)
@@ -115,7 +130,8 @@ public static class ShelfPreview
         try
         {
             player.SetMuted(true);
-            await player.OpenAsync(MediaSource.FromFile(file).Loop(), new MediaOpenOptions { StartPaused = true });
+            var source = s_fake ? MediaSource.FromUri(file) : MediaSource.FromFile(file);
+            await player.OpenAsync(source.WithKind(MediaKind.MfVideoOrFile).Loop(), new MediaOpenOptions { StartPaused = true });
             // Back on the UI thread (the open may finish anywhere): play it only if its tile still shows it.
             CanvasVideo.Files.Post(() => { if (Showing.Peek().Length > 0 && s_openFile == file) _ = player.PlayAsync(); });
         }
@@ -131,7 +147,7 @@ public static class ShelfPreview
         ClipPlaying.Value = true;
         try
         {
-            await player.OpenAsync(MediaSource.FromUri(url), new MediaOpenOptions { StartPaused = false });
+            await player.OpenAsync(MediaSource.FromUri(url).WithKind(MediaKind.MfVideoOrFile), new MediaOpenOptions { StartPaused = false });
         }
         catch (Exception ex)
         {

@@ -225,7 +225,7 @@ public sealed class SpineShelf : Component
         _g = g;
         _anim = Context.Anim;
         _hooks = UseContext(InputHooks.Current);
-        ShelfPreview.Warm(!Shell.IsTestHost && UseContext(VideoCompositor.Current) is not null);
+        ShelfPreview.Warm(UseContext(VideoCompositor.Current) is not null);
         if (_item.Length != n)
         {
             _item = new NodeHandle[n]; _spine = new NodeHandle[n]; _face = new NodeHandle[n]; _meter = new NodeHandle[n];
@@ -548,8 +548,6 @@ public sealed class SpineShelf : Component
         _live.Value = code;
         _settling = code;
         ShelfPreview.Enter(tile, in song);
-        if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull && song.Clip is not null && !Playback.IsPlaying.Peek())
-            a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 1f, SpineShelfRules.ClipMs, Easing.Linear);
         _tileTimer.RestartIn(SpineShelfRules.TileMs);
     }
 
@@ -571,6 +569,10 @@ public sealed class SpineShelf : Component
         int code = _settling;
         if (code < 0 || code != _live.Peek()) return;
         _settled = code;
+        // The clip and its progress line start once the tile has widened (ShelfPreview.Settled opens it then).
+        var song = _items[code / S].Songs[code % S];
+        if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull && ShelfPreview.ClipAllowed(in song))
+            a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 1f, SpineShelfRules.ClipMs, Easing.Linear);
         ShelfPreview.Settled(TileKey(code));
     }
 

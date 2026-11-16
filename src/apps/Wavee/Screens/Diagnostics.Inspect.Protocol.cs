@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -181,6 +181,7 @@ public static partial class Diagnostics
             Arg("rows", ArgType.Bool, "false: the summary only", "true"),
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
             Arg("flights", ArgType.Bool, "each row carries the connected navigation flights (a card's cover flying into its page), the summary their take-off, landing and hand-off", "false"),
+            Arg("curves", ArgType.Bool, "each watched key's motion curve (x, y, w, h, opacity per frame, a sparkline) and its steps, reversals, stalls and snaps (motionFindings)", "false"),
             Arg("baseline", ArgType.Bool, "judge the first traced frame against the watched nodes as they stood before it (on for state)", "state"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
@@ -264,6 +265,10 @@ public static partial class Diagnostics
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
+            Arg("media", ArgType.Enum, "fake: every media player (the canvas, a player built without its own backend: audio previews) opens a fake source whose costs the media* args set (Diagnostics.Inspect.Media.cs)", null, "fake"),
+            IntArg("mediaOpenMs", "media=fake: an open's latency to its first frame on the 16 ms clock (metadata at half)", "120", 0, 60_000),
+            Arg("mediaStartCostMs", ArgType.Float, "media=fake: a synchronous UI-thread stall inside each open (a real engine's creation): the start hiccup", "0") with { Min = 0, Max = 2000 },
+            Arg("mediaFrameCostMs", ArgType.Float, "media=fake: UI-thread work in each video pump while it plays: a per-frame cost", "0") with { Min = 0, Max = 500 },
             Arg("dt", ArgType.Float, "the fixed frame step in ms (default 16; 8.333 samples motion at 120 Hz: `frames 1` + `render` per frame)", "16"),
         ];
 
@@ -380,9 +385,10 @@ public static partial class Diagnostics
                 Args = Join(s_aimArgs, s_stableArgs, [Arg("button", ArgType.Enum, "the button", "left", "left|right"),
                                         Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)")], s_settleArgs),
             },
-            new(Verb.Hover, "hover", "Move the pointer to a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; then settle", "hover key=zune-band-pivot:home")
+            new(Verb.Hover, "hover", "Move the pointer to a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; rest there dwell ms on the frame clock; then settle", "hover key=zune-band-pivot:home dwell=700")
             {
-                Positional = ["key"], NeedsMount = true, Acts = true, Args = Join(s_aimArgs, s_stableArgs, s_settleArgs),
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join(s_aimArgs, s_stableArgs, [IntArg("dwell", "ms the pointer rests on the target before the settle (a rest-to-open timer, a hover preview), on the 16 ms clock", "0", 0, 60_000)], s_settleArgs),
             },
             new(Verb.Key, "key", "Press and release a key (ctrl+, shift+, alt+, win+ prefixes) repeat times; then settle", "key ctrl+f")
             {
@@ -592,9 +598,9 @@ public static partial class Diagnostics
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
                 Positional = ["do"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page|shelf"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|explain|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page|shelf"),
                              Arg("path", ArgType.Path, "doc: also write the document's JSON to this file"),
-                             Arg("facet", ArgType.String, "plan: the facet (empty: All)", ""),
+                             Arg("facet", ArgType.String, "plan / explain: the facet (empty: All)", ""),
                              Arg("on", ArgType.Bool, "edit: on or off", "true"),
                              Arg("item", ArgType.String, "the entry id (home do=status lists them; home:tile:<id> is accepted)"),
                              Arg("uri", ArgType.String, "pin / unpin: an entity uri or a route key"),
@@ -645,6 +651,35 @@ public static partial class Diagnostics
             {
                 Args = [Arg("clear", ArgType.Bool, "forget what this read returns (false: the next said returns it again)", "true")],
             },
+            new(Verb.Perf, "perf", "Frame-cost capture around any verbs: on starts it (every later frame is recorded under its verb), report judges every frame against the budget (per verb: max, p95, presents, jit, hot alloc; each frame over budget with its top phase and the relayout scope or components behind it; hot-phase allocation on steady animation frames), off stops it", "perf on budget=16.7")
+            {
+                Positional = ["do"],
+                Args = [Arg("do", ArgType.Enum, "on, off, report or status", "report", "on|off|report|status"),
+                        Arg("budget", ArgType.Float, "the frame budget in ms (default: the refresh interval the host paced at, 16.67 at 60 Hz)") with { Min = 0.5, Max = 1000 },
+                        Arg("judge", ArgType.Enum, "on: ui (flush + layout + anim + record + postSubmit, JIT subtracted) or total (ui + submit: on WARP the CPU rasteriser)", "ui", "ui|total"),
+                        Arg("census", ArgType.Bool, "on: the host's render census names the components of a slow flush (costs frame time)", "false"),
+                        Arg("rows", ArgType.Enum, "report: the per-frame rows listed (over: the over-budget and alloc frames)", "over", "over|all|none"),
+                        IntArg("items", "report: the most entries per list", "20", 1, 5000),
+                        Arg("path", ArgType.Path, "report: also write every row to this JSON file"),
+                        Arg("reset", ArgType.Bool, "report: forget the frames after the report (the next report starts afresh)", "false")],
+            },
+            new(Verb.Film, "film", "Trace N frames from where the host stands (start the motion with an acting verb's settle=false) and lay every Nth frame into one contact-sheet PNG labelled with frame and time; keys=/prefix= add each key's motion curve with its steps, reversals, stalls and snaps", "film frames=40 every=4 path=C:/WAVEE/scratch/x/film.png prefix=home:section:")
+            {
+                Positional = ["frames"], NeedsMount = true,
+                Args = Join([IntArg("frames", "frames to film", "40", 1, 600), IntArg("every", "keep every Nth frame (the last always)", "4", 1, 600),
+                             Arg("path", ArgType.Path, "the contact sheet (.png)"), IntArg("cols", "cells per row", "5", 1, 20),
+                             Arg("scale", ArgType.Float, "each cell's scale of the frame (0.05 < scale <= 1)", "0.5"),
+                             Arg("framesDir", ArgType.Path, "also write each kept frame whole to this folder (f000.png, ...)"),
+                             Arg("crop", ArgType.Key, "cells show only this node's drawn rect (8 DIP around it, on the window) as it stood when the film began"),
+                             IntArg("max", "the most nodes watched", "20", 1, 500)], s_traceOptions),
+            },
+            new(Verb.Pointer, "pointer", "Pointer realism: glide through waypoints (a key's visible centre, at:x:y, or leave = off the window) one real move per frame over steps frames, resting each waypoint's @ms on the frame clock; then settle", "pointer path=[home:tile:a@700,home:tile:b@300,leave@200] steps=6")
+            {
+                NeedsMount = true, Acts = true,
+                Args = Join([Arg("path", ArgType.List, "waypoints: key[@ms], at:x:y[@ms] or leave[@ms]"),
+                             IntArg("steps", "frames each glide takes (one move per frame)", "6", 1, 600),
+                             IntArg("dwell", "ms rested at a waypoint that names none", "0", 0, 60_000)], s_settleArgs),
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -672,6 +707,7 @@ public static partial class Diagnostics
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
