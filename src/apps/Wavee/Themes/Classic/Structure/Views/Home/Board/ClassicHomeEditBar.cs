@@ -101,16 +101,19 @@ internal static class ClassicHomeEditBar
                 ];
             else
             {
-                var kids = new List<Element>(8) { ClassicEditBarParts.Pencil() };
-                if (inline) kids.Add(ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome)));
-                if (inline) kids.Add(FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" });
-                kids.Add(ClassicEditBarParts.Undo(board.Verbs.Undo, undo.CanUndo));
-                kids.Add(ClassicEditBarParts.Redo(board.Verbs.Redo, undo.CanRedo));
-                kids.Add(ClassicEditBarParts.Reset(Loc.Get("sidebar.edit.reset")) with
+                // The bar's two forms differ by the caption and the find field only (the board's width decides): those fade in and out as the declared
+                // swap, and the buttons beside them glide to their new places, so a width that crosses `InlineFrom` moves nothing at once.
+                var kids = new List<Element>(8) { Glide("home:edit:pencil", ClassicEditBarParts.Pencil()) };
+                if (inline) kids.Add(Swap("home:edit:caption", ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome))));
+                if (inline) kids.Add(Swap("home:edit:find-slot", FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" }));
+                kids.Add(Glide("home:edit:undo-slot", ClassicEditBarParts.Undo(board.Verbs.Undo, undo.CanUndo)));
+                kids.Add(Glide("home:edit:redo-slot", ClassicEditBarParts.Redo(board.Verbs.Redo, undo.CanRedo)));
+                kids.Add(Glide("home:edit:reset-slot", ClassicEditBarParts.Reset(Loc.Get("sidebar.edit.reset")) with
                 {
                     Key = "home:edit:reset", OnClick = ResetMenu, OnRealized = h => _reset = h, Shrink = 0f,
-                });
-                kids.Add(ClassicEditBarParts.Done(() => ClassicHomeBoard.Live?.SetEditing(false)) with { Key = "home:edit:done", OnRealized = h => _done = h, Shrink = 0f });
+                }));
+                kids.Add(Glide("home:edit:done-slot", ClassicEditBarParts.Done(() => ClassicHomeBoard.Live?.SetEditing(false))
+                    with { Key = "home:edit:done", OnRealized = h => _done = h, Shrink = 0f }));
                 row = kids.ToArray();
             }
             return new BoxEl
@@ -125,6 +128,18 @@ internal static class ClassicHomeEditBar
                 Children = row,
             };
         }
+
+        static Element Glide(string key, Element child) => new BoxEl
+        {
+            Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Layout = ClassicTierMotion.Shove, Children = [child],
+        };
+
+        static Element Swap(string key, Element child) => new BoxEl
+        {
+            Key = key, Direction = 0, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            Children = [child],
+        };
 
         static MotionTokenDef Fade => MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
