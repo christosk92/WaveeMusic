@@ -72,7 +72,15 @@ public sealed record SpineShelfSkin(
     Func<ColorF> Placeholder);
 
 /// <summary>One shelf page: its zone key (the identity the open item is remembered under), its items, the tier's numbers and the theme's look.</summary>
-public sealed record SpineShelfProps(string Key, ShelfItem[] Items, SpineShelfGeometry Geo, SpineShelfSkin Skin);
+public sealed record SpineShelfProps(string Key, ShelfItem[] Items, SpineShelfGeometry Geo, SpineShelfSkin Skin)
+{
+    /// <summary>Value equality over the items (see <see cref="ShelfItem.Equals(ShelfItem?)"/>): an unchanged shelf re-pushed by a board
+    /// re-projection re-renders nothing.</summary>
+    public bool Equals(SpineShelfProps? o) => o is not null && Key == o.Key && Geo.Equals(o.Geo) && ReferenceEquals(Skin, o.Skin)
+        && Items.AsSpan().SequenceEqual(o.Items);
+
+    public override int GetHashCode() => HashCode.Combine(Key, Geo, Items.Length);
+}
 
 /// <summary>The shelf body a theme mounts for a SpineShelf zone: one shelf, or (more than <see cref="SpineShelfRules.MaxItems"/> items) a
 /// PagedShelf of shelves driven by the chapter's controller (the header's pager).</summary>
@@ -181,6 +189,10 @@ public sealed class SpineShelf : Component
     TimerHandle _dwellTimer, _tileTimer;
     bool _armed;
     NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [];
+    Element[] _built = [];
+    ShelfItem[] _builtItems = [];
+    SpineShelfGeometry _builtG;
+    SpineShelfSkin? _builtSkin;
 
     /// <summary>An unset extent (the parent's stretch decides).</summary>
     static readonly Prop<float> Free = float.NaN;
@@ -260,8 +272,13 @@ public sealed class SpineShelf : Component
             };
         }, DepKey.Empty);
 
+        // An item that has not changed keeps its element (the reconciler skips an identical element): a re-render for one item's change
+        // (its preview songs landing) rebuilds that item alone.
         var row = new Element[n];
-        for (int i = 0; i < n; i++) row[i] = Item(items[i], i, i == openNow, g, skin, FaceW, RestW, LiveW, OtherW);
+        bool sameFrame = _builtG.Equals(g) && ReferenceEquals(_builtSkin, skin) && _built.Length == n;
+        for (int i = 0; i < n; i++)
+            row[i] = sameFrame && _builtItems[i].Equals(items[i]) ? _built[i] : Item(items[i], i, i == openNow, g, skin, FaceW, RestW, LiveW, OtherW);
+        _built = row; _builtItems = items; _builtG = g; _builtSkin = skin;
 
         // A canvas file that lands while its tile waits re-presents it (CanvasVideo.Files.Epoch).
         var watch = Embed.Comp(new EpochProps(this), static () => new EpochWatch());

@@ -36,6 +36,14 @@ public sealed record ShelfItem(string Key, HomeCard Header, string Title, string
 
     /// <summary>The number on the spine ("01"): its place in the whole shelf, so a second page goes on counting.</summary>
     public string Number => (Ordinal + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Value equality over the songs too (a record compares an array by reference): a re-projection that changed nothing in an item
+    /// hands the shelf an EQUAL item, so nothing re-renders (every Home data commit re-projects the board).</summary>
+    public bool Equals(ShelfItem? o) => o is not null && Key == o.Key && Header == o.Header && Title == o.Title && Over == o.Over
+        && Equals(Reason, o.Reason) && Meta == o.Meta && Accent == o.Accent && NoSongs == o.NoSongs && Ordinal == o.Ordinal
+        && Songs.AsSpan().SequenceEqual(o.Songs);
+
+    public override int GetHashCode() => HashCode.Combine(Key, Title, Accent, Ordinal, Songs.Length);
 }
 
 public static class SpineShelfRules
