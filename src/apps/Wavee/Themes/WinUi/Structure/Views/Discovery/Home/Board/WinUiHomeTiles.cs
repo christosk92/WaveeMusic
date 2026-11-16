@@ -39,21 +39,14 @@ internal static class WinUiHomeTiles
     };
 
     /// <summary>The Pinned group's head, the concept's "Your shortcuts": the chapter title over "What you reach for most, picked by Spotify", and, while the
-    /// group carries the history tile, the Shortcuts / Recently played switch and the "Listening history" link at its end (Compact: the switch on a line of
-    /// its own under the title row). The row's height is the rules' <see cref="WinUiHomeBoardLayout.ShortcutsHead"/>.</summary>
+    /// group carries the history tile, the Shortcuts / Recently played switch at its end (Compact: the switch on a line of its own under the title row).
+    /// No "Listening history" link: the grid's own history tile is the way in (owner 2026-11-16). The row's height is the rules'
+    /// <see cref="WinUiHomeBoardLayout.ShortcutsHead"/>.</summary>
     public static Element ShortcutsHead(BoardEntry e, WinUiHomeBoardLayout lay, WinUiHomeLayout home, HomeBoardProps board, bool switchable)
     {
         string key = HomeBoardKeys.Group(e.GroupId);
         string? sub = home.HeaderSubtitles ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null;
-        // The switch and the link change places at the Compact edge (beside the title, under it): each crossing cross-fades them, never a rebuilt part.
-        Element? link = switchable
-            ? new BoxEl
-            {
-                Key = key + ":history", Shrink = 0f,
-                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
-                Children = [HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents)],
-            }
-            : null;
+        // The switch changes places at the Compact edge (beside the title, under it): each crossing cross-fades it, never a rebuilt part.
         BoxEl? face = switchable
             ? new BoxEl
             {
@@ -65,8 +58,7 @@ internal static class WinUiHomeTiles
             }
             : null;
         bool stacked = lay.Tier == WidthTier.Compact;
-        Element? tools = stacked || face is null || link is null ? link
-            : new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face.Value, link.Value] };
+        Element? tools = stacked || face is null ? null : face.Value;
         var header = WinUiHomeZones.ModuleHeader(e.Title, sub, tools, home) with { Key = key + ":title" };
         return new BoxEl
         {

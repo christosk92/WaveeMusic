@@ -110,6 +110,41 @@ internal static class WinUiHomeDaylist
                                    Strings.Home.DaylistMeta(50), actions, clock, CoverTile(null, dl, null)), dl);
     }
 
+    /// <summary>The card's height at the tier, from the same pieces the card lays out (the pinned board packs its row at it, so nothing moves at mount):
+    /// Triple, the cover's edge; Pair, the cover beside the copy (eyebrow row, the one-line title, the tags, the basis line, the spacer's floor, the
+    /// actions), the taller of the two; Stack, the cover beside the eyebrow, the title's two reserved lines and the meta line, then the tags and basis,
+    /// the actions and the clock footer, a gap of the card's rhythm between each; both paddings around.</summary>
+    internal static float Extent(WinUiHomeLayout layout)
+    {
+        var dl = layout.Daylist;
+        float caption = Ui.Caption("").LineHeight, body = Ui.Body("").LineHeight;
+        float title = (dl.TitleLarge ? R.Type.HeroTitle("") : R.Type.ModuleHeader("")).LineHeight;
+        float actions = MathF.Max(ControlMetrics.For(dl.Buttons).MinHeight, dl.IconBox);
+        float inner;
+        switch (dl.Form)
+        {
+            case WinUiDaylistForm.Triple:
+                inner = dl.Cover;
+                break;
+            case WinUiDaylistForm.Pair:
+            {
+                float gap = WinUiHomeRules.CopyGapSmall;
+                float eyebrow = MathF.Max(caption, WinUiHomeDaylistClock.Line((TextSpans)Array.Empty<TextSpan>(), dl).LineHeight);
+                float copy = eyebrow + gap + title + gap + body + caption + gap + actions;
+                inner = MathF.Max(dl.Cover, copy);
+                break;
+            }
+            default:
+            {
+                float head = MathF.Max(dl.Cover, caption + WinUiHomeRules.CopyGapSmall + dl.TitleLines * title + WinUiHomeRules.CopyGapSmall + caption);
+                float footer = 1f + WinUiHomeRules.FooterPad + MathF.Max(dl.Ring, body + caption);
+                inner = head + Spacing.M + body + caption + Spacing.M + actions + Spacing.M + footer;
+                break;
+            }
+        }
+        return inner + 2f * dl.Pad;
+    }
+
     /// <summary>The primary action at the tier's size; the Compact button is the board's 20-padded 40.</summary>
     static Element PlayButton(WinUiDaylistLayout dl, string label, Action onClick, string glyph, bool pauses)
         => Button.Create(label, onClick, ButtonAppearance.Accent, dl.Buttons, glyph: glyph)
@@ -234,7 +269,8 @@ internal static class WinUiHomeDaylist
                     new BoxEl
                     {
                         Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = WinUiHomeRules.CopyGapSmall,
-                        Children = [Eyebrow(), Title(p.Title, dl), MetaLine(p.Meta, small: true)],
+                        // The title reserves its lines (a one-line name keeps the second empty), so the card's height is the tier's, never the name's.
+                        Children = [Eyebrow(), Title(p.Title, dl) with { MinHeight = dl.TitleLines * Title(p.Title, dl).LineHeight }, MetaLine(p.Meta, small: true)],
                     },
                 ],
             },
