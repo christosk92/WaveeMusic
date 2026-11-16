@@ -188,6 +188,9 @@ public static class WinUiHomeBoardRules
     public const long ExtentSettleMs = 120;
     public const float ExtentSettleTickMs = 50f, ExtentSlop = 0.5f;
 
+    /// <summary>The blank cards of a loading shelf's placeholder.</summary>
+    public const int SeedCards = 6;
+
     /// <summary>A full-row tile's estimate where nothing better is known (a shelf's header and one row of covers).</summary>
     public const float FullFallback = 320f;
 

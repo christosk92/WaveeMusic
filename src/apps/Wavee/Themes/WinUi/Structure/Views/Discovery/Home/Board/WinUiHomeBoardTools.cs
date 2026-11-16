@@ -60,9 +60,11 @@ internal static class WinUiHomeBoardTools
             // the button, so it hides neither the Following button under it nor the daylist's clock column.
             UseTimeout(() => _settled.Value = true, WinUiHomeBoardRules.TipDelayMs, DepKey.Empty);
             bool settled = _settled.Value;
+            // Over a vacancy (Spotify's feed loading, failed or offline) the tip waits: it never covers a state or counts as an open overlay then.
+            bool vacancy = UseComputed(() => HasVacancy(board.Model.Value)).Value;
             UseLayoutEffect(() =>
             {
-                if (seen || open || !atHead || !settled || overlay is null || _add.IsNull) { _closingQuietly = true; _tip?.Close(); _closingQuietly = false; return; }
+                if (seen || open || !atHead || !settled || vacancy || overlay is null || _add.IsNull) { _closingQuietly = true; _tip?.Close(); _closingQuietly = false; return; }
                 if (_tip is { IsOpen: true }) return;
                 _tip = TeachingTip.Show(overlay, () => _add, t =>
                 {
@@ -76,7 +78,7 @@ internal static class WinUiHomeBoardTools
                     t.PreferredPlacement = TeachingTip.PlacementMode.LeftBottom;
                 });
                 _tip.ClosedAction = () => { if (!_closingQuietly && !board.View.TipSeen.Peek()) board.View.MarkTipSeen(); _tip = null; };
-            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0, atHead ? 1 : 0, settled ? 1 : 0));
+            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0, (atHead ? 1 : 0) | (vacancy ? 2 : 0), settled ? 1 : 0));
 
             var add = Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.AddWidgets), () => WinUiHomeAddBand.Toggle(board),
                     open ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Medium, Icons.Add)
@@ -89,6 +91,12 @@ internal static class WinUiHomeBoardTools
                 OnKeyDown = e => WinUiHomeBoard.BoardView.HandleKey(e, board),
                 Children = [add, more],
             };
+        }
+
+        static bool HasVacancy(BoardModel m)
+        {
+            foreach (var e in m.Entries) if (e.Kind == BoardEntryKind.Placeholder) return true;
+            return false;
         }
 
         void Menu()

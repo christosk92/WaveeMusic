@@ -3265,7 +3265,8 @@
           "resetHome": "Reset Home",
           "customizeTitle": "Customize {name}",
           "done": "Done",
-          "pinMenu": "Pin"
+          "pinMenu": "Pin",
+          "feedName": "From Spotify"
         }
       },
       "$comment": "WinUI (P6, Developer-only). W0 owns name, description, options and style (the six W-ThemeOptions options); each family lane writes only inside its own object below.",
