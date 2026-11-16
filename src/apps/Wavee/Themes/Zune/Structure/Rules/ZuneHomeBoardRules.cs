@@ -135,7 +135,7 @@ public static class ZuneHomeBoardRules
     public const string TitleKey = "home:title", TitleTextKey = "home:title:text", EndKey = "home:allitems", BarMoreKey = "home:edit:more",
         BarMenuKey = "home:edit:menu", PivotPrefix = "home:add:pivot:", SearchRingKey = "home:add:search", FieldKey = "home:add:field",
         BackRingKey = "home:add:back", RowPrefix = "home:add:row:", RowPinPrefix = "home:add:pin:", EmptyKey = "home:empty:pinned",
-        UnpinSuffix = ":unpin", ResizeSuffix = ":resize", BackKey = "home:tile-back";
+        UnpinSuffix = ":unpin", ResizeSuffix = ":resize", BackKey = "home:tile-back", EditWordKey = "home:edit:word";
 
     /// <summary>Press and hold: 600 ms with a mouse, 500 ms with a finger (spec 8.2).</summary>
     public const float HoldMouseMs = 600f, HoldTouchMs = 500f;

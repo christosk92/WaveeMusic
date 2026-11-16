@@ -5,12 +5,13 @@
 //
 //   Home.Board
 //   └─ column  `home:board-col`  (keys: Ctrl+Z, "/", Delete, arrows while customizing, Enter on a tile, Escape unwinds)
-//      ├─ the title row   `home:title`: the page title, then the undo word when the last change was page-wide
+//      ├─ the title row   `home:title`: the page title, the undo word when the last change was page-wide, the "edit" word at the line's end
 //      └─ ONE section, keyed: the board (`home:board-section`) or all items (`home:add`, `ZuneHomeAllItems`)
 //         board: PackGrid `home:board` (group heads: 40/48 light lowercase titles on ONE line that bleed under a fade, each with its undo word; the
 //                empty Pinned row; one wrapper `home:tile:<id>` per entry), then the round arrow to all items, then the app bar's reserve
 //
-// CUSTOMIZE (`View.Editing` + `View.SelectedId`): entered by the app bar's button, a held press (600 ms mouse, 500 ms touch), a right-click or Enter
+// CUSTOMIZE (`View.Editing` + `View.SelectedId`): entered by the "edit" word at the end of the title's line (always there; it says "done" while
+// customizing: owner, 2026-11-16, no toolbar at rest), a held press (600 ms mouse, 500 ms touch), a right-click or Enter
 // on a tile. The selected tile comes forward, the others fall back to 94 % and dim (`ZuneHomeTiles`); its badges unpin and cycle its size; a tap on
 // another tile selects it; arrows move the selected tile, Delete unpins it, Escape (or "done", or a tap away from the tiles) leaves. Only the selected
 // tile drags (`PackReorder.CanLift`). OPTIONS turn the selected tile over (`TileMotion.TurnOver`): its back lists the choices as words
@@ -85,11 +86,10 @@ internal static class ZuneHomeBoard
     {
         if (!view.Editing.Peek()) return;
         if (view.OpenId.Peek() is not null) verbs.Close(refocus: false);
-        string? sel = view.SelectedId.Peek();
+        // Focus stays where it is: moving it to the tile would bring the tile into view, a scroll jump when "done" is pressed far from it.
         view.Editing.Value = false;
         view.SelectedId.Value = null;
         verbs.Say(Loc.Get(Strings.Theme.Zune.Home.DoneSaid));
-        if (sel is not null) view.Grid?.Focus(HomeBoardKeys.Tile(sel));
     }
 
     /// <summary>"options": turn the selected tile over, or back.</summary>
@@ -271,12 +271,14 @@ internal static class ZuneHomeBoard
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
-                Children = [TitleRow(board, p.Lay), section],
+                Children = [TitleRow(board, p.Lay, editing, all), section],
             };
         }
 
-        /// <summary>The page title and its undo word: one line where it fits, the title WRAPPING where it does not (never smaller).</summary>
-        Element TitleRow(HomeBoardProps board, ZuneHomeBoardLayout lay) => new BoxEl
+        /// <summary>The page title, its undo word, and at the line's end the "edit" word (owner, 2026-11-16: the edit toolbar shows only while
+        /// customizing; the way in is a quiet word that is always there). Customizing, the word says "done". One line where it fits, the title
+        /// WRAPPING where it does not (never smaller); the word keeps its place at the end of the title's last line.</summary>
+        Element TitleRow(HomeBoardProps board, ZuneHomeBoardLayout lay, bool editing, bool all) => new BoxEl
         {
             Key = B.TitleKey, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.End, Gap = B.UndoGap,
             Padding = new Edges4(0f, 0f, 0f, lay.TitleGap),
@@ -290,8 +292,37 @@ internal static class ZuneHomeBoard
                     Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f,
                 },
                 ZuneHomeUndoWord.Word(board, "page", _titleHover),
+                new BoxEl { Grow = 1f, MinWidth = 0f },
+                EditWord(board, editing, all),
             ],
         };
+
+        /// <summary>The "edit" word: the command voice (15/20, lowercase), the secondary ink, the accent on hover, a 40 target; "done" while customizing.
+        /// While all items shows it stands aside (its slot is kept: nothing moves).</summary>
+        static Element EditWord(HomeBoardProps board, bool editing, bool all)
+        {
+            var view = board.View;
+            var verbs = board.Verbs;
+            return new BoxEl
+            {
+                Key = B.EditWordKey, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, AlignSelf = FlexAlign.End,
+                MinWidth = B.BadgeHit, MinHeight = B.BadgeHit, Padding = new Edges4(B.UndoPadX, 0f, 0f, 0f),
+                Focusable = !all, HitTestVisible = !all, Opacity = all ? 0f : 1f, Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                AllowFocusOnInteraction = false,
+                OnClick = () =>
+                {
+                    if (view.Editing.Peek()) Done(view, verbs);
+                    else Customize(view, verbs, board.Model.Peek(), null);
+                },
+                Children =
+                [
+                    R.Type.CardTitle(Loc.Get(editing ? Strings.Theme.Zune.Home.Done : Strings.Theme.Zune.Home.Edit)) with
+                    {
+                        Color = Tok.TextSecondary, HoverColor = Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            };
+        }
 
         /// <summary>The board section: the grid, the round arrow to all items, the app bar's reserve. A tap on it (not on a tile) is "done".</summary>
         Element BoardSection(HomeBoardProps board, ZuneHomeBoardLayout lay, Element grid, bool editing, bool rendered)

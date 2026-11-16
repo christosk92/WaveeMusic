@@ -243,13 +243,13 @@ internal static class ZuneHomeTiles
         Element column = full
             ? new BoxEl
             {
-                Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End, Gap = B.BadgeInset, HitTestPassThrough = true,
+                Direction = 1, Grow = 1f, Justify = FlexJustify.End, AlignItems = FlexAlign.End, Gap = B.BadgeInset, HitTestPassThrough = true,
                 Padding = new Edges4(0f, 0f, B.BadgeInset, B.BadgeInset),
                 Children = resize is { } r1 ? [unpin, r1] : [unpin],
             }
             : new BoxEl
             {
-                Direction = 1, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.End, HitTestPassThrough = true,
+                Direction = 1, Grow = 1f, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.End, HitTestPassThrough = true,
                 Padding = new Edges4(0f, B.BadgeInset, B.BadgeInset, B.BadgeInset),
                 Children = resize is { } r2 ? [unpin, r2] : [unpin],
             };

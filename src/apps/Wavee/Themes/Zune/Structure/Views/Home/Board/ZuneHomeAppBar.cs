@@ -1,12 +1,12 @@
 // ── Themes/Zune/Structure/Views/Home/Board/ZuneHomeAppBar.cs — Zune's Home application bar (`Home.BoardTools`; spec 8.2 "The bar") ─────────────
 //
 // Windows Phone's Application Bar at the foot of Home, keyed `home:edit`. The page lays it over its foot (outside the scroller, so it stays put while
-// the page scrolls; the board reserves its height under its last row). At rest it holds ONE round button, **customize** (the owner's request: the
-// phone's only way in was press and hold). Customizing it holds **add** (all items), **options** (turns the selected tile over; enabled when the
-// selected tile has options) and **done**. Its ⋯ slides the bar up to show the buttons' labels and the menu words ("reset home": at once, undo is by
-// the page title). No undo here (owner: undo is by the title). Hidden while all items shows: its back ring is the way out.
+// the page scrolls; the board reserves its height under its last row). It shows ONLY WHILE CUSTOMIZING (owner, 2026-11-16: "edit toolbar, dont
+// show it every time only when we click on edit somewhere in zune"): it slides up from the foot when customize begins (the "edit" word by the page
+// title, a held press, a right-click or Enter on a tile) and slides away on done, Escape or a tap away. It holds **add** (all items), **options**
+// (turns the selected tile over; enabled when the selected tile has options) and **done**. Its ⋯ slides it up to show the buttons' labels and the
+// menu words ("reset home": at once, undo is by the page title). No undo here (owner: undo is by the title). Never over all items.
 //
-//   at rest      (customize)                         ⋯
 //   customizing  (add) (options) (done)              ⋯
 //   ⋯ open       the same rings with their labels under them, then "reset home" in the 24/30 light voice
 
@@ -36,7 +36,6 @@ internal static class ZuneHomeAppBar
     sealed class BarView : Component
     {
         readonly Signal<bool> _open = new(false);
-        bool _rendered;
         NodeHandle _more;
         InputHooks? _hooks;
 
@@ -52,19 +51,13 @@ internal static class ZuneHomeAppBar
             string? sel = view.SelectedId.Value;
             bool turned = sel is not null && view.OpenId.Value == sel;
             bool canTurn = ZuneHomeBoard.CanTurn(board.Model.Value, sel);
-            bool rendered = _rendered;
-            _rendered = true;
 
             var buttons = new List<Element>(3);
-            if (editing)
             {
                 buttons.Add(Button("add", Icons.Add, Loc.Get(Strings.Theme.Zune.Home.Add), open, true, false, () => { Close(); ZuneHomeAllItems.Open(board); }));
                 buttons.Add(Button("options", Icons.Settings, Loc.Get(Strings.Theme.Zune.Home.Options), open, canTurn, turned, () => { Close(); ZuneHomeBoard.ToggleOptions(view, verbs); }));
                 buttons.Add(Button("done", Icons.Accept, Loc.Get(Strings.Theme.Zune.Home.Done), open, true, false, () => { Close(); ZuneHomeBoard.Done(view, verbs); }));
             }
-            else
-                buttons.Add(Button("customize", Icons.Edit, Loc.Get(Strings.Theme.Zune.Home.Customize), open, true, false,
-                    () => { Close(); ZuneHomeBoard.Customize(view, verbs, board.Model.Peek(), null); }));
 
             var kids = new List<Element>(2)
             {
@@ -116,17 +109,19 @@ internal static class ZuneHomeAppBar
                 Key = HomeBoardKeys.Edit, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 Fill = R.Layer.FloatingChrome,
                 Layout = B.BarReveal,
-                Enter = rendered ? new EnterExit(Opacity: 0f, Active: true) : null,
-                Exit = new EnterExit(Opacity: 0f, Active: true),
+                // Windows Phone's app bar slides up from the foot and back down; reduced motion fades.
+                Enter = new EnterExit(Opacity: Design.Reduced ? 0f : 1f, Dy: Design.Reduced ? 0f : B.BarH, Active: true),
+                Exit = new EnterExit(Opacity: Design.Reduced ? 0f : 1f, Dy: Design.Reduced ? 0f : B.BarH, Active: true),
                 Transition = MotionTokenDef.Eased(B.RecedeMs, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
                 OnKeyDown = e => OnKey(e, board),
                 Children = kids.ToArray(),
             };
-            // A layer over the page's foot: only the bar takes the pointer.
+            // A layer over the page's foot: only the bar takes the pointer. It is there only while customizing (owner, 2026-11-16), and never over
+            // all items (its back ring is the way out); the page reserves its height under the board, so the last tiles stay reachable.
             return new BoxEl
             {
                 Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, HitTestPassThrough = true, AlignItems = FlexAlign.Stretch,
-                Children = all ? [] : [bar],
+                Children = editing && !all ? [bar] : [],
             };
         }
 
