@@ -522,9 +522,21 @@ public static class ZonePlanner
         foreach (var s in browseSections)
         {
             if (items.Count >= BrowseTilesMax) break;
-            items.AddRange(PageDedupe.Place(placed, s.Cards, BrowseTilesMax - items.Count));
+            // The shortcuts band now decodes its Liked Songs item (a Liked card, pinned-home design 2.1). Browse is "official
+            // Spotify playlists and editorial picks": Liked has its own row in the nav pane and is the board's fill to show.
+            items.AddRange(PageDedupe.Place(placed, NoLiked(s.Cards), BrowseTilesMax - items.Count));
         }
         if (items.Count > 0) zones.Add(new Zone(ZoneKind.BrowseTiles, key, title, fallbackSubtitle, items, SectionSlot: browseSections[0].Slot));
+    }
+
+    static IReadOnlyList<HomeCard> NoLiked(IReadOnlyList<HomeCard> cards)
+    {
+        int i = 0;
+        while (i < cards.Count && cards[i].Kind != HomeCardKind.Liked) i++;
+        if (i == cards.Count) return cards;
+        var kept = new List<HomeCard>(cards.Count - 1);
+        foreach (var c in cards) if (c.Kind != HomeCardKind.Liked) kept.Add(c);
+        return kept;
     }
 
     // ── classification plumbing ─────────────────────────────────────────────────────────────────────────────────

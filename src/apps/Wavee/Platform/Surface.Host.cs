@@ -133,6 +133,10 @@ public static partial class Controls
             if (p is null) return new BoxEl();
             var d = p.Data;
             var s = p.Shape;
+            // State at rest (pinned Home): a card whose entity is on Home carries the mark. Reading the store subscribes this host to the
+            // pin set's version, so a pin from anywhere re-renders the cards it touches.
+            if (!d.IsSeed && d.Uri.Length > 0 && HomePinId.Canonical(d.Uri) is { } homePin && HomeBoardStore.Instance.IsPinned(homePin))
+                d = d with { PinnedToHome = true };
             IReadSignal<float> liveWidth = shelfWidth ?? _width;
 
             // A seed is the shape's bone face: disabled, no plate, no chrome, no handlers. In a bound slot its owner also

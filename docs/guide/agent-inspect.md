@@ -199,6 +199,16 @@ Keys name the nearest keyed ancestor when the node itself has none.
 
 ### `mount {w, h, scale?, theme?, kind?, route? | uri? | deeplink?, gpu?, keepRoute?}`
 
+The pinned Home's two mount args: `home=mock|capture|new|free|podcast|region|synthetic|second` (the fixture the Home tables are
+seeded from) and `homedoc=default|keep|pins0|pins200|gonepin|custom|mixed|v2hidden|toonew|corrupt|unknown` (the document the
+mount starts from, written into the profile's `WaveeMusic/home.acct-<hash>.json` and loaded; default `default`; `keep` loads
+the profile's file as it is, for a second process on one `--profile`). `pins0`: an empty Pinned group; `pins200`: 200 items;
+`gonepin`: a pin the catalogue never answers; `custom`: the feed taken control of, two sections hidden, mixed sizes; `mixed`:
+every size of every MVP source; `v2hidden`: no v3 file and a `home-layout.json` v2 with hidden zones (the migration runs);
+`toonew`: a version 4 file (Home shows the default, the file stays byte for byte, `readOnly: true`); `corrupt`: an unreadable
+file (set aside as `.corrupt`); `unknown`: an unknown source kind, option key and members (they round-trip byte for byte).
+`reset` puts the default document back.
+
 Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and a mount after the first does not
 inherit what the last one changed. It puts back:
 
@@ -449,7 +459,7 @@ is checked and picked as `click` does (`nth`, `force`), except that nothing need
 the scroller under the pointer either way. The settle waits for the scroller to stop, so the reply's
 `scroll {offset, max}` (with `key`: the first scroll viewport under that node) is where the glide ended.
 
-### `drag {key | x,y, dx?, dy?, steps?, button?, mods?}`
+### `drag {key | x,y, dx?, dy?, to?, holdMs?, pauseMs?, pointer?, steps?, button?, mods?}`
 
 A mouse drag as one command, the way a hand makes it: the pointer moves onto the press point (`key`'s visible centre, checked
 and picked as `click` does: `nth`, `force`, `stableMax`; or `x`,`y`), the button goes down, the pointer travels `dx`,`dy` DIP in
@@ -458,8 +468,70 @@ and picked as `click` does: `nth`, `force`, `stableMax`; or `x`,`y`), the button
 itself use `trace`'s own `drag=` args (`drag`, `dragFrames`, `dragStart`, `dragKey`/`dragX`/`dragY`, `dragDy`: DIP per frame,
 cycled).
 
+`to=<key>` ends on that node's presented centre instead of `dx`,`dy` (a drag onto a tile); `holdMs` keeps the button down and
+the pointer still that long before it moves (a touch lift's hold); `pauseMs` dwells at the end, button down, before the release
+(a reorder's 140 ms dwell); `pointer=touch` sends touch events (no hover move first).
+
 ```text
 drag key=winui-bar-volume-slider dx=-60 steps=6      # the WinUI volume thumb to 0 (the glyph turns muted)
+drag key=home:tile:<a> to=home:tile:<b> pauseMs=200 trace=90 prefix=home:tile max=400   # a pinned Home reorder
+```
+
+### `hold {key | x,y, ms?, pointer?, then?, dx?, dy?, steps?}`
+
+Press and hold: the pointer presses on the node's visible centre (picked as `click` does) or a point and stays down, still, for
+`ms` (600) on the frame clock; then (`then=release`, the default) it comes up where it pressed, or (`then=drag`) it travels
+`dx`,`dy` over `steps` frames and comes up there. `pointer=touch` sends touch events (a touch hold opens a card's menu today;
+the pinned Home's tiles lift on it). Reply: `at`, `ms`, `pointer`, `then`, `to` (a drag), then the settle and `after`.
+
+```text
+hold key=home:tile:d-recents ms=600 pointer=mouse          # Zune: customize on that tile
+hold key=home:tile:<a> ms=500 pointer=touch then=drag dy=160   # WinUI: lift and move
+```
+
+### `focus {key, nth?}` and `said {clear?}`
+
+`focus` moves keyboard focus to a node (the focus ring shows, as after Tab) without a click; `after.focused` names it. `said`
+returns the announcements (the screen-reader text the app sends through `Announcer`) since the last `said`: `said[{text,
+assertive, frame}]`, `count`; `clear=false` keeps them for the next read. Every acting verb's `after{}` also carries its own
+`said[]` (what was announced during that verb).
+
+### `home {do, ...}`: the pinned Home
+
+The pinned Home's board, read back and driven through the same verbs the themes call (the board host registers them while
+the board is mounted; with none mounted the acting ones go through the store, and the reply says `via: "store"`: the model and
+its undo are proved, the motion and the view state are not). Acting ones settle (`trace=`, `prefix=`, `max=` work) and reply
+`changed`, `item` (the entry acted on), `rev`, `undoDepth` and `after`.
+
+| `do=` | Args | Does |
+|---|---|---|
+| `status` | | the board as the user has it: `theme, editing, selected, open, add{surface, kind, query, results}, columns, undo{can, label, at, depth}, redo{can, depth}, readOnly, rev, items, hidden, legacyHidden, seededFromSidebar, file{path, outcome, exists, bytes, fnv, bak, corrupt}, groups[{id, title, items[{id, key, kind, source, title, size, auto, template?, hidden?, form?, span?, rect?, realized?, hasOptions, live, paused}]}]` |
+| `doc` | `path=` | the document's JSON (and writes it, indented, to the file) and `file{}` |
+| `plan` | `facet=` | the planner dump: per section `index, key, fp, family, typename, title, counts{cards, usable, unsupported, duplicates, total}, template, zone, reason, entry, placed, hidden`, then the identity log's readings |
+| `verify` | | the board's own proof: `PackLayout.Verify` over every group at the live width, and the realized rects against the pack: `columns, count, faults[]` |
+| `edit` | `on=`, `item=` | Classic's Edit Home / Zune's customize (a selected tile); WinUI refuses |
+| `pin` / `unpin` | `uri=` (an entity uri or a route key), `group=` | the verb the menus call, confirmation included |
+| `add` | `source=` (a catalogue id: `widget.upNext`, `pin:<pin id>`, `section:<key>`), `group=`, `at=` (index in the group), `size=` | add at a place |
+| `remove` | `item=` | remove a widget, unpin a pin, hide a section or a shortcut |
+| `size` | `item=`, `size=s\|m\|l\|full\|next` | resize, or cycle the sizes the source declares |
+| `move` | `item=` and one of `by=±n`, `to=start\|end`, `onto=<item>`, `dir=left\|right\|up\|down` | the command twins (`by` steps are tagged `step:<id>`: steps within 2 s are one undo step) |
+| `open` / `close` | `item=` / `refocus=` | open a tile for its options (one visit is one undo step) |
+| `option` | `key=`, `value=` | a choice on the open tile |
+| `surface` | `open=`, `kind=band\|allitems\|addrow\|find`, `arg=` | the theme's add surface |
+| `search` | `q=`, `items=` | types into the add surface's search: `spoken`, `counts{total, widgets, spotify, library, extensions, onHome, toAdd}`, `hits[]`; an empty `q` lists everything |
+| `undo` / `redo` | | one step; the reply carries `undo{}` and `redo{}` |
+| `reset` | `scope=page\|everything`, `confirm=` | reset (Classic's "everything" asks in its bar: `confirm=true` answers it) |
+
+An entry id is what `status` lists: a document item (`d-recents`, `i7f3a…`), a feed section (`feed:<section key>`), a fill cell
+(`fill:<pin id>`), a fold (`fold:<first key>`) or a group head (the group id). Taking control or keeping a shortcut keeps the id.
+Node keys: `home:board`, `home:group:<groupId>`, `home:tile:<entryId>`, `home:tile:<entryId>:tools`, `home:slot`, `home:add`,
+`home:edit`, `home:undo`.
+
+```text
+mount w=1440 h=960 theme=winui route=home gpu=none home=capture homedoc=custom
+home do=move item=feed:<key> by=1          # takes control: every section an item, the feed item last; one undo step
+home do=search q=mix                       # hits across groups with counts; q=zzzz says "Nothing to add matches zzzz."
+home do=undo
 ```
 
 ### `play {uri?, fromMs?, next?, ago?, remote?, context?, at?}`
@@ -496,6 +568,9 @@ transport do=end                                                       # deck=tr
 ```
 
 ### `state {kind, page?, ai?, error?, lang?}` and `dialog {kind}`
+
+`state kind=home-refresh` lands the pinned Home's next answer (the `second` fixture) over the one the page shows: a removed
+section keeps its place as a hidden entry, a new one sits after its server neighbour, a hidden one stays hidden.
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for

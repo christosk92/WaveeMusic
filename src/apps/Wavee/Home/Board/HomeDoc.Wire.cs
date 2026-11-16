@@ -19,6 +19,7 @@ public static class HomeDocWire
 {
     static readonly JsonDocumentOptions s_read = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip, MaxDepth = 64 };
     static readonly JsonWriterOptions s_write = new() { Indented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    static readonly JsonWriterOptions s_compact = new() { Indented = false, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     static readonly HashSet<string> s_docMembers = new(StringComparer.Ordinal)
         { "version", "rev", "updatedAtMs", "groups", "hidden", "seen", "legacyHidden", "seededFromSidebar" };
@@ -158,10 +159,12 @@ public static class HomeDocWire
 
     // ── write ──
 
-    public static byte[] Write(HomeDoc doc)
+    public static byte[] Write(HomeDoc doc) => Write(doc, indented: true);
+
+    public static byte[] Write(HomeDoc doc, bool indented)
     {
         var buffer = new System.Buffers.ArrayBufferWriter<byte>(4096);
-        using (var w = new Utf8JsonWriter(buffer, s_write))
+        using (var w = new Utf8JsonWriter(buffer, indented ? s_write : s_compact))
         {
             w.WriteStartObject();
             w.WriteNumber("version", HomeDoc.CurrentVersion);
@@ -197,7 +200,7 @@ public static class HomeDocWire
     }
 
     /// <summary>The document as indented JSON text (the inspector's <c>home do=doc</c>).</summary>
-    public static string WriteText(HomeDoc doc) => Encoding.UTF8.GetString(Write(doc));
+    public static string WriteText(HomeDoc doc, bool indented = true) => Encoding.UTF8.GetString(Write(doc, indented));
 
     static void WriteItem(Utf8JsonWriter w, HomeItem it)
     {

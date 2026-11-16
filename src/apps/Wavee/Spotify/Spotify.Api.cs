@@ -1373,12 +1373,14 @@ public static partial class Spotify
                 "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10", true);
             public static readonly Query Track = new("getTrack",
                 "1a2f0cce77c90a4a5b1730beecc4da7e34290d684324c16663bf09a268ebce48", true);
+            /// <summary>Rotated 2026-11-16 to the 1.3.8.620 client's document (Fiddler capture of a cold start to Home and every
+            /// chip); the previous hash was <c>76243c78…847a</c>.</summary>
             public static readonly Query Home = new("home",
-                "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a", false);
+                "5fb7da7a03ee2776c0670856609cb85a189a3cecc36cc160b91cde79063b9cf1", false);
             /// <summary>The section query rides the SAME persisted hash as <see cref="Home"/> — the gateway keys on
             /// the operation NAME, and the two share a document.</summary>
             public static readonly Query HomeSection = new("homeSection",
-                "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a", false);
+                "5fb7da7a03ee2776c0670856609cb85a189a3cecc36cc160b91cde79063b9cf1", false);
             public static readonly Query BrowseAll = new("browseAll",
                 "dbd8b55e09a58afc52eab438bc228ba28fd72ac2f2148c6c26354980e4579001", false);
             public static readonly Query BrowsePage = new("browsePage",
@@ -1406,8 +1408,9 @@ public static partial class Spotify
                 "f0f112945d6d745bd8ff790317bbf8d310036da75df33130490e9d6dc96c59d9", false);
             /// <summary>D2 (F32): a home feed's baseline-section cards' preview tracks — <c>{uris:[…]}</c> in,
             /// <c>data.lookup[]</c> out (Spotify.Decode.Home.cs's <c>PreviewFold</c>).</summary>
+            /// Rotated 2026-11-16 with <see cref="Home"/> (1.3.8.620; previously <c>a950fb7c…a7fc</c>).
             public static readonly Query FeedBaselineLookup = new("feedBaselineLookup",
-                "a950fb7c4ecdcaf2aad2f3ca9ee9c3aa4b9c43c97e1d07d05148c4d355bea7fc", false);
+                "318190494c436b51ab995367bffc66dcdb49dfa023792c60ac15dcb6dfbec42f", false);
 
             public static readonly Query SearchTopResults = new("searchTopResultsList",
                 "337d8b1b4f911fb12c60996623391703c2807550baccb51d95f5eabc8c8bdacd", true);
@@ -1583,7 +1586,9 @@ public static partial class Spotify
 
         public static Result HomeQuery(string facet, string timeZone, CancellationToken ct)
         {
+            // The 1.3.8.620 client's variables, in its order (Fiddler capture, 2026-11-16).
             var vars = new Vars(Queries.Home);
+            vars.W.WriteBoolean("includeHomeChapterVideoCards", false);
             vars.W.WriteString("homeEndUserIntegration", "INTEGRATION_DESKTOP");
             vars.W.WriteString("timeZone", timeZone);
             vars.W.WriteString("sp_t", "");
@@ -1663,6 +1668,7 @@ public static partial class Spotify
         {
             var vars = new Vars(Queries.HomeSection);
             vars.W.WriteString("uri", sectionUri);
+            vars.W.WriteBoolean("includeHomeChapterVideoCards", false);   // the shared document's variable, as `home` sends it
             vars.W.WriteString("homeEndUserIntegration", "INTEGRATION_DESKTOP");
             vars.W.WriteString("timeZone", timeZone);
             vars.W.WriteString("sp_t", "");

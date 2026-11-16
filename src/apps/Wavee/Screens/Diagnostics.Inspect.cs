@@ -370,6 +370,7 @@ public static partial class Diagnostics
             if (!Inspect.Validate(in cmd, out string invalid)) return Inspect.Reply.Fail(cmd.Id, cmd.Name, invalid);
             _acts = Inspect.SpecOf(cmd.Verb)?.Acts ?? false;
             _hit = null;
+            CaptureAnnouncements();   // Diagnostics.Inspect.Home.cs: the said[] of this verb starts here
             try { return Dispatch(in cmd); }
             catch (Exception ex)
             {
@@ -390,7 +391,10 @@ public static partial class Diagnostics
             {
                 case Inspect.Verb.Help:
                     return Help(id, name, a);
+                case Inspect.Verb.Said:
+                    return Said(id, name, a);
                 case Inspect.Verb.Quit:
+                    HomeBoardStore.Instance.Quiesce();   // the pinned Home's pending write lands before the process ends
                     Unmount();
                     _quit = true;
                     return Inspect.Reply.Ok(id, name);
@@ -406,6 +410,7 @@ public static partial class Diagnostics
                 case Inspect.Verb.Reset:
                     Unmount();
                     ClearLeaks(keepRoute: false, keepOptions: false);
+                    StageHomeDoc("default");
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
@@ -688,6 +693,12 @@ public static partial class Diagnostics
                     return Trace(id, name, a, shell);
                 case Inspect.Verb.Drag:
                     return Drag(id, name, a);
+                case Inspect.Verb.Home:
+                    return Home(id, name, a);
+                case Inspect.Verb.Hold:
+                    return Hold(id, name, a);
+                case Inspect.Verb.Focus:
+                    return Focus(id, name, a);
                 case Inspect.Verb.Window:
                     return Window(id, name, a, shell);
             }
@@ -836,6 +847,9 @@ public static partial class Diagnostics
                 if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
             }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
+            // `home=<fixture>`: the Home subjects re-seeded from that fixture; every mount names one (default mock), so a previous mount's never leaks.
+            if (!Entities.StageHomeFixture(a.Str("home", "mock"))) { error = "home fixture '" + a.Str("home", "mock") + "' is not bundled"; return false; }
+            if (!StageHome(a, out error)) return false;   // Diagnostics.Inspect.Home.cs: homedoc= (over the fixture's answer)
             string gpu = a.Str("gpu", "hardware").ToLowerInvariant();   // hardware falls back to WARP on a machine without an adapter (D3D12Device.InitDevice)
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;
@@ -1595,6 +1609,7 @@ public static partial class Diagnostics
             string? hit = _hit ?? (_pointer is { } p ? HitKey(p) : null);
             if (hit is not null) w.WriteString("hit", hit);
             else w.WriteNull("hit");
+            WriteSaid(w, "said", Math.Min(_saidVerbMark, _said.Count));   // what the verb announced
             w.WriteEndObject();
         }
 

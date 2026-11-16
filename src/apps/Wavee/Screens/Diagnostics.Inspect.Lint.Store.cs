@@ -26,7 +26,7 @@ namespace Wavee;
 public static partial class Diagnostics
 {
     /// <summary>Lint snapshots to and from JSON, and baseline files. See the file header.</summary>
-    public static class InspectLintStore
+    public static partial class InspectLintStore
     {
         /// <summary>The snapshot format's version (a reader refuses a newer one).</summary>
         public const int Version = 1;
@@ -117,6 +117,7 @@ public static partial class Diagnostics
             w.WriteString("guide", s.GuideId);
             WriteEdges(w, "edges", s.Edges);
             if (s.MirrorEdges.Count > 0) WriteEdges(w, "mirrorEdges", s.MirrorEdges);
+            WritePacks(w, s.Packs);   // Diagnostics.Inspect.Lint.Pack.cs; absent in an old snapshot
             w.WriteStartArray("policies");
             foreach (LintPolicy p in s.Policies)
             {
@@ -393,6 +394,7 @@ public static partial class Diagnostics
                     GuideId = head.Str(root, "guide", ""),
                     Edges = ReadEdges(root, head),
                     MirrorEdges = ReadEdges(root, head, "mirrorEdges"),
+                    Packs = ReadPacks(root),
                     Policies = ReadPolicies(root, head),
                     TopBleeds = head.Strings(root, "topBleeds") ?? [],
                     HitBlockers = ReadRects(root, "hitBlockers", head),
