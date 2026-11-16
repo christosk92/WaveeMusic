@@ -75,7 +75,12 @@ internal static class ZuneHomePage
             Key = props.Facet.Length > 0 ? "zune-home-scroll:" + props.Facet : "zune-home-scroll", Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll,
         };
 
-        return new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [props.Wash, scroll] };
+        // On All the board's app bar lies over the page's foot (outside the scroller: it stays put while the page scrolls; the board reserves its height).
+        return new BoxEl
+        {
+            Grow = 1f, Direction = 1, ZStack = true,
+            Children = props.BoardTools is { } tools ? [props.Wash, scroll, new BoxEl { AlignSelf = FlexAlign.End, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [tools()] }] : [props.Wash, scroll],
+        };
     }
 
     /// <summary>The facet content: one keyed subtree per published facet (the swap is the keyed Exit/Enter fade) over the dim host.</summary>
@@ -95,7 +100,9 @@ internal static class ZuneHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),
-                    Children = [Column(m, props.Overlay, lay)],
+                    // On All the pinned board stands where the zone column stood (the scroller, the wash, the status layer and the facet swap stay
+                    // the page's); every other facet keeps its zones.
+                    Children = [props.Board is { } board ? board() : Column(m, props.Overlay, lay)],
                 },
             ],
         };
@@ -195,7 +202,7 @@ internal static class ZuneHomePage
 
     /// <summary>A zone's body: the daylist and the history through their core hosts, every other kind through its `Home.Zone.<Kind>` slot. Each
     /// carries a SkeletonProxy (the deriver cannot run a component's render): the SAME static tree its template builds.</summary>
-    static Element Body(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
+    internal static Element Body(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
     {
         switch (zone.Kind)
         {
