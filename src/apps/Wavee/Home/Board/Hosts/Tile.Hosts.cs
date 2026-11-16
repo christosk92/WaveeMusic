@@ -167,7 +167,7 @@ public sealed class NowPlayingTileHost : Component
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
-        bool lyric = p.Frame.Entry.Options.TryGetValue("lyric", out var l) && l == "on";
+        bool lyric = p.Frame.Entry.Options.TryGetValue("lyric", out var l) && l == "1";
         return Slots.View(ViewKeys.HomeTileNowPlaying, new HomeNowPlayingTileProps
         {
             Frame = p.Frame, HasTrack = s_has, Title = s_title, Line = s_line, Cover = s_cover, ProgressLine = s_progress,

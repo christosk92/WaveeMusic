@@ -220,7 +220,6 @@ public static class WinUiHomeBoardRules
         float h = OptionsHeadH + CardPad;
         foreach (var o in source.Options)
             h += o.Kind == OptionKind.Choice && o.Values.Length < 5 ? OptionRadioRowH * o.Values.Length + OptionRowH - OptionRadioRowH : OptionRowH;
-        if (source.Live) h += OptionRowH;
         return MathF.Max(h, lay.M.Rows * lay.Unit + (lay.M.Rows - 1) * lay.Gap);
     }
 }
