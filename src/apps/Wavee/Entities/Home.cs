@@ -279,12 +279,18 @@ public sealed class SectionTable : Table
     public Column<StringId> FactSubtitle, FactFormat, FactAuthor, FactSignifier;
     /// <summary>An episode's <c>videoPreviewThumbnail</c> — the 1280-wide rendition, null for every other kind.</summary>
     public Column<StringId> FactVideoThumb;
+    /// <summary>A daylist's <c>nicheMixLinks</c> (the anchor list: one playlist per tag) and its
+    /// <c>recsplanation_localized_terms</c> (what the pick is based on, a comma list); empty for every other card.</summary>
+    public Column<StringId> FactLinks, FactBasis;
+    /// <summary>A pre-release album's <c>preReleaseEndDateTime</c> in unix seconds (0: none).</summary>
+    public Column<int> FactReleaseAt;
     /// <summary>The seed slab.</summary>
     public Column<StringId> Seeds;
     public int FactTail, SeedTail;
     // `HomeCard.Seeds` hands out an IReadOnlyList; building it once per fact entry (and never per render) is what keeps
     // the hero / mix band render allocation-free after the first frame. Invalidated with the range it describes.
     string[]?[] _seedViews = [];
+    string?[]?[] _linkViews = [];
 
     public override EntityKind Kind => EntityKind.Unknown;
 
@@ -366,6 +372,24 @@ public sealed class SectionTable : Table
         return list;
     }
 
+    /// <summary>The playlist uri each seed of one fact entry opens (<c>nicheMixLinks</c>), aligned with
+    /// <see cref="SeedsOf"/>: a seed whose tag has no link is null. Null when the entry carries no links. Built once per
+    /// entry and cached until the range is rewritten.</summary>
+    public IReadOnlyList<string?>? SeedLinksOf(int fact)
+    {
+        if (fact < 0 || fact >= FactTail || FactSeedCount[fact] == 0 || FactLinks[fact].IsEmpty) return null;
+        if (fact < _linkViews.Length && _linkViews[fact] is { } cached) return cached;
+        var seeds = SeedsOf(fact)!;
+        var links = HomeCardText.AnchorLinks(Entities.Strings.Resolve(FactLinks[fact]));
+        var aligned = new string?[seeds.Count];
+        for (int i = 0; i < aligned.Length; i++)
+            for (int k = 0; k < links.Count; k++)
+                if (string.Equals(links[k].Text, seeds[i], StringComparison.OrdinalIgnoreCase)) { aligned[i] = links[k].Uri; break; }
+        if (fact >= _linkViews.Length) Array.Resize(ref _linkViews, Math.Max(fact + 1, _linkViews.Length * 2));
+        _linkViews[fact] = aligned;
+        return aligned;
+    }
+
     /// <summary>Write one section's card facts from a staged batch: give the old range's strings back, reuse the range
     /// when the new answer fits (else take a fresh one at the tail), resolve each target the way the card edge resolves
     /// it, and own every string through <see cref="Entities.RetainText"/>.</summary>
@@ -414,6 +438,10 @@ public sealed class SectionTable : Table
             Entities.RetainText(ref FactAuthor[at], s.Intern(f.Author));
             Entities.RetainText(ref FactSignifier[at], s.Intern(f.Signifier));
             Entities.RetainText(ref FactVideoThumb[at], s.Intern(f.VideoThumbUrl));
+            Entities.RetainText(ref FactLinks[at], s.Intern(f.Links));
+            Entities.RetainText(ref FactBasis[at], s.Intern(f.Basis));
+            FactReleaseAt[at] = f.ReleaseAt;
+            if (at < _linkViews.Length) _linkViews[at] = null;
             int count = f.SeedStart >= 0 && f.SeedCount > 0 && f.SeedStart + f.SeedCount <= seeds.Length
                 ? Math.Min(f.SeedCount, byte.MaxValue) : 0;
             FactSeedAt[at] = seedAt;
@@ -436,6 +464,10 @@ public sealed class SectionTable : Table
             Entities.ReleaseText(ref FactAuthor[i]);
             Entities.ReleaseText(ref FactSignifier[i]);
             Entities.ReleaseText(ref FactVideoThumb[i]);
+            Entities.ReleaseText(ref FactLinks[i]);
+            Entities.ReleaseText(ref FactBasis[i]);
+            FactReleaseAt[i] = 0;
+            if (i < _linkViews.Length) _linkViews[i] = null;
             for (int k = 0; k < FactSeedCount[i]; k++) Entities.ReleaseText(ref Seeds[FactSeedAt[i] + k]);
             FactSeedCount[i] = 0;
             FactTarget[i] = None;
@@ -461,6 +493,9 @@ public sealed class SectionTable : Table
         FactAuthor.EnsureCapacity(capacity);
         FactSignifier.EnsureCapacity(capacity);
         FactVideoThumb.EnsureCapacity(capacity);
+        FactLinks.EnsureCapacity(capacity);
+        FactBasis.EnsureCapacity(capacity);
+        FactReleaseAt.EnsureCapacity(capacity);
     }
 }
 
@@ -491,6 +526,8 @@ public enum HomeCardFlags : byte
     /// <summary>The DJ card (<c>attributes.lexicon_set_type == your_dj</c>; its format token is empty). DJ is a separate
     /// stream Wavee does not play, so no Home surface shows it (home-gap D5).</summary>
     Dj = 1 << 4,
+    /// <summary>An album the wire marks <c>isPreRelease</c>: a pre-save, out on <see cref="SectionTable.FactReleaseAt"/>.</summary>
+    PreRelease = 1 << 5,
 }
 
 /// <summary>The synthetic-subject half of the scope (the partial <c>Entities.cs</c> left open for exactly this). They
@@ -823,6 +860,10 @@ public struct StagedCardFact
     public TextRef Subtitle, Format, Author, Signifier;
     /// <summary>An episode's <c>videoPreviewThumbnail</c>, the 1280-wide rendition.</summary>
     public TextRef VideoThumbUrl;
+    /// <summary>A daylist's <c>nicheMixLinks</c> and <c>recsplanation_localized_terms</c>.</summary>
+    public TextRef Links, Basis;
+    /// <summary>A pre-release album's end of pre-release, unix seconds (0: none).</summary>
+    public int ReleaseAt;
     public uint Accent;
     public int DurationMs, ResumeMs;
     /// <summary>The average rating × 100 (0 = withheld).</summary>
@@ -1511,6 +1552,33 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
 
     /// <summary>The DJ card, read off its lexicon set at decode (<see cref="HomeCardFlags.Dj"/>).</summary>
     public bool IsDj => (FlagsOf() & HomeCardFlags.Dj) != 0;
+
+    /// <summary>An album the wire marks as a pre-release (a pre-save).</summary>
+    public bool IsPreRelease => (FlagsOf() & HomeCardFlags.PreRelease) != 0;
+
+    /// <summary>Unix ms a pre-release comes out (<c>preReleaseEndDateTime</c>), 0 = none or unknown.</summary>
+    public long PreReleaseAtMs => Fact is var f && f >= 0 ? S.Sections.FactReleaseAt[f] * 1000L : 0;
+
+    /// <summary>An album card's release kind (Single, EP, Album, Compilation), read off the album row; null for any other kind
+    /// or an album whose kind is not known.</summary>
+    public AlbumKind? AlbumKind => !IsBlank && Live && Target.Kind == EntityKind.Album && S.Albums.Knows(Target.Slot, (uint)AlbumFields.Kind)
+        ? (AlbumKind)S.Albums.ReleaseKind[Target.Slot] : null;
+
+    /// <summary>The playlist each seed opens (a daylist's tags, <c>nicheMixLinks</c>), aligned with <see cref="Seeds"/>; null when
+    /// the card carries no links.</summary>
+    public IReadOnlyList<string?>? SeedLinks => Fact is var f && f >= 0 ? S.Sections.SeedLinksOf(f) : null;
+
+    /// <summary>What a daylist's pick is based on (<c>recsplanation_localized_terms</c>), as its terms; null when none.</summary>
+    public IReadOnlyList<string>? Basis
+    {
+        get
+        {
+            var text = FactText(static (t, f) => t.FactBasis[f]);
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return parts.Length == 0 ? null : parts;
+        }
+    }
 
     /// <summary>Unix ms the album/episode released, 0 = unknown. An album reads <c>Album.ReleaseAt</c> — the entity
     /// column every album page already trusts — rather than re-deriving from the card's own <c>date</c> fact; an

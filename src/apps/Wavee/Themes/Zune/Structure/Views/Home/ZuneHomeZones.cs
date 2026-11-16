@@ -148,10 +148,10 @@ internal static class ZuneHomeZones
         for (int i = 0; i < n; i++)
         {
             var c = items[i];
-            string type = ReleaseListRules.TypeLabel(c.Kind);
+            string type = ReleaseListRules.TypeLabel(c);
             string sub = HomeCards.PlainText(c.Subtitle);
             var key = new ReleaseRowKey(c, i, c.Uri, c.Title, type.Length > 0 && sub.Length > 0 ? type + " · " + sub : type + sub, c.ImageUrl,
-                                        ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture), shape, lay.ReleaseWhenW);
+                                        ReleaseListRules.DateLabel(c, nowMs, tz, culture), shape, lay.ReleaseWhenW);
             rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
         }
         return K.Section(Heading(zone, lay, Loc.Get(Strings.Home.Zone.FromArtistsYouFollow)),

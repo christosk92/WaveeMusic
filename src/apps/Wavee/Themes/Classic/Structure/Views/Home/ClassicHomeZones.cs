@@ -453,7 +453,7 @@ internal static class ClassicHomeZones
         {
             var c = items[i];
             var key = new ReleaseRowKey(c, c.Uri, c.Title, HomeCards.PlainText(c.Subtitle), c.ImageUrl,
-                                        ReleaseListRules.TypeLabel(c.Kind), ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture));
+                                        ReleaseListRules.TypeLabel(c), ReleaseListRules.DateLabel(c, nowMs, tz, culture));
             rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
         }
         return new BoxEl

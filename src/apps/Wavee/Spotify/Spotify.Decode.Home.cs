@@ -634,6 +634,11 @@ public static partial class Spotify
                 public byte Type;
                 public TextRef ProfileName, OwnerName, ShowName, Publisher, Author, Signifier;
                 public TextRef Pretitle, Terms, HeaderImage;
+                /// <summary>A daylist's <c>nicheMixLinks</c> (one playlist per tag) and <c>recsplanation_localized_terms</c>.</summary>
+                public TextRef Links, Basis;
+                /// <summary>An album's <c>isPreRelease</c> and its <c>preReleaseEndDateTime.isoString</c> (unix ms).</summary>
+                public bool PreRelease;
+                public long PreReleaseMs;
                 public TextRef ImgImages, ImgCover, ImgAvatar, ImgVisual;
                 public uint AccImages, AccCover, AccAvatar, AccVisual;
                 public long ExpiresMs, CreatedMs;
@@ -759,6 +764,8 @@ public static partial class Spotify
                 {
                     case TAlbum:
                         f.Subtitle = firstArtist;
+                        if (c.PreRelease) f.Flags |= (byte)HomeCardFlags.PreRelease;
+                        if (c.PreReleaseMs > 0) f.ReleaseAt = (int)(c.PreReleaseMs / 1000);
                         break;
                     case TPlaylist:
                         {
@@ -766,7 +773,12 @@ public static partial class Spotify
                             f.Subtitle = description.IsEmpty ? c.OwnerName : description;
                             if (!liked && !n.Format.IsEmpty) f.Format = n.Format;
                             int seedStart = s.CardSeeds.Count, seeds = 0;
-                            if (daylist) seeds = SplitTerms(s, c.Terms);
+                            if (daylist)
+                            {
+                                seeds = SplitTerms(s, c.Terms);
+                                f.Links = c.Links.IsEmpty ? default : Unescaped(s, c.Links);
+                                f.Basis = c.Basis;
+                            }
                             if (seeds == 0 && ListsSeeds(s.Utf8(n.Format)) && !description.IsEmpty) seeds = ParseSeeds(s, description);
                             if (seeds > 0) { f.SeedStart = seedStart; f.SeedCount = seeds; }
                             break;
@@ -844,12 +856,30 @@ public static partial class Spotify
                 else if (r.ValueTextEquals("restrictions"u8)) { if (Paywalled(ref r)) c.Paywalled = true; }
                 else if (r.ValueTextEquals("content"u8)) c.Node.TrackCount = (int)OneNumber(ref r, "totalCount"u8);
                 else if (r.ValueTextEquals("albumType"u8)) { r.Read(); c.Node.AlbumKind = AlbumKindOf(ref r); }
+                else if (r.ValueTextEquals("isPreRelease"u8)) { r.Read(); c.PreRelease = r.TokenType == JsonTokenType.True; }
+                else if (r.ValueTextEquals("preReleaseEndDateTime"u8)) c.PreReleaseMs = IsoObject(ref r);
                 // The shared vocabulary for what a card has in common with every other node: the album's artist run and
                 // credit line, its release date, its rating, its playability, its share url.
                 else if (r.ValueTextEquals("artists"u8) || r.ValueTextEquals("date"u8) || r.ValueTextEquals("releaseDate"u8)
                       || r.ValueTextEquals("contentRating"u8) || r.ValueTextEquals("playability"u8) || r.ValueTextEquals("sharingInfo"u8))
                     NodeProperty(ref r, s, ref c.Node, credit);
                 else SkipValue(ref r);
+            }
+
+            /// <summary><c>{ isoString }</c> (or null) → unix ms; 0 when absent.</summary>
+            static long IsoObject(ref Utf8JsonReader r)
+            {
+                long ms = 0;
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("isoString"u8))
+                    {
+                        r.Read();
+                        if (r.TokenType == JsonTokenType.String && !r.HasValueSequence) ms = IsoInstantMs(r.ValueSpan);
+                    }
+                    else SkipValue(ref r);
+                }
+                return ms;
             }
 
             /// <summary><c>playedState: { playPositionMilliseconds, state }</c> — both fields of the one object
@@ -1136,6 +1166,8 @@ public static partial class Spotify
                         case 1: c.Pretitle = value; break;
                         case 2: c.Terms = value; break;
                         case 5: c.HeaderImage = value; break;
+                        case 7: c.Links = value; break;
+                        case 8: c.Basis = value; break;
                         case 3:
                         case 4:
                             {
@@ -1164,6 +1196,8 @@ public static partial class Spotify
                  : r.ValueTextEquals("created"u8) ? (byte)4
                  : r.ValueTextEquals("header_image_url_desktop"u8) ? (byte)5
                  : r.ValueTextEquals("lexicon_set_type"u8) ? (byte)6
+                 : r.ValueTextEquals("nicheMixLinks"u8) ? (byte)7
+                 : r.ValueTextEquals("recsplanation_localized_terms"u8) ? (byte)8
                  : (byte)0;
 
             /// <summary>Does the band already hold this card? Duplicates stay on the ledger and off the edge.</summary>

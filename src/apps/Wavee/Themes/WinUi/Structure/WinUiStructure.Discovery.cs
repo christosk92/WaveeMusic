@@ -53,6 +53,8 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.HomeZoneEpisodeRows, WinUiHomeZones.BodyTemplate, "winui.home.zone.episode-rows");
         views.Add(ViewKeys.HomeZonePodcastGroups, WinUiHomeZones.BodyTemplate, "winui.home.zone.podcast-groups");
         views.Add(ViewKeys.HomeZoneEmptyFacet, WinUiHomeZones.BodyTemplate, "winui.home.zone.empty-facet");
+        views.Add(ViewKeys.HomeZoneMoodPlates, WinUiHomeZones.BodyTemplate, "winui.home.zone.mood-plates");
+        views.Add(ViewKeys.HomeZoneBookShelf, WinUiHomeZones.BodyTemplate, "winui.home.zone.book-shelf");
         views.Add(ViewKeys.HomeSection, WinUiHomeSection.Template, "winui.home.section");
 
         // Browse.

@@ -835,6 +835,12 @@
     "updatedDaily": "Updated daily",
     "browseAll": "Browse all",
     "releasedThisWeek": "Released this week",
+    "basedOn": "Based on {terms}",
+    "basedOnTwo": "Based on {a} and {b}",
+    "showMore": "Show {n} more",
+    "showFewer": "Show fewer",
+    "notStarted": "not started",
+    "rated": "★ {rating}",
     "daylistMeta": "Playlist · Spotify · {n} songs",
     "playingOn": "playing on {device}",
     "daylist": {
@@ -897,7 +903,12 @@
       "song": "Song",
       "episode": "Episode",
       "podcast": "Podcast",
-      "audiobook": "Audiobook"
+      "audiobook": "Audiobook",
+      "single": "Single",
+      "ep": "EP",
+      "compilation": "Compilation",
+      "upcoming": "Upcoming",
+      "upcomingOn": "Upcoming · {date}"
     },
     "empty": {
       "audiobooksTitle": "No audiobooks yet",

@@ -26,6 +26,10 @@ public enum ZoneKind : byte
 {
     Daylist, RecentGrid, CoverShelf, WideTiles, ReleaseList, ClusterCards, MixedCovers, RadioShelf,
     BrowseTiles, EpisodeLead, ContinueEpisodes, ShowGrid, VideoTiles, EpisodeRows, PodcastGroups, EmptyFacet,
+    /// <summary>Colour-plate mixes ("Soundtrack your Monday afternoon", format <c>descripto</c>): flat plates with the mix name (home-gap P6).</summary>
+    MoodPlates,
+    /// <summary>Audiobooks as books: author, rating, length and what the plan covers under each cover (home-gap P8).</summary>
+    BookShelf,
 }
 
 /// <summary>One server band, read straight off <see cref="SectionTable"/> by <see cref="SectionReader"/>. Never
@@ -56,7 +60,27 @@ public sealed record SectionInput(int Slot, string Uri, string? Title, string? S
 /// Weekly, the first radio station with a header image, a podcast's newest video episode); <see cref="Clusters"/> is
 /// only set for <see cref="ZoneKind.ClusterCards"/>/<see cref="ZoneKind.PodcastGroups"/>.</summary>
 public sealed record Zone(ZoneKind Kind, string Key, string? Title, string? Subtitle, IReadOnlyList<HomeCard> Items,
-    HomeCard? Lead = null, IReadOnlyList<ZoneCluster>? Clusters = null, int SectionSlot = -1, int TotalCount = 0);
+    HomeCard? Lead = null, IReadOnlyList<ZoneCluster>? Clusters = null, int SectionSlot = -1, int TotalCount = 0)
+{
+    /// <summary>The thing the section hangs off ("Popular with listeners of {show}", "More like {book}"): its uri, name and
+    /// cover, from the section's <c>headerEntity</c>. Null when the section has none; the header then draws the plain title.</summary>
+    public HeaderEntity? Header { get; init; }
+}
+
+/// <summary>A section's header entity as a chapter header draws it: the lead words of the title (the title with the entity's
+/// name taken off its end: "More like"), the name as a link, the cover.</summary>
+public sealed record HeaderEntity(string Uri, string Name, string? Image, string Lead)
+{
+    /// <summary>The entity of <paramref name="s"/> when its title ends with the entity's name (the template filled with it), else
+    /// null: a title that does not name the entity keeps its plain form.</summary>
+    public static HeaderEntity? Of(SectionInput s)
+    {
+        if (s.HeaderUri is not { Length: > 0 } uri || s.HeaderName is not { Length: > 0 } name || s.Title is not { Length: > 0 } title) return null;
+        if (!title.EndsWith(name, StringComparison.Ordinal) || title.Length == name.Length) return null;
+        string lead = title[..^name.Length].TrimEnd();
+        return lead.Length == 0 ? null : new HeaderEntity(uri, name, s.HeaderImage, lead);
+    }
+}
 
 /// <summary>One grouped-list card inside a <see cref="ZoneKind.ClusterCards"/>/<see cref="ZoneKind.PodcastGroups"/>
 /// zone — "More like {Name}" / "For fans of {Name}" / "Popular with listeners of {Name}". Named <c>ZoneCluster</c>,
@@ -66,7 +90,12 @@ public sealed record Zone(ZoneKind Kind, string Key, string? Title, string? Subt
 /// <see cref="SectionKind.HomeBaseline"/> band, a show's episodes for a podcast group). Null for the pre-D2 rows a
 /// singleton/untitled fold produced, which open nothing of their own.</para></summary>
 public sealed record ZoneCluster(string Over, string Name, IReadOnlyList<HomeCard> Rows,
-    IReadOnlyList<HomeCard>? FooterShows = null, int FooterSectionSlot = -1, int FooterTotal = 0, HomeCard? Header = null);
+    IReadOnlyList<HomeCard>? FooterShows = null, int FooterSectionSlot = -1, int FooterTotal = 0, HomeCard? Header = null)
+{
+    /// <summary>Why the cluster is here as an entity ("For fans of {artist}"): the artist's uri, name and picture from the section's
+    /// <c>headerEntity</c>, the reason line's lead words before the name. Null for a reason with no entity ("Based on your recent listening").</summary>
+    public HeaderEntity? Reason { get; init; }
+}
 
 /// <summary>One facet-pivot word (or its Following sub-chip), read off <see cref="Home.ChipIds"/>/etc.</summary>
 public sealed record ChipInput(string Id, string Label, string? SubId, string? SubLabel);

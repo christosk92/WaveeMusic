@@ -54,6 +54,8 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.HomeZoneEpisodeRows, ZuneHomeZones.BodyTemplate, "zune.home.zone.episode-rows");
         views.Add(ViewKeys.HomeZonePodcastGroups, ZuneHomeZones.BodyTemplate, "zune.home.zone.podcast-groups");
         views.Add(ViewKeys.HomeZoneEmptyFacet, ZuneHomeZones.BodyTemplate, "zune.home.zone.empty-facet");
+        views.Add(ViewKeys.HomeZoneMoodPlates, ZuneHomeZones.BodyTemplate, "zune.home.zone.mood-plates");
+        views.Add(ViewKeys.HomeZoneBookShelf, ZuneHomeZones.BodyTemplate, "zune.home.zone.book-shelf");
         views.Add(ViewKeys.HomeSection, ZuneHomeSection.Template, "zune.home.section");
         CommonNothing.Register(views, ViewKeys.HomeFacetRow);
 

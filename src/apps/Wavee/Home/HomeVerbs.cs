@@ -28,6 +28,28 @@ public static class HomeVerbs
     public static void OpenTag(string tag)
         => Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(tag)));
 
+    /// <summary>A daylist tag opens its own mix (<paramref name="link"/>, the tag's <c>nicheMixLinks</c> playlist), else Search for it.</summary>
+    public static void OpenTag(string tag, string? link)
+    {
+        if (link is { Length: > 0 })
+        {
+            var route = Shell.For(EntityUri.Parse(link.AsSpan()), tag);
+            if (route.Kind != Shell.RouteKind.NotFound) { Shell.GoTo(route, HomeCardNav.HomeOrigin); return; }
+        }
+        OpenTag(tag);
+    }
+
+    /// <summary>An entity a section hangs off (a header's "The Pog State", a cluster's "Henry Moodie") opens as itself.</summary>
+    public static void OpenEntity(string uri, string name)
+    {
+        var route = Shell.For(EntityUri.Parse(uri.AsSpan()), name);
+        if (route.Kind != Shell.RouteKind.NotFound) Shell.GoTo(route, HomeCardNav.HomeOrigin);
+    }
+
+    /// <summary>A zone header's "See all" words: "See all 36" when the section says how many it holds beyond what shows, else "See all".</summary>
+    public static string SeeAllLabel(Zone zone)
+        => zone.TotalCount > zone.Items.Count && zone.TotalCount > 0 ? Strings.Home.SeeAllN(zone.TotalCount) : Loc.Get(Strings.Home.SeeAll);
+
     /// <summary>Shuffle STARTS the daylist shuffled; it never toggles (<c>HomeCardNav.Play</c> pauses a daylist that already plays).</summary>
     public static void ShuffleContext(string uri)
     {
