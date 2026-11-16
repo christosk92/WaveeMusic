@@ -662,6 +662,7 @@ internal static class ZuneHomeTiles
             HomeTileVacancy.Unavailable => Strings.Theme.Zune.Home.Unavailable,
             HomeTileVacancy.Paused => Strings.Theme.Zune.Home.Paused,
             HomeTileVacancy.Offline => Strings.Theme.Zune.Home.Offline,
+            HomeTileVacancy.Failed => Strings.Theme.Zune.Home.Failed,
             _ => Strings.Theme.Zune.Home.Unknown,
         });
         string name = p.Name;

@@ -3170,6 +3170,7 @@
         "paused": "Paused",
         "offline": "Offline",
         "unknown": "Unknown",
+        "failed": "Couldn't load",
         "play": "Play",
         "pause": "Pause",
         "next": "Next",
