@@ -223,20 +223,21 @@ public static partial class Spotify
             {
                 if (WrapperIsEpisode(r)) { r.Skip(); return; }
 
-                StagedId cardUri = default;
+                TextRef cardUri = default;
                 Span<StagedId> tracks = stackalloc StagedId[MaxRows];
                 int trackCount = 0;
                 for (int d = r.CurrentDepth; Next(ref r, d);)
                 {
-                    if (r.ValueTextEquals("_uri"u8)) { r.Read(); if (cardUri.IsEmpty) cardUri = JsonId(ref r, s); }
+                    // The echo is read as TEXT and compared with the request's text uris (Home.BaselinePreviewLinks).
+                    // JsonId would pack a catalog uri into its gid, which never compares equal to the map's bytes: every
+                    // live answer matched nothing (found in the 2026-11-16 live check; the fixtures' ids did not pack).
+                    if (r.ValueTextEquals("_uri"u8)) { r.Read(); if (cardUri.IsEmpty && r.TokenType == JsonTokenType.String) cardUri = s.AddJson(ref r); }
                     else if (r.ValueTextEquals("data"u8)) Data(ref r, s, tracks, ref trackCount);
                     else SkipValue(ref r);
                 }
-                // The request was built from full `spotify:…:` uris (Home.BaselinePreviewLinks); a gid-form echo is
-                // not a shape this answer takes, and matching it against the map's text uris would be silently wrong.
-                if (cardUri.IsEmpty || trackCount == 0 || !cardUri.Packed.IsEmpty) return;
+                if (cardUri.IsEmpty || trackCount == 0) return;
 
-                var cardBytes = s.Utf8(cardUri.Text);
+                var cardBytes = s.Utf8(cardUri);
                 for (int i = 0; i < cardUtf8.Length; i++)
                 {
                     if (!cardBytes.SequenceEqual(cardUtf8[i])) continue;
