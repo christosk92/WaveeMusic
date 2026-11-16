@@ -80,7 +80,8 @@ internal static class ZuneHomeDaylist
             MoreRing(lay),
         ];
 
-        var root = Strip(props.Eyebrow, title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
+        // The board's page title is the greeting ("good evening"), so the eyebrow says only what the card is (owner/integrator, 2026-11-16).
+        var root = Strip(Loc.Get(Strings.Home.YourDaylist), title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
                          DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay,
                          ArtWidth(lay, stripH), r => { if (!lay.DaylistBleed && MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; },
                          rendered ? ZuneMotion.SwapThrough : null, Tags(in card), SectionCopy.DaylistBasis(in card))
