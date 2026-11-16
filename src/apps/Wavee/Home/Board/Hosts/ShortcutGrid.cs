@@ -2,21 +2,22 @@
 //
 // The shortcut cells (the user's pins, Spotify's fill, the history tile) are one full-width board item. Inside it:
 //
-//   the pages     a track of page-wide boxes, clipped, that slides to the page the board view's ShortcutsPager shows (a 420 ms decelerating
-//                 translate; reduced motion: none) - NOT a scroller: a cell dragged sideways inside a page must move the cell, and the engine
-//                 hands a sideways drag inside a sideways scroller to its pan. The Pinned group's head draws the theme's pager over the same
-//                 pager; the theme's edge chevrons stand over the track on hover. One height (the tallest page's).
 //   a page        at most three rows: n cells at `fit` columns take rowsPerPage = min(3, ceil(n / fit)) rows, pages = ceil(n / (rows x fit)),
 //                 the cells spread evenly over the pages, each page's columns ceil(k / rows) and its last row's cells grown to fill it
-//   the cells     a PackGrid per page (its tracks the least common multiple of its columns and its short last row's count: a full row's cell
-//                 spans tracks / columns, a last row's tracks / its count), each cell the
-//                 theme's own tile at its small form; its reorder is the board's own (lift, siblings part, the drop commits), inside the grid
+//   the cells     ONE PackGrid for every page, the pages side by side in it (each page T tracks wide, T the least common multiple of every
+//                 page's columns and short last row: a full row's cell spans T / columns, a last row's T / its count; a page shorter than
+//                 the tallest is padded with blank rows). One grid, so a cell that changes pages (a re-plan at a new width, a drag) keeps its
+//                 node and glides; each cell the theme's own tile at its small form; its reorder is the board's own (lift, siblings part, the
+//                 drop commits), inside the grid
+//   the pages     the grid slides (a critically damped spring on its translate; reduced motion: none) to the page the board view's
+//                 ShortcutsPager shows, clipped to one page - NOT a scroller: a cell dragged sideways must move the cell, and the engine
+//                 hands a sideways drag inside a sideways scroller to its pan. The Pinned group's head draws the theme's pager over the same
+//                 pager; the theme's edge chevrons stand over the pages on hover. One height (the tallest page's).
 //
-// ACROSS PAGES: a lifted cell held at its page's first or last place for a moment carries over to the page before or after (it lands at that
-// page's near end, the strip slides there); the drop there is an ordinary drop.
-// A drop commits through the grid's reorder verb (ReorderShortcut: one document command, one undo entry); remove is the cell's own control and menu
-// (the theme's tile chrome). What the theme gives is `ShortcutGridSpec`: its columns, its row height, its gap, its cell, when the cells lift,
-// what the strip draws itself and what stands under it.
+// ACROSS PAGES: a lifted cell dragged past its page's edge lands among the next page's cells (they are laid out there, just clipped); held there a
+// moment, the grid slides to that page and the drag carries on. A drop commits through the grid's reorder verb (ReorderShortcut: one document
+// command, one undo entry); remove is the cell's own control and menu (the theme's tile chrome). What the theme gives is `ShortcutGridSpec`: its
+// columns, its row height, its gap, its cell, when the cells lift, its edge chevrons and what stands under the pages.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -43,27 +44,42 @@ public sealed record ShortcutGridSpec(
     float BelowH = 0f,
     Func<BoardEntry, bool>? CanLift = null);
 
-/// <summary>One cell as a page packs it: its key, its entry, its place in the whole grid and its span of the page's twelve tracks.</summary>
-public readonly record struct ShortcutCellItem(string Key, BoardEntry Entry, int Index, byte Span);
+/// <summary>One slot of the grid: a cell (its key, its entry, its place in the whole grid) or a blank that pads a short page, its page, its span of
+/// the page's tracks.</summary>
+public readonly record struct ShortcutCellItem(string Key, BoardEntry? Entry, int Index, int Page, byte Span);
 
-/// <summary>The grid's plan at a width: the cells, the pages (start, count, columns), the row height and the height of the tallest page.</summary>
-public sealed record ShortcutGridPlan(IReadOnlyList<BoardEntry> Cells, ShortcutPage[] Pages, float Unit, float Gap, float PageHeight)
+/// <summary>The grid's plan at a width: the cells, the pages (start, count, columns, tracks), the row height, the tallest page's rows and height,
+/// and the tracks every page is cut into.</summary>
+public sealed record ShortcutGridPlan(IReadOnlyList<BoardEntry> Cells, ShortcutPage[] Pages, float Unit, float Gap, float PageHeight, int Rows = 0,
+    int Tracks = 1)
 {
-    /// <summary>A page's cells as its PackGrid packs them (empty past the last page).</summary>
-    public IReadOnlyList<ShortcutCellItem> Items(int page)
+    /// <summary>Every slot, row by row across the pages (the PackGrid fills its rows in order): page 0's first row, page 1's first row, ..., then the
+    /// second rows; a page with fewer rows than the tallest is padded with one blank a page wide per missing row.</summary>
+    public IReadOnlyList<ShortcutCellItem> Items()
     {
-        if ((uint)page >= (uint)Pages.Length) return [];
-        var pg = Pages[page];
-        int rest = GridFill.Remainder(pg.Count, pg.Cols), full = pg.Count - rest;
-        var items = new ShortcutCellItem[pg.Count];
-        for (int i = 0; i < pg.Count; i++)
-        {
-            var e = Cells[pg.Start + i];
-            int across = i >= full ? rest : pg.Cols;
-            // Keyed by what the cell IS (the pin), not by its entry: a fill cell that becomes the user's pin on a reorder keeps its node and glides.
-            string key = e.Raw is PinSource pin ? "home:shortcut:pin:" + pin.PinId : "home:shortcut:" + e.Id;
-            items[i] = new ShortcutCellItem(key, e, pg.Start + i, (byte)(pg.Tracks / Math.Max(1, across)));
-        }
+        var items = new List<ShortcutCellItem>(Cells.Count + Pages.Length * Rows);
+        for (int r = 0; r < Rows; r++)
+            for (int p = 0; p < Pages.Length; p++)
+            {
+                var pg = Pages[p];
+                int rows = GridFill.Rows(pg.Count, pg.Cols);
+                if (r >= rows)
+                {
+                    items.Add(new ShortcutCellItem("home:shortcut-blank:" + p.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                                                   r.ToString(System.Globalization.CultureInfo.InvariantCulture), null, -1, p, (byte)Tracks));
+                    continue;
+                }
+                int rest = GridFill.Remainder(pg.Count, pg.Cols), full = pg.Count - rest;
+                int start = r * pg.Cols, end = Math.Min(pg.Count, start + pg.Cols);
+                for (int i = start; i < end; i++)
+                {
+                    var e = Cells[pg.Start + i];
+                    int across = i >= full ? rest : pg.Cols;
+                    // Keyed by what the cell IS (the pin), not by its entry: a fill cell that becomes the user's pin on a reorder keeps its node.
+                    string key = e.Raw is PinSource pin ? "home:shortcut:pin:" + pin.PinId : "home:shortcut:" + e.Id;
+                    items.Add(new ShortcutCellItem(key, e, pg.Start + i, p, (byte)(Tracks / Math.Max(1, across))));
+                }
+            }
         return items;
     }
 }
@@ -81,6 +97,13 @@ public static class ShortcutGrid
 
     /// <summary>A page slide's response (a critically damped spring: it decelerates into the page).</summary>
     public const float SlideMs = 420f;
+
+    static int Lcm(int a, int b)
+    {
+        int x = a, y = b;
+        while (y != 0) (x, y) = (y, x % y);
+        return a / x * b;
+    }
 
     /// <summary>A page's tracks: the least common multiple of its columns and its last row's count, so every cell spans a whole number of them.</summary>
     public static int TracksOf(int cols, int count)
@@ -117,7 +140,9 @@ public static class ShortcutGrid
             at += k;
         }
         float unit = spec.Unit(GridFill.CellWidth(width, fit, spec.Gap));
-        return new ShortcutGridPlan(cells, pages, unit, spec.Gap, tallest * unit + (tallest - 1) * spec.Gap);
+        int tracks = 1;
+        foreach (var pg in pages) tracks = Lcm(tracks, pg.Tracks);
+        return new ShortcutGridPlan(cells, pages, unit, spec.Gap, tallest * unit + (tallest - 1) * spec.Gap, tallest, tracks);
     }
 
     /// <summary>The grid item's height at <paramref name="width"/>: the tallest page, and what stands under the strip while it pages.</summary>
@@ -128,8 +153,8 @@ public static class ShortcutGrid
     }
 }
 
-/// <summary>The grid: its width (measured; the board's estimate on the first frame), the plan (a memo of the board's model and the width), the
-/// sliding track of pages.</summary>
+/// <summary>The grid: its width (measured; the board's estimate on the first frame), the plan and its slots (memos of the board's model and the width),
+/// the clipped pages.</summary>
 public sealed class ShortcutGridView : Component
 {
     readonly Signal<float> _width = new(0f);
@@ -139,11 +164,13 @@ public sealed class ShortcutGridView : Component
     readonly Action _exit;
     ShortcutGridProps? _p;
 
-    /// <summary>The plan the pages read (each page its own slice).</summary>
+    /// <summary>The plan and the grid's slots.</summary>
     internal Memo<ShortcutGridPlan>? Plan { get; private set; }
+    internal Memo<IReadOnlyList<ShortcutCellItem>>? Items { get; private set; }
 
     internal HomeBoardProps Board => _p!.Board;
     internal ShortcutGridSpec Spec => _p!.Spec;
+    internal float Width => _width.Peek() > 0f ? _width.Peek() : _p?.FirstWidth ?? 0f;
 
     public ShortcutGridView()
     {
@@ -162,15 +189,16 @@ public sealed class ShortcutGridView : Component
             return ShortcutGrid.Plan(HomeShortcuts.Cells(_p!.Board.Model.Value), _p.Spec, w);
         });
         var plan = Plan.Value;
+        var plans = Plan;
+        Items = UseComputed(() => plans.Value.Items());
         var pager = p.Board.View.ShortcutsPager;
         int count = plan.Pages.Length;
         UseEffect(() => pager.Publish(count), DepKey.From(count));
         // The inspector's `home do=page key=shortcuts` turns these pages.
         UseEffect(() => GridFill.Register("home:shortcuts", pager));
         var spec = p.Spec;
-        float width = _width.Peek() > 0f ? _width.Peek() : p.FirstWidth;
-        var track = Embed.Comp(new TrackProps(this, count, width, spec.Gap, plan.PageHeight), static () => new ShortcutTrack()) with { Key = "home:shortcuts-track" };
-        var layers = new List<Element>(3)
+        var track = Embed.Comp(new TrackProps(this, Math.Max(1, count)), static () => new ShortcutTrack()) with { Key = "home:shortcuts-track" };
+        var layers = new List<Element>(2)
         {
             new BoxEl { Direction = 0, MinWidth = 0f, Height = plan.PageHeight, ClipToBounds = true, Children = [track] },
         };
@@ -199,74 +227,53 @@ public sealed class ShortcutGridView : Component
         };
     }
 
-    internal sealed record PageProps(ShortcutGridView Grid, int Index);
-
-    internal sealed record TrackProps(ShortcutGridView Grid, int Count, float Width, float Gap, float Height);
+    internal sealed record TrackProps(ShortcutGridView Grid, int Count);
 }
 
-/// <summary>The pages side by side, each the grid's width; the track slides to the page shown (its own root's translate, eased; none under reduced
-/// motion). A page is keyed by its place, so a page's cells keep their grid across a re-plan.</summary>
+/// <summary>The pages: ONE PackGrid as wide as every page side by side (a page the grid's width, the gap between them), slid to the page shown (its
+/// own root's translate on a critically damped spring; none under reduced motion). The reorder is the board's own.</summary>
 public sealed class ShortcutTrack : Component
 {
     static readonly SpringParams s_slide = SpringParams.FromResponse(ShortcutGrid.SlideMs / 1000f, 1f);
 
-    public override Element Render()
-    {
-        var p = UseProps<ShortcutGridView.TrackProps>();
-        var grid = p.Grid;
-        int page = Math.Clamp(grid.Board.View.ShortcutsPager.Page.Value, 0, Math.Max(0, p.Count - 1));
-        float step = p.Width + p.Gap;
-        float to = -page * step;
-        // The slide is a critically damped spring from wherever the track is (a turn mid-slide carries on); reduced motion lands at once.
-        if (Motion.ReducedMotion) UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(page, (int)step));
-        else UseSpring(AnimChannel.TranslateX, to, s_slide, DepKey.From(page, (int)step));
-        var pages = new Element[Math.Max(1, p.Count)];
-        for (int i = 0; i < pages.Length; i++)
-            pages[i] = new BoxEl
-            {
-                Key = "shortcuts-page:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                Direction = 1, Width = p.Width, Height = p.Height, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Embed.Comp(new ShortcutGridView.PageProps(grid, i), static () => new ShortcutPageView())],
-            };
-        return new BoxEl { Direction = 0, Gap = p.Gap, Shrink = 0f, Children = pages };
-    }
-}
-
-/// <summary>One page: its cells in a PackGrid of twelve tracks, reordered inside it with the board's own lift.</summary>
-public sealed class ShortcutPageView : Component
-{
     readonly PackGridController _controller = new();
-    ShortcutGridView.PageProps? _p;
+    ShortcutGridView.TrackProps? _p;
     PackReorder<ShortcutCellItem>? _reorder;
     PackGridOptions<ShortcutCellItem>? _options;
     Func<ShortcutCellItem, PackCell, Element>? _template;
-    Memo<IReadOnlyList<ShortcutCellItem>>? _items;
     TimerHandle _turn;
     readonly Action _onTurn;
-    int _edge;   // the edge a lifted cell is held at: -1 the page's first place, 1 its last, 0 neither
+    int _turnTo = -1;   // the page a lifted cell is held over (not the one shown), -1 none
 
-    /// <summary>How long a lifted cell waits at its page's edge before it carries over (the board's own dwell).</summary>
+    /// <summary>How long a lifted cell waits over another page before the grid slides there (the board's own dwell).</summary>
     public const float TurnDwellMs = 600f;
 
-    public ShortcutPageView() => _onTurn = Turn;
+    public ShortcutTrack() => _onTurn = Turn;
 
     public override Element Render()
     {
-        var p = UseProps<ShortcutGridView.PageProps>();
+        var p = UseProps<ShortcutGridView.TrackProps>();
         _p = p;
-        int index = p.Index;
         var grid = p.Grid;
-        _items = UseComputed(() => grid.Plan?.Value.Items(index) ?? []);
+        var pager = grid.Board.View.ShortcutsPager;
+        int page = Math.Clamp(pager.Page.Value, 0, Math.Max(0, p.Count - 1));
+        float width = grid.Width, gap = grid.Spec.Gap;
+        float step = width + gap;
+        float to = -page * step;
+        // The slide is a critically damped spring from wherever the grid is (a turn mid-slide carries on); reduced motion lands at once.
+        if (Motion.ReducedMotion) UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(page, (int)step));
+        else UseSpring(AnimChannel.TranslateX, to, s_slide, DepKey.From(page, (int)step));
         _turn = UseTimeout(_onTurn, TurnDwellMs);
-        _template ??= (item, cell) => _p!.Grid.Spec.Cell(item.Entry, item.Index, cell);
+
+        _template ??= (item, cell) => item.Entry is { } e ? _p!.Grid.Spec.Cell(e, item.Index, cell) : new BoxEl();
         _reorder ??= new PackReorder<ShortcutCellItem>("home.shortcut")
         {
-            // A cell showing Recently played is not the shortcut it stands for: it lifts once the grid shows the shortcuts again.
-            CanLift = it => _p!.Grid.Board.View.ShortcutsFace.Peek() == HomeShortcuts.ShortcutsFace && !_p.Grid.Board.ReadOnly
-                            && (_p.Grid.Spec.CanLift?.Invoke(it.Entry) ?? true),
+            // A cell showing Recently played is not the shortcut it stands for: it lifts once the grid shows the shortcuts again. A blank never lifts.
+            CanLift = it => it.Entry is { } e && _p!.Grid.Board.View.ShortcutsFace.Peek() == HomeShortcuts.ShortcutsFace && !_p.Grid.Board.ReadOnly
+                            && (_p.Grid.Spec.CanLift?.Invoke(e) ?? true),
             Enabled = () => _p!.Grid.Spec.CanReorder(),
             OnCommit = m => Commit(m),
-            OnCancel = _ => Hold(0),
+            OnCancel = _ => Hold(-1),
             AnnounceText = a => Announce(a),
         };
         _options ??= new PackGridOptions<ShortcutCellItem>
@@ -276,66 +283,70 @@ public sealed class ShortcutPageView : Component
             Metrics = () =>
             {
                 var plan = _p!.Grid.Plan!.Value;
-                int tracks = (uint)_p.Index < (uint)plan.Pages.Length ? plan.Pages[_p.Index].Tracks : 1;
-                return new PackMetrics(tracks, plan.Unit, plan.Gap, 0f);
+                return new PackMetrics(Math.Max(1, plan.Pages.Length) * plan.Tracks, plan.Unit, plan.Gap, 0f);
             },
             Controller = _controller,
-            // The page's scroller is the board's (Home's page), never the paged strip around it: the grid realizes against the page, and a lifted
-            // cell dragged sideways moves the cell, it does not scroll the strip.
-            Scroll = _p!.Grid.Board.Scroll,
+            // The grid's scroller is the board's (Home's page): it realizes against the page.
+            Scroll = grid.Board.Scroll,
             Reorder = _reorder,
-            Key = "home:shortcuts-page",
+            Key = "home:shortcuts-grid",
         };
-        return PackGrid.Create(_items, _template, _options);
+        return new BoxEl
+        {
+            Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+            Width = p.Count * width + (p.Count - 1) * gap,
+            Children = [PackGrid.Create(grid.Items!, _template, _options)],
+        };
     }
 
-    /// <summary>The reorder's milestones: where the lifted cell is (the board's own sentence), and whether it is held at the page's first or last place.</summary>
+    /// <summary>The reorder's milestones: where the lifted cell is (the board's own sentence), and whether it is held over another page.</summary>
     string? Announce(PackAnnounce a)
     {
-        var items = _items?.Peek() ?? [];
-        if (a.Kind == PackAnnounceKind.Move) Hold(a.Position <= 1 ? -1 : a.Position >= items.Count ? 1 : 0);
-        else Hold(0);
+        var items = _p!.Grid.Items?.Peek() ?? [];
+        int shown = _p.Grid.Board.View.ShortcutsPager.Page.Peek();
+        if (a.Kind == PackAnnounceKind.Move && (uint)(a.Position - 1) < (uint)items.Count)
+        {
+            int over = items[a.Position - 1].Page;
+            Hold(over != shown ? over : -1);
+        }
+        else Hold(-1);
         string id = "";
-        foreach (var it in items) if (it.Key == a.Key) { id = it.Entry.Id; break; }
-        return a.Kind is PackAnnounceKind.Move or PackAnnounceKind.Drop && id.Length > 0 ? _p!.Grid.Board.Verbs.Where(id) : null;
+        foreach (var it in items) if (it.Key == a.Key && it.Entry is { } e) { id = e.Id; break; }
+        return a.Kind is PackAnnounceKind.Move or PackAnnounceKind.Drop && id.Length > 0 ? _p.Grid.Board.Verbs.Where(id) : null;
     }
 
-    /// <summary>The lifted cell is held at an edge (or left it): the dwell starts over, or stops.</summary>
-    void Hold(int edge)
+    /// <summary>The lifted cell is held over a page that is not shown (or not any more): the dwell starts over, or stops.</summary>
+    void Hold(int page)
     {
-        if (edge == _edge) return;
-        _edge = edge;
-        if (edge == 0) _turn.Cancel();
+        if (page == _turnTo) return;
+        _turnTo = page;
+        if (page < 0) _turn.Cancel();
         else _turn.RestartIn(TurnDwellMs);
     }
 
-    /// <summary>The dwell ran out at an edge with a page beyond it: the lift ends there and the cell carries over, to the next page's first place
-    /// (or the previous page's last), and the strip slides to it.</summary>
+    /// <summary>The dwell ran out over another page: the grid slides there and the drag carries on.</summary>
     void Turn()
     {
-        int edge = _edge;
-        _edge = 0;
-        if (edge == 0 || _p is not { } p || _reorder is not { IsLifted: true } reorder || p.Grid.Plan?.Peek() is not { } plan) return;
-        int page = p.Index + edge;
-        if ((uint)page >= (uint)plan.Pages.Length) return;
-        string? key = reorder.LiftedKey;
-        string id = "";
-        foreach (var it in _items?.Peek() ?? []) if (it.Key == key) { id = it.Entry.Id; break; }
-        if (id.Length == 0) return;
-        var target = plan.Pages[page];
-        int to = edge > 0 ? target.Start : target.Start + target.Count - 1;
-        reorder.Cancel();
-        p.Grid.Board.Verbs.ReorderShortcut(id, to);
-        var pager = p.Grid.Board.View.ShortcutsPager;
-        if (edge > 0) pager.Next(); else pager.Prev();
+        int page = _turnTo;
+        if (page < 0 || _p is not { } p || _reorder is not { IsLifted: true }) return;
+        p.Grid.Board.View.ShortcutsPager.GoTo(page);
     }
 
-    /// <summary>A drop inside the page: the grid's reorder verb, the cell to the place the drop's slot holds in the whole grid (one command, one undo
-    /// entry).</summary>
+    /// <summary>A drop: the grid's reorder verb, the cell to the place the drop's slot holds in the whole grid (one command, one undo entry); a drop on a
+    /// short page's blank lands at that page's end.</summary>
     void Commit(PackMove m)
     {
-        var items = _items?.Peek() ?? [];
-        if ((uint)m.From >= (uint)items.Count || (uint)m.To >= (uint)items.Count || m.From == m.To) return;
-        _p!.Grid.Board.Verbs.ReorderShortcut(items[m.From].Entry.Id, items[m.To].Index);
+        Hold(-1);
+        var grid = _p!.Grid;
+        var items = grid.Items?.Peek() ?? [];
+        if ((uint)m.From >= (uint)items.Count || (uint)m.To >= (uint)items.Count || m.From == m.To || items[m.From].Entry is not { } moving) return;
+        var target = items[m.To];
+        int to = target.Index;
+        if (target.Entry is null && grid.Plan?.Peek() is { } plan && (uint)target.Page < (uint)plan.Pages.Length)
+        {
+            var pg = plan.Pages[target.Page];
+            to = Math.Min(pg.Start + pg.Count - 1, plan.Cells.Count - 1);
+        }
+        if (to >= 0) grid.Board.Verbs.ReorderShortcut(moving.Id, to);
     }
 }
