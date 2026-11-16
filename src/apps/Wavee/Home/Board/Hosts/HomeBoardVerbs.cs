@@ -62,13 +62,32 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     public void Add(HomeCandidate candidate, int atEntryIndex = -1, HomeSize size = HomeSize.Auto)
     {
         HomeApplied applied;
-        if (candidate.Source is PinSource pin && atEntryIndex < 0)
-            applied = Store.Dispatch(new HomeCommand.Pin(pin.PinId, candidate.Title, candidate.Cover ?? "", candidate.TargetGroupId));
+        var (group, at) = PlaceOf(atEntryIndex, candidate.TargetGroupId);
+        if (candidate.Source is PinSource pin && at < 0)
+            applied = Store.Dispatch(new HomeCommand.Pin(pin.PinId, candidate.Title, candidate.Cover ?? "", group));
         else
-            applied = Store.Dispatch(new HomeCommand.Add(candidate.Source, candidate.TargetGroupId, atEntryIndex, size));
+            applied = Store.Dispatch(new HomeCommand.Add(candidate.Source, group, at, size));
         if (!applied.Changed) return;
         Confirm(Strings.Home.BoardVerbs.Pinned(name: candidate.Title));
         if (applied.ItemId is { } id) Ring(id);
+    }
+
+    /// <summary>An entry index of the board as shown -> the group it is in and the place in that group's document items (the entry there moves
+    /// down; a group head: the group's start). -1: the group's natural place.</summary>
+    (string Group, int At) PlaceOf(int entryIndex, string fallbackGroup)
+    {
+        var entries = _shown().Entries;
+        if ((uint)entryIndex >= (uint)entries.Length) return (fallbackGroup, -1);
+        var target = entries[entryIndex];
+        if (target.Kind == BoardEntryKind.GroupHead) return (target.GroupId, 0);
+        var doc = Store.Doc.Peek();
+        foreach (var g in doc.Groups)
+        {
+            if (g.Id != target.GroupId) continue;
+            for (int i = 0; i < g.Items.Length; i++) if (g.Items[i].Id == target.Id) return (g.Id, i);
+            return (g.Id, -1);
+        }
+        return (fallbackGroup, -1);
     }
 
     /// <inheritdoc/>

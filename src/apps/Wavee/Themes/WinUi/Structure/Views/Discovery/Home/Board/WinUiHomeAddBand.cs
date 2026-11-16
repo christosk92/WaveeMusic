@@ -276,13 +276,22 @@ internal static class WinUiHomeAddBand
         kids.Add(new BoxEl { Grow = 1f });
         kids.Add(pin);
         var payload = c;
+        // The candidate is dragged DOWN onto Home: its draggable box stands in a column of its own, so a vertical gesture runs along the item's
+        // axis and the drag wins over the page's pan; a sideways gesture still scrolls the row (the engine's arena-lite rule).
         return new BoxEl
         {
-            Key = "home:add:cand:" + c.Id, Direction = 1, Width = lay.CandidateW, Shrink = 0f, Gap = Spacing.S, MinWidth = 0f,
+            Key = "home:add:cand:" + c.Id, Direction = 1, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+            Direction = 1, Width = lay.CandidateW, Shrink = 0f, Gap = Spacing.S, MinWidth = 0f,
             Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.M), Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
             Draggable = on ? null : new DragSource(DragKind, () => payload),
             Children = kids.ToArray(),
+                },
+            ],
         };
     }
 }

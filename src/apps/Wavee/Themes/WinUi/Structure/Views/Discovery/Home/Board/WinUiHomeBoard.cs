@@ -91,6 +91,8 @@ internal static class WinUiHomeBoard
                 Slot = static rect => WinUiHomeTiles.Slot(rect),
                 AcceptKinds = [WinUiHomeAddBand.DragKind],
                 CanAccept = static payload => payload is HomeCandidate,
+                // A candidate dragged in from the add band: a provisional tile at its chosen size under the pointer; the drop adds it there.
+                Materialize = static payload => payload is HomeCandidate c ? Provisional(c) : null,
                 OnCommit = m => Commit(m),
                 OnForeignCommit = (payload, index) => ForeignCommit(payload, index),
                 AnnounceText = a => Announce(a),
@@ -122,6 +124,14 @@ internal static class WinUiHomeBoard
                     PackGrid.Create(items, _template, _options),
                 ],
             };
+        }
+
+        static WinUiBoardItem Provisional(HomeCandidate c)
+        {
+            var size = WinUiHomeAddBand.SizeChosen(c);
+            var e = new BoardEntry("provisional:" + c.Id, BoardEntryKind.Item, c.TargetGroupId, HomeSourceRegistry.Default.Of(c.Source), c.Source,
+                size, SectionTemplate.None, c.Title, false, false, false, c.Source is PinSource, false, -1);
+            return new WinUiBoardItem(HomeBoardKeys.Tile(e.Id), e, false);
         }
 
         static IReadOnlyList<WinUiBoardItem> ItemsOf(BoardModel m)
