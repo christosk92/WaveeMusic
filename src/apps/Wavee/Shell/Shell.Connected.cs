@@ -62,6 +62,8 @@ public static partial class Shell
         s_fromActivated = false;
         var motion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
         if (s_beginNav is not { } begin || motion.Connected is not { } spec) return;
+        // Settings ▸ Appearance ▸ Connected animations off: fly nothing, but still tell the engine, so a running flight is abandoned.
+        if (!Platform.Settings.Get(Platform.Keys.ConnectedAnimations)) key = null;
         // Forward into a page whose kind flies its own way (the artist header fades its flyer out); Back flies home as a card does.
         if (!back && motion.ConnectedInto?.Invoke(to.Subject.Kind) is { } into) spec = into;
         if (begin(new ConnectedNavRequest(key ?? "", back, spec, source))) s_connectedFor = to;

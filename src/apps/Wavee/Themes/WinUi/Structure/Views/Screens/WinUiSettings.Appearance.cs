@@ -104,6 +104,7 @@ internal static partial class WinUiSettings
                 Embed.Comp(static () => new ZoomPicker())),
             DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
             DocRow(D(Tab.Appearance, "fastNavigation"), RowToggle(D(Tab.Appearance, "fastNavigation"))),
+            DocRow(D(Tab.Appearance, "connectedAnimations"), RowToggle(D(Tab.Appearance, "connectedAnimations"))),
         };
 
         // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).

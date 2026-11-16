@@ -126,6 +126,7 @@ public static partial class Settings
             new(Tab.Appearance, "Display", "zoom", "Zoom"),
             new(Tab.Appearance, "Display", "marquee", "Font"),
             new(Tab.Appearance, "Display", "fastNavigation", "Forward"),
+            new(Tab.Appearance, "Display", "connectedAnimations", "Picture"),
             // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
             // is a setting any more. The blur dial is what is left of the section.
             new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),

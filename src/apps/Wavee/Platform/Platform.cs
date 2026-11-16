@@ -139,6 +139,10 @@ public static partial class Platform
         /// on the click and brings the new one in on its own cue (<c>Design.Nav.NoOverlap</c>). Read at each swap, so it applies from the next
         /// navigation.</summary>
         public static readonly SettingKey<bool> FastNavigation = new("appearance.fastNavigation", false);
+        /// <summary>Connected animations (Settings ▸ Appearance ▸ Display, WinUI today): TRUE (the default) lets the picture you click fly
+        /// into the page it opens and back (<c>Shell.Connected</c>); FALSE flies nothing and every swap plays the theme's own recipe. The
+        /// owner asked for the switch on 2026-11-16. Read at each navigation, so it applies from the next one.</summary>
+        public static readonly SettingKey<bool> ConnectedAnimations = new("appearance.connectedAnimations", true);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>

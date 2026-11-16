@@ -1489,6 +1489,8 @@
       "marqueeSub": "Scroll overflowing titles instead of truncating them",
       "fastNavigation": "Fast navigation",
       "fastNavigationSub": "Switch pages without the cross-fade: the new page replaces the old one at once",
+      "connectedAnimations": "Connected animations",
+      "connectedAnimationsSub": "The cover or photo you click flies into the page it opens, and back when you go back",
       "zoom": "Zoom",
       "zoomSub": "Scale the whole app, like Ctrl + and Ctrl − in a browser",
       "zoomAuto": "Auto ({percent}%)",
