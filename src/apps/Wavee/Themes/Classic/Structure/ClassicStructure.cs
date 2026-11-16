@@ -183,6 +183,17 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneEmptyFacet, ClassicHomeZones.BodyTemplate, "classic.home.zone.empty-facet");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
         CommonNothing.Register(views, ViewKeys.HomeQuickplay);   // P5 Z5: Classic has no quickplay strip (its pins are the sidebar's)
+        // The pinned Home board (contract 1.117): Nothing until Classic draws its board (lane W registered these at I1).
+        CommonNothing.Register(views, ViewKeys.HomeBoard);
+        CommonNothing.Register(views, ViewKeys.HomeTilePin);
+        CommonNothing.Register(views, ViewKeys.HomeTileNowPlaying);
+        CommonNothing.Register(views, ViewKeys.HomeTileUpNext);
+        CommonNothing.Register(views, ViewKeys.HomeTileRecents);
+        CommonNothing.Register(views, ViewKeys.HomeTileReleases);
+        CommonNothing.Register(views, ViewKeys.HomeTileDaylist);
+        CommonNothing.Register(views, ViewKeys.HomeTileSection);
+        CommonNothing.Register(views, ViewKeys.HomeTileOptions);
+        CommonNothing.Register(views, ViewKeys.HomeTileVacant);
         // T9a: the shared detail frame. The scaffold (notice, content column, rail | grip | content row, the vertical page), the rail and its collapsed
         // strip, the vertical show header, the vertical arm's hero (and its loading band, a style the table reads) and the insights sheet with its two
         // entry points. The mode ladder, the rail cells and prefs, the accent, the tint and tone claims, the table, the drop target and the insights
