@@ -904,7 +904,6 @@ timers and the layout document stay core.
 | `Home.Zone.<Kind>` ×14 (`HomeZoneKeys.TryKeyOf`) | `HomeZoneProps` (zone, overlay, the shelf pager's controller) | none: a pure function of the zone | `ClassicHomeZones.BodyTemplate` under every kind: shelves, release list, cluster cards, browse tiles, episode rows, the empty facet |
 | `Home.Zone.RecentGrid`, `Home.Charts` | `HomeRecentsProps` (cells, week, `Playing`, `RemoteDeviceName`), `HomeChartsProps` (the pick) | `RecentGrid`, `ChartsBlockView` (`Home\Zones.Hosts.cs`): the Recents subscription, the Featured Charts demand | `ClassicHomeRecents`, `ClassicHomeCharts` |
 | `Pages.HomeSection` | `HomeSectionProps` (total, scroll key, the pending / failed / empty Funcs, the card source, the adapter) | `SectionScreen` (`Home\SectionScreen.Host.cs`): the demand, the table sync, the masthead publication | `ClassicHomeSection`: the "N items" line, the skeleton region, the bound `ItemsView` over `GridFit` |
-| `Pages.HomeCustomize` | `HomeCustomizeProps` (the `LayoutDoc`, the `Reorderable`, the toggle / move / reset verbs) | `CustomizeScreen` (`Home\Customize.Host.cs`) over the one `HomeLayout` | `CommonCustomize` (a Common block since T11c, `Themes\Common\CommonCustomize.cs`): the header with Reset, the reorderable rows |
 
 **The chapter is the page's, the body is the key.** A zone's header, its sticky pin, its clipped body, the shelf pager in the header's tools and the
 entrance row are the Classic page's structure (`ClassicHomeZones.Column`, `Chapter`); what another theme swaps per kind is the BODY. A shelf's
@@ -1495,7 +1494,6 @@ The three diagnostics pages and the log viewer are **Common** blocks (`Themes\Co
 | Block | Key | Core half | Common template |
 |---|---|---|---|
 | history | `Pages.History` (`HistoryPageProps`: the log's version signal and `Project(search, filterIndex, sortIndex)`; `HistoryPageModel` / `HistorySection` / `HistoryRowFacts` come back) | `Shell.HistoryPage` and `ProjectHistory` (`Shell\Shell.History.UI.cs`) over `Shell.History` (kinds, filter, search, the most-visited fold, date buckets, timestamps, unique count), the store and `HistoryVerbs` | `CommonHistory`: header, search, chips, sort, the date cards or the one most-visited card, the vacancy. The search text, the filter chip and the sort are the view's own signals |
-| Home customizer | `Pages.HomeCustomize` (unchanged key and props; T10a1 drew it in Classic) | `CustomizeScreen` (`Home\Customize.Host.cs`) | `CommonCustomize` |
 | frame-rate overlay | `Shell.Fps` (unchanged key and props; T4c drew it in Classic) | the frame root: `Diagnostics.FpsOverlayOn` | `CommonFps` |
 | not-found | none: the content state's NotFound arm | `Shell.ContentHost` decides | `CommonNotFound.Block(key, glyph, goHome)`, called by a theme's `Shell.ContentState` template (the page box and the offline lane stay the theme's) |
 | diagnostics, logs | see the diagnostics section | | `CommonDiagnostics`, `CommonLogs` |

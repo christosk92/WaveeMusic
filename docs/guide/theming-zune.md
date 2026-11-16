@@ -320,8 +320,7 @@ non-Standard rows). No discovery page draws a title or a facet row: the band is 
 
 | Key | Zune's picture (boards) |
 |---|---|
-| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the quickplay strip leads; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
-| `Home.Quickplay` (new, contract 1.28) | pins (132 art, the band's own pins, the name in the accent while it plays) · history (`Home.Zone.RecentGrid`, through its core host) · new (the release list's first covers, its "see all"), 32 apart, wrapping. Mounted by the core host `QuickplayHost` (`Home\Quickplay.Host.cs`); Classic registers Nothing. |
+| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the pinned board takes the zone column's place; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
 | `Home.Zone.RecentGrid` | The history group: the tier's 100 tiles, the playing one in the accent with "playing" as its line, "listening history" to Recents. |
 | `Home.Zone.<Kind>` (14) | A body draws its own heading row (26/32 light, subtitle, "see all"): shelves of 154 covers (`PagedShelf`, chevrons in the heading), the wide tiles the tier's columns of 16:9, the release list's 64 rows, the clusters' 28-title columns of 48 rows, the Browse tiles as flat 88 plates 2 : 1 beside the charts, the shared episode rows, the empty facet's vacancy. |
 | `Home.Charts` | A numbered list: 40 rows, the 22 light rank, the chart's caption. |
@@ -331,7 +330,7 @@ non-Standard rows). No discovery page draws a title or a facet row: the band is 
 | `Pages.BrowseCategory` | Z-Browse-Category: the accent banner (200) with the name as a panorama and its kind, then shelves of 154 covers and six-across tile plates; the flattened modes keep the banner over a grid that owns its scroll. |
 | `Pages.Search` | Z-Search: the facet body alone. All: top result (heading + kind, the tier's art beside the 40/48 name, its line, the matched words in the accent, the play ring and the hit's own control) beside best matches (two columns of 56 rows), the playlist shelf, genres and related searches as inline words. The other facets: the songs in columns, the Albums / Playlists virtual grid, the hit rows. |
 
-**Nothing:** `Home.FacetRow`. **Common:** `Pages.HomeCustomize`.
+**Nothing:** `Home.FacetRow`.
 
 **Row 2.** Home: the core host (`HomeHost.SyncFacetIndex`) publishes the facet words as `PageView`s ("all" first, the target's word lit, Go the
 facet row's select path with its Following memory), a "following" / "all" action where the lit word has a Following sub-chip, and the shown
