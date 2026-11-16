@@ -59,6 +59,8 @@ public readonly record struct SpineShelfGeometry(
 /// <param name="Spine">An item's closed face: its whole box (SpineW × Height, or the row standing).</param>
 /// <param name="Head">The open card's head (cover, reason, title, meta, Play, Save), HeadH tall at the face's inner width.</param>
 /// <param name="Caption">A song tile's words over the media (number, title, artist), laid out at the tile's rest width.</param>
+/// <param name="FormSwap">The theme's declared swap fade: the row form and the standing form are different trees (a Compact edge cross-fades
+/// them, the tile height easing through the board's re-pack), never one tree re-laid out at once.</param>
 /// <param name="SpineWash">An item's closed fill (<paramref name="SpineHoverWash"/> under the pointer); <paramref name="FaceWash"/> its open fill.</param>
 public sealed record SpineShelfSkin(
     Func<ShelfItem, int, SpineShelfGeometry, Element> Spine,
@@ -69,7 +71,9 @@ public sealed record SpineShelfSkin(
     Func<ShelfItem, GradientSpec> FaceWash,
     Func<ColorF> Meter,
     Func<ColorF> Progress,
-    Func<ColorF> Placeholder);
+    Func<ColorF> Placeholder,
+    EnterExit FormSwap,
+    FluentGpu.Animation.MotionTokenDef FormSwapMotion);
 
 /// <summary>One shelf page: its zone key (the identity the open item is remembered under), its items, the tier's numbers and the theme's look.</summary>
 public sealed record SpineShelfProps(string Key, ShelfItem[] Items, SpineShelfGeometry Geo, SpineShelfSkin Skin)
@@ -87,6 +91,19 @@ public sealed record SpineShelfProps(string Key, ShelfItem[] Items, SpineShelfGe
 public static class SpineShelfView
 {
     public static Element Of(Zone zone, SpineShelfGeometry g, SpineShelfSkin skin, ShelfController? controller, string prevGlyph, string nextGlyph)
+    {
+        // The two forms are different trees: each under its own key in a children list, the old one fading out over the new (a declared swap).
+        Element form = Form(zone, g, skin, controller, prevGlyph, nextGlyph);
+        var keyed = new BoxEl
+        {
+            Key = (g.Standing ? "shelf-standing:" : "shelf-row:") + zone.Key, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Enter = skin.FormSwap, Exit = skin.FormSwap, Transition = skin.FormSwapMotion,
+            Children = [form],
+        };
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [keyed] };
+    }
+
+    static Element Form(Zone zone, SpineShelfGeometry g, SpineShelfSkin skin, ShelfController? controller, string prevGlyph, string nextGlyph)
     {
         var items = ShelfModel.Of(zone);
         if (items.Length == 0) return new BoxEl();

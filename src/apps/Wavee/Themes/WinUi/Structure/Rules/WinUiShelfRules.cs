@@ -1,6 +1,7 @@
 // ── Themes/WinUi/Structure/Rules/WinUiShelfRules.cs — the numbers of WinUI's Spine Shelf ("Because you like") ─────────────────────────
 //
-// The concept (scratch/sphome/spine-shelf.html) at Standard: a 380 shelf, 60 spines 6 apart, the open card padded 16, a 56 head 14 over
+// The concept (scratch/sphome/spine-shelf.html) at Standard: a 380 shelf, 60 spines 6 apart, the open card padded 16, a 64 head (the 56 cover
+// beside the reason, title and meta lines) 14 over
 // the song tiles 8 apart, 8 corners outside and 6 on the tiles. Each content tier states its own row; Compact stands the shelf up (rows of
 // 56, the open card 440). Data, not decisions (WVTH003): the mechanics are core (Home/SpineShelf), the views are WinUiHomeShelf.
 
@@ -16,13 +17,13 @@ public static class WinUiShelfRules
     public static SpineShelfGeometry Of(WidthTier tier) => tier switch
     {
         WidthTier.Compact => new(Standing: true, Height: 0f, SpineW: 0f, RowH: 56f, OpenH: 440f, Gap: 6f, Radius: 8f,
-            FacePad: 12f, HeadH: 88f, HeadGap: 12f, TileGap: 6f, TileRadius: 6f, TileCover: 72f, MeterW: 3f, ProgressH: 3f),
+            FacePad: 12f, HeadH: 112f, HeadGap: 12f, TileGap: 6f, TileRadius: 6f, TileCover: 72f, MeterW: 3f, ProgressH: 3f),
         WidthTier.Small => new(Standing: false, Height: 360f, SpineW: 52f, RowH: 0f, OpenH: 0f, Gap: 6f, Radius: 8f,
-            FacePad: 14f, HeadH: 52f, HeadGap: 12f, TileGap: 6f, TileRadius: 6f, TileCover: 72f, MeterW: 3f, ProgressH: 3f),
+            FacePad: 14f, HeadH: 64f, HeadGap: 12f, TileGap: 6f, TileRadius: 6f, TileCover: 72f, MeterW: 3f, ProgressH: 3f),
         WidthTier.Standard => new(Standing: false, Height: 380f, SpineW: 60f, RowH: 0f, OpenH: 0f, Gap: 6f, Radius: 8f,
-            FacePad: 16f, HeadH: 56f, HeadGap: 14f, TileGap: 8f, TileRadius: 6f, TileCover: 96f, MeterW: 3f, ProgressH: 3f),
+            FacePad: 16f, HeadH: 64f, HeadGap: 14f, TileGap: 8f, TileRadius: 6f, TileCover: 96f, MeterW: 3f, ProgressH: 3f),
         _ => new(Standing: false, Height: 420f, SpineW: 64f, RowH: 0f, OpenH: 0f, Gap: 8f, Radius: 8f,
-            FacePad: 16f, HeadH: 56f, HeadGap: 16f, TileGap: 10f, TileRadius: 6f, TileCover: 110f, MeterW: 3f, ProgressH: 3f),
+            FacePad: 16f, HeadH: 64f, HeadGap: 16f, TileGap: 10f, TileRadius: 6f, TileCover: 110f, MeterW: 3f, ProgressH: 3f),
     };
 
     // ── the spine (the row form: a column; standing: a row) ──

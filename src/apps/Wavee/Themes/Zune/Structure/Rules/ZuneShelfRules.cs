@@ -17,13 +17,13 @@ public static class ZuneShelfRules
     public static SpineShelfGeometry Of(WidthTier tier, ZuneHomeLayout lay) => tier switch
     {
         WidthTier.Compact => new(Standing: true, Height: 0f, SpineW: 0f, RowH: 64f, OpenH: 460f, Gap: 4f, Radius: 0f,
-            FacePad: 12f, HeadH: 104f, HeadGap: 12f, TileGap: 4f, TileRadius: 0f, TileCover: 72f, MeterW: 3f, ProgressH: 3f, Tier: lay),
+            FacePad: 12f, HeadH: 128f, HeadGap: 12f, TileGap: 4f, TileRadius: 0f, TileCover: 72f, MeterW: 3f, ProgressH: 3f, Tier: lay),
         WidthTier.Small => new(Standing: false, Height: 380f, SpineW: 64f, RowH: 0f, OpenH: 0f, Gap: 4f, Radius: 0f,
-            FacePad: 14f, HeadH: 64f, HeadGap: 12f, TileGap: 4f, TileRadius: 0f, TileCover: 72f, MeterW: 3f, ProgressH: 3f, Tier: lay),
+            FacePad: 14f, HeadH: 80f, HeadGap: 12f, TileGap: 4f, TileRadius: 0f, TileCover: 72f, MeterW: 3f, ProgressH: 3f, Tier: lay),
         WidthTier.Standard => new(Standing: false, Height: 400f, SpineW: 68f, RowH: 0f, OpenH: 0f, Gap: 4f, Radius: 0f,
-            FacePad: 16f, HeadH: 64f, HeadGap: 14f, TileGap: 4f, TileRadius: 0f, TileCover: 96f, MeterW: 3f, ProgressH: 3f, Tier: lay),
+            FacePad: 16f, HeadH: 80f, HeadGap: 14f, TileGap: 4f, TileRadius: 0f, TileCover: 96f, MeterW: 3f, ProgressH: 3f, Tier: lay),
         _ => new(Standing: false, Height: 440f, SpineW: 72f, RowH: 0f, OpenH: 0f, Gap: 6f, Radius: 0f,
-            FacePad: 16f, HeadH: 64f, HeadGap: 16f, TileGap: 6f, TileRadius: 0f, TileCover: 110f, MeterW: 3f, ProgressH: 3f, Tier: lay),
+            FacePad: 16f, HeadH: 80f, HeadGap: 16f, TileGap: 6f, TileRadius: 0f, TileCover: 110f, MeterW: 3f, ProgressH: 3f, Tier: lay),
     };
 
     /// <summary>The spine's title: 34/40 light, turned in the row form, along the row standing (display type, never shrunk).</summary>

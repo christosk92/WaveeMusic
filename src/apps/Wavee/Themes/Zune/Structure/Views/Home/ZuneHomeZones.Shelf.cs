@@ -51,7 +51,8 @@ internal static partial class ZuneHomeZones
     }
 
     static readonly SpineShelfSkin s_skin = new(ShelfSpine, ShelfHead, ShelfCaption, ShelfSpineWash, ShelfSpineHoverWash, ShelfFaceWash,
-        static () => Tok.AccentDefault, static () => R.OnMedia.Ink, static () => Tok.FillSubtleSecondary);
+        static () => Tok.AccentDefault, static () => R.OnMedia.Ink, static () => Tok.FillSubtleSecondary,
+        ZuneMotion.SwapFade, ZuneMotion.SwapThroughMotion);
 
     // ── the spine ──
 
