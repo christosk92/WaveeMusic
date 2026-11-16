@@ -1,22 +1,20 @@
-# Record-Feature.ps1 proof take: today's Home (WinUI, 1600x1000), a glide over the shortcuts, a wheel scroll, a shelf page turn
-# and back up. Inspector grammar; `#live` lines play only in the live driver; `#rec` splits the setup from the take.
+# Record-Feature.ps1 proof take: today's Home (WinUI, 1600x1000): a glide over the shortcuts, two wheel turns down, a glide
+# back up to the shortcuts, and their pager (Shortcuts | Recently played) turned and back. Inspector grammar; `#live` lines play
+# only in the live driver; `#rec` splits the setup from the take.
 #live ready key=home:tile:d-daylist images=true quiet=500
 pointer path=[at:1240:560@0] steps=1
 #rec
 pointer path=[home:tile:fill:liked@600] steps=40 ease=inout
 pointer path=[at:900:660@250] steps=26 ease=inout
 scroll x=900 y=660 dy=4
-frames 50
+frames 55
 scroll x=900 y=660 dy=4
-frames 60
-#live reveal key=shelf-tools:next top=200 ms=900
-pointer path=[shelf-tools:next@450] steps=44 ease=inout
-click key=shelf-tools:next
-frames 80
-pointer path=[shelf-tools:prev@350] steps=20 ease=inout
-click key=shelf-tools:prev
 frames 70
-pointer path=[at:900:620@200] steps=30 ease=inout
-scroll x=900 y=620 dy=-14
+#live reveal key=home:group:pinned top=180 ms=900
+pointer path=[at:1492:206@450] steps=44 ease=inout
+click x=1492 y=206
+frames 100
+pointer path=[at:1396:206@300] steps=22 ease=inout
+click x=1396 y=206
 frames 80
-pointer path=[leave@0] steps=36 ease=inout
+pointer path=[leave@0] steps=40 ease=inout

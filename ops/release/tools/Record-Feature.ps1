@@ -143,7 +143,7 @@ $cut = [Array]::IndexOf([string[]]$all, ($all | Where-Object { $_.Trim() -eq '#r
 $setup = if ($cut -gt 0) { $all[0..($cut - 1)] } else { @() }
 $take = if ($cut -ge 0) { $all[($cut + 1)..($all.Count - 1)] } else { $all }
 
-$ff = $null; $aud = $null
+$ff = $null; $aud = $null; $d = $null; $takeError = $null
 try {
     Diag 'cmd=present&on=1' | Out-Null
     Diag "cmd=theme&mode=$Theme" | Out-Null
@@ -159,7 +159,7 @@ try {
     Start-Sleep -Milliseconds 400
     $mkv = Join-Path $Out 'take.mkv'
     $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-filter_complex',
-        "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=${Fps}:resize_mode=crop,hwdownload,format=bgra",
+        "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $Fps):resize_mode=crop,hwdownload,format=bgra",
         '-fps_mode', 'passthrough', '-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0', $mkv)
     $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($ffArgs | ForEach-Object { if ($_ -match '[\s;,]') { '"' + $_ + '"' } else { $_ } })))
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
@@ -175,7 +175,7 @@ try {
     Start-Sleep -Milliseconds 900   # the capture's first frames: a still lead-in
     if ($ff.HasExited) { throw "ffmpeg stopped at once: $($ffErr.Result)" }
     Say "take ($($take.Count) lines)"
-    $d = Drive $take 'take' (Script-Ms $take)
+    try { $d = Drive $take 'take' (Script-Ms $take) } catch { $takeError = $_.Exception.Message }
     Start-Sleep -Milliseconds $TailMs
 }
 finally {
@@ -191,9 +191,10 @@ finally {
     }
 }
 
-# ── the files ────────────────────────────────────────────────────────────────────────────────────────────────────────
-$driveDir = $d.Path
+# ── the files (also for a take whose script failed: its frames show where) ─────────────────────────────────────────────
+$driveDir = if ($d) { $d.Path } else { (Get-ChildItem (Join-Path $ev 'drive') -Directory | Where-Object Name -like '*-take' | Sort-Object Name | Select-Object -Last 1).FullName }
 if ($driveDir -and (Test-Path $driveDir)) { Copy-Item -Recurse -Force $driveDir (Join-Path $Out 'drive') }
 & python -I (Join-Path $PSScriptRoot 'record_feature_post.py') --out $Out --fps $Fps --scale $mon.Scale --width $Width --height $Height
 if ($LASTEXITCODE -ne 0) { throw "post-processing failed ($LASTEXITCODE)" }
 Get-Content (Join-Path $Out 'report.txt')
+if ($takeError) { throw "the take's script failed: $takeError" }

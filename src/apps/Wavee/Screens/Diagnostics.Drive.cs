@@ -195,7 +195,7 @@ public static partial class Diagnostics
             public Point2? Pointer;
             public bool Down;
             public readonly StringBuilder Steps = new("line\top\tstart_ms\tend_ms\ttarget\tnote\n");
-            public readonly StringBuilder Frames = new("frame\tms\tgap_ms\tframe_ms\tpresents\tdropped\trepeated\tmissed_motion\tdwm_dropped\top\n");
+            public readonly StringBuilder Frames = new("frame\tms\tgap_ms\tframe_ms\tpresented\tpresents\tdropped\trepeated\tmissed_motion\tdwm_dropped\top\n");
             public int FrameCount;
             public long LastFrame;
             public FrameStats? FirstStats, LastStats;
@@ -304,7 +304,7 @@ public static partial class Diagnostics
         {
             if (s_run is not { } run) return;
             long now = Stopwatch.GetTimestamp();
-            if (stats is { } s && s.Rendered) LogFrame(run, now, s);
+            if (stats is { } s) LogFrame(run, now, s);
             int guard = 0;
             while (run.Index < run.Ops.Count && guard++ < 64)
             {
@@ -348,7 +348,7 @@ public static partial class Diagnostics
             run.LastStats = s;
             string op = run.Index < run.Ops.Count ? run.Ops[run.Index].Line.No.ToString(Inv) + ":" + run.Ops[run.Index].Kind.ToString().ToLowerInvariant() : "end";
             run.Frames.Append(run.FrameCount++.ToString(Inv)).Append('\t').Append(ms.ToString("0.00", Inv)).Append('\t').Append(gap.ToString("0.00", Inv)).Append('\t')
-                .Append(s.FrameMs.ToString("0.00", Inv)).Append('\t').Append(s.PresentsDisplayed.ToString(Inv)).Append('\t').Append(s.PresentsDropped.ToString(Inv)).Append('\t')
+                .Append(s.FrameMs.ToString("0.00", Inv)).Append('\t').Append(s.Presented ? '1' : '0').Append('\t').Append(s.PresentsDisplayed.ToString(Inv)).Append('\t').Append(s.PresentsDropped.ToString(Inv)).Append('\t')
                 .Append(s.VblanksRepeated.ToString(Inv)).Append('\t').Append(s.RenderMissedMotionTicks.ToString(Inv)).Append('\t').Append(s.DwmDropped.ToString(Inv)).Append('\t')
                 .Append(op).Append('\n');
         }
