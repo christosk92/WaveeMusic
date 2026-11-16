@@ -223,20 +223,21 @@ public static partial class Spotify
             {
                 if (WrapperIsEpisode(r)) { r.Skip(); return; }
 
-                StagedId cardUri = default;
+                TextRef cardUri = default;
                 Span<StagedId> tracks = stackalloc StagedId[MaxRows];
                 int trackCount = 0;
                 for (int d = r.CurrentDepth; Next(ref r, d);)
                 {
-                    if (r.ValueTextEquals("_uri"u8)) { r.Read(); if (cardUri.IsEmpty) cardUri = JsonId(ref r, s); }
+                    // The echo is read as TEXT and compared with the request's text uris (Home.BaselinePreviewLinks).
+                    // JsonId would pack a catalog uri into its gid, which never compares equal to the map's bytes: every
+                    // live answer matched nothing (found in the 2026-11-16 live check; the fixtures' ids did not pack).
+                    if (r.ValueTextEquals("_uri"u8)) { r.Read(); if (cardUri.IsEmpty && r.TokenType == JsonTokenType.String) cardUri = s.AddJson(ref r); }
                     else if (r.ValueTextEquals("data"u8)) Data(ref r, s, tracks, ref trackCount);
                     else SkipValue(ref r);
                 }
-                // The request was built from full `spotify:…:` uris (Home.BaselinePreviewLinks); a gid-form echo is
-                // not a shape this answer takes, and matching it against the map's text uris would be silently wrong.
-                if (cardUri.IsEmpty || trackCount == 0 || !cardUri.Packed.IsEmpty) return;
+                if (cardUri.IsEmpty || trackCount == 0) return;
 
-                var cardBytes = s.Utf8(cardUri.Text);
+                var cardBytes = s.Utf8(cardUri);
                 for (int i = 0; i < cardUtf8.Length; i++)
                 {
                     if (!cardBytes.SequenceEqual(cardUtf8[i])) continue;
@@ -359,8 +360,12 @@ public static partial class Spotify
                 var subject = new StagedId(s.AddText(subjectUri));
                 ref var feed = ref s.Homes.RowFor(subject, Authority.Full, (uint)HomeFields.Sections);
                 ReadOnlySpan<byte> facetPrefix = "wavee:home:"u8;
+                ReadOnlySpan<byte> facetId = default;
                 if (subjectUri.Length > facetPrefix.Length && subjectUri.StartsWith(facetPrefix))
-                    feed.Facet = s.AddText(subjectUri[facetPrefix.Length..]);
+                {
+                    facetId = subjectUri[facetPrefix.Length..];
+                    feed.Facet = s.AddText(facetId);
+                }
                 feed.ChipStart = s.Chips.Count;
                 int mark = s.Edges.PendingMark;
 
@@ -387,7 +392,7 @@ public static partial class Spotify
                                 if (!r.ValueTextEquals("items"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
                                 for (int items = r.CurrentDepth; Element(ref r, items);)
                                 {
-                                    var uri = Band(ref r, s);
+                                    var uri = Band(ref r, s, facetId);
                                     if (!uri.IsEmpty) s.Edges.Push().Target = uri;
                                 }
                             }
@@ -402,7 +407,7 @@ public static partial class Spotify
 
             /// <summary>One band (the reader on its object). The typename is read first off a COPY of the reader, because
             /// the recently-played band's items mean something different and a cursor cannot look ahead.</summary>
-            static StagedId Band(ref Utf8JsonReader r, Staging s)
+            static StagedId Band(ref Utf8JsonReader r, Staging s, ReadOnlySpan<byte> facetId)
             {
                 byte kind = BandKind(r);
                 bool recents = kind == (byte)SectionKind.HomeRecentlyPlayed;
@@ -458,8 +463,13 @@ public static partial class Spotify
                 // (0.2.9 `RecentsTotal`).
                 row.Total = listSeen ? Math.Max(0, listTotal) : wrapperTotal;
                 row.FactCount = s.CardFacts.Count - factStart;
+                if (IsChartUri(s, in row.Id)) row.Flags |= (byte)SectionFlags.Chart;
+                // A facet's band is ITS OWN row (`<uri>#<facet>`, Home.FacetSectionRow): All and a chip answer the same
+                // section uri with different cards (Music's "Soundtrack your…" leads with the daylist, All's does not),
+                // and one shared row let whichever facet answered last rewrite the other's band. All keeps the bare uri,
+                // which is the row the drill page and the homeSection walk use.
+                if (!facetId.IsEmpty && !row.Id.IsEmpty && row.Id.Packed.IsEmpty) row.Id = FacetScoped(s, in row.Id, facetId);
                 var id = row.Id;
-                if (IsChartUri(s, in id)) row.Flags |= (byte)SectionFlags.Chart;
                 if (!s.Sections.Settle())
                 {
                     s.Edges.Pop(cards);
@@ -469,6 +479,19 @@ public static partial class Spotify
                 }
                 s.Edges.Close(Relation.SectionCards, in id, cards);
                 return id;
+            }
+
+            /// <summary>The facet's own row id for a band: the section uri, <see cref="global::Wavee.Home.FacetSectionMark"/>, the facet id.</summary>
+            static StagedId FacetScoped(Staging s, in StagedId uri, ReadOnlySpan<byte> facetId)
+            {
+                var text = s.Utf8(uri.Text);
+                int n = text.Length + 1 + facetId.Length;
+                if (n > 512) return uri;
+                Span<byte> buf = stackalloc byte[n];
+                text.CopyTo(buf);                      // copied out first: AddText may grow the arena the span points into
+                buf[text.Length] = (byte)global::Wavee.Home.FacetSectionMark;
+                facetId.CopyTo(buf[(text.Length + 1)..]);
+                return new StagedId(s.AddText(buf));
             }
 
             /// <summary><c>headerEntity: { __typename, _uri, data: { profile.name | name, visuals.avatarImage | coverArt |
@@ -625,6 +648,8 @@ public static partial class Spotify
                 /// <summary><c>restrictions.paywallContent</c> — folded into the fact's Unplayable bit alongside
                 /// <c>c.Node.Ruled &amp;&amp; c.Node.Unavailable</c> (the shared <c>playability</c> vocabulary).</summary>
                 public bool Paywalled;
+                /// <summary>The DJ card (<c>lexicon_set_type == your_dj</c>).</summary>
+                public bool Dj;
             }
 
             const byte TAlbum = 1, TPlaylist = 2, TArtist = 3, TEpisode = 4, TAudiobook = 5, TPodcast = 6;
@@ -729,6 +754,7 @@ public static partial class Spotify
                 // can carry them too (§4.3). `|=` below (HasVideo, Audiobook) never clobbers these.
                 if (c.Node.Explicit) f.Flags |= (byte)HomeCardFlags.Explicit;
                 if (c.Paywalled || (c.Node.Ruled && c.Node.Unavailable)) f.Flags |= (byte)HomeCardFlags.Unplayable;
+                if (c.Dj) f.Flags |= (byte)HomeCardFlags.Dj;
                 switch (c.Type)
                 {
                     case TAlbum:
@@ -1118,6 +1144,12 @@ public static partial class Spotify
                                 if (!value.IsEmpty) s.RewindText(value.Offset);
                                 break;
                             }
+                        // DJ: the wire sends `format: ""` for it, so the format token cannot say DJ; the lexicon set does
+                        // (`your_dj`, home-gap D5). Read structurally, never from the name.
+                        case 6:
+                            c.Dj = !value.IsEmpty && s.Utf8(value).SequenceEqual("your_dj"u8);
+                            if (!value.IsEmpty) s.RewindText(value.Offset);
+                            break;
                         default:
                             if (!value.IsEmpty) s.RewindText(value.Offset);
                             break;
@@ -1131,6 +1163,7 @@ public static partial class Spotify
                  : r.ValueTextEquals("expires"u8) ? (byte)3
                  : r.ValueTextEquals("created"u8) ? (byte)4
                  : r.ValueTextEquals("header_image_url_desktop"u8) ? (byte)5
+                 : r.ValueTextEquals("lexicon_set_type"u8) ? (byte)6
                  : (byte)0;
 
             /// <summary>Does the band already hold this card? Duplicates stay on the ledger and off the edge.</summary>

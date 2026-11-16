@@ -1772,6 +1772,13 @@ public static partial class Fetch
             HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
             batch.PreviewLinks[i] = links.Length == 0 ? null : links;
             batch.PreviewUris[i] = links.Length == 0 ? null : DedupCardUris(links);
+            // Always on: how many baseline sections and card uris this lookup carries (an empty one sends nothing).
+            if (Log.IsEnabled(WaveeLogLevel.Info))
+                Log.Event(WaveeLogLevel.Info, "fetch", "fetch.previews", "", null, -1, null,
+                    WaveeLogField.Of("ticket", (long)batch.Ticket),
+                    WaveeLogField.Of("home", home.IsValid ? 1 : 0),
+                    WaveeLogField.Of("sections", links.Length),
+                    WaveeLogField.Of("uris", batch.PreviewUris[i]?.Length ?? 0));
         }
     }
 

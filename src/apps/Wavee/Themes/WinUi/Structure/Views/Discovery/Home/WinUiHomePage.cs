@@ -24,6 +24,7 @@
 // THE SKELETON is derived from the real page: `smoothResize false` (a page-level region whose branches differ by hundreds of DIP lands its height at once)
 // and Reveal None (the zones own their entrance), the shimmer the SAME tree rendered against the seed.
 
+using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -89,9 +90,8 @@ internal static class WinUiHomePage
                 new BoxEl
                 {
                     Key = "home:head:row", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = layout.Following == WinUiFollowingPlace.GreetingRow
-                        ? [greeting with { Grow = 1f, Shrink = 1f }, WinUiHomeFacetRow.Following(props.FacetRow, layout)]
-                        : [greeting with { Grow = 1f, Shrink = 1f }],
+                    // On All the board's tools ("Add widgets", the page's ⋯) end the head row (spec 8.1); at Small the Following button joins them.
+                    Children = HeadRow(props, layout, greeting),
                 },
                 WinUiDiscoveryMotion.AirH("home:head:end", inset),
             ],
@@ -130,6 +130,15 @@ internal static class WinUiHomePage
         };
     }
 
+    /// <summary>The head row's children: the greeting, then (Small) the Following button, then (All) the board's tools.</summary>
+    static Element[] HeadRow(HomePageProps props, WinUiHomeLayout layout, TextEl greeting)
+    {
+        var kids = new List<Element>(3) { greeting with { Grow = 1f, Shrink = 1f } };
+        if (layout.Following == WinUiFollowingPlace.GreetingRow) kids.Add(WinUiHomeFacetRow.Following(props.FacetRow, layout));
+        if (props.BoardTools is { } tools) kids.Add(tools());
+        return kids.ToArray();
+    }
+
     /// <summary>The greeting: Title Large 40/52 (Title 28/36 below Standard), keyed for the inset lint. The words are a bound read of the host's greeting.
     /// A name too long for the row WRAPS (owner rule: display type never shrinks or ellipsises to fit; W-Home-Compact keeps the 28/36 rung).</summary>
     static TextEl Greeting(HomePageProps props, WinUiHomeLayout layout)
@@ -164,7 +173,9 @@ internal static class WinUiHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, EntranceGroup = true,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),      // compositor-only
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),
-                    Children = [WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],
+                    // On All the pinned board stands where the zone column stood (the scroller, the head, the band, the dim host and the
+                    // entrance stay the page's); every other facet keeps its zones.
+                    Children = [props.Board is { } board ? board() : WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],
                 },
             ],
         };

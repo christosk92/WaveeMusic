@@ -831,6 +831,9 @@ public static partial class Spotify
                 or PathfinderOp.ArtistOverview or PathfinderOp.Discography or PathfinderOp.Home or PathfinderOp.HomeSection
                 or PathfinderOp.BrowseAll or PathfinderOp.BrowsePage or PathfinderOp.BrowseSection or PathfinderOp.Search or PathfinderOp.SearchGenres or PathfinderOp.SearchSuggestions
                 or PathfinderOp.AlbumMerch or PathfinderOp.SimilarAlbums
+                // The Home baseline cards' preview tracks: the edge was routed but never served, so every live lookup
+                // was answered empty without a request (found in the 2026-11-16 live check).
+                or PathfinderOp.FeedBaselineLookup
                 or PathfinderOp.DiscographyAlbums or PathfinderOp.DiscographySingles or PathfinderOp.DiscographyCompilations
                 or PathfinderOp.Concert or PathfinderOp.ArtistConcerts or PathfinderOp.IsFollowingUsers,
             RouteTransport.Spclient => route.Rest is SpclientRoute.ShowRead or SpclientRoute.PlaylistRead or SpclientRoute.LikedContentFilters or SpclientRoute.PermissionBase
@@ -1667,7 +1670,7 @@ public static partial class Spotify
         public static Result HomeSection(string sectionUri, string timeZone, int offset, CancellationToken ct)
         {
             var vars = new Vars(Queries.HomeSection);
-            vars.W.WriteString("uri", sectionUri);
+            vars.W.WriteString("uri", Wavee.Home.SectionUriOf(sectionUri));   // never a facet row's `#<facet>` tail
             vars.W.WriteBoolean("includeHomeChapterVideoCards", false);   // the shared document's variable, as `home` sends it
             vars.W.WriteString("homeEndUserIntegration", "INTEGRATION_DESKTOP");
             vars.W.WriteString("timeZone", timeZone);

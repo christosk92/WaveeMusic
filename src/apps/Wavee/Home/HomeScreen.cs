@@ -64,8 +64,13 @@ public sealed class HomeScreen : Component
     readonly object _tintOwner = new();
     LoadState? _lastVerdict;                              // edge-gated facet.verdict log
     string? _contentFacet;                                // the facet whose content root is mounted (facet.content log)
+    readonly HomeBoardHost _board;                        // the All facet's pinned board: view state, verbs, grid controller (pinned-home-tech.md 1.5)
 
-    public HomeScreen() => _host = new HomeHost(_scroll);
+    public HomeScreen()
+    {
+        _host = new HomeHost(_scroll);
+        _board = new HomeBoardHost(_scroll);
+    }
 
     public override Element Render()
     {
@@ -117,6 +122,15 @@ public sealed class HomeScreen : Component
         // (Reveal None: the zones own their entrance; the shimmer is the SAME tree rendered against the seed, so the skeleton is derived
         // from the real page, never authored by hand). The host hands over what it decided; every Func is read inside the region, as before.
         string facet = facetSig.Value;
+        // The pinned board (pinned-home-tech.md T1): on All the board replaces the zone column. The document is on hand, so the page region is
+        // never pending there (each tile holds its own flat placeholder at its box); the other facets keep their planners and their region.
+        bool board = facet.Length == 0;
+        // The board's model: the document x Spotify's answer, derived here (the page's own component) so both the board and its head-row tools
+        // read one memo; nothing in this render reads it, so a board change never re-renders the page.
+        var boardModel = UseComputed(() => _board.Project());
+        _board.Bind(boardModel, overlay);
+        // The v2 layout's hidden zones resolve against the first answer (pinned-home-tech.md 1.2.4): once, when it lands.
+        UseEffect(() => HomeBoardHost.ResolveLegacyOnAnswer(), DepKey.From(model.Value is null ? 0 : 1));
         return Slots.View(ViewKeys.HomePage, new HomePageProps
         {
             Facet = facet,
@@ -125,8 +139,8 @@ public sealed class HomeScreen : Component
             Group = this,
             FacetRow = rowProps,
             Switch = _host.Switch,
-            Pending = () => verdict.Value == LoadState.Pending,
-            Failed = () => verdict.Value == LoadState.Failed,
+            Pending = () => !board && verdict.Value == LoadState.Pending,
+            Failed = () => !board && verdict.Value == LoadState.Failed,
             Content = () => model.Value ?? Seed(facetSig.Value, layout.Doc.Value),
             Seed = () => Seed(facetSig.Value, layout.Doc.Value),
             OnContent = NoteContent,
@@ -134,6 +148,8 @@ public sealed class HomeScreen : Component
             Overlay = overlay,
             Wash = BuildWash(() => model.Value),
             Greeting = DaylistCard.Greeting,
+            Board = board ? _board.Board : null,
+            BoardTools = board ? _board.Tools : null,
         });
     }
 
@@ -205,7 +221,7 @@ public sealed class HomeScreen : Component
         YourShows: Loc.Get(Strings.Home.Zone.YourShows),
         ShowsYouMightLike: Loc.Get(Strings.Home.Zone.ShowsYouMightLike));
 
-    static ZoneSubtitles LocalizedSubtitles() => new(
+    internal static ZoneSubtitles LocalizedSubtitles() => new(
         MadeForYou: Loc.Get(Strings.Home.ZoneSub.MadeForYou),
         NewMusic: Loc.Get(Strings.Home.ZoneSub.NewMusic),
         BecauseYouLike: Loc.Get(Strings.Home.ZoneSub.BecauseYouLike),

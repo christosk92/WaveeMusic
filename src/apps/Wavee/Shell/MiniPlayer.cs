@@ -556,7 +556,7 @@ public static partial class MiniPlayer
         Platform.Settings.Set(Platform.Keys.MiniPlayerOnTop, next);
     }
 
-    static string ArtistText()
+    internal static string ArtistText()
     {
         var c = Shell.PlayerBarHost.Props.Credits();
         if (c.Show is { } show) return show.Text;
