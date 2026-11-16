@@ -516,30 +516,43 @@ internal static class ZuneHomeTiles
         // The entity's name, else the board's title for the entry (Liked Songs has no entity row to name it).
         string entryTitle = f.Entry.Title;
         Func<string> name = () => p.Name() is { Length: > 0 } n ? n : entryTitle;
-        Element face = f.Form switch
+        // ONE face at every form (the form follows the box, so a window edge that re-packs the board changes it): the art stack, then the
+        // panel beside it. A form only flips live props (the art's width, what is visible, the tooltip's text), so a crossing re-lays the same
+        // nodes out instead of rebuilding the face (a drawn cover, Liked Songs' heart, kept its key and remounted at every form change).
+        //   S  a 1 x 1: the art alone, filling the tile; with no art its name on the plate; the name is its tooltip and automation name
+        //   M  the art filling the tile, the name over a scrim at its foot
+        //   L  the art a square as tall as the tile, the name and line in the panel beside it
+        var cell = f.Cell;
+        bool small = f.Form == HomeTileForm.S, medium = f.Form == HomeTileForm.M, large = !small && !medium;
+        bool hasArt = cover is { Length: > 0 } || p.CoverArt is not null;
+        var art = new BoxEl
         {
-            // A 1 x 1 is the art alone; with no art (nothing to tell it by) it carries its name on the plate.
-            HomeTileForm.S => Clickable(new BoxEl
-            {
-                Grow = 1f, Direction = 1, ZStack = true,
-                Children = cover is { Length: > 0 } || p.CoverArt is not null
-                    ? [Art(f, cover, p.CoverArt)]
-                    : [Art(f, null), new BoxEl
-                    {
-                        Direction = 1, Justify = FlexJustify.End, Padding = new Edges4(B.SmallPad, B.SmallPad, B.SmallPad, B.SmallPad), HitTestVisible = false,
-                        Children = [R.Type.MicroMeta("") with { Text = Prop.Of(name), MaxLines = 3, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-                    }],
-            }, p.Open),
-            HomeTileForm.M => Clickable(new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [Art(f, cover, p.CoverArt), ScrimName(name)] }, p.Open),
-            _ => Clickable(new BoxEl
-            {
-                Grow = 1f, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Square(f, Art(f, cover, p.CoverArt)), Panel(name, p.Line)],
-            }, p.Open),
+            Direction = 1, ZStack = true, ClipToBounds = true, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Grow = large ? 0f : 1f, Shrink = large ? 0f : 1f,
+            Width = large ? (cell is null ? Prop.Of(static () => B.PreviewSquare) : Prop.Of(() => cell.Box.Value.Height)) : float.NaN,
+            Children =
+            [
+                Art(f, hasArt ? cover : null, p.CoverArt),
+                new BoxEl
+                {
+                    Visible = small && !hasArt, Direction = 1, Justify = FlexJustify.End, Padding = new Edges4(B.SmallPad, B.SmallPad, B.SmallPad, B.SmallPad),
+                    HitTestVisible = false,
+                    Children = [R.Type.MicroMeta("") with { Text = Prop.Of(name), MaxLines = 3, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+                },
+                ScrimName(name) with { Visible = medium },
+            ],
         };
-        // A 1 x 1 is the art alone (Start's small tile): its name is its tooltip and its automation name. The tooltip's wrapper grows to the tile's box
-        // (a non-growing wrapper laid the art out 0 tall: every 1 x 1 drew an empty plate).
-        return Tile(f, f.Form == HomeTileForm.S ? ToolTip.Wrap(face, name(), grow: 1f) : face);
+        var face = Clickable(new BoxEl
+        {
+            Grow = 1f, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children =
+            [
+                art,
+                new BoxEl { Visible = large, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [Panel(name, p.Line)] },
+            ],
+        }, p.Open);
+        // The tooltip wrapper is there at every form (its text only at a 1 x 1, where the name is not drawn) and grows to the tile's box.
+        return Tile(f, ToolTip.Wrap(face, (Prop<string?>)(small ? name() : null), grow: 1f));
     }
 
     // ══ Home.Tile.NowPlaying ════════════════════════════════════════════════════════════════════════════════════════
