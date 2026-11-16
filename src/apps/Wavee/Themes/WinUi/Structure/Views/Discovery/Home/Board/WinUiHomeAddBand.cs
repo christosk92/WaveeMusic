@@ -117,6 +117,14 @@ internal static class WinUiHomeAddBand
             }, DepKey.From(focusAsk));
 
             string q = board.View.Query.Value.Trim();
+            // The result count, spoken once typing pauses: every change of the query restarts the wait.
+            string spokenQ = q;
+            UseTimeout(() =>
+            {
+                if (spokenQ.Length == 0) return;
+                int found = board.Catalog.Find(board.Catalog.All(), spokenQ).Count;
+                board.Verbs.Say(found > 0 ? Strings.Theme.Winui.Home.Board.ResultsSaid(n: found, q: spokenQ) : Strings.Theme.Winui.Home.Board.NoMatchSaid(q: spokenQ));
+            }, WinUiHomeBoardRules.SpeakCountMs, DepKey.From(StringComparer.Ordinal.GetHashCode(q)));
             var all = board.Catalog.All();
             var hits = q.Length > 0 ? board.Catalog.Find(all, q) : all;
             var counts = board.Catalog.Count(hits);
@@ -238,11 +246,7 @@ internal static class WinUiHomeAddBand
             if (q.Length > 0 && !had) { s_kindBeforeSearch = Math.Max(0, s_kind.Peek()); s_kind.Value = -1; }
             else if (q.Length == 0 && had) s_kind.Value = s_kindBeforeSearch;
             _justCleared = q.Length == 0 && had;
-            if (q.Length > 0)
-            {
-                int n = board.Catalog.Find(board.Catalog.All(), q).Count;
-                board.Verbs.Say(n > 0 ? Strings.Theme.Winui.Home.Board.ResultsSaid(n: n, q: q) : Strings.Theme.Winui.Home.Board.NoMatchSaid(q: q));
-            }
+            // The count is spoken once typing pauses (the debounce in Render), never per keystroke.
         }
 
         /// <summary>Escape in the search: clear the text first; on an empty search, close the band.</summary>

@@ -37,6 +37,7 @@ internal static class WinUiHomeBoardTools
         NodeHandle _add, _more;
         OverlayHandle? _menu, _tip;
         bool _closingQuietly;
+        readonly Signal<bool> _settled = new(false);
         ToolsProps? _p;
 
         public override Element Render()
@@ -54,10 +55,14 @@ internal static class WinUiHomeBoardTools
             bool atHead = UseComputed(() => scroll.Offset.Value < WinUiHomeBoardRules.TipScrollMax).Value;
             UseLayoutEffect(() => { if (focusAsk > 0 && !_add.IsNull) hooks.FocusNode?.Invoke(_add, true); }, DepKey.From(focusAsk));
 
-            // The first-run tip: shown once the button has a node, gone for good once closed or once the band opens.
+            // The first-run tip: shown once the page has settled (a moment after the mount, as the concept does), gone for good once closed or once
+            // the band opens. It stands to the LEFT of "Add widgets", its top on the button's: the free run of the head row between the greeting and
+            // the button, so it hides neither the Following button under it nor the daylist's clock column.
+            UseTimeout(() => _settled.Value = true, WinUiHomeBoardRules.TipDelayMs, DepKey.Empty);
+            bool settled = _settled.Value;
             UseLayoutEffect(() =>
             {
-                if (seen || open || !atHead || overlay is null || _add.IsNull) { _closingQuietly = true; _tip?.Close(); _closingQuietly = false; return; }
+                if (seen || open || !atHead || !settled || overlay is null || _add.IsNull) { _closingQuietly = true; _tip?.Close(); _closingQuietly = false; return; }
                 if (_tip is { IsOpen: true }) return;
                 _tip = TeachingTip.Show(overlay, () => _add, t =>
                 {
@@ -68,10 +73,10 @@ internal static class WinUiHomeBoardTools
                     t.ActionButtonClick = () => { board.View.MarkTipSeen(); WinUiHomeAddBand.Open(board); };
                     t.CloseButtonClick = () => { board.View.MarkTipSeen(); FocusAdd(); };
                     t.IsLightDismissEnabled = false;
-                    t.PreferredPlacement = TeachingTip.PlacementMode.BottomLeft;
+                    t.PreferredPlacement = TeachingTip.PlacementMode.LeftBottom;
                 });
                 _tip.ClosedAction = () => { if (!_closingQuietly && !board.View.TipSeen.Peek()) board.View.MarkTipSeen(); _tip = null; };
-            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0, atHead ? 1 : 0, 0));
+            }, DepKey.From(seen ? 1 : 0, open ? 1 : 0, atHead ? 1 : 0, settled ? 1 : 0));
 
             var add = Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.AddWidgets), () => WinUiHomeAddBand.Toggle(board),
                     open ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Medium, Icons.Add)

@@ -108,7 +108,7 @@ public sealed class PinTileHost : Component
         {
             Frame = p.Frame,
             Name = () => NameOf(target, hintName),
-            Line = () => LineOf(target),
+            Line = EntityUri.IsLikedCollection(uri) ? s_likedLine : () => LineOf(target),
             Cover = () => CoverOf(target, uri) ?? (hintCover.Length > 0 ? hintCover : null),
             Round = !target.IsNone && Search.RoundArt(target.Kind),
             CoverArt = EntityUri.IsLikedCollection(uri) ? s_liked : null,
@@ -121,6 +121,14 @@ public sealed class PinTileHost : Component
     }
 
     static readonly Func<float, Element> s_liked = static edge => Sidebar.Cover.Liked(edge);
+
+    /// <summary>Liked Songs' line: its song count, as the Recently played grid words it (a subscribing read of the user's liked set).</summary>
+    static readonly Func<string> s_likedLine = static () =>
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Users.Changed.Value;
+        return Strings.Detail.SongCount(Math.Max(0, User.Me.LikedTrackSlots.Length));
+    };
 
     static string NameOf(EntityRef r, string hint)
     {
