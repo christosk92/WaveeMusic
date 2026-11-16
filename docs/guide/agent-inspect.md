@@ -1100,9 +1100,14 @@ Each **row**: `f` (frame in the trace), `abs`, `animating`, `ms` (`wall`, `cpu` 
 `fullLayoutInferred`, `components`, `reactiveUnits`, `bindingFires`, `bindingWrites`, `textShapes`, `textShapeMisses`, `nodesVisited`,
 `drawNodes`, `imageApplied`, `gc0/1/2`), `nodes` (`w` = index into `watch`, `lay` and `pres` = `[x,y,w,h]` laid-out and presented rects,
 `track` = a track is live on the node or an ancestor, `shown`, `op` = opacity multiplied up the chain) and `scroll` (`offset`,
-`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img}]`:
-the flight's key (the album uri), `pending|flying|landed|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect,
-the shadow's opacity, whether each end's slot is hidden, and the texture the flyer draws (it cuts to the dest's own rendition once ready).
+`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img, radius, destRadius, mix, standIn, clip, refinds}]`:
+the flight's key (any entity's uri: an album, playlist, artist, show, episode or user; `spotify:collection:tracks` for Liked Songs),
+`pending|flying|landed|handingOff|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect, the shadow's opacity,
+whether each end's slot is hidden, the texture the flyer shows (it cuts to the dest's own rendition of the same picture once ready), the
+flyer's corner radius this frame and the dest's (a circle opening into a header travels with the size), the dest picture's share when the
+two ends show different pictures (an avatar becoming a header photograph, a generated cover: they dissolve on the flight's spring; -1 one
+picture), whether a landed flyer stands in for a dest picture not drawable yet (a cold artist page), the flyer's visible part (a card a
+scroller's edge cuts), and how often the dest was found again (`refinds`: the loaded header replacing the skeleton's plate).
 
 The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFramesInferred` (measures with no dirty marks), measure and component
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
@@ -1118,10 +1123,14 @@ that watched nothing (pass `prefix=`/`keys=`, and `max=` above 20 for a page). `
 prints the summary as text: the motion counts, the remounts, the snaps, instants and jumps (30 each), `after`.
 
 With `flights=true` the reply also carries `flight{flights, startedAt, landedAt, handedOffAt, takeoffDelta, handoffDelta,
-maxStepDip, abandoned, unfinished}`: the frame the flyer first showed, landed and handed off (the flyer gone, the real cover shown),
-the largest edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on its
-last frame, the largest edge step between two frames, and whether a flight was abandoned (a new navigation mid-flight) or never
-ended. `inspect.py --gate` fails a flight whose `takeoffDelta` or `handoffDelta` is over 0.5 DIP, or that is `unfinished`. `status`
+maxStepDip, radiusDelta, mixAtHandOff, stoodInFrames, refound, standingIn, abandoned, unfinished}`: the frame the flyer first showed,
+landed and handed off (the real node shown: the flyer gone on a cut, or `handingOff` starting its fade over the artist header), the largest
+edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on the hand-off frame,
+the largest edge step between two frames, the radius and mix on the hand-off frame, the frames it stood in, whether the dest was found
+again, whether the trace ended while it stood in (`standingIn`: not `unfinished`), and whether a flight was abandoned (a new navigation
+mid-flight, a dest scrolled under half visible) or never ended. `inspect.py --gate` fails a flight whose `takeoffDelta`, `handoffDelta` or
+`radiusDelta` is over 0.5 DIP, that handed off with its two pictures still mixed (`mixAtHandOff` between 0.01 and 0.99), or that is
+`unfinished`. `status`
 carries `connected{flights, pending}`. A forward flight: `click key=lazy-cell:8 trace=60 keys=hero-cover flights=true` on
 `disco:0:spotify:artist:ar3`; Back: `key alt+left trace=45 keys=hero-cover,lazy-cell:8 flights=true`. Click a card on its label, not its
 centre: the centre of a WinUI card's cover is its play button.
