@@ -1670,7 +1670,7 @@ public static partial class Spotify
         public static Result HomeSection(string sectionUri, string timeZone, int offset, CancellationToken ct)
         {
             var vars = new Vars(Queries.HomeSection);
-            vars.W.WriteString("uri", sectionUri);
+            vars.W.WriteString("uri", Wavee.Home.SectionUriOf(sectionUri));   // never a facet row's `#<facet>` tail
             vars.W.WriteBoolean("includeHomeChapterVideoCards", false);   // the shared document's variable, as `home` sends it
             vars.W.WriteString("homeEndUserIntegration", "INTEGRATION_DESKTOP");
             vars.W.WriteString("timeZone", timeZone);
