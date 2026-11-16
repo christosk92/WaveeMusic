@@ -372,6 +372,9 @@ public enum HomeTileVacancy : byte
 
     /// <summary>A source this build does not know (kept in the document, drawn as nothing).</summary>
     Unknown,
+
+    /// <summary>Spotify's answer failed (the feed slot's sections), with nothing cached. Appended.</summary>
+    Failed,
 }
 
 /// <summary>The props of <see cref="ViewKeys.HomeTileVacant"/>.</summary>

@@ -88,6 +88,7 @@ public static partial class Controls
         // The label block / text column, built once per GATED props instance: the hot edge re-renders this host to mount
         // its chrome, and handing the title's trim tooltip the SAME element keeps it (and its ToolTip) from re-rendering.
         SurfaceProps? _textFor;
+        bool _textPinned;   // the pin-to-Home state the cached text was built with (it changes with no new props)
         Element? _text;
         // Trampolines and handlers are built ONCE per host: reference-stable across renders, reading `_latest` at
         // invocation time.
@@ -162,9 +163,10 @@ public static partial class Controls
             // Presence is the adapter's (a surface with nothing to play grows no dead FAB); the handler is the trampoline.
             Action? play = d.OnPlay is null ? null : _onPlay;
 
-            if (!ReferenceEquals(_textFor, p))
+            if (!ReferenceEquals(_textFor, p) || _textPinned != d.PinnedToHome)
             {
                 _textFor = p;
+                _textPinned = d.PinnedToHome;
                 // The stack's label block is width-free (its column sizes it), so a shelf's width change keeps it and its trim tooltip.
                 _text = s.IsRow ? style.RowText(d, in s) : style.Labels(d, in s, float.NaN);
             }
