@@ -4,9 +4,9 @@
 // match: a Hidden entry that keeps its place). The SpotifyFeed item expands to every section of the answer that is not
 // placed and not hidden (by ref or by family) and has a drawable template, in Spotify's order, as FeedSection entries
 // "feed:<key>". The Fill item expands to the shortcut section's cards that are not pinned (or removed from the fill), up
-// to Max, as FillCell entries "fill:<pin id>". Adjacency folds join a run of two or more one-card baseline sections into
-// one PreviewGrid entry, then the rhythm pass (SectionRhythm) moves a section whose neighbour draws its template to an
-// alternate; nothing is reordered. Two synthetic sections keep what All shows today: the Following release
+// to Max, as FillCell entries "fill:<pin id>". The fold gathers a run's one-card baseline sections (two or more, wherever they
+// stand in it) into ONE Spine Shelf at the first one's place, then the rhythm pass (SectionRhythm) moves a section whose neighbour draws its template to an
+// alternate; nothing else is reordered. Two synthetic sections keep what All shows today: the Following release
 // list (wavee:following-releases, after the editorial shelf) and the Charts block (wavee:charts), last.
 //
 // Each feed entry carries its Zone (BoardEntry.Zone): SectionChooser.ToZone, keyed by the section uri, so a section tile
@@ -94,10 +94,11 @@ public static class HomeProjection
                 var choice = SectionChooser.Choose(s, nowMs);
                 if (choice.Template is SectionTemplate.None or SectionTemplate.ShortcutFill or SectionTemplate.RecentsData or SectionTemplate.DaylistHero) continue;
                 var zone = Drawable(SectionChooser.ToZone(s, choice, titles));
-                bool oneCardBaseline = choice.Template == SectionTemplate.PreviewCard && zone.Items.Count == 1;   // folds whether or not its preview landed
+                bool oneCardBaseline = choice.Template == SectionTemplate.SpineShelf && zone.Items.Count == 1;   // folds whether or not its preview landed
                 if (choice.Template == SectionTemplate.WideTiles && wideAt < 0) wideAt = feed.Count;
-                // A preview card whose preview has not landed draws as a shelf (Drawable): its box is the shelf's.
-                var template = choice.Template == SectionTemplate.PreviewCard && zone.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : choice.Template;
+                // A shelf stands before its preview songs land (its tiles are flat placeholders at their size); only a card the
+                // fold cannot draw at all falls back to a cover shelf (Drawable).
+                var template = choice.Template == SectionTemplate.SpineShelf && zone.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : choice.Template;
                 feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", template, s.Slot, zone, oneCardBaseline, s, choice.Alternates));
             }
             // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf.
@@ -294,7 +295,7 @@ public static class HomeProjection
         { Zone = f.Zone, Options = options, Members = f.OneCardBaseline ? [f.Ref] : [], Alternates = f.Alternates.IsDefault ? [] : f.Alternates };
 
     /// <summary>Emit a run of section entries, folding two or more neighbouring one-card baseline sections (at their auto
-    /// size) into one preview grid, then keeping two neighbours from drawing one template (<see cref="SectionRhythm"/>).
+    /// size) into one Spine Shelf, then keeping two neighbours from drawing one template (<see cref="SectionRhythm"/>).
     /// Nothing is reordered.</summary>
     static void Flush(ImmutableArray<BoardEntry>.Builder into, List<BoardEntry> run, ZoneTitles? titles)
     {
@@ -307,45 +308,48 @@ public static class HomeProjection
 
     static void Fold(List<BoardEntry> into, List<BoardEntry> run, ZoneTitles? titles)
     {
-        int i = 0;
-        while (i < run.Count)
+        // Every one-card baseline section of the run is ONE family ("Because you like": For fans of / More like / Made for you / Based on
+        // your recent listening), whatever Spotify put between them (an episode section split live1's 19 into runs of 8 and 11, which drew
+        // two chapters under one title). So the run's foldable sections gather into ONE shelf at the first one's place; the shelf pages
+        // them when they are more than one page holds (SpineShelfRules.MaxItems). Everything else keeps its order.
+        int foldable = 0, at = -1;
+        for (int k = 0; k < run.Count; k++)
+            if (Foldable(run[k])) { foldable++; if (at < 0) at = k; }
+        for (int k = 0; k < run.Count; k++)
         {
-            int j = i;
-            while (j < run.Count && Foldable(run[j])) j++;
-            if (j - i >= 2)
+            if (foldable >= 2 && Foldable(run[k]))
             {
-                var first = run[i];
-                var members = ImmutableArray.CreateBuilder<SectionRef>(j - i);
-                var inputs = new List<SectionInput>(j - i);
-                for (int k = i; k < j; k++)
+                if (k != at) continue;
+                var first = run[k];
+                var members = ImmutableArray.CreateBuilder<SectionRef>(foldable);
+                var inputs = new List<SectionInput>(foldable);
+                for (int m = k; m < run.Count; m++)
                 {
-                    var r = ((SpotifySectionSource)run[k].Raw!).Ref;
+                    if (!Foldable(run[m])) continue;
+                    var r = ((SpotifySectionSource)run[m].Raw!).Ref;
                     members.Add(r);
                     if (t_inputs is not null && t_inputs.TryGetValue(r.Key, out var input)) inputs.Add(input);
                 }
-                Zone? zone = titles is not null && inputs.Count == j - i ? FoldZone(members[0].Key, inputs, titles) : first.Zone;
+                Zone? zone = titles is not null && inputs.Count == foldable ? FoldZone(members[0].Key, inputs, titles) : first.Zone;
                 into.Add(first with
                 {
                     Id = HomeCommands.FoldPrefix + members[0].Key, Kind = BoardEntryKind.Fold,
-                    Template = zone?.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : SectionTemplate.PreviewGrid,
+                    Template = zone?.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : SectionTemplate.SpineShelf,
                     OnlyHide = true, Members = members.ToImmutable(), Zone = zone, Title = zone?.Title ?? first.Title,
                 });
-                i = j;
                 continue;
             }
-            for (int k = i; k < Math.Max(j, i + 1); k++) into.Add(run[k] with { Members = [] });
-            i = Math.Max(j, i + 1);
+            into.Add(run[k] with { Members = [] });
         }
     }
 
-    /// <summary>The fold's one zone: the members' clusters ("Because you like"), each its card and its preview tracks. Before any member's
-    /// preview has landed there is no cluster to draw: the members' cards stand as one shelf under the same title (never a heading over
-    /// nothing), and the clusters replace it when the previews land.</summary>
+    /// <summary>The fold's one zone: the members' shelf items ("Because you like"), each its card and its preview songs (flat placeholders
+    /// until they land), in Spotify's order. Only members with no drawable card at all leave a plain cover shelf.</summary>
     static Zone FoldZone(string firstKey, List<SectionInput> inputs, ZoneTitles titles)
     {
         var clusters = ClusterFold.Fold(inputs, titles);
         if (clusters.Count > 0)
-            return new Zone(ZoneKind.ClusterCards, "home:fold:" + firstKey, titles.BecauseYouLike, null, [], Clusters: clusters, SectionSlot: inputs[0].Slot);
+            return new Zone(ZoneKind.SpineShelf, "home:fold:" + firstKey, titles.BecauseYouLike, null, [], Clusters: clusters, SectionSlot: inputs[0].Slot);
         var cards = new List<HomeCard>(inputs.Count);
         var seen = new HashSet<long>();
         foreach (var s in inputs)
@@ -354,9 +358,9 @@ public static class HomeProjection
         return new Zone(ZoneKind.CoverShelf, "home:fold:" + firstKey, titles.BecauseYouLike, null, cards, SectionSlot: inputs[0].Slot, TotalCount: cards.Count);
     }
 
-    /// <summary>A cluster zone with no cluster to draw (its preview tracks have not landed) draws its cards as a shelf instead.</summary>
+    /// <summary>A shelf zone with no item to draw (no usable card) draws its cards as a cover shelf instead.</summary>
     static Zone Drawable(Zone z)
-        => z.Kind == ZoneKind.ClusterCards && z.Clusters is not { Count: > 0 } && z.Items.Count > 0
+        => z.Kind == ZoneKind.SpineShelf && z.Clusters is not { Count: > 0 } && z.Items.Count > 0
             ? z with { Kind = ZoneKind.CoverShelf, Clusters = null }
             : z;
 

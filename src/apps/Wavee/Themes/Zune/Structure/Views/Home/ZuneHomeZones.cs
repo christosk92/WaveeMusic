@@ -7,7 +7,8 @@
 //   CoverShelf · MixedCovers · RadioShelf · ShowGrid   a shelf of 154 covers 16 apart (an artist's art round), chevrons in the heading row
 //   WideTiles · VideoTiles                            a shelf of 16:9 tiles, the tier's columns across (4 at Standard), 16 apart
 //   ReleaseList                                       64 rows of 56 art: the name, its kind line, the "when" 80 wide at the end
-//   ClusterCards · PodcastGroups                      the tier's columns (2 at Standard, 24 apart) of a 28 title over three 48 rows of 40 art
+//   SpineShelf                                        the Spine Shelf (ZuneHomeZones.Shelf over Home/SpineShelf): flat spines, one open card
+//   PodcastGroups                                     the tier's columns (2 at Standard, 24 apart) of a 28 title over three 48 rows of 40 art
 //   BrowseTiles                                       flat 88 plates (the tier's columns, 12 apart) 2 : 1 beside the charts (`Home.Charts`)
 //   EpisodeLead · EpisodeRows · ContinueEpisodes      the shared episode rows (72 floor, 56 art), one column (a pair puts two side by side)
 //   LeadGrid · CompactGrid · ArtistCircles ·
@@ -54,7 +55,8 @@ internal static partial class ZuneHomeZones
         ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, lay),
         ZoneKind.CappedShelf => CappedShelf(zone, overlay, lay),
         ZoneKind.ReleaseList => ReleaseList(zone, lay, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => Clusters(zone, lay),
+        ZoneKind.SpineShelf => Shelf(zone, lay),
+        ZoneKind.PodcastGroups => Clusters(zone, lay),
         ZoneKind.BrowseTiles => BrowseTiles(zone, lay),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows or ZoneKind.ContinueEpisodes => Episodes(zone, lay),
         ZoneKind.EmptyFacet => EmptyFacet(zone),
@@ -68,7 +70,7 @@ internal static partial class ZuneHomeZones
     {
         var seeAll = HomeVerbs.SeeAll(zone);
         Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, HomeVerbs.SeeAllLabel(zone), seeAll, lay.LinkTarget);
-        if (zone.Header is { } entity && zone.Kind is not (ZoneKind.ReleaseList or ZoneKind.ClusterCards)) return EntityHeading(entity, tools, lay);
+        if (zone.Header is { } entity && zone.Kind is not (ZoneKind.ReleaseList or ZoneKind.SpineShelf)) return EntityHeading(entity, tools, lay);
         return K.Heading(zone.Title ?? fallbackTitle ?? "", lay.Subtitles ? zone.Subtitle : null, tools);
     }
 

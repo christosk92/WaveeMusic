@@ -692,7 +692,6 @@ public static class ZuneHomePlan
     /// <summary>Whether <paramref name="a"/> followed by <paramref name="b"/> share a row.</summary>
     public static bool Pairs(ZoneKind a, ZoneKind b) => (a, b) switch
     {
-        (ZoneKind.ReleaseList, ZoneKind.ClusterCards) or (ZoneKind.ClusterCards, ZoneKind.ReleaseList) => true,
         (ZoneKind.EpisodeLead, ZoneKind.ContinueEpisodes) or (ZoneKind.EpisodeRows, ZoneKind.ContinueEpisodes) => true,
         _ => false,
     };

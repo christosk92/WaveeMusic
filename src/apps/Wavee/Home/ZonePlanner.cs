@@ -145,9 +145,8 @@ public static class ReleaseDetect
 /// page's zone-title sheet.</summary>
 public static class ClusterFold
 {
-    /// <summary>The desktop client's own cap: at most four of a card's five preview tracks show on its cluster
-    /// tile.</summary>
-    public const int MaxRows = 4;
+    /// <summary>Every preview song the lookup answers (five): the Spine Shelf's open card shows them all as its tiles.</summary>
+    public const int MaxRows = 5;
 
     /// <inheritdoc cref="Fold(IReadOnlyList{SectionInput},ZoneTitles,out IReadOnlyList{HomeCard})"/>
     public static IReadOnlyList<ZoneCluster> Fold(IReadOnlyList<SectionInput> clusterSections, ZoneTitles titles)
@@ -180,16 +179,16 @@ public static class ClusterFold
                 continue;
             }
 
+            // A card whose preview songs have not landed yet still stands (its tiles are flat placeholders at their size): the shelf never
+            // changes length when they land.
             var rows = PreviewRows(s.Preview, MaxRows);
-            if (rows.Count == 0) continue;
             result.Add(new ZoneCluster(s.Title ?? titles.MoreForYou, header.Title, rows, FooterSectionSlot: s.Slot, Header: header)
                 { Reason = HeaderEntity.Of(s) });
         }
 
         following = releases ?? (IReadOnlyList<HomeCard>)[];
-        // "cards ordered by row count desc then server order" — OrderByDescending is a stable sort, so ties keep the
-        // server's own order.
-        return result.OrderByDescending(static c => c.Rows.Count).ToList();
+        // Spotify's own order: the shelf opens on its first item.
+        return result;
     }
 
     static HomeCard? HeaderCard(IReadOnlyList<HomeCard> cards)
@@ -386,18 +385,18 @@ public static class ZonePlanner
         // A cluster's preview ROWS are navigation inside its card (like the podcast footer thumbs, F32 §3.12.5) —
         // never deduped page-wide. Only its HEADER card — what the tile itself opens to — competes for a page slot.
         var keptClusters = new List<ZoneCluster>(clusters.Count);
-        var items = new List<HomeCard>();
         foreach (var c in clusters)
         {
-            if (c.Header is { } header)
-            {
-                if (!placed.Add(header.DedupeKey)) continue;
-                items.Add(header);
-            }
+            if (c.Header is { } header && !placed.Add(header.DedupeKey)) continue;
             keptClusters.Add(c);
         }
+        // One shelf, as the board's fold (its body pages the items when one page cannot hold them).
         if (keptClusters.Count > 0)
-            zones.Add(new Zone(ZoneKind.ClusterCards, key, titles.BecauseYouLike, fallbackSubtitle, items, Clusters: keptClusters));
+        {
+            var items = new List<HomeCard>(keptClusters.Count);
+            foreach (var c in keptClusters) if (c.Header is { } h) items.Add(h);
+            zones.Add(new Zone(ZoneKind.SpineShelf, key, titles.BecauseYouLike, fallbackSubtitle, items, Clusters: keptClusters));
+        }
     }
 
     static void AddBrowse(IReadOnlyList<SectionInput> browseSections, string title, string key, HashSet<long> placed, List<Zone> zones,

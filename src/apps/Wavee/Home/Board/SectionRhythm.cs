@@ -26,7 +26,7 @@ public static class SectionRhythm
     public static Height HeightOf(SectionTemplate t) => t switch
     {
         SectionTemplate.CompactGrid or SectionTemplate.ArtistCircles or SectionTemplate.MoodPlates => Height.Short,
-        SectionTemplate.LeadGrid or SectionTemplate.PreviewCard or SectionTemplate.PreviewGrid or SectionTemplate.BookShelf
+        SectionTemplate.LeadGrid or SectionTemplate.SpineShelf or SectionTemplate.BookShelf
             or SectionTemplate.ReleaseList or SectionTemplate.VideoTiles or SectionTemplate.EpisodeRows => Height.Tall,
         _ => Height.Medium,
     };

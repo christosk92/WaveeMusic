@@ -17,7 +17,7 @@ public readonly record struct SectionRef(string Key, ulong Fp, string Family);
 public enum SectionTemplate : byte
 {
     None, ShortcutFill, RecentsData, DaylistHero, CoverShelf, EntityShelf, MoodPlates, WideTiles, ReleaseList,
-    ShowGrid, VideoTiles, EpisodeRows, BookShelf, PreviewCard, PreviewGrid, PlainShelf,
+    ShowGrid, VideoTiles, EpisodeRows, BookShelf, SpineShelf, PlainShelf,
     /// <summary>Home rhythm (solution A): a personal set as one lead card beside a small grid of the rest.</summary>
     LeadGrid,
     /// <summary>Home rhythm: small tiles, the cover beside the text, in two to five columns.</summary>

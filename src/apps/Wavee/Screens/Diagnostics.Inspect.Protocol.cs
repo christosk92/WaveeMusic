@@ -592,7 +592,7 @@ public static partial class Diagnostics
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
                 Positional = ["do"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page|shelf"),
                              Arg("path", ArgType.Path, "doc: also write the document's JSON to this file"),
                              Arg("facet", ArgType.String, "plan: the facet (empty: All)", ""),
                              Arg("on", ArgType.Bool, "edit: on or off", "true"),
@@ -608,7 +608,7 @@ public static partial class Diagnostics
                              Arg("dir", ArgType.Enum, "move: one step toward a side (up and down: onto the nearest tile); page: left is the previous page, right the next", null, "left|right|up|down"),
                              Arg("page", ArgType.Int, "page: the page to show, from 1 (key: the section's zone key or a unique part of it)", "1"),
                              Arg("refocus", ArgType.Bool, "close: focus goes back to the tile", "true"),
-                             Arg("key", ArgType.String, "option: the option's key; page: the paged section"),
+                             Arg("key", ArgType.String, "option: the option's key; page: the paged section; shelf: the shelf"),
                              Arg("value", ArgType.String, "option: the value"),
                              Arg("open", ArgType.Bool, "surface: open or close", "true"),
                              Arg("kind", ArgType.Enum, "surface: which", "band", "band|allitems|addrow|find"),
@@ -616,7 +616,12 @@ public static partial class Diagnostics
                              Arg("q", ArgType.String, "search: the text typed", ""),
                              Arg("items", ArgType.Int, "search: the most hits listed", "40"),
                              Arg("scope", ArgType.Enum, "reset: this page or everything", "page", "page|everything"),
-                             Arg("confirm", ArgType.Bool, "reset scope=everything: answer Classic's question yes", "false")], s_settleArgs),
+                             Arg("confirm", ArgType.Bool, "reset scope=everything: answer Classic's question yes", "false"),
+                             Arg("spine", ArgType.Int, "shelf: open item n (from 1) as a click on its spine (key: the shelf's key or a unique part of it)"),
+                             Arg("dwell", ArgType.Int, "shelf: rest on spine n (from 1): the meter fills, then it opens"),
+                             Arg("tile", ArgType.Int, "shelf: point at song n (from 1) of the open card; 0 leaves the tile"),
+                             Arg("leave", ArgType.Bool, "shelf: the pointer leaves the shelf (a dwell cancels, a live tile stops)", "false"),
+                             Arg("press", ArgType.Enum, "shelf: a key on the focused spine", null, "left|right|up|down|home|end|enter")], s_settleArgs),
             },
             new(Verb.Hold, "hold", "Press and hold: the button stays down ms on the frame clock (on a node's visible centre or a point), then a release there or a drag of dx,dy; then settle", "hold key=home:tile:d-recents ms=600 pointer=touch")
             {

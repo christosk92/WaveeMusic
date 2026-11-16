@@ -4,7 +4,7 @@
 //
 //   MoodPlates     a grid of flat colour plates (the mix's own colour), the name 20 semibold over its first sentence      tools: See all N
 //   BookShelf      PagedShelf of the house surface: author, "★ 4.7 · 20 hr 56 min", the plan as a pill; every card 4 lines tools: See all · pager
-//   ClusterCards   Ui.Card: the reason (avatar + "For fans of" + the artist as a link), the playlist (cover, name, description,
+//   PodcastGroups  Ui.Card: the reason (avatar + "Because you listen to" + the show as a link), the show (cover, name, description,
 //                  "Playlist · Spotify · 50 songs", Play), 4 rows; pages of two rows at most, no empty slot (GridFill)
 //   VideoTiles(1)  one episode as a video card: the still (16:9) with "Video" and the length on it, the progress hairline, the
 //                  show, the title, "20 Jul · 1 hr 24 min · not started", Play and Save
@@ -88,19 +88,6 @@ internal static partial class WinUiHomeZones
         if (layout.Tier < WidthTier.Standard) return 0f;
         var pad = Spacing.CardPad;
         return pad.Top + pad.Bottom + WinUiHomeRules.VideoStillW / R.Space.WideTileAspect;
-    }
-
-    /// <summary>The preview cards' pages at <paramref name="width"/>: the tallest page (every card's height is its data's) and, while there is
-    /// more than one, the pips row under it.</summary>
-    static float ClusterGridExtent(Zone zone, WinUiHomeLayout layout, float width, out int pageCount)
-    {
-        pageCount = 0;
-        var clusters = zone.Clusters;
-        if (clusters is not { Count: > 0 }) return 0f;
-        var pages = GridFill.Pages(clusters.Count, layout.Clusters.Columns(width, WinUiHomeRules.CardGap), clusters);
-        pageCount = pages.Length;
-        float h = GridFill.PagesHeight(clusters, pages, WinUiHomeRules.CardGap, s_clusterExtent, s_wideClusterExtent);
-        return pages.Length > 1 ? h + WinUiHomeRules.CardGap + WinUiHomeRules.PipsRowH : h;
     }
 
     static readonly Func<ZoneCluster, float> s_clusterExtent = ClusterExtent, s_wideClusterExtent = WideClusterExtent;

@@ -43,7 +43,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.HomeZoneCoverShelf, ZuneHomeZones.BodyTemplate, "zune.home.zone.cover-shelf");
         views.Add(ViewKeys.HomeZoneWideTiles, ZuneHomeZones.BodyTemplate, "zune.home.zone.wide-tiles");
         views.Add(ViewKeys.HomeZoneReleaseList, ZuneHomeZones.BodyTemplate, "zune.home.zone.release-list");
-        views.Add(ViewKeys.HomeZoneClusterCards, ZuneHomeZones.BodyTemplate, "zune.home.zone.cluster-cards");
+        views.Add(ViewKeys.HomeZoneSpineShelf, ZuneHomeZones.BodyTemplate, "zune.home.zone.spine-shelf");
         views.Add(ViewKeys.HomeZoneMixedCovers, ZuneHomeZones.BodyTemplate, "zune.home.zone.mixed-covers");
         views.Add(ViewKeys.HomeZoneRadioShelf, ZuneHomeZones.BodyTemplate, "zune.home.zone.radio-shelf");
         views.Add(ViewKeys.HomeZoneBrowseTiles, ZuneHomeZones.BodyTemplate, "zune.home.zone.browse-tiles");
