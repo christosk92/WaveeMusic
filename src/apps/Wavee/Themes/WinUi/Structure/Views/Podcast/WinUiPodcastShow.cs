@@ -70,6 +70,12 @@ internal static class WinUiPodcastShow
         readonly Signal<float> _paneH = new(0f);
         readonly Dictionary<string, Signal<bool>> _groupStuck = [];
         Action<RectF>? _measurePane;
+        Func<HeadView>? _projectHead;
+        Memo<HeadView>? _headView;
+        Func<Affine2D>? _paneShiftOf;
+        readonly Signal<bool> _paneStuck = new(false);
+        float _paneShift;
+        double _paneLastOffset = double.NaN;
         Action<bool>? _followToggle;
         string[] _filterLabels = [];
         string[]? _paneLabels;
@@ -109,7 +115,9 @@ internal static class WinUiPodcastShow
                 PlayNext = p.PlayNext, Select = p.Select, Expand = p.Expand, Menu = p.RowMenu,
             };
 
-            var v = p.View.Value;
+            _projectHead ??= () => HeadOf(_p.View.Value);
+            _headView = UseComputed(_projectHead);
+            var v = ViewOf(_headView.Value);
             bool loading = v.Load == PodcastLoad.Pending;
             var shown = loading ? s_placeholder : v;
             Element content = new SkelRegionEl(
@@ -124,6 +132,14 @@ internal static class WinUiPodcastShow
             return WinUiPodcastKit.Page(p.RouteKey, loading ? 0u : head.Tone, _barOn,
                 new BoxEl { Key = "podcast-show-body", Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.HeightReflow, Children = [content] }, bar, _scroll, _captureViewport);
         }
+
+        /// <summary>What the page itself draws (the hero, the bar, the About expander): the head, the smart action, the similar shows and the load state.
+        /// The host reuses these instances while their content holds, so the memo's equality keeps a filter switch away from the page.</summary>
+        sealed record HeadView(PodcastLoad Load, PodcastShowHead Head, PodcastSmart? Smart, ImmutableArray<PodcastCardVm> Similar);
+
+        static HeadView HeadOf(PodcastShowView v) => new(v.Load, v.Head, v.Smart, v.Similar);
+
+        static PodcastShowView ViewOf(HeadView h) => PodcastShowView.Empty with { Load = h.Load, Head = h.Head, Smart = h.Smart, Similar = h.Similar };
 
         Element BarButton(PodcastShowView v)
         {
@@ -143,13 +159,16 @@ internal static class WinUiPodcastShow
             if (live) kids.Add(WinUiPodcastKit.BarSentinel(_barOn));
             if (!lay.Pane) kids.Add(AboutExpander(v));
             float listW = MathF.Max(0f, contentW - 2f * inset - (lay.Pane ? S.PaneW + S.ColGap : 0f));
-            Element list = ListColumn(v, lay, live, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW));
+            Element list = live
+                ? Embed.Comp(new ListProps(this, lay, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW)),
+                    static () => new ListHost()) with { Key = "show-list-host" }
+                : ListColumn(v, lay, live, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW));
             // ONE row at every tier: the pane comes and goes beside the list (a declared swap), the list reflows to its new width.
             kids.Add(new BoxEl
             {
                 Key = "show-cols", Direction = 0, Gap = lay.Pane ? S.ColGap : 0f, AlignItems = FlexAlign.Start, MinWidth = 0f,
                 Layout = WinUiDiscoveryMotion.Reflow,
-                Children = lay.Pane ? [list, Pane(v, viewportH, live)] : [list],
+                Children = lay.Pane ? [list, live ? PaneSlot() : Pane(v, live)] : [list],
             });
             return new BoxEl
             {
@@ -157,6 +176,57 @@ internal static class WinUiPodcastShow
                 Padding = new Edges4(inset, 0f, inset, K.PageFoot + R.Space.DockReserve),
                 Children = kids.ToArray(),
             };
+        }
+
+        /// <summary>The list column (toolbar, groups, rows): its own component, the only part of the page a filter, a search, the order or the row
+        /// states re-render.</summary>
+        sealed record ListProps(PageHost Host, WinUiPodcastShowLayout Lay, bool SearchIcon, bool Combo);
+
+        sealed class ListHost : Component
+        {
+            public override Element Render()
+            {
+                var p = UseProps<ListProps>();
+                var full = p.Host._p.View.Value;
+                var v = full.Load == PodcastLoad.Pending ? s_placeholder : full;
+                return p.Host.ListColumn(v, p.Lay, live: true, p.SearchIcon, p.Combo);
+            }
+        }
+
+        /// <summary>The details pane: its own component over the selected episode (its filter flag set aside), the head and the similar shows, so a filter
+        /// switch does not re-render it.</summary>
+        sealed record PaneProps(PageHost Host);
+
+        sealed record PaneView(PodcastLoad Load, PodcastEpisodeVm? Selected, PodcastShowHead Head, ImmutableArray<PodcastCardVm> Similar);
+
+        sealed class PaneHost : Component
+        {
+            PageHost? _host;
+            Func<PaneView>? _project;
+
+            public override Element Render()
+            {
+                _host = UseProps<PaneProps>().Host;
+                _project ??= Project;
+                var pv = UseComputed(_project).Value;
+                var v = PodcastShowView.Empty with
+                {
+                    Load = pv.Load, Head = pv.Head, Similar = pv.Similar, Episodes = pv.Selected is { } vm ? [vm] : [],
+                };
+                return _host.Pane(v, live: true);
+            }
+
+            PaneView Project()
+            {
+                var p = _host!._p;
+                var full = p.View.Value;
+                string? id = p.Selected.Value;
+                PodcastEpisodeVm? vm = null;
+                if (id is not null)
+                    foreach (var e in full.Episodes)
+                        if (e.Id == id) { vm = e.Hidden ? e with { Hidden = false } : e; break; }
+                return new PaneView(full.Load, vm, full.Head, full.Similar);
+            }
         }
 
         // ── the hero ──
@@ -536,7 +606,9 @@ internal static class WinUiPodcastShow
             for (int i = 0; i < rows.Length; i++)
             {
                 var vm = v.Episodes[g.Rows[i]];
-                rows[i] = WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, _verbs!) with { Visible = !vm.Hidden };
+                // The row sees its episode without the filter flag (a filter switch only flips the anchor's Visible: the row itself does not re-render).
+                rows[i] = WinUiPodcastKit.EpisodeRow(vm.Hidden ? vm with { Hidden = false } : vm, lay.RowMode, lay.RowDescription, lay.Stacked, _verbs!)
+                    with { Visible = !vm.Hidden };
             }
             return new BoxEl
             {
@@ -592,17 +664,12 @@ internal static class WinUiPodcastShow
 
         // ── the details pane (≥1008) ──
 
-        Element Pane(PodcastShowView v, float viewportH, bool live)
+        Element Pane(PodcastShowView v, bool live)
         {
             var tab = live ? _p.PaneTab.Value : PodcastPaneTab.Episode;
             string[] labels = _paneLabels ??= [Loc.Get(Strings.Podcast.Pages.PaneEpisode), Loc.Get(Strings.Podcast.Pages.PaneAbout)];
             Element body = tab == PodcastPaneTab.About ? AboutBody(v, rows: true) : EpisodePreview(v, live);
-            // Pinned under the bar while it fits; a taller pane rides the page until its foot reaches the viewport's foot, and pins THERE (a sticky top
-            // above the viewport's edge), so every part of it can be read without a scroller of its own.
-            float view = live ? (float)_scroll.ViewportSignal.Value : viewportH;
-            float paneH = live ? _paneH.Value : 0f;
-            float top = paneH > 0f && view > 0f ? MathF.Min(S.PaneTop, view - paneH - S.PaneFoot) : S.PaneTop;
-            _ = viewportH;
+            _paneShiftOf ??= PaneShift;
             return new BoxEl
             {
                 Key = "show-pane", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Width = S.PaneW, Shrink = 0f, MinWidth = 0f,
@@ -618,7 +685,43 @@ internal static class WinUiPodcastShow
                         Padding = new Edges4(0f, K.SectionBottom, 0f, S.PanePad), Children = [body],
                     },
                 ],
-            }.Sticky(top);
+            };
+        }
+
+        /// <summary>The pane's slot in the columns row: it carries the pin and the ride (a sticky root returned FROM a component never pins: its parent
+        /// would be the component's anchor), the pane component inside it.</summary>
+        Element PaneSlot()
+        {
+            _paneShiftOf ??= PaneShift;
+            return new BoxEl
+            {
+                Key = "show-pane-slot", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Shrink = 0f, MinWidth = 0f,
+                // The ride is a transform on a box INSIDE the pinned slot: the sticky effect owns the slot's own translation.
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "show-pane-ride", Direction = 1, MinWidth = 0f, Transform = Prop.Of(_paneShiftOf),
+                        Children = [Embed.Comp(new PaneProps(this), static () => new PaneHost()) with { Key = "show-pane-host" }],
+                    },
+                ],
+            }.Sticky(S.PaneTop, engaged: _paneStuck);
+        }
+
+        /// <summary>The pane's ride (the owner, 2026-11-18): pinned under the bar while it fits; a pane taller than the viewport scrolls with the page
+        /// until its foot reaches the viewport's foot and holds there, and on the way back up it scrolls the other way until its top is under the bar
+        /// again. The pinned pane's shift (0 .. its overhang) follows each scroll step only while it is pinned; a bound transform, so nothing relayouts.</summary>
+        Affine2D PaneShift()
+        {
+            double o = _scroll.Offset.Value;
+            float view = (float)_scroll.ViewportSignal.Value;
+            float h = _paneH.Value;
+            float overhang = MathF.Max(0f, h + S.PaneTop + S.PaneFoot - view);
+            double d = double.IsNaN(_paneLastOffset) ? 0.0 : o - _paneLastOffset;
+            _paneLastOffset = o;
+            if (_paneStuck.Peek()) _paneShift = Math.Clamp(_paneShift + (float)d, 0f, overhang);
+            else _paneShift = MathF.Min(_paneShift, overhang);
+            return Affine2D.Translation(0f, -_paneShift);
         }
 
         Element EpisodePreview(PodcastShowView v, bool live)

@@ -218,6 +218,23 @@ sealed class ShowModel
     public readonly Func<string, ContextMenuModel?> CardMenu;
     public readonly Action<string> PlayCard;
 
+    PodcastShowHead? _lastHead;
+    PodcastSmart? _lastSmart;
+    ImmutableArray<PodcastCardVm> _lastSimilar = [];
+
+    static bool SameHead(PodcastShowHead a, PodcastShowHead b)
+        => a with { Topics = [], Facts = [] } == b with { Topics = [], Facts = [] }
+           && a.Topics.AsSpan().SequenceEqual(b.Topics.AsSpan()) && a.Facts.AsSpan().SequenceEqual(b.Facts.AsSpan());
+
+    /// <summary>The same smart action: its words, episode and menu rows (labels, subs, checks). The menu's verbs act on the same episodes then.</summary>
+    static bool SameSmart(PodcastSmart a, PodcastSmart b)
+    {
+        if (a with { Menu = [] } != b with { Menu = [] } || a.Menu.Length != b.Menu.Length) return false;
+        for (int i = 0; i < a.Menu.Length; i++)
+            if (a.Menu[i].Label != b.Menu[i].Label || a.Menu[i].Sub != b.Menu[i].Sub || a.Menu[i].Checked != b.Menu[i].Checked) return false;
+        return true;
+    }
+
     /// <summary>The last snapshot's facts the verbs act on (a click acts on what the page showed).</summary>
     Facts _facts = Facts.None;
 
@@ -563,8 +580,17 @@ sealed class ShowModel
         var load = readiness == EdgeState.Failed && n == 0 ? PodcastLoad.Failed
             : !known || !page.Loaded || readiness == EdgeState.Unknown ? PodcastLoad.Pending
             : PodcastLoad.Ready;
+        // The parts a filter or a search cannot change are REUSED while their content holds: the page's projection compares them by reference, so a
+        // filter switch re-renders the list alone (the hero, the bar and the pane keep their render).
+        head = _lastHead is { } lh && SameHead(lh, head) ? lh : head;
+        smart = _lastSmart is { } ls && smart is not null && SameSmart(ls, smart) ? ls : smart;
+        var similarCards = SimilarOf(similar);
+        if (_lastSimilar.Length == similarCards.Length && _lastSimilar.AsSpan().SequenceEqual(similarCards.AsSpan())) similarCards = _lastSimilar;
+        _lastHead = head;
+        _lastSmart = smart;
+        _lastSimilar = similarCards;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
-            filter != PodcastFilter.All || !q.IsEmpty, SimilarOf(similar)) { ShownCount = shownCount };
+            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount };
     }
 
     static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved)
