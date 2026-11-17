@@ -210,10 +210,9 @@ internal static partial class ClassicDetailFrame
         };
         Element right = new BoxEl
         {
-            // The content column keeps the host's key (`right:tracks`) in every form; beside a docked aside the rows keep the board's 8 before the hairline
-            // (C-Album-Huge).
+            // The content column keeps the host's key (`right:tracks`) in every form. Beside a docked aside it runs to the hairline: the rows' air before
+            // it (C-Album-Huge) is the table's own trail inset (ClassicDetailHero.ListInsets), inside the scroller, so the scrollbar meets the hairline.
             Key = p.ContentKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = p.ContentMinWidth, MinHeight = 0f,
-            Padding = p.Aside is not null && detailTier.Aside is { } g ? new Edges4(0f, 0f, g.ListInset, 0f) : default,
             Children =
             [
                 host,

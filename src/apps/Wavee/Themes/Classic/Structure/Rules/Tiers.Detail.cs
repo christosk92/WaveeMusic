@@ -254,11 +254,18 @@ public sealed record ClassicDetailAside
     /// <summary>The gap between two fans of a row.</summary>
     public float FanColumnGap { get; init; } = 8f;
 
-    /// <summary>The list column's right inset before the hairline: the rows keep it and never run to the card's edge.</summary>
+    /// <summary>The rows' right inset at the page's edge (an insights-only aside folded shut): they never run to the card's edge.</summary>
     public float ListInset { get; init; } = 8f;
 
-    /// <summary>The hairline's margins: 24 over it, 16 each side.</summary>
-    public Edges4 HairlineMargin { get; init; } = new(16f, 24f, 16f, 0f);
+    /// <summary>The air the rows keep before the hairline beyond <see cref="ListInset"/> (the board's 16).</summary>
+    public float HairlineLead { get; init; } = 16f;
+
+    /// <summary>The rows' right inset beside an open aside: <see cref="ListInset"/> and <see cref="HairlineLead"/>, laid INSIDE the list's scroller
+    /// (<c>ClassicDetailHero.ListInsets</c>), so the scroller runs to the hairline and its scrollbar stands on the pane's edge, not in the gutter.</summary>
+    public float ListTrail => ListInset + HairlineLead;
+
+    /// <summary>The hairline's margins: 24 over it, none before it (the list's scroller meets it; the rows keep <see cref="ListTrail"/>), 16 after it.</summary>
+    public Edges4 HairlineMargin { get; init; } = new(0f, 24f, 16f, 0f);
 
     /// <summary>The album aside's padding over its first section (24), on the right (the card's edge, 24) and under its last (24).</summary>
     public Edges4 AlbumPad { get; init; } = new(0f, 24f, 24f, 24f);

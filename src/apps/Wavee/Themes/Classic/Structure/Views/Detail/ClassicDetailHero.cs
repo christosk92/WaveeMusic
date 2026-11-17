@@ -78,13 +78,24 @@ internal static partial class ClassicDetailFrame
     static DetailListInsets ListInsets(DetailInsetQuery q)
     {
         if (q.Form != DetailForm.Columns) return default;
-        if (q.Columns?.TwoColumn is { } tc) return new DetailListInsets(RailLead(tc), 0f);
+        float trail = AsideTrail(q);
+        if (q.Columns?.TwoColumn is { } tc) return new DetailListInsets(RailLead(tc), trail);
         if (q.Columns?.Head is not null)
         {
             float inset = ClassicDetailLayout.HeadListInset(ClassicTiers.PageOf(q.Tiers).Gutter);
-            return new DetailListInsets(inset, inset);
+            return new DetailListInsets(inset, inset + trail);
         }
-        return default;
+        return new DetailListInsets(0f, trail);
+    }
+
+    /// <summary>The rows' air before a docked aside, laid inside the list's scroller (the frame's list column runs to the hairline, so the scrollbar stands on
+    /// the pane's edge): <see cref="ClassicDetailAside.ListTrail"/> while the aside is open; an aside that holds the insights alone follows their toggle
+    /// (the frame's <c>AsideSlot</c>), and folded shut it leaves the rows <see cref="ClassicDetailAside.ListInset"/> at the page's edge.</summary>
+    static float AsideTrail(DetailInsetQuery q)
+    {
+        if (q.Columns is not { Aside: { } aside } cols || ClassicDetailTiers.Of(q.Tiers).Aside is not { } g) return 0f;
+        if (aside.Body is null && cols.Sheet is { Facts: not null } only && !only.Toggle.Open.Value) return g.ListInset;
+        return g.ListTrail;
     }
 
     /// <summary>The rail's whole slot beside the rows: the expanded rail's live width, or the collapsed strip with its grip's slot.</summary>
