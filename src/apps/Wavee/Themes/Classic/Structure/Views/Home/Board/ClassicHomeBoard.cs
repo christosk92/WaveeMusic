@@ -104,6 +104,52 @@ internal static class ClassicHomeBoard
 
         internal HomeBoardProps Board => _p!.Board;
 
+        // A measured body lands on its box at the top of the NEXT frame (Measured): the last height a frame laid it out at is the one it
+        // presents. A body whose height eases (RowsReflow) is first laid out at its new height and only then put back at the ease's start, so
+        // a height written at once would pack every row under it at the far height for one frame and then pull them back.
+        readonly Dictionary<string, float> _measured = new(StringComparer.Ordinal);
+        Action<Action>? _post;
+        Action? _applyMeasured;
+        bool _measurePosted;
+
+        void Measured(Signal<float> extent, string id, float h)
+        {
+            if (h <= 0f) return;
+            if (extent.Peek() <= 0f) { if (MathF.Abs(h - extent.Peek()) > 0.5f) extent.Value = h; return; }   // the first measure: at once
+            _measured[id] = h;
+            if (_measurePosted || _post is null) return;
+            _measurePosted = true;
+            _post(_applyMeasured ??= ApplyMeasured);
+        }
+
+        void ApplyMeasured()
+        {
+            _measurePosted = false;
+            foreach (var (id, h) in _measured)
+            {
+                var s = ExtentOf(id);
+                if (MathF.Abs(h - s.Peek()) > 0.5f) s.Value = h;
+            }
+            _measured.Clear();
+        }
+
+        static string HeadId(BoardEntry e) => "group:" + e.GroupId;
+
+        /// <summary>A group's head at its tier's height, which eases when the tier changes it (<see cref="ClassicTierMotion.RowsReflow"/>, through a
+        /// window drag too); the packed head follows it (<see cref="Measured"/>).</summary>
+        Element EasedHead(BoardEntry e, float height, Element head)
+        {
+            var extent = ExtentOf(HeadId(e));
+            string id = HeadId(e);
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Height = height, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                Layout = ClassicTierMotion.RowsReflow,
+                OnBoundsChanged = r => Measured(extent, id, r.H),
+                Children = [head],
+            };
+        }
+
         Signal<float> ExtentOf(string id)
         {
             if (!_extent.TryGetValue(id, out var s)) _extent[id] = s = new Signal<float>(0f);
@@ -114,6 +160,7 @@ internal static class ClassicHomeBoard
         {
             var p = UseProps<BoardProps>();
             _p = p;
+            _post = UsePost();
             var board = p.Board;
             var items = UseComputed(() =>
             {
@@ -253,21 +300,34 @@ internal static class ClassicHomeBoard
                 }
             }
             var e = it.Entry;
-            if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeBoardRules.EntryOf(e, lay, 0f, 0f);
+            if (e.Kind == BoardEntryKind.GroupHead)
+            {
+                // A group's head steps its height with the tier (the shortcuts head 44 -> 100 at Compact, its switch on a line of its own): the head
+                // eases there (EasedHead) and the rows under it follow it frame by frame.
+                var head = ClassicHomeBoardRules.EntryOf(e, lay, 0f, 0f);
+                float eased = ExtentOf(HeadId(e)).Value;
+                return eased > 0f ? head with { Extent = eased, Flags = head.Flags | PackFlags.Follows } : head;
+            }
             // The shortcuts grid: a band at its own height (its tallest page), no chip strip (its cells carry their own chips).
             if (HomeShortcuts.IsGrid(e))
             {
                 float grid = ExtentOf(e.Id).Value;
-                return new PackEntry(PackEntryKind.Row, Extent: grid > 0f ? grid : ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
+                return grid > 0f
+                    ? new PackEntry(PackEntryKind.Row, Flags: PackFlags.Follows, Extent: grid)
+                    : new PackEntry(PackEntryKind.Row, Extent: ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
             }
             float open2 = _p.Board.View.OpenId.Value == e.Id ? ClassicHomeBoardRules.OpenExtent(e.Source, lay) : 0f;
             float full = 0f;
+            bool measured = false;
             if (ClassicHomeBoardRules.SizeOf(e) == HomeSize.Full)
             {
                 full = ExtentOf(e.Id).Value;
-                if (full <= 0f) full = FullEstimate(e, _p.Home);
+                measured = full > 0f;
+                if (!measured) full = FullEstimate(e, _p.Home);
             }
-            return ClassicHomeBoardRules.EntryOf(e, lay, full, open2);
+            var entry = ClassicHomeBoardRules.EntryOf(e, lay, full, open2);
+            // A measured row's extent is its body's height, which eases itself (RowsReflow): the rows follow it frame by frame.
+            return measured && open2 <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
         /// <summary>A shelf's height before its chapter has laid out: the Home tier record's own numbers for the bodies it knows.</summary>
@@ -295,7 +355,8 @@ internal static class ClassicHomeBoard
                 case ClassicBoardRow.Add: return ClassicHomeAddRow.Create(board, lay, it.Entry);
             }
             var e = it.Entry;
-            if (e.Kind == BoardEntryKind.GroupHead) return ClassicHomeTiles.GroupHead(board, e, lay, it.Switch);
+            if (e.Kind == BoardEntryKind.GroupHead)
+                return EasedHead(e, ClassicHomeBoardRules.EntryOf(e, lay, 0f, 0f).Extent, ClassicHomeTiles.GroupHead(board, e, lay, it.Switch));
             if (board.View.OpenId.Value == e.Id)
                 return ClassicHomeTiles.Open(board, e, cell, lay, board.Options(e));
             bool grid = HomeShortcuts.IsGrid(e);
@@ -304,6 +365,7 @@ internal static class ClassicHomeBoard
             // A shelf: the chapter lays out at its own height inside the packed box, and that height becomes the box (by the re-flow). The strip above it
             // in Edit Home is the tile's own (its chips), so the measure is the body under it.
             var extent = ExtentOf(e.Id);
+            string id = e.Id;
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -312,11 +374,11 @@ internal static class ClassicHomeBoard
                     new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, Grow = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-                        OnBoundsChanged = r =>
-                        {
-                            float body = r.H - (cell.Box.Peek().ToolStrip);
-                            if (body > 0f && MathF.Abs(body - extent.Peek()) > 0.5f) extent.Value = body;
-                        },
+                        // A body whose rows change with the width (a grid gaining or losing a column, a shelf's cards stepping a size) eases to its
+                        // new height through real layout, so the box measured here, the packed box and every row under it ride the ease instead
+                        // of stepping by the difference on the frame the columns change.
+                        Layout = ClassicTierMotion.RowsReflow,
+                        OnBoundsChanged = r => Measured(extent, id, r.H - cell.Box.Peek().ToolStrip),
                         Children = [tile],
                     },
                 ],

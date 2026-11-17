@@ -7,7 +7,8 @@
 //   Pages.Home
 //   └─ ZStack [ Wash (the shell tint claim the host built),
 //      ScrollView (Key/ScrollKey per PUBLISHED facet, Handle = the host's scroll handle)
-//        └─ centred column  Gap=HeadGap  MaxWidth=PageCap  Padding=(gutter, PageTop, gutter, Dock.Reserve+32): the gutter, the cap, the top and the gap
+//        └─ centred page row  MaxWidth=PageCap: [gutter spacer, column, gutter spacer] (the spacers ease their width: WidthReflow)
+//           column: spacers PageTop, HeadGap, Dock.Reserve+32 (they ease their height): the gutter, the cap, the top and the gap
 //           │                are the content tier's `ClassicHomeLayout` (`Rules/Tiers.Home.cs`: Standard is 20 / 1600 / 24, Huge caps at 2400, Short tops at 16)
 //           │                ScrollScope=PageScope
 //           ├─ Home.FacetRow (the SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
@@ -85,12 +86,11 @@ internal static class ClassicHomePage
         Element column = new BoxEl
         {
             Key = "home:column", Direction = 1,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = layout.PageMaxW,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f,
             AlignItems = FlexAlign.Stretch, ScrollScope = ClassicHomeRules.PageScope,
             // The page top, the head gap and the dock's reserve are spacers, not padding and gap: each steps at a tier edge (the top 16 -> 12 and
             // the player bar's reserve at the Compact edge), and a padding or a gap steps the column's height at once where a spacer's height
             // eases through real layout (`HeightReflow`), so the page's extent glides with the parts that already glide (`Shove`).
-            Padding = new Edges4(gutter, 0f, gutter, 0f),
             Children =
             [
                 Spacer("home:page-top", layout.PageTop),
@@ -109,7 +109,16 @@ internal static class ClassicHomePage
 
         // Keyed per PUBLISHED facet (`ClassicArtistPage`'s idiom): each facet keeps its own scroll offset under its own
         // ScrollKey, and the handle feeds the Refreshing swap's at-top test (FacetSwitch.Landed).
-        Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f, Children = [column] })
+        // The gutter is a spacer on each side too (16 at Compact, 32 / 36 wider): a padding steps the column's width at once at the edge, where a
+        // spacer's width eases through real layout (`WidthReflow`), and the column and everything in it ride it.
+        Element page = new BoxEl
+        {
+            Key = "home:page", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = layout.PageMaxW,
+            AlignItems = FlexAlign.Stretch,
+            Children = [Gutter("home:gutter-start", gutter), column, Gutter("home:gutter-end", gutter)],
+        };
+
+        Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f, Children = [page] })
             with
             {
                 Key = props.Facet.Length > 0 ? "home:scroll:" + props.Facet : "home:scroll", Grow = 1f, MinWidth = 0f,
@@ -127,6 +136,12 @@ internal static class ClassicHomePage
             Children = [props.Wash, scroll],
         };
     }
+
+    /// <summary>A horizontal spacer whose width eases through real layout when a tier changes it.</summary>
+    static Element Gutter(string key, float width) => new BoxEl
+    {
+        Key = key, Width = width, Shrink = 0f, HitTestVisible = false, Layout = ClassicTierMotion.WidthReflow,
+    };
 
     /// <summary>A vertical spacer whose height eases through real layout when a tier changes it.</summary>
     static Element Spacer(string key, float height) => new BoxEl
