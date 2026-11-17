@@ -81,7 +81,7 @@ internal static class WinUiPodcastEpisode
             [
                 Embed.Comp(lr, static () => new Hero()) with { Key = P.HeroKey },
                 WinUiPodcastKit.BarSentinel(barOn),
-                WinUiPodcastEpisodeParts.Map(p),
+                WinUiPodcastEpisodeParts.Map(p, lay.Target),
                 Embed.Comp(lr, static () => new NextUp()) with { Key = P.NextUpKey },
                 Embed.Comp(lr, static () => new Cards()) with { Key = P.ColsKey },
                 Embed.Comp(lr, static () => new More()) with { Key = P.MoreKey },
@@ -130,7 +130,7 @@ internal static class WinUiPodcastEpisode
             };
             TextEl title = (lay.Stacked ? Subtitle(e.Title) : Title(e.Title)) with
             {
-                Key = WinUiFrameLayout.PageTitleKey, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f,
+                Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f,
             };
             var meta = Body(string.Join(P.Dot, v.Meta)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f };
 
@@ -141,6 +141,8 @@ internal static class WinUiPodcastEpisode
             };
             return new BoxEl
             {
+                // The hero's column is the page's lead edge (the still sits on the gutter, the title beside it): the lint guide's page.title edge.
+                Key = WinUiFrameLayout.PageTitleKey,
                 Direction = lay.Stacked ? (byte)1 : (byte)0, Gap = lay.HeroGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
                 Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                 Children = [still, words],
@@ -195,10 +197,19 @@ internal static class WinUiPodcastEpisode
                 : Controls.Named(Bordered(Icons.Check, p.ToggleCompleted, h), markLabel));
             if (p.Share is { } share) kids.Add(Controls.Named(Bordered(Icons.Share, share, h), Loc.Get(Strings.Podcast.Pages.Share)));
             kids.Add(WinUiDetailKit.MoreButton(p.Menu, h, WinUiDetailKit.MoreLook.Bordered));
-            return new BoxEl
+            var row = new BoxEl
             {
                 Key = "pe-actions", Direction = 0, Wrap = true, Gap = P.ActionGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Margin = new Edges4(0f, P.ActionTop - P.MainGap, 0f, 0f), Children = kids.ToArray(),
+            };
+            // Compact (concept w-s): the split takes the whole first line, the bar and the glyph buttons the line under it.
+            if (!lay.SplitFills) return row;
+            var split = kids[0];
+            kids.RemoveAt(0);
+            return new BoxEl
+            {
+                Key = "pe-actions", Direction = 1, Gap = P.ActionGap, MinWidth = 0f, Margin = new Edges4(0f, P.ActionTop - P.MainGap, 0f, 0f),
+                Children = [new BoxEl { Direction = 0, MinWidth = 0f, Children = [split] }, row with { Key = "pe-actions:rest", Margin = default, Children = kids.ToArray() }],
             };
         }
     }
@@ -293,7 +304,8 @@ internal static class WinUiPodcastEpisode
             var pivot = new BoxEl
             {
                 Padding = new Edges4(P.SelBarPad, P.SelBarPad, P.SelBarPad, 0f), Shrink = 0f, MinWidth = 0f,
-                Children = [WinUiChoice.Pivot(labels, _index, Controls.ButtonHeight, i => p.SetTab(tabs[Math.Clamp(i, 0, tabs.Length - 1)]))],
+                Children = [WinUiChoice.Pivot(labels, _index, Controls.ButtonHeight, i => p.SetTab(tabs[Math.Clamp(i, 0, tabs.Length - 1)]),
+                    keys: lay.TwoCards ? s_wideKeys : s_narrowKeys)],
             };
             var divider = new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault };
             var left = new BoxEl
@@ -319,6 +331,8 @@ internal static class WinUiPodcastEpisode
 
         static string Count(int n) => n > 0 ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
 
+        static readonly string?[] s_wideKeys = ["pe-tab:chapters", "pe-tab:about", "pe-tab:comments"];
+        static readonly string?[] s_narrowKeys = ["pe-tab:chapters", "pe-tab:about", "pe-tab:transcript", "pe-tab:comments"];
         static readonly PodcastEpisodeTab[] s_wideTabs = [PodcastEpisodeTab.Chapters, PodcastEpisodeTab.About, PodcastEpisodeTab.Comments];
         static readonly PodcastEpisodeTab[] s_narrowTabs = [PodcastEpisodeTab.Chapters, PodcastEpisodeTab.About, PodcastEpisodeTab.Transcript, PodcastEpisodeTab.Comments];
     }

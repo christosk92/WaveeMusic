@@ -30,7 +30,11 @@ internal static class WinUiPodcastEpisodeParts
 {
     // ══ 1. THE CHAPTER MAP ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    public static Element Map(PodcastEpisodePageProps p) => Embed.Comp(p, static () => new MapHost()) with { Key = P.MapKey };
+    /// <summary>The map's inputs: the page props and the tier's target height (the band is ONE target that tall: a short chapter's segment alone would
+    /// be a sliver under the 40 Compact floor; the band seeks to the segment under the pointer).</summary>
+    public sealed record MapArgs(PodcastEpisodePageProps P, float Target);
+
+    public static Element Map(PodcastEpisodePageProps p, float target) => Embed.Comp(new MapArgs(p, target), static () => new MapHost()) with { Key = P.MapKey };
 
     sealed class MapHost : Component
     {
@@ -38,12 +42,16 @@ internal static class WinUiPodcastEpisodeParts
 
         public override Element Render()
         {
-            var p = UseProps<PodcastEpisodePageProps>();
+            var a = UseProps<MapArgs>();
+            var p = a.P;
             var v = p.View.Value;
             var chapters = v.Chapters;
+            if (_segW.Length != chapters.Length) _segW = new float[chapters.Length];
+            var starts = new int[chapters.Length];
+            for (int i = 0; i < starts.Length; i++) starts[i] = chapters[i].StartMs;
             var head = new List<Element>(3);
             var strong = BodyStrong(v.MapHead) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f };
-            var quiet = Body(v.MapSub) with { Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = v.MapQuietFirst ? 0f : 1f, MinWidth = 0f,
+            var quiet = Body(v.MapSub) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = v.MapQuietFirst ? 0f : 1f, MinWidth = 0f,
                 Trim = TextTrim.CharacterEllipsis };
             var words = new BoxEl
             {
@@ -88,19 +96,15 @@ internal static class WinUiPodcastEpisodeParts
                         * _segW[Math.Min(index, _segW.Length - 1)], 0f)),
                     Children = [new BoxEl { Width = P.ThumbDot, Height = P.ThumbDot, Corners = CornerRadius4.All(P.ThumbDotHalf), Fill = Tok.AccentDefault }],
                 };
-                segs[i] = Controls.Named(new BoxEl
+                segs[i] = new BoxEl
                 {
                     Key = "pe-seg:" + i, Grow = MathF.Max(1f, end - start), Basis = 0f, MinWidth = P.SegMin, Height = P.SegBand, ZStack = true,
-                    AlignItems = FlexAlign.Center, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
-                    OnClick = () => p.SeekTo(start),
-                    OnHoverMove = _ => _hover.SetIfChanged(index),
-                    OnPointerExit = () => { if (_hover.Peek() == index) _hover.Value = -1; },
+                    AlignItems = FlexAlign.Center, HitTestVisible = false,
                     OnBoundsChanged = r => { if (index < _segW.Length) _segW[index] = r.W; },
                     Children = [new BoxEl { Direction = 1, Justify = FlexJustify.Center, Children = [bar] }, thumb],
-                }, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + P.Dot + c.Title + P.Dot + c.Start);
+                };
             }
-            if (_segW.Length != chapters.Length) _segW = new float[chapters.Length];
-
+            var segW = _segW;
             return new BoxEl
             {
                 Direction = 1, Gap = P.MapGap, MinWidth = 0f, Corners = Radii.CardAll, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
@@ -108,12 +112,37 @@ internal static class WinUiPodcastEpisodeParts
                 Children =
                 [
                     new BoxEl { Direction = 0, Gap = P.MapGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = head.ToArray() },
-                    new BoxEl { Direction = 0, Gap = P.SegGap, Height = P.SegBand, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = segs },
+                    new BoxEl
+                    {
+                        Key = "pe-map-band", Direction = 0, Gap = P.SegGap, Height = a.Target, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                        Margin = new Edges4(0f, (P.SegBand - a.Target) / 2f, 0f, (P.SegBand - a.Target) / 2f),
+                        Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = chapters.Length > 0,
+                        OnHoverMove = pt => _hover.SetIfChanged(IndexAt(segW, pt.X)),
+                        OnPointerExit = () => _hover.SetIfChanged(-1),
+                        OnClick = () =>
+                        {
+                            int at = _hover.Peek();
+                            if (at >= 0 && at < starts.Length) p.SeekTo(starts[at]);
+                        },
+                        Children = segs,
+                    },
                 ],
             };
         }
 
         float[] _segW = [];
+
+        /// <summary>The segment under <paramref name="x"/> (band-local), from the laid-out widths and the gap between them.</summary>
+        static int IndexAt(float[] widths, float x)
+        {
+            float at = 0f;
+            for (int i = 0; i < widths.Length; i++)
+            {
+                at += widths[i] + P.SegGap;
+                if (x < at) return i;
+            }
+            return widths.Length - 1;
+        }
     }
 
     // ══ 2. THE CHAPTERS LIST ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -238,6 +267,7 @@ internal static class WinUiPodcastEpisodeParts
                 int line = p.CurrentLine.Value;
                 bool follow = p.Follow.Value;
                 double vh = _scroll.ViewportSignal.Value;
+                _ = _scroll.ExtentSignal.Value;   // the measured rows correct the estimates: re-centre as they land
                 if (!follow || line < 0 || vh <= 0 || layout.ItemCount < 0 && lines.Length == 0) return;
                 double target = layout.OffsetOf(line, 0f) - vh / 2 + P.TrLineEstimate / 2;
                 _scroll.ScrollTo(Math.Max(0, target), ScrollMove.Follow);
@@ -378,11 +408,12 @@ internal static class WinUiPodcastEpisodeParts
                 {
                     Width = P.TrTimeW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Padding = new Edges4(0f, P.BarRadius, 0f, 0f),
                     Children = [new TextEl(l.Time) { Size = Caption("").Size, LineHeight = P.TrTimeLine,
-                        Color = Prop.Of(() => isCur() ? Tok.AccentTextPrimary : Tok.TextDisabled) }],
+                        Color = Prop.Of(() => isCur() ? Tok.AccentTextPrimary : Tok.TextTertiary) }],
                 });
             row.Add(textBox);
             var kids = new List<Element>(2);
-            if (l.Heading is { } h)
+            // The first chapter's heading is the sticky heading itself: an inline copy under it would say it twice.
+            if (l.Heading is { } h && index > 0)
                 kids.Add(new BoxEl
                 {
                     Padding = new Edges4(chrome ? P.TrTimeW + P.TrColGap + P.TrTextPadX : P.TrTextPadX, P.SectionTop - P.TrHeadingTop, 0f, P.TrTextPadY),
