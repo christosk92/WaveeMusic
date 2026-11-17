@@ -31,7 +31,11 @@ internal static class WinUiPodcastEpisodeRules
     /// <summary>The segment band: its height, the gap between segments, a segment's rest and hover height, its floor and radius.</summary>
     public const float SegBand = 20f, SegGap = 3f, SegRest = 8f, SegHover = 12f, SegMin = 6f, SegRadius = 4f;
     /// <summary>The thumb on the current segment: its outer and inner discs.</summary>
-    public const float Thumb = 18f, ThumbDot = 10f;
+    public const float Thumb = 18f, ThumbDot = 10f, ThumbHalf = Thumb / 2f, ThumbDotHalf = ThumbDot / 2f;
+    /// <summary>The follow button's glyph.</summary>
+    public const float FollowGlyph = 16f;
+    /// <summary>The middle dot between joined facts.</summary>
+    public const string Dot = " · ";
     /// <summary>The thumb's ring stroke and the segments' rest and hover fills (white on the card, light and dark through alpha).</summary>
     public const float ThumbStroke = 1f;
 
@@ -56,6 +60,8 @@ internal static class WinUiPodcastEpisodeRules
     public const float SectionTop = 28f, SectionBottom = 8f, RowMinH = 64f, RowGap = 12f, RowArt = 48f, GridGap = 12f, GridCardPad = 12f, GridCardArtGap = 8f,
         GridSmallCard = 136f;
 
+    public const float GridDecode = 256f;
+
     // ── the 48 bar ──
     public const float BarH = 48f, BarCover = 32f, BarCoverRadius = 4f, BarGapX = 12f, BarReveal = 44f;
 
@@ -68,4 +74,26 @@ internal static class WinUiPodcastEpisodeRules
 
     /// <summary>The find highlight (the concept's rgba(255,214,10,.3)).</summary>
     public static ColorF FindMark => ColorF.FromRgba(255, 214, 10, 77);
+}
+
+/// <summary>The episode page's loading seed: the loaded layout's shape (a title, the meta, twelve chapters, a page of lines, two rows, six cards) for the
+/// derived flat skeleton. Figure-space runs measure without ink.</summary>
+internal static class WinUiPodcastEpisodeSeed
+{
+    static string Run(int n) => new((char)0x2007, n);
+
+    static readonly Wavee.Theming.Contracts.PodcastEpisodeVm s_ep = new("", Run(28), Run(60), 0, false, Run(6), 0, Run(6), "", 0f,
+        Wavee.Theming.Contracts.PodcastRowState.Unplayed, false, false, false, true, 0, false, null);
+
+    public static Wavee.Theming.Contracts.PodcastEpisodeView View { get; } = Wavee.Theming.Contracts.PodcastEpisodeView.Empty with
+    {
+        Load = Wavee.Theming.Contracts.PodcastLoad.Ready, Episode = s_ep, ShowTitle = Run(16), Crumb = Run(9), Meta = [Run(11), Run(6), Run(11)],
+        PrimaryLabel = Run(6), MapHead = Run(24), MapSub = Run(12), MapTime = Run(7),
+        Chapters = [.. Enumerable.Range(0, 12).Select(i => new Wavee.Theming.Contracts.PodcastChapterVm(i, Run(20 + i % 4 * 4), i * 100, i * 100 + 100,
+            Run(5), Run(6), 0f, false, false))],
+        Transcript = [.. Enumerable.Range(0, 12).Select(i => new Wavee.Theming.Contracts.PodcastLineVm(i * 10, Run(4), Run(40 + i % 3 * 12), i == 0 ? Run(20) : null))],
+        TranscriptLoad = Wavee.Theming.Contracts.PodcastLoad.Ready, TranscriptSub = Run(20),
+        MoreSub = Run(30), More = [s_ep, s_ep],
+        Similar = [.. Enumerable.Range(0, 6).Select(i => new Wavee.Theming.Contracts.PodcastCardVm("seed:" + i, Run(14), Run(10), null))],
+    };
 }

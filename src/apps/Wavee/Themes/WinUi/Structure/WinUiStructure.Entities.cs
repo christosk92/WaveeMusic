@@ -12,7 +12,6 @@ public sealed partial class WinUiStructure
 {
     static partial void RegisterEntities(ViewRegistryBuilder views)
     {
-        WinUiEpisode.Register(views);
         // The podcast pages v2 (the concept winui-podcast-v2): the show, the episode and the audiobook (`Views\Podcast\`).
         views.Add(ViewKeys.PodcastShowPage, WinUiPodcastShow.Template, "winui.podcast.show");
         views.Add(ViewKeys.PodcastEpisodePage, WinUiPodcastEpisode.Template, "winui.podcast.episode");
