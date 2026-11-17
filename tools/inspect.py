@@ -523,6 +523,7 @@ class PerfGate:
         self.failed = []
         self.over = 0
         self.alloc = 0
+        self.dropped = 0
         self.lines = []
 
     def rewrite(self, line):
@@ -549,22 +550,25 @@ class PerfGate:
         g = obj["gate"]
         self.over += g.get("over", 0)
         self.alloc += g.get("alloc", 0)
+        self.dropped += g.get("dropped", 0)
         for o in obj.get("over", [])[:8]:
             self.lines.append("over budget %.2f ms: frame %s of %s: %.2f ms, top %s %.2f ms: %s" % (
                 obj.get("budgetMs", 0), o.get("frame"), o.get("verb"), o.get("ms", 0), o.get("top"), o.get("topMs", 0), o.get("why", "")))
         for a in obj.get("alloc", [])[:8]:
             self.lines.append("hot alloc: frame %s of %s: %s bytes on a steady animation frame" % (a.get("frame"), a.get("verb"), a.get("bytes")))
+        for d in obj.get("dropped", [])[:8]:
+            self.lines.append("dropped: frame %s of %s: %s glyph quads not drawn (text missing for a frame)" % (d.get("frame"), d.get("verb"), d.get("glyphs")))
 
     def code(self):
         if self.failed or self.reports == 0:
             return 2
-        return 1 if self.over or self.alloc else 0
+        return 1 if self.over or self.alloc or self.dropped else 0
 
     def summary(self):
         code = self.code()
-        text = "gate-perf: %d perf report%s, %d frame%s over budget, %d hot-alloc frame%s; %d ok:false repl%s -> exit %d" % (
+        text = "gate-perf: %d perf report%s, %d frame%s over budget, %d hot-alloc frame%s, %d frame%s with dropped glyphs; %d ok:false repl%s -> exit %d" % (
             self.reports, "" if self.reports == 1 else "s", self.over, "" if self.over == 1 else "s", self.alloc, "" if self.alloc == 1 else "s",
-            len(self.failed), "y" if len(self.failed) == 1 else "ies", code)
+            self.dropped, "" if self.dropped == 1 else "s", len(self.failed), "y" if len(self.failed) == 1 else "ies", code)
         if self.failed:
             text += " (first: %s: %s)" % self.failed[0]
         elif self.reports == 0:
