@@ -313,7 +313,10 @@ internal static partial class ClassicDetailFrame
         Prop<float> width = Prop.Of(() => open is { Value: false } ? 0f : span + (live.Value > 0f ? live.Value : rest));
         Element grip = aside.CommitWidth is { } commit
             ? Splitter.Create(live, () => commit(live.Peek()),
-                new Splitter.SplitterOptions { Min = g.MinWidth, Max = g.MaxWidth, Polarity = SplitterPolarity.Leading }, dragging: s.Dragging)
+                // Paint-free (the shell rails' form): the hairline is the seam and the SizeWE cursor finds it; a hover thumb beside it read as a
+                // second, brighter divider every time the pointer passed the strip.
+                new Splitter.SplitterOptions { Min = g.MinWidth, Max = g.MaxWidth, Polarity = SplitterPolarity.Leading, ShowIndicator = false },
+                dragging: s.Dragging)
                 with { Key = "aside:grip" }
             : new BoxEl { Width = g.HairlineMargin.Right, Shrink = 0f };
         return new BoxEl
