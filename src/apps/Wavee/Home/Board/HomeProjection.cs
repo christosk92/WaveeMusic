@@ -72,8 +72,12 @@ public static class HomeProjection
         if (FeedOverride.Value is { } forced) return forced;
         if (h.IsValid && h.Knows(HomeFields.Sections)) return HomeFeedState.Ready;
         var phase = Spotify.Status.Value;
-        if (!h.IsValid || !h.LiveAttemptConcluded) return phase is >= Spotify.SessionPhase.Offline and <= Spotify.SessionPhase.Minting ? HomeFeedState.Offline : HomeFeedState.Loading;
-        return phase == Spotify.SessionPhase.Online ? HomeFeedState.Error : HomeFeedState.Offline;
+        // Offline is a session that could not connect (Failed). The resting phase a launch begins in (Offline, before the login starts) and the
+        // sign-in phases are the answer still coming: reading them as offline drew every placeholder as the offline line first and the loaded
+        // size after, two re-packs on each launch (a live open, 2026-11-17).
+        if (phase == Spotify.SessionPhase.Failed) return HomeFeedState.Offline;
+        if (!h.IsValid || !h.LiveAttemptConcluded) return HomeFeedState.Loading;
+        return phase == Spotify.SessionPhase.Online ? HomeFeedState.Error : HomeFeedState.Loading;
     }
 
     public static BoardModel Project(HomeDoc doc, IReadOnlyList<SectionInput> answer,
