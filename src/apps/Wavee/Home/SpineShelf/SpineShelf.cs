@@ -474,6 +474,11 @@ public sealed class SpineShelf : Component
             media.Add(new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover, DecodePx = SpineShelfRules.StillDecodePx });
         else if (song.Cover is { } cover)
         {
+            // "Its cover on a blur of its colours": the cover itself decoded a few pixels across and drawn over the whole media layer (the
+            // sampler's bilinear upscale is the blur), darkened under the words. No baked blur (that compute path is tied to the GPU crash); the
+            // colour wash under it is the placeholder while the tiny decode lands.
+            media.Add(new ImageEl { Source = cover, Fit = ImageFit.Cover, DecodePx = SpineShelfRules.BlurDecodePx });
+            media.Add(new BoxEl { Fill = new ColorF(0f, 0f, 0f, SpineShelfRules.BlurDim), HitTestVisible = false });
             // The concept's min(70 %, the tier's cover): centred on the tile (the media layer is), never wider than the tile it sits on. A tile
             // that widens grows its cover by a uniform scale on the tile's curve (ScaleCorrect: a square scales without distortion).
             float CoverEdge() => MathF.Min(g.TileCover, TileW() * SpineShelfRules.CoverShare);
