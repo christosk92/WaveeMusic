@@ -335,8 +335,20 @@ public static partial class Queue
         if (!takeover || previousOwner.IsEmpty) return [];
         var kept = new List<KeyValuePair<string, string>>(previousOwner.Length);
         foreach (KeyValuePair<string, string> entry in previousOwner)
-            if (!OwnsContextMetadataKey(entry.Key)) kept.Add(entry);
+            if (!OwnsContextMetadataKey(entry.Key) && ContextMetadataValueSound(entry.Value)) kept.Add(entry);
         return kept.ToArray();
+    }
+
+    /// <summary>May a <c>context_metadata</c> value someone else stated be published on as it came? Not when it carries U+FFFD or
+    /// a control character: that is binary run through a lossy text decode upstream. context-resolve answered an audiobook's
+    /// <c>image_url</c> as the cover's raw 20-byte file id decoded that way (2026-11-17 capture: U+FFFD "gfc" NUL NUL U+FFFD "["…,
+    /// the bytes of <c>ab676663000022a8…</c>), and every PUT re-published it, so the Cluster each controller reads carried it.
+    /// PURE.</summary>
+    public static bool ContextMetadataValueSound(string value)
+    {
+        foreach (char c in value)
+            if (c == '�' || (char.IsControl(c) && c is not ('\t' or '\n' or '\r'))) return false;
+        return true;
     }
 
     // ── the verb for a click on a row while ANOTHER device owns playback ────────────────────────────────────────────────

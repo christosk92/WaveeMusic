@@ -618,8 +618,8 @@ public static partial class Diagnostics
                 case Headless.Verb.Resume: Playback.Resume("probe"); return true;
                 case Headless.Verb.Toggle: Playback.TogglePlay("probe"); return true;
                 case Headless.Verb.Stop: Playback.Stop(); return true;
-                case Headless.Verb.Next: Playback.Next(); return true;
-                case Headless.Verb.Prev: Playback.Previous(); return true;
+                case Headless.Verb.Next: Playback.Next("probe"); return true;
+                case Headless.Verb.Prev: Playback.Previous("probe"); return true;
                 case Headless.Verb.Seek:
                     {
                         int target;

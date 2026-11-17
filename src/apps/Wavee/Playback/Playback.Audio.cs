@@ -1123,7 +1123,15 @@ public static partial class Playback
         /// silent endpoint, and `Ended` arrives at the declared duration on the wall clock.</summary>
         static async Task OpenSilentAsync(EntityRef row, uint epoch, int fromMs, long chain)
         {
-            long durMs = row.Kind == EntityKind.Track && row.Slot > 0 ? new Track(row.Slot).DurationMs : 0;
+            // The row's own length: a track's, or an episode's (an audiobook chapter runs 40 minutes). The 3:00 fallback is for a row the
+            // catalogue states no length for; applied to an episode it cut every chapter to 3:00, so a seek past 3:00 clamped to the end
+            // and the chapter advanced a moment later.
+            long durMs = row.Slot <= 0 ? 0 : row.Kind switch
+            {
+                EntityKind.Track => new Track(row.Slot).DurationMs,
+                EntityKind.Episode => new Episode(row.Slot).DurationMs,
+                _ => 0,
+            };
             if (durMs <= 0) durMs = 180_000;
             SilentStart start = SilentStart.For(durMs, fromMs);
             PcmAudioSession session = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, Applied());

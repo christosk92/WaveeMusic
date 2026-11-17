@@ -423,6 +423,8 @@ public static partial class Diagnostics
                     return Crossing(id, name, a);   // mounts by itself when nothing is
                 case Inspect.Verb.Views:
                     return Views(id, name, a);
+                case Inspect.Verb.PodcastPages:
+                    return PodcastPagesVerb(id, name, a);
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
                 case Inspect.Verb.Tiers:

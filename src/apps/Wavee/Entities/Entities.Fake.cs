@@ -232,6 +232,23 @@ public static partial class Entities
         finally { Staging.Return(s); }
     }
 
+    /// <summary>The catalogue classifies <paramref name="show"/> as an AUDIOBOOK, as the show's own list header does
+    /// (<c>is_audiobook=true</c>, <see cref="StagedShow.HeaderFacts"/>): the bit is ORed on and nothing else the show knows moves. The
+    /// fake library holds no book; the inspector's <c>transport do=audiobook</c> stages one for the Connect state's book branch.</summary>
+    internal static void RuleAudiobook(EntityId show)
+    {
+        if (show.Kind != EntityKind.Show || Current is null) return;
+        var s = Staging.Rent();
+        try
+        {
+            ref var row = ref s.Shows.RowFor(s.AddText(Utf8(show.Text)), Authority.Thin, 0u);
+            row.HeaderFacts = (uint)ShowFlags.Audiobook;
+            s.Shows.Settle();
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+    }
+
     /// <summary>The demo's autoplay answer (<c>Playback.UseFakeAutoplay</c>): <paramref name="count"/> pool tracks the queue does not hold
     /// yet, walking the pool from a stable offset of the context's uri, as a radio of similar songs would.</summary>
     internal static EntityId[] FakeAutoplay(EntityId context, int count)
