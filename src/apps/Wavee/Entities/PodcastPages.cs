@@ -492,6 +492,7 @@ public static partial class PodcastPages
 
     static SaveState SavedOf(string uri)
     {
+        if (TryFixtureSaved(uri, out bool fixtureSaved)) return fixtureSaved ? SaveState.Saved : SaveState.NotSaved;
         if (Controls.Library is not { } lib) return SaveState.Unknown;
         return lib.IsSaved(uri) ? SaveState.Saved : SaveState.NotSaved;
     }
