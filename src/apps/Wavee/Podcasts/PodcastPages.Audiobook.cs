@@ -258,7 +258,7 @@ public sealed class AudiobookScreen : Component
                 FinishedTitle: Loc.Get(PP.YouFinished),
                 FinishedSub: rating.Length > 0 ? PP.HowWasIt(rating, count) : "",
                 Similar: similar, SimilarTitle: firstAuthor.Length > 0 ? PP.MoreByAuthor(firstAuthor) : Loc.Get(PP.SimilarBooks),
-                SeeAllLabel: Loc.Get(PP.SeeAll));
+                SeeAllLabel: Loc.Get(PP.SeeAll)) { Current = current };
             return new Snapshot(view, show, chapters.ToImmutable(), rest, lengths, total, current, state, sample);
         }
 

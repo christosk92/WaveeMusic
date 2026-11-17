@@ -214,6 +214,24 @@ public sealed record AudiobookView(
     public static AudiobookView Empty { get; } = new(PodcastLoad.Pending, "", "", "", null, 0u, "", [], true, "", [], [], "", "", "", "", [],
         AudiobookState.NotStarted, "", true, "", "", "", "", null, "", "", "", false, "", "", "", "", "", "", "",
         [], false, "", "", "", "", "", "", "", [], [], "", "", "", "", [], "", "");
+
+    /// <summary>The chapter the primary continues (in progress), else -1.</summary>
+    public int Current { get; init; } = -1;
+
+    /// <summary>A representative book the loading state is derived from (its words are never shown: the skeleton fills them).</summary>
+    public static AudiobookView Placeholder { get; } = Empty with
+    {
+        Title = "Placeholder title", Subtitle = "A placeholder subtitle of a typical length", Kind = "Audiobook", Genres = ["Genre", "Genre"],
+        Authors = [new("Author name", "")], Narrators = [new("Narrator name", "")], ByLabel = "By", NarratedByLabel = "Narrated by",
+        Rating = "4.5", RatingCount = "(1,000)", Meta = ["8 hr 30 min", "19 chapters", "2024"], PrimaryLabel = "Start listening",
+        UpTitle = "8 hr 30 min", UpSub = "19 chapters", LibraryLabel = "Add to Your Library", PremiumLine = "Included in Premium, 12 h a month",
+        CheckHoursLabel = "Check hours left", TopUpLabel = "Top up hours", ContentsTitle = "Contents", ContentsSub = "19 chapters, 8 hr 30 min",
+        StartsAtLabel = "starts at", LineTitle = "The whole book", LineSub = "select one to start there", LineRight = "8 hr 30 min",
+        AboutTitle = "About this book", About = ["A placeholder paragraph about the book, long enough to wrap over three or four lines in the card beside the contents page."],
+        Facts = [new("Author", "Author name"), new("Narrator", "Narrator name"), new("Released", "1 January 2024"), new("Length", "8 hr 30 min")],
+        Chapters = [.. Enumerable.Range(0, 12).Select(static i => new AudiobookChapterVm(i, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "Chapter title", false, i * 1_800_000, 1_800_000, "0:00:00", "30 min", false, ""))],
+    };
 }
 
 /// <summary>The props of <see cref="ViewKeys.AudiobookPage"/>.</summary>
