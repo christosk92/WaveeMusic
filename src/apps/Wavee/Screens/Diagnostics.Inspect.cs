@@ -922,7 +922,9 @@ public static partial class Diagnostics
             mounted = true;
             Wavee.HomeUi.ShelfPreview.RealInTestHost = a.Str("media") == "real";   // the shelf's real Media Foundation players (the gpulock lane only)
             if (a.Str("media") == "fake")   // Diagnostics.Inspect.Media.cs: the fake video and audio source, before anything opens a player
-                _fakeMedia = new FakeMedia(_shell.Host, a.Int("mediaOpenMs", 120), a.Float("mediaStartCostMs", 0f), a.Float("mediaFrameCostMs", 0f));
+                _fakeMedia = new FakeMedia(_shell.Host, a.Int("mediaOpenMs", 120), a.Float("mediaStartCostMs", 0f), a.Float("mediaFrameCostMs", 0f),
+                    a.Int("mediaFailMs", 0));
+            Wavee.HomeUi.PreviewAudio.ResetForMount();   // the profile's preview sound, no claim, no duck, fresh counters
             if (a.Has("route") || a.Has("uri") || a.Has("deeplink"))
             {
                 if (!Navigate(a, out error)) return false;

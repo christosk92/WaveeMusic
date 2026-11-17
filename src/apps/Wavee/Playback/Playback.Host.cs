@@ -1508,6 +1508,19 @@ public static partial class Playback
     public static void GoLive() => Post(Input.GoLive(FrameNowMs()));
     public static void SetVolume(float linear01) => Post(Input.Volume(linear01, FrameNowMs()));
 
+    /// <summary>THIS device's own volume, 0..1 linear (the slider's while we play; ours, not the foreign owner's, while another device
+    /// does). The shelf's song preview plays at its taper. A read of the reducer's state: one float.</summary>
+    public static float LocalVolume => s_state.Volume;
+
+    /// <summary>The song preview's duck on THIS device's output (Home/SpineShelf/PreviewAudio.cs): a gain stage multiplied onto the local
+    /// audio and video players' amplitude. It never goes through the reducer, so it is never persisted, published or sent to a Connect
+    /// device, and the user's volume (the slider, <see cref="Volume"/>, the saved setting) never sees it. 1 = none.</summary>
+    public static void SetPreviewDuck(float gain)
+    {
+        Audio.SetDuck(gain);
+        Video.SetDuck(gain);
+    }
+
     /// <summary>The exit tail's one call (V-PA11): write a volume change the reducer's 500 ms debounce has not persisted yet,
     /// so the last slider move before closing the window is never lost. A no-op when nothing is pending. After the loop
     /// stopped — the reducer will not run again — and before the settings sink closes.</summary>

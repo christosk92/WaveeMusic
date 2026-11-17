@@ -827,6 +827,8 @@
     "listeningHistory": "Listening history",
     "plays": "{n} plays",
     "save": "Save",
+    "previewSoundOn": "Turn preview sound on",
+    "previewSoundOff": "Turn preview sound off",
     "more": "More",
     "couldntLoad": "Couldn''t load {what}",
     "couldntLoadHome": "Couldn't load Home",
