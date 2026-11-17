@@ -117,7 +117,7 @@ public static partial class Spotify
                 if (!terminal && row.Verdict is not (XmAnswerSummary.Verdict.Omitted or XmAnswerSummary.Verdict.Empty)) continue;
                 int at = Array.IndexOf(uris, row.Uri);
                 if (at < 0) continue;
-                var id = new StagedId(asked.Ids[at]);
+                var id = AskedId(s, asked.Ids[at], row.Uri);
                 if (id.IsEmpty) continue;
                 ref var c = ref s.Canvases.Add();
                 c.Track = id;
