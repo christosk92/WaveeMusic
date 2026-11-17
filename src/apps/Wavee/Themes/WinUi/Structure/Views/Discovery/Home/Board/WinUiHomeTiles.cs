@@ -679,6 +679,8 @@ internal static class WinUiHomeTiles
             return ToolTip.Wrap(Controls.IconAction(Icons.More, Toggle, requestsContext: false, size: p.Box) with
             {
                 OnRealized = h => _anchor = h, Role = AutomationRole.Button,
+                // The box steps with the tier (32, 40 at Compact): it eases through real layout, so the card's header beside it rides it.
+                Layout = Design.Reduced ? null : WinUiDiscoveryMotion.SizeReflow,
             }, Loc.Get(Strings.Theme.Winui.Home.Board.More));
         }
 
