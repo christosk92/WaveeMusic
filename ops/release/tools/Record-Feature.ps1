@@ -16,7 +16,7 @@
   3. Sets presentation mode (no account name or picture), the theme, the client size and the route, then plays the script's
      SETUP part (the lines before `#rec`: e.g. `#live ready key=...`), so the take never opens on a loading state.
   4. Records the window (ffmpeg gfxcapture = Windows.Graphics.Capture of THIS window only: nothing that covers it, nothing
-     beside it, no OS cursor; a window that shrinks keeps the frame size with black bars) at the refresh rate into a
+     beside it, no OS cursor; a window that shrinks keeps the frame size with black bars) at -Fps (default 60 from a 120 Hz panel: every other presented frame) into a
      lossless intermediate while the script's TAKE part (after `#rec`) plays through wavee://diag?cmd=drive (the app's own
      input queue: no SendInput, the owner's pointer never moves; the app draws the driver's pointer). The window is topmost
      (no activation) for the take. -Audio adds the verify process's own output (WASAPI process loopback, Record-AppAudio.cs):
@@ -46,13 +46,19 @@ param(
     [ValidateSet('classic', 'winui', 'zune')][string]$Theme = 'winui',
     [string]$Route = 'home',
     [int]$Width = 1600, [int]$Height = 1000,
+    # The take's frame rate. Default: half the panel's rate when that is above 60 (120 Hz -> 60 fps: every other presented frame,
+    # picked on the GPU, measured loss-free on this box), else the panel's. -Fps <panel rate> films every frame (on a 120 Hz
+    # Snapdragon X: about 1.4 % of the frames are lost by the capture, which the report counts).
     [int]$Fps = 0,
     [int]$TailMs = 600,
-    # rgb: the window's BGRA pixels, lossless (libx264rgb qp 0); nv12: converted to 4:2:0 by the encoder (less encode work;
-    # lossless in luma, chroma at half resolution, as every H.264 delivery is anyway; the GPU route, scale_d3d11, fails on Adreno)
-    [ValidateSet('rgb', 'nv12')][string]$Capture = 'rgb',
     [switch]$Audio,
-    [switch]$KeepOpen
+    [switch]$KeepOpen,
+    # Values for the script's {NAME} placeholders (a take written against a key scheme: -Set @{ SHELF = '...'; OPEN = '...' }).
+    [hashtable]$Set = @{},
+    # Discovery instead of a take: after the setup, list the keyed nodes whose key starts with this prefix (key, rect) and stop.
+    [string]$ListKeys,
+    # The scroller -ListKeys seeks along (a scroll-key prefix; Home's page is home:).
+    [string]$ListVp = 'home:'
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
@@ -94,7 +100,9 @@ $cb = [RecFeature.Win+MonitorEnumProc]{ param($m, $dc, [ref]$r, $l)
 $fits = @($monitors | Where-Object { ($_.Work.R - $_.Work.L) -ge [int]($Width * $_.Scale) -and ($_.Work.B - $_.Work.T) -ge [int]($Height * $_.Scale) } | Sort-Object Hz -Descending)
 if ($fits.Count -eq 0) { throw "no monitor holds a ${Width}x${Height} DIP window: $(($monitors | ForEach-Object { "$($_.Device) $($_.Hz) Hz x$($_.Scale)" }) -join '; ')" }
 $mon = $fits[0]
-if ($Fps -le 0) { $Fps = $mon.Hz }
+if ($Fps -le 0) { $Fps = if ($mon.Hz -gt 60 -and $mon.Hz % 2 -eq 0) { $mon.Hz / 2 } else { $mon.Hz } }
+if ($mon.Hz % $Fps -ne 0) { throw "-Fps $Fps does not divide the panel's $($mon.Hz) Hz (every frame of the take must be a presented one)" }
+$step = $mon.Hz / $Fps
 Say "monitor $($mon.Device) $($mon.Hz) Hz scale $($mon.Scale); recording at $Fps fps"
 
 # ── the verify Wavee ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -141,7 +149,14 @@ function Script-Ms([string[]]$lines) {
     $ms
 }
 
-$all = Get-Content -LiteralPath $Script -Encoding UTF8
+$all = @(Get-Content -LiteralPath $Script -Encoding UTF8 | ForEach-Object {
+    $line = $_
+    foreach ($k in $Set.Keys) { $line = $line.Replace('{' + $k + '}', [string]$Set[$k]) }
+    $line })
+if (-not $ListKeys) {
+    $open = @($all | Where-Object { $_ -notmatch '^\s*#(?!live )' } | Select-String -Pattern '\{[A-Z0-9_]+\}' -AllMatches | ForEach-Object { $_.Matches.Value } | Sort-Object -Unique)
+    if ($open.Count -gt 0) { throw "the script has placeholders without a value: $($open -join ', ') (pass -Set @{ NAME = 'value' }; -ListKeys <prefix> lists the live keys)" }
+}
 $cut = [Array]::IndexOf([string[]]$all, ($all | Where-Object { $_.Trim() -eq '#rec' } | Select-Object -First 1))
 $setup = if ($cut -gt 0) { $all[0..($cut - 1)] } else { @() }
 $take = if ($cut -ge 0) { $all[($cut + 1)..($all.Count - 1)] } else { $all }
@@ -165,15 +180,30 @@ try {
     $r = New-Object RecFeature.Win+RECT; [void][RecFeature.Win]::GetWindowRect($hwnd, [ref]$r)
     [void][RecFeature.Win]::MoveWindow($hwnd, $mon.Work.L, $mon.Work.T, $r.R - $r.L, $r.B - $r.T, $true)
     if ($Route) { Send-WaveeUri -Hwnd $hwnd -Uri "wavee://open?route=$Route"; Start-Sleep -Milliseconds 2500 }
-    if ($setup.Count -gt 0) { Say 'setup'; Drive $setup 'setup' (Script-Ms $setup) | Out-Null }
+    if ($setup.Count -gt 0) { Say 'setup'; Drive (@($setup | Where-Object { $_ -notmatch '\{[A-Z0-9_]+\}' })) 'setup' (Script-Ms $setup) | Out-Null }
+    if ($ListKeys) {
+        # discovery: the page glides on until a key under the prefix is realized (#live reveal prefix=), then every keyed node of
+        # the live scene (the bundle's keyed.tsv) under the prefix, with its rect (DIP)
+        Drive @("#live reveal prefix=$ListKeys vp=$ListVp top=150 ms=600") 'seek' 60000 | Out-Null
+        Start-Sleep -Milliseconds 1500
+        $b = Diag 'cmd=bundle&tag=keys' 30000
+        $rows = @(Get-Content -LiteralPath (Join-Path $b.Path 'keyed.tsv') -Encoding UTF8 | Select-Object -Skip 1 | ForEach-Object { $c = $_.Split("`t"); if ($c[2].StartsWith($ListKeys)) { '{0}  {1},{2} {3}x{4}' -f $c[2], $c[4], $c[5], $c[6], $c[7] } })
+        $rows | Set-Content -Encoding UTF8 (Join-Path $Out 'keys.txt')
+        $rows
+        return
+    }
 
     # ── the take ───────────────────────────────────────────────────────────────────────────────────────────────────────
     [void][RecFeature.Win]::SetWindowPos($hwnd, [IntPtr](-1), 0, 0, 0, 0, 0x0013)   # topmost, no move/size/activation
     Start-Sleep -Milliseconds 400
     $mkv = Join-Path $Out 'take.mkv'
-    $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-filter_complex',
-        ("gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $Fps):resize_mode=crop," + $(if ($Capture -eq 'rgb') { 'hwdownload,format=bgra' } else { 'hwdownload,format=bgra' })),
-        '-fps_mode', 'passthrough') + $(if ($Capture -eq 'rgb') { @('-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0') } else { @('-c:v', 'libx264', '-preset', 'ultrafast', '-qp', '0', '-pix_fmt', 'yuv420p') }) + @($mkv)
+    # Windows.Graphics.Capture of this window (ffmpeg gfxcapture) as an INPUT with a deep queue: the capture runs on its own thread
+    # and the read-back and encode cannot stall it (in a filter graph they did: frames were lost). Unthrottled (a cap at the
+    # refresh rate drops frames that arrive a hair early); `framestep` keeps every Nth frame while it is still on the GPU, so
+    # only the kept ones are read back. Lossless BGRA (libx264rgb, qp 0), each frame with its own capture time.
+    $src = "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $mon.Hz):resize_mode=crop" + $(if ($step -gt 1) { ",framestep=$step" } else { '' })
+    $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-thread_queue_size', '256', '-f', 'lavfi', '-i', $src,
+        '-vf', 'hwdownload,format=bgra', '-fps_mode', 'passthrough', '-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0', $mkv)
     $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($ffArgs | ForEach-Object { if ($_ -match '[\s;,]') { '"' + $_ + '"' } else { $_ } })))
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
     $ff = [System.Diagnostics.Process]::Start($psi)
@@ -201,7 +231,7 @@ finally {
 # ── the files (also for a take whose script failed: its frames show where) ─────────────────────────────────────────────
 $driveDir = if ($d) { $d.Path } else { (Get-ChildItem (Join-Path $ev 'drive') -Directory | Where-Object Name -like '*-take' | Sort-Object Name | Select-Object -Last 1).FullName }
 if ($driveDir -and (Test-Path $driveDir)) { Copy-Item -Recurse -Force $driveDir (Join-Path $Out 'drive') }
-& python -I (Join-Path $PSScriptRoot 'record_feature_post.py') --out $Out --fps $Fps --scale $mon.Scale --width $Width --height $Height
+& python -I (Join-Path $PSScriptRoot 'record_feature_post.py') --out $Out --fps $Fps --panel $mon.Hz --scale $mon.Scale --width $Width --height $Height
 if ($LASTEXITCODE -ne 0) { throw "post-processing failed ($LASTEXITCODE)" }
 Get-Content (Join-Path $Out 'report.txt')
 if ($takeError) { throw "the take's script failed: $takeError" }

@@ -60,6 +60,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--fps", type=int, required=True)
+    ap.add_argument("--panel", type=int, default=0, help="the display's refresh rate (the app presents at it; default --fps)")
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--width", type=int, default=0)
     ap.add_argument("--height", type=int, default=0)
@@ -69,6 +70,7 @@ def main():
     wav = os.path.join(out, "take.wav")
     has_audio = os.path.exists(wav) and os.path.getsize(wav) > 1024
     period = 1000.0 / a.fps
+    app_period = 1000.0 / (a.panel or a.fps)
 
     # ── the capture's own timestamps ────────────────────────────────────────────────────────────────────────────────
     raw = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "csv=p=0", mkv])
@@ -110,8 +112,8 @@ def main():
             # from the render thread without a UI frame, so the app side is judged inside the glides only.
             gl = [i for i in range(len(rows)) if any(a <= app_starts[i] - app_gaps[i] and app_starts[i] <= b for a, b in glides)]
             sel_gaps = [0.0] + [app_gaps[i] for i in gl]
-            app_missing = sum(int(round(g / period)) - 1 for g in sel_gaps[1:] if g >= 1.5 * period)
-            app_events = [(gl[j - 1], round(sel_gaps[j], 1), int(round(sel_gaps[j] / period)) - 1) for j in range(1, len(sel_gaps)) if sel_gaps[j] >= 1.5 * period]
+            app_missing = sum(int(round(g / app_period)) - 1 for g in sel_gaps[1:] if g >= 1.5 * app_period)
+            app_events = [(gl[j - 1], round(sel_gaps[j], 1), int(round(sel_gaps[j] / app_period)) - 1) for j in range(1, len(sel_gaps)) if sel_gaps[j] >= 1.5 * app_period]
         st = os.path.join(drive, "summary.txt")
         if os.path.exists(st):
             for l in open(st, encoding="utf-8"):
@@ -169,13 +171,13 @@ def main():
     # ── the report ──────────────────────────────────────────────────────────────────────────────────────────────────
     sizes = {p: os.path.getsize(os.path.join(out, p)) for p in (os.path.basename(full), "share-60.mp4")}
     lines = [
-        f"take            {duration:.2f} s, {len(times)} captured frames at up to {a.fps} fps (one per window update)",
+        f"take            {duration:.2f} s, {len(times)} captured frames at up to {a.fps} fps (one per window update; the panel runs at {a.panel or a.fps} Hz)",
         f"window          {a.width}x{a.height} DIP at x{a.scale} = {int(a.width * a.scale)}x{int(a.height * a.scale)} px",
         f"on the beat     {on_beat} of {len(times) - 1} gaps are one display period ({period:.2f} ms)",
         f"capture missing {cap_missing} frame(s) inside motion (aligned on the take's first move at capture frame #{first_move})" + (f": at frames {', '.join(f'#{i} ({g:.1f} ms)' for i, g, _ in cap_events[:20])}" if cap_events else ""),
     ]
     if app_missing is not None:
-        lines.append(f"app missing     {app_missing} UI frame(s) inside the pointer glides ({len(glides)} glides, {app_frames} UI frames in all)"
+        lines.append(f"app missing     {app_missing} UI frame(s) at {round(1000 / app_period)} Hz inside the pointer glides ({len(glides)} glides, {app_frames} UI frames in all)"
                      + (f": at app frames {', '.join(f'#{i} ({g:.1f} ms)' for i, g, _ in app_events[:20])}" if app_events else ""))
     for k in ("result", "why", "presentsDisplayed", "presentsDropped", "vblanksRepeated", "renderMissedMotionTicks"):
         if k in summary:
