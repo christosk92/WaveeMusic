@@ -1892,7 +1892,13 @@ public static partial class Spotify
                 StagedId target = default;
                 while (item.Next())
                 {
-                    if (item.Field == 1) target = Identity(s, item.Bytes());
+                    if (item.Field == 1)
+                    {
+                        var uri = item.Bytes();
+                        target = Identity(s, uri);
+                        // A local file: the catalogue knows nothing of it, so its own uri is its face (Track.LocalUri.cs).
+                        if (LocalTrackUri.Is(uri)) LocalTrackUri.StageFace(s, in target, uri);
+                    }
                     else if (item.Field == 2) ItemAttributes(item.Message(), s, ref edge);
                     else item.Skip();
                 }

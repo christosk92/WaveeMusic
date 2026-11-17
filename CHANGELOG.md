@@ -30,7 +30,7 @@ versions separately under `v*` and is not tracked in this file.)
 - **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no
   video; it now plays its picture the way a music video does.
 
-- **Local files in playlists.** Their tags, video and Canvas answers are kept instead of being asked for again on every visit. (#231)
+- **Local files in playlists show up.** A playlist's local files show their title, artist and length (greyed out: Wavee can't play them yet) instead of empty rows, and their tags, video and Canvas answers are kept instead of being asked for again on every visit. (#231)
 
 ## [0.3.9] - 2026-11-14
 
