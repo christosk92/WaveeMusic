@@ -40,10 +40,12 @@ if (-not $Exe) { $Exe = Join-Path $repo 'src\apps\Wavee\bin\verify\evidence\Wave
 if (-not (Test-Path $Exe)) { throw "verify build not found: $Exe" }
 $Exe = (Resolve-Path $Exe).Path
 
-# A verify instance already running from this exe: reuse it rather than launching a second (it would hand off to it).
-$mine = Get-Process Wavee -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe }
-if ($mine) {
-    $p = $mine | Select-Object -First 1
+# A verify instance already running on THIS profile (its command line's --profile, never the exe alone: Find-VerifyWavee):
+# reuse it rather than launching a second (it would hand off to it).
+$found = Find-VerifyWavee -Exe $Exe -ProfileDir $ProfileDir
+$mine = @(if ($found) { $found })
+if ($mine.Count -gt 0) {
+    $p = Get-Process -Id $mine[0].ProcessId
     $h = Wait-WindowByPid -ProcessId $p.Id -TimeoutSec 10
     $logs = Join-Path $ProfileDir 'logs'
     return [pscustomobject]@{ Pid = $p.Id; Hwnd = $h; Profile = $ProfileDir; LogFolder = $logs; EvidenceRoot = (Join-Path $logs 'evidence'); Reused = $true }

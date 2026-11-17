@@ -1,0 +1,20 @@
+# Record-Feature.ps1 proof take: today's Home (WinUI, 1600x1000): a glide over the shortcuts, two wheel turns down, a glide
+# back up to the shortcuts, and their pager (Shortcuts | Recently played) turned and back. Inspector grammar; `#live` lines play
+# only in the live driver; `#rec` splits the setup from the take.
+#live ready key=home:tile:d-daylist images=true quiet=500
+pointer path=[at:1240:560@0] steps=1
+#rec
+pointer path=[home:tile:fill:liked@600] steps=40 ease=inout
+pointer path=[at:900:660@250] steps=26 ease=inout
+scroll x=900 y=660 dy=4
+frames 55
+scroll x=900 y=660 dy=4
+frames 70
+#live reveal key=home:group:pinned top=180 ms=900
+pointer path=[at:1490:294@450] steps=44 ease=inout
+click x=1490 y=294
+frames 100
+pointer path=[at:1388:294@300] steps=22 ease=inout
+click x=1388 y=294
+frames 80
+pointer path=[leave@0] steps=40 ease=inout

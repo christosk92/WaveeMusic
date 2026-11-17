@@ -51,6 +51,24 @@ public static partial class Diagnostics
             return Platform.Settings.Get(Platform.Keys.DeveloperMode) && !Presenting.Value;
         }
 
+        /// <summary>Presentation mode's redaction of server text: the signed-in account's display name, wherever Spotify wrote
+        /// it into a title ("Made For &lt;name&gt;"), reads "You". Peeks (the caller decides what it subscribes to).</summary>
+        public static string? RedactAccount(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            var me = User.Me;
+            if (!me.IsValid) return text;
+            string name = Entities.Strings.Resolve(me.NameId);
+            if (name.Length < 2) return text;
+            text = text.Replace(name, "You", StringComparison.OrdinalIgnoreCase);
+            // Spotify writes the first name alone too ("Made For Chris" for "Chris K."): the first word, as a whole word.
+            int space = name.IndexOf(' ');
+            string first = space > 0 ? name[..space] : name;
+            if (first.Length < 3) return text;
+            return System.Text.RegularExpressions.Regex.Replace(text, @"\b" + System.Text.RegularExpressions.Regex.Escape(first) + @"\b", "You",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        }
+
         static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
         const int CaptureTimeoutMs = 4000;
 

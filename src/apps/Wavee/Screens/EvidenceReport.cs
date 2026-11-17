@@ -17,7 +17,7 @@ namespace Wavee;
 
 /// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
 /// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here, HomeCap }
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here, HomeCap, Drive }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
 /// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
@@ -31,11 +31,12 @@ public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, 
 /// at its top; <c>video</c>: <see cref="Mode"/> the video surface's placement (docked/floating/detached/fullscreen/off);
 /// on <c>shot</c>, <see cref="Viewport"/> + <see cref="Reveal"/> do the same after the zoom reflowed the page.
 /// <c>theme</c>: <see cref="Mode"/> the theme id to switch to (classic/winui/zune); <c>mini</c>: <see cref="On"/> 1 open, 0 close, −1
-/// leave, and <see cref="Face"/> the mini player's face index (empty = leave).</para></summary>
+/// leave, and <see cref="Face"/> the mini player's face index (empty = leave). <c>drive</c>: <see cref="File"/> the script
+/// to replay (Diagnostics.Drive.cs), <see cref="Tag"/> its output folder's tag; <see cref="On"/> 0 = stop the running drive.</para></summary>
 public readonly record struct DiagVerb(DiagCommand Command, string Tag = "", int X = 0, int Y = 0, bool Dip = false,
     string Viewport = "", double To = 0.0, bool Glide = false, int Level = -1, string[]? Uris = null, int[]? Kinds = null,
     int Zoom = 0, int SettleMs = 0, bool Alpha = false, string[]? Keys = null, int On = -1, int Ms = -1, string Mode = "",
-    string Face = "", int Gallery = -1, string Reveal = "");
+    string Face = "", int Gallery = -1, string Reveal = "", string File = "");
 
 /// <summary>One nodes.tsv row: a node referenced by any exported record, with its readable name, element kind and
 /// window rect (DIP; empty when gone).</summary>
@@ -74,6 +75,7 @@ public static class EvidenceReport
         if (string.IsNullOrEmpty(query)) return false;
         string cmd = "", tag = "", vp = "", move = "", level = "", uris = "", kinds = "";
         string zoom = "", settle = "", reveal = "", alpha = "", keys = "", on = "", ms = "", pause = "", open = "", mode = "", face = "", gallery = "";
+        string file = "", stop = "";
         string? x = null, y = null, to = null;
         bool dip = false;
         ReadOnlySpan<char> q = query;
@@ -112,6 +114,8 @@ public static class EvidenceReport
                 case "mode": mode = val; break;
                 case "face": face = val; break;
                 case "gallery": gallery = val; break;
+                case "file": file = val; break;
+                case "stop": stop = val; break;
             }
         }
         switch (cmd.ToLowerInvariant())
@@ -217,6 +221,12 @@ public static class EvidenceReport
                 return true;
             case "here":
                 verb = new DiagVerb(DiagCommand.Here);   // pull playback to this device (Connect takeover)
+                return true;
+            case "drive":
+                // the live driver (Diagnostics.Drive.cs): replay a script file, or stop=1 the running one
+                if (Flag(stop) == 1) { verb = new DiagVerb(DiagCommand.Drive, On: 0); return true; }
+                if (file.Length == 0) return false;
+                verb = new DiagVerb(DiagCommand.Drive, Tag: SanitizeTag(tag.Length == 0 ? "drive" : tag), File: file);
                 return true;
             case "mini":
             {

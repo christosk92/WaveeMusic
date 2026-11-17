@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Shoot the 0.3.9 Microsoft Store set from a VERIFY Wavee: the stills (window back buffers with their keyed rects) and the
@@ -38,8 +38,13 @@ $shots = Join-Path $Out 'shots'; $clipDir = Join-Path $Out 'clips'
 New-Item -ItemType Directory -Force $shots, $clipDir | Out-Null
 $send = Join-Path $repo 'ops\tools\evidence\Send-WaveeDiag.ps1'
 $Exe = (Resolve-Path $Exe).Path
-$proc = Get-Process Wavee -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-if (-not $proc) { throw "no verify Wavee window running from $Exe - start it with Start-VerifyWavee.ps1" }
+# The verify instance: the one running from -Exe on THIS profile (its --profile on the command line; the profile is the evidence
+# root's grandparent). Never matched on the exe alone: the owner may run the same build on their own profile.
+Import-Module (Join-Path $repo 'ops\tools\evidence\Evidence.psm1') -Force -DisableNameChecking
+$verifyProfile = Split-Path (Split-Path $EvidenceRoot -Parent) -Parent
+$found = Find-VerifyWavee -Exe $Exe -ProfileDir $verifyProfile
+$proc = if ($found) { Get-Process -Id $found.ProcessId -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } }
+if (-not $proc) { throw "no verify Wavee window running from $Exe on profile $verifyProfile - start it with Start-VerifyWavee.ps1" }
 $main = $proc.MainWindowHandle
 
 Add-Type -Namespace StoreSet -Name Win -MemberDefinition @'

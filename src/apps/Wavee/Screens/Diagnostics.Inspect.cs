@@ -450,7 +450,21 @@ public static partial class Diagnostics
                     {
                         float w0 = a.Float("w", 0f), h0 = a.Float("h", 0f);
                         if (!(w0 >= 1f && h0 >= 1f)) return Inspect.Reply.Fail(id, name, "resize wants w and h (DIP)");
+                        int glideMs = a.Int("ms", 0);
                         if (a.Bool("loop", false)) ResizeThroughModalLoop(shell, w0, h0);
+                        else if (glideMs > 0)
+                        {
+                            // `ms=`: one size per 16 ms frame, eased in-out, as a hand drags the edge (the live driver's resize)
+                            RectF from = InspectKit.WindowRect(shell);
+                            int frames = Math.Max(1, (glideMs + 15) / 16);
+                            for (int i = 1; i <= frames; i++)
+                            {
+                                float t = (float)i / frames;
+                                t = t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3f) / 2f;
+                                shell.Resize(MathF.Round(from.W + (w0 - from.W) * t), MathF.Round(from.H + (h0 - from.H) * t));
+                                if (i < frames) RunFrames(1);
+                            }
+                        }
                         else shell.Resize(w0, h0);
                         if (_pointer is { } p && !InspectKit.WindowRect(shell).Contains(p)) _pointer = null;   // the window shrank past it
                         return Settled(id, name, a);
