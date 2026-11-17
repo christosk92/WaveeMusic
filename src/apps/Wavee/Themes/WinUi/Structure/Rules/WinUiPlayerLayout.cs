@@ -280,6 +280,58 @@ public static class WinUiTransportLayout
 
     public const float ReadoutSize = 14f;
 
+    // ── the seek preview (the picture under the pointer) ──
+
+    /// <summary>The picture's width; its height follows the video's aspect.</summary>
+    public const float PreviewWidth = 232f;
+
+    /// <summary>The card around the picture: 4 on the picture's three sides, so its 4 corners sit concentric inside the card's 8, and the
+    /// caption's foot.</summary>
+    public static readonly Edges4 PreviewPadding = new(4f, 4f, 4f, 7f);
+
+    /// <summary>The picture to its caption, and the time to the chapter beside it.</summary>
+    public const float PreviewGap = 5f, PreviewCaptionGap = 6f;
+
+    /// <summary>The caption: the time (14, semibold: the readout's size) and the chapter (12).</summary>
+    public const float PreviewTimeSize = 14f, PreviewLabelSize = 12f;
+
+    public const int PreviewTimeWeight = 600;
+
+    /// <summary>The air the tip keeps: 14 above the rail's line it points at (clear of the thumb and of the transport card's edge), and the
+    /// page gutter (16) to either side, so a tip the window clamps stops on the gutter and not on the glass.</summary>
+    public static readonly Edges4 PreviewLift = new(16f, 0f, 16f, 14f);
+
+    /// <summary>The same on the PLAYER BAR, where the transport buttons sit over the rail: the tip rises above the whole bar (the bar's
+    /// top edge is 50 above the tip's anchor, and 4 of air), so play, skip and shuffle stay in view and in reach while the pointer is on
+    /// the rail.</summary>
+    public static readonly Edges4 PreviewLiftBar = new(16f, 0f, 16f, 54f);
+
+    // ── the lyric tip: close to the rail, with a pointer ──
+
+    /// <summary>The lyric tip keeps to the rail: 2 between the pointer's point and the tip's anchor (the point rests just over the thumb), and 16 of air to either side,
+    /// so a card the window clamps stops short of the glass.</summary>
+    public const float LyricTipGap = 2f;
+
+    public static readonly Edges4 LyricTipSides = new(16f, 0f, 16f, 0f);
+
+    /// <summary>The pointer: a 16-wide, 8-tall wedge on the card's foot that stays on the POINTER (the teaching tip's beak: a square of side
+    /// 16 / sqrt 2 turned 45 degrees, its lower half showing), drawn in a 16 x 16 slot whose centre sits on the card's bottom edge. The band
+    /// it shows through is the wedge's 8 plus 1 over the card's edge, so the edge does not strike through the wedge's base; the slot is
+    /// raised 7 into it.</summary>
+    public const float LyricBeakLong = 16f, LyricBeakShort = 8f, LyricBeakHalf = 8f, LyricBeakBand = 9f, LyricBeakRise = -7f;
+
+    public const float LyricBeakFill = 11.3137f, LyricBeakFillInset = 2.3431f, LyricBeakTurn = 45f;
+
+    public const int LyricBeakPoints = 3;
+
+    public static readonly Point2 LyricBeakP0 = new(0f, 8f), LyricBeakP1 = new(8f, 16f), LyricBeakP2 = new(16f, 8f);
+
+    /// <summary>How close to either end of the tip the pointer's centre may come: the side air (16), the card's corner (4) and half the pointer (8).</summary>
+    public const float LyricBeakKeepClear = 28f;
+
+    /// <summary>The card arrives from 6 below and 3 % small while the host's tip fade runs: it rises out of the rail it belongs to.</summary>
+    public static readonly EnterExit PreviewEnter = new(Dy: 6f, Sx: 0.97f, Sy: 0.97f, Active: true);
+
     // ── the time labels ──
 
     /// <summary>The time slot (Shell-Player: 40, the digits centred).</summary>

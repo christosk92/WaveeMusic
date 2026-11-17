@@ -100,11 +100,23 @@ public static partial class Playback
         {
             public bool IsDrm => DrmDescriptor is not null && LicenseRelay is not null;
 
+            /// <summary>The source plays through the segment descriptor: a PlayReady video, or an UNENCRYPTED one a manifest describes the
+            /// same way (a video podcast). Both are addressed, fetched and demuxed by the same native session; only a protected one has a
+            /// licence to wait for (<see cref="IsDrm"/>).</summary>
+            public bool IsSegmented => DrmDescriptor is not null;
+
+            /// <summary>The source's seek-preview sheets (the manifest's <c>seekpanels</c>), or null: the seek tip then shows the time alone.</summary>
+            public SeekPanels? SeekPanels { get; init; }
+
             public static VideoSource Clear(string url, bool isLive = false)
                 => new(url, ClearUrl: url, IsLive: isLive);
 
             public static VideoSource LocalFile(string path)
                 => new("local:video:" + path, FilePath: path);
+
+            /// <summary>An unencrypted segmented video (a video podcast's manifest): the descriptor, and no licence relay.</summary>
+            public static VideoSource Segmented(string manifestId, DashSourceDescriptor descriptor)
+                => new(manifestId, DrmDescriptor: descriptor);
 
             public static VideoSource PlayReady(string manifestId, DashSourceDescriptor descriptor,
                 Func<LicenseRequest, ValueTask<LicenseResponse>> relay, string? licenseServerUri)
@@ -395,11 +407,12 @@ public static partial class Playback
             public static bool MayReopenInPlace(bool reopenable, string liveKey, string? reopenedKey)
                 => reopenable && !string.Equals(liveKey, reopenedKey, StringComparison.Ordinal);
 
-            /// <summary>Forget the DRM manifest the fault came from? A signed-url error always (a re-fetch is the cure);
+            /// <summary>Forget the manifest the fault came from (a manifest-backed source, protected or not: both carry signed urls)? A
+            /// signed-url error always (a re-fetch is the cure);
             /// an error that is NOT about to be re-opened in place too (the plain re-open already failed, or the error is
             /// not transient, so the manifest is the suspect). A transient first fault keeps it: the re-open needs no api GET.</summary>
-            public static bool InvalidateManifest(bool isDrm, long? code, bool reopenNow)
-                => isDrm && (IsSignedUrlError(code) || !reopenNow);
+            public static bool InvalidateManifest(bool fromManifest, long? code, bool reopenNow)
+                => fromManifest && (IsSignedUrlError(code) || !reopenNow);
 
             /// <summary>The reducer's fault for an engine error. A hardware reset is the engine's problem and never the
             /// row's: it is <see cref="Fault.Unknown"/> (not terminal, never <see cref="Fault.DrmRequired"/>).</summary>
@@ -2171,7 +2184,7 @@ public static partial class Playback
         static MediaSource BuildMediaSource(VideoSource src, bool forPrepare)
         {
             if (src.FilePath is { } file) return MediaSource.FromFile(file);
-            if (!src.IsDrm)
+            if (!src.IsSegmented)
                 return MediaSource.FromUri(src.ClearUrl ?? "")
                     .WithLiveness(src.IsLive ? SourceLiveness.Live : SourceLiveness.Auto);
             DashSourceDescriptor d = src.DrmDescriptor!;
@@ -2570,7 +2583,7 @@ public static partial class Playback
             }
             StopTicker();
             Log.Warn("video", $"[video] fault={kind} key={Tail(key)} reopen={reopenNow} — {message}");
-            if (live is not null && HostRules.InvalidateManifest(live.IsDrm, err?.UnderlyingCode, reopenNow)) ManifestMemo.Invalidate(live.Key);
+            if (live is not null && HostRules.InvalidateManifest(live.IsSegmented, err?.UnderlyingCode, reopenNow)) ManifestMemo.Invalidate(live.Key);
             if (live is { FilePath: not null, PlayableUri.Length: > 0 } local && OnOverrideFailed is { } quarantine)
             {
                 string uri = local.PlayableUri, sourceKey = local.OverrideSourceKey ?? "";

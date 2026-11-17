@@ -29,6 +29,14 @@ public static partial class ViewKeys
     /// <summary>The scrub readout's bubble (inside the rail host's overlay).</summary>
     public static readonly ViewKey<SeekReadoutProps> SeekReadout = new("Player.SeekReadout");
 
+    /// <summary>The seek preview's bubble (inside the rail host's overlay): the picture under the pointer, its time and, on an episode,
+    /// the chapter's title. Replaces the readout and the chapter tip on a rail whose video has seek sheets.</summary>
+    public static readonly ViewKey<SeekPreviewProps> SeekPreview = new("Player.SeekPreview");
+
+    /// <summary>The lyric tip's bubble (inside the rail host's overlay): the time under the pointer and the song's lyric line at that
+    /// time. Replaces the readout on a song's rail with timed lyrics and no seek preview (the picture wins).</summary>
+    public static readonly ViewKey<SeekLyricProps> SeekLyric = new("Player.SeekLyric");
+
     /// <summary>One transport time label: the digits' slot or the live slot.</summary>
     public static readonly ViewKey<TimeLabelProps> TimeLabel = new("Player.TimeLabel");
 

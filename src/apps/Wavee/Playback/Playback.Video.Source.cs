@@ -158,6 +158,7 @@ public static partial class Playback
             null => "none",
             { FilePath: not null } => "override",
             { IsDrm: true } => "playready",
+            { IsSegmented: true } => "segmented",
             _ => "clear",
         };
 
@@ -434,13 +435,18 @@ public static partial class Playback
                     return null;
                 }
 
-                if (Parse(result.Bytes) is not { } m) return null;
+                if (Parse(result.Bytes, manifestId) is not { } m) return null;
                 if (ToDescriptor(in m) is not { } descriptor) return null;
-                License.Remember(m.DefaultKid, m.LicenseEndpoint);
+                if (!m.Clear) License.Remember(m.DefaultKid, m.LicenseEndpoint);
                 Log.Info("video", $"[video] manifest.ok key={Tail(manifestId)} ms={FrameNowMs() - t0} cached=false rungs={m.Video.Length} " +
-                                  $"segLen={m.SegmentLengthSeconds} dur={m.DurationMs} natural={m.NaturalWidth}x{m.NaturalHeight} audio={(m.HasAudio ? "true" : "false")}");
-                return VideoSource.PlayReady(manifestId, descriptor, License.Relay(m.LicenseEndpoint), m.LicenseEndpoint)
-                    with { NaturalWidth = m.NaturalWidth, NaturalHeight = m.NaturalHeight };
+                                  $"segLen={m.SegmentLengthSeconds} dur={m.DurationMs} natural={m.NaturalWidth}x{m.NaturalHeight} audio={(m.HasAudio ? "true" : "false")} " +
+                                  $"protection={(m.Clear ? "none" : "playready")} seekpanels={(m.SeekPanels is null ? "false" : "true")}");
+                // An unencrypted manifest (a video podcast) goes down the SAME segment path with nothing to license: no PSSH, no key id,
+                // no relay. The native session attaches a clear init without a licence handle.
+                VideoSource source = m.Clear
+                    ? VideoSource.Segmented(manifestId, descriptor)
+                    : VideoSource.PlayReady(manifestId, descriptor, License.Relay(m.LicenseEndpoint), m.LicenseEndpoint);
+                return source with { NaturalWidth = m.NaturalWidth, NaturalHeight = m.NaturalHeight, SeekPanels = m.SeekPanels };
             }
 
             /// <summary>One compatible video or audio rung. <see cref="KeyId"/> is the CENC key id as 32 lowercase hex.</summary>
@@ -454,11 +460,11 @@ public static partial class Playback
                 int SegmentLengthSeconds, long DurationMs,
                 byte[] Pssh, string? LicenseEndpoint, string? DefaultKid,
                 Rung[] Video, Rung Audio, bool HasAudio,
-                int NaturalWidth, int NaturalHeight);
+                int NaturalWidth, int NaturalHeight, SeekPanels? SeekPanels = null, bool Clear = false);
 
             /// <summary>Parse the v9 JSON. Both shapes are handled: templates at the root beside <c>contents[0]</c>, or
             /// everything nested under <c>sources[0]</c>.</summary>
-            public static Parsed? Parse(ReadOnlySpan<byte> json)
+            public static Parsed? Parse(ReadOnlySpan<byte> json, string seekKey = "")
             {
                 try
                 {
@@ -485,8 +491,10 @@ public static partial class Playback
                     byte[] pssh = [];
                     string? license = null;
                     JsonElement encHost = Arr(content, "encryption_infos") is not null ? content : root;
+                    int keySystems = 0;
                     if (Arr(encHost, "encryption_infos") is { } infos)
                     {
+                        keySystems = infos.GetArrayLength();
                         for (int i = 0; i < infos.GetArrayLength(); i++)
                         {
                             JsonElement info = infos[i];
@@ -500,7 +508,11 @@ public static partial class Playback
                             break;
                         }
                     }
-                    if (prIndex < 0) return null;      // no PlayReady rung ⇒ nothing this pipeline can play
+                    // No key system at all: the stream is UNENCRYPTED (a video podcast). It plays through the same segment path with
+                    // nothing to license, and its profiles carry no encryption index to match. Key systems but no PlayReady among them:
+                    // protected by something this pipeline has no CDM for, so there is nothing it can play.
+                    bool clear = keySystems == 0;
+                    if (prIndex < 0 && !clear) return null;
 
                     var video = new List<Rung>(8);
                     Rung audio = default;
@@ -512,7 +524,7 @@ public static partial class Playback
                         {
                             JsonElement pr = profiles[i];
                             if ((Str(pr, "file_type") ?? "") is not "mp4") continue;
-                            if (!CarriesIndex(pr, prIndex)) continue;
+                            if (!clear && !CarriesIndex(pr, prIndex)) continue;
                             // The id is a NUMBER on the real wire (the captured fixture) — a string-only read skipped every
                             // profile and turned every music video into "no video".
                             string id = IdOf(pr);
@@ -543,7 +555,7 @@ public static partial class Playback
                     Rung top = rungs[^1];
 
                     return new Parsed(baseUrl, initTpl, segTpl, segLen, durMs, pssh, license, defaultKid,
-                        rungs, audio, hasAudio, top.Width, top.Height);
+                        rungs, audio, hasAudio, top.Width, top.Height, SeekPanels.Parse(root, seekKey), clear);
                 }
                 catch (Exception ex) { Log.Warn("video", "manifest parse failed", ex); return null; }
             }

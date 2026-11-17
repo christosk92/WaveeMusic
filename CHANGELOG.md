@@ -10,7 +10,25 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.10] - unreleased
 
+### Added
+
+- **See the picture where you are seeking (every theme).** Moving the pointer along the seek bar of a music video or a
+  video podcast shows the frame at that moment above the bar, with the time and, on an episode, the chapter; it follows
+  the pointer while you drag too. It shows on the player bar, in full screen and on the video's own controls when they
+  are wide enough; a small docked video keeps the plain time, and so does a video from your own files or a live stream.
+
+- **Precise seeking on a video.** While dragging the seek bar of a video, pull the pointer away from the bar to slow the
+  drag: half speed a little way off, a quarter further out. On a music video the tip names it first: "Pull up for
+  precise seeking".
+
+- **Lyrics on the seek bar (every theme).** On a song with timed lyrics, moving the pointer along the seek bar shows the
+  line sung at that moment, on a small card that points at your mouse. Settings > Appearance > Lyrics > "Show lyrics
+  when seeking" turns it off.
+
 ### Fixed
+
+- **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no
+  video; it now plays its picture the way a music video does.
 
 - **Find in a scrolled playlist.** The list's search opens wherever the list is scrolled, not only at the top. (#230)
 
