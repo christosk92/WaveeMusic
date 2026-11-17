@@ -244,11 +244,37 @@ public sealed class ShortcutTrack : Component
     TimerHandle _turn;
     readonly Action _onTurn;
     int _turnTo = -1;   // the page a lifted cell is held over (not the one shown), -1 none
+    // The swipe (FlipView's pan: follow the pointer, release to the nearest page) and the horizontal wheel.
+    readonly Action<NodeHandle> _onRealized;
+    readonly Action<Point2> _panDown, _panMove;
+    readonly Action _panCommit, _panCancel;
+    readonly Action<WheelEventArgs> _onWheel;
+    readonly Keyframe[] _panKeys = new Keyframe[2];
+    readonly Signal<int> _panGen = new(0);   // a released swipe re-seeds the slide even when it stays on its page
+    NodeHandle _node;
+    float _panStart, _panBase, _panOffset, _wheel;
+    bool _panning;
+    long _wheelAt;
+
+    /// <summary>The swipe's dead zone (the engine's drag box) and the share of a page a release must pass to turn it.</summary>
+    const float PanSlopPx = 4f, PanTurnShare = 0.2f;
+
+    /// <summary>A horizontal wheel turns a page per this much travel (one detent), and not again within the slide.</summary>
+    const float WheelPage = 120f, WheelQuietMs = 360f;
 
     /// <summary>How long a lifted cell waits over another page before the grid slides there (the board's own dwell).</summary>
     public const float TurnDwellMs = 600f;
 
-    public ShortcutTrack() => _onTurn = Turn;
+    public ShortcutTrack()
+    {
+        _onTurn = Turn;
+        _onRealized = h => _node = h;
+        _panDown = PanDown;
+        _panMove = PanMove;
+        _panCommit = PanCommit;
+        _panCancel = PanCancel;
+        _onWheel = OnWheel;
+    }
 
     public override Element Render()
     {
@@ -256,16 +282,24 @@ public sealed class ShortcutTrack : Component
         _p = p;
         var grid = p.Grid;
         var pager = grid.Board.View.ShortcutsPager;
-        int page = Math.Clamp(pager.Page.Value, 0, Math.Max(0, p.Count - 1));
+        _ = pager.Page.Value;   // subscribe: a turn re-renders the track
+        int page = pager.FirstPage(p.Count);
         float width = grid.Width, gap = grid.Spec.Gap;
         float step = width + gap;
         float to = -page * step;
-        // The slide is a critically damped spring from wherever the grid is (a turn mid-slide carries on); reduced motion lands at once.
-        if (Motion.ReducedMotion) UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(page, (int)step));
-        else UseSpring(AnimChannel.TranslateX, to, s_slide, DepKey.From(page, (int)step));
+        int gen = _panGen.Value;
+        // The grid mounts on its page (a remembered one too): no slide in. After that the slide is a critically damped spring from wherever the
+        // grid is (a turn mid-slide or a released swipe carries on); reduced motion lands at once.
+        UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.Empty);
+        if (Motion.ReducedMotion) UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(page, HashCode.Combine((int)step, gen)));
+        else UseSpring(AnimChannel.TranslateX, to, s_slide, DepKey.From(page, HashCode.Combine((int)step, gen)));
         _turn = UseTimeout(_onTurn, TurnDwellMs);
 
-        _template ??= (item, cell) => item.Entry is { } e ? _p!.Grid.Spec.Cell(e, item.Index, cell) : new BoxEl();
+        // Each cell dims while it stands off the page shown (the page sliding off at 0.8, the one sliding in easing to 1).
+        _template ??= (item, cell) => item.Entry is { } e
+            ? Embed.Comp(new ShortcutDim.Props(_p!.Grid.Board.View.ShortcutsPager, item.Page, _p.Grid.Spec.Cell(e, item.Index, cell)),
+                static () => new ShortcutDim())
+            : new BoxEl();
         _reorder ??= new PackReorder<ShortcutCellItem>("home.shortcut")
         {
             // A cell showing Recently played is not the shortcut it stands for: it lifts once the grid shows the shortcuts again. A blank never lifts.
@@ -291,12 +325,80 @@ public sealed class ShortcutTrack : Component
             Reorder = _reorder,
             Key = "home:shortcuts-grid",
         };
+        bool paged = p.Count > 1;
         return new BoxEl
         {
-            Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+            Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Stretch,
             Width = p.Count * width + (p.Count - 1) * gap,
-            Children = [PackGrid.Create(grid.Items!, _template, _options)],
+            OnRealized = _onRealized,
+            // FlipView's pan: a sideways drag that no cell lifts follows the pointer and lands on the nearest page; a cross-axis drag yields to
+            // the page's own scroll. A horizontal wheel turns a page.
+            OnPointerDown = paged ? _panDown : null,
+            OnDrag = paged ? _panMove : null,
+            DragYieldsToPan = paged,
+            OnClick = paged ? _panCommit : null,
+            OnDragCanceled = paged ? _panCancel : null,
+            OnPointerWheel = paged ? _onWheel : null,
+            Children = [new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, Children = [PackGrid.Create(grid.Items!, _template, _options)] }],
         };
+    }
+
+    void PanDown(Point2 lp)
+    {
+        _panStart = lp.X;
+        _panBase = -_p!.Grid.Board.View.ShortcutsPager.Page.Peek() * (_p.Grid.Width + _p.Grid.Spec.Gap);
+        if (Context.Anim is { } anim && !_node.IsNull && anim.TryGetTrackValue(_node, AnimChannel.TranslateX, out float live)) _panBase = live;
+        _panOffset = _panBase;
+        _panning = false;
+    }
+
+    void PanMove(Point2 lp)
+    {
+        if (_p is not { } p || _node.IsNull || _reorder is { IsLifted: true }) return;
+        float delta = lp.X - _panStart;
+        if (!_panning && MathF.Abs(delta) < PanSlopPx) return;
+        _panning = true;
+        float step = p.Grid.Width + p.Grid.Spec.Gap;
+        float off = Math.Clamp(_panBase + delta, _panBase - step, _panBase + step);
+        off = Math.Clamp(off, -(p.Count - 1) * step - step * 0.15f, step * 0.15f);   // a little give past either end
+        _panKeys[0] = new Keyframe(0f, off, Easing.Linear);
+        _panKeys[1] = new Keyframe(1f, off, Easing.Linear);
+        Context.Anim?.Keyframes(_node, AnimChannel.TranslateX, _panKeys, 1f);
+        _panOffset = off;
+    }
+
+    void PanCommit()
+    {
+        if (!_panning || _p is not { } p) return;
+        _panning = false;
+        var pager = p.Grid.Board.View.ShortcutsPager;
+        float step = p.Grid.Width + p.Grid.Spec.Gap;
+        float moved = _panOffset - _panBase;
+        int page = pager.Page.Peek();
+        if (moved < -step * PanTurnShare) pager.Next();
+        else if (moved > step * PanTurnShare) pager.Prev();
+        if (pager.Page.Peek() == page) _panGen.Value = _panGen.Peek() + 1;   // back to its page: the spring re-seeds from where it was let go
+    }
+
+    void PanCancel()
+    {
+        if (!_panning) return;
+        _panning = false;
+        _panGen.Value = _panGen.Peek() + 1;
+    }
+
+    void OnWheel(WheelEventArgs e)
+    {
+        if (MathF.Abs(e.DeltaX) <= MathF.Abs(e.Delta) || _p is not { } p) return;   // a vertical wheel scrolls the page
+        e.Handled = true;
+        long now = Environment.TickCount64;
+        if (now - _wheelAt < WheelQuietMs) return;   // one page per flick: the rest of the gesture lands inside the slide
+        _wheel += e.DeltaX;
+        if (MathF.Abs(_wheel) < WheelPage) return;
+        var pager = p.Grid.Board.View.ShortcutsPager;
+        if (_wheel > 0f) pager.Next(); else pager.Prev();
+        _wheel = 0f;
+        _wheelAt = now;
     }
 
     /// <summary>The reorder's milestones: where the lifted cell is (the board's own sentence), and whether it is held over another page.</summary>
@@ -348,5 +450,22 @@ public sealed class ShortcutTrack : Component
             to = Math.Min(pg.Start + pg.Count - 1, plan.Cells.Count - 1);
         }
         if (to >= 0) grid.Board.Verbs.ReorderShortcut(moving.Id, to);
+    }
+}
+
+/// <summary>A shortcut cell that dims while it stands off the page shown: the page sliding off eases to 0.8, the page sliding in to 1 (the slide's
+/// 420 ms, decelerating; reduced motion: at once).</summary>
+public sealed class ShortcutDim : Component
+{
+    internal sealed record Props(IPager Pager, int Page, Element Cell);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        bool on = p.Pager.Page.Value == p.Page;
+        float dim = 1f - HomeModuleLayout.OffPageDim;
+        UseTransition(AnimChannel.Opacity, on ? dim : 1f, on ? 1f : dim, Motion.ReducedMotion ? 0f : ShortcutGrid.SlideMs, Easing.FluentDecelerate,
+            DepKey.From(on ? 1 : 0));
+        return new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [p.Cell] };
     }
 }
