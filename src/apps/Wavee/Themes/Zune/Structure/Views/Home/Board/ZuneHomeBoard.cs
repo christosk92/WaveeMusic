@@ -318,10 +318,22 @@ internal static class ZuneHomeBoard
             OnPointerExit = () => { if (_titleHover.Peek()) _titleHover.Value = false; },
             Children =
             [
-                R.Type.Hero("") with
+                // Display type wraps at word boundaries only ("good / afternoon", never "afternoo / n"); a single word wider than the line bleeds
+                // past it under a fade (Zune type is never shrunk). The fade sits in the gap after the title (a negative margin of the gap's
+                // width, padded back), so a title that fits never reaches it and the row lays out as before.
+                new BoxEl
                 {
-                    Key = B.TitleTextKey, Text = Prop.Of(static () => DaylistCard.PartOfDay()), Case = R.Case.For(LabelKind.Heading),
-                    Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f,
+                    Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, HitTestPassThrough = true,
+                    Margin = new Edges4(0f, 0f, -B.UndoGap, 0f), Padding = new Edges4(0f, 0f, B.UndoGap, 0f),
+                    EdgeFade = new EdgeFadeSpec(EdgeMask.Right, B.UndoGap),
+                    Children =
+                    [
+                        R.Type.Hero("") with
+                        {
+                            Key = B.TitleTextKey, Text = Prop.Of(static () => DaylistCard.PartOfDay()), Case = R.Case.For(LabelKind.Heading),
+                            Wrap = TextWrap.WrapWholeWords, Shrink = 1f, MinWidth = 0f,
+                        },
+                    ],
                 },
                 ZuneHomeUndoWord.Word(board, "page", _titleHover),
                 new BoxEl { Grow = 1f, MinWidth = 0f },

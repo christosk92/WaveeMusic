@@ -376,6 +376,8 @@ internal static class ClassicHomeDaylist
     static Element ClockSlot(Element clock, bool plate) => new BoxEl
     {
         Key = plate ? "daylist-clock:plate" : "daylist-clock:copy", Direction = 1, MinWidth = 0f,
+        // Under the copy (the stacked forms), the edition's words landing after the card (a longer title, the tags) move it: it slides there.
+        Layout = Design.Reduced ? null : ClassicTierMotion.Reflow,
         Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
         Children = [clock],
     };
@@ -410,6 +412,9 @@ internal static class ClassicHomeDaylist
             kids.Add(new BoxEl
             {
                 Key = "daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = basis.LineHeight, Margin = new Edges4(0f, LineTop, 0f, 0f),
+                // The edition's words land after the card (the playlist's own header): a longer title or a tag line that comes moves the line, which
+                // slides there as the action row does, never stepping.
+                Layout = Design.Reduced ? null : ClassicTierMotion.Reflow,
                 Children = [basis],
             });
             // Secondary, not tertiary: the copy sits on the cover veil, whose far side lets the art through (tertiary read 3.2 : 1 there).
@@ -453,25 +458,16 @@ internal static class ClassicHomeDaylist
     /// (`OnSpanClick`): tags sit at the even indices, separators at the odd ones.</summary>
     static Element Tags(HomeCard card)
     {
-        int seedCount = Math.Min(card.SeedCount, ClassicHomeRules.DaylistMaxTags);
-        var tags = new List<string>(seedCount);
-        for (int i = 0; i < seedCount; i++)
-        {
-            string tag = card.SeedAt(i);
-            if (tag.Length > 0) tags.Add(tag);
-        }
-        if (tags.Count == 0) return new BoxEl();
+        var (tags, links) = SectionCopy.DaylistTags(in card, ClassicHomeRules.DaylistMaxTags);
+        if (tags.Length == 0) return new BoxEl();
 
-        var spans = new TextSpan[tags.Count * 2 - 1];
-        for (int i = 0; i < tags.Count; i++)
+        var spans = new TextSpan[tags.Length * 2 - 1];
+        for (int i = 0; i < tags.Length; i++)
         {
             if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextSecondary);
             spans[2 * i] = new TextSpan(tags[i], Color: Tok.TextSecondary, IsLink: true);
         }
-        var links = new string?[tags.Count];
-        for (int i = 0, t = 0; i < seedCount && t < links.Length; i++)
-            if (card.SeedAt(i).Length > 0) links[t++] = SectionCopy.TagLink(in card, i);
-        return TagLine(spans, i => { if ((i & 1) == 0 && (i >> 1) < tags.Count) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); });
+        return TagLine(spans, i => { if ((i & 1) == 0 && (i >> 1) < tags.Length) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); });
     }
 
     /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), secondary base, 6 below the title.</summary>
