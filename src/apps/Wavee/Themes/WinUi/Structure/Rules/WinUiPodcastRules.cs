@@ -86,6 +86,8 @@ internal static class WinUiPodcastShowRules
     public const float UpMinH = 40f, UpGap = 16f, UpLabelGap = 2f, UpSubGap = 10f, CommandGap = 8f, IdGap = 4f, EyebrowGap = 6f;
     /// <summary>The pane's description clamp (4 lines), the rating card's number (Title 28/36).</summary>
     public const int PaneClamp = 4, TitleLines = 3;
+    /// <summary>A small hyperlink's own side padding (the eyebrow's kind word stands on the column edge), the pane's action glyph.</summary>
+    public const float LinkPadX = 4f, PaneGlyph = 16f;
     public const float RatingCardPad = 12f, RatingStar = 16f, FactsColGap = 16f, FactsRowGap = 6f, FactLabelW = 96f;
     /// <summary>The empty list's air.</summary>
     public const float EmptyPad = 32f;

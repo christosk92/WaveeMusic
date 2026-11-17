@@ -50,6 +50,8 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
+    /// <summary>The row is filtered out (a filter or a search): it stays in the list, mounted and hidden, so a filter switch never remounts the rows.</summary>
+    public bool Hidden { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -68,6 +70,8 @@ public sealed record PodcastGroup(string Key, string Title, int Count, bool Fres
 {
     /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
+    /// <summary>No row of the group passes the filter: the group stays, hidden.</summary>
+    public bool Hidden { get; init; }
 }
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
@@ -96,7 +100,11 @@ public sealed record PodcastFact(string Label, string Value);
 public sealed record PodcastShowHead(
     string Uri, string Title, string? ArtUrl, uint Tone, string Kind, ImmutableArray<string> Topics, bool Video, bool Serial,
     string Publisher, int RatingX100, string Rating, string RatingCount, string Ratings, bool CanRate, string Cadence, string Count, string About,
-    bool Following, string? TrailerId, string TrailerSub, ImmutableArray<PodcastFact> Facts);
+    bool Following, string? TrailerId, string TrailerSub, ImmutableArray<PodcastFact> Facts)
+{
+    /// <summary>The About text as HTML when the provider sent it ("" = only <see cref="About"/>).</summary>
+    public string AboutHtml { get; init; } = "";
+}
 
 /// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all
 /// (<see cref="Total"/>; 0 with <see cref="Pending"/> false = none), and whether they are still on their way.</summary>
@@ -112,6 +120,9 @@ public sealed record PodcastShowView(
     ImmutableArray<PodcastEpisodeVm> Episodes, ImmutableArray<PodcastGroup> Groups, ImmutableArray<PodcastFilterVm> Filters,
     ImmutableArray<PodcastYear> Years, bool HasMore, bool Filtered, ImmutableArray<PodcastCardVm> Similar)
 {
+    /// <summary>How many rows pass the filter and the search (0 = "No episodes match").</summary>
+    public int ShownCount { get; init; }
+
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,
         new PodcastShowHead("", "", null, 0u, "", [], false, false, "", 0, "", "", "", false, "", "", "", false, null, "", []),
@@ -160,6 +171,11 @@ public sealed record PodcastShowPageProps
     public required Func<string, ContextMenuModel?> RowMenu { get; init; }
     public required Func<ContextMenuModel?> ShowMenu { get; init; }
     public required Action? Share { get; init; }
+    /// <summary>The eyebrow's kind word ("Podcast"): its hub. Null: the word is plain text.</summary>
+    public Action? OpenKind { get; init; }
+    /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
+    public Func<string, ContextMenuModel?>? CardMenu { get; init; }
+    public Action<string>? PlayCard { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>

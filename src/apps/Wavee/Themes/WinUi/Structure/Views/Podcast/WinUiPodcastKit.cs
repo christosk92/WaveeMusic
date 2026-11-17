@@ -298,6 +298,7 @@ internal static class WinUiPodcastKit
         Action? _click, _play, _save, _next, _open, _exit, _toggleExpand;
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
+        Action<PointerEventArgs>? _press;
 
         public override Element Render()
         {
@@ -311,6 +312,7 @@ internal static class WinUiPodcastKit
             _move ??= _ => _hover.SetIfChanged(true);
             _exit ??= () => _hover.SetIfChanged(false);
             _key ??= OnKey;
+            _press ??= OnPress;
             var p = _p;
             var vm = p.Vm;
             var v = p.Verbs;
@@ -368,7 +370,7 @@ internal static class WinUiPodcastKit
                 Fill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
                 PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press,
                 Children = kids.ToArray(),
             };
             if (!selected) return row;
@@ -396,6 +398,14 @@ internal static class WinUiPodcastKit
                 case PodcastRowMode.Expand: p.Verbs.Expand(p.Vm.Id); break;
                 default: p.Verbs.Open(p.Vm.Id); break;
             }
+        }
+
+        /// <summary>A double-click plays (the list/details pattern: one click selects, two play).</summary>
+        void OnPress(PointerEventArgs e)
+        {
+            if (e.ClickCount < 2 || e.Button != 0 || _p.Mode != PodcastRowMode.Select) return;
+            _p.Verbs.Play(_p.Vm.Id);
+            e.Handled = true;
         }
 
         void OnKey(KeyEventArgs e)

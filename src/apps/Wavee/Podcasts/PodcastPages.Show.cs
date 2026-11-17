@@ -105,6 +105,9 @@ public sealed class PodcastShowScreen : Component
             RowMenu = m.RowMenu,
             ShowMenu = m.ShowMenu,
             Share = m.Share,
+            OpenKind = m.OpenKind,
+            CardMenu = m.CardMenu,
+            PlayCard = m.PlayCard,
         };
         return Slots.View(ViewKeys.PodcastShowPage, _props);
     }
@@ -211,6 +214,9 @@ sealed class ShowModel
     public readonly Action<string> Play, Open, ToggleSaved, PlayNext, OpenUri;
     public readonly Func<string, ContextMenuModel?> RowMenu;
     public readonly Func<ContextMenuModel?> ShowMenu;
+    public readonly Action OpenKind;
+    public readonly Func<string, ContextMenuModel?> CardMenu;
+    public readonly Action<string> PlayCard;
 
     /// <summary>The last snapshot's facts the verbs act on (a click acts on what the page showed).</summary>
     Facts _facts = Facts.None;
@@ -280,6 +286,23 @@ sealed class ShowModel
                 new ContainerExtras { OnPage = true });
         };
         Share = () => Episode.CopyLink(Subject.IsValid ? Actions.WebLinkOf(Subject) : "");
+        // The eyebrow's kind word: the podcasts hub Wavee has (Your Library > Podcasts).
+        OpenKind = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryPodcasts));
+        CardMenu = static uri =>
+        {
+            var u = EntityUri.Parse(uri);
+            if (!u.IsValid) return null;
+            var other = Entities.Show(u);
+            if (!other.IsValid) return null;
+            string title = other.Knows(ShowFields.Title) ? other.Title : "";
+            var target = ActionTarget.ForShow(other.Uri, title);
+            return Menus.Container(in target, other.Knows(ShowFields.Image) ? Controls.ArtUrl(other.ImageId) : null, null);
+        };
+        PlayCard = static uri =>
+        {
+            var u = EntityUri.Parse(uri);
+            if (u.IsValid) Playback.PlayContext(u.Id);
+        };
         Reopen = () =>
         {
             var show = ShowOf();
@@ -501,6 +524,8 @@ sealed class ShowModel
         // ── the filters, the view and the groups ──
         var q = query.AsSpan().Trim();
         var view = new List<int>(n);
+        var shown = new bool[n];
+        int shownCount = 0;
         for (int i = 0; i < n; i++)
         {
             var vm = vms[i];
@@ -512,13 +537,15 @@ sealed class ShowModel
                 _ => true,
             };
             if (keep && !q.IsEmpty) keep = ShowReaderRules.Matches(vm.Title, vm.Description, q);
-            if (keep) view.Add(i);
+            shown[i] = keep;
+            if (keep) shownCount++;
+            view.Add(i);
         }
         if (oldestCell) view.Reverse();
         var episodes = ImmutableArray.CreateBuilder<PodcastEpisodeVm>(view.Count);
-        foreach (int i in view) episodes.Add(vms[i]);
+        foreach (int i in view) episodes.Add(shown[i] ? vms[i] : vms[i] with { Hidden = true });
         var years = YearsOf(vms, serial);
-        var groups = GroupsOf(vms, view, serial, oldestCell, !q.IsEmpty, filter == PodcastFilter.All && q.IsEmpty, years);
+        var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty, filter == PodcastFilter.All && q.IsEmpty, years);
 
         var filters = ImmutableArray.Create(
             new PodcastFilterVm(PodcastFilter.All, Loc.Get(Strings.Podcast.Pages.FilterAll), total) { CountText = total > 0 ? FormatCache.Int(total) : "" },
@@ -537,7 +564,7 @@ sealed class ShowModel
             : !known || !page.Loaded || readiness == EdgeState.Unknown ? PodcastLoad.Pending
             : PodcastLoad.Ready;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
-            filter != PodcastFilter.All || !q.IsEmpty, SimilarOf(similar));
+            filter != PodcastFilter.All || !q.IsEmpty, SimilarOf(similar)) { ShownCount = shownCount };
     }
 
     static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved)
@@ -568,7 +595,7 @@ sealed class ShowModel
             state == PodcastRowState.Played ? 1f : state == PodcastRowState.InProgress ? pct : 0f, state, saved,
             (flags & EpisodeFlags.Video) != 0, kind == EpisodeKind.Trailer, playable, 0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(e))
         {
-            Eyebrow = eyebrow, LongDate = longDate,
+            Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
         };
     }
 
@@ -630,7 +657,7 @@ sealed class ShowModel
 
     /// <summary>"New since your last visit" (episodic, newest first, no search), then a group per year; a serial lists one "In order".
     /// <see cref="PodcastGroup.Rows"/> index the view (the snapshot's <c>Episodes</c>).</summary>
-    static ImmutableArray<PodcastGroup> GroupsOf(PodcastEpisodeVm[] vms, List<int> view, bool serial, bool oldest, bool searching, bool whole,
+    static ImmutableArray<PodcastGroup> GroupsOf(PodcastEpisodeVm[] vms, List<int> view, bool[] shown, bool serial, bool oldest, bool searching, bool whole,
         ImmutableArray<PodcastYear> years)
     {
         var groups = ImmutableArray.CreateBuilder<PodcastGroup>();
@@ -638,8 +665,10 @@ sealed class ShowModel
         if (serial)
         {
             var all = ImmutableArray.CreateBuilder<int>(view.Count);
-            for (int k = 0; k < view.Count; k++) all.Add(k);
-            groups.Add(new PodcastGroup("order", Loc.Get(Strings.Podcast.Pages.InOrder), view.Count, false, all.MoveToImmutable()) { CountText = FormatCache.Int(view.Count) });
+            int visible = 0;
+            for (int k = 0; k < view.Count; k++) { all.Add(k); if (shown[view[k]]) visible++; }
+            groups.Add(new PodcastGroup("order", Loc.Get(Strings.Podcast.Pages.InOrder), visible, false, all.MoveToImmutable())
+                { CountText = FormatCache.Int(visible), Hidden = visible == 0 });
             return groups.ToImmutable();
         }
         var inFresh = new bool[view.Count];
@@ -648,7 +677,12 @@ sealed class ShowModel
             for (int k = 0; k < view.Count; k++)
                 if (vms[view[k]].State == PodcastRowState.New) { freshRows.Add(k); inFresh[k] = true; }
         if (freshRows.Count > 0)
-            groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), freshRows.Count, true, freshRows.ToImmutable()) { CountText = FormatCache.Int(freshRows.Count) });
+        {
+            int visible = 0;
+            foreach (int k in freshRows) if (shown[view[k]]) visible++;
+            groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), visible, true, freshRows.ToImmutable())
+                { CountText = FormatCache.Int(visible), Hidden = visible == 0 });
+        }
         int currentYear = int.MinValue;
         ImmutableArray<int>.Builder? rows = null;
         for (int k = 0; k < view.Count; k++)
@@ -657,24 +691,27 @@ sealed class ShowModel
             int year = vms[view[k]].Year;
             if (rows is null || year != currentYear)
             {
-                Flush(groups, rows, currentYear, whole, years);
+                Flush(groups, rows, currentYear, whole, years, view, shown);
                 currentYear = year;
                 rows = ImmutableArray.CreateBuilder<int>();
             }
             rows.Add(k);
         }
-        Flush(groups, rows, currentYear, whole, years);
+        Flush(groups, rows, currentYear, whole, years, view, shown);
         return groups.ToImmutable();
 
-        static void Flush(ImmutableArray<PodcastGroup>.Builder groups, ImmutableArray<int>.Builder? rows, int year, bool whole, ImmutableArray<PodcastYear> years)
+        static void Flush(ImmutableArray<PodcastGroup>.Builder groups, ImmutableArray<int>.Builder? rows, int year, bool whole, ImmutableArray<PodcastYear> years,
+            List<int> view, bool[] shown)
         {
             if (rows is null || rows.Count == 0) return;
-            int count = rows.Count;
+            int count = 0;
+            foreach (int k in rows) if (shown[view[k]]) count++;
+            int visible = count;
             if (whole)
                 foreach (var y in years)
                     if (y.Year == year) { count = Math.Max(count, y.Episodes); break; }
             string title = year > 0 ? year.ToString(CultureInfo.InvariantCulture) : "";
-            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count) });
+            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count), Hidden = visible == 0 });
         }
     }
 
@@ -696,7 +733,7 @@ sealed class ShowModel
         string count = rated ? ratingCount.ToString("N0", CultureInfo.CurrentCulture) : "";
         string cadenceWord = Sentence(Show.CadenceWord(cadence));
         string countLine = serial ? Strings.Podcast.Pages.PartsCount(total) : Strings.Podcast.Pages.EpisodesCount(total);
-        string about = page.About;
+        string about = page.About, aboutHtml = page.AboutHtml;
         int oldestYear = 0;
         for (int i = published.Length - 1; i >= 0; i--)
             if (published[i] > 0) { oldestYear = DateTimeOffset.FromUnixTimeSeconds(published[i]).LocalDateTime.Year; break; }
@@ -711,8 +748,8 @@ sealed class ShowModel
         string trailerSub = trailer.IsValid && trailer.Knows(EpisodeFields.Duration)
             ? Strings.Podcast.Pages.TrailerSub(Episode.DurationLabel(trailer.DurationMs)) : "";
         return new PodcastShowHead(SubjectText, title, art, tone, Loc.Get(Strings.Podcast.Pages.KindPodcast), topics, video, serial, publisher,
-            ratingX100, rating, rated ? "(" + count + ")" : "", rated ? Strings.Podcast.Pages.RatingsCount(ratingCount) : "",
-            r is { CanRate: true }, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable());
+            ratingX100, rating, rated ? "(" + count + ")" : "", rated ? (ratingCount == 1 ? Strings.Podcast.Pages.RatingsCount(1) : Strings.Podcast.Pages.RatingsMany(count)) : "",
+            r is { CanRate: true }, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable()) { AboutHtml = aboutHtml };
     }
 
     ImmutableArray<PodcastCardVm> SimilarOf(Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>? page)
