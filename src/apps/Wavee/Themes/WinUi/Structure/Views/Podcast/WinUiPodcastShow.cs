@@ -81,7 +81,7 @@ internal static class WinUiPodcastShow
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = WinUiPodcastShowTiers.Of(in facts);
             float inset = WinUiTiers.InsetOf(in facts);
-            float viewportH = facts.ViewportHeight;
+            float viewportH = facts.ViewportHeight, contentW = facts.ContentWidth;
             _overlay = UseContext(Overlay.Service);
             _captureViewport ??= h => _viewport = h;
             _pending ??= () => _p.View.Value.Load == PodcastLoad.Pending;
@@ -103,16 +103,16 @@ internal static class WinUiPodcastShow
             bool loading = v.Load == PodcastLoad.Pending;
             var shown = loading ? s_placeholder : v;
             Element content = new SkelRegionEl(
-                Pending: _pending, Failed: _failed, Content: () => Compose(shown, lay, inset, viewportH, live: true),
-                ShimmerSource: () => Compose(s_placeholder, lay, inset, viewportH, live: false),
-                OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null,
+                Pending: _pending, Failed: _failed, Content: () => Compose(shown, lay, inset, viewportH, contentW, live: true),
+                ShimmerSource: () => Compose(s_placeholder, lay, inset, viewportH, contentW, live: false),
+                OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null,
                 SmoothResize: false);
             var head = shown.Head;
             Element bar = WinUiPodcastKit.Bar(head.ArtUrl, head.Title,
                 shown.Smart is { Kind: PodcastSmartKind.CaughtUp } ? Loc.Get(Strings.Podcast.Pages.CaughtUp) : shown.Smart?.EpisodeTitle ?? "",
                 BarButton(shown), inset, captionShown: !lay.Stacked);
             return WinUiPodcastKit.Page(p.RouteKey, loading ? 0u : head.Tone, _barOn,
-                new BoxEl { Key = "podcast-show-body", Direction = 1, MinWidth = 0f, Children = [content] }, bar, _scroll, _captureViewport);
+                new BoxEl { Key = "podcast-show-body", Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.HeightReflow, Children = [content] }, bar, _scroll, _captureViewport);
         }
 
         Element BarButton(PodcastShowView v)
@@ -127,19 +127,20 @@ internal static class WinUiPodcastShow
 
         // ══ THE PAGE ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-        Element Compose(PodcastShowView v, WinUiPodcastShowLayout lay, float inset, float viewportH, bool live)
+        Element Compose(PodcastShowView v, WinUiPodcastShowLayout lay, float inset, float viewportH, float contentW, bool live)
         {
             var kids = new List<Element>(4) { Hero(v, lay, live) };
             if (live) kids.Add(WinUiPodcastKit.BarSentinel(_barOn));
             if (!lay.Pane) kids.Add(AboutExpander(v));
-            Element list = ListColumn(v, lay, live);
-            if (lay.Pane)
-                kids.Add(new BoxEl
-                {
-                    Key = "show-cols", Direction = 0, Gap = S.ColGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
-                    Children = [list, Pane(v, viewportH, live)],
-                });
-            else kids.Add(list);
+            float listW = MathF.Max(0f, contentW - 2f * inset - (lay.Pane ? S.PaneW + S.ColGap : 0f));
+            Element list = ListColumn(v, lay, live, WinUiPodcastShowTiers.SearchCollapsed(lay, listW));
+            // ONE row at every tier: the pane comes and goes beside the list (a declared swap), the list reflows to its new width.
+            kids.Add(new BoxEl
+            {
+                Key = "show-cols", Direction = 0, Gap = lay.Pane ? S.ColGap : 0f, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                Layout = WinUiDiscoveryMotion.Reflow,
+                Children = lay.Pane ? [list, Pane(v, viewportH, live)] : [list],
+            });
             return new BoxEl
             {
                 Key = "show-column", Direction = 1, MinWidth = 0f,
@@ -159,17 +160,19 @@ internal static class WinUiPodcastShow
                 Eyebrow(h),
                 (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
                 {
-                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Wrap = TextWrap.Wrap, MaxLines = S.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
                 Meta(h),
             };
             Element id = new BoxEl { Direction = 1, Gap = S.IdGap, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = idKids.ToArray() };
             Element commands = Commands(v, lay, live);
             Element up = Up(v, lay, live);
-            if (lay.Stacked)
-                return new BoxEl
+            Element form = lay.Stacked ? Stacked() : Beside();
+            return new BoxEl { Key = WinUiFrameLayout.PageTitleKey, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow, Children = [form] };
+
+            Element Stacked() => new BoxEl
                 {
-                    Key = WinUiFrameLayout.PageTitleKey, Direction = 1, Gap = lay.CoverGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
+                    Key = "hero:stacked", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Gap = lay.CoverGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                     Children =
                     [
                         new BoxEl { Direction = 0, Gap = lay.CoverGap, AlignItems = FlexAlign.Start, MinWidth = 0f, Children = [cover, id] },
@@ -177,13 +180,13 @@ internal static class WinUiPodcastShow
                         commands,
                     ],
                 };
-            return new BoxEl
+            Element Beside() => new BoxEl
             {
-                Key = WinUiFrameLayout.PageTitleKey, Direction = 0, Gap = lay.CoverGap, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
+                Key = "hero:beside", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 0, Gap = lay.CoverGap, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
                 Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                 Children =
                 [
-                    new BoxEl { Shrink = 0f, AlignSelf = FlexAlign.Start, Children = [cover] },
+                    new BoxEl { Key = "hero:cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = WinUiDiscoveryMotion.Reflow, Children = [cover] },
                     new BoxEl
                     {
                         Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = S.UpGap, Justify = FlexJustify.SpaceBetween,
@@ -201,7 +204,7 @@ internal static class WinUiPodcastShow
         {
             var words = new List<string>(4) { h.Kind };
             words.AddRange(h.Topics);
-            var kids = new List<Element>(3) { Caption(string.Join(" · ", words)) with { Color = Tok.TextSecondary, MaxLines = 1, Shrink = 1f, MinWidth = 0f } };
+            var kids = new List<Element>(3) { Caption(string.Join(" · ", words)) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f } };
             if (h.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
             if (h.Serial) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
             return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
@@ -261,8 +264,8 @@ internal static class WinUiPodcastShow
                     Loc.Get(Strings.Podcast.Pages.NotifyUnavailable)));
             if (_p.Share is { } share)
                 kids.Add(lay.ShareWord
-                    ? Button.Create(Loc.Get(Strings.Podcast.Pages.Share), share, glyph: Icons.Share) with { Key = "cmd:share", Height = lay.Target, Shrink = 0f }
-                    : Controls.Named(Controls.IconAction(Icons.Share, share, size: lay.Target) with { Key = "cmd:share" }, Loc.Get(Strings.Podcast.Pages.Share)));
+                    ? Swap("cmd:share-word", false, Button.Create(Loc.Get(Strings.Podcast.Pages.Share), share, glyph: Icons.Share) with { Height = lay.Target, Shrink = 0f })
+                    : Swap("cmd:share", false, Controls.Named(Controls.IconAction(Icons.Share, share, size: lay.Target), Loc.Get(Strings.Podcast.Pages.Share))));
             kids.Add(WinUiDetailKit.MoreButton(_p.ShowMenu, lay.Target, WinUiDetailKit.MoreLook.Bordered));
             return new BoxEl { Key = "show-commands", Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
         }
@@ -313,7 +316,7 @@ internal static class WinUiPodcastShow
             bool open = !v.Head.Following;
             return new BoxEl
             {
-                Key = "show-about-x", Direction = 1, Margin = new Edges4(0f, 0f, 0f, K.SectionBottom), MinWidth = 0f,
+                Key = "show-about-x", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Margin = new Edges4(0f, 0f, 0f, K.SectionBottom), MinWidth = 0f,
                 Children = [Embed.Comp(new Expander.ExpanderSlots(header, AboutBody(v, rows: true), null), () => new Expander { InitiallyExpanded = open })],
             };
         }
@@ -393,7 +396,7 @@ internal static class WinUiPodcastShow
 
         // ── the list column ──
 
-        Element ListColumn(PodcastShowView v, WinUiPodcastShowLayout lay, bool live)
+        Element ListColumn(PodcastShowView v, WinUiPodcastShowLayout lay, bool live, bool searchIcon)
         {
             float toolbarBottom = K.BarH + S.ToolbarH;
             var groups = new List<Element>(v.Groups.Length + 2);
@@ -415,43 +418,33 @@ internal static class WinUiPodcastShow
             Element body = new BoxEl { Key = "show-groups", Direction = 1, MinWidth = 0f, Children = groups.ToArray() }.StickyClip(toolbarBottom);
             return new BoxEl
             {
-                Key = "show-list", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                Children = [Toolbar(v, lay).Sticky(K.BarH), body],
+                Key = "show-list", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow,
+                Children = [Toolbar(v, lay, searchIcon).Sticky(K.BarH), body],
             };
         }
 
-        BoxEl Toolbar(PodcastShowView v, WinUiPodcastShowLayout lay)
+        BoxEl Toolbar(PodcastShowView v, WinUiPodcastShowLayout lay, bool searchIcon)
         {
             var labels = new string[v.Filters.Length];
             for (int i = 0; i < labels.Length; i++) labels[i] = WinUiChoice.Counted(v.Filters[i].Label, v.Filters[i].CountText);
             var kids = new List<Element>(4);
-            if (lay.Stacked)
-            {
-                if (_searchOpen.Value)
-                    kids.Add(new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [SearchBox(lay, fill: true)] });
-                else
-                    kids.Add(new BoxEl
-                    {
-                        Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children = [ComboBox.Create(labels, _comboIx, width: S.ComboW, onChange: i => _p.SetFilter((PodcastFilter)i))],
-                    });
+            bool searching = searchIcon && _searchOpen.Value;
+            if (searching)
+                kids.Add(Swap("tb:search-field", true, SearchBox(lay, fill: true)));
+            else if (lay.Stacked)
+                kids.Add(Swap("tb:combo", true, ComboBox.Create(labels, _comboIx, width: S.ComboW, onChange: i => _p.SetFilter((PodcastFilter)i))));
+            else
+                kids.Add(Swap("tb:filters", true,
+                    WinUiChoice.Pivot(labels, _filterIx, WinUiChoiceRules.PivotItemH, i => _p.SetFilter((PodcastFilter)i), s_filterKeys)) with { ClipToBounds = true });
+            if (searchIcon)
                 kids.Add(Controls.Named(Controls.IconAction(Icons.Search, () => _searchOpen.Value = !_searchOpen.Peek(), size: lay.Target) with { Key = "tb:search" },
                     Loc.Get(Strings.Podcast.Pages.Search)));
-            }
-            else
-            {
-                kids.Add(new BoxEl
-                {
-                    Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
-                    Children = [WinUiChoice.Pivot(labels, _filterIx, WinUiChoiceRules.PivotItemH, i => _p.SetFilter((PodcastFilter)i))],
-                });
-                kids.Add(SearchBox(lay, fill: false));
-            }
+            else kids.Add(Swap("tb:find-box", false, SearchBox(lay, fill: false)));
             bool oldest = _p.Oldest.Value;
             string sortWord = Loc.Get(oldest ? Strings.Podcast.Pages.OldestFirst : Strings.Podcast.Pages.NewestFirst);
             kids.Add(lay.Tier == WidthTier.Small
-                ? Button.Create(sortWord, _p.ToggleSort, ButtonAppearance.Subtle, glyph: Icons.Sort) with { Key = "tb:sort", Shrink = 0f }
-                : Controls.Named(Controls.IconAction(Icons.Sort, _p.ToggleSort, size: lay.Target) with { Key = "tb:sort" }, sortWord));
+                ? Swap("tb:sort-word", false, Button.Create(sortWord, _p.ToggleSort, ButtonAppearance.Subtle, glyph: Icons.Sort) with { Shrink = 0f })
+                : Swap("tb:sort", false, Controls.Named(Controls.IconAction(Icons.Sort, _p.ToggleSort, size: lay.Target), sortWord)));
             return new BoxEl
             {
                 Key = "show-toolbar", Direction = 1, Height = S.ToolbarH, MinWidth = 0f, Fill = Prop.Of(static () => R.Layer.ContentSurface),
@@ -463,6 +456,14 @@ internal static class WinUiPodcastShow
             };
         }
 
+        /// <summary>A part only some tiers draw: keyed, faded in and out as a declared swap (a crossing never rebuilds it in place).
+        /// <paramref name="fill"/>: it takes the row's free width.</summary>
+        static BoxEl Swap(string key, bool fill, Element body) => new()
+        {
+            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Grow = fill ? 1f : 0f, Basis = fill ? 0f : float.NaN, Shrink = fill ? 1f : 0f, MinWidth = 0f,
+            Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Children = [body],
+        };
+
         Element SearchBox(WinUiPodcastShowLayout lay, bool fill)
             => new BoxEl
             {
@@ -472,6 +473,8 @@ internal static class WinUiPodcastShow
             };
 
         static readonly string[] s_noSuggest = [];
+        static readonly string?[] s_filterKeys = ["filter:all", "filter:unplayed", "filter:progress", "filter:saved"];
+        static readonly string?[] s_paneKeys = ["pane:tab:episode", "pane:tab:about"];
 
         Element Group(PodcastShowView v, PodcastGroup g, WinUiPodcastShowLayout lay, float toolbarBottom, bool live)
         {
@@ -484,7 +487,7 @@ internal static class WinUiPodcastShow
             var years = v.Years;
             headKids.Add(new BoxEl
             {
-                Key = "gh:jump:" + g.Key, Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Height = S.GroupButtonH, Shrink = 0f,
+                Key = "gh:jump:" + g.Key, Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Height = lay.GroupButtonH, Shrink = 0f,
                 Padding = new Edges4(S.GroupButtonPad, 0f, S.GroupButtonPad, 0f), Margin = new Edges4(-S.GroupButtonPad, 0f, 0f, 0f),
                 Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
@@ -496,7 +499,7 @@ internal static class WinUiPodcastShow
             if (g.Fresh) headKids.Add(HyperlinkButton.Create(Loc.Get(Strings.Podcast.Pages.MarkAllPlayed), _p.MarkFreshPlayed));
             Element header = new BoxEl
             {
-                Key = "gh", Direction = 0, Height = S.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Fill = Prop.Of(static () => R.Layer.ContentSurface),
+                Key = "gh", Direction = 0, Height = lay.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Fill = Prop.Of(static () => R.Layer.ContentSurface),
                 Children = headKids.ToArray(),
             }.Sticky(toolbarBottom);
             var rows = new Element[g.Rows.Length];
@@ -504,8 +507,8 @@ internal static class WinUiPodcastShow
                 rows[i] = WinUiPodcastKit.EpisodeRow(v.Episodes[g.Rows[i]], lay.RowMode, lay.RowDescription, lay.Stacked, _verbs!);
             return new BoxEl
             {
-                Key = "g:" + g.Key, Direction = 1, MinWidth = 0f, OnRealized = live ? h => _groupNodes[key] = h : null,
-                Children = [header, new BoxEl { Key = "rows", Direction = 1, Gap = K.RowGap, MinWidth = 0f, Children = rows }.StickyClip(toolbarBottom + S.GroupH)],
+                Key = "g:" + g.Key, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove, OnRealized = live ? h => _groupNodes[key] = h : null,
+                Children = [header, new BoxEl { Key = "rows", Direction = 1, Gap = K.RowGap, MinWidth = 0f, Children = rows }.StickyClip(toolbarBottom + lay.GroupH)],
             };
         }
 
@@ -564,12 +567,12 @@ internal static class WinUiPodcastShow
             float maxH = MathF.Max(S.PaneW, viewportH - S.PaneTop - S.PaneFoot - R.Space.DockReserve);
             return new BoxEl
             {
-                Key = "show-pane", Direction = 1, Width = S.PaneW, Shrink = 0f, MinWidth = 0f, MaxHeight = maxH,
+                Key = "show-pane", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Width = S.PaneW, Shrink = 0f, MinWidth = 0f, MaxHeight = maxH,
                 Corners = CornerRadius4.All(K.CardRadius), Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
                 Padding = new Edges4(S.PanePad, S.PanePadTop, S.PanePad, 0f),
                 Children =
                 [
-                    WinUiChoice.Pivot(labels, _paneIx, WinUiChoiceRules.PivotItemH, i => _p.SetPaneTab((PodcastPaneTab)i)),
+                    WinUiChoice.Pivot(labels, _paneIx, WinUiChoiceRules.PivotItemH, i => _p.SetPaneTab((PodcastPaneTab)i), s_paneKeys),
                     new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                     new BoxEl
                     {

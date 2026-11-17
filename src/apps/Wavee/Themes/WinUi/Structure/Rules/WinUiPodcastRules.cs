@@ -70,54 +70,20 @@ internal static class WinUiPodcastKitRules
     }
 }
 
-/// <summary>The show page in one WINDOW tier.</summary>
-public sealed record WinUiPodcastShowLayout
-{
-    public required WidthTier Tier { get; init; }
-    /// <summary>The list with the 360 details pane beside it (1008 and up); else one column with About as an Expander above the list.</summary>
-    public required bool Pane { get; init; }
-    /// <summary>Stacked header (640 and under): the cover beside the words, then the full-width button, then the commands; a ComboBox filter.</summary>
-    public required bool Stacked { get; init; }
-    /// <summary>What a row's click does: select (pane), expand in place (medium) or open the episode (small).</summary>
-    public required PodcastRowMode RowMode { get; init; }
-    /// <summary>Rows carry one line of description (medium).</summary>
-    public required bool RowDescription { get; init; }
-    public required float Cover { get; init; }
-    public required float CoverRadius { get; init; }
-    /// <summary>The hero's air above and below, and the gap beside the cover.</summary>
-    public required float HeroTop { get; init; }
-    public required float HeroBottom { get; init; }
-    public required float CoverGap { get; init; }
-    /// <summary>The title: Title Large (40/52) or Title (28/36).</summary>
-    public required bool TitleLarge { get; init; }
-    /// <summary>The share button carries its word.</summary>
-    public required bool ShareWord { get; init; }
-    /// <summary>A control's height (32; 40 at Compact) and the play button's.</summary>
-    public required float Target { get; init; }
-    public required float PlayButton { get; init; }
-    /// <summary>The search box's width (0 = the search icon button).</summary>
-    public required float Search { get; init; }
-    /// <summary>The up-next label's progress bar width.</summary>
-    public required float UpBar { get; init; }
-}
-
-/// <summary>What a row's click does in a tier.</summary>
-public enum PodcastRowMode : byte { Select, Expand, Open }
-
 /// <summary>The show page's fixed numbers.</summary>
 internal static class WinUiPodcastShowRules
 {
     /// <summary>The details pane (360), the gap between the list and it (24), its sticky top (the bar + 16) and its padding.</summary>
     public const float PaneW = 360f, ColGap = 24f, PaneTop = 64f, PanePad = 16f, PanePadTop = 4f, PaneFoot = 24f;
     /// <summary>The toolbar (52 tall, sticky under the bar) and a group header (36, sticky under the toolbar).</summary>
-    public const float ToolbarH = 52f, GroupH = 36f, GroupButtonH = 28f, GroupButtonPad = 8f;
+    public const float ToolbarH = 52f, GroupButtonPad = 8f;
     /// <summary>The jump grid: three columns of 56-tall cells, 4 apart, 12 inside, at most 340 wide.</summary>
     public const float JumpCellH = 56f, JumpGap = 4f, JumpPad = 12f, JumpW = 340f;
     public const int JumpCols = 3;
     /// <summary>The up row (min 40 tall), its gap; the commands' gap.</summary>
     public const float UpMinH = 40f, UpGap = 16f, UpLabelGap = 2f, UpSubGap = 10f, CommandGap = 8f, IdGap = 4f, EyebrowGap = 6f;
     /// <summary>The pane's description clamp (4 lines), the rating card's number (Title 28/36).</summary>
-    public const int PaneClamp = 4;
+    public const int PaneClamp = 4, TitleLines = 3;
     public const float RatingCardPad = 12f, RatingStar = 16f, FactsColGap = 16f, FactsRowGap = 6f, FactLabelW = 96f;
     /// <summary>The empty list's air.</summary>
     public const float EmptyPad = 32f;
@@ -131,35 +97,3 @@ internal static class WinUiPodcastShowRules
     public const string PageKey = "podcast-show";
 }
 
-/// <summary>The show page's tier records.</summary>
-public static class WinUiPodcastShowTiers
-{
-    static readonly WinUiPodcastShowLayout s_compact = new()
-    {
-        Tier = WidthTier.Compact, Pane = false, Stacked = true, RowMode = PodcastRowMode.Open, RowDescription = false,
-        Cover = 96f, CoverRadius = 6f, HeroTop = 20f, HeroBottom = 16f, CoverGap = 16f, TitleLarge = false, ShareWord = false,
-        Target = 40f, PlayButton = WinUiPodcastKitRules.PlayButtonCompact, Search = 0f, UpBar = 96f,
-    };
-    static readonly WinUiPodcastShowLayout s_small = new()
-    {
-        Tier = WidthTier.Small, Pane = false, Stacked = false, RowMode = PodcastRowMode.Expand, RowDescription = true,
-        Cover = 136f, CoverRadius = 8f, HeroTop = 32f, HeroBottom = 24f, CoverGap = 24f, TitleLarge = false, ShareWord = false,
-        Target = 32f, PlayButton = WinUiPodcastKitRules.PlayButton, Search = 168f, UpBar = 160f,
-    };
-    static readonly WinUiPodcastShowLayout s_standard = new()
-    {
-        Tier = WidthTier.Standard, Pane = true, Stacked = false, RowMode = PodcastRowMode.Select, RowDescription = false,
-        Cover = 160f, CoverRadius = 8f, HeroTop = 32f, HeroBottom = 24f, CoverGap = 24f, TitleLarge = true, ShareWord = true,
-        Target = 32f, PlayButton = WinUiPodcastKitRules.PlayButton, Search = 208f, UpBar = 160f,
-    };
-
-    /// <summary>The record for <paramref name="facts"/>' WINDOW tier (Huge reads Standard's); Standard where no frame resolved the tiers.</summary>
-    public static WinUiPodcastShowLayout Of(in TierFacts facts) => facts.Policy is null ? s_standard : For(facts.Window);
-
-    public static WinUiPodcastShowLayout For(WidthTier window) => window switch
-    {
-        WidthTier.Compact => s_compact,
-        WidthTier.Small => s_small,
-        _ => s_standard,
-    };
-}
