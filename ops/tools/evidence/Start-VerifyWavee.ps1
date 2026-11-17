@@ -40,13 +40,10 @@ if (-not $Exe) { $Exe = Join-Path $repo 'src\apps\Wavee\bin\verify\evidence\Wave
 if (-not (Test-Path $Exe)) { throw "verify build not found: $Exe" }
 $Exe = (Resolve-Path $Exe).Path
 
-# A verify instance already running on THIS profile: reuse it rather than launching a second (it would hand off to it). Matched
-# by its command line's --profile, never by the exe alone: the owner may run the same build on their own profile (2026-11-17 a
-# bare launch of a verify build was found and driven as the verify instance), and a diag verb sent there changes THEIR app.
-$profileFull = [IO.Path]::GetFullPath($ProfileDir).TrimEnd('\')
-$mine = @(Get-CimInstance Win32_Process -Filter "Name='Wavee.exe'" -ErrorAction SilentlyContinue | Where-Object {
-    $_.ExecutablePath -eq $Exe -and $_.CommandLine -match '--profile\s+"?([^"]+?)"?(\s|$)' -and
-    [IO.Path]::GetFullPath($Matches[1]).TrimEnd('\') -eq $profileFull -and $_.CommandLine -notmatch '--crash-handler' })
+# A verify instance already running on THIS profile (its command line's --profile, never the exe alone: Find-VerifyWavee):
+# reuse it rather than launching a second (it would hand off to it).
+$found = Find-VerifyWavee -Exe $Exe -ProfileDir $ProfileDir
+$mine = @(if ($found) { $found })
 if ($mine.Count -gt 0) {
     $p = Get-Process -Id $mine[0].ProcessId
     $h = Wait-WindowByPid -ProcessId $p.Id -TimeoutSec 10

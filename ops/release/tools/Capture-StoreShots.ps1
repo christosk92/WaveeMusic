@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Shoot the Microsoft Store listing's source captures from a VERIFY Wavee, scene by scene, the same way every time.
@@ -35,8 +35,13 @@ if (-not $Out) { $Out = Join-Path $repo 'artifacts\store-shots\shots' }
 New-Item -ItemType Directory -Force $Out | Out-Null
 $send = Join-Path $repo 'ops\tools\evidence\Send-WaveeDiag.ps1'
 $Exe = (Resolve-Path $Exe).Path
-$proc = Get-Process Wavee -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-if (-not $proc) { throw "no verify Wavee window running from $Exe - start it with Start-VerifyWavee.ps1" }
+# The verify instance: the one running from -Exe on THIS profile (its --profile on the command line; the profile is the evidence
+# root's grandparent). Never matched on the exe alone: the owner may run the same build on their own profile.
+Import-Module (Join-Path $repo 'ops\tools\evidence\Evidence.psm1') -Force -DisableNameChecking
+$verifyProfile = Split-Path (Split-Path $EvidenceRoot -Parent) -Parent
+$found = Find-VerifyWavee -Exe $Exe -ProfileDir $verifyProfile
+$proc = if ($found) { Get-Process -Id $found.ProcessId -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } }
+if (-not $proc) { throw "no verify Wavee window running from $Exe on profile $verifyProfile - start it with Start-VerifyWavee.ps1" }
 
 Add-Type -Namespace StoreShots -Name Win -MemberDefinition @'
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
