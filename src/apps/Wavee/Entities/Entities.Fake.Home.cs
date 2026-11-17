@@ -1466,7 +1466,7 @@ public static partial class Entities
         s_coldStamp = unchecked((uint)Environment.TickCount64) | 1u;
         foreach (int slot in new[] { all.Slot, following.Slot })
         {
-            t.Known[slot] &= ~(uint)HomeFields.Sections;
+            t.Known[slot] &= ~(uint)HomeFields.All;   // the greeting, the chip strip and the sections: a launch has none of them yet
             t.Seat(slot, s_coldStamp);
             t.Bump(slot);
         }
