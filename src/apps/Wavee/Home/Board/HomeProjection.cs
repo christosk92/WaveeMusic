@@ -115,7 +115,13 @@ public static class HomeProjection
             // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf. Not while
             // the board holds the New releases widget: that IS the Following list (HomeBoardZones), and one list drawn twice is one verb
             // in two homes (a live open, 2026-11-17, once the Following answer was asked). A placed entry of it then takes no room.
-            if (!HasWidget(doc, "releases") && FollowingReleases(followingReleases, titles) is { } releases)
+            // The feed's own followed releases (the Release Spotlight's pages) are the Following list's head: the list then holds the rest under
+            // its own words, never the spotlight's albums twice nor a second "From artists you follow" (lint home.duplicate).
+            HashSet<long>? spotlit = null;
+            foreach (var f in feed)
+                if (f.Template == SectionTemplate.ReleaseSpotlight && f.Zone?.Clusters is { } cs)
+                    foreach (var c in cs) if (c.Header is { } h) (spotlit ??= []).Add(h.DedupeKey);
+            if (!HasWidget(doc, "releases") && FollowingReleases(followingReleases, titles, spotlit) is { } releases)
                 feed.Insert(wideAt >= 0 ? wideAt + 1 : Math.Min(1, feed.Count),
                     new FeedCandidate(new SectionRef(FollowingReleasesKey, Fnv(FollowingReleasesKey), FollowingReleasesKey), releases.Title ?? "",
                         SectionTemplate.ReleaseList, releases.SectionSlot, releases, false, null, []));
@@ -335,16 +341,17 @@ public static class HomeProjection
     }
 
     /// <summary>The Following release list: every album card of the music-following-chip answer, deduped, as one release list.</summary>
-    static Zone? FollowingReleases(IReadOnlyList<SectionInput>? following, ZoneTitles titles)
+    static Zone? FollowingReleases(IReadOnlyList<SectionInput>? following, ZoneTitles titles, HashSet<long>? spotlit = null)
     {
         if (following is not { Count: > 0 }) return null;
-        var seen = new HashSet<long>();
+        var seen = spotlit is null ? new HashSet<long>() : new HashSet<long>(spotlit);
         var cards = new List<HomeCard>();
         foreach (var s in following)
             foreach (var c in s.Cards)
                 if (SectionRoles.IsUsable(c) && c.Kind == HomeCardKind.Album && seen.Add(c.DedupeKey)) cards.Add(c);
         if (cards.Count == 0) return null;
-        return new Zone(ZoneKind.ReleaseList, "home:section:" + FollowingReleasesKey, titles.FromArtistsYouFollow, null, cards,
+        return new Zone(ZoneKind.ReleaseList, "home:section:" + FollowingReleasesKey,
+            spotlit is null ? titles.FromArtistsYouFollow : Loc.Get(Strings.Home.Spotlight.MoreReleases), null, cards,
             SectionSlot: following[0].Slot, TotalCount: cards.Count);
     }
 

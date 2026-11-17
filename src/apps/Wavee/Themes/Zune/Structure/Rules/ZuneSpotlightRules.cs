@@ -24,19 +24,22 @@ public static class ZuneSpotlightRules
         WidthTier.Compact => new(Narrow: true, Height: 560f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 0f, CoverRadius: 0f, NarrowCoverH: 207f,
             CoverBleeds: true, CopyPad: new Edges4(16f, 16f, 16f, 20f), CanvasW: 0f, CanvasH: 0f, CanvasRadius: 0f, TrackRows: 3, TrackRowH: 40f,
             TrackRadius: 0f, NextCover: 48f, NextGap: 4f, StripGap: 4f, PageGap: 12f, ProgressH: 3f, Tier: new ZuneSpotlightTier(lay, NarrowTitle)),
-        WidthTier.Small => new(Narrow: false, Height: 296f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 296f, CoverRadius: 0f, NarrowCoverH: 0f,
-            CoverBleeds: true, CopyPad: new Edges4(24f, 20f, 24f, 20f), CanvasW: 166f, CanvasH: 296f, CanvasRadius: 0f, TrackRows: 2, TrackRowH: 26f,
+        WidthTier.Small => new(Narrow: false, Height: 308f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 308f, CoverRadius: 0f, NarrowCoverH: 0f,
+            CoverBleeds: true, CopyPad: new Edges4(24f, 20f, 24f, 20f), CanvasW: 173f, CanvasH: 308f, CanvasRadius: 0f, TrackRows: 2, TrackRowH: 32f,
             TrackRadius: 0f, NextCover: 48f, NextGap: 4f, StripGap: 4f, PageGap: 12f, ProgressH: 3f, Tier: new ZuneSpotlightTier(lay, NarrowTitle)),
-        WidthTier.Standard => new(Narrow: false, Height: 336f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 336f, CoverRadius: 0f, NarrowCoverH: 0f,
-            CoverBleeds: true, CopyPad: new Edges4(28f, 22f, 28f, 22f), CanvasW: 189f, CanvasH: 336f, CanvasRadius: 0f, TrackRows: 3, TrackRowH: 26f,
+        WidthTier.Standard => new(Narrow: false, Height: 354f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 354f, CoverRadius: 0f, NarrowCoverH: 0f,
+            CoverBleeds: true, CopyPad: new Edges4(28f, 22f, 28f, 22f), CanvasW: 199f, CanvasH: 354f, CanvasRadius: 0f, TrackRows: 3, TrackRowH: 32f,
             TrackRadius: 0f, NextCover: 56f, NextGap: 4f, StripGap: 4f, PageGap: 12f, ProgressH: 3f, Tier: new ZuneSpotlightTier(lay, WideTitle)),
-        _ => new(Narrow: false, Height: 376f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 376f, CoverRadius: 0f, NarrowCoverH: 0f,
-            CoverBleeds: true, CopyPad: new Edges4(32f, 24f, 32f, 24f), CanvasW: 212f, CanvasH: 376f, CanvasRadius: 0f, TrackRows: 4, TrackRowH: 26f,
+        _ => new(Narrow: false, Height: 400f, Pad: 0f, Gap: 0f, Radius: 0f, Cover: 400f, CoverRadius: 0f, NarrowCoverH: 0f,
+            CoverBleeds: true, CopyPad: new Edges4(32f, 24f, 32f, 24f), CanvasW: 225f, CanvasH: 400f, CanvasRadius: 0f, TrackRows: 4, TrackRowH: 32f,
             TrackRadius: 0f, NextCover: 64f, NextGap: 4f, StripGap: 4f, PageGap: 12f, ProgressH: 3f, Tier: new ZuneSpotlightTier(lay, WideTitle)),
     };
 
     /// <summary>The title's size and line (light, lowercase, one line that bleeds): the narrow forms' and the wide forms'.</summary>
     public const float NarrowTitle = 80f, WideTitle = 104f;
+
+    /// <summary>A glyph's contrast floor on the block (WCAG's non-text 3 : 1).</summary>
+    public const float GlyphContrast = 3f;
 
     /// <summary>The fade the title bleeds under at the words' right edge.</summary>
     public const float TitleFade = 48f;

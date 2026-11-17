@@ -64,7 +64,9 @@ internal static partial class ZuneHomeZones
     {
         var ink = Tok.TextPrimary;
         if (item.Accent == 0u) return Tok.FillSolidBase;
-        return ColorContrast.EnsureContrast(ColorScience.ToColor(item.Accent), ink);
+        // The words in the primary ink at 4.5 : 1, and the glyphs the theme draws in its secondary ink (the save ring's heart) at their 3 : 1.
+        var block = ColorContrast.EnsureContrast(ColorScience.ToColor(item.Accent), ink);
+        return ColorContrast.EnsureContrast(block, Tok.TextSecondary, S.GlyphContrast);
     }
 
     static Element SpotFrame(SpotlightItem item, ReleaseSpotlightGeometry g, Element content) => new BoxEl
