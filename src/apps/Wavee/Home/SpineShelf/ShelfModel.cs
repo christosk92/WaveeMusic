@@ -72,10 +72,21 @@ public static class SpineShelfRules
     // ── motion (one curve for the whole shelf: the row's length is constant only when every item rides the same e(t)) ──
     /// <summary>Open and close: the concept's 520 ms on cubic-bezier(.22, .9, .24, 1).</summary>
     public const float OpenMs = 520f;
-    /// <summary>A song tile widening and narrowing.</summary>
-    public const float TileMs = 380f;
+    /// <summary>A song tile widening and narrowing: one critically damped spring for every tile and every picture in them (TileResponse
+    /// seconds). A spring, not the item's tween: the pointer retargets tiles mid-motion, and a tween is re-aimed over the time IT has left,
+    /// which differs per tile, so a quick sweep opened gaps of up to 24 DIP between tiles (and overlaps) and a tile caught near its end
+    /// finished its whole change in a frame or two. Springs with one stiffness keep their state on a retarget and add up linearly: the
+    /// widths' sum stays the row's span, every gap stays TileGap and every picture stays centred, on every frame of any retarget.</summary>
+    public const float TileResponse = 0.30f;
+    /// <summary>The longest a tile's widening takes to come to rest: the fallback that opens a tile's media when no width row runs (reduced
+    /// motion); with a row the media opens on its rest (WhenSettled).</summary>
+    public const float TileMs = 520f;
     /// <summary>One frame: the media of a tile opens this long after its widening has come to rest.</summary>
     public const float RestFrameMs = 17f;
+    /// <summary>How long a tile the pointer left stays live while the pointer crosses a gap toward the next tile (a few frames).</summary>
+    public const float LeaveGraceMs = 90f;
+    /// <summary>The still fading out over the first frame of its canvas video, and back in over the video before it is released.</summary>
+    public const float SwapMs = 160f;
 
     /// <summary>The spine/face cross-fade.</summary>
     public const float FadeMs = 240f;

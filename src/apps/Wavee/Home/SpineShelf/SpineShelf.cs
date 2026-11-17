@@ -12,8 +12,12 @@
 // neighbour's presented x lands, x_a + SpineW + Gap + (FaceW − SpineW)(1 − e) − Gap: the row keeps its length on every frame, no gap, no
 // overlap. The open face is its own boundary at a FIXED width (FaceW, the open item's final width): it is laid out once and only revealed
 // or clipped while the item moves, so its text never reflows mid-motion. The spine and face layers cross-fade on seeded opacity rows.
-// Song tiles are the same mechanism one level down (TileMs): a hover re-lays out the five tile boxes once; each tile's media layer is laid
-// out at the widest a tile gets and kept centred by its own Position FLIP on the same curve; its caption is laid out at the rest width.
+// Song tiles are the same mechanism one level down, on one critically damped spring (TileResponse: the pointer retargets them mid-motion,
+// and springs that share a stiffness add up linearly, so the row keeps its span, its gaps and every picture's centre through any retarget):
+// a hover re-lays out the five tile boxes once; each tile's media layer (the still, and the canvas video under it) is laid out at the
+// widest a tile gets and kept centred by its own Position FLIP on the same spring, cut by the tile's presented clip; its caption is laid
+// out at the rest width. The video joins the still under it once the tile has come to rest and fades it out on its first frame (same box,
+// same cover crop), and the still fades back in over the video before the video is released.
 // The narrow form (Geometry.Standing) stands the items up: rows of RowH, the open one OpenH, heights eased the same way; the total is the
 // same whichever is open.
 
@@ -216,8 +220,11 @@ public sealed class SpineShelf : Component
     InputHooks? _hooks;
     TimerHandle _dwellTimer, _tileTimer, _closeTimer;
     bool _armed;
-    NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [], _tile = [];
-    Action? _tileRested;
+    NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [], _tile = [], _still = [];
+    Action?[] _tileRested = [];   // per tile: its own width row came to rest (a shared one fired for the tile the pointer had LEFT)
+    TimerHandle _releaseTimer, _leaveTimer;
+    int _leaving = -1;   // the tile the pointer left, narrowing only if no other tile is entered within LeaveGraceMs
+    int _releasing = -1;   // the tile whose still is fading back in over its video before the video is released
     Element[] _built = [];
     ShelfItem[] _builtItems = [];
     SpineShelfGeometry _builtG;
@@ -232,6 +239,8 @@ public sealed class SpineShelf : Component
     static readonly MotionTokenDef s_faceFade = MotionTokenDef.Eased(SpineShelfRules.FadeMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
 
     static readonly SpringParams s_fadeIn = SpringParams.FromResponse(SpineShelfRules.FadeMs / 1000f, 1f);
+    /// <summary>The still over a canvas video: out on the video's first frame, back in before the video is released (from wherever it is).</summary>
+    static readonly SpringParams s_swap = SpringParams.FromResponse(SpineShelfRules.SwapMs / 1000f, 1f);
     const int S = SpineShelfRules.Songs;
 
     // ── reads for the inspector ──
@@ -265,6 +274,8 @@ public sealed class SpineShelf : Component
             _item = new NodeHandle[n]; _spine = new NodeHandle[n]; _face = new NodeHandle[n]; _meter = new NodeHandle[n];
             _progress = new NodeHandle[n * S];
             _tile = new NodeHandle[n * S];
+            _still = new NodeHandle[n * S];
+            _tileRested = new Action?[n * S];
         }
 
         // The open item: remembered per shelf identity, else the first in Spotify's order.
@@ -288,7 +299,9 @@ public sealed class SpineShelf : Component
         _dwellTimer = UseTimeout(DwellFired, SpineShelfRules.DwellMs, DepKey.Empty);
         _tileTimer = UseTimeout(TileSettled, SpineShelfRules.TileMs, DepKey.Empty);
         _closeTimer = UseTimeout(CloseSettled, SpineShelfRules.OpenMs, DepKey.Empty);
-        if (!_armed) { _armed = true; _dwellTimer.Cancel(); _tileTimer.Cancel(); _closeTimer.Cancel(); }
+        _releaseTimer = UseTimeout(ReleaseVideo, SpineShelfRules.SwapMs, DepKey.Empty);
+        _leaveTimer = UseTimeout(LeaveFired, SpineShelfRules.LeaveGraceMs, DepKey.Empty);
+        if (!_armed) { _armed = true; _dwellTimer.Cancel(); _tileTimer.Cancel(); _closeTimer.Cancel(); _releaseTimer.Cancel(); _leaveTimer.Cancel(); }
 
         string key = p.Key;
         UseEffect(() =>
@@ -301,6 +314,7 @@ public sealed class SpineShelf : Component
                 ShelfRegistry.Live.Remove(this);
                 ShelfPreview.ClipStarted -= OnClipStarted;
                 if (ShelfPreview.Live.Peek().StartsWith(key + "|", StringComparison.Ordinal)) ShelfPreview.Leave();
+                if (ShelfPreview.Showing.Peek().StartsWith(key + "|", StringComparison.Ordinal)) ShelfPreview.Release(ShelfPreview.Showing.Peek());
             };
         }, DepKey.Empty);
 
@@ -330,11 +344,11 @@ public sealed class SpineShelf : Component
     static readonly LayoutTransition s_standMotion = new(TransitionChannels.Bounds,
         TransitionDynamics.Tween(SpineShelfRules.OpenMs, SpineShelfRules.Curve), SizeMode.Reveal, Axes: SizeAxes.Height);
     static readonly LayoutTransition s_tileMotion = new(TransitionChannels.Bounds,
-        TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve), SizeMode.Reveal, Axes: SizeAxes.Width);
+        TransitionDynamics.Spring(SpineShelfRules.TileResponse, 1f), SizeMode.Reveal, Axes: SizeAxes.Width);
     static readonly LayoutTransition s_coverScale = new(TransitionChannels.Bounds,
-        TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve), SizeMode.ScaleCorrect);
+        TransitionDynamics.Spring(SpineShelfRules.TileResponse, 1f), SizeMode.ScaleCorrect);
     static readonly LayoutTransition s_tileSlide = new(TransitionChannels.Position,
-        TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve));
+        TransitionDynamics.Spring(SpineShelfRules.TileResponse, 1f));
 
     Element Item(ShelfItem item, int i, bool open, SpineShelfGeometry g, SpineShelfSkin skin,
                  Func<float> faceW)
@@ -468,10 +482,24 @@ public sealed class SpineShelf : Component
         {
             new BoxEl { Gradient = TileWash(song.Accent) },
         };
+        string jKey = item.Key + ":" + j.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (song.HasCanvas)
+        {
+            // The canvas video UNDER the still, in the still's own box (the media layer): the same cover crop and centre on every frame, the
+            // tile's presented clip cutting both. The video's hole erases only what is drawn before it (the wash), so the still over it is the
+            // poster until the video's first frame, when it fades out (VideoPresented), and the cross-fade back before a release is the still
+            // fading in over the playing video (TileLeave).
+            media.Add(Embed.Comp(new TileVideoProps(this, tile), static () => new TileVideo()));
             // A fluid image (no explicit width) needs its decode size: without one it never decodes and the tile showed its bare wash (owner,
-            // live account, 2026-11-17). The canvas still's own height, as the canvas host decodes it.
-            media.Add(new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover, DecodePx = SpineShelfRules.StillDecodePx });
+            // live account, 2026-11-17). The canvas still's own height, as the canvas host decodes it. A box around it carries the fade (an
+            // ImageEl has no handle of its own).
+            media.Add(new BoxEl
+            {
+                Key = "shelf:still:" + jKey, ZStack = true, HitTestVisible = false,
+                OnRealized = h => { if (code < _still.Length) _still[code] = h; },
+                Children = [new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover, DecodePx = SpineShelfRules.StillDecodePx }],
+            });
+        }
         else if (song.Cover is { } cover)
         {
             // "Its cover on a blur of its colours": the cover itself decoded a few pixels across and drawn over the whole media layer (the
@@ -493,15 +521,18 @@ public sealed class SpineShelf : Component
 
         // The media is laid out at the widest a tile gets (so a widening tile reveals it and never re-crops it) and centred on the tile: an
         // unbounded stack layer may overflow its stack on both sides (FlexLayout.ArrangeZStack), and its own Position FLIP rides the tile's
-        // curve, so its centre stays on the tile's presented centre every frame.
+        // spring, so its centre stays on the tile's presented centre every frame. One TileGap wider than the live tile: a critically damped
+        // spring retargeted with speed can pass its target by a fraction, and the picture must still cover the tile then.
+        float MediaW() => liveW() + g.TileGap;
         var mediaLayer = new BoxEl
         {
+            Key = "shelf:media:" + jKey,
             MeasureUnboundedWidth = true, JustifySelf = FlexAlign.Center, Layout = s_tileSlide, HitTestVisible = false, MinWidth = 0f,
             Children =
             [
                 new BoxEl
                 {
-                    ZStack = true, Height = g.TilesH, Width = Prop.Of(liveW), Shrink = 0f, MinWidth = 0f, HitTestVisible = false,
+                    ZStack = true, Height = g.TilesH, Width = Prop.Of(MediaW), Shrink = 0f, MinWidth = 0f, HitTestVisible = false,
                     Children = media.ToArray(),
                 },
             ],
@@ -528,14 +559,10 @@ public sealed class SpineShelf : Component
             Focusable = true, Cursor = CursorId.Hand, Role = AutomationRole.Button,
             OnClick = () => PlayFrom(i, s),
             OnHoverMove = _ => TileEnter(code, tile, in s),
-            OnPointerExit = () => TileLeave(code),
+            OnPointerExit = () => TilePointerLeft(code),
             OnFocusChanged = f => { if (f) TileEnter(code, tile, in s); else TileLeave(code); },
             OnRealized = h => { if (code < _tile.Length) _tile[code] = h; },
-            // The video fills the TILE (not the wider media layer): it is shown only on a settled tile, so its box is the tile's final one, and a
-            // composited video surface never spills past the tile into its neighbours. UniformToFill crops the portrait canvas to it.
-            Children = song.HasCanvas
-                ? [mediaLayer, Embed.Comp(new TileVideoProps(tile, g.TileRadius), static () => new TileVideo()), scrim, caption, progress]
-                : [mediaLayer, scrim, caption, progress],
+            Children = [mediaLayer, scrim, caption, progress],
         };
     }
 
@@ -581,7 +608,7 @@ public sealed class SpineShelf : Component
         int old = _open.Peek();
         if ((uint)i >= (uint)_items.Length || i == old) return;
         DwellCancel(_dwell);
-        TileLeave(_live.Peek());
+        TileLeave(_live.Peek(), crossFade: false);   // the face fades as a whole (no video may sit under a fading ancestor)
         if (_anim is { } a)
         {
             Fade(a, _spine, old, 1f, 0f);
@@ -637,31 +664,70 @@ public sealed class SpineShelf : Component
     /// <summary>The pointer (or focus) came onto a tile of the open card: it widens, its clip starts, its canvas follows once it has widened.</summary>
     public void TileEnter(int code, string tile, in ShelfSong song)
     {
+        if (code == _leaving) { _leaving = -1; _leaveTimer.Cancel(); }   // back on the tile within the grace
         if (code / S != _open.Peek() || code == _live.Peek() || song.IsBlank) return;
         TileLeave(_live.Peek());
         _live.Value = code;
         _settling = code;
         ShelfPreview.Enter(tile, in song);
         // The media opens on the first frame AFTER the tile has come to rest (its width row settled): an engine's synchronous start cost then
-        // lands on a frame where nothing of the shelf moves, never on the widening's last frame. Without a row (reduced motion) the timer stands.
+        // lands on a frame where nothing of the shelf moves, never on the widening's last frame. Each tile has its OWN rest callback that acts
+        // only while it is the tile settling: one shared callback also fired when the tile the pointer had just left came to rest, and opened
+        // this tile's video in the middle of its widening (the owner's film, 2026-11-17). Without a row (reduced motion) the timer stands.
         if (_anim is { } a && (uint)code < (uint)_tile.Length && !_tile[code].IsNull)
         {
-            var node = _tile[code];
-            _tileRested ??= () => _tileTimer.RestartIn(SpineShelfRules.RestFrameMs);
-            a.WhenSettled(node, AnimChannel.SizeW, _tileRested);
+            int c = code;
+            a.WhenSettled(_tile[code], AnimChannel.SizeW, _tileRested[code] ??= () => { if (_settling == c) _tileTimer.RestartIn(SpineShelfRules.RestFrameMs); });
             _tileTimer.RestartIn(SpineShelfRules.TileMs + SpineShelfRules.RestFrameMs);   // the fallback when no row runs
         }
         else _tileTimer.RestartIn(SpineShelfRules.TileMs);
     }
 
-    /// <summary>The pointer (or focus) left tile <paramref name="code"/>: the video and the clip stop first, then the tile narrows.</summary>
-    public void TileLeave(int code)
+    /// <summary>The pointer left tile <paramref name="code"/>: it narrows only if no other tile is entered within LeaveGraceMs. Crossing the gap
+    /// between two tiles left one a frame or two before the next was entered, and that frame laid the whole row out at rest: every tile
+    /// turned back for a frame (the film's reversals, a visible wobble of the tile the pointer was not even on).</summary>
+    void TilePointerLeft(int code)
     {
+        if (code < 0 || code != _live.Peek()) return;
+        _leaving = code;
+        _leaveTimer.RestartIn(SpineShelfRules.LeaveGraceMs);
+    }
+
+    void LeaveFired()
+    {
+        int code = _leaving;
+        _leaving = -1;
+        TileLeave(code);
+    }
+
+    /// <summary>The pointer (or focus) left tile <paramref name="code"/>: the clip stops, the tile narrows, and a video it shows stays under its
+    /// still while the still fades back in over it (SwapMs, the video following the narrowing tile's clip), then it is released.</summary>
+    public void TileLeave(int code) => TileLeave(code, crossFade: true);
+
+    /// <summary><see cref="TileLeave(int)"/>; without <paramref name="crossFade"/> (the card closing: its face fades as a whole) the video is
+    /// released at once under the still.</summary>
+    void TileLeave(int code, bool crossFade)
+    {
+        if (_leaving >= 0) { _leaving = -1; _leaveTimer.Cancel(); }
         if (code < 0 || code != _live.Peek()) return;
         _tileTimer.Cancel();
         _settling = -1;
         _settled = -1;
-        ShelfPreview.Leave();
+        bool shows = ShelfPreview.Showing.Peek() == TileKey(code);
+        if (shows && crossFade && _anim is { } fa && (uint)code < (uint)_still.Length && !_still[code].IsNull)
+        {
+            if (_releasing >= 0 && _releasing != code) ReleaseNow();
+            _releasing = code;
+            fa.Spring(_still[code], AnimChannel.Opacity, 1f, s_swap);
+            _releaseTimer.RestartIn(SpineShelfRules.SwapMs + SpineShelfRules.RestFrameMs);
+            ShelfPreview.Leave(release: false);
+        }
+        else
+        {
+            if (shows) ShowStill(code);
+            if (_releasing >= 0) ReleaseNow();
+            ShelfPreview.Leave();
+        }
         if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull)
             a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 0f, 1f, Easing.Linear);
         _live.Value = -1;
@@ -672,8 +738,53 @@ public sealed class SpineShelf : Component
         int code = _settling;
         if (code < 0 || code != _live.Peek()) return;
         _settled = code;
+        // Back on a tile whose still was fading in over its video: the video never left; the still fades out again.
+        if (_releasing == code)
+        {
+            _releasing = -1;
+            _releaseTimer.Cancel();
+            HideStill(code);
+        }
         // The clip opens once the tile has widened (ShelfPreview.Settled); its progress line starts when it plays (ClipStarted).
         ShelfPreview.Settled(TileKey(code));
+    }
+
+    /// <summary>The still has faded back in over the video of the tile the pointer left: the video is released (the next tile's waits for it).</summary>
+    void ReleaseVideo()
+    {
+        if (_releasing >= 0) ReleaseNow();
+    }
+
+    void ReleaseNow()
+    {
+        int code = _releasing;
+        _releasing = -1;
+        _releaseTimer.Cancel();
+        if (code < 0) return;
+        ShowStill(code);
+        ShelfPreview.Release(TileKey(code));
+    }
+
+    /// <summary>The live tile's canvas video put its first frame on the glass: the still over it fades out (the video is in the same box with the
+    /// same cover crop, so only the picture's motion changes).</summary>
+    internal void VideoPresented(string tile)
+    {
+        int code = _live.Peek();
+        if (code < 0 || tile != TileKey(code) || _releasing == code) return;
+        Log.Info("home", "shelf.canvas presented " + tile + " (the still fades out)");   // cold: once per hover
+        HideStill(code);
+    }
+
+    void HideStill(int code)
+    {
+        if (_anim is not { } a || (uint)code >= (uint)_still.Length || _still[code].IsNull) return;
+        a.Spring(_still[code], AnimChannel.Opacity, 0f, s_swap);
+    }
+
+    void ShowStill(int code)
+    {
+        if (_anim is not { } a || (uint)code >= (uint)_still.Length || _still[code].IsNull) return;
+        a.SeedEased(_still[code], AnimChannel.Opacity, 1f, 1f, 1f, Easing.Linear);
     }
 
     /// <summary>The live tile's clip started: its progress line fills over the clip's length.</summary>
@@ -748,9 +859,11 @@ public sealed class SpineShelf : Component
         }
     }
 
-    sealed record TileVideoProps(string Tile, float Radius);
+    sealed record TileVideoProps(SpineShelf Shelf, string Tile);
 
-    /// <summary>The live tile's canvas video: the one player's surface, mounted only while this tile is the one showing (ShelfPreview.Showing).</summary>
+    /// <summary>A canvas tile's video: the one player's surface, mounted only while this tile is the one showing (ShelfPreview.Showing), in the
+    /// still's box under the still. Its corners are the tile's: the composite hands the video the tile's rounded clip (the box is wider than a
+    /// narrow tile, so a radius of its own would round the wrong corners).</summary>
     sealed class TileVideo : Component
     {
         public override Element Render()
@@ -758,6 +871,8 @@ public sealed class SpineShelf : Component
             var p = UseProps<TileVideoProps>();
             bool showing = ShelfPreview.Showing.Value == p.Tile;
             if (!showing || ShelfPreview.Video is not { } player) return new BoxEl { HitTestVisible = false };
+            var shelf = p.Shelf;
+            string tile = p.Tile;
             // The canvas host's fill box (Shell/Canvas.UI.cs): the root grows into the component's box on both axes and the element grows down
             // it. Without Grow the root took its content's height (the element's 56 floor) and the video played in a strip at the tile's top
             // (owner, live account, 2026-11-17; the headless real-media check reproduced the 56-high hole).
@@ -765,10 +880,12 @@ public sealed class SpineShelf : Component
             {
                 Direction = 1, HitTestVisible = false, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
                 AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                Key = "shelf:video:" + tile,
                 Children = [Embed.Comp(() => new MediaPlayerElement
                 {
                     Player = player, IsDecorative = true, AreTransportControlsEnabled = false, ShowStatusOverlay = false,
-                    ShowLetterboxBars = false, Stretch = MediaStretch.UniformToFill, CornerRadius = p.Radius,
+                    ShowLetterboxBars = false, Stretch = MediaStretch.UniformToFill,
+                    SurfacePresented = () => shelf.VideoPresented(tile),
                 })],
             };
         }

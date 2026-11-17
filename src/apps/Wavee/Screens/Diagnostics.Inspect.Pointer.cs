@@ -38,6 +38,75 @@ public static partial class Diagnostics
             _pointer = to;
         }
 
+        /// <summary>`pointer path=[...] film=<png>`: the same walk, filmed. The glide runs inside film's trace (one move at the start of each traced
+        /// frame), so the sheet and the keys' curves show the hover's motion as the pointer makes it, a fast sweep included. A key waypoint is
+        /// aimed when its leg starts (a tile that widened under an earlier leg is aimed where it now stands).</summary>
+        string PointerFilm(int id, string name, Inspect.Args a, List<string> path, int steps, int defaultDwell, bool ease, string film)
+        {
+            Shell.HeadlessShell shell = _shell!;
+            var targets = new List<(string Target, int Dwell)>(path.Count);
+            int total = 0;
+            foreach (string raw in path)
+            {
+                string target = raw;
+                int dwell = defaultDwell;
+                int at = raw.LastIndexOf('@');
+                if (at > 0 && int.TryParse(raw.AsSpan(at + 1), out int ms)) { target = raw[..at]; dwell = Math.Clamp(ms, 0, 60_000); }
+                int frames = DwellFrames(dwell);
+                targets.Add((target, frames));
+                total += steps + frames;
+            }
+            total += Math.Clamp(a.Int("tail", 30), 0, 600);
+            int leg = 0, inLeg = 0;
+            Point2 from = default, to = default;
+            string? refused = null;
+            _traceFrameHook = f =>
+            {
+                if (leg >= targets.Count) return;
+                var (target, dwell) = targets[leg];
+                if (inLeg == 0)
+                {
+                    RectF win = InspectKit.WindowRect(shell);
+                    from = _pointer ?? new Point2(win.X + win.W / 2f, win.Y + win.H / 2f);
+                    if (target == "leave") to = new Point2(win.X - 40f, win.Y - 40f);
+                    else if (target.StartsWith("at:", StringComparison.Ordinal))
+                    {
+                        string[] xy = target[3..].Split(':');
+                        if (xy.Length == 2 && float.TryParse(xy[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float x)
+                            && float.TryParse(xy[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float y)) to = new Point2(x, y);
+                        else { refused ??= "bad waypoint '" + target + "'"; to = from; }
+                    }
+                    else
+                    {
+                        var aimArgs = new Inspect.Args();
+                        aimArgs.Set("key", new Inspect.Value(Inspect.ValueKind.String, target));
+                        aimArgs.Set("stableMax", new Inspect.Value(Inspect.ValueKind.Number, Num: 0));
+                        aimArgs.Set("force", new Inspect.Value(Inspect.ValueKind.Bool, Bool: true));   // a moving target mid-film: aim, never refuse
+                        if (TryAim(id, name, aimArgs, wheel: false, out Aim aim, out string refusal)) to = aim.Point;
+                        else { refused ??= target + ": " + refusal; to = from; }
+                    }
+                }
+                if (inLeg < steps)
+                {
+                    float t = (float)(inLeg + 1) / steps;
+                    if (ease) t = t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3f) / 2f;
+                    Move(new Point2(from.X + (to.X - from.X) * t, from.Y + (to.Y - from.Y) * t));
+                    if (inLeg == steps - 1) _pointer = target == "leave" ? null : to;
+                }
+                if (++inLeg >= steps + dwell) { leg++; inLeg = 0; }
+            };
+            a.Set("path", new Inspect.Value(Inspect.ValueKind.String, film));
+            a.Set("frames", new Inspect.Value(Inspect.ValueKind.Number, Num: total));
+            if (!a.Has("every")) a.Set("every", new Inspect.Value(Inspect.ValueKind.Number, Num: 2));
+            if (!a.Has("cols")) a.Set("cols", new Inspect.Value(Inspect.ValueKind.Number, Num: 6));
+            try
+            {
+                string reply = Film(id, name, a, shell);
+                return refused is null ? reply : Inspect.Reply.Fail(id, name, "a waypoint was refused: " + refused);
+            }
+            finally { _traceFrameHook = null; }
+        }
+
         /// <summary>`pointer path=[a, b@700, at:120:300@0, leave@200] steps=6`.</summary>
         string Pointer(int id, string name, Inspect.Args a)
         {
@@ -47,6 +116,7 @@ public static partial class Diagnostics
             int steps = Math.Clamp(a.Int("steps", 6), 1, 600);
             int defaultDwell = Math.Clamp(a.Int("dwell", 0), 0, 60_000);
             bool ease = a.Str("ease", "linear") == "inout";
+            if (a.Str("film") is { Length: > 0 } film) return PointerFilm(id, name, a, path, steps, defaultDwell, ease, film);
             var legs = new List<(string Target, Point2 At, string? Hit, int Frames, string? Note)>();
             foreach (string raw in path)
             {
