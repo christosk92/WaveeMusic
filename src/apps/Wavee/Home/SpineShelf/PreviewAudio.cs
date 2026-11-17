@@ -36,6 +36,17 @@ using Wavee;
 
 namespace Wavee.HomeUi;
 
+/// <summary>Whoever holds a preview claim (the Spine Shelf, the Release Spotlight): asked on every tick whether it still holds the tile it
+/// claimed, and told when it lost it. Both are allocation-free.</summary>
+public interface IPreviewOwner
+{
+    /// <summary>"" while the owner still holds tile <paramref name="code"/> (<paramref name="tile"/> its key), else why not.</summary>
+    string HoldFails(int code, string tile);
+
+    /// <summary>The ownership check found tile <paramref name="code"/> no longer held: the owner lets it go as if the pointer had left (never re-claims).</summary>
+    void HoldLost(int code);
+}
+
 public static class PreviewAudio
 {
     // ── the public surface ──
@@ -116,7 +127,7 @@ public static class PreviewAudio
     static readonly FluentGpu.Media.Windows.MfMediaPlayer?[] s_backends = new FluentGpu.Media.Windows.MfMediaPlayer?[2];
 
     // The claim: the tile the pointer or focus is on.
-    static SpineShelf? s_owner;
+    static IPreviewOwner? s_owner;
     static int s_code = -1;
     static string s_tile = "";
 
@@ -209,7 +220,7 @@ public static class PreviewAudio
 
     /// <summary>The pointer or focus came onto tile <paramref name="code"/> of <paramref name="owner"/>: it owns the preview from now. An old
     /// voice holds (HandoverMs at most) for this one to start, then they cross.</summary>
-    public static void Claim(SpineShelf owner, int code, string tile)
+    public static void Claim(IPreviewOwner owner, int code, string tile)
     {
         if (ReferenceEquals(s_owner, owner) && s_code == code && s_tile == tile) return;
         long now = Playback.FrameNowMs();
@@ -255,8 +266,8 @@ public static class PreviewAudio
         Release(why, now: false);
     }
 
-    /// <summary>A shelf unmounted: a claim it held ends now.</summary>
-    public static void Disown(SpineShelf owner)
+    /// <summary>An owner unmounted: a claim it held ends now.</summary>
+    public static void Disown(IPreviewOwner owner)
     {
         if (ReferenceEquals(s_owner, owner)) Release("unmounted", now: false);
     }

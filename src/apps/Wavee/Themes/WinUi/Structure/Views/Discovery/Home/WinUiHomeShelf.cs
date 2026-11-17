@@ -129,6 +129,9 @@ internal static class WinUiHomeShelf
 
     sealed record SoundProps(float Box);
 
+    /// <summary>The previews' sound button at <paramref name="box"/> (the Release Spotlight's too: one sound, one button design).</summary>
+    internal static Element Sound(float box, string key) => Embed.Comp(new SoundProps(box), static () => new PreviewSound()) with { Key = key };
+
     /// <summary>The song previews' sound (PreviewAudio.Sound, a setting; off by default): WinUI's subtle square glyph button beside the heart,
     /// the speaker in the accent ink while on and the struck speaker in the secondary ink while off, so its state shows at rest.</summary>
     sealed class PreviewSound : Component

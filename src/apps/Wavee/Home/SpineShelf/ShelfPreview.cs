@@ -1,4 +1,4 @@
-// ── Home/SpineShelf/ShelfPreview.cs — the Spine Shelf's hover media: ONE canvas player, ONE clip player, one policy ─────────────────────────
+// ── Home/SpineShelf/ShelfPreview.cs — the song previews' hover media (the Spine Shelf, the Release Spotlight): ONE canvas player, ONE clip player, one policy ─────────────────────────
 //
 //   Live      the tile the pointer (or focus) is on, "<item key>#<song>" ("" none). Set at once on enter; the tile widens on it.
 //   Showing   the tile whose canvas video element is mounted (under its still, in the still's box). Set when the tile has come to rest
@@ -67,11 +67,15 @@ public static class ShelfPreview
     }
 
     /// <summary>An item opened: fetch its songs' canvas files in the background and ask for their track rows (the artist line).</summary>
-    public static void Prepare(ShelfItem item)
+    public static void Prepare(ShelfItem item) => Prepare(item.Songs);
+
+    /// <summary>Songs a pointer may preview soon (a shelf item opened, a spotlight page shown): fetch their canvas files in the background and ask
+    /// for their track rows (the artist line).</summary>
+    public static void Prepare(ShelfSong[] songs)
     {
         Span<int> slots = stackalloc int[SpineShelfRules.Songs];
         int n = 0;
-        foreach (var s in item.Songs)
+        foreach (var s in songs)
         {
             if (s.IsBlank) continue;
             if (s_media && !s_fake && s.Canvas is { } url) CanvasVideo.Files.Ensure(url, priority: false);

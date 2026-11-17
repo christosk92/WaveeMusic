@@ -8,7 +8,8 @@
 //   HomeRecentlyPlayedSectionData                 → RecentsData    (the Recently played widget's data)
 //   no drawable card                              → None           (omitted, named in the plan with its typename)
 //   a daylist playlist in the lead                → DaylistHero
-//   HomeFeedBaselineSectionData                   → by its card: an untitled album = ReleaseList, an episode = VideoTiles
+//   HomeFeedBaselineSectionData                   → by its card: an untitled album = ReleaseSpotlight (a followed artist's new
+//                                                   release; a run of these is ONE spotlight with pages), an episode = VideoTiles
 //                                                   or EpisodeRows, a book = BookShelf, a show = ShowGrid, else SpineShelf
 //                                                   (a run of these is ONE shelf: HomeProjection folds it)
 //   mostly episodes                               → VideoTiles (video with a thumbnail) or EpisodeRows (each the other's alternate,
@@ -104,7 +105,8 @@ public static class SectionChooser
             var c = lead!.Value;
             return c.Kind switch
             {
-                HomeCardKind.Album when string.IsNullOrEmpty(s.Title) => new(SectionTemplate.ReleaseList, ZoneKind.ReleaseList, "baseline: an untitled album (a followed release)"),
+                HomeCardKind.Album when string.IsNullOrEmpty(s.Title) => new(SectionTemplate.ReleaseSpotlight, ZoneKind.ReleaseSpotlight,
+                    s.Preview.Count > 0 ? "baseline: an untitled album (a followed release) with preview songs" : "baseline: an untitled album (a followed release; preview songs not landed)"),
                 HomeCardKind.Episode => c.HasVideo && c.VideoThumbUrl is not null
                     ? Pick(SectionTemplate.VideoTiles, "baseline: a video episode", SectionTemplate.EpisodeRows)
                     : Pick(SectionTemplate.EpisodeRows, "baseline: an episode", SectionTemplate.VideoTiles),
@@ -174,6 +176,7 @@ public static class SectionChooser
         SectionTemplate.VideoTiles => ZoneKind.VideoTiles,
         SectionTemplate.EpisodeRows => ZoneKind.EpisodeRows,
         SectionTemplate.SpineShelf => ZoneKind.SpineShelf,
+        SectionTemplate.ReleaseSpotlight => ZoneKind.ReleaseSpotlight,
         _ => ZoneKind.CoverShelf,
     };
 
@@ -190,6 +193,9 @@ public static class SectionChooser
         {
             ZoneKind.SpineShelf => new Zone(ZoneKind.SpineShelf, key, title, s.Subtitle, cards,
                 Clusters: ClusterFold.Fold([s], titles), SectionSlot: s.Slot, TotalCount: total),
+            // A followed release: its one page (a run of them folds into one spotlight, HomeProjection), under "From artists you follow".
+            ZoneKind.ReleaseSpotlight => new Zone(ZoneKind.ReleaseSpotlight, key, titles.FromArtistsYouFollow, null, cards,
+                Clusters: ClusterFold.Releases([s]), SectionSlot: s.Slot, TotalCount: total),
             ZoneKind.Daylist => new Zone(ZoneKind.Daylist, key, s.Title, s.Subtitle, cards, cards.Count > 0 ? cards[0] : null,
                 SectionSlot: s.Slot, TotalCount: total),
             _ => new Zone(choice.Zone, key, title, s.Subtitle, cards, SectionSlot: s.Slot, TotalCount: total) { Header = HeaderEntity.Of(s) },

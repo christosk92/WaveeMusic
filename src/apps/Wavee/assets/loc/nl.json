@@ -136,6 +136,15 @@
       "late": "Je volgende daylist laat op zich wachten",
       "checkAgain": "Opnieuw controleren"
     },
+    "spotlight": {
+      "newSingle": "Nieuwe single van {artist}",
+      "newEp": "Nieuwe EP van {artist}",
+      "newAlbum": "Nieuw album van {artist}",
+      "newRelease": "Nieuwe release van {artist}",
+      "upcoming": "Binnenkort van {artist}",
+      "moreReleases": "Meer nieuwe releases",
+      "showRelease": "{title} tonen"
+    },
     "zone": {
       "becauseYouLike": "Omdat je dit leuk vindt",
       "moreForYou": "Meer voor jou",

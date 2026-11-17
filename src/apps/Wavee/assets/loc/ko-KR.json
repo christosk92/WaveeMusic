@@ -136,6 +136,15 @@
       "late": "다음 데일리스트가 늦어지고 있어요",
       "checkAgain": "다시 확인"
     },
+    "spotlight": {
+      "newSingle": "{artist}의 새 싱글",
+      "newEp": "{artist}의 새 EP",
+      "newAlbum": "{artist}의 새 앨범",
+      "newRelease": "{artist}의 새 발매",
+      "upcoming": "{artist}의 발매 예정",
+      "moreReleases": "더 많은 새 발매",
+      "showRelease": "{title} 보기"
+    },
     "zone": {
       "becauseYouLike": "좋아하실 만한 음악",
       "moreForYou": "회원님을 위한 추천",

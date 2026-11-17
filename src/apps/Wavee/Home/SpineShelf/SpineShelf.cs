@@ -201,7 +201,7 @@ public static class ShelfRegistry
 }
 
 /// <summary>One shelf page. Mounted through <see cref="SpineShelfView.Of"/>.</summary>
-public sealed class SpineShelf : Component
+public sealed class SpineShelf : Component, IPreviewOwner
 {
     // ── state (survives re-renders; the shelf re-renders only when its props change) ──
     Signal<int> _open = null!;   // created at the first render with the remembered item (a render never writes a signal)
@@ -846,7 +846,7 @@ public sealed class SpineShelf : Component
     /// one owner), in the scene, the window active and not minimized, and the pointer inside the tile's visible rect, crossing the gap to the
     /// next tile (the leave grace), or keyboard focus on it. The pointer test stays because a missed exit leaves Live set (a wheel scroll
     /// slides the tile from under a resting pointer and no exit comes). Allocation-free.</summary>
-    internal string HoldFails(int code, string tile)
+    public string HoldFails(int code, string tile)
     {
         if (!ShelfRegistry.Live.Contains(this)) return "unmounted";
         if (!Shown) return "hidden";
@@ -867,7 +867,7 @@ public sealed class SpineShelf : Component
 
     /// <summary>The ownership check found tile <paramref name="code"/> no longer held (a missed leave): the tile narrows as if the pointer had
     /// left. The preview is already released.</summary>
-    internal void HoldLost(int code)
+    public void HoldLost(int code)
     {
         if (code >= 0 && code == _live.Peek()) TileLeave(code);
     }

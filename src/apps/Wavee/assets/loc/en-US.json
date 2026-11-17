@@ -856,6 +856,15 @@
       "checkAgain": "Check again",
       "upNext": "{when} is up next"
     },
+    "spotlight": {
+      "newSingle": "New single from {artist}",
+      "newEp": "New EP from {artist}",
+      "newAlbum": "New album from {artist}",
+      "newRelease": "New release from {artist}",
+      "upcoming": "Coming soon from {artist}",
+      "moreReleases": "More new releases",
+      "showRelease": "Show {title}"
+    },
     "zone": {
       "becauseYouLike": "Because you like",
       "moreForYou": "More for you",
