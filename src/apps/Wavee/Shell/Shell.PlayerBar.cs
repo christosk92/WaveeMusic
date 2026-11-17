@@ -55,6 +55,10 @@ public static partial class Shell
     /// happened to be reported (a sliding DVR window reported as a 3-minute "track" is the defect this ends).</summary>
     public enum SeekRailMode : byte { Track, Dvr, Line }
 
+    /// <summary>What the lyrics store holds for the playing song, as the seek rail's lyric tip reads it
+    /// (<see cref="PlayerBarFacts.Seek.LyricDoc"/>): not answered yet, a timed document, or none to be had.</summary>
+    public enum LyricTipDoc : byte { Unknown, Timed, None }
+
     // `RightSlot` (the right cluster's slots), `OverflowCommand`, `PrimaryVerb` and `NowPlayingInk` are contract words now
     // (`Theming\Contracts\PlayerBarVocabulary.cs`, T6a): a theme's player bar draws what these decide and may not name `Shell`.
 
@@ -73,6 +77,49 @@ public static partial class Shell
             /// has no chapters to mark.</summary>
             public static bool ChapterRail(EntityKind kind, SeekRailMode mode)
                 => kind == EntityKind.Episode && mode == SeekRailMode.Track;
+
+            /// <summary>Does the rail's tip carry the PICTURE under the pointer? The playing video has seek sheets, the rail is one
+            /// that scrubs a fixed span (a DVR window's sheets would be stale, a live line has nothing to seek), and the picture
+            /// would not cover the video it previews (<see cref="SeekRail.PreviewFits"/>: the mini player's and a narrow docked
+            /// card's rail keep the time alone).</summary>
+            public static bool PreviewRail(bool hasSheets, SeekRailMode mode, bool fits)
+                => hasSheets && mode == SeekRailMode.Track && fits;
+
+            /// <summary>Does the rail's tip carry the LYRIC line under the pointer? A song (not an episode) on a rail that scrubs a fixed
+            /// span, with no picture to show (<see cref="PreviewRail"/>: the picture wins, one tip per rail), the user's setting on
+            /// (<c>Prefs.Lyrics.SeekTip</c>), the song's own clock playing (<paramref name="syncSuppressed"/>: a music video's edit is not
+            /// the song's, so its lines would land on the wrong times, <see cref="Lyrics.SyncGate"/>), and lyrics that are TIMED or not
+            /// answered yet. A song whose answer is in and has no timed lines keeps the rail it always had (the readout on a drag, no
+            /// hover tip); one not asked for yet takes the tip, whose first hover asks (<c>Lyrics.Store.Ensure</c>) and shows the time
+            /// alone until the document lands. When that answer has no timed lines, the tip already open stays (the time alone) while
+            /// <paramref name="holding"/> (the pointer still on the rail or the scrub still going), so it never vanishes under the pointer
+            /// or leaves a scrub without a bubble; the rail it always had comes back once the pointer leaves.</summary>
+            public static bool LyricRail(EntityKind kind, SeekRailMode mode, bool previewRail, bool setting, bool syncSuppressed, LyricTipDoc doc,
+                bool holding = false)
+                => setting && kind == EntityKind.Track && mode == SeekRailMode.Track && !previewRail && !syncSuppressed
+                    && (doc != LyricTipDoc.None || holding);
+
+            /// <summary>What the lyrics store holds for the playing song, as the lyric tip reads it: a document timed by line or by word
+            /// (<see cref="Lyrics.PeekClock.ShouldShow"/>, and synced), none to be had (answered with no timed lines, or an offline
+            /// miss), or not answered yet.</summary>
+            public static LyricTipDoc LyricDoc(bool answered, Lyrics.Doc? doc)
+                => doc is { IsSynced: true } && Lyrics.PeekClock.ShouldShow(doc) ? LyricTipDoc.Timed
+                    : answered ? LyricTipDoc.None : LyricTipDoc.Unknown;
+
+            /// <summary>The lyric line the tip shows at <paramref name="ms"/>: the last line that starts at or before it, or −1 (the time
+            /// alone) before the first line, on a line with no words, and once a line's authored end has passed where a real instrumental
+            /// break follows (<see cref="Lyrics.InterludeGapMs"/>, or the last line). The short breath between two sung lines keeps the line
+            /// before it, as the lyrics view keeps its focus, so a sweep does not blink the line out for a quarter of a second.</summary>
+            public static int LyricAt(Lyrics.Doc? doc, long ms)
+            {
+                if (doc is null) return -1;
+                var lines = doc.Lines;
+                int index = Lyrics.ResolveLine(lines, ms);
+                if (index < 0 || lines[index].Text.Length == 0) return -1;
+                if (lines[index].EndMs is { } end && ms >= end
+                    && (index + 1 == lines.Count || lines[index + 1].StartMs - end >= Lyrics.InterludeGapMs)) return -1;
+                return index;
+            }
 
             /// <summary>The chapter intervals the rail marks: the fetched chapters normalised against the duration once the
             /// request is <paramref name="ready"/> (sorted, de-duplicated, each ending where the next starts), else none.</summary>
@@ -526,6 +573,39 @@ public static partial class Shell
         /// interval). Either way each tick is a recorded and presented full-window frame for nothing.</summary>
         public static bool Ticks(bool advances, SeekRailMode mode, bool concealed, bool windowHidden)
             => advances && mode != SeekRailMode.Line && !concealed && !windowHidden;
+
+        /// <summary>The narrowest ON-MEDIA rail whose tip may carry a picture. The strip over a video is as wide as the video,
+        /// and the tip rises over it: on the mini player or a docked card at its resting width (a rail of about 320) the picture
+        /// would cover most of the video it previews, so the tip stays the time alone until the surface is roomy.</summary>
+        public const float PreviewMinRailPx = 420f;
+
+        /// <summary>May this rail's tip carry the picture? A rail that sits over no video (the player bar, the stage's transport
+        /// card) always may: its tip covers nothing the picture repeats.</summary>
+        public static bool PreviewFits(bool onMedia, float railPx) => !onMedia || railPx >= PreviewMinRailPx;
+
+        /// <summary>PRECISE SEEKING: while a scrub over a seek preview lasts, the pointer's distance from the rail (up or down) slows
+        /// the scrub: within <see cref="PreciseNearDip"/> the rail follows the pointer as always, to <see cref="PreciseFarDip"/> it moves at
+        /// half the pointer's speed, beyond that at a quarter. At a quarter a 1400 DIP rail over a four-minute video moves one
+        /// second (one preview frame) per 23 DIP of travel.</summary>
+        public const float PreciseNearDip = 48f, PreciseFarDip = 128f;
+
+        /// <summary>The precise-seeking step for a pointer <paramref name="dyFromRail"/> DIP off the rail's line: 0 full, 1 half, 2 quarter.</summary>
+        public static int PreciseStep(float dyFromRail)
+        {
+            float d = MathF.Abs(dyFromRail);
+            return d <= PreciseNearDip ? 0 : d <= PreciseFarDip ? 1 : 2;
+        }
+
+        /// <summary>How much of the pointer's travel a step passes on.</summary>
+        public static float PreciseRate(int step) => step switch { 1 => 0.5f, 2 => 0.25f, _ => 1f };
+
+        /// <summary>How long the pointer rests before the tip's picture sharpens to the fine sheet: a sweep across the rail
+        /// then fetches no fine sheet at all.</summary>
+        public const float PreviewSharpenMs = 120f;
+
+        /// <summary>The coarse sheets all stay mounted (so a sweep never waits on one) up to this many; a longer video keeps a
+        /// window of <see cref="PreviewWindow"/> each side of the pointer's sheet.</summary>
+        public const int PreviewMountAll = 12, PreviewWindow = 1;
 
         /// <summary>How long a re-scaled rail eases to its new fraction, and the step of the stepper that drives it.</summary>
         public const float RescaleMs = 360f, RescaleStepMs = 16f;
