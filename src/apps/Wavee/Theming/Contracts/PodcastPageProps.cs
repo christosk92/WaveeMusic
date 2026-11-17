@@ -242,6 +242,9 @@ public sealed record PodcastEpisodePageProps
     /// <summary>Save or unsave another episode (a row's glyph) and that row's menu.</summary>
     public required Action<string> ToggleSavedEpisode { get; init; }
     public required Func<string, ContextMenuModel?> RowMenu { get; init; }
+    /// <summary>A "More like this" card's menu and its play (the card's show, by uri).</summary>
+    public required Func<string, ContextMenuModel?> CardMenu { get; init; }
+    public required Action<string> PlayCard { get; init; }
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");

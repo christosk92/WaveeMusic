@@ -147,16 +147,16 @@ internal static class WinUiPodcastEpisodeParts
 
     // ══ 2. THE CHAPTERS LIST ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    public static Element Chapters(PodcastEpisodePageProps p, PodcastEpisodeView v)
+    public static Element Chapters(PodcastEpisodePageProps p, PodcastEpisodeView v, float[] rowH)
     {
         if (v.Chapters.IsDefaultOrEmpty)
             return new BoxEl { Padding = Edges4.All(P.ListBodyPad), Children = [Body(v.NoChapters) with { Color = Tok.TextSecondary }] };
         var rows = new Element[v.Chapters.Length];
-        for (int i = 0; i < rows.Length; i++) rows[i] = ChapterRow(p, v.Chapters[i]);
+        for (int i = 0; i < rows.Length; i++) rows[i] = ChapterRow(p, v.Chapters[i], rowH);
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = rows };
     }
 
-    static Element ChapterRow(PodcastEpisodePageProps p, PodcastChapterVm c)
+    static Element ChapterRow(PodcastEpisodePageProps p, PodcastChapterVm c, float[] rowH)
     {
         int index = c.Index, start = c.StartMs, end = c.EndMs;
         var cur = p.CurrentChapter;
@@ -199,7 +199,8 @@ internal static class WinUiPodcastEpisodeParts
             Key = "pe-ch:" + index, Direction = 0, Gap = P.ChGap, AlignItems = FlexAlign.Center, MinHeight = P.ChMinH, MinWidth = 0f,
             Padding = new Edges4(P.ChPadX, P.ChPadY, P.ChPadX, P.ChPadY), Corners = Radii.ControlAll, ZStack = false,
             Fill = current ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.SeekTo(start),
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.SeekTo(start), BrushTransitionMs = Design.Motion.Faster,
+            OnBoundsChanged = r => { if (index < rowH.Length) rowH[index] = r.H; },
             Children =
             [
                 new BoxEl
@@ -321,7 +322,7 @@ internal static class WinUiPodcastEpisodeParts
                     [
                         new BoxEl
                         {
-                            Direction = 0, Shrink = 0f, MinWidth = 0f, Fill = Tok.FillCardDefault,
+                            Direction = 0, Shrink = 0f, MinWidth = 0f,
                             Padding = new Edges4(P.TrPadX, P.TrHeadingTop, P.TrPadX, P.TrHeadingBottom), Children = [heading],
                         },
                         new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, Padding = new Edges4(P.TrPadX, 0f, P.TrPadX, P.TrPadBottom), Children = [list] },
@@ -349,31 +350,29 @@ internal static class WinUiPodcastEpisodeParts
 
         static readonly string[] s_noSuggest = [];
 
-        /// <summary>The follow button: "Following playback" (subtle) / "Back to current line" (standard). Both words are laid in one ZStack so the button
-        /// keeps the longer word's width: the toggle never moves the header.</summary>
-        static Element FollowButton(PodcastEpisodePageProps p)
+        /// <summary>The follow button: the house Button, subtle while "Following playback", standard as "Back to current line". Both words share one
+        /// slot laid over each other, so the button keeps the longer word's width and the toggle never moves the header.</summary>
+        static Element FollowButton(PodcastEpisodePageProps p) => Embed.Comp(p, static () => new FollowHost()) with { Key = "pe-follow" };
+
+        sealed class FollowHost : Component
         {
-            var follow = p.Follow;
-            string on = Loc.Get(Strings.Podcast.Pages.FollowingPlayback), off = Loc.Get(Strings.Podcast.Pages.BackToLine);
-            Element Word(string w, bool shownWhenOn) => new BoxEl
+            public override Element Render()
             {
-                AlignSelf = FlexAlign.Center, Opacity = Prop.Of(() => follow.Value == shownWhenOn ? 1f : 0f),
-                Children = [new TextEl(w) { Size = Body("").Size, LineHeight = Body("").LineHeight, Color = Tok.TextPrimary }],
-            };
-            return Controls.Named(new BoxEl
-            {
-                Key = "pe-follow", Direction = 0, Gap = P.ChGap, AlignItems = FlexAlign.Center, Shrink = 0f, MinHeight = Controls.ButtonHeight,
-                Padding = new Edges4(P.ChPadX + P.TrTextPadY, 0f, P.ChPadX + P.TrTextPadY, 0f), Corners = Radii.ControlAll,
-                Fill = Prop.Of(() => follow.Value ? Tok.FillSubtleTransparent : Tok.FillControlDefault),
-                HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                BorderWidth = 1f, BorderColor = Prop.Of<ColorF>(() => follow.Value ? Tok.FillSubtleTransparent : Tok.StrokeControlDefault),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.SetFollow(!follow.Peek()),
-                Children =
-                [
-                    Icon(Icons.MapPin, P.FollowGlyph, Tok.TextPrimary),
-                    new BoxEl { ZStack = true, Children = [Word(on, true), Word(off, false)] },
-                ],
-            }, on);
+                var p = UseProps<PodcastEpisodePageProps>();
+                bool following = p.Follow.Value;
+                string on = Loc.Get(Strings.Podcast.Pages.FollowingPlayback), off = Loc.Get(Strings.Podcast.Pages.BackToLine);
+                Element Word(string w, bool shown) => new BoxEl
+                {
+                    AlignSelf = FlexAlign.Center, Opacity = shown ? 1f : 0f,
+                    Children = [new TextEl(w) { Size = Body("").Size, LineHeight = Body("").LineHeight, Color = Tok.TextPrimary }],
+                };
+                var button = Button.Create(following ? on : off, () => p.SetFollow(!p.Follow.Peek()),
+                    following ? ButtonAppearance.Subtle : ButtonAppearance.Standard, glyph: Icons.MapPin) with { Key = "pe-follow:button", Shrink = 0f, MinWidth = 0f };
+                return Controls.Named(button with
+                {
+                    Children = [Icon(Icons.MapPin, P.FollowGlyph, Tok.TextPrimary), new BoxEl { ZStack = true, Children = [Word(on, following), Word(off, !following)] }],
+                }, following ? on : off);
+            }
         }
 
         static Element Line(PodcastEpisodePageProps p, PodcastLineVm l, int index, IReadSignal<int> cur, bool chrome, string find)
@@ -390,7 +389,7 @@ internal static class WinUiPodcastEpisodeParts
             var textBox = new BoxEl
             {
                 Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = P.TrTextMax, ZStack = true,
-                Padding = new Edges4(P.TrTextPadX, P.TrTextPadY, P.TrTextPadX, P.TrTextPadY), Corners = Radii.ControlAll,
+                Padding = new Edges4(P.TrTextPadX, P.TrTextPadY, P.TrTextPadX, P.TrTextPadY), Corners = Radii.ControlAll, BrushTransitionMs = Design.Motion.Faster,
                 Fill = Prop.Of(() => isCur() ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent), HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
                 Children =
                 [
