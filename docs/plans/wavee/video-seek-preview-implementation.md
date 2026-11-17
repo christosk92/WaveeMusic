@@ -1,7 +1,8 @@
 # Video seek preview: the picture under the pointer on the seek rail (spike)
 
 Status: **spike**. The code on this branch compiles clean, renders in all three themes and is traced in the headless
-inspector against generated sheets. It has **not** been run against a live video. Section 8 lists what is open.
+inspector, against generated sheets and against the REAL sheets of a captured manifest (fetched from the CDN through the app's
+own sheet store). It has **not** been run inside a real playing session. Section 10 lists what is open.
 
 What it is: while the pointer hovers or scrubs the seek rail of a video, the rail's tip shows the frame at that time, the
 time, and on an episode the chapter. YouTube calls it the seek preview.
@@ -80,10 +81,13 @@ Shell.BarRailTip (core host; was BarChapterTimeline)           one tip per rail
    |  sheets -> Player.SeekPreview bubble, PopupChrome.Raw (the tip fade)
    |  no sheets, chapters -> Player.ChapterTip bubble, as before
    v
-theme template SeekPreview(SeekPreviewProps)                   the look: plate, corners, ring, type, motion
+theme template SeekPreview(SeekPreviewProps)                   the look: plate, corners, ring, type, motion, the lift
    |  props.Frame(width, corners)
    v
 Shell.SeekFrame (core host) + SeekFrameBoxes                   the picture: which sheet, which cell
+   |  Playback.Video.SeekSheets.Source(url)
+   v
+Playback.Video.SeekSheets                                      the sheet as a FILE: fetched once, keyed without its signature
 ```
 
 ### The model (`Playback/Playback.Video.SeekPanels.cs`, pure)
@@ -108,14 +112,17 @@ public sealed class SeekPanels
 ```csharp
 public static readonly ViewKey<SeekPreviewProps> SeekPreview = new("Player.SeekPreview");
 
+public enum SeekRailSurface : byte { Bar, Stage, OnMedia }
+
 public sealed record SeekPreviewProps
 {
     public required Func<float, CornerRadius4, Element> Frame { get; init; }   // the picture's core host at the theme's width and corners
     public required float Aspect { get; init; }
     public required Func<string> Time { get; init; }                           // bound
-    public required Func<string> Label { get; init; }                          // an episode's chapter; "" on a track
+    public required Func<string> Label { get; init; }                          // the chapter, the scrub's speed, or the precise-seeking hint
     public required Func<bool> HasLabel { get; init; }
     public required IReadSignal<bool> Scrubbing { get; init; }
+    public SeekRailSurface Surface { get; init; }                              // what the tip must stay clear of is the surface's
 }
 ```
 
@@ -148,6 +155,31 @@ SeekFrame (core)                         a clip window, width x width / aspect, 
 - **Memory while the tip is open** (computed, not measured): a coarse sheet is 1080 x 600 x 4 = 2.6 MB decoded, so a music
   video's seven are 18 MB; three fine sheets are 12 MB. The tip unmounts them when it closes.
 
+### Sheets on disk (`Playback/Playback.Video.SeekSheets.cs`)
+
+The engine's image pipeline fetches an `https` source exactly as written, so a signed sheet url works in it. But it keys an
+image by the whole source string, in memory (`ImageCache.SourceKey`) and on disk (`DiskImageCache.Resolve`), and a sheet's
+url ends in a signature that changes with every manifest fetch (ten minutes). Left there, the same sheet would miss, download
+and be stored again each time, and a signature that expired fails for good under that key.
+
+```
+sheet url (signed)
+   |  SeekSheets.KeyOf        the url without its query
+   v
+<image cache>/seekpanels/<sha256(key)>.jpg     fetched once (3 at a time, on the pool), written atomically
+   |  the cell for that key: "" until the file exists, then its path      (set on the UI thread)
+   v
+ImageEl.Source                                 a local FILE: no network, no second copy in the image disk cache
+```
+
+- **Prefetch.** When the tip opens, `SeekFrame` asks for every coarse sheet, the pointer's first and then outwards (up to
+  48). By the time the pointer travels, the sheets are files. A music video is 7 sheets; a three-hour podcast about 40.
+- **A failure** (a refused signature, no network) is retried no sooner than 30 s later, with whatever url is current then.
+- **The folder** sits inside the image cache's, so the Storage tab counts it with the images. It is trimmed once per process:
+  files older than 14 days, then the oldest beyond 96 MB.
+- **Logs** name a sheet as `variant/panel.jpg` only. The url carries a signature and never reaches a log.
+- A local file template (the inspector's fixture) passes through untouched.
+
 ## 4. Where the picture shows
 
 ```
@@ -161,19 +193,36 @@ no sheets (local file, module)     no: the time readout, as today
 ```
 
 The 420 (`SeekRail.PreviewMinRailPx`) is a first proposal: under it the picture would cover most of the video it previews.
-The on-media strip is told apart by its chrome feed (only it has one).
+The on-media strip is told apart by its chrome feed (only it has one); `SeekRailSurface` carries the surface to the theme.
 
 One tip per rail: while a rail has the preview, the plain time readout stays shut, and on an episode with sheets the
 chapter's title rides in the preview instead of a second bubble.
 
-## 5. The three looks
+## 5. Precise seeking
+
+While a scrub over a seek preview lasts, the pointer's distance from the rail (up or down) slows the scrub:
+
+```
+pointer off the rail's line     the playhead follows at       the tip's second line
+within 48 DIP                   the pointer's speed           track: "Pull up for precise seeking"; episode: the chapter
+48 to 128 DIP                   half                          "Half speed"
+beyond 128 DIP                  a quarter                     "Quarter speed"
+```
+
+Until the pointer first leaves the near band the rail follows it absolutely, exactly as a rail without a preview does. From
+then on the gesture is relative (the travel since the last move, times the rate), so coming back to the rail does not jump
+the playhead to the pointer. At a quarter, a 1400 DIP rail over a four-minute video moves one second (one preview frame) per
+23 DIP. Only rails with a picture have it: an audio rail scrubs as it always did.
+
+## 6. The three looks
 
 No board draws this surface: these are proposals in each theme's existing tip language. Every number is in the theme's
 `Rules` record.
 
 **WinUI: a thumbnail flyout.** The acrylic card of every WinUI flyout (overlay radius 8, flyout ring and elevation). The
 picture is inset 4 with radius 4, so the corners are concentric. One caption line: the time (14, semibold, tabular), the
-chapter beside it (12, secondary). It stops on the page gutter (16) when the window clamps it.
+label beside it (12, secondary). It stops on the page gutter (16) when the window clamps it. On the player bar, where the
+transport buttons sit over the rail, the tip rises above the whole bar (`PreviewLiftBar`), so play and skip stay in view.
 
 ```
  .----------------------------.
@@ -183,13 +232,13 @@ chapter beside it (12, secondary). It stops on the page gutter (16) when the win
  | '------------------------' |
  |            2:06            |
  '----------------------------'
-              |  14 above the rail's line
+              |  14 above the rail's line (54 on the player bar: above the bar)
  ======o=====================
 ```
 
 **Zune: the readout's plate, grown around a picture.** Square, `R.Layer.FloatingChrome`. The picture runs to the plate's
 edges, the rail's own 2 px accent line closes it, and the time stands under it in the plate's large type (24/30), left like
-every Zune caption. The chapter is the line under the time (13/18, two lines at most).
+every Zune caption. The label is the line under the time (13/18, two lines at most).
 
 ```
  +----------------------------+
@@ -202,7 +251,7 @@ every Zune caption. The chapter is the line under the time (13/18, two lines at 
 ```
 
 **Classic: no card.** The picture floats alone (card radius, flyout ring and elevation) and the time rides under it in the
-readout's bubble drawn as a pill; the chapter rides in the pill beside the time.
+readout's bubble drawn as a pill; the label rides in the pill beside the time.
 
 ```
  .--------------------------.
@@ -215,22 +264,54 @@ readout's bubble drawn as a pill; the chapter rides in the pill beside the time.
 Motion, all three: the host's tip fade (`PopupChrome.Raw`, the Slider's value tip) plus an `Enter` from a few DIP below
 (WinUI and Classic also 3-4 % small), so the tip rises out of the rail. The fine sheet arrives as a 160 ms fade.
 
-## 6. What the trace says
+## 7. An unencrypted video manifest plays (video podcasts)
 
-Inspector, WinUI, fullscreen video, 1440 x 960, generated sheets:
+A video podcast's manifest names no key system. `Manifest.Parse` returned null unless it found a PlayReady entry, so such an
+episode resolved to "no video", played as audio, and had no sheets either.
 
-- A drag of 30 DIP per frame for 20 frames: the picture moved exactly 30 DIP every frame and stayed on the release point.
-  0 snaps, 0 instants, 0 component re-renders during the drag, 0 images applied. CPU per frame: 3.1 ms average, 5.4 ms
-  worst.
-- Opening the tip from nothing (`hover ... trace=40`, gated): 0 motion failures. CPU worst 7.7 ms.
+```
+encryption_infos                     before                 now
+has "playready"                      PlayReady source       PlayReady source (unchanged)
+empty or absent                      null: no video         VideoSource.Segmented: the same descriptor, no PSSH, no key, no relay
+has key systems, none PlayReady      null: no video         null: no video (nothing here has a CDM for it)
+```
+
+`VideoSource.IsSegmented` (a descriptor-backed source, protected or not) now routes the open and the manifest invalidation;
+`IsDrm` keeps meaning "has a licence". The native session already attaches a clear init without a licence handle
+(`PrSession.cpp`: "lic == 0 is legal: clear content"), and its demuxer marks a track protected only from `tenc`.
+
+What was checked, and what was not:
+
+- The app's own parser over captured manifests: four podcast episodes parse as clear with six rungs (180 to 1080), audio and
+  a descriptor with no PSSH and no key id; four PlayReady videos are unchanged.
+- The engine's native demuxer probe (`FgPrProbeFile`) over real segments: two podcast episodes read as `encrypted=0`,
+  568 x 320, NAL length 4, with keyframes; a PlayReady control reads as `encrypted=1`.
+- **Not run: an actual playback.** Whether the protected media engine renders a clear source needs the running app. Look for
+  `attach.deferred.nokey` and `attach ... license=none` in the log. Two known costs: a clear session waits for the init plus
+  one segment before it attaches, and the engine labels a failure of such a session as a licence failure.
+
+## 8. What the trace says
+
+Inspector, 1440 x 960, generated sheets unless said otherwise:
+
+- A drag of 30 DIP per frame for 20 frames (WinUI, fullscreen): the picture moved exactly 30 DIP every frame and stayed on
+  the release point. 0 snaps, 0 instants, 0 component re-renders during the drag, 0 images applied. CPU per frame: 3.1 ms
+  average, 5.4 ms worst.
+- Precise seeking: a drag of 20 DIP per frame along the rail while pulling 8 DIP per frame away from it. The tip moved 20
+  per frame for 6 frames, then 10 for 10 frames, then 5. 0 snaps.
+- Opening the tip from nothing (`hover ... trace=40`, gated): 0 motion failures. With `motion=reduced` (Zune): 0 motion
+  failures, the picture at its place two frames after the hover.
 - `lint min=warn` with the tip open, `--gate error`: 0 errors and 0 warnings in WinUI, Zune and Classic. (Zune lists one
   todo warning on the remaining-time label, which this branch does not touch.)
+- **Real sheets.** `seekManifest=` with the captured manifest of a PlayReady music video: the store fetched 13 sheets
+  (928 KB) from the CDN into the scratch profile, and the tip showed the video's own frames, also right after a jump
+  across the bar.
+- The merged tip (`seekPreview=episode`): the picture, the time and the chapter ("0:23 Opening") in all three themes.
 
-One bug the renders found and this branch fixes: after a scrub was released, the tip fell back to the last HOVERED point
-(no hover move follows a release), so it jumped away from the pointer and showed that other moment. The drag now keeps the
-hover point in step. The chapter tip had the same jump.
+Two bugs the renders found, both fixed here: after a scrub was released the tip fell back to the last HOVERED point (the
+chapter tip had the same jump), and on WinUI's player bar the tip covered the transport buttons.
 
-## 7. Staging it in the inspector
+## 9. Staging it in the inspector
 
 ```text
 python -I tools/seekpanels.py --out C:/WAVEE/scratch/<lane>/run/assets/seekpanels     # once per run copy
@@ -239,37 +320,42 @@ python -I tools/inspect.py --exe C:/WAVEE/scratch/<lane>/run/Wavee.exe \
   -c "hover x=900 y=866" -c "frames 60" -c "render path=C:/WAVEE/scratch/<lane>/seek.zune.png"
 ```
 
-`seekPreview=on` (beside `video=`) publishes a source that carries sheets in the two measured sizes, 246 frames at 1 s. The
-sheets are files beside the exe, `assets/seekpanels/<variant>/<panel>.jpg`; none are bundled. Rail lines at 1440 x 960
-fullscreen: WinUI `y=884`, Zune `y=866`, Classic `y=887`. Player bar (with `video=docked`): WinUI `y=942`, Zune `y=889`,
-Classic `y=924`. `images=real` is needed to see the frames (the default decoder paints gradients).
+- `seekPreview=on` (beside `video=`) publishes a source that carries sheets in the two measured sizes, 246 frames at 1 s.
+  The sheets are files beside the exe, `assets/seekpanels/<variant>/<panel>.jpg`; none are bundled.
+- `seekPreview=episode` plays an episode with chapters instead of the video track: the merged tip.
+- `seekManifest=<file>` takes a captured manifest and fetches its real sheets from the network through the sheet store (the
+  wire stays refused for everything else). A fetch lands on the wall clock, so wait between commands.
+- Rail lines at 1440 x 960, fullscreen: WinUI `y=884`, Zune `y=866`, Classic `y=887`. Player bar (with `video=docked`):
+  WinUI `y=942`, Zune `y=889`, Classic `y=924`. `images=real` is needed to see the frames.
+- Precise seeking: `trace 30 drag=-20 dragDy=-8 dragX=1200 dragY=884 dragFrames=24 keys=seek-frame`.
 
-## 8. Open, in the order it matters
+## 10. Open, in the order it matters
 
-1. **Not run against a live video.** `ImageEl.Source` gets the signed https url; nothing here proved that the app's image
-   pipeline fetches `seekpanels.spotifycdn.com` with its query intact. The disk cache should key a sheet on its path without
-   the query (the token changes with every manifest), or every manifest refresh refetches.
-2. **Long videos.** Above 12 coarse sheets only the pointer's sheet and its neighbours are mounted, so a far jump shows the
-   plate until that sheet arrives. A two-hour podcast is 26 sheets of about 100 KB: prefetch them to disk on the first hover.
-3. **Video podcasts do not resolve today.** Their manifests carry no `encryption_infos`, and `Manifest.Parse` returns null
-   without a PlayReady entry, so there is no source and no sheets. That is a playback fix, separate from this.
+1. **A real playing session.** The tip has not been seen over a live video in the running app. Everything upstream of that
+   is checked (the parse on real manifests, the real fetch, the lookup against decoded frames).
+2. **Clear podcast playback is not run** (section 7).
+3. **A signature that expires while the source stays live.** A failed sheet is retried with the same source's url; only a
+   re-resolved source brings a new signature. The token lasts about a week and a manifest ten minutes, so it should not
+   arise, but nothing forces a re-resolve for it.
 4. **No sheets for a local file or a module's video.** The tip stays the time. Generating frames needs a second decoder.
-5. **The merged episode tip is not staged.** The label path (chapter title in the preview) compiles and follows the chapter
-   tip's code, but no fixture has an episode with both chapters and sheets.
-6. **The WinUI player bar.** Its rail sits under the transport buttons, so the tip covers them while the pointer is on the
-   rail. The chapter tip does the same today.
-7. **Precise seeking** ("pull up" on YouTube) is not built. At one frame a second a filmstrip is possible for music videos.
-8. **Not exercised:** reduced motion, touch, the keyboard ladder (it opens no tip), the pop-out window and the mini player.
-9. **The numbers** (sizes, the 420 rule, the 120 ms dwell, the 12-sheet cap) are first proposals.
+5. **The windowed coarse path** (a video with more than 12 coarse sheets) runs the same code the fine layer runs in every
+   render here, but no staged source has that many coarse sheets.
+6. **Not rendered:** the pop-out window (the inspector has no second window; it hosts overlays like the main one) and touch
+   (a touch has no hover, so the tip shows from press to release, as in the drag trace). By design: the keyboard ladder
+   opens no tip, and the mini player draws its own rail and has none.
+7. **The looks and numbers** (sizes, the 420 rule, the 120 ms dwell, the 48 and 128 DIP bands, the 12-sheet cap) are
+   proposals with no board behind them.
 
-## 9. Files
+## 11. Files
 
 | File | What |
 |---|---|
 | `Playback/Playback.Video.SeekPanels.cs` | the model: parse, `FrameAt`, `Url` (new) |
-| `Playback/Playback.Video.cs`, `.Source.cs` | `VideoSource.SeekPanels`; `Manifest.Parse` reads the block |
+| `Playback/Playback.Video.SeekSheets.cs` | the sheets on disk: key, fetch, prefetch, trim (new) |
+| `Playback/Playback.Video.cs`, `.Source.cs` | `VideoSource.SeekPanels`, `IsSegmented`, `Segmented`; `Manifest.Parse` reads the block and lets a clear manifest through |
 | `Shell/Shell.PlayerBar.Chapters.UI.cs` | `BarRailTip` (was `BarChapterTimeline`), `SeekFrame`, `SeekFrameBoxes` |
-| `Shell/Shell.PlayerBar.UI.cs`, `Shell.PlayerBar.cs` | the rail's preview decision; the hover point follows a drag; the rules and constants |
-| `Theming/Contracts/ViewKeys.Player.cs`, `PlayerTransportProps.cs` | `Player.SeekPreview`, `SeekPreviewProps`, `HoverTip` |
+| `Shell/Shell.PlayerBar.UI.cs`, `Shell.PlayerBar.cs` | the rail's preview decision, its surface, precise seeking; the hover point follows a drag; the rules and constants |
+| `Theming/Contracts/ViewKeys.Player.cs`, `PlayerTransportProps.cs` | `Player.SeekPreview`, `SeekPreviewProps`, `SeekRailSurface`, `HoverTip` |
 | `Themes/{WinUi,Zune,Classic}/Structure/...` | the template, its `Rules` numbers, the registration, the renamed hover fact |
-| `Screens/Diagnostics.Inspect*.cs`, `tools/seekpanels.py` | `seekPreview=on` and the generated sheets |
+| `assets/loc/en-US.json` | the precise-seeking strings |
+| `Screens/Diagnostics.Inspect*.cs`, `tools/seekpanels.py` | `seekPreview=on|episode`, `seekManifest=`, the generated sheets |
