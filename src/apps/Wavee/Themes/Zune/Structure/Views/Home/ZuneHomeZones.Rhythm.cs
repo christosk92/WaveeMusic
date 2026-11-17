@@ -59,11 +59,16 @@ internal static partial class ZuneHomeZones
             Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignItems = FlexAlign.Stretch,
             Children = [GridFill.Of("lead-cells:" + zone.Key, _ => lay.LeadCols, (fit, w) => GridFill.Build(cells, GridFill.Columns(n, fit), w, H.ShelfGap, H.ShelfGap), 0f)],
         };
-        var body = new BoxEl
+        // The lead beside the grid and the lead over it are different arrangements: each its own key inside an unkeyed box, so a crossing between
+        // them cross-fades (the declared swap) instead of sliding every card across the zone.
+        var form = new BoxEl
         {
-            Key = "zune-lead-grid:" + zone.Key, Direction = (byte)(beside ? 0 : 1), Gap = H.ShelfGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Key = (beside ? "zune-lead-grid:beside:" : "zune-lead-grid:stacked:") + zone.Key, Direction = (byte)(beside ? 0 : 1), Gap = H.ShelfGap,
+            MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Transition = ZuneMotion.SwapThroughMotion,
             Children = [Lead(cards[0], beside, lay), grid],
         };
+        var body = new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [form] };
         return K.Section(Heading(zone, lay), body);
     }
 

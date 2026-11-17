@@ -170,6 +170,13 @@ public sealed class ShortcutGridView : Component
 
     internal HomeBoardProps Board => _p!.Board;
     internal ShortcutGridSpec Spec => _p!.Spec;
+
+    /// <summary>The mounted track (it registers itself on render): the clip box forwards the swipe and the wheel to it.</summary>
+    internal ShortcutTrack? Track { get; set; }
+
+    readonly Action<Point2> _panDown, _panMove;
+    readonly Action _panCommit, _panCancel;
+    readonly Action<WheelEventArgs> _onWheel;
     internal float Width => _width.Peek() > 0f ? _width.Peek() : _p?.FirstWidth ?? 0f;
 
     public ShortcutGridView()
@@ -177,6 +184,11 @@ public sealed class ShortcutGridView : Component
         _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
         _enter = _ => { if (!_hover.Peek()) _hover.Value = true; };
         _exit = () => { if (_hover.Peek()) _hover.Value = false; };
+        _panDown = lp => Track?.PanDown(lp);
+        _panMove = lp => Track?.PanMove(lp);
+        _panCommit = () => Track?.PanCommit();
+        _panCancel = () => Track?.PanCancel();
+        _onWheel = e => Track?.OnWheel(e);
     }
 
     public override Element Render()
@@ -200,7 +212,20 @@ public sealed class ShortcutGridView : Component
         var track = Embed.Comp(new TrackProps(this, Math.Max(1, count)), static () => new ShortcutTrack()) with { Key = "home:shortcuts-track" };
         var layers = new List<Element>(2)
         {
-            new BoxEl { Direction = 0, MinWidth = 0f, Height = plan.PageHeight, ClipToBounds = true, Children = [track] },
+            new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, Height = plan.PageHeight, ClipToBounds = true,
+                // FlipView's pan on the still frame: a sideways drag that no cell lifts follows the pointer and lands on the nearest page (a touch
+                // that starts on a cell reaches it through the gesture arena; a cross-axis drag yields to the page's scroll). A horizontal wheel
+                // turns a page.
+                OnPointerDown = count > 1 ? _panDown : null,
+                OnDrag = count > 1 ? _panMove : null,
+                DragYieldsToPan = count > 1,
+                OnClick = count > 1 ? _panCommit : null,
+                OnDragCanceled = count > 1 ? _panCancel : null,
+                OnPointerWheel = count > 1 ? _onWheel : null,
+                Children = [track],
+            },
         };
         if (count > 1 && spec.Edge is { } edge)
         {
@@ -246,14 +271,11 @@ public sealed class ShortcutTrack : Component
     int _turnTo = -1;   // the page a lifted cell is held over (not the one shown), -1 none
     // The swipe (FlipView's pan: follow the pointer, release to the nearest page) and the horizontal wheel.
     readonly Action<NodeHandle> _onRealized;
-    readonly Action<Point2> _panDown, _panMove;
-    readonly Action _panCommit, _panCancel;
-    readonly Action<WheelEventArgs> _onWheel;
     readonly Keyframe[] _panKeys = new Keyframe[2];
     readonly Signal<int> _panGen = new(0);   // a released swipe re-seeds the slide even when it stays on its page
     NodeHandle _node;
     float _panStart, _panBase, _panOffset, _wheel;
-    bool _panning;
+    bool _panning, _panArmed;
     long _wheelAt;
 
     /// <summary>The swipe's dead zone (the engine's drag box) and the share of a page a release must pass to turn it.</summary>
@@ -269,11 +291,6 @@ public sealed class ShortcutTrack : Component
     {
         _onTurn = Turn;
         _onRealized = h => _node = h;
-        _panDown = PanDown;
-        _panMove = PanMove;
-        _panCommit = PanCommit;
-        _panCancel = PanCancel;
-        _onWheel = OnWheel;
     }
 
     public override Element Render()
@@ -325,36 +342,31 @@ public sealed class ShortcutTrack : Component
             Reorder = _reorder,
             Key = "home:shortcuts-grid",
         };
-        bool paged = p.Count > 1;
+        grid.Track = this;   // the view's still clip box carries the swipe and the wheel (a handler on this moving root reads its own motion)
         return new BoxEl
         {
             Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Stretch,
             Width = p.Count * width + (p.Count - 1) * gap,
             OnRealized = _onRealized,
-            // FlipView's pan: a sideways drag that no cell lifts follows the pointer and lands on the nearest page; a cross-axis drag yields to
-            // the page's own scroll. A horizontal wheel turns a page.
-            OnPointerDown = paged ? _panDown : null,
-            OnDrag = paged ? _panMove : null,
-            DragYieldsToPan = paged,
-            OnClick = paged ? _panCommit : null,
-            OnDragCanceled = paged ? _panCancel : null,
-            OnPointerWheel = paged ? _onWheel : null,
             Children = [new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, Children = [PackGrid.Create(grid.Items!, _template, _options)] }],
         };
     }
 
-    void PanDown(Point2 lp)
+    internal void PanDown(Point2 lp)
     {
         _panStart = lp.X;
         _panBase = -_p!.Grid.Board.View.ShortcutsPager.Page.Peek() * (_p.Grid.Width + _p.Grid.Spec.Gap);
         if (Context.Anim is { } anim && !_node.IsNull && anim.TryGetTrackValue(_node, AnimChannel.TranslateX, out float live)) _panBase = live;
         _panOffset = _panBase;
         _panning = false;
+        _panArmed = true;
     }
 
-    void PanMove(Point2 lp)
+    internal void PanMove(Point2 lp)
     {
         if (_p is not { } p || _node.IsNull || _reorder is { IsLifted: true }) return;
+        // A touch swipe that started on a cell reaches the grid through the gesture arena: its first move is the grid's down.
+        if (!_panArmed) { PanDown(lp); return; }
         float delta = lp.X - _panStart;
         if (!_panning && MathF.Abs(delta) < PanSlopPx) return;
         _panning = true;
@@ -367,8 +379,9 @@ public sealed class ShortcutTrack : Component
         _panOffset = off;
     }
 
-    void PanCommit()
+    internal void PanCommit()
     {
+        _panArmed = false;
         if (!_panning || _p is not { } p) return;
         _panning = false;
         var pager = p.Grid.Board.View.ShortcutsPager;
@@ -380,14 +393,15 @@ public sealed class ShortcutTrack : Component
         if (pager.Page.Peek() == page) _panGen.Value = _panGen.Peek() + 1;   // back to its page: the spring re-seeds from where it was let go
     }
 
-    void PanCancel()
+    internal void PanCancel()
     {
+        _panArmed = false;
         if (!_panning) return;
         _panning = false;
         _panGen.Value = _panGen.Peek() + 1;
     }
 
-    void OnWheel(WheelEventArgs e)
+    internal void OnWheel(WheelEventArgs e)
     {
         if (MathF.Abs(e.DeltaX) <= MathF.Abs(e.Delta) || _p is not { } p) return;   // a vertical wheel scrolls the page
         e.Handled = true;
