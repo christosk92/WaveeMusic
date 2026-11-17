@@ -13,7 +13,8 @@
      copy of store.json minus the Connect device id; the owner's playplay folder copied in so previews can play locally).
      A verify Wavee already running from -Exe is reused and left running; one this script started is closed at the end.
      It NEVER sends cmd=here (a Connect takeover would steal the owner's playback) and never plays or pauses anything.
-  3. Sets presentation mode (no account name or picture), the theme, the client size and the route, then plays the script's
+  3. Sets the theme (in the profile's settings, before the launch), presentation mode (no account name or picture), the client
+     size and the route, then plays the script's
      SETUP part (the lines before `#rec`: e.g. `#live ready key=...`), so the take never opens on a loading state.
   4. Records the window (ffmpeg gfxcapture = Windows.Graphics.Capture of THIS window only: nothing that covers it, nothing
      beside it, no OS cursor; a window that shrinks keeps the frame size with black bars) at -Fps (default 60 from a 120 Hz panel: every other presented frame) into a
@@ -116,10 +117,13 @@ $firstRun = -not (Test-Path (Join-Path $ProfileDir 'store.json'))
 # Settings the take must not show: Home's first-run teaching tip ("Make Home yours") counts as seen in every theme.
 $settingsPath = Join-Path $ProfileDir 'settings.json'
 $settings = if (Test-Path $settingsPath) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
-foreach ($t in 'classic', 'winui', 'zune') {
-    $k = "theme.$t.state.homeTipSeen"
-    if ($settings.PSObject.Properties.Name -contains $k) { $settings.$k = 'true' } else { $settings | Add-Member -NotePropertyName $k -NotePropertyValue 'true' }
+function Set-Setting([string]$k, [string]$val) {
+    if ($settings.PSObject.Properties.Name -contains $k) { $settings.$k = $val } else { $settings | Add-Member -NotePropertyName $k -NotePropertyValue $val }
 }
+foreach ($t in 'classic', 'winui', 'zune') { Set-Setting "theme.$t.state.homeTipSeen" 'true' }
+# The theme is set before the launch, not switched at run time: on 2026-11-17 a diag verb that arrived during a runtime theme
+# switch went unanswered, and so did every later one (the --fake rehearsals, 2 runs of 3).
+Set-Setting 'theme.id' $Theme
 [IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
 $startArgs = @{ ProfileDir = $ProfileDir; Exe = $Exe; X = $mon.Work.L; Y = $mon.Work.T; Width = [int]($Width * $mon.Scale); Height = [int]($Height * $mon.Scale) }
 if ($firstRun) { $startArgs.CopyLibrary = $true }
@@ -174,8 +178,6 @@ try {
         $aud = [System.Diagnostics.Process]::Start($apsi)
     }
     Diag 'cmd=present&on=1' | Out-Null
-    Diag "cmd=theme&mode=$Theme" | Out-Null
-    Start-Sleep -Milliseconds 1500
     Drive @("resize $Width $Height") 'size' 10000 | Out-Null
     $r = New-Object RecFeature.Win+RECT; [void][RecFeature.Win]::GetWindowRect($hwnd, [ref]$r)
     [void][RecFeature.Win]::MoveWindow($hwnd, $mon.Work.L, $mon.Work.T, $r.R - $r.L, $r.B - $r.T, $true)

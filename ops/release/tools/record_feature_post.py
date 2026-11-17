@@ -35,8 +35,8 @@ def run(args, **kw):
 
 def missing(gaps_ms, period_ms, windows=None, starts=None):
     """Frames missing inside motion. A gap of k periods (1.5 < k) counts k - 1 frames when the window was moving around it:
-    always for a short gap (up to 6 periods: an idle UI is never that brief between two moving frames), and for a longer
-    one only inside a known motion window (the driver's glides: the pointer moves on every frame, so the window must present
+    a short gap (up to 6 periods) whose neighbours are both one period (on-beat frames on each side), and any gap inside a
+    known motion window (the driver's glides: the pointer moves on every frame, so the window must present
     on every vblank). `windows` are (start_ms, end_ms) on the same clock as `starts` (each frame's time, ms)."""
     n = 0
     events = []
@@ -48,7 +48,10 @@ def missing(gaps_ms, period_ms, windows=None, starts=None):
         if windows and starts is not None:
             t0, t1 = starts[i] - g, starts[i]
             inside = any(a <= t0 and t1 <= b + period_ms for a, b in windows)
-        if g <= 6 * period_ms or inside:
+        # outside the glides: a short hole between two on-beat frames (the window was presenting every vblank around it); a
+        # slow cadence (a 12 Hz progress tick) or a still UI that wakes up is not a dropped frame
+        between_beats = 0 < i < len(gaps_ms) - 1 and gaps_ms[i - 1] < 1.25 * period_ms and gaps_ms[i + 1] < 1.25 * period_ms
+        if (g <= 6 * period_ms and between_beats) or inside:
             k = int(round(g / period_ms)) - 1
             if k > 0:
                 n += k

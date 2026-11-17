@@ -859,14 +859,20 @@ public static partial class Shell
     static string s_pendingActivation = "";
 
     /// <summary>A second launch's payload, redirected here by the single-instance gate. The engine delivers it on the UI
-    /// thread, parked frames included, so a tray-hidden Wavee hears it. It PARKS the payload for the shell's drain, which
+    /// thread, parked frames included, so a tray-hidden Wavee hears it. It PARKS the payload and posts the drain, which
     /// runs it through <see cref="ApplyDeepLink"/> — and that door decides whether the window comes up. A bare relaunch
-    /// never reaches the door (there is nothing to drain), so it wakes here.</summary>
+    /// never reaches the door (there is nothing to drain), so it wakes here.
+    /// <para>The drain is posted through the PROCESS-lifetime poster (<see cref="s_uiPost"/>, the GUI root's, above the theme's
+    /// remount), never from inside the themed frame: a runtime theme switch unmounts that frame and mounts the next one only on
+    /// the frame that commits the switch, which a minimized or parked window does not render, so a drain hooked to the frame was
+    /// gone for as long as the window stayed down (2026-11-17: every wavee:// verb after a switch on a minimized window went
+    /// unanswered for 90 s). Before the root exists the payload waits; the frame's first mount drains it.</para></summary>
     static void OnActivationRedirected(string raw)
     {
         raw ??= "";
         Volatile.Write(ref s_pendingActivation, raw);
         if (raw.Length == 0 && Tray.WakeFor(DeepLinkKind.None)) Tray.Host.ShowWindow();
+        else if (raw.Length > 0 && s_uiPost is { } post) post(s_drainActivation);
     }
 
     /// <summary>The payload waiting to be applied, taken atomically. `Shell.UI.cs` polls this from a UI-thread effect;

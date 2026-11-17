@@ -452,16 +452,14 @@ public static partial class Shell
                 var hooks = s_hooks;
                 Action<int> onNav = static which => { if (which == 0) GoBack(); else GoForward(); };
                 Func<float, bool> onWheel = static notch => { ZoomStep(notch > 0f ? +1 : -1); return true; };
-                Action<string> onRedirect = _ => post(s_drainActivation);
                 Action onColors = Appearance.OnSystemColorsChanged;
                 FluentApp.AppNavigationCommand += onNav;
-                FluentApp.ActivationRedirected += onRedirect;
                 FluentApp.SystemColorsChanged += onColors;
                 if (hooks is not null) hooks.ZoomWheel = onWheel;
                 Diagnostics.SidebarPaneFrame = s_paneFrame;
                 // The toast activation → deep-link hop: a toast reaches exactly the destinations a link can.
                 Notify.HostInstall(post, static raw => ApplyDeepLink(raw));
-                DrainActivation();   // a payload parked before the window existed
+                DrainActivation();   // a payload parked before the window existed (later ones: Shell.Host.OnActivationRedirected posts the drain)
                 // G-010: the window is guaranteed to exist by the time the frame's mount effect runs (this component
                 // IS the window's content), so activation no longer waits on the FIRST reducer effect to happen to
                 // land after it. `Activate` itself is idempotent (`s_active` gate) and self-heals a hwnd of 0.
@@ -469,7 +467,6 @@ public static partial class Shell
                 return () =>
                 {
                     FluentApp.AppNavigationCommand -= onNav;
-                    FluentApp.ActivationRedirected -= onRedirect;
                     FluentApp.SystemColorsChanged -= onColors;
                     if (hooks is not null && ReferenceEquals(hooks.ZoomWheel, onWheel)) hooks.ZoomWheel = null;
                     if (ReferenceEquals(Diagnostics.SidebarPaneFrame, s_paneFrame)) Diagnostics.SidebarPaneFrame = null;
