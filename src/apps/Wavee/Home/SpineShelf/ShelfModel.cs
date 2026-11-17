@@ -125,11 +125,12 @@ public static class ShelfModel
     static bool Answered(int sectionSlot)
         => sectionSlot > Table.None && Entities.Current.Edges.SectionPreviewTracks.State(sectionSlot) == EdgeState.Complete;
 
-    /// <summary>A facet's whole lookup has answered: a card it did not name has no preview songs to wait for.</summary>
+    /// <summary>A facet's whole lookup has concluded: answered (a card it did not name has no preview songs to wait for) or failed (none
+    /// will come), so no tile waits on placeholders that never fill; the cover tile stands instead.</summary>
     static bool LookupDone()
     {
         var marker = Entities.Current.Edges.HomePreviews;
-        for (int p = 0; p < marker.ParentCount; p++) if (marker.State(p) == EdgeState.Complete) return true;
+        for (int p = 0; p < marker.ParentCount; p++) if (marker.State(p) == EdgeState.Complete || marker.IsFailed(p)) return true;
         return false;
     }
 

@@ -107,10 +107,13 @@ public sealed class HomeHost
     }
 
     /// <summary>§3.12's demand for the switch target (the Artist/Album/Show idiom: in an effect, never in the model memo);
-    /// re-asks in a new scope.</summary>
+    /// re-asks in a new scope, and runs again when the Home table changes: the baseline lookup is asked once the document is
+    /// KNOWN, which on a launch is an answer that lands after the mount (before, the lookup was never sent and the Spine Shelf's
+    /// open card kept five empty tiles; a live open, 2026-11-17). Both asks are idempotent.</summary>
     public void DemandTarget()
     {
         _ = Entities.ScopeEpoch.Value;
+        _ = Home.Changed.Value;
         Demand(Switch.Value.Target);
     }
 
