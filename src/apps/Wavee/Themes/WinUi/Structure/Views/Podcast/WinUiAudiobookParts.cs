@@ -230,10 +230,10 @@ internal static class WinUiAudiobookParts
     public static Element About(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
     {
         var kids = new List<Element>(6) { BodyStrong(v.AboutTitle) };
-        // The provider's HTML through the house rich-text renderer (paragraphs, bold, lists, links through the route seam, entities decoded), clamped
-        // with the house "Read more".
+        // The provider's HTML through the house rich text (the kit's renderer, ParseRich: paragraphs, bold, lists, links routed in-app; never a tag or
+        // an entity on screen), in its expandable form: a blurb runs to ten paragraphs, so the card shows the first lines and the house "Read more".
         if (v.AboutHtml.Length > 0)
-            kids.Add(Controls.ExpandableRichTextFlex(v.AboutHtml, Body("").Size, Tok.TextSecondary, Tok.AccentTextPrimary, AB.AboutLines, AB.AboutKey + ":" + v.Uri, p.OpenRoute));
+            kids.Add(Controls.ExpandableRichTextFlex(v.AboutHtml, Body("").Size, Tok.TextSecondary, Tok.AccentTextPrimary, AB.AboutLines, AB.AboutKey, p.OpenRoute));
         if (v.SampleId is not null) kids.Add(SampleRow(v, p));
         if (v.Facts.Length > 0) kids.Add(Facts(v.Facts));
         if (RatingCard(v, p) is { } rating) kids.Add(rating);

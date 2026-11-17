@@ -38,7 +38,7 @@ internal static class WinUiPodcastAudiobookRules
     public const float IdGap = 4f, EyebrowGap = 6f, BylineGap = 20f, BylineTop = 6f, MetaGap = 6f, StarGlyph = 14f, CmdGap = 8f;
     public const float SubtitleSize = 18f, SubtitleLine = 24f, SubtitleSizeCompact = 14f, SubtitleLineCompact = 20f;
     public const float TagHeight = 16f, TagPadX = 5f, TagSize = 11f, TagLine = 14f, TagRadius = 3f;
-    public const float UpGap = 16f, UpGapCompact = 10f, UpMinHeight = 40f, PrimaryMinWidth = 132f, LabelTextMin = 160f, LabelGap = 2f, LabelBarGap = 10f;
+    public const float UpGap = 16f, UpGapCompact = 10f, UpMinHeight = 40f, PrimaryMinWidth = 132f, LabelGap = 2f, LabelBarGap = 10f;
     public const float BarHeight = 3f, BarTrack = 1f, BarRadius = 1.5f, Control = 32f, ControlCompact = 40f;
     public const int CoverDecode = 400;
     public const ushort Strong = 600;
@@ -64,6 +64,7 @@ internal static class WinUiPodcastAudiobookRules
     // ── more by the author (the kit's section header and cards) ──
     public const float SectionTop = 28f, SectionBottom = 8f;
 
+    /// <summary>About this book's lines before "Read more".</summary>
     public const int AboutLines = 8;
     public const float AboutPad = 16f, AboutGap = 14f, ParagraphGap = 10f, FactsLabel = 88f, FactsRowGap = 6f, FactsColGap = 16f;
     public const float SampleButton = 36f, SampleGap = 12f, RatePad = 10f, RatePadX = 12f, RateGap = 10f, RateBig = 28f, RateBigLine = 36f, RateStar = 16f;

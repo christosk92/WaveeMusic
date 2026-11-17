@@ -226,7 +226,6 @@ public sealed class AudiobookScreen : Component
             string? sampleId = sample.IsValid ? sample.Uri.Text : sampleUri.Length > 0 ? sampleUri : null;
 
             // ── about and facts ──
-            var about = AudiobookRules.Paragraphs(book.AboutHtml.Length > 0 ? AudiobookRules.FromHtml(book.AboutHtml) : book.About);
             var authors = book.Authors;
             string authorLine = string.Join(", ", authors.Select(static a => a.Name));
             var factRows = ImmutableArray.CreateBuilder<PodcastFact>(8);
@@ -270,7 +269,7 @@ public sealed class AudiobookScreen : Component
                 Chapters: rows.ToImmutable(), NamesMissing: !named && n > 0, ContentsTitle: Loc.Get(PP.Contents), ContentsSub: contentsSub,
                 StartsAtLabel: Loc.Get(PP.StartsAt),
                 LineTitle: Loc.Get(state == AudiobookState.Finished ? PP.Finished : PP.WholeBook), LineSub: lineSub, LineRight: length,
-                AboutTitle: Loc.Get(PP.AboutBook), About: about, Facts: factRows.ToImmutable(),
+                AboutTitle: Loc.Get(PP.AboutBook), Facts: factRows.ToImmutable(),
                 RatingsLine: rated is { Count: > 0 } rl ? PP.RatingsCount(rl.Count) : "",
                 RateLabel: Loc.Get(state == AudiobookState.InProgress ? PP.Rate : PP.RateAfter),
                 FinishedTitle: Loc.Get(PP.YouFinished),
@@ -279,8 +278,8 @@ public sealed class AudiobookScreen : Component
                 SeeAllLabel: Loc.Get(PP.SeeAll))
             {
                 Current = current,
-                KindRoute = Shell.RouteKeyOfLink(AudiobookRules.AudiobooksCategory),
-                AboutHtml = book.AboutHtml.Length > 0 ? book.AboutHtml : book.About,
+                KindRoute = "browse:" + AudiobookRules.AudiobooksCategory,   // the Browse category route (Browse.CategoryPageFor)
+                AboutHtml = AudiobookRules.TidyHtml(book.AboutHtml.Length > 0 ? book.AboutHtml : book.About),
             };
             return new Snapshot(view, show, chapters.ToImmutable(), rest, lengths, total, current, state, sample);
         }
@@ -380,6 +379,7 @@ public sealed class AudiobookScreen : Component
             TopUp = static () => Shell.OpenBrowser(PodcastPages.TopUpUrl),
             Buy = Buy, Download = null, OpenUri = static uri => Shell.OpenLink(uri), Menu = Menu, Share = Share,
             OpenRoute = static key => Shell.GoTo(Shell.Parse(key)),
+            SimilarMenu = SimilarMenu, PlaySimilar = PlaySimilar,
             Rate = Platform.Args.Fake ? null : Rate,
         };
 
@@ -414,6 +414,25 @@ public sealed class AudiobookScreen : Component
         void Buy() => Shell.OpenBrowser(Actions.WebLinkOf(subject));
 
         void Share() => Episode.CopyLink(Actions.WebLinkOf(subject));
+
+        /// <summary>The show container menu for a similar book's card (built at open).</summary>
+        ContextMenuModel? SimilarMenu(string uri)
+        {
+            foreach (var c in Peek().View.Similar)
+                if (c.Uri == uri)
+                {
+                    var target = ActionTarget.ForShow(EntityUri.Parse(uri.AsSpan()), c.Title);
+                    return Menus.Container(in target, c.ArtUrl, c.Subtitle);
+                }
+            return null;
+        }
+
+        /// <summary>A similar book's card play: the book as the context.</summary>
+        static void PlaySimilar(string uri)
+        {
+            var id = EntityUri.Parse(uri.AsSpan()).Id;
+            if (!id.IsEmpty) Playback.PlayContext(id);
+        }
 
         static ImmutableArray<PodcastMenuItem> SpeedMenu()
         {
@@ -510,23 +529,14 @@ public static partial class AudiobookRules
             : m.ToString(CultureInfo.InvariantCulture) + ":" + x.ToString("00", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Paragraphs (blank-line separated), at most two: the card is a summary beside the contents, not the whole blurb.</summary>
-    public static ImmutableArray<string> Paragraphs(string text)
-        => string.IsNullOrWhiteSpace(text) ? [] : [.. text.Replace("\r", "").Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(2)];
+    /// <summary>The provider's HTML with runs of three or more line breaks folded to one blank line (publishers paste "&lt;br /&gt;" x4 between
+    /// paragraphs, which drew as a screen of empty lines), and the publisher's doubled quotes (a CSV escape that reached the wire: &amp;#34;&amp;#34;) as one.</summary>
+    public static string TidyHtml(string html)
+        => string.IsNullOrEmpty(html) ? "" : BreakRuns().Replace(html, "<br /><br />").Replace("&#34;&#34;", "&#34;").Replace("\"\"", "\"");
 
-    /// <summary>HTML_DESCRIPTION's paragraphs as plain text: a blank line per &lt;/p&gt; or &lt;br&gt;, the tags dropped, the entities decoded (the wire
-    /// doubles its quotes: "" reads ").</summary>
-    public static string FromHtml(string html)
-    {
-        string text = Tags().Replace(Breaks().Replace(html, "\n\n"), "");
-        return System.Net.WebUtility.HtmlDecode(text).Replace("\"\"", "\"").Trim();
-    }
+    [GeneratedRegex(@"(<br\s*/?>\s*){3,}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex BreakRuns();
 
-    [GeneratedRegex(@"</p\s*>|<br\s*/?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex Breaks();
-
-    [GeneratedRegex(@"<[^>]+>", RegexOptions.CultureInvariant)]
-    private static partial Regex Tags();
 
     /// <summary>The ISO 639-1 code SHOW_V4 states ("en") as the listener's language names it ("English"); the code itself when unknown.</summary>
     public static string LanguageName(string code)

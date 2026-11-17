@@ -77,7 +77,7 @@ internal static class WinUiPodcastAudiobook
             kids.Add(new BoxEl
             {
                 Key = AB.MoreKey, Layout = AB.Block, Direction = 1, Gap = AB.SectionBottom, Margin = new Edges4(0f, AB.SectionTop, 0f, 0f), MinWidth = 0f,
-                Children = [WinUiPodcastKit.SectionHeader(v.SimilarTitle), WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, rows: lay.Stacked)],
+                Children = [WinUiPodcastKit.SectionHeader(v.SimilarTitle), WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, rows: lay.Stacked, p.SimilarMenu, p.PlaySimilar)],
             });
         }
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = [.. kids] };
@@ -169,52 +169,51 @@ internal static class WinUiPodcastAudiobook
         return new BoxEl { Direction = 1, Gap = AB.IdGap, MinWidth = 0f, Children = [.. kids] };
     }
 
-    /// <summary>"Audiobook · Nonfiction · Business &amp; Careers [Included in Premium]". The kind word opens the Browse category of audiobooks (a house
-    /// HyperlinkButton: rest, hover, pressed, focus); the genres name no page Wavee can open (AUDIOBOOK_GENRE ids are not Browse pages), so they are
-    /// words. Each separator rides the word after it, and the tag rides the last word: a wrapped line never starts or ends on the dot and the tag
-    /// never stands alone.</summary>
+    /// <summary>"Audiobook · Nonfiction · Business &amp; Careers [Included in Premium]" on ONE line: the kind word opens the Browse category of
+    /// audiobooks (a house HyperlinkButton: rest, hover, pressed, focus); the genres name no page Wavee can open (AUDIOBOOK_GENRE ids are not Browse
+    /// pages) and run after it as one caption that ends in an ellipsis where the line is short (the facts list them all); the tag stays whole at the end.
+    /// A wrapped eyebrow put a separator at a line's edge and the tag on a line of its own (owner 2026-11-18).</summary>
     static Element Eyebrow(AudiobookView v, AudiobookPageProps p)
     {
-        Element kind = v.KindRoute is { Length: > 0 } route
-            ? HyperlinkButton.Create(v.Kind, () => p.OpenRoute(route), size: ControlSize.Small) with { Key = AB.KindKey, Shrink = 0f }
-            : Caption(v.Kind) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap };
-        var parts = new List<Element>(v.Genres.Length + 1) { kind };
-        foreach (string g in v.Genres) parts.Add(Caption(Sep + g) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap });
-        Element? tag = v.Included && v.IncludedTag.Length > 0
-            ? new BoxEl
+        var kids = new List<Element>(3);
+        kids.Add(v.KindRoute is { Length: > 0 } route
+            ? HyperlinkButton.Create(v.Kind, () => p.OpenRoute(route), size: ControlSize.Small) with { Key = AB.KindKey, Shrink = 0f, Padding = default }
+            : Caption(v.Kind) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, Shrink = 0f });
+        if (v.Genres.Length > 0)
+            kids.Add(Caption(Sep + string.Join(" " + Sep, v.Genres)) with
+            {
+                Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+            });
+        if (v.Included && v.IncludedTag.Length > 0)
+            kids.Add(new BoxEl
             {
                 Height = AB.TagHeight, Padding = new Edges4(AB.TagPadX, 0f, AB.TagPadX, 0f), Corners = CornerRadius4.All(AB.TagRadius), Direction = 0,
                 AlignItems = FlexAlign.Center, BorderWidth = 1f, BorderColor = Tok.AccentTextPrimary, Shrink = 0f,
                 Children = [new TextEl(v.IncludedTag) { Size = AB.TagSize, LineHeight = AB.TagLine, Weight = AB.Strong, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap }],
-            }
-            : null;
-        var units = new List<Element>(parts.Count);
-        for (int i = 0; i < parts.Count; i++)
-        {
-            bool last = i == parts.Count - 1;
-            units.Add(last && tag is not null
-                ? new BoxEl { Direction = 0, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [parts[i], tag] }
-                : parts[i]);
-        }
-        return new BoxEl { Direction = 0, Wrap = true, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. units] };
+            });
+        return new BoxEl { Direction = 0, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 
-    /// <summary>The separator a part carries in front of it (a middle dot and a space).</summary>
+    /// <summary>The separator in front of a part (a middle dot and a space).</summary>
     const string Sep = "\u00B7 ";
 
-    /// <summary>The rating is one unit and every later part carries its own separator, so a wrapped line never ends on one.</summary>
+    /// <summary>★ 4.4 (4,952) · 5 hr 17 min · 12 chapters · 2016 on ONE line: the star and the rating stay whole, the rest is one caption run that ends
+    /// in an ellipsis where the line is short, so no line starts or ends on a separator.</summary>
     static Element Meta(AudiobookView v)
     {
-        var kids = new List<Element>(5);
+        var kids = new List<Element>(4);
         if (v.Rating.Length > 0)
         {
-            var rating = new List<Element>(3) { Icon(Icons.FavoriteStarFill, AB.StarGlyph, Tok.TextSecondary), Body(v.Rating) with { Color = Tok.TextSecondary } };
-            if (v.RatingCount.Length > 0) rating.Add(Body(v.RatingCount) with { Color = Tok.TextTertiary });
-            kids.Add(new BoxEl { Direction = 0, Gap = AB.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [.. rating] });
+            kids.Add(Icon(Icons.FavoriteStarFill, AB.StarGlyph, Tok.TextSecondary));
+            kids.Add(Body(v.Rating) with { Color = Tok.TextSecondary, Shrink = 0f });
+            if (v.RatingCount.Length > 0) kids.Add(Body(v.RatingCount) with { Color = Tok.TextTertiary, Shrink = 0f });
         }
-        foreach (string m in v.Meta)
-            kids.Add(Body(kids.Count > 0 ? Sep + m : m) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap });
-        return new BoxEl { Direction = 0, Wrap = true, Gap = AB.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
+        if (v.Meta.Length > 0)
+            kids.Add(Body((kids.Count > 0 ? Sep : "") + string.Join(" " + Sep, v.Meta)) with
+            {
+                Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+            });
+        return new BoxEl { Direction = 0, Gap = AB.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 
     static Element Commands(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
@@ -280,11 +279,7 @@ internal static class WinUiPodcastAudiobook
             };
         }
         var kids = sample is null ? new Element[] { primary, label, tools } : [primary, sample, label, tools];
-        // The row wraps: the label keeps room for the bar and its words (never cut to "6% · 9 ..."); what does not fit goes to the next line.
-        return new BoxEl
-        {
-            Key = AB.UpKey, Direction = 0, Wrap = true, Gap = AB.UpGap, AlignItems = FlexAlign.Center, MinHeight = AB.UpMinHeight, MinWidth = 0f, Children = kids,
-        };
+        return new BoxEl { Key = AB.UpKey, Direction = 0, Gap = AB.UpGap, AlignItems = FlexAlign.Center, MinHeight = AB.UpMinHeight, MinWidth = 0f, Children = kids };
     }
 
     static Element Label(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
@@ -302,6 +297,7 @@ internal static class WinUiPodcastAudiobook
             var caption = Caption("");
             sub = new BoxEl
             {
+                // Where the label is narrow the words go under the bar rather than being cut ("6% · 9 ...", owner 2026-11-18).
                 Direction = 0, Wrap = true, Gap = AB.LabelBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Children =
                 [
@@ -321,7 +317,7 @@ internal static class WinUiPodcastAudiobook
         }
         return new BoxEl
         {
-            Direction = 1, Gap = AB.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = lay.Stacked ? 0f : lay.BarWidth + AB.LabelTextMin, Children = [top, sub],
+            Direction = 1, Gap = AB.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [top, sub],
         };
     }
 
