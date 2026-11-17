@@ -114,9 +114,13 @@ internal static class WinUiHomeDaylist
     /// Triple, the cover's edge; Pair, the cover beside the copy (eyebrow row, the one-line title, the tags, the basis line, the spacer's floor, the
     /// actions), the taller of the two; Stack, the cover beside the eyebrow, the title's two reserved lines and the meta line, then the tags and basis,
     /// the actions and the clock footer, a gap of the card's rhythm between each; both paddings around.</summary>
-    internal static float Extent(WinUiHomeLayout layout)
+    internal static float Extent(WinUiHomeLayout layout) => Inner(layout.Daylist) + 2f * layout.Daylist.Pad;
+
+    /// <summary>The band inside the card's paddings at its TALLEST (every line the copy may draw: the title at its full line count, the tags, the basis,
+    /// the meta): the band never draws shorter (its floor), so a short title or a card with no basis lays out at the same height and the board's row,
+    /// packed at <see cref="Extent"/> before the answer lands, never moves when it does.</summary>
+    static float Inner(WinUiDaylistLayout dl)
     {
-        var dl = layout.Daylist;
         float caption = Ui.Caption("").LineHeight, body = Ui.Body("").LineHeight;
         float title = (dl.TitleLarge ? R.Type.HeroTitle("") : R.Type.ModuleHeader("")).LineHeight;
         float actions = MathF.Max(ControlMetrics.For(dl.Buttons).MinHeight, dl.IconBox);
@@ -124,8 +128,13 @@ internal static class WinUiHomeDaylist
         switch (dl.Form)
         {
             case WinUiDaylistForm.Triple:
-                inner = dl.Cover;
+            {
+                // Copy(): eyebrow · gap · the title's lines · gap · tags · basis · gap + meta · the spacer's floor · actions.
+                float gap = WinUiHomeRules.CopyGapLarge;
+                float copy = caption + gap + dl.TitleLines * title + gap + body + caption + gap + body + gap + actions;
+                inner = MathF.Max(dl.Cover, copy);
                 break;
+            }
             case WinUiDaylistForm.Pair:
             {
                 float gap = WinUiHomeRules.CopyGapSmall;
@@ -142,7 +151,7 @@ internal static class WinUiHomeDaylist
                 break;
             }
         }
-        return inner + 2f * dl.Pad;
+        return inner;
     }
 
     /// <summary>The primary action at the tier's size; the Compact button is the board's 20-padded 40.</summary>
@@ -164,7 +173,7 @@ internal static class WinUiHomeDaylist
             WinUiDiscoveryMotion.AirV("daylist-pad:top", dl.Pad),
             new BoxEl
             {
-                Key = "daylist-band", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Key = "daylist-band", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, MinHeight = Inner(dl),
                 Children =
                 [
                     WinUiDiscoveryMotion.AirH("daylist-pad:lead", dl.Pad),
@@ -363,6 +372,9 @@ internal static class WinUiHomeDaylist
         => (dl.TitleLarge ? R.Type.HeroTitle(title) : R.Type.ModuleHeader(title)) with
         {
             MaxLines = dl.TitleLines, Wrap = dl.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            // Each line exactly the rung's line height (40/52, 20/28): a font whose natural line is taller would add to every line, and the card's
+            // height (Inner) counts the rung's lines.
+            LineStacking = LineStacking.BlockLineHeight,
         };
 
     /// <summary>The meta line: body 14/20 secondary (caption at Compact), one line.</summary>
