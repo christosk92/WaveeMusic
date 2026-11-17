@@ -105,9 +105,12 @@ public static partial class Diagnostics
 
         /// <summary>A node under <paramref name="node"/> that draws something of its own changed its rect since <paramref name="resized"/> with no
         /// animation covering it (no track on it or between it and <paramref name="node"/>, its presented rect at its laid-out one): what makes a
-        /// container that paints nothing visibly move.</summary>
-        static bool PaintedMoveUnder(Shell.HeadlessShell shell, NodeHandle node, Dictionary<NodeHandle, RectF> resized)
+        /// container that paints nothing visibly move. <paramref name="onScreen"/>: one of those parts is on the screen on the resized frame or the
+        /// commit frame.</summary>
+        static bool PaintedMoveUnder(Shell.HeadlessShell shell, NodeHandle node, Dictionary<NodeHandle, RectF> resized, out bool onScreen)
         {
+            onScreen = false;
+            bool any = false;
             SceneStore scene = shell.Host.Scene;
             var stack = new Stack<NodeHandle>();
             for (NodeHandle c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) stack.Push(c);
@@ -117,10 +120,14 @@ public static partial class Diagnostics
                 if (!scene.IsLive(n) || !scene.IsShown(n) || shell.Host.Animation.HasTracks(n)) continue;
                 RectF now = scene.AbsoluteRect(n);
                 if (!SameRect(scene.PresentedAbsoluteRect(n), now)) continue;   // easing toward its laid-out rect: covered
-                if (resized.TryGetValue(n, out RectF was) && !SameRect(was, now) && PaintsItself(scene, n)) return true;
+                if (resized.TryGetValue(n, out RectF was) && !SameRect(was, now) && PaintsItself(scene, n))
+                {
+                    any = true;
+                    if (!OffScreen(shell, n, was) || !OffScreen(shell, n, now)) { onScreen = true; return true; }
+                }
                 for (NodeHandle c = scene.FirstChild(n); !c.IsNull; c = scene.NextSibling(c)) stack.Push(c);
             }
-            return false;
+            return any;
         }
 
         /// <summary>The node draws something of its own: text, an image or a drawn visual, a visible fill or border, a gradient, an arc, a
@@ -314,8 +321,12 @@ public static partial class Diagnostics
                     bool presenting = !SameRect(scene.PresentedAbsoluteRect(t.Node), now);   // still easing toward the laid-out rect
                     if (presenting || TracksUp(shell, t.Node)) { t.Motion = Glided; continue; }
                     bool onlyMoved = MathF.Abs(now.W - t.Resized.W) <= 0.5f && MathF.Abs(now.H - t.Resized.H) <= 0.5f;
-                    t.Motion = !PaintsItself(scene, t.Node) && !PaintedMoveUnder(shell, t.Node, resizedAll) ? Unpainted : onlyMoved ? Jumped : Snapped;
-                    if (t.Flagged) t.Offscreen = OffScreen(shell, t.Node, t.Resized) && OffScreen(shell, t.Node, now);
+                    bool paints = PaintsItself(scene, t.Node), seen = false;
+                    t.Motion = !paints && !PaintedMoveUnder(shell, t.Node, resizedAll, out seen) ? Unpainted : onlyMoved ? Jumped : Snapped;
+                    // A container that draws nothing is seen to move only where a part under it that moved is on the screen: one that spans the window
+                    // while what moved under it is far above it (the page's column, shifted by the scroll anchoring for a section that changed height
+                    // off the screen) moved off the screen.
+                    if (t.Flagged) t.Offscreen = (OffScreen(shell, t.Node, t.Resized) && OffScreen(shell, t.Node, now)) || (!paints && !seen);
                 }
 
                 // the first settle frames, watched: a part whose laid-out rect changes after the commit with nothing easing it is a late reflow

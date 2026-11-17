@@ -76,11 +76,15 @@ public static class GridFill
     /// <summary>The cards at <paramref name="cols"/> columns across <paramref name="width"/>, in ONE wrapping row (so a card keeps its parent,
     /// and its node, whatever the column count): the full rows' cards a column wide, the last row's cards sharing its width (grow-only;
     /// <paramref name="lone"/>, when given, draws a lone last card in its wide form). <paramref name="rowH"/> is the rows' fixed height
-    /// (NaN: each row its tallest card); <paramref name="rowGap"/> the step between rows, <paramref name="colGap"/> between columns.</summary>
-    public static Element Build(Element[] cells, int cols, Across width, float colGap, float rowGap, float rowH = float.NaN, Func<Element>? lone = null)
+    /// (NaN: each row its tallest card); <paramref name="rowGap"/> the step between rows, <paramref name="colGap"/> between columns.
+    /// <paramref name="shown"/> (when not negative) shows only the first that many cells: the rest stay mounted, hidden at the end of the row, so a
+    /// count that one width shows and the next hides keeps every card's node (a capped grid held at its old tier for the frame a window steps
+    /// across a tier edge fits a column fewer, and its last card came back as a new node a frame later).</summary>
+    public static Element Build(Element[] cells, int cols, Across width, float colGap, float rowGap, float rowH = float.NaN, Func<Element>? lone = null,
+        int shown = -1)
     {
         cols = Math.Max(1, cols);
-        int n = cells.Length, rest = Remainder(n, cols), full = n - rest;
+        int all = cells.Length, n = shown < 0 ? all : Math.Min(shown, all), rest = Remainder(n, cols), full = n - rest;
         float w = width.Live is { } l0 && l0.Peek() > 0f ? l0.Peek() : width.Width;
         float cell = CellWidth(w, cols, colGap), last = LastWidth(w, rest, colGap);
         // Bound to the live width: one thunk for the full rows' cells, one for the last row's (the grid rebuilds only for new columns).
@@ -91,9 +95,20 @@ public static class GridFill
             cellW = Prop.Of(() => MathF.Max(0f, CellWidth(live.Value, c, colGap) - Slack));
             lastW = Prop.Of(() => MathF.Max(0f, LastWidth(live.Value, r, colGap) - Slack));
         }
-        var kids = new Element[n];
-        for (int i = 0; i < n; i++)
+        var kids = new Element[all];
+        for (int i = 0; i < all; i++)
         {
+            if (i >= n)
+            {
+                var h = cells[i];
+                kids[i] = new BoxEl
+                {
+                    Key = h.Key is { Length: > 0 } hk ? "fill:" + hk : null, Visible = false,
+                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = rowH, Layout = MoveOf(h.Layout),
+                    Width = cellW, Grow = 1f, Shrink = 0f, Children = [h],
+                };
+                continue;
+            }
             bool inLast = i >= full;
             var c = inLast && rest == 1 && cols >= 2 && lone is not null ? lone() : cells[i];
             kids[i] = new BoxEl
