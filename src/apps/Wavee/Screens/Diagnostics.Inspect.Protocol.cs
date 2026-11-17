@@ -408,11 +408,12 @@ public static partial class Diagnostics
                 Positional = ["key", "dy"], NeedsMount = true, Acts = true,
                 Args = Join(s_aimArgs, [Arg("dy", ArgType.Float, "notches, positive toward the end", "3"), Arg("dx", ArgType.Float, "horizontal notches", "0")], s_settleArgs),
             },
-            new(Verb.Play, "play", "Play a fake track or episode as its own context (next=N queues the tracks after it), or turn the output remote (remote=); then settle", "play spotify:track:tr3 next=4")
+            new(Verb.Play, "play", "Play a fake track or episode as its own context (next=N queues the tracks after it, cold=N then N tracks no row knows yet), or turn the output remote (remote=); then settle", "play spotify:track:tr3 next=4")
             {
                 Positional = ["uri", "fromMs"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("uri", ArgType.String, "a spotify:track: or spotify:episode: uri (optional with remote=)"), Arg("fromMs", ArgType.Int, "the start position", "0"),
                              IntArg("next", "queue this many tracks after a spotify:track:tr<k>", "0", 0, 64),
+                             IntArg("cold", "then queue this many tracks no row knows yet (bare ids the fake never answers: a remote device's queue as it arrives)", "0", 0, 16),
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
                              IntArg("at", "with context=: start at this row of the rows (0 = the uri's own), as a click on a row further down the page does", "0", 0, 64),

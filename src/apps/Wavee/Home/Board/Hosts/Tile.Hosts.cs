@@ -196,17 +196,21 @@ public sealed class NowPlayingTileHost : Component
     }
 }
 
-/// <summary>The Up next widget: the queue panel's own rows.</summary>
+/// <summary>The Up next widget: the "Next up" rows at the count its tile holds, and the queue's length. It asks the catalog for its rows
+/// itself: the queue panel that otherwise does is not mounted on Home, and a remote device's queue arrives as bare ids.</summary>
 [CoreHost]
 public sealed class UpNextTileHost : Component
 {
-    static readonly Func<NextUpRow[]> s_rows = static () => Rail.NextUpRows();
+    static readonly Func<int, NextUpRow[]> s_rows = static max => Rail.TileRows(max);
+    static readonly Func<int> s_count = static () => Rail.UpNextCount();
     static readonly Action s_queue = static () => Shell.PlayerBarHost.Props.OpenQueue?.Invoke();
+    static readonly Action s_ensure = static () => Rail.EnsureTileRows();
 
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
-        return Slots.View(ViewKeys.HomeTileUpNext, new HomeUpNextTileProps { Frame = p.Frame, Rows = s_rows, OpenQueue = s_queue });
+        UseSignalEffect(s_ensure);
+        return Slots.View(ViewKeys.HomeTileUpNext, new HomeUpNextTileProps { Frame = p.Frame, Rows = s_rows, Count = s_count, OpenQueue = s_queue });
     }
 }
 

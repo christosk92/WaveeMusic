@@ -139,7 +139,7 @@ public static class SurfaceParts
         if (!s.Labels)
             return new BoxEl
             {
-                Grow = 1f, Width = s.MinHeight, Height = s.MinHeight, IsEnabled = false,
+                Width = s.MinHeight, Height = s.MinHeight, IsEnabled = false,
                 Padding = Edges4.All(MathF.Max(0f, (s.MinHeight - edge) / 2f)),
                 Children = [bone],
             };
@@ -147,7 +147,8 @@ public static class SurfaceParts
         float gap = s.IsLargeRow ? Spacing.S : SurfaceGeometry.CardLabelGap;
         return new BoxEl
         {
-            Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, Grow = 1f, IsEnabled = false,
+            // No grow, as every theme's row shell: a seed in a column with room to spare stands at its row's height, not the room's.
+            Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, IsEnabled = false,
             MinHeight = s.MinHeight, MinWidth = 0f, Padding = Edges4.All(SurfaceGeometry.RowPad),
             Children = [bone, SeedLines(in s, float.IsNaN(titleH) ? SurfaceGeometry.CardTitleLineH : titleH, gap) with
                 { Grow = 1f, Basis = 0f }],

@@ -420,13 +420,13 @@ internal static class WinUiHomeTiles
     public static Element UpNext(HomeUpNextTileProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        var rows = p.Rows();
+        int max = f.Form switch { HomeTileForm.S => 1, HomeTileForm.M => WinUiHomeBoardRules.CardRows, HomeTileForm.L => WinUiHomeBoardRules.WideRows, _ => WinUiHomeBoardRules.BandRows };
+        var rows = p.Rows(max);
         string title = Loc.Get(Strings.Theme.Winui.Home.Board.UpNext);
         string first = rows.Length > 0 ? rows[0].Data.Title : Loc.Get(Strings.Theme.Winui.Home.Board.QueueEmpty);
-        string count = Strings.Theme.Winui.Home.Board.InQueue(n: rows.Length);
+        string count = Strings.Theme.Winui.Home.Board.InQueue(n: p.Count());
         if (f.Form == HomeTileForm.S)
             return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.List, WinUiHomeBoardRules.RowArt), () => title, () => first), p.OpenQueue));
-        int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.List, title, () => count) };
         for (int i = 0; i < rows.Length && i < max; i++)
             kids.Add(Controls.Surface(rows[i].Data, ListShape) with { Key = "upnext:" + rows[i].Key });

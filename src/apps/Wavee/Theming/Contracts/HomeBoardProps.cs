@@ -263,8 +263,12 @@ public sealed record HomeUpNextTileProps
     /// <summary>The tile's frame.</summary>
     public required HomeTileFrame Frame { get; init; }
 
-    /// <summary>The next tracks (the queue panel's own rows; call it inside the render: it subscribes the queue).</summary>
-    public required Func<NextUpRow[]> Rows { get; init; }
+    /// <summary>The next tracks, at most the count given (the queue panel's own rows, a row not known yet the seed; call it inside the
+    /// render: it subscribes the queue).</summary>
+    public required Func<int, NextUpRow[]> Rows { get; init; }
+
+    /// <summary>How many items are up next (the "n in the queue"; a subscribing read).</summary>
+    public required Func<int> Count { get; init; }
 
     /// <summary>Open the queue.</summary>
     public required Action OpenQueue { get; init; }

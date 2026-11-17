@@ -455,13 +455,13 @@ internal static class ClassicHomeTiles
     {
         var f = p.Frame;
         var lay = ClassicHomeBoardTiers.Of(ctx.Tier());
-        var rows = p.Rows();
+        int max = f.Form == HomeTileForm.M ? ClassicHomeBoardRules.CardRows : ClassicHomeBoardRules.WideRows;
+        var rows = p.Rows(f.Form is HomeTileForm.S or HomeTileForm.Full ? 1 : max);
         string title = Loc.Get(Strings.Theme.Classic.Home.Board.UpNext);
         string first = rows.Length > 0 ? rows[0].Data.Title : Loc.Get(Strings.Theme.Classic.Home.Board.QueueEmpty);
-        string count = Strings.Theme.Classic.Home.Board.InQueue(n: rows.Length);
+        string count = Strings.Theme.Classic.Home.Board.InQueue(n: p.Count());
         if (f.Form is HomeTileForm.S or HomeTileForm.Full)
             return Frame(ctx, f, Clickable(CellFace(CellGlyph(Icons.Queue, lay), () => title, () => first), p.OpenQueue));
-        int max = f.Form == HomeTileForm.M ? ClassicHomeBoardRules.CardRows : ClassicHomeBoardRules.WideRows;
         var kids = new List<Element> { WidgetHead(Icons.Queue, title, () => count) };
         for (int i = 0; i < rows.Length && i < max; i++)
             kids.Add(Controls.Surface(rows[i].Data, ListShape) with { Key = "upnext:" + rows[i].Key });

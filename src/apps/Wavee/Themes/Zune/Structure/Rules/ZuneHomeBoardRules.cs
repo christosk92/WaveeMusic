@@ -183,12 +183,28 @@ public static class ZuneHomeBoardRules
     /// <summary>A widget's glyph on a small tile (24) and in a tile's head (16).</summary>
     public const float WidgetGlyph = 24f, HeadGlyph = 16f;
 
-    /// <summary>List rows inside a tile: 44 rows of 36 art, 4 apart.</summary>
+    /// <summary>List rows inside a tile: a 44 floor, 36 art, 4 apart.</summary>
     public const float ListRowH = 44f, ListArt = 36f, ListGap = 4f;
 
-    /// <summary>A widget lists two rows in a medium tile, four (two columns of two, 12 apart) in a wide one.</summary>
+    /// <summary>A list row's text column: the 20 title line, 2, the 16 line.</summary>
+    public const float ListRowTextH = 38f;
+
+    /// <summary>The height a list row stands at: the floor, or its text column inside the inset the floor leaves over the art (the row trims
+    /// its pad to the floor by the art, so a text column taller than the art stands that much taller).</summary>
+    public static float ListRowOuterH => MathF.Max(ListRowH, ListRowTextH + (ListRowH - ListArt));
+
+    /// <summary>A widget's rows where no packed box says how many fit: two in a live preview, four in a band (it grows to them). The wide
+    /// form's two columns stand 12 apart.</summary>
     public const int ListRowsM = 2, ListRowsL = 4;
     public const float ListColGap = 12f;
+
+    /// <summary>A widget's head inside a tile: one line of the 14/18 voice.</summary>
+    public const float WidgetHeadH = 18f;
+
+    /// <summary>The rows one column of a widget holds in a tile <paramref name="tileH"/> tall: the head and each row (with the gap above it)
+    /// inside the padding, at least one. The tile fills with rows instead of standing empty under two.</summary>
+    public static int ListRowsFit(float tileH)
+        => Math.Max(1, (int)MathF.Floor((tileH - SmallPad - TilePad - WidgetHeadH) / (ListRowOuterH + ListGap)));
 
     /// <summary>The now-playing tile's progress line (3).</summary>
     public const float ProgressH = 3f;
