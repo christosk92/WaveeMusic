@@ -72,7 +72,14 @@ public static class WinUiPodcastShowTiers
 
     /// <summary>The list column's width under which the toolbar's search collapses to its icon button (the filters keep their room): the 1008-1100
     /// windows, where the list beside the 360 pane is about 350 wide.</summary>
-    public const float SearchCollapseBelow = 560f;
+    public const float SearchCollapseBelow = 640f;
+
+    /// <summary>The list column's width under which the SelectorBar's four counted filters no longer fit beside the search and sort icons: the
+    /// filter becomes the ComboBox (as at Compact).</summary>
+    public const float FilterComboBelow = 460f;
+
+    /// <summary>Whether the filter is the ComboBox in a list <paramref name="listWidth"/> wide.</summary>
+    public static bool FilterCombo(WinUiPodcastShowLayout lay, float listWidth) => lay.Stacked || (listWidth > 0f && listWidth < FilterComboBelow);
 
     /// <summary>Whether the search box collapses to its icon in a list <paramref name="listWidth"/> wide.</summary>
     public static bool SearchCollapsed(WinUiPodcastShowLayout lay, float listWidth) => lay.Search <= 0f || (listWidth > 0f && listWidth < SearchCollapseBelow);

@@ -72,6 +72,16 @@ public sealed class PodcastEpisodeScreen : Component
         return !id.IsEmpty && Playback.IsPlaying.Value ? id.Text : null;
     };
     readonly Action<string> _toggleSavedOther = static uri => { var x = Other(uri); if (x.IsValid) Spotify.Podcasts.ToggleSaved(x); };
+    /// <summary>A similar show's card: its container menu (follow, share, ...) and play (or pause when it is the playing context).</summary>
+    readonly Func<string, ContextMenuModel?> _cardMenu = static uri =>
+    {
+        if (!EntityId.TryParse(uri, out var id)) return null;
+        var show = Entities.Show(id);
+        string title = show.IsValid && show.Knows(ShowFields.Title) ? show.Title : "";
+        string? art = show.IsValid && show.Knows(ShowFields.Image) ? Controls.ArtUrl(show.ImageId) : null;
+        return Menus.Container(ActionTarget.ForShow(new EntityUri(id), title), art, null);
+    };
+    readonly Action<string> _playCard = static uri => { if (EntityId.TryParse(uri, out var id)) Playback.PlayOrToggleContext(id); };
     readonly Func<string, ContextMenuModel?> _rowMenu = static uri =>
     {
         var x = Other(uri);
@@ -167,7 +177,7 @@ public sealed class PodcastEpisodeScreen : Component
             Play = _play, SeekTo = _seek, ToggleSaved = _toggleSaved, ToggleCompleted = _toggleCompleted, OpenShow = _openShow,
             Open = _open, PlayEpisode = _playOther, PlayNext = _playNext, OpenUri = DetailVerbs.NavigateKey,
             Menu = _menu, Share = _share, Comments = _commentsView,
-            OnDeck = onDeck, ToggleSavedEpisode = _toggleSavedOther, RowMenu = _rowMenu,
+            OnDeck = onDeck, ToggleSavedEpisode = _toggleSavedOther, RowMenu = _rowMenu, CardMenu = _cardMenu, PlayCard = _playCard,
         };
         return Slots.View(ViewKeys.PodcastEpisodePage, _props);
     }
@@ -552,7 +562,6 @@ public sealed class PodcastEpisodeScreen : Component
         if (state != PodcastRowState.Unplayed)
             b.Add(new PodcastMenuItem(Loc.Get(Strings.Podcast.Pages.StartOver), null, Icons.Undo, false,
                 () => Episode.StartAt(Current, Playback.EpisodeStartKind.Beginning)));
-        b.Add(new PodcastMenuItem(Loc.Get(Strings.Podcast.Pages.PlayNext), null, Icons.Queue, false, () => Episode.Enqueue(Current, true)));
         var show = e.Show;
         if (show.IsValid)
         {

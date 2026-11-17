@@ -49,6 +49,10 @@ public sealed class AudiobookScreen : Component
         UseEffect(() => m.Leave, DepKey.Empty);
         var snap = UseComputed(m.Compute);
         m.Snap = snap;
+        // The window tab and the history rows read the page's own title (`PageChromeChannel.PublishedTitle`), not the route's "Podcast".
+        m.Sink = UseContext(PageChromeSink.Context);
+        UseEffect(m.PublishTitle);
+        UseEffect(() => m.WithdrawTitle, DepKey.Empty);
         var view = UseComputed(m.ViewOf);
         var place = UseComputed(m.PlaceOf);
         var playing = UseComputed(m.PlayingOf);
@@ -73,6 +77,20 @@ public sealed class AudiobookScreen : Component
         public AudiobookPageProps? Props;
 
         Snapshot Peek() => Snap?.Peek() ?? Snapshot.Empty;
+
+        public PageChromeSink Sink = PageChromeSink.None;
+        string _published = "";
+
+        /// <summary>Auto-tracked on the snapshot: publishes the book's title once it is known and whenever it changes.</summary>
+        public void PublishTitle()
+        {
+            string title = Snap?.Value.View.Title ?? "";
+            if (title.Length == 0 || title == _published) return;
+            _published = title;
+            Sink.Publish(new PageChromeRow([], [], Title: title));
+        }
+
+        public void WithdrawTitle() => Sink.Publish(null);
 
         // ══ DEMAND ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -208,7 +226,6 @@ public sealed class AudiobookScreen : Component
             string? sampleId = sample.IsValid ? sample.Uri.Text : sampleUri.Length > 0 ? sampleUri : null;
 
             // ── about and facts ──
-            var about = AudiobookRules.Paragraphs(book.AboutHtml.Length > 0 ? AudiobookRules.FromHtml(book.AboutHtml) : book.About);
             var authors = book.Authors;
             string authorLine = string.Join(", ", authors.Select(static a => a.Name));
             var factRows = ImmutableArray.CreateBuilder<PodcastFact>(8);
@@ -252,13 +269,18 @@ public sealed class AudiobookScreen : Component
                 Chapters: rows.ToImmutable(), NamesMissing: !named && n > 0, ContentsTitle: Loc.Get(PP.Contents), ContentsSub: contentsSub,
                 StartsAtLabel: Loc.Get(PP.StartsAt),
                 LineTitle: Loc.Get(state == AudiobookState.Finished ? PP.Finished : PP.WholeBook), LineSub: lineSub, LineRight: length,
-                AboutTitle: Loc.Get(PP.AboutBook), About: about, Facts: factRows.ToImmutable(),
+                AboutTitle: Loc.Get(PP.AboutBook), Facts: factRows.ToImmutable(),
                 RatingsLine: rated is { Count: > 0 } rl ? PP.RatingsCount(rl.Count) : "",
                 RateLabel: Loc.Get(state == AudiobookState.InProgress ? PP.Rate : PP.RateAfter),
                 FinishedTitle: Loc.Get(PP.YouFinished),
                 FinishedSub: rating.Length > 0 ? PP.HowWasIt(rating, count) : "",
                 Similar: similar, SimilarTitle: firstAuthor.Length > 0 ? PP.MoreByAuthor(firstAuthor) : Loc.Get(PP.SimilarBooks),
-                SeeAllLabel: Loc.Get(PP.SeeAll)) { Current = current };
+                SeeAllLabel: Loc.Get(PP.SeeAll))
+            {
+                Current = current,
+                KindRoute = "browse:" + AudiobookRules.AudiobooksCategory,   // the Browse category route (Browse.CategoryPageFor)
+                AboutHtml = AudiobookRules.TidyHtml(book.AboutHtml.Length > 0 ? book.AboutHtml : book.About),
+            };
             return new Snapshot(view, show, chapters.ToImmutable(), rest, lengths, total, current, state, sample);
         }
 
@@ -356,6 +378,8 @@ public sealed class AudiobookScreen : Component
             CheckHours = static () => Shell.OpenBrowser(PodcastPages.HoursLeftUrl),
             TopUp = static () => Shell.OpenBrowser(PodcastPages.TopUpUrl),
             Buy = Buy, Download = null, OpenUri = static uri => Shell.OpenLink(uri), Menu = Menu, Share = Share,
+            OpenRoute = static key => Shell.GoTo(Shell.Parse(key)),
+            SimilarMenu = SimilarMenu, PlaySimilar = PlaySimilar,
             Rate = Platform.Args.Fake ? null : Rate,
         };
 
@@ -390,6 +414,25 @@ public sealed class AudiobookScreen : Component
         void Buy() => Shell.OpenBrowser(Actions.WebLinkOf(subject));
 
         void Share() => Episode.CopyLink(Actions.WebLinkOf(subject));
+
+        /// <summary>The show container menu for a similar book's card (built at open).</summary>
+        ContextMenuModel? SimilarMenu(string uri)
+        {
+            foreach (var c in Peek().View.Similar)
+                if (c.Uri == uri)
+                {
+                    var target = ActionTarget.ForShow(EntityUri.Parse(uri.AsSpan()), c.Title);
+                    return Menus.Container(in target, c.ArtUrl, c.Subtitle);
+                }
+            return null;
+        }
+
+        /// <summary>A similar book's card play: the book as the context.</summary>
+        static void PlaySimilar(string uri)
+        {
+            var id = EntityUri.Parse(uri.AsSpan()).Id;
+            if (!id.IsEmpty) Playback.PlayContext(id);
+        }
 
         static ImmutableArray<PodcastMenuItem> SpeedMenu()
         {
@@ -454,6 +497,10 @@ public sealed class AudiobookScreen : Component
 /// <summary>The audiobook page's pure rules: the title split, the description's credit header, the chapter-name rule, matter, the clock.</summary>
 public static partial class AudiobookRules
 {
+    /// <summary>Spotify's Browse category of audiobooks (the official client's "Audiobooks" tile, `spotify:genre:0JQ5DAqbMKFETqK4t8f1n3` in its
+    /// own logs): the hub the kind word opens. A book's genres (AUDIOBOOK_GENRE ids, 32 hex) name no Browse page, so they are not linked.</summary>
+    public const string AudiobooksCategory = "spotify:page:0JQ5DAqbMKFETqK4t8f1n3";
+
     /// <summary>The speed menu's rates.</summary>
     public static ReadOnlySpan<float> Speeds => [0.8f, 1f, 1.2f, 1.5f, 2f];
 
@@ -482,23 +529,11 @@ public static partial class AudiobookRules
             : m.ToString(CultureInfo.InvariantCulture) + ":" + x.ToString("00", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Paragraphs (blank-line separated), at most two: the card is a summary beside the contents, not the whole blurb.</summary>
-    public static ImmutableArray<string> Paragraphs(string text)
-        => string.IsNullOrWhiteSpace(text) ? [] : [.. text.Replace("\r", "").Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(2)];
+    /// <summary>The provider's HTML with the publisher's doubled quotes (a CSV escape that reached the wire: &amp;#34;&amp;#34;) as one. Runs of
+    /// line breaks are the renderer's to fold (<c>Controls.ParseRich</c>).</summary>
+    public static string TidyHtml(string html)
+        => string.IsNullOrEmpty(html) ? "" : html.Replace("&#34;&#34;", "&#34;").Replace("\"\"", "\"");
 
-    /// <summary>HTML_DESCRIPTION's paragraphs as plain text: a blank line per &lt;/p&gt; or &lt;br&gt;, the tags dropped, the entities decoded (the wire
-    /// doubles its quotes: "" reads ").</summary>
-    public static string FromHtml(string html)
-    {
-        string text = Tags().Replace(Breaks().Replace(html, "\n\n"), "");
-        return System.Net.WebUtility.HtmlDecode(text).Replace("\"\"", "\"").Trim();
-    }
-
-    [GeneratedRegex(@"</p\s*>|<br\s*/?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex Breaks();
-
-    [GeneratedRegex(@"<[^>]+>", RegexOptions.CultureInvariant)]
-    private static partial Regex Tags();
 
     /// <summary>The ISO 639-1 code SHOW_V4 states ("en") as the listener's language names it ("English"); the code itself when unknown.</summary>
     public static string LanguageName(string code)

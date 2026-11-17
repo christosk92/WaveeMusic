@@ -11,6 +11,9 @@
 //                                Load more] · the 360 details pane (≥1008, sticky): Episode | About the show
 //
 // The tier record is `WinUiPodcastShowTiers` (window tier). Loading is this same layout over a placeholder snapshot with flat fills (SkelRegionEl).
+// The pinned rows (the toolbar, the year headers) are the kit's PinnedBand: nothing painted at rest, a hairline while pinned; what scrolls under them cuts
+// itself at their lower edge. The pane pins under the bar; taller than the viewport, it rides the page until its foot reaches the viewport's foot and pins
+// there (no scroller of its own). A filter or a search HIDES rows (the rows stay mounted).
 
 using System.Collections.Immutable;
 using FluentGpu.Controls;
@@ -63,7 +66,19 @@ internal static class WinUiPodcastShow
         PodcastShowPageProps _p = null!;
         readonly Signal<bool> _barOn = new(false);
         readonly Signal<int> _filterIx = new(0), _paneIx = new(0), _comboIx = new(0);
-        readonly Signal<bool> _searchOpen = new(false);
+        readonly Signal<bool> _searchOpen = new(false), _toolbarStuck = new(false);
+        readonly Signal<float> _paneH = new(0f);
+        readonly Dictionary<string, Signal<bool>> _groupStuck = [];
+        Action<RectF>? _measurePane;
+        Func<HeadView>? _projectHead;
+        Memo<HeadView>? _headView;
+        Func<Affine2D>? _paneShiftOf;
+        readonly Signal<bool> _paneStuck = new(false);
+        float _paneShift;
+        double _paneLastOffset = double.NaN;
+        Action<bool>? _followToggle;
+        string[] _filterLabels = [];
+        string[]? _paneLabels;
         readonly ScrollHandle _scroll = new();
         PodcastRowVerbs? _verbs;
         NodeHandle _viewport;
@@ -84,6 +99,7 @@ internal static class WinUiPodcastShow
             float viewportH = facts.ViewportHeight, contentW = facts.ContentWidth;
             _overlay = UseContext(Overlay.Service);
             _captureViewport ??= h => _viewport = h;
+            _measurePane ??= r => { if (r.H > 1f && MathF.Abs(r.H - _paneH.Peek()) > 0.5f) _paneH.Value = r.H; };
             _pending ??= () => _p.View.Value.Load == PodcastLoad.Pending;
             _failed ??= () => _p.View.Value.Load == PodcastLoad.Failed;
             _syncCells ??= () =>
@@ -99,7 +115,9 @@ internal static class WinUiPodcastShow
                 PlayNext = p.PlayNext, Select = p.Select, Expand = p.Expand, Menu = p.RowMenu,
             };
 
-            var v = p.View.Value;
+            _projectHead ??= () => HeadOf(_p.View.Value);
+            _headView = UseComputed(_projectHead);
+            var v = ViewOf(_headView.Value);
             bool loading = v.Load == PodcastLoad.Pending;
             var shown = loading ? s_placeholder : v;
             Element content = new SkelRegionEl(
@@ -114,6 +132,14 @@ internal static class WinUiPodcastShow
             return WinUiPodcastKit.Page(p.RouteKey, loading ? 0u : head.Tone, _barOn,
                 new BoxEl { Key = "podcast-show-body", Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.HeightReflow, Children = [content] }, bar, _scroll, _captureViewport);
         }
+
+        /// <summary>What the page itself draws (the hero, the bar, the About expander): the head, the smart action, the similar shows and the load state.
+        /// The host reuses these instances while their content holds, so the memo's equality keeps a filter switch away from the page.</summary>
+        sealed record HeadView(PodcastLoad Load, PodcastShowHead Head, PodcastSmart? Smart, ImmutableArray<PodcastCardVm> Similar);
+
+        static HeadView HeadOf(PodcastShowView v) => new(v.Load, v.Head, v.Smart, v.Similar);
+
+        static PodcastShowView ViewOf(HeadView h) => PodcastShowView.Empty with { Load = h.Load, Head = h.Head, Smart = h.Smart, Similar = h.Similar };
 
         Element BarButton(PodcastShowView v)
         {
@@ -133,13 +159,16 @@ internal static class WinUiPodcastShow
             if (live) kids.Add(WinUiPodcastKit.BarSentinel(_barOn));
             if (!lay.Pane) kids.Add(AboutExpander(v));
             float listW = MathF.Max(0f, contentW - 2f * inset - (lay.Pane ? S.PaneW + S.ColGap : 0f));
-            Element list = ListColumn(v, lay, live, WinUiPodcastShowTiers.SearchCollapsed(lay, listW));
+            Element list = live
+                ? Embed.Comp(new ListProps(this, lay, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW)),
+                    static () => new ListHost()) with { Key = "show-list-host" }
+                : ListColumn(v, lay, live, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW));
             // ONE row at every tier: the pane comes and goes beside the list (a declared swap), the list reflows to its new width.
             kids.Add(new BoxEl
             {
                 Key = "show-cols", Direction = 0, Gap = lay.Pane ? S.ColGap : 0f, AlignItems = FlexAlign.Start, MinWidth = 0f,
                 Layout = WinUiDiscoveryMotion.Reflow,
-                Children = lay.Pane ? [list, Pane(v, viewportH, live)] : [list],
+                Children = lay.Pane ? [list, live ? PaneSlot() : Pane(v, live)] : [list],
             });
             return new BoxEl
             {
@@ -147,6 +176,57 @@ internal static class WinUiPodcastShow
                 Padding = new Edges4(inset, 0f, inset, K.PageFoot + R.Space.DockReserve),
                 Children = kids.ToArray(),
             };
+        }
+
+        /// <summary>The list column (toolbar, groups, rows): its own component, the only part of the page a filter, a search, the order or the row
+        /// states re-render.</summary>
+        sealed record ListProps(PageHost Host, WinUiPodcastShowLayout Lay, bool SearchIcon, bool Combo);
+
+        sealed class ListHost : Component
+        {
+            public override Element Render()
+            {
+                var p = UseProps<ListProps>();
+                var full = p.Host._p.View.Value;
+                var v = full.Load == PodcastLoad.Pending ? s_placeholder : full;
+                return p.Host.ListColumn(v, p.Lay, live: true, p.SearchIcon, p.Combo);
+            }
+        }
+
+        /// <summary>The details pane: its own component over the selected episode (its filter flag set aside), the head and the similar shows, so a filter
+        /// switch does not re-render it.</summary>
+        sealed record PaneProps(PageHost Host);
+
+        sealed record PaneView(PodcastLoad Load, PodcastEpisodeVm? Selected, PodcastShowHead Head, ImmutableArray<PodcastCardVm> Similar);
+
+        sealed class PaneHost : Component
+        {
+            PageHost? _host;
+            Func<PaneView>? _project;
+
+            public override Element Render()
+            {
+                _host = UseProps<PaneProps>().Host;
+                _project ??= Project;
+                var pv = UseComputed(_project).Value;
+                var v = PodcastShowView.Empty with
+                {
+                    Load = pv.Load, Head = pv.Head, Similar = pv.Similar, Episodes = pv.Selected is { } vm ? [vm] : [],
+                };
+                return _host.Pane(v, live: true);
+            }
+
+            PaneView Project()
+            {
+                var p = _host!._p;
+                var full = p.View.Value;
+                string? id = p.Selected.Value;
+                PodcastEpisodeVm? vm = null;
+                if (id is not null)
+                    foreach (var e in full.Episodes)
+                        if (e.Id == id) { vm = e.Hidden ? e with { Hidden = false } : e; break; }
+                return new PaneView(full.Load, vm, full.Head, full.Similar);
+            }
         }
 
         // ── the hero ──
@@ -200,11 +280,19 @@ internal static class WinUiPodcastShow
             };
         }
 
-        static Element Eyebrow(PodcastShowHead h)
+        /// <summary>The eyebrow: the kind word as a link to its hub, then the topics (plain: the data carries no destination for a topic), then the tags.</summary>
+        Element Eyebrow(PodcastShowHead h)
         {
-            var words = new List<string>(4) { h.Kind };
-            words.AddRange(h.Topics);
-            var kids = new List<Element>(3) { Caption(string.Join(" · ", words)) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f } };
+            var kids = new List<Element>(4);
+            if (_p.OpenKind is { } openKind && h.Kind.Length > 0)
+                kids.Add(new BoxEl
+                {
+                    Key = "eyebrow:kind", Shrink = 0f, Margin = new Edges4(-S.LinkPadX, 0f, -S.LinkPadX, 0f),
+                    Children = [HyperlinkButton.Create(h.Kind, openKind, size: ControlSize.Small)],
+                });
+            else if (h.Kind.Length > 0) kids.Add(Caption(h.Kind) with { Color = Tok.TextSecondary });
+            if (h.Topics.Length > 0)
+                kids.Add(Caption("· " + string.Join(" · ", h.Topics)) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
             if (h.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
             if (h.Serial) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
             return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
@@ -259,7 +347,7 @@ internal static class WinUiPodcastShow
                 new BoxEl
                 {
                     Key = "cmd:follow", Shrink = 0f,
-                    Children = [ToggleButton.Controlled(Loc.Get(Strings.Podcast.Pages.Follow), h.Following, _ => _p.ToggleFollow(),
+                    Children = [ToggleButton.Controlled(Loc.Get(Strings.Podcast.Pages.Follow), h.Following, _followToggle ??= _ => _p.ToggleFollow(),
                         checkedLabel: Loc.Get(Strings.Podcast.Pages.Following), style: WinUiDetailKit.NeutralToggle(size))],
                 },
             };
@@ -329,7 +417,7 @@ internal static class WinUiPodcastShow
         {
             var h = v.Head;
             var kids = new List<Element>(6);
-            if (h.About.Length > 0) kids.Add(Body(h.About) with { Color = Tok.TextSecondary });
+            if (h.About.Length > 0 || h.AboutHtml.Length > 0) kids.Add(WinUiPodcastKit.Description(h.AboutHtml.Length > 0 ? h.AboutHtml : h.About));
             if (h.TrailerId is not null)
                 kids.Add(new BoxEl
                 {
@@ -352,7 +440,7 @@ internal static class WinUiPodcastShow
             if (v.Similar.Length > 0)
             {
                 kids.Add(WinUiPodcastKit.SectionHeader(Loc.Get(Strings.Podcast.Pages.MoreLikeThis), strong: true));
-                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, _p.OpenUri, rows));
+                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, _p.OpenUri, rows, _p.CardMenu, _p.PlayCard));
             }
             return new BoxEl { Direction = 1, Gap = K.SectionBottom, MinWidth = 0f, Children = kids.ToArray() };
         }
@@ -400,12 +488,12 @@ internal static class WinUiPodcastShow
 
         // ── the list column ──
 
-        Element ListColumn(PodcastShowView v, WinUiPodcastShowLayout lay, bool live, bool searchIcon)
+        Element ListColumn(PodcastShowView v, WinUiPodcastShowLayout lay, bool live, bool searchIcon, bool combo)
         {
             float toolbarBottom = K.BarH + S.ToolbarH;
             var groups = new List<Element>(v.Groups.Length + 2);
             foreach (var g in v.Groups) groups.Add(Group(v, g, lay, toolbarBottom, live));
-            if (v.Groups.Length == 0 && v.Load == PodcastLoad.Ready)
+            if (v.ShownCount == 0 && v.Load == PodcastLoad.Ready)
                 groups.Add(new BoxEl
                 {
                     Key = "show-empty", Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Wrap = true,
@@ -423,19 +511,27 @@ internal static class WinUiPodcastShow
             return new BoxEl
             {
                 Key = "show-list", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow,
-                Children = [Toolbar(v, lay, searchIcon).Sticky(K.BarH), body],
+                Children = [WinUiPodcastKit.PinnedBand("show-toolbar", Toolbar(v, lay, searchIcon, combo), S.ToolbarH, K.BarH, _toolbarStuck), body],
             };
         }
 
-        BoxEl Toolbar(PodcastShowView v, WinUiPodcastShowLayout lay, bool searchIcon)
+        BoxEl Toolbar(PodcastShowView v, WinUiPodcastShowLayout lay, bool searchIcon, bool combo)
         {
-            var labels = new string[v.Filters.Length];
-            for (int i = 0; i < labels.Length; i++) labels[i] = WinUiChoice.Counted(v.Filters[i].Label, v.Filters[i].CountText);
+            // The labels array is REUSED while its words hold: a new array would re-push the SelectorBar / ComboBox on every snapshot (a filter switch).
+            var labels = _filterLabels;
+            bool same = labels.Length == v.Filters.Length;
+            for (int i = 0; same && i < labels.Length; i++) same = labels[i] == WinUiChoice.Counted(v.Filters[i].Label, v.Filters[i].CountText);
+            if (!same)
+            {
+                labels = new string[v.Filters.Length];
+                for (int i = 0; i < labels.Length; i++) labels[i] = WinUiChoice.Counted(v.Filters[i].Label, v.Filters[i].CountText);
+                _filterLabels = labels;
+            }
             var kids = new List<Element>(4);
             bool searching = searchIcon && _searchOpen.Value;
             if (searching)
                 kids.Add(Swap("tb:search-field", true, SearchBox(lay, fill: true)));
-            else if (lay.Stacked)
+            else if (combo)
                 kids.Add(Swap("tb:combo", true, ComboBox.Create(labels, _comboIx, width: S.ComboW, onChange: i => _p.SetFilter((PodcastFilter)i))));
             else
                 kids.Add(Swap("tb:filters", true,
@@ -451,7 +547,7 @@ internal static class WinUiPodcastShow
                 : Swap("tb:sort", false, Controls.Named(Controls.IconAction(Icons.Sort, _p.ToggleSort, size: lay.Target), sortWord)));
             return new BoxEl
             {
-                Key = "show-toolbar", Direction = 1, Height = S.ToolbarH, MinWidth = 0f, Fill = Prop.Of(static () => R.Layer.ContentSurface),
+                Key = "show-toolbar:row", Direction = 1, Height = S.ToolbarH, MinWidth = 0f,
                 Children =
                 [
                     new BoxEl { Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f, Children = kids.ToArray() },
@@ -501,17 +597,22 @@ internal static class WinUiPodcastShow
             });
             headKids.Add(new BoxEl { Grow = 1f });
             if (g.Fresh) headKids.Add(HyperlinkButton.Create(Loc.Get(Strings.Podcast.Pages.MarkAllPlayed), _p.MarkFreshPlayed));
-            Element header = new BoxEl
+            if (!_groupStuck.TryGetValue(key, out var stuck)) _groupStuck[key] = stuck = new Signal<bool>(false);
+            Element header = WinUiPodcastKit.PinnedBand("gh", new BoxEl
             {
-                Key = "gh", Direction = 0, Height = lay.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Fill = Prop.Of(static () => R.Layer.ContentSurface),
-                Children = headKids.ToArray(),
-            }.Sticky(toolbarBottom);
+                Direction = 0, Height = lay.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = headKids.ToArray(),
+            }, lay.GroupH, toolbarBottom, stuck);
             var rows = new Element[g.Rows.Length];
             for (int i = 0; i < rows.Length; i++)
-                rows[i] = WinUiPodcastKit.EpisodeRow(v.Episodes[g.Rows[i]], lay.RowMode, lay.RowDescription, lay.Stacked, _verbs!);
+            {
+                var vm = v.Episodes[g.Rows[i]];
+                // The row sees its episode without the filter flag (a filter switch only flips the anchor's Visible: the row itself does not re-render).
+                rows[i] = WinUiPodcastKit.EpisodeRow(vm.Hidden ? vm with { Hidden = false } : vm, lay.RowMode, lay.RowDescription, lay.Stacked, _verbs!)
+                    with { Visible = !vm.Hidden };
+            }
             return new BoxEl
             {
-                Key = "g:" + g.Key, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove, OnRealized = live ? h => _groupNodes[key] = h : null,
+                Key = "g:" + g.Key, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove, Visible = !g.Hidden, OnRealized = live ? h => _groupNodes[key] = h : null,
                 Children = [header, new BoxEl { Key = "rows", Direction = 1, Gap = K.RowGap, MinWidth = 0f, Children = rows }.StickyClip(toolbarBottom + lay.GroupH)],
             };
         }
@@ -563,28 +664,64 @@ internal static class WinUiPodcastShow
 
         // ── the details pane (≥1008) ──
 
-        Element Pane(PodcastShowView v, float viewportH, bool live)
+        Element Pane(PodcastShowView v, bool live)
         {
             var tab = live ? _p.PaneTab.Value : PodcastPaneTab.Episode;
-            string[] labels = [Loc.Get(Strings.Podcast.Pages.PaneEpisode), Loc.Get(Strings.Podcast.Pages.PaneAbout)];
+            string[] labels = _paneLabels ??= [Loc.Get(Strings.Podcast.Pages.PaneEpisode), Loc.Get(Strings.Podcast.Pages.PaneAbout)];
             Element body = tab == PodcastPaneTab.About ? AboutBody(v, rows: true) : EpisodePreview(v, live);
-            float maxH = MathF.Max(S.PaneW, viewportH - S.PaneTop - S.PaneFoot - R.Space.DockReserve);
+            _paneShiftOf ??= PaneShift;
             return new BoxEl
             {
-                Key = "show-pane", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Width = S.PaneW, Shrink = 0f, MinWidth = 0f, MaxHeight = maxH,
+                Key = "show-pane", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Width = S.PaneW, Shrink = 0f, MinWidth = 0f,
                 Corners = CornerRadius4.All(K.CardRadius), Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
-                Padding = new Edges4(S.PanePad, S.PanePadTop, S.PanePad, 0f),
+                Padding = new Edges4(S.PanePad, S.PanePadTop, S.PanePad, 0f), OnBoundsChanged = live ? _measurePane : null,
                 Children =
                 [
                     WinUiChoice.Pivot(labels, _paneIx, WinUiChoiceRules.PivotItemH, i => _p.SetPaneTab((PodcastPaneTab)i), s_paneKeys),
                     new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                     new BoxEl
                     {
-                        Key = "pane:" + (tab == PodcastPaneTab.About ? "about" : "ep"), Direction = 1, MinWidth = 0f, Shrink = 1f, ClipToBounds = true,
+                        Key = "pane:" + (tab == PodcastPaneTab.About ? "about" : "ep"), Direction = 1, MinWidth = 0f,
                         Padding = new Edges4(0f, K.SectionBottom, 0f, S.PanePad), Children = [body],
                     },
                 ],
-            }.Sticky(S.PaneTop);
+            };
+        }
+
+        /// <summary>The pane's slot in the columns row: it carries the pin and the ride (a sticky root returned FROM a component never pins: its parent
+        /// would be the component's anchor), the pane component inside it.</summary>
+        Element PaneSlot()
+        {
+            _paneShiftOf ??= PaneShift;
+            return new BoxEl
+            {
+                Key = "show-pane-slot", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Shrink = 0f, MinWidth = 0f,
+                // The ride is a transform on a box INSIDE the pinned slot: the sticky effect owns the slot's own translation.
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "show-pane-ride", Direction = 1, MinWidth = 0f, Transform = Prop.Of(_paneShiftOf),
+                        Children = [Embed.Comp(new PaneProps(this), static () => new PaneHost()) with { Key = "show-pane-host" }],
+                    },
+                ],
+            }.Sticky(S.PaneTop, engaged: _paneStuck);
+        }
+
+        /// <summary>The pane's ride (the owner, 2026-11-18): pinned under the bar while it fits; a pane taller than the viewport scrolls with the page
+        /// until its foot reaches the viewport's foot and holds there, and on the way back up it scrolls the other way until its top is under the bar
+        /// again. The pinned pane's shift (0 .. its overhang) follows each scroll step only while it is pinned; a bound transform, so nothing relayouts.</summary>
+        Affine2D PaneShift()
+        {
+            double o = _scroll.Offset.Value;
+            float view = (float)_scroll.ViewportSignal.Value;
+            float h = _paneH.Value;
+            float overhang = MathF.Max(0f, h + S.PaneTop + S.PaneFoot - view);
+            double d = double.IsNaN(_paneLastOffset) ? 0.0 : o - _paneLastOffset;
+            _paneLastOffset = o;
+            if (_paneStuck.Peek()) _paneShift = Math.Clamp(_paneShift + (float)d, 0f, overhang);
+            else _paneShift = MathF.Min(_paneShift, overhang);
+            return Affine2D.Translation(0f, -_paneShift);
         }
 
         Element EpisodePreview(PodcastShowView v, bool live)
@@ -613,7 +750,16 @@ internal static class WinUiPodcastShow
                     Direction = 1, MinWidth = 0f, Gap = S.IdGap,
                     Children =
                     [
-                        Caption(vm.Eyebrow) with { Color = Tok.TextSecondary },
+                        new BoxEl
+                        {
+                            Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                            Children =
+                            [
+                                Caption(vm.Eyebrow) with { Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                                Button.Create(Loc.Get(Strings.Podcast.Pages.OpenEpisode), () => _p.Open(eid), ButtonAppearance.Subtle, glyph: Icons.OpenInNewWindow)
+                                    with { Key = "pane:open", Shrink = 0f },
+                            ],
+                        },
                         Subtitle(vm.Title) with { Wrap = TextWrap.Wrap, MinWidth = 0f },
                         WinUiPodcastKit.MetaLine(vm, showNew: false),
                     ],
@@ -627,13 +773,16 @@ internal static class WinUiPodcastShow
                             with { Key = "pane:play" },
                         Button.Create(Loc.Get(vm.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save), () => _p.ToggleSaved(eid),
                             glyph: vm.Saved ? Icons.HeartFill : Icons.Heart) with { Key = "pane:save" },
-                        Controls.Named(Controls.IconAction(Icons.Queue, () => _p.PlayNext(eid)) with { Key = "pane:next" }, Loc.Get(Strings.Podcast.Pages.PlayNext)),
+                        Controls.Named(Controls.IconAction(Icons.Play, () => _p.PlayNext(eid)) with
+                        {
+                            Key = "pane:next", Children = [WinUiPodcastKit.PlayNextIcon(S.PaneGlyph, Tok.TextPrimary)],
+                        }, Loc.Get(Strings.Podcast.Pages.PlayNext)),
                         WinUiDetailKit.MoreButton(() => _p.RowMenu(eid), WinUiChoiceRules.ControlH),
                     ],
                 },
             };
-            if (vm.Description.Length > 0)
-                kids.Add(Body(vm.Description) with { Color = Tok.TextSecondary, MaxLines = S.PaneClamp, Trim = TextTrim.CharacterEllipsis });
+            if (vm.Description.Length > 0 || vm.DescriptionHtml.Length > 0)
+                kids.Add(WinUiPodcastKit.Description(vm.DescriptionHtml.Length > 0 ? vm.DescriptionHtml : vm.Description, S.PaneClamp));
             var ch = live ? _p.PaneChapters.Value : PodcastPaneChapters.None;
             if (ch.Shown.Length > 0)
             {
@@ -657,13 +806,6 @@ internal static class WinUiPodcastShow
             }
             else if (!ch.Pending)
                 kids.Add(Caption(Loc.Get(Strings.Podcast.Pages.NoChapters)) with { Color = Tok.TextTertiary });
-            var links = new List<Element>(2)
-            {
-                HyperlinkButton.Create(ch.Total > ch.Shown.Length ? Strings.Podcast.Pages.OpenEpisodeAll(ch.Total) : Loc.Get(Strings.Podcast.Pages.OpenEpisode),
-                    () => _p.Open(eid)),
-            };
-            if (vm.HasTranscript) links.Add(HyperlinkButton.Create(Loc.Get(Strings.Podcast.Pages.ReadTranscript), () => _p.Open(eid)));
-            kids.Add(new BoxEl { Direction = 0, Gap = S.UpGap, Wrap = true, Children = links.ToArray() });
             return new BoxEl { Key = "pane-ep:" + vm.Id, Direction = 1, Gap = K.SectionBottom, MinWidth = 0f, Children = kids.ToArray() };
         }
     }

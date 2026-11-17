@@ -124,7 +124,11 @@ internal static class WinUiPodcastEpisode
                     new BoxEl
                     {
                         Shrink = 1f, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = p.OpenShow,
-                        Children = [BodyStrong(v.ShowTitle) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+                        Children = [BodyStrong(v.ShowTitle) with
+                        {
+                            Color = Tok.TextPrimary, HoverColor = Tok.TextSecondary, PressedColor = Tok.TextTertiary,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        }],
                     },
                     // No episode number on the wire: the show's link stands alone (no chevron leading to nothing).
                     Icon(Icons.ChevronRight, P.CrumbChevron, Tok.TextTertiary) with { Visible = v.Crumb.Length > 0 },
@@ -233,6 +237,8 @@ internal static class WinUiPodcastEpisode
 
     // ══ "UP NEXT IN THIS SHOW" (a played episode) ═══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>"Up next in this show": the house row surface on the card tile (hover plate, pressed, focus, the row's menu, drag), the eyebrow over the
+    /// title and its date and length, and the accent Play next as its trailing action. A click opens the episode.</summary>
     sealed class NextUp : Component
     {
         public override Element Render()
@@ -242,32 +248,20 @@ internal static class WinUiPodcastEpisode
             var v = p.View.Value;
             if (v.Next is not { } n) return new BoxEl();
             string id = n.Id;
-            var words = new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                Children =
-                [
-                    Caption(Loc.Get(Strings.Podcast.Pages.UpNextInShow)) with { Color = Tok.TextSecondary },
-                    BodyStrong(n.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                    Caption(Join(n.Date, n.State == PodcastRowState.InProgress ? n.Left : n.Length)) with { Color = Tok.TextSecondary },
-                ],
-            };
             var play = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), () => p.PlayEpisode(id), ButtonAppearance.Accent, glyph: WinUiDetailRules.PlaySolid)
-                with { Shrink = 0f, MinWidth = 0f, Height = a.Lay.Target, Grow = a.Lay.Stacked ? 1f : 0f };
+                with { Key = "pe-nextup:play", Shrink = 0f, MinWidth = 0f, Height = a.Lay.Target };
+            var data = new Controls.CardData(id, n.Title, Caption(Join(n.Date, n.State == PodcastRowState.InProgress ? n.Left : n.Length)) with { Color = Tok.TextSecondary },
+                n.ArtUrl ?? v.ShowArtUrl, () => p.Open(id), ShowMenu: false)
+            {
+                // The row's menu stays on right-click; no hover "...": it would sit over the trailing Play next.
+                Eyebrow = Caption(Loc.Get(Strings.Podcast.Pages.UpNextInShow)) with { Color = Tok.TextSecondary },
+                Trailing = play,
+                Menu = () => p.RowMenu(id),
+            };
             return new BoxEl
             {
-                Direction = 0, Wrap = a.Lay.Stacked, Gap = P.NextGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, P.CardGap, 0f, 0f),
-                Padding = new Edges4(P.MapPadX, P.NextPadY, P.MapPadX, P.NextPadY), Corners = Radii.CardAll, Fill = Tok.FillCardDefault, BorderWidth = 1f,
-                BorderColor = Tok.StrokeCardDefault,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Shrink = 0f, Cursor = CursorId.Hand, OnClick = () => p.Open(id),
-                        Children = [Controls.Artwork(n.ArtUrl ?? v.ShowArtUrl, P.NextArt, P.NextArt, P.NextArtRadius)],
-                    },
-                    words, play,
-                ],
+                Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, P.CardGap, 0f, 0f),
+                Children = [Controls.Surface(data, Shape.Row(P.NextArt) with { Plate = PlateKind.Tile })],
             };
         }
     }
@@ -277,6 +271,9 @@ internal static class WinUiPodcastEpisode
     sealed class Cards : Component
     {
         readonly Signal<int> _index = new(0);
+        readonly ScrollHandle _bodyScroll = new();
+        /// <summary>The chapter rows' laid-out heights (the rows write them): where a row sits in the list without a scene walk.</summary>
+        float[] _rowH = [];
 
         public override Element Render()
         {
@@ -302,16 +299,34 @@ internal static class WinUiPodcastEpisode
             int index = Math.Max(0, Array.IndexOf(tabs, tab));
             UseEffect(() => { _index.SetIfChanged(index); }, DepKey.From(index));
             bool transcriptTab = !lay.TwoCards && tab == PodcastEpisodeTab.Transcript;
+            if (_rowH.Length != v.Chapters.Length) _rowH = new float[v.Chapters.Length];
+            // The chapters list keeps the current chapter in view as playback crosses into it (the minimal move: a row already shown stays put).
+            var rowH = _rowH;
+            var scroll = _bodyScroll;
+            bool chaptersShown = tab == PodcastEpisodeTab.Chapters;
+            UseEffect(() =>
+            {
+                int at = p.CurrentChapter.Value;
+                _ = scroll.ViewportSignal.Value;
+                if (!chaptersShown || at < 0 || at >= rowH.Length || rowH[at] <= 0f) return;
+                float top = P.ListBodyPad;
+                for (int i = 0; i < at; i++) top += rowH[i];
+                scroll.BringIntoView(top, rowH[at], float.NaN, ScrollMove.Glide, P.ListBodyPad);
+            });
 
             Element body = tab switch
             {
-                PodcastEpisodeTab.About => Ui.Body(v.About) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, MaxWidth = P.TrTextMax },
+                PodcastEpisodeTab.About => new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, MaxWidth = P.TrTextMax,
+                    Children = [WinUiPodcastKit.Description(v.About)],
+                },
                 PodcastEpisodeTab.Comments => p.Comments?.Invoke() ?? new BoxEl(),
-                _ => WinUiPodcastEpisodeParts.Chapters(p, v),
+                _ => WinUiPodcastEpisodeParts.Chapters(p, v, _rowH),
             };
             var pivot = new BoxEl
             {
-                Padding = new Edges4(P.SelBarPad, P.SelBarPad, P.SelBarPad, 0f), Shrink = 0f, MinWidth = 0f,
+                Padding = new Edges4(P.ListBodyPad, P.SelBarPad, P.SelBarPad, 0f), Shrink = 0f, MinWidth = 0f,
                 Children = [WinUiChoice.Pivot(labels, _index, Controls.ButtonHeight, i => p.SetTab(tabs[Math.Clamp(i, 0, tabs.Length - 1)]),
                     keys: lay.TwoCards ? s_wideKeys : s_narrowKeys)],
             };
@@ -324,7 +339,10 @@ internal static class WinUiPodcastEpisode
                 Children = transcriptTab
                     ? [pivot, divider]
                     : [pivot, divider,
-                       ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.ListBodyPad), MinWidth = 0f, Children = [body] }) with { Grow = 1f, MinHeight = 0f }],
+                       ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.ListBodyPad), MinWidth = 0f, Children = [body] }) with
+                       {
+                           Key = "pe-sections:scroll", Grow = 1f, MinHeight = 0f, Handle = _bodyScroll,
+                       }],
             };
             var kids = new List<Element>(2) { left };
             if (lay.TwoCards)
@@ -367,7 +385,7 @@ internal static class WinUiPodcastEpisode
             if (!v.Similar.IsDefaultOrEmpty)
             {
                 kids.Add(Head(WinUiPodcastKit.SectionHeader(Loc.Get(Strings.Podcast.Pages.MoreLikeThis))));
-                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, compact));
+                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, compact, p.CardMenu, p.PlayCard));
             }
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
         }

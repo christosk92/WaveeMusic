@@ -18,7 +18,7 @@ internal static class WinUiPodcastAudiobookRules
     public const string PageKey = "ab-page:", ScrollKey = "ab-scroll:", HeroKey = "ab-hero", BarKey = "ab-bar", BodyKey = "ab-body",
         LineKey = "ab-line", ContentsKey = "ab-contents", AboutKey = "ab-about", MoreKey = "ab-more", PremiumKey = "ab-premium",
         RowKey = "ab-row:", SegKey = "ab-seg:", PrimaryKey = "ab-primary", SampleKey = "ab-sample", SpeedKey = "ab-speed", SleepKey = "ab-sleep",
-        LibraryKey = "ab-library", CmdsKey = "ab-cmds", UpKey = "ab-up", ColumnsKey = "ab-columns", ChaptersKey = "ab-chapters";
+        LibraryKey = "ab-library", KindKey = "ab-kind", CmdsKey = "ab-cmds", UpKey = "ab-up", ColumnsKey = "ab-columns", ChaptersKey = "ab-chapters";
 
     // ── motion across a tier crossing ──
 
@@ -57,13 +57,15 @@ internal static class WinUiPodcastAudiobookRules
     // ── the contents page (.contents, .cl) ──
     public const float ContentsPadX = 16f, ContentsPadTop = 6f, ContentsPadBottom = 16f, ContentsHeadPad = 8f, ContentsHeadBottom = 10f;
     public const float RowMin = 36f, RowMinCompact = 44f, RowPadX = 8f, RowPadLeft = 12f, RowGap = 10f, NumberWidth = 24f, StartWidth = 52f;
-    public const float NameSize = 15f, NameLine = 22f, MatterSize = 14f, Margin = 2f, LeaderHeight = 1f, LeaderMin = 20f, LeaderLift = -4f;
+    public const float NameSize = 15f, NameLine = 22f, MatterSize = 14f, Margin = 2f, LeaderHeight = 1f, LeaderMin = 20f, LeaderDot = 1f, LeaderGap = 3f, LeaderLift = -4f;
     public const float MarginRest = 0.08f, MarginDone = 0.34f, LeaderAlpha = 0.3f, LeaderDoneAlpha = 0.14f;
 
     // ── the About card (.babout, .facts, .rate, .trailer) ──
     // ── more by the author (the kit's section header and cards) ──
     public const float SectionTop = 28f, SectionBottom = 8f;
 
+    /// <summary>About this book's lines before "Read more".</summary>
+    public const int AboutLines = 8;
     public const float AboutPad = 16f, AboutGap = 14f, ParagraphGap = 10f, FactsLabel = 88f, FactsRowGap = 6f, FactsColGap = 16f;
     public const float SampleButton = 36f, SampleGap = 12f, RatePad = 10f, RatePadX = 12f, RateGap = 10f, RateBig = 28f, RateBigLine = 36f, RateStar = 16f;
 

@@ -77,7 +77,7 @@ internal static class WinUiPodcastAudiobook
             kids.Add(new BoxEl
             {
                 Key = AB.MoreKey, Layout = AB.Block, Direction = 1, Gap = AB.SectionBottom, Margin = new Edges4(0f, AB.SectionTop, 0f, 0f), MinWidth = 0f,
-                Children = [WinUiPodcastKit.SectionHeader(v.SimilarTitle), WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, rows: lay.Stacked)],
+                Children = [WinUiPodcastKit.SectionHeader(v.SimilarTitle), WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, rows: lay.Stacked, p.SimilarMenu, p.PlaySimilar)],
             });
         }
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = [.. kids] };
@@ -94,6 +94,7 @@ internal static class WinUiPodcastAudiobook
             Key = WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };
+        Element eyebrow = Eyebrow(v, p);
         BoxEl id = Identity(v, p, lay);
         Element cmds = Commands(v, p, lay);
         Element up = Up(v, p, lay, playing);
@@ -105,7 +106,11 @@ internal static class WinUiPodcastAudiobook
                 Key = AB.HeroKey + ":stack", Direction = 1, Gap = lay.RowGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                 Children =
                 [
-                    new BoxEl { Direction = 0, Gap = lay.ColGap, MinWidth = 0f, Children = [cover, id with { Grow = 1f, Shrink = 1f, Basis = 0f }] },
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = lay.ColGap, MinWidth = 0f,
+                        Children = [cover, new BoxEl { Direction = 1, Gap = AB.IdGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [eyebrow, id] }],
+                    },
                     up, cmds,
                 ],
             };
@@ -115,9 +120,23 @@ internal static class WinUiPodcastAudiobook
         var right = new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = lay.Cover, Gap = lay.RowGap, Justify = FlexJustify.SpaceBetween,
+            // The commands share the eyebrow's line only: the title and everything under it take the column's whole width (a title squeezed
+            // into a narrow column beside the buttons, owner 2026-11-18).
             Children =
             [
-                new BoxEl { Direction = 0, Gap = AB.HeroColGap, MinWidth = 0f, Children = [id with { Grow = 1f, Shrink = 1f, Basis = 0f }, cmds] },
+                new BoxEl
+                {
+                    Direction = 1, Gap = AB.IdGap, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 0, Gap = AB.HeroColGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                            Children = [new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [eyebrow] }, cmds],
+                        },
+                        id,
+                    ],
+                },
                 up,
             ],
         };
@@ -138,7 +157,7 @@ internal static class WinUiPodcastAudiobook
 
     static BoxEl Identity(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
     {
-        var kids = new List<Element>(6) { Eyebrow(v) };
+        var kids = new List<Element>(5);
         kids.Add(TitleLarge(v.Title) with
         {
             Size = lay.TitleSize, LineHeight = lay.TitleLine, Wrap = TextWrap.Wrap, MinWidth = 0f,
@@ -150,10 +169,21 @@ internal static class WinUiPodcastAudiobook
         return new BoxEl { Direction = 1, Gap = AB.IdGap, MinWidth = 0f, Children = [.. kids] };
     }
 
-    static Element Eyebrow(AudiobookView v)
+    /// <summary>"Audiobook · Nonfiction · Business &amp; Careers [Included in Premium]" on ONE line: the kind word opens the Browse category of
+    /// audiobooks (a house HyperlinkButton: rest, hover, pressed, focus); the genres name no page Wavee can open (AUDIOBOOK_GENRE ids are not Browse
+    /// pages) and run after it as one caption that ends in an ellipsis where the line is short (the facts list them all); the tag stays whole at the end.
+    /// A wrapped eyebrow put a separator at a line's edge and the tag on a line of its own (owner 2026-11-18).</summary>
+    static Element Eyebrow(AudiobookView v, AudiobookPageProps p)
     {
-        var kids = new List<Element>(6) { Caption(v.Kind) with { Color = Tok.TextSecondary } };
-        foreach (string g in v.Genres) kids.Add(Caption("· " + g) with { Color = Tok.TextSecondary });
+        var kids = new List<Element>(3);
+        kids.Add(v.KindRoute is { Length: > 0 } route
+            ? HyperlinkButton.Create(v.Kind, () => p.OpenRoute(route), size: ControlSize.Small) with { Key = AB.KindKey, Shrink = 0f, Padding = default }
+            : Caption(v.Kind) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, Shrink = 0f });
+        if (v.Genres.Length > 0)
+            kids.Add(Caption(Sep + string.Join(" " + Sep, v.Genres)) with
+            {
+                Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+            });
         if (v.Included && v.IncludedTag.Length > 0)
             kids.Add(new BoxEl
             {
@@ -161,24 +191,29 @@ internal static class WinUiPodcastAudiobook
                 AlignItems = FlexAlign.Center, BorderWidth = 1f, BorderColor = Tok.AccentTextPrimary, Shrink = 0f,
                 Children = [new TextEl(v.IncludedTag) { Size = AB.TagSize, LineHeight = AB.TagLine, Weight = AB.Strong, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap }],
             });
-        return new BoxEl { Direction = 0, Wrap = true, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
+        return new BoxEl { Direction = 0, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 
+    /// <summary>The separator in front of a part (a middle dot and a space).</summary>
+    const string Sep = "\u00B7 ";
+
+    /// <summary>★ 4.4 (4,952) · 5 hr 17 min · 12 chapters · 2016 on ONE line: the star and the rating stay whole, the rest is one caption run that ends
+    /// in an ellipsis where the line is short, so no line starts or ends on a separator.</summary>
     static Element Meta(AudiobookView v)
     {
-        var kids = new List<Element>(8);
+        var kids = new List<Element>(4);
         if (v.Rating.Length > 0)
         {
             kids.Add(Icon(Icons.FavoriteStarFill, AB.StarGlyph, Tok.TextSecondary));
-            kids.Add(Body(v.Rating) with { Color = Tok.TextSecondary });
-            if (v.RatingCount.Length > 0) kids.Add(Body(v.RatingCount) with { Color = Tok.TextTertiary });
+            kids.Add(Body(v.Rating) with { Color = Tok.TextSecondary, Shrink = 0f });
+            if (v.RatingCount.Length > 0) kids.Add(Body(v.RatingCount) with { Color = Tok.TextTertiary, Shrink = 0f });
         }
-        foreach (string m in v.Meta)
-        {
-            if (kids.Count > 0) kids.Add(Body("·") with { Color = Tok.TextTertiary });
-            kids.Add(Body(m) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap });
-        }
-        return new BoxEl { Direction = 0, Wrap = true, Gap = AB.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
+        if (v.Meta.Length > 0)
+            kids.Add(Body((kids.Count > 0 ? Sep : "") + string.Join(" " + Sep, v.Meta)) with
+            {
+                Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+            });
+        return new BoxEl { Direction = 0, Gap = AB.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 
     static Element Commands(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
@@ -262,14 +297,15 @@ internal static class WinUiPodcastAudiobook
             var caption = Caption("");
             sub = new BoxEl
             {
-                Direction = 0, Gap = AB.LabelBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                // Where the label is narrow the words go under the bar rather than being cut ("6% · 9 ...", owner 2026-11-18).
+                Direction = 0, Wrap = true, Gap = AB.LabelBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Children =
                 [
                     Bar(place, lay.BarWidth),
                     caption with
                     {
                         Text = Prop.Of(() => longLeft ? place.Value.BookLeftLong : place.Value.BookLeft), Color = Tok.TextSecondary,
-                        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                        Wrap = TextWrap.NoWrap, Shrink = 0f,
                     },
                 ],
             };
@@ -279,7 +315,10 @@ internal static class WinUiPodcastAudiobook
             top = BodyStrong(v.UpTitle) with { Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
             sub = Caption(v.UpSub) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         }
-        return new BoxEl { Direction = 1, Gap = AB.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [top, sub] };
+        return new BoxEl
+        {
+            Direction = 1, Gap = AB.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [top, sub],
+        };
     }
 
     /// <summary>The whole book's bar: WinUI's 3-DIP bar on its 1-DIP track, the fill bound to the live place.</summary>

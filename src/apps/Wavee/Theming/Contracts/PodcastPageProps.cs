@@ -48,6 +48,10 @@ public sealed record PodcastEpisodeVm(
     public string Eyebrow { get; init; } = "";
     /// <summary>The date with its year ("12 Nov 2026"), for the pane's meta line.</summary>
     public string LongDate { get; init; } = "";
+    /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
+    public string DescriptionHtml { get; init; } = "";
+    /// <summary>The row is filtered out (a filter or a search): it stays in the list, mounted and hidden, so a filter switch never remounts the rows.</summary>
+    public bool Hidden { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -66,6 +70,8 @@ public sealed record PodcastGroup(string Key, string Title, int Count, bool Fres
 {
     /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
+    /// <summary>No row of the group passes the filter: the group stays, hidden.</summary>
+    public bool Hidden { get; init; }
 }
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
@@ -94,7 +100,11 @@ public sealed record PodcastFact(string Label, string Value);
 public sealed record PodcastShowHead(
     string Uri, string Title, string? ArtUrl, uint Tone, string Kind, ImmutableArray<string> Topics, bool Video, bool Serial,
     string Publisher, int RatingX100, string Rating, string RatingCount, string Ratings, bool CanRate, string Cadence, string Count, string About,
-    bool Following, string? TrailerId, string TrailerSub, ImmutableArray<PodcastFact> Facts);
+    bool Following, string? TrailerId, string TrailerSub, ImmutableArray<PodcastFact> Facts)
+{
+    /// <summary>The About text as HTML when the provider sent it ("" = only <see cref="About"/>).</summary>
+    public string AboutHtml { get; init; } = "";
+}
 
 /// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all
 /// (<see cref="Total"/>; 0 with <see cref="Pending"/> false = none), and whether they are still on their way.</summary>
@@ -110,6 +120,9 @@ public sealed record PodcastShowView(
     ImmutableArray<PodcastEpisodeVm> Episodes, ImmutableArray<PodcastGroup> Groups, ImmutableArray<PodcastFilterVm> Filters,
     ImmutableArray<PodcastYear> Years, bool HasMore, bool Filtered, ImmutableArray<PodcastCardVm> Similar)
 {
+    /// <summary>How many rows pass the filter and the search (0 = "No episodes match").</summary>
+    public int ShownCount { get; init; }
+
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,
         new PodcastShowHead("", "", null, 0u, "", [], false, false, "", 0, "", "", "", false, "", "", "", false, null, "", []),
@@ -158,6 +171,11 @@ public sealed record PodcastShowPageProps
     public required Func<string, ContextMenuModel?> RowMenu { get; init; }
     public required Func<ContextMenuModel?> ShowMenu { get; init; }
     public required Action? Share { get; init; }
+    /// <summary>The eyebrow's kind word ("Podcast"): its hub. Null: the word is plain text.</summary>
+    public Action? OpenKind { get; init; }
+    /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
+    public Func<string, ContextMenuModel?>? CardMenu { get; init; }
+    public Action<string>? PlayCard { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
@@ -240,6 +258,9 @@ public sealed record PodcastEpisodePageProps
     /// <summary>Save or unsave another episode (a row's glyph) and that row's menu.</summary>
     public required Action<string> ToggleSavedEpisode { get; init; }
     public required Func<string, ContextMenuModel?> RowMenu { get; init; }
+    /// <summary>A "More like this" card's menu and its play (the card's show, by uri).</summary>
+    public required Func<string, ContextMenuModel?> CardMenu { get; init; }
+    public required Action<string> PlayCard { get; init; }
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");
@@ -273,16 +294,23 @@ public sealed record AudiobookView(
     string PremiumLine, string CheckHoursLabel, string TopUpLabel, string Price, string ListPrice, string BuyLabel,
     ImmutableArray<AudiobookChapterVm> Chapters, bool NamesMissing, string ContentsTitle, string ContentsSub, string StartsAtLabel,
     string LineTitle, string LineSub, string LineRight,
-    string AboutTitle, ImmutableArray<string> About, ImmutableArray<PodcastFact> Facts,
+    string AboutTitle, ImmutableArray<PodcastFact> Facts,
     string RatingsLine, string RateLabel, string FinishedTitle, string FinishedSub,
     ImmutableArray<PodcastCardVm> Similar, string SimilarTitle, string SeeAllLabel)
 {
     public static AudiobookView Empty { get; } = new(PodcastLoad.Pending, "", "", "", null, 0u, "", [], true, "", [], [], "", "", "", "", [],
         AudiobookState.NotStarted, "", true, "", "", "", "", null, "", "", "", false, "", "", "", "", "", "", "",
-        [], false, "", "", "", "", "", "", "", [], [], "", "", "", "", [], "", "");
+        [], false, "", "", "", "", "", "", "", [], "", "", "", "", [], "", "");
 
     /// <summary>The chapter the primary continues (in progress), else -1.</summary>
     public int Current { get; init; } = -1;
+
+    /// <summary>The route key the kind word ("Audiobook") opens (the Browse category of audiobooks), or null when Wavee routes none: the word is then
+    /// drawn, not linked.</summary>
+    public string? KindRoute { get; init; }
+
+    /// <summary>About this book as the provider's HTML (paragraphs, bold, links), or plain text; rendered by the house rich-text renderer.</summary>
+    public string AboutHtml { get; init; } = "";
 
     /// <summary>A representative book the loading state is derived from (its words are never shown: the skeleton fills them).</summary>
     public static AudiobookView Placeholder { get; } = Empty with
@@ -293,7 +321,7 @@ public sealed record AudiobookView(
         UpTitle = "8 hr 30 min", UpSub = "19 chapters", LibraryLabel = "Add to Your Library", PremiumLine = "Included in Premium, 12 h a month",
         CheckHoursLabel = "Check hours left", TopUpLabel = "Top up hours", ContentsTitle = "Contents", ContentsSub = "19 chapters, 8 hr 30 min",
         StartsAtLabel = "starts at", LineTitle = "The whole book", LineSub = "select one to start there", LineRight = "8 hr 30 min",
-        AboutTitle = "About this book", About = ["A placeholder paragraph about the book, long enough to wrap over three or four lines in the card beside the contents page."],
+        AboutTitle = "About this book", AboutHtml = "A placeholder paragraph about the book, long enough to wrap over three or four lines in the card beside the contents page.",
         Facts = [new("Author", "Author name"), new("Narrator", "Narrator name"), new("Released", "1 January 2024"), new("Length", "8 hr 30 min")],
         Chapters = [.. Enumerable.Range(0, 12).Select(static i => new AudiobookChapterVm(i, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
             "Chapter title", false, i * 1_800_000, 1_800_000, "0:00:00", "30 min", false, ""))],
@@ -333,6 +361,11 @@ public sealed record AudiobookPageProps
     public required Action<string> OpenUri { get; init; }
     public required Func<ContextMenuModel?> Menu { get; init; }
     public required Action? Share { get; init; }
+    /// <summary>Navigate to an in-app route key (the kind word's hub, a link inside About).</summary>
+    public required Action<string> OpenRoute { get; init; }
+    /// <summary>A similar book's context menu (the container menu of a show) and its play verb, for the house cards.</summary>
+    public required Func<string, ContextMenuModel?> SimilarMenu { get; init; }
+    public required Action<string> PlaySimilar { get; init; }
     /// <summary>Rate the book (1..5 stars), null when the account cannot rate it.</summary>
     public required Action<int>? Rate { get; init; }
 }
