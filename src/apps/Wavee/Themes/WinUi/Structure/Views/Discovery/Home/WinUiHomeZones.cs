@@ -98,7 +98,8 @@ internal static partial class WinUiHomeZones
         }
         // The Customize link moves like a chapter (a FLIP into its new place: the chapters above it lay out their new heights at once and reveal them),
         // its entrance on the inner box.
-        if (all)
+        // Only while this build offers a way to change Home (HomeCustomize, owner 2026-11-18: off for the release); the air above it goes with it.
+        if (all && HomeVerbs.CanCustomize)
             kids.Add(new BoxEl
             {
                 Key = "customize", Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow,

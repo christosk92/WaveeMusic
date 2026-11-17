@@ -62,6 +62,7 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     /// <inheritdoc/>
     public void Add(HomeCandidate candidate, int atEntryIndex = -1, HomeSize size = HomeSize.Auto)
     {
+        if (!HomeCustomize.AddSurface) return;   // the add surface is off for the release (HomeCustomize): nothing adds from the catalogue
         HomeApplied applied;
         var (group, at) = PlaceOf(atEntryIndex, candidate.TargetGroupId);
         if (candidate.Source is PinSource pin && at < 0)
@@ -94,12 +95,18 @@ public sealed class HomeBoardVerbs : IHomeBoardVerbs
     /// <inheritdoc/>
     public void Remove(string entryId)
     {
+        if (Entry(entryId) is { } e && !CanRemove(e)) return;
         string name = NameOf(entryId);
         CloseIfOpen(entryId);
         var applied = Store.Dispatch(new HomeCommand.Remove(entryId));
         if (!applied.Changed) return;
         Confirm(Strings.Home.BoardVerbs.Removed(name: name));
     }
+
+    /// <summary>Whether <paramref name="e"/> may be removed or hidden now: always while the add surface is on (it brings anything back); with it off
+    /// (<see cref="HomeCustomize.AddSurface"/>) only a pin, a user's or one of Spotify's shortcut fill (Pin to Home from its page brings it back): a
+    /// widget or a section hidden then would have no way back. Every theme's remove row and chip asks this; <see cref="Remove"/> refuses the rest.</summary>
+    public static bool CanRemove(BoardEntry e) => HomeCustomize.AddSurface || e.Raw is PinSource;
 
     /// <inheritdoc/>
     public void SetSize(string entryId, HomeSize size)

@@ -225,6 +225,10 @@ internal static class WinUiHomeTiles
     /// Spotify's feed: nothing on it can be acted on).</summary>
     internal enum MoreMenu : byte { Full, RemoveOnly, None }
 
+    /// <summary>A gone or unknown tile's menu: its removal, or none where removing it would leave no way back (the add surface off and the tile not
+    /// a pin: <see cref="HomeBoardVerbs.CanRemove"/>).</summary>
+    internal static MoreMenu MenuOf(BoardEntry e) => HomeBoardVerbs.CanRemove(e) ? MoreMenu.RemoveOnly : MoreMenu.None;
+
     /// <summary>The tile's menu rows (the theme's tile menu), handed to content that carries its own ⋯.</summary>
     static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = WinUiHomeTileMenu.MergedItems;
 
@@ -620,7 +624,7 @@ internal static class WinUiHomeTiles
             HomeTileVacancy.Paused => Icons.Pause,
             _ => Icons.Info,
         };
-        var menu = feed ? MoreMenu.None : p.Reason == HomeTileVacancy.Paused ? MoreMenu.Full : MoreMenu.RemoveOnly;
+        var menu = feed ? MoreMenu.None : p.Reason == HomeTileVacancy.Paused ? MoreMenu.Full : MenuOf(f.Entry);
         return Card(ctx, f, RowFace(GlyphPlate(glyph, WinUiHomeBoardRules.RowArt), () => name, () => line), menu: menu);
     }
 

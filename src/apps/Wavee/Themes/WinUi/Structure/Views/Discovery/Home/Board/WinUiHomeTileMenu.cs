@@ -56,12 +56,18 @@ internal static class WinUiHomeTileMenu
             { AcceleratorText = Loc.Get(Strings.Theme.Winui.Home.Board.MoveLeftKeys) });
         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Winui.Home.Board.MoveRight), Invoke: () => verbs.MoveBy(id, 1))
             { AcceleratorText = Loc.Get(Strings.Theme.Winui.Home.Board.MoveRightKeys) });
-        items.Add(MenuFlyoutItem.Separator);
-        items.Add(new MenuFlyoutItem(RemoveLabel(e), Icons.UnPin, Invoke: () => verbs.Remove(id)));
+        // The remove row only where something brings the tile back (a pin: Pin to Home); with the add surface off a widget or a section has no
+        // way back (HomeBoardVerbs.CanRemove).
+        if (HomeBoardVerbs.CanRemove(e))
+        {
+            items.Add(MenuFlyoutItem.Separator);
+            items.Add(new MenuFlyoutItem(RemoveLabel(e), Icons.UnPin, Invoke: () => verbs.Remove(id)));
+        }
         return items;
     }
 
-    /// <summary>The menu of a tile whose thing is gone (or unknown to this build): only its removal.</summary>
+    /// <summary>The menu of a tile whose thing is gone (or unknown to this build): only its removal (offered only where
+    /// <see cref="HomeBoardVerbs.CanRemove"/> allows it: the tile then shows no menu, <see cref="WinUiHomeTiles.MenuOf"/>).</summary>
     public static IReadOnlyList<MenuFlyoutItem> RemoveOnly(HomeTileFrame f)
     {
         var verbs = f.Verbs;

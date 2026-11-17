@@ -23,9 +23,10 @@ public static class HomeVerbs
 
     /// <summary>"Customize Home" (the facets' link, the palette command): Home's All facet with the theme's own way to change it open: WinUI's
     /// add band, Classic's Edit Home, Zune's customize (<see cref="IHomeBoardInspect.Customize"/>). On Home already, at once; elsewhere Home
-    /// opens and the board enters it as it mounts.</summary>
+    /// opens and the board enters it as it mounts. Nothing while <see cref="CanCustomize"/> is false.</summary>
     public static void OpenCustomize()
     {
+        if (!CanCustomize) return;
         var cur = Shell.Current.Peek();
         if (cur.Kind == Shell.RouteKind.Home && Entities.Strings.Resolve(cur.Arg).Length == 0 && HomeBoardInspect.Current is { } board)
         {
@@ -37,6 +38,19 @@ public static class HomeVerbs
         if (HomeBoardInspect.Current is { } kept) kept.Customize();
         else HomeBoardInspect.CustomizeOnMount = true;
     }
+
+    /// <summary>Whether this build offers "Customize Home" at all: the theme's way into changing Home is its edit mode or its add surface, and
+    /// both can be switched off (<see cref="HomeCustomize"/>, owner 2026-11-18). The facets' link and the palette command show only while true.</summary>
+    public static bool CanCustomize => HomeCustomize.EditMode || HomeCustomize.AddSurface;
+
+    /// <summary>What the inspector answers when "Customize Home" is switched off.</summary>
+    public const string CustomizeOff = "home customization is switched off for this release (HomeCustomize.EditMode and HomeCustomize.AddSurface)";
+
+    /// <summary>What the inspector answers when the edit mode is switched off (<see cref="HomeCustomize.EditMode"/>).</summary>
+    public const string EditOff = "home's edit mode is switched off for this release (HomeCustomize.EditMode)";
+
+    /// <summary>What the inspector answers when the add surface is switched off (<see cref="HomeCustomize.AddSurface"/>).</summary>
+    public const string AddOff = "home's add surface is switched off for this release (HomeCustomize.AddSurface)";
 
     /// <summary>A daylist tag opens Search for it.</summary>
     public static void OpenTag(string tag)

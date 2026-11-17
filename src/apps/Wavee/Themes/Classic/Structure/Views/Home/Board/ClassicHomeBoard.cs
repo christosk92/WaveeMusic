@@ -258,9 +258,11 @@ internal static class ClassicHomeBoard
             return true;
         }
 
-        /// <summary>The grid's rows: every entry; after an empty Pinned head its drop row; in Edit Home an add row at every group's end; at rest the end link.</summary>
+        /// <summary>The grid's rows: every entry; after an empty Pinned head its drop row; in Edit Home an add row at every group's end; at rest the end link.
+        /// The add rows only while the add surface is on, the end link only while Edit Home is (<see cref="HomeCustomize"/>).</summary>
         static IReadOnlyList<ClassicBoardItem> ItemsOf(BoardModel m, bool editing, bool readOnly)
         {
+            bool adds = editing && !readOnly && HomeCustomize.AddSurface;
             var e = m.Entries;
             var list = new List<ClassicBoardItem>(e.Length + 6);
             BoardEntry? group = null;
@@ -278,7 +280,7 @@ internal static class ClassicHomeBoard
                 }
                 if (x.Kind == BoardEntryKind.GroupHead)
                 {
-                    if (group is not null && editing && !readOnly) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
+                    if (group is not null && adds) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
                     group = x;
                     list.Add(new ClassicBoardItem(HomeBoardKeys.Group(x.GroupId), x, ClassicBoardRow.Entry, Switch: sw && x.GroupId == HomeDocs.Pinned));
                     if (x.GroupId == HomeDocs.Pinned && (i + 1 >= e.Length || e[i + 1].Kind == BoardEntryKind.GroupHead))
@@ -287,8 +289,8 @@ internal static class ClassicHomeBoard
                 }
                 list.Add(new ClassicBoardItem(HomeBoardKeys.Tile(x.Id), x, ClassicBoardRow.Entry));
             }
-            if (group is not null && editing && !readOnly) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
-            if (group is not null && !editing && !readOnly) list.Add(new ClassicBoardItem("home:end", group, ClassicBoardRow.End));
+            if (group is not null && adds) list.Add(new ClassicBoardItem("home:addrow:" + group.GroupId, group, ClassicBoardRow.Add));
+            if (group is not null && !editing && !readOnly && HomeCustomize.EditMode) list.Add(new ClassicBoardItem("home:end", group, ClassicBoardRow.End));
             return list;
         }
 
@@ -501,7 +503,7 @@ internal static class ClassicHomeBoard
             if (_p is not { } p) return;
             var board = p.Board;
             var view = board.View;
-            if (on && board.ReadOnly) return;
+            if (on && (board.ReadOnly || !HomeCustomize.EditMode)) return;   // Edit Home is switched off for the release (HomeCustomize)
             if (view.Editing.Peek() == on) { if (on && fromId is not null) board.Grid.Focus(HomeBoardKeys.Tile(fromId)); return; }
             if (!on)
             {
@@ -538,7 +540,7 @@ internal static class ClassicHomeBoard
             if (board.EditorFocused()) return;
             string? id = board.Grid.FocusedKey is { } k ? IdOf(k) : null;
             if (id is { Length: 0 }) id = null;
-            if (!e.Ctrl && !e.Alt && e.KeyCode == ClassicHomeBoardRules.SlashKey) { ClassicHomeEditBar.FocusFind(); e.Handled = true; return; }
+            if (!e.Ctrl && !e.Alt && e.KeyCode == ClassicHomeBoardRules.SlashKey && HomeCustomize.AddSurface) { ClassicHomeEditBar.FocusFind(); e.Handled = true; return; }
             if (id is null) return;
             if (!e.Ctrl && !e.Alt && !e.Shift && e.KeyCode == ClassicHomeBoardRules.DeleteKey) { board.Verbs.Remove(id); e.Handled = true; return; }
             if (e.Alt && !e.Ctrl && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down))
@@ -651,6 +653,7 @@ internal static class ClassicHomeBoard
 
         public string? Edit(bool on, string? itemId)
         {
+            if (on && !HomeCustomize.EditMode) return HomeVerbs.EditOff;
             if (_p!.Board.ReadOnly && on) return "this Home is read-only (a newer Wavee saved it)";
             SetEditing(on, itemId);
             return null;
@@ -660,6 +663,8 @@ internal static class ClassicHomeBoard
         {
             var view = V;
             if (!open) { view.Add.Value = HomeAddSurface.Closed; view.Query.Value = ""; return null; }
+            if (!HomeCustomize.AddSurface) return HomeVerbs.AddOff;
+            if (!HomeCustomize.EditMode) return HomeVerbs.EditOff;   // classic's add surfaces live inside Edit Home
             switch (kind)
             {
                 case "addrow" or "row":
@@ -678,6 +683,7 @@ internal static class ClassicHomeBoard
         public (IReadOnlyList<HomeCandidate> Hits, string Spoken) Search(string query)
         {
             var view = V;
+            if (!HomeCustomize.AddSurface || !HomeCustomize.EditMode) return ([], HomeVerbs.AddOff);
             if (!view.Editing.Peek()) SetEditing(true);
             ClassicHomeFind.Type(_p!.Board, query);
             var hits = ClassicHomeFind.Results(_p.Board);
@@ -710,6 +716,8 @@ internal static class ClassicHomeBoard
         public void Reset(HomeResetScope scope, bool confirm)
         {
             if (scope == HomeResetScope.Page) { Vb.Reset(HomeResetScope.Page); return; }
+            // Without Edit Home there is no bar to ask in: the inspector's confirm acts at once, no confirm does nothing.
+            if (!HomeCustomize.EditMode) { if (confirm) Vb.Reset(HomeResetScope.Everything); return; }
             if (!V.Editing.Peek()) SetEditing(true);
             if (!confirm) { V.ConfirmingReset.Value = true; return; }
             V.ConfirmingReset.Value = false;

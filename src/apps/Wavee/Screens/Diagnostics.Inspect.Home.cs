@@ -338,7 +338,7 @@ public static partial class Diagnostics
 
         // ══ the `home` verb ═════════════════════════════════════════════════════════════════════════════════════════
 
-        public static readonly string[] HomeDos = ["status", "doc", "plan", "explain", "verify", "edit", "pin", "unpin", "add", "remove", "size", "move", "open", "close", "option", "surface", "search", "undo", "redo", "reset", "shelf"];
+        public static readonly string[] HomeDos = ["status", "doc", "plan", "explain", "verify", "edit", "customize", "pin", "unpin", "add", "remove", "size", "move", "open", "close", "option", "surface", "search", "undo", "redo", "reset", "shelf"];
 
         string Home(int id, string name, Inspect.Args a)
         {
@@ -547,10 +547,16 @@ public static partial class Diagnostics
                 }
                 case "edit":
                 {
+                    if (a.Bool("on", true) && !HomeCustomize.EditMode) return Fail(HomeVerbs.EditOff);
                     if (board is null) return Fail("no board is mounted");
                     if (board.Edit(a.Bool("on", true), a.Has("item") ? Item() : null) is { } refused) return Fail(refused);
                     return Acted();
                 }
+                case "customize":
+                    // "Customize Home" as the facets' link and the palette command run it (HomeVerbs.OpenCustomize).
+                    if (!HomeVerbs.CanCustomize) return Fail(HomeVerbs.CustomizeOff);
+                    HomeVerbs.OpenCustomize();
+                    return Acted();
                 case "pin":
                 case "unpin":
                 {
@@ -572,6 +578,7 @@ public static partial class Diagnostics
                 }
                 case "add":
                 {
+                    if (!HomeCustomize.AddSurface) return Fail(HomeVerbs.AddOff);
                     string source = a.Str("source");
                     if (source.Length == 0) return Fail("do=add wants source=<catalogue id> (widget.upNext, pin:<pin id>, section:<key>)");
                     var all = HomeCatalog.All(store.Doc.Peek(), Shown(), store.Sources);
@@ -601,6 +608,12 @@ public static partial class Diagnostics
                 }
                 case "remove":
                     if (!NeedItem()) return Fail(missing!);
+                    {
+                        var shown = Shown();
+                        int at = shown.IndexOf(Item());
+                        if (at >= 0 && !HomeBoardVerbs.CanRemove(shown.Entries[at]))
+                            return Fail(HomeVerbs.AddOff + ": only a pin is removed (Pin to Home brings it back); a widget or a section would have no way back");
+                    }
                     if (board is not null) board.Remove(Item()); else Run(new HomeCommand.Remove(Item()));
                     return Acted();
                 case "size":
@@ -662,12 +675,14 @@ public static partial class Diagnostics
                     return Acted();
                 case "surface":
                 {
+                    if (a.Bool("open", true) && !HomeCustomize.AddSurface) return Fail(HomeVerbs.AddOff);
                     if (board is null) return Fail("no board is mounted");
                     if (board.Surface(a.Bool("open", true), a.Str("kind", "band"), a.Has("arg") ? a.Str("arg") : null) is { } refused) return Fail(refused);
                     return Acted(w => WriteCandidates(w, "results", board.Results, 40));
                 }
                 case "search":
                 {
+                    if (!HomeCustomize.AddSurface) return Fail(HomeVerbs.AddOff);
                     string q = a.Str("q");
                     IReadOnlyList<HomeCandidate> hits;
                     string spoken;

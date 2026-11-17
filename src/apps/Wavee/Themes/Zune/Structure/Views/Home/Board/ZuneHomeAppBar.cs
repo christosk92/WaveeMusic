@@ -54,7 +54,8 @@ internal static class ZuneHomeAppBar
 
             var buttons = new List<Element>(3);
             {
-                buttons.Add(Button("add", Icons.Add, Loc.Get(Strings.Theme.Zune.Home.Add), open, true, false, () => { Close(); ZuneHomeAllItems.Open(board); }));
+                if (HomeCustomize.AddSurface)   // all items only while the add surface is on (HomeCustomize)
+                    buttons.Add(Button("add", Icons.Add, Loc.Get(Strings.Theme.Zune.Home.Add), open, true, false, () => { Close(); ZuneHomeAllItems.Open(board); }));
                 buttons.Add(Button("options", Icons.Settings, Loc.Get(Strings.Theme.Zune.Home.Options), open, canTurn, turned, () => { Close(); ZuneHomeBoard.ToggleOptions(view, verbs); }));
                 buttons.Add(Button("done", Icons.Accept, Loc.Get(Strings.Theme.Zune.Home.Done), open, true, false, () => { Close(); ZuneHomeBoard.Done(view, verbs); }));
             }

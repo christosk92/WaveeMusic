@@ -68,8 +68,10 @@ internal static class ClassicHomeChips
                 kids.Add(ToolTip.Wrap(Controls.IconAction(Icons.Settings, () => verbs.Open(id), size: box) with { Key = key + ":options" },
                                       Loc.Get(Strings.Theme.Classic.Home.Board.Options)));
             bool unpin = e.UserPin && e.Raw is PinSource;
-            kids.Add(ToolTip.Wrap(Controls.IconAction(unpin ? Icons.UnPin : Icons.Cancel, () => verbs.Remove(id), size: box) with { Key = key + ":remove" },
-                                  RemoveLabel(e)));
+            // Hide / unpin only where something brings the tile back (HomeBoardVerbs.CanRemove: with the add surface off, a pin).
+            if (HomeBoardVerbs.CanRemove(e))
+                kids.Add(ToolTip.Wrap(Controls.IconAction(unpin ? Icons.UnPin : Icons.Cancel, () => verbs.Remove(id), size: box) with { Key = key + ":remove" },
+                                      RemoveLabel(e)));
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XXS, Shrink = 0f,
@@ -143,7 +145,7 @@ internal static class ClassicHomeChips
         var verbs = f.Verbs;
         string id = e.Id;
         var items = new List<MenuFlyoutItem>(12);
-        if (!f.View.Editing.Peek())
+        if (!f.View.Editing.Peek() && HomeCustomize.EditMode)
         {
             items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome), Icons.Edit, Invoke: () => ClassicHomeBoard.Live?.SetEditing(true, id)));
             items.Add(MenuFlyoutItem.Separator);
@@ -157,9 +159,13 @@ internal static class ClassicHomeChips
         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.MoveDown), Invoke: () => verbs.MoveBy(id, 1)));
         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.StickToTop), Invoke: () => verbs.MoveToEdge(id, toStart: true)));
         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.LowerToBottom), Invoke: () => verbs.MoveToEdge(id, toStart: false)));
-        items.Add(MenuFlyoutItem.Separator);
-        bool unpin = e.UserPin && e.Raw is PinSource;
-        items.Add(new MenuFlyoutItem(RemoveLabel(e), unpin ? Icons.UnPin : Icons.Cancel, Invoke: () => verbs.Remove(id)));
+        // The remove row only where something brings the tile back (HomeBoardVerbs.CanRemove: with the add surface off, a pin).
+        if (HomeBoardVerbs.CanRemove(e))
+        {
+            items.Add(MenuFlyoutItem.Separator);
+            bool unpin = e.UserPin && e.Raw is PinSource;
+            items.Add(new MenuFlyoutItem(RemoveLabel(e), unpin ? Icons.UnPin : Icons.Cancel, Invoke: () => verbs.Remove(id)));
+        }
         return items;
     }
 }

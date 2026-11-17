@@ -214,7 +214,7 @@ internal static class ZuneHomeTiles
 
     /// <summary>Zune's tile rows under a content's menu: the way into customize with this tile selected (Zune edits its board there, never in a
     /// menu); none while customizing.</summary>
-    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = static f => f.View.Editing.Peek()
+    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = static f => f.View.Editing.Peek() || !HomeCustomize.EditMode
         ? []
         : [new MenuFlyoutItem(Loc.Get(Strings.Home.Customize), Icons.Edit,
             Invoke: () => ZuneHomeBoard.Customize(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id))];
@@ -292,10 +292,11 @@ internal static class ZuneHomeTiles
                 Fill = p.Plate && !full ? Tok.FillSubtleSecondary : ColorF.Transparent,
                 ScaleX = _initialScale, ScaleY = _initialScale, Opacity = _initialOpacity,
                 OnRealized = _onRealized,
-                // Press and hold enters customize with this tile (the selected tile's hold is the grid's: hold, then drag).
-                Hold = preview || selected ? null : new HoldSpec(TouchMs: B.HoldTouchMs, MouseMs: B.HoldMouseMs),
-                OnHold = preview || selected ? null : _onHold,
-                OnContextRequested = preview ? null : _onContext,
+                // Press and hold enters customize with this tile (the selected tile's hold is the grid's: hold, then drag). Neither the hold nor the
+                // right-click is taken while customize is switched off (HomeCustomize): they reach what is under the tile.
+                Hold = preview || selected || !HomeCustomize.EditMode ? null : new HoldSpec(TouchMs: B.HoldTouchMs, MouseMs: B.HoldMouseMs),
+                OnHold = preview || selected || !HomeCustomize.EditMode ? null : _onHold,
+                OnContextRequested = preview || !HomeCustomize.EditMode ? null : _onContext,
                 Children = kids.ToArray(),
             };
         }
@@ -338,10 +339,13 @@ internal static class ZuneHomeTiles
             HomeSize.L => Strings.Theme.Zune.Home.SizeL, _ => Strings.Theme.Zune.Home.SizeFull,
         });
         bool cycles = e.Source is { Sizes.Length: > 1 } && !e.OnlyHide;
-        var unpin = Badge(HomeBoardKeys.Tools(id) + B.UnpinSuffix, Icons.UnPin, removeLabel, () =>
+        // Unpin / hide only where something brings the tile back (HomeBoardVerbs.CanRemove: with the add surface off, a pin).
+        Element? unpin = !HomeBoardVerbs.CanRemove(e) ? null : Badge(HomeBoardKeys.Tools(id) + B.UnpinSuffix, Icons.UnPin, removeLabel, () =>
         {
             ZuneHomeBoard.RemoveSelected(f.View, verbs, Shown?.Invoke() ?? new BoardModel([e], 0));
         }, null);
+        var badges = new List<Element>(2);
+        if (unpin is not null) badges.Add(unpin);
         var resize = cycles
             ? Badge(HomeBoardKeys.Tools(id) + B.ResizeSuffix, Icons.FullScreen, Strings.Theme.Zune.Home.Resize(name: name, size: sizeWord),
                 () => verbs.CycleSize(id),
@@ -353,18 +357,20 @@ internal static class ZuneHomeTiles
                     if (model is not null && ZuneHomeBoard.Step(model, id, 1) is { } next) { ZuneHomeBoard.Select(f.View, verbs, model, next); k.Handled = true; }
                 })
             : null;
+        if (resize is not null) badges.Add(resize);
         Element column = full
             ? new BoxEl
             {
                 Direction = 1, Grow = 1f, Justify = FlexJustify.End, AlignItems = FlexAlign.End, Gap = B.BadgeInset, HitTestPassThrough = true,
                 Padding = new Edges4(0f, 0f, B.BadgeInset, B.BadgeInset),
-                Children = resize is { } r1 ? [unpin, r1] : [unpin],
+                Children = badges.ToArray(),
             }
             : new BoxEl
             {
-                Direction = 1, Grow = 1f, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.End, HitTestPassThrough = true,
+                // Unpin at the top, resize at the foot; resize alone keeps the foot.
+                Direction = 1, Grow = 1f, Justify = unpin is null ? FlexJustify.End : FlexJustify.SpaceBetween, AlignItems = FlexAlign.End, HitTestPassThrough = true,
                 Padding = new Edges4(0f, B.BadgeInset, B.BadgeInset, B.BadgeInset),
-                Children = resize is { } r2 ? [unpin, r2] : [unpin],
+                Children = badges.ToArray(),
             };
         return new BoxEl { Key = HomeBoardKeys.Tools(id), Direction = 1, HitTestPassThrough = true, Children = [column] };
     }
