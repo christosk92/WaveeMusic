@@ -16,8 +16,10 @@
 //   #live ready key=<k> [images=true] [video=false] [quiet=300] [max=20000]   wait until the key is shown, its covers decoded,
 //          no skeleton pending under it, (video=true) every video surface under it bound and presenting, and its rect still
 //          for `quiet` ms. A miss after `max` fails the drive (a recording never shows a loading state it did not ask for).
-//   #live reveal key=<k> [top=96] [vp=<scroll prefix>] [ms=900]   glide the scroller so the key's top sits `top` DIP below
-//          the viewport's top, then wait for the glide to end.
+//   #live reveal key=<k>|prefix=<p> [top=96] [vp=<scroll prefix>] [ms=900]   glide the scroller so the key's top sits `top` DIP
+//          below the viewport's top, then wait for the glide to end. A key not realized yet (a long page mounts sections as they
+//          near) is sought with vp=: the scroller glides on 0.7 of a viewport at a time until it shows. prefix= takes the first key
+//          under it (steps.tsv names the one found: how a take discovers a live key).
 //   #live wait ms=<n>                                                rest.
 // Inspector-only verbs that observe (mount, perf, film, render, lint, status, find, dump, tiers, trace, said, views, crossing,
 // crossings, help) are skipped; any other verb the live driver does not play fails the drive at load, before anything moves.
@@ -145,13 +147,14 @@ public static partial class Diagnostics
                 string[] known = verb switch
                 {
                     "ready" => ["key", "images", "video", "quiet", "max", "nth"],
-                    "reveal" => ["key", "top", "vp", "ms", "nth"],
+                    "reveal" => ["key", "prefix", "top", "vp", "ms", "nth"],
                     _ => ["ms"],
                 };
                 if (Array.IndexOf(known, name) < 0) { error = "#live " + verb + ": unknown arg '" + name + "' (" + string.Join(", ", known) + ")"; return false; }
                 args.Set(name, Inspect.Value.FromWord(words[i][(eq + 1)..]));
             }
-            if (verb is "ready" or "reveal" && !args.Has("key")) { error = "#live " + verb + " wants key="; return false; }
+            if (verb == "ready" && !args.Has("key")) { error = "#live ready wants key="; return false; }
+            if (verb == "reveal" && args.Has("key") == args.Has("prefix")) { error = "#live reveal wants key= or prefix= (one of them)"; return false; }
             return true;
         }
 
@@ -179,7 +182,8 @@ public static partial class Diagnostics
             public long Start;
             public Point2 From, To;
             public float W0, H0;
-            public bool Begun, Hidden;
+            public bool Begun, Hidden, Prefix, Seeking;
+            public ScrollHandle? Handle;
             public long StillSince;
             public RectF LastRect;
             public double LastOffset = double.NaN;
@@ -275,7 +279,11 @@ public static partial class Diagnostics
                         });
                         break;
                     case "reveal":
-                        ops.Add(new Op { Kind = OpKind.Reveal, Line = l, Target = a.Str("key"), Nth = a.Int("nth", 0), Top = a.Float("top", 96f), Vp = a.Str("vp"), Ms = Math.Clamp(a.Int("ms", 900), 0, 10_000), MaxMs = 8_000 });
+                        ops.Add(new Op
+                        {
+                            Kind = OpKind.Reveal, Line = l, Target = a.Has("prefix") ? a.Str("prefix") : a.Str("key"), Prefix = a.Has("prefix"), Nth = a.Int("nth", 0),
+                            Top = a.Float("top", 96f), Vp = a.Str("vp"), Ms = Math.Clamp(a.Int("ms", 900), 0, 10_000), MaxMs = 60_000,
+                        });
                         break;
                 }
                 // `settle=true` on an acting verb: the inspector's settle, on the wall clock (live verbs do not settle by default).
@@ -398,7 +406,23 @@ public static partial class Diagnostics
                     // done when the scroller's offset has held for 3 frames' worth of time after the glide's own length
                     double offset = ViewportOffset(host, op.Vp);
                     if (!offset.Equals(op.LastOffset)) { op.LastOffset = offset; op.StillSince = now; }
-                    if (t >= op.Ms && MsSince(op.StillSince, now) >= 50) return true;
+                    bool rested = MsSince(op.StillSince, now) >= 50;
+                    if (op.Seeking && rested)
+                    {
+                        if (TryFind(host, op.Target, op.Nth, out NodeHandle found, prefix: op.Prefix))
+                        {
+                            op.Seeking = false;
+                            op.Start = now;
+                            GlideTo(host, op, found, ref failure);
+                            return false;
+                        }
+                        if (!TryViewportNamed(host, op.Vp, out ViewportInfo vp, out _) || vp.Offset >= vp.Extent - vp.Viewport - 1.0)
+                        { failure = "the scroller reached its end without showing " + (op.Prefix ? "a key under '" : "'") + op.Target + "'"; return false; }
+                        op.Handle!.ScrollTo(vp.Offset + vp.Viewport * 0.7, ScrollMove.Glide);
+                        op.StillSince = now;
+                        return false;
+                    }
+                    if (!op.Seeking && t >= op.Ms && rested) return true;
                     if (t > op.MaxMs) failure = "the scroller did not come to rest";
                     return false;
                 }
@@ -469,13 +493,14 @@ public static partial class Diagnostics
                     return true;
                 case OpKind.Reveal:
                 {
-                    if (!TryFind(host, op.Target, op.Nth, out NodeHandle node)) { failure = "no shown node keyed '" + op.Target + "'"; return false; }
-                    if (!TryViewportOf(host, node, op.Vp, out ViewportInfo vp, out ScrollHandle? handle)) { failure = "no scroller holds '" + op.Target + "'" + (op.Vp.Length > 0 ? " under vp=" + op.Vp : ""); return false; }
-                    RectF r = host.Scene.PresentedAbsoluteRect(node);
-                    double to = Math.Max(0.0, vp.Offset + (r.Y - vp.Y) - op.Top);
-                    op.Vp = vp.ScrollKey ?? op.Vp;
-                    op.Note = "vp=" + op.Vp + " to=" + to.ToString("0", Inv);
-                    handle!.ScrollTo(to, ScrollMove.Glide);
+                    if (TryFind(host, op.Target, op.Nth, out NodeHandle node, prefix: op.Prefix)) return GlideTo(host, op, node, ref failure);
+                    // Not realized yet (a long page mounts its sections as they come near): with vp= the scroller glides on, most
+                    // of a viewport at a time, until the key shows; the steps' note names the key found (prefix= discovers one).
+                    if (op.Vp.Length == 0) { failure = "no shown node " + (op.Prefix ? "under '" : "keyed '") + op.Target + "' (vp=<scroller> seeks it)"; return false; }
+                    if (!TryViewportNamed(host, op.Vp, out ViewportInfo seekVp, out op.Handle)) { failure = "no vertical scroller matches vp=" + op.Vp; return false; }
+                    op.Vp = seekVp.ScrollKey ?? op.Vp;
+                    op.Seeking = true;
+                    op.Handle!.ScrollTo(seekVp.Offset + seekVp.Viewport * 0.7, ScrollMove.Glide);
                     return true;
                 }
                 default:
@@ -513,13 +538,13 @@ public static partial class Diagnostics
 
         /// <summary>The <paramref name="nth"/> SHOWN node keyed exactly <paramref name="key"/> (reading order: top, then left);
         /// <paramref name="onWindow"/> counts only the ones with a part on the window (what a hand can aim at).</summary>
-        static bool TryFind(AppHost host, string key, int nth, out NodeHandle node, bool onWindow = false)
+        static bool TryFind(AppHost host, string key, int nth, out NodeHandle node, bool onWindow = false, bool prefix = false)
         {
             SceneStore scene = host.Scene;
             var keyed = new List<(NodeHandle Node, string Key)>();
             scene.CopyDebugKeys(keyed);
             RectF win = WindowRect(host);
-            keyed.RemoveAll(e => !string.Equals(e.Key, key, StringComparison.Ordinal) || !scene.IsShown(e.Node)
+            keyed.RemoveAll(e => !(prefix ? e.Key.StartsWith(key, StringComparison.Ordinal) : string.Equals(e.Key, key, StringComparison.Ordinal)) || !scene.IsShown(e.Node)
                 || (onWindow && !Overlaps(scene.PresentedAbsoluteRect(e.Node), win)));
             keyed.Sort((a, b) =>
             {
@@ -623,6 +648,39 @@ public static partial class Diagnostics
                 found = v;
                 handle = h;
                 // the innermost vertical scroller that holds the node wins: keep looking for a deeper one
+            }
+            return handle is not null;
+        }
+
+        /// <summary>Glide the scroller holding <paramref name="node"/> so its top sits op.Top below the viewport's top.</summary>
+        static bool GlideTo(AppHost host, Op op, NodeHandle node, ref string? failure)
+        {
+            string prefix = op.Vp.Contains('/') ? "" : op.Vp;   // a resolved scroll key (after a seek) matches by the node, not by name
+            if (!TryViewportOf(host, node, prefix, out ViewportInfo vp, out ScrollHandle? handle)) { failure = "no scroller holds '" + op.Target + "'" + (op.Vp.Length > 0 ? " under vp=" + op.Vp : ""); return false; }
+            RectF r = host.Scene.PresentedAbsoluteRect(node);
+            double to = Math.Max(0.0, vp.Offset + (r.Y - vp.Y) - op.Top);
+            op.Vp = vp.ScrollKey ?? op.Vp;
+            op.Note = "key=" + (host.Scene.DebugKeyOf(node) ?? op.Target) + " vp=" + op.Vp + " to=" + to.ToString("0", Inv);
+            handle!.ScrollTo(to, ScrollMove.Glide);
+            return true;
+        }
+
+        /// <summary>The vertical scroller whose scroll key answers <paramref name="prefix"/> (EvidenceReport.ViewportMatches), the
+        /// one with the most room when several do.</summary>
+        static bool TryViewportNamed(AppHost host, string prefix, out ViewportInfo found, out ScrollHandle? handle)
+        {
+            found = default;
+            handle = null;
+            var vps = new List<ViewportInfo>();
+            host.CopyViewports(vps);
+            foreach (ViewportInfo v in vps)
+            {
+                if (v.Horizontal || !(v.ScrollKey == prefix || EvidenceReport.ViewportMatches(v.ScrollKey, prefix))) continue;
+                if (handle is not null && v.Extent <= found.Extent) continue;
+                ScrollHandle? h = host.TryGetScrollHandle(host.Scene.HandleAt(v.NodeIndex));
+                if (h is null) continue;
+                found = v;
+                handle = h;
             }
             return handle is not null;
         }
