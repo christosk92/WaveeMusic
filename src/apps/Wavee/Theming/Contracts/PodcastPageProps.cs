@@ -176,6 +176,20 @@ public sealed record PodcastEpisodeView(
     string About, int CommentCount, PodcastEpisodeVm? Next, string MoreSub, ImmutableArray<PodcastEpisodeVm> More,
     ImmutableArray<PodcastCardVm> Similar)
 {
+    /// <summary>The map head's order: true draws <see cref="MapSub"/> (quiet) before <see cref="MapHead"/> (strong): "Chapter 7 of 12 · " then the
+    /// chapter's name; false draws the head first ("Played" then " · finished 9 Nov", "12 chapters" then " · select one to start there").</summary>
+    public bool MapQuietFirst { get; init; }
+    /// <summary>The still's corner clock ("37:00").</summary>
+    public string StillTime { get; init; } = "";
+    /// <summary>The episode's show-level facts the hero shows beside the title: the show is a video show and this episode carries video.</summary>
+    public string VideoLabel { get; init; } = "";
+    /// <summary>The section tabs' words and the transcript's empty line.</summary>
+    public string NoChapters { get; init; } = "";
+    public string NoTranscript { get; init; } = "";
+    /// <summary>The chapters / the comments have not answered yet: a tab keeps its count's room (no tab moves when the count lands).</summary>
+    public bool ChaptersPending { get; init; }
+    public bool CommentsPending { get; init; }
+
     public static PodcastEpisodeView Empty { get; } = new(PodcastLoad.Pending,
         new PodcastEpisodeVm("", "", "", 0, false, "", 0, "", "", 0f, PodcastRowState.Unplayed, false, false, false, false, 0, false, null),
         "", "", null, 0u, "", [], "", true, [], [], "", "", "", 0, [], PodcastLoad.Pending, "", "", 0, null, "", [], []);
@@ -185,7 +199,20 @@ public sealed record PodcastEpisodeView(
 public sealed record PodcastEpisodePageProps
 {
     public required string RouteKey { get; init; }
+    /// <summary>The page scroller's scroll key (the shell's per-tab scope composed with the route).</summary>
+    public required string ScrollKey { get; init; }
     public required IReadSignal<PodcastEpisodeView> View { get; init; }
+    /// <summary>The chapter the position is in while the episode is under way (-1: not started, played, or no chapters): the map's thumb, the list's
+    /// current row. Changes only when the position crosses a chapter.</summary>
+    public required IReadSignal<int> CurrentChapter { get; init; }
+    /// <summary>The transcript line the position is in (index into <see cref="PodcastEpisodeView.Transcript"/>; -1 none). Changes only on a new line.</summary>
+    public required IReadSignal<int> CurrentLine { get; init; }
+    /// <summary>The map's clock: "12:10 / 37:00" while under way, the length otherwise.</summary>
+    public required IReadSignal<string> MapClock { get; init; }
+    /// <summary>"21 min left" in the episode (empty unless under way).</summary>
+    public required IReadSignal<string> Left { get; init; }
+    /// <summary>" · 2 min left" in the current chapter (empty unless under way).</summary>
+    public required IReadSignal<string> ChapterLeft { get; init; }
     public required IReadSignal<PodcastEpisodeTab> Tab { get; init; }
     public required Action<PodcastEpisodeTab> SetTab { get; init; }
     /// <summary>The playback position of THIS episode in ms (its resume point while it is not on the deck): the map, the chapters and the transcript bind it.</summary>
@@ -208,6 +235,11 @@ public sealed record PodcastEpisodePageProps
     public required Action? Share { get; init; }
     /// <summary>The comments section, mounted by the host (null: none). The view places it.</summary>
     public required Func<FluentGpu.Dsl.Element>? Comments { get; init; }
+    /// <summary>The episode on the deck and playing (any episode; the rows' Pause), else null.</summary>
+    public required IReadSignal<string?> OnDeck { get; init; }
+    /// <summary>Save or unsave another episode (a row's glyph) and that row's menu.</summary>
+    public required Action<string> ToggleSavedEpisode { get; init; }
+    public required Func<string, ContextMenuModel?> RowMenu { get; init; }
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");
