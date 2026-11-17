@@ -45,6 +45,7 @@ internal static partial class ZuneSettings
                 () => blur.Current is float v ? v : 0f,
                 v => { if (blur.Writer.Slide!(v)) Settings.Bump(); },
                 static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + "%"))),
+            ToggleRow(k, Tab.Appearance, "lyricsSeekTip"),
             Embed.Comp(static () => new AiLyricsRow()) with { Key = "zs:ai" }));
 
         var visualizer = D(Tab.Appearance, "stageVisualizer");

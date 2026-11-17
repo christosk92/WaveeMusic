@@ -875,7 +875,9 @@ public static partial class Diagnostics
             if (a.Has("video"))
             {
                 // The rich album's first row (tr26) has a music video (`TrackFlags.HasVideo`), so the play bar offers its video split and placement menu.
-                InspectKit.Play(InspectKit.VideoTrackUri, a.Int("fromMs", 74_000));
+                string seekPreview = a.Str("seekPreview").ToLowerInvariant();
+                // `seekPreview=episode` plays an episode with chapters instead: the rail's tip then carries the picture AND the chapter.
+                InspectKit.Play(seekPreview == "episode" ? InspectKit.ChapterEpisodeUri : InspectKit.VideoTrackUri, a.Int("fromMs", 74_000));
                 RunFrames(30);
                 Wavee.Video.State.FoldAvailability(true);
                 Wavee.Video.State.OpenAt(a.Str("video").ToLowerInvariant() switch
@@ -900,6 +902,13 @@ public static partial class Diagnostics
                     _fakePlayer = FluentGpu.Media.MediaPlayer.Create();
                     Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
                 }
+                // `seekPreview=on`: publish a source that carries seek sheets (the fixture's, read from files beside the exe), so the rails' tip
+                // shows the picture under the pointer as it does over a real video.
+                if (seekPreview is "on" or "episode")
+                    Playback.Video.Source.Value = InspectKit.SeekPreviewSource();
+                // `seekManifest=<file>`: the sheets a captured manifest names, fetched for real (the one thing a mount lets through the wire).
+                if (a.Has("seekManifest") && InspectKit.SeekManifestSource(a.Str("seekManifest")) is { } captured)
+                    Playback.Video.Source.Value = captured;
                 // `join=`: the host's switch phase as its events would leave it (`Video.JoinNow` folds it): poster = a player bound and no join in
                 // flight (the artwork alone), working = a join still in flight past the budget (the ring), failed = the join failed (the fault line).
                 if (join.Length > 0)

@@ -128,6 +128,8 @@ public static partial class Settings
             // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
             // is a setting any more. The blur dial is what is left of the section.
             new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
+            // The seek rail's lyric tip (the line under the pointer while it hovers or scrubs a song's rail).
+            new(Tab.Appearance, "Lyrics", "lyricsSeekTip", "MusicNote"),
             // On-device AI lyrics (AiLyrics.UI.Settings.cs, plan ai-lyrics-sync-implementation.md §4.2): the card wears the
             // Windows AI sparkle in every phase; the rest are the Ready expander's items.
             new(Tab.Appearance, "Lyrics", "aiLyrics", "RefineSparkle"),
