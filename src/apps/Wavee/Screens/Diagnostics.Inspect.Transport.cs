@@ -93,6 +93,7 @@ public static partial class Diagnostics
                         {
                             w.WriteString("do", verb);
                             w.WriteNumber("bytes", n);
+                            w.WriteBoolean("audiobook", snap.Wire.Audiobook);
                             w.WriteString("putState", b64);
                             WriteTransport(w);
                         });

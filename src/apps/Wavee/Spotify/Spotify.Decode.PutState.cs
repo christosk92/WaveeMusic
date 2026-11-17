@@ -337,13 +337,13 @@ public static partial class Spotify
             if (!context.IsEmpty) w.Concat(3, "context://"u8, context);
             w.Empty(4);                                        // context_restrictions {}
             int origin = w.Open(5);                            // play_origin
-            ReadOnlySpan<byte> feature = FeatureOf(context);
+            ReadOnlySpan<byte> feature = FeatureOf(context, snap.Wire.Audiobook);
             if (snap.Wire.Origin is { Feature.Length: > 0 } carried)
             {
                 w.Str(1, carried.Feature); w.Str(2, carried.Version); w.Str(3, carried.View);
                 w.Str(4, carried.ExternalReferrer); w.Str(5, carried.Referrer); w.Str(6, carried.Device);
             }
-            else { w.Utf8(1, feature); w.Utf8(5, feature); }
+            else { w.Utf8(1, feature); w.Utf8(5, ReferrerOf(feature)); }
             w.Close(origin);
             if (contextIndex >= 0)
             {
@@ -647,14 +647,24 @@ public static partial class Spotify
         }
 
         /// <summary><c>play_origin.feature_identifier</c> from the context uri (0.2.9's FeatureOf, without the metadata
-        /// liked-songs probe the snapshot does not carry — the collection uri answers it). PURE.</summary>
-        public static ReadOnlySpan<byte> FeatureOf(scoped ReadOnlySpan<byte> contextUri)
+        /// liked-songs probe the snapshot does not carry — the collection uri answers it). A show is <c>audiobook</c> when the
+        /// catalogue classifies it as a book (the official desktop 1.3.8.620 while a book plays), else <c>show</c> (the feature the
+        /// outbound play already names a podcast show by, <c>Connect.PlayFeatureOf</c>); a show used to fall through to
+        /// <c>harmony</c>. PURE.</summary>
+        public static ReadOnlySpan<byte> FeatureOf(scoped ReadOnlySpan<byte> contextUri, bool audiobook = false)
             => contextUri.IndexOf(":collection"u8) >= 0 ? "your_library"u8
              : contextUri.IndexOf(":album:"u8) >= 0 ? "album"u8
              : contextUri.IndexOf(":artist"u8) >= 0 ? "artist"u8
              : contextUri.IndexOf(":playlist:"u8) >= 0 ? "playlist"u8
+             : contextUri.IndexOf(":show:"u8) >= 0 ? (audiobook ? "audiobook"u8 : "show"u8)
              : contextUri.IndexOf(":episode:"u8) >= 0 ? "home"u8
              : "harmony"u8;
+
+        /// <summary><c>play_origin.referrer_identifier</c> beside a <paramref name="feature"/> we name ourselves: the feature again, as
+        /// for every other context, except a book, which the official client refers from <c>your_library</c> (where saved books
+        /// live; it names the page the play came from, which the snapshot does not carry). PURE.</summary>
+        public static ReadOnlySpan<byte> ReferrerOf(ReadOnlySpan<byte> feature)
+            => feature.SequenceEqual("audiobook"u8) ? "your_library"u8 : feature;
 
         static ReadOnlySpan<byte> ProviderWord(QueueProvider provider) => provider switch
         {
