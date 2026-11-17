@@ -61,9 +61,12 @@ internal static class WinUiHomeTiles
         // The grid's pager: the previous and next buttons at the head's end while it pages (the pips stand under the grid).
         Element pager = Embed.Comp(() => new WinUiHomeZones.WinUiHomeShelfTools(board.View.ShortcutsPager, leadingDivider: false, pips: false))
             with { Key = key + ":pager" };
-        Element? tools = stacked || face is null
-            ? pager
-            : new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [face.Value, pager] };
+        // One tools box at every tier, so the pager keeps its parent (and its node) when the switch moves under the title at Compact.
+        Element tools = new BoxEl
+        {
+            Key = key + ":tools", Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Children = stacked || face is null ? [pager] : [face.Value, pager],
+        };
         var header = WinUiHomeZones.ModuleHeader(e.Title, sub, tools, home) with { Key = key + ":title" };
         return new BoxEl
         {

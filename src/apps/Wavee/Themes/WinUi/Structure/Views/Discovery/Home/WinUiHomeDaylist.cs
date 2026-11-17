@@ -168,7 +168,14 @@ internal static class WinUiHomeDaylist
                 Children =
                 [
                     WinUiDiscoveryMotion.AirH("daylist-pad:lead", dl.Pad),
-                    Row(parts, dl) with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
+                    // The Compact stack and the row forms are different trees: keyed apart, the crossing cross-fades them (Pair and Triple share
+                    // the row, which eases between them).
+                    Row(parts, dl) with
+                    {
+                        Key = dl.Form == WinUiDaylistForm.Stack ? "daylist-form:stack" : "daylist-form:row",
+                        Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                    },
                     WinUiDiscoveryMotion.AirH("daylist-pad:end", dl.Pad),
                 ],
             },

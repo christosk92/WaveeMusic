@@ -133,7 +133,18 @@ internal static class WinUiHomePage
     /// <summary>The head row's children: the greeting, then (Small) the Following button, then (All) the board's tools.</summary>
     static Element[] HeadRow(HomePageProps props, WinUiHomeLayout layout, TextEl greeting)
     {
-        var kids = new List<Element>(3) { greeting with { Grow = 1f, Shrink = 1f } };
+        // The greeting's lines break at the width the row leaves it, and the Following button joining or leaving the row (the Small edge) moves that
+        // width at once: a run cannot ease its breaks, so each form is its own keyed greeting and the crossing cross-fades them.
+        var kids = new List<Element>(3)
+        {
+            new BoxEl
+            {
+                Key = layout.Following == WinUiFollowingPlace.GreetingRow ? "home:greeting:beside" : "home:greeting:alone",
+                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Children = [greeting],
+            },
+        };
         if (layout.Following == WinUiFollowingPlace.GreetingRow) kids.Add(WinUiHomeFacetRow.Following(props.FacetRow, layout));
         if (props.BoardTools is { } tools) kids.Add(tools());
         return kids.ToArray();
