@@ -42,7 +42,13 @@ public sealed record PodcastEpisodeVm(
     string Id, string Title, string Description, int Number, bool Serial,
     string Date, int Year, string Length, string Left, float Progress,
     PodcastRowState State, bool Saved, bool Video, bool Trailer, bool Playable,
-    int ChapterCount, bool HasTranscript, string? ArtUrl);
+    int ChapterCount, bool HasTranscript, string? ArtUrl)
+{
+    /// <summary>The details pane's eyebrow ("Episode 103 · 12 Nov 2026", "Part 3 · 4 Mar 2025"); empty when nothing is known.</summary>
+    public string Eyebrow { get; init; } = "";
+    /// <summary>The date with its year ("12 Nov 2026"), for the pane's meta line.</summary>
+    public string LongDate { get; init; } = "";
+}
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
 public sealed record PodcastMenuItem(string Label, string? Sub, string Glyph, bool Checked, Action Invoke);
@@ -59,7 +65,11 @@ public sealed record PodcastSmart(
 public sealed record PodcastGroup(string Key, string Title, int Count, bool Fresh, ImmutableArray<int> Rows);
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
-public sealed record PodcastYear(int Year, string Label, string Count);
+public sealed record PodcastYear(int Year, string Label, string Count)
+{
+    /// <summary>How many episodes the year holds (the group header's count).</summary>
+    public int Episodes { get; init; }
+}
 
 /// <summary>A filter of the SelectorBar with its count (0 shows no count).</summary>
 public sealed record PodcastFilterVm(PodcastFilter Filter, string Label, int Count);
@@ -71,11 +81,20 @@ public sealed record PodcastCardVm(string Uri, string Title, string Subtitle, st
 public sealed record PodcastFact(string Label, string Value);
 
 /// <summary>The show's identity and the About facts. <see cref="Tone"/> is the cover's dark colour (the wash), 0 = none. <see cref="RatingX100"/> 0 = no
-/// public rating.</summary>
+/// public rating; <see cref="Rating"/> is its text ("4.8"), <see cref="RatingCount"/> the hero's "(12,431)" and <see cref="Ratings"/> the card's
+/// "12,431 ratings". <see cref="CanRate"/>: the listener may rate the show (the card's Rate button).</summary>
 public sealed record PodcastShowHead(
     string Uri, string Title, string? ArtUrl, uint Tone, string Kind, ImmutableArray<string> Topics, bool Video, bool Serial,
-    string Publisher, int RatingX100, string Ratings, string Cadence, string Count, string About, bool Following,
-    string? TrailerId, string TrailerSub, ImmutableArray<PodcastFact> Facts);
+    string Publisher, int RatingX100, string Rating, string RatingCount, string Ratings, bool CanRate, string Cadence, string Count, string About,
+    bool Following, string? TrailerId, string TrailerSub, ImmutableArray<PodcastFact> Facts);
+
+/// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all
+/// (<see cref="Total"/>; 0 with <see cref="Pending"/> false = none), and whether they are still on their way.</summary>
+public sealed record PodcastPaneChapters(int Total, ImmutableArray<PodcastChapterVm> Shown, bool Pending)
+{
+    public static PodcastPaneChapters None { get; } = new(0, [], false);
+    public static PodcastPaneChapters Loading { get; } = new(0, [], true);
+}
 
 /// <summary>The show page's snapshot.</summary>
 public sealed record PodcastShowView(
@@ -85,7 +104,7 @@ public sealed record PodcastShowView(
 {
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,
-        new PodcastShowHead("", "", null, 0u, "", [], false, false, "", 0, "", "", "", "", false, null, "", []),
+        new PodcastShowHead("", "", null, 0u, "", [], false, false, "", 0, "", "", "", false, "", "", "", false, null, "", []),
         null, [], [], [], [], false, false, []);
 }
 
@@ -112,6 +131,13 @@ public sealed record PodcastShowPageProps
     public required IReadSignal<string?> Playing { get; init; }
     /// <summary>Play the episode (Resume where it stopped), or pause it when it is the one playing.</summary>
     public required Action<string> Play { get; init; }
+    /// <summary>The smart action's own click (what <see cref="PodcastShowView.Smart"/> names: Resume, Play newest, Play part N, Play latest again from the
+    /// start), or pause while that episode plays.</summary>
+    public required Action PlaySmart { get; init; }
+    /// <summary>The selected episode's chapters for the details pane.</summary>
+    public required IReadSignal<PodcastPaneChapters> PaneChapters { get; init; }
+    /// <summary>Rate the show (null: the listener cannot).</summary>
+    public required Action? Rate { get; init; }
     public required Action<string> Open { get; init; }
     public required Action<string> ToggleSaved { get; init; }
     public required Action<string> PlayNext { get; init; }
