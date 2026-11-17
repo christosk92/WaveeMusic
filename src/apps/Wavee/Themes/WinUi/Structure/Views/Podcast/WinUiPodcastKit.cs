@@ -7,7 +7,14 @@
 //                      page column, and the 48 collapsed header bar OVER the scroller, shown once the page's BarSentinel (placed after the hero) pins
 //                      under it: it fades and drops 8 in over 167 ms on reserved space (it never moves the layout).
 //   BarSentinel(on)    a zero-height marker: put it right after the hero; `on` turns true when the hero has scrolled under the bar.
-//   Bar(...)           the bar itself: a 32 cover, the title (Body Strong) over a caption, the primary button at the end; opaque, a hairline at its foot.
+//   Bar(...)           the bar itself (WinUI's pinned detail bar, WinUiDetailHero.Bar): a 32 cover, the title (Body Strong) over a caption, the primary
+//                      button at the end, on the card layer with a hairline at its foot. While it shows, the page's content cuts itself at its lower edge
+//                      (a StickyClip engaged with the bar), so nothing scrolls visibly under it and no opaque band is needed.
+//   PinnedBand(...)    a row that pins (a toolbar, a group header): it paints NOTHING at rest; while pinned (Sticky's engaged edge) it shows the hairline
+//                      at its foot. What scrolls under it must cut itself at the band's lower edge (`.StickyClip(line)` on that content), as WinUI's Home
+//                      facet row and artist pivot do.
+//   Description(...)   an HTML / plain description through the house rich-text renderer (paragraphs, lists, bold, links through the link policy).
+//   PlayNextIcon / PlayNextButton   the app's play-next glyph (ActionIcons.PlayNext, the Wavee icon face), never Icons.Queue.
 //   SmartSplit(...)    the accent SplitButton that names its episode: the main half plays, the chevron opens "Other ways to play" (PodcastMenuItem list,
 //                      the default with a check); no accent when caught up; `fill` stretches the main half (Compact's full-width 40).
 //   EpisodeRow(...)    the episode row: the play button (36 / 40) with the progress ring when in progress and the check for played (replay on hover); the
@@ -15,7 +22,8 @@
 //                      Played, the Video tag); the saved glyph at rest, add on hover, the ellipsis always; one line of description when asked; a click
 //                      selects, expands in place (FlowReveal 167 ms: the description, Open episode, Play next) or opens the episode.
 //   SectionHeader(...) Subtitle + a caption + a trailing link.
-//   MoreLikeThis(...)  a grid of cover cards (or, in a narrow column, rows with a 40 cover).
+//   MoreLikeThis(...)  the house media surface (`Controls.Surface`): shelf cards (hover plate, play, pressed, focus, menu, hand cursor), or, in a narrow
+//                      column, the house row (`Shape.Row`).
 //
 // No numbers here: `WinUiPodcastKitRules` (Rules/WinUiPodcastRules.cs). No Entities / Playback: every verb comes in as a delegate.
 
@@ -63,15 +71,7 @@ internal static class WinUiPodcastKit
         Action<NodeHandle>? viewport = null)
     {
         var wash = K.Wash(tone);
-        Element body = new BoxEl
-        {
-            ZStack = true, Direction = 1, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl { Key = "podcast-wash", Height = K.WashH, AlignSelf = FlexAlign.Start, Gradient = wash, HitTestVisible = false },
-                content,
-            ],
-        };
+        Element body = Embed.Comp(new ClipProps(barOn, wash, content), static () => new ClipHost());
         Element scroller = ScrollView(new BoxEl { Direction = 1, MinWidth = 0f, Children = [body] }) with
         {
             Key = "podcast-scroll:" + routeKey, Grow = 1f, ScrollKey = "podcast-scroll:" + routeKey, Handle = scroll,
@@ -83,6 +83,29 @@ internal static class WinUiPodcastKit
             Children = [Flow.Show(() => barOn.Value, new BoxEl { Key = "podcast-bar", Direction = 1, Enter = K.BarFade, Exit = K.BarFade, Children = [bar] })],
         };
         return new BoxEl { Key = "podcast-page:" + routeKey, ZStack = true, Direction = 1, Grow = 1f, MinWidth = 0f, Children = [scroller, barLayer] };
+    }
+
+    /// <summary>The page body under the bar: the wash and the content, cut at the bar's lower edge only while the bar shows (an engaged StickyClip from the
+    /// first frame would cut the hero's top at rest).</summary>
+    sealed record ClipProps(IReadSignal<bool> BarOn, GradientSpec? Wash, Element Content);
+
+    sealed class ClipHost : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<ClipProps>();
+            bool on = p.BarOn.Value;
+            var body = new BoxEl
+            {
+                Key = "podcast-body", ZStack = true, Direction = 1, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Key = "podcast-wash", Height = K.WashH, AlignSelf = FlexAlign.Start, Gradient = p.Wash, HitTestVisible = false },
+                    p.Content,
+                ],
+            };
+            return new BoxEl { Direction = 1, MinWidth = 0f, Children = [on ? body.StickyClip(K.BarH) : body] };
+        }
     }
 
     /// <summary>The bar's trigger: a zero-height box pinned under the bar; <paramref name="on"/> is true while it is held there (the hero has gone).</summary>
@@ -100,7 +123,7 @@ internal static class WinUiPodcastKit
             words.Add(Caption(caption) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
         return new BoxEl
         {
-            ZStack = true, Height = K.BarH, HitTestVisible = true, Fill = Prop.Of(static () => R.Layer.ContentSurface),
+            ZStack = true, Height = K.BarH, HitTestVisible = true, Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children =
             [
                 new BoxEl
@@ -120,6 +143,43 @@ internal static class WinUiPodcastKit
                 },
             ],
         };
+    }
+
+    /// <summary>A band that pins <paramref name="top"/> below the viewport's edge (a toolbar, a group header), <paramref name="height"/> tall. It paints
+    /// nothing at rest; while pinned (<paramref name="stuck"/>, Sticky's engaged edge) its foot shows the hairline. <paramref name="scope"/>: the ancestor
+    /// it releases at (null = its parent). The content that scrolls under it cuts itself at <paramref name="top"/> + <paramref name="height"/>.</summary>
+    public static BoxEl PinnedBand(string key, Element content, float height, float top, Signal<bool> stuck, string? scope = null)
+        => new BoxEl
+        {
+            Key = key, ZStack = true, Direction = 1, Height = height, MinWidth = 0f,
+            Children =
+            [
+                content,
+                new BoxEl
+                {
+                    Key = key + ":line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false,
+                    Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
+                },
+            ],
+        }.Sticky(top, scope, stuck);
+
+    /// <summary>A description: HTML (paragraphs, lists, bold, links routed in-app or opened through the link policy) or plain text, through the house
+    /// renderer, never a tag or an entity on screen. <paramref name="maxLines"/> 0 = all.</summary>
+    public static Element Description(string html, int maxLines = 0, bool secondary = true)
+        => new BoxEl
+        {
+            Direction = 1, MinWidth = 0f,
+            Children = [Controls.RichTextFlex(html, K.BodySize, secondary ? Tok.TextSecondary : Tok.TextPrimary, Tok.AccentTextPrimary, maxLines, DetailVerbs.NavigateKey)],
+        };
+
+    /// <summary>The app's play-next glyph (the menus' and the queue's: <c>ActionIcons.PlayNext</c> in the Wavee icon face).</summary>
+    public static Element PlayNextIcon(float size, ColorF color) => Icon(WaveeIcons.PlayNext, size, color, WaveeIcons.Font);
+
+    /// <summary>"Play next" as a standard button with the app's play-next glyph.</summary>
+    public static Element PlayNextButton(Action next, string key)
+    {
+        var b = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next);
+        return b with { Key = key, Children = [PlayNextIcon(K.PlayGlyph, Tok.TextPrimary), .. b.Children] };
     }
 
     // ══ 2. THE SMART SPLITBUTTON ════════════════════════════════════════════════════════════════════════════════════════════
@@ -408,20 +468,20 @@ internal static class WinUiPodcastKit
 
     static TextEl MetaWord(string text) => Caption(text) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f };
 
-    /// <summary>The expanded row's body: the description, then Open episode and Play next.</summary>
+    /// <summary>The expanded row's body: the description (rich), then Open episode and Play next.</summary>
     static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next) => new BoxEl
     {
         Direction = 1, Gap = K.ExpandGap, Padding = new Edges4(0f, K.ExpandTop, 0f, 0f),
         Children =
         [
-            Body(vm.Description) with { Color = Tok.TextSecondary },
+            Description(vm.DescriptionHtml.Length > 0 ? vm.DescriptionHtml : vm.Description),
             new BoxEl
             {
                 Direction = 0, Gap = K.SectionGap, Wrap = true,
                 Children =
                 [
                     Button.Create(Loc.Get(Strings.Podcast.Pages.OpenEpisode), open) with { Key = "row:open" },
-                    Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next, glyph: Icons.Queue) with { Key = "row:next" },
+                    PlayNextButton(next, "row:next"),
                 ],
             },
         ],
@@ -439,49 +499,30 @@ internal static class WinUiPodcastKit
         return new BoxEl { Direction = 0, Gap = K.SectionGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
-    /// <summary>"More like this": <paramref name="rows"/> draws a narrow column's rows (a 40 cover, title over subtitle), else a wrapping grid of covers.</summary>
-    public static Element MoreLikeThis(ImmutableArray<PodcastCardVm> cards, Action<string> open, bool rows)
+    /// <summary>"More like this" on the house media surface: shelf cards <paramref name="cardWidth"/> wide (hover plate, play, pressed, focus, the
+    /// context menu, the hand cursor), or the house rows when <paramref name="rows"/> (a narrow column). <paramref name="menu"/> and <paramref name="play"/>
+    /// come from the page's host (null: the card has none).</summary>
+    public static Element MoreLikeThis(ImmutableArray<PodcastCardVm> cards, Action<string> open, bool rows, Func<string, ContextMenuModel?>? menu = null,
+        Action<string>? play = null, float cardWidth = K.CardCover)
     {
         var kids = new Element[cards.Length];
         for (int i = 0; i < cards.Length; i++)
         {
             var c = cards[i];
-            Action click = () => open(c.Uri);
-            kids[i] = rows ? RowCard(c, click) : CoverCard(c, click);
+            string uri = c.Uri;
+            var data = new Controls.CardData(uri, c.Title, c.Subtitle.Length > 0 ? Caption(c.Subtitle) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis } : null,
+                c.ArtUrl, () => open(uri), play is null ? null : () => play(uri), ShowMenu: menu is not null)
+            {
+                Menu = menu is null ? null : () => menu(uri),
+            };
+            kids[i] = new BoxEl
+            {
+                Key = "card:" + uri, Direction = 1, MinWidth = 0f, Width = rows ? float.NaN : cardWidth, Shrink = 0f,
+                Children = [rows ? Controls.Surface(data, Shape.Row(K.RowCardCover)) : Controls.Surface(data, Shape.Shelf(), cardWidth)],
+            };
         }
         return rows
             ? new BoxEl { Key = "more-like-this", Direction = 1, MinWidth = 0f, Children = kids }
             : new BoxEl { Key = "more-like-this", Direction = 0, Wrap = true, Gap = K.CardGap, MinWidth = 0f, Children = kids };
     }
-
-    static Element RowCard(PodcastCardVm c, Action click) => new BoxEl
-    {
-        Key = "card:" + c.Uri, Direction = 0, Gap = K.RowCardGap, AlignItems = FlexAlign.Center, Padding = Edges4.All(K.RowPadCompact / 2f),
-        Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-        Role = AutomationRole.Button, Focusable = true, OnClick = click, MinWidth = 0f,
-        Children =
-        [
-            Controls.Artwork(c.ArtUrl, K.RowCardCover, K.RowCardCover, K.RowCardRadius, decodePx: K.RowCardDecode),
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                Children =
-                [
-                    Body(c.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                    Caption(c.Subtitle) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                ],
-            },
-        ],
-    };
-
-    static Element CoverCard(PodcastCardVm c, Action click) => new BoxEl
-    {
-        Key = "card:" + c.Uri, Direction = 1, Width = K.CardCover, Gap = K.SectionGap / 2f, Role = AutomationRole.Button, Focusable = true, OnClick = click,
-        Children =
-        [
-            Controls.Artwork(c.ArtUrl, K.CardCover, K.CardCover, K.CardRadius, decodePx: K.CardDecode),
-            Body(c.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-            Caption(c.Subtitle) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-        ],
-    };
 }
