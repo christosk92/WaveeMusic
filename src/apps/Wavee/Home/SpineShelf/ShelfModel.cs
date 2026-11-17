@@ -85,6 +85,10 @@ public static class SpineShelfRules
     public const float ClipMs = 30_000f;
     /// <summary>A live tile's share of the tile row against 1 for each other tile.</summary>
     public const float LiveShare = 1.7f;
+    /// <summary>The faked blur under a cover (a song without a canvas): the cover decoded this many pixels across, upscaled by the sampler,
+    /// and darkened by this much.</summary>
+    public const float BlurDecodePx = 12f, BlurDim = 0.35f;
+
     /// <summary>A canvas still's decode size: the largest thumbnail Spotify sends (288 x 512), as the canvas host decodes its poster.</summary>
     public const float StillDecodePx = 512f;
     /// <summary>A song tile's cover (a song without a canvas) takes at most this share of the tile's width (the concept's min(70 %, …)).</summary>
