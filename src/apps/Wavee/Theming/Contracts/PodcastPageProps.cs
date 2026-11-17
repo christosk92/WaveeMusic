@@ -178,6 +178,9 @@ public sealed record PodcastEpisodeView(
     /// <summary>The section tabs' words and the transcript's empty line.</summary>
     public string NoChapters { get; init; } = "";
     public string NoTranscript { get; init; } = "";
+    /// <summary>The chapters / the comments have not answered yet: a tab keeps its count's room (no tab moves when the count lands).</summary>
+    public bool ChaptersPending { get; init; }
+    public bool CommentsPending { get; init; }
 
     public static PodcastEpisodeView Empty { get; } = new(PodcastLoad.Pending,
         new PodcastEpisodeVm("", "", "", 0, false, "", 0, "", "", 0f, PodcastRowState.Unplayed, false, false, false, false, 0, false, null),

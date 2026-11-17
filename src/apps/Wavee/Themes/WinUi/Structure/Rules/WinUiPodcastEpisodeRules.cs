@@ -72,6 +72,14 @@ internal static class WinUiPodcastEpisodeRules
     public static ColorF? ToneOf(uint argb)
         => argb == 0u ? null : ColorF.FromRgba((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, byte.MaxValue);
 
+    /// <summary>A tab's count, held to at least <see cref="CountRoom"/> figures (U+2007 FIGURE SPACE pads it on the right, invisible): the count's room
+    /// is there while it is pending and stays when it lands, so the SelectorBar's items never shift. A known 0 says 0.</summary>
+    public static string CountLabel(int count, bool pending)
+        => pending ? new string(Figure, CountRoom) : count.ToString(System.Globalization.CultureInfo.InvariantCulture).PadRight(CountRoom, Figure);
+
+    const int CountRoom = 2;
+    const char Figure = (char)0x2007;
+
     /// <summary>The find highlight (the concept's rgba(255,214,10,.3)).</summary>
     public static ColorF FindMark => ColorF.FromRgba(255, 214, 10, 77);
 }

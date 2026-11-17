@@ -288,10 +288,10 @@ internal static class WinUiPodcastEpisode
             foreach (var t in tabs)
                 labels.Add(t switch
                 {
-                    PodcastEpisodeTab.Chapters => WinUiChoice.Counted(chapters, Count(v.Chapters.Length)),
+                    PodcastEpisodeTab.Chapters => WinUiChoice.Counted(chapters, P.CountLabel(v.Chapters.Length, v.ChaptersPending)),
                     PodcastEpisodeTab.About => about,
                     PodcastEpisodeTab.Transcript => transcript,
-                    _ => WinUiChoice.Counted(comments, Count(v.CommentCount)),
+                    _ => WinUiChoice.Counted(comments, P.CountLabel(v.CommentCount, v.CommentsPending)),
                 });
             int index = Math.Max(0, Array.IndexOf(tabs, tab));
             UseEffect(() => { _index.SetIfChanged(index); }, DepKey.From(index));
@@ -332,7 +332,6 @@ internal static class WinUiPodcastEpisode
             };
         }
 
-        static string Count(int n) => n > 0 ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
 
         static readonly string?[] s_wideKeys = ["pe-tab:chapters", "pe-tab:about", "pe-tab:comments"];
         static readonly string?[] s_narrowKeys = ["pe-tab:chapters", "pe-tab:about", "pe-tab:transcript", "pe-tab:comments"];

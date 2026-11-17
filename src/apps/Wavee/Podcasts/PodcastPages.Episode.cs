@@ -464,6 +464,8 @@ public sealed class PodcastEpisodeScreen : Component
             StillTime = Clock(duration),
             VideoLabel = (e.Flags & EpisodeFlags.Video) != 0 ? Loc.Get(Strings.Podcast.Pages.Video) : "",
             NoChapters = Loc.Get(Strings.Podcast.Pages.NoChapters),
+            ChaptersPending = data is null && _chapters.Value is { } lease && lease.Data.State.Value == (byte)LoadState.Pending,
+            CommentsPending = _comments is { } cp && cp.State.Value == (byte)LoadState.Pending,
             NoTranscript = Loc.Get(Strings.Podcast.Pages.TranscriptNone),
         };
     }
