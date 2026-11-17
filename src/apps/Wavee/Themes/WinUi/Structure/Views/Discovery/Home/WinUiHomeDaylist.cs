@@ -43,6 +43,11 @@ internal static class WinUiHomeDaylist
         var facts = ctx.Tier();
         var layout = WinUiHomeTiers.Of(facts);
         var dl = layout.Daylist;
+        // On the pinned board the card stands in a tile: its "..." and a right-click open ONE menu, the playlist's rows then the tile's Home rows
+        // (HomeTileMenus); the board's Menu key on the tile opens it at the "..." (anchored where the button last realized).
+        var tile = ctx.Hooks.UseContext(HomeTileMenus.Current);
+        var moreAnchor = ctx.Hooks.UseRef(default(NodeHandle));
+        if (tile is not null) tile.Open = null;
 
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
@@ -52,7 +57,8 @@ internal static class WinUiHomeDaylist
         if (uri.Length == 0) return Skeleton(layout);
 
         var host = props.Overlay;
-        var menu = HomeCardNav.MenuOf(in card);
+        var menu = HomeTileMenus.Merge(HomeCardNav.MenuOf(in card), tile);
+        if (tile is not null) tile.Open = menu is not null && host is not null ? () => HomeTileMenus.OpenAt(host, moreAnchor.Value, menu) : null;
         var c = card;
         string title = card.Title;
 
@@ -69,7 +75,7 @@ internal static class WinUiHomeDaylist
             Controls.Named(Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Box = dl.IconBox }) with { Key = "save:" + uri },
                            Loc.Get(Strings.Home.Save)),
             // A STANDALONE icon button, not `Controls.MoreButton`: that one is the list-row overflow whose rest opacity lights up with its ANCESTOR's hover.
-            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true, size: dl.IconBox) with { BlocksDragArm = true },
+            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true, size: dl.IconBox) with { BlocksDragArm = true, OnRealized = h => moreAnchor.Value = h },
                            Loc.Get(Strings.Home.More)));
 
         string? artUrl = DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl) ?? card.ImageUrl;
@@ -83,8 +89,8 @@ internal static class WinUiHomeDaylist
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
                 Role = AutomationRole.Button, Focusable = true,
             };
-        // The playlist menu rides the card root: a right-click anywhere on the card and the "..." button (which climbs to this handler through the context
-        // funnel) open the SAME menu, the button's anchored at itself.
+        // The playlist menu (with the tile's Home rows on the board) rides the card root: a right-click anywhere on the card and the "..." button (which
+        // climbs to this handler through the context funnel) open the SAME menu, the button's anchored at itself.
         return menu is not null && host is not null ? root.WithContextMenu(host, menu) : root;
     }
 
