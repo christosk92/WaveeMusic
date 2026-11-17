@@ -126,6 +126,11 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
     /// and the album props carry no credits. Appended (contract 1.84, album credits).</summary>
     public bool AlbumCredits { get; init; }
 
+    /// <summary>The structure draws the podcast pages (podcast pages v2: <c>ViewKeys.PodcastShowPage</c>, <c>PodcastEpisodePage</c>, <c>AudiobookPage</c>): the show
+    /// and episode routes mount their hosts, and a show that is an audiobook opens the audiobook page. Default false: the older reader pages (`Show.Page`,
+    /// `Episode.Page`) stay. Appended (podcast pages v2).</summary>
+    public bool PodcastPages { get; init; }
+
     /// <summary>The library's four master-detail kinds (albums, artists, podcasts, audiobooks) are ONE family under one head: they share one keep-alive
     /// slot, the head (the title and the kinds' pivot) is drawn once over them, and a switch between two of them slides only the body under the head by
     /// the pivot's order (`User.LibraryFamily`, <see cref="PageMotionPolicy.LibraryPivot"/>). Each kind stays a place: history, Back, deep links and

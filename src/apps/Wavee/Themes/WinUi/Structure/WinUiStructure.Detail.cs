@@ -4,7 +4,8 @@
 // release panel, the trailing band, the aside's sections, the unresolved page), the artist page and its lightbox, and the discography page and style.
 // WinUI's registrations win over the stand-in key by key.
 //
-//   Detail.Frame / Hero / ShowHeader / Notice / VerticalTrailing / Insights / InsightsToggle   `Views\Detail\WinUiDetail*.cs`, `WinUiInsights.cs`
+//   Detail.Frame / Hero / Notice / VerticalTrailing / Insights / InsightsToggle   `Views\Detail\WinUiDetail*.cs`, `WinUiInsights.cs`
+//   Detail.ShowHeader                                        NOTHING: the show and episode routes mount the podcast pages v2 (`Views\Podcast\`)
 //   Detail.Rail / Detail.CompactRail                         NOTHING: WinUI has one composition (the hero over the table), its page-mode ladder never answers the
 //                                                            two-column arm that mounts them (`Tiers.Detail.cs`)
 //   Album.*                                                  `Views\Detail\WinUiAlbum*.cs`
@@ -24,7 +25,7 @@ public sealed partial class WinUiStructure
     {
         // ── the frame ──
         views.Add(ViewKeys.DetailFrame, WinUiDetailFrame.Template, "winui.detail.frame");
-        views.Add(ViewKeys.DetailShowHeader, WinUiDetailFrame.ShowHeaderTemplate, "winui.detail.show-header");
+        CommonNothing.Register(views, ViewKeys.DetailShowHeader);   // the show and episode pages are the podcast pages v2 (Views\Podcast\)
         views.Add(ViewKeys.DetailHero, WinUiDetailFrame.HeroTemplate, "winui.detail.hero");
         views.AddStyle(StyleKeys.DetailHero, WinUiDetailFrame.HeroStyle);
         views.Add(ViewKeys.DetailInsights, WinUiInsights.SheetTemplate, "winui.detail.insights");

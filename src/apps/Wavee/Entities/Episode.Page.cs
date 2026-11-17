@@ -13,7 +13,10 @@ namespace Wavee;
 
 public readonly partial struct Episode
 {
-    public static Element Page(in Shell.Route route)
+    public static Element Page(in Shell.Route route) => PodcastPages.EpisodeRoute(in route);
+
+    /// <summary>The older reader page, kept for the structures that do not draw the podcast pages (<c>ShellCapabilities.PodcastPages</c> false).</summary>
+    internal static Element LegacyPage(in Shell.Route route)
     {
         var props = new ReaderProps(route.Subject, Shell.NameOf(route));
         return Embed.Comp(props, static () => new EpisodePage()) with { Key = "episode-page:" + props.RouteKey };

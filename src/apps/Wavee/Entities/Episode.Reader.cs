@@ -87,8 +87,30 @@ internal static partial class PodcastReaderUI
     /// <see cref="Recommendations"/> (its own, per mount) and the show reader (<c>ReaderHost.Similar</c>, once per visit).</summary>
     internal static Task<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> RecommendationsOf(string uri, bool show, CancellationToken ct)
         => Platform.Args.Fake
-            ? Task.FromResult(new Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>([], "", 0, "", 200))
+            ? Task.FromResult(FakeRecommendations(uri, show))
             : Spotify.Podcasts.RecommendationsAsync(uri, show, ct);
+
+    /// <summary>Under <c>--fake</c>: "More like this" for a show is the other seeded shows that are resident with a title (their cover and
+    /// publisher); an episode's stays empty.</summary>
+    static Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation> FakeRecommendations(string uri, bool show)
+    {
+        var items = new List<Spotify.Podcasts.Recommendation>(FakeSimilarMax);
+        if (show)
+            for (int i = 0; i < FakeShowCount && items.Count < FakeSimilarMax; i++)
+            {
+                string other = "spotify:show:sh" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (other == uri) continue;
+                var parsed = EntityUri.Parse(other);
+                if (!parsed.IsValid || !Entities.Current.Shows.TryGetSlot(parsed.Id, out int slot)) continue;
+                var s = new Show(slot);
+                if (!s.Knows(ShowFields.Title) || s.Title.Length == 0) continue;
+                items.Add(new Spotify.Podcasts.Recommendation(other, s.Title, Controls.ArtUrl(s.ImageId) ?? "",
+                    s.Knows(ShowFields.Publisher) ? Entities.Strings.Resolve(s.PublisherId) : ""));
+            }
+        return new Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>(items.ToArray(), "", items.Count, "", 200);
+    }
+
+    const int FakeShowCount = 9, FakeSimilarMax = 6;
 
     /// <summary>"More like this" with a request of its OWN, made at mount (the episode page's).</summary>
     internal sealed class Recommendations : Component

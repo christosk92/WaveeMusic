@@ -257,6 +257,10 @@ public sealed class ClassicStructure : IStructureLayer
         ClassicSettings.Register(views);
         // T10c2: Recents, the profile page and the Following / Followers list page (`Views\Pages`). The shapes, demands, accents, scroll spies, load rules and every verb stay core.
         views.Add(ViewKeys.RecentsPage, ClassicRecents.Template, "classic.recents.page");
+        // The podcast pages v2: not drawn by Classic yet (ShellCapabilities.PodcastPages false keeps the older reader pages).
+        CommonNothing.Register(views, ViewKeys.PodcastShowPage);
+        CommonNothing.Register(views, ViewKeys.PodcastEpisodePage);
+        CommonNothing.Register(views, ViewKeys.AudiobookPage);
         ClassicProfile.Register(views);
         ClassicProfileList.Register(views);
         // T9b: the album and playlist sub-contracts of the detail frame. The notice strip and the vertical arm's trailing body (the frame's two leaves only an album or a

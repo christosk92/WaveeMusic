@@ -17,7 +17,12 @@
 //   · sh1 — EPISODIC, NEW. No progress anywhere; explicit on the even-numbered episodes, and so the show; ★ 4.6.
 //   · sh2 — VIDEO + EXCLUSIVE, CAUGHT UP. Every episode played (each a day after it came out, so nothing is new since);
 //     one of them `Paywalled | PreviewOnly`; the listener's own five stars.
-//   · sh3-sh8 — ch 09's cards as they were (sh3 keeps its two degraded ones, one "continue" card at a third). Facts and
+//   · sh4 — EPISODIC, NEW EPISODES (podcast pages v2 "New episodes"): one a month across two years; the third to the seventh newest played (the last
+//     play a day after the third came out), the two newest out since then ("new since your last visit": the visit is pinned at that last play),
+//     the oldest five unplayed, nothing in progress.
+//   · sh5 — EPISODIC, IN PROGRESS (v2 "In progress"): #2 at 40 % (played 3 days ago, the resume), #4 at 70 %, the older ones played.
+//   · sh6 — SERIAL, FIRST VISIT (v2 "First visit, serial show"): `Order = Sequential`, no progress anywhere, a trailer (`spotify:episode:sh6trailer`).
+//   · sh3, sh7, sh8 — ch 09's cards as they were (sh3 keeps its two degraded ones, one "continue" card at a third). Facts and
 //     Rating are answered EMPTY — episodic, no trailer, no public rating — known, so the show page's `ShowFields.All`
 //     demand never reaches a provider offline (G-260), and empty, so the rail paints nothing it was not given.
 //
@@ -36,6 +41,10 @@ public static partial class Entities
 
         /// <summary>sh0 the returning serial · sh1 the new visitor · sh2 the caught-up listener.</summary>
         const int SerialShow = 0, NewShow = 1, CaughtUpShow = 2;
+        /// <summary>The podcast pages v2 states: new episodes since the last visit · episodes in progress · a serial's first visit.</summary>
+        const int FreshShow = 4, ProgressShow = 5, ColdSerialShow = 6;
+        /// <summary>sh4: one episode a month; the newest <see cref="FreshCount"/> came out after the last play; the next five are played.</summary>
+        const int FreshCount = 2, FreshPlayed = 5;
         /// <summary>sh0's membership: numbered 14 → 1, newest first.</summary>
         const int SerialEpisodes = 14;
         /// <summary>sh0: episodes 1..<see cref="LastPlayed"/> are played; <see cref="Resume"/> is in progress at
@@ -56,7 +65,7 @@ public static partial class Entities
             show.Known |= (uint)(ShowFields.Facts | ShowFields.Rating | ShowFields.Appearance | ShowFields.Topics | ShowFields.Html);
             show.HtmlDescription = show.Description;
             if (sh == SerialShow) show.Topics = Text(s, "Culture\nStories\nSociety\nHistory\nInterviews\nIdeas");
-            show.Order = (byte)(sh == SerialShow ? ConsumptionOrder.Sequential : ConsumptionOrder.Episodic);
+            show.Order = (byte)(sh is SerialShow or ColdSerialShow ? ConsumptionOrder.Sequential : ConsumptionOrder.Episodic);
             switch (sh)
             {
                 case SerialShow:
@@ -76,6 +85,21 @@ public static partial class Entities
                     show.RatingX100 = 430;
                     show.RatingCount = 2_046;
                     show.MyRating = 5;
+                    break;
+                case FreshShow:
+                    show.Topics = Text(s, "Science\nEducation");
+                    show.Flags = (uint)(ShowFlags.Video | ShowFlags.CanRate);
+                    show.RatingX100 = 490;
+                    show.RatingCount = 12_579;
+                    show.Tone = 0xFF8A6A1C;
+                    break;
+                case ColdSerialShow:
+                    show.Topics = Text(s, "True crime\nDocumentary");
+                    show.Trailer = Text(s, TrailerUri(sh));
+                    show.Flags = (uint)ShowFlags.CanRate;
+                    show.RatingX100 = 470;
+                    show.RatingCount = 8_204;
+                    show.Tone = 0xFF1C5560;
                     break;
             }
         }
@@ -111,6 +135,20 @@ public static partial class Entities
                         : EpisodeFlags.Video);
                     Played(ref ep, ep.PublishedAt + Day);
                     break;
+                case FreshShow:
+                    ep.PublishedAt = (int)(now0 - i * 30 * Day - sh * Day);
+                    ep.Flags = i % 3 == 0 ? (uint)EpisodeFlags.Video : 0u;
+                    if (i >= FreshCount && i < FreshCount + FreshPlayed)
+                        Played(ref ep, now0 - FreshCount * 30 * Day - sh * Day + Day - (i - FreshCount) * Day);
+                    if (i == FreshCount) PodcastPages.PinVisit(ShowUri(sh), (now0 - FreshCount * 30 * Day - sh * Day + Day) * 1000L);
+                    break;
+                case ProgressShow:
+                    if (i == 1) { ep.ProgressMs = ep.DurationMs / 10 * 4; ep.PlayedAt = (int)(now0 - 3 * Day); }
+                    else if (i == 3) { ep.ProgressMs = ep.DurationMs / 10 * 7; ep.PlayedAt = (int)(now0 - 10 * Day); }
+                    else if (i >= 4) Played(ref ep, ep.PublishedAt + Day);
+                    break;
+                case ColdSerialShow:
+                    break;
                 default:
                     // ch 09's one "continue listening" card at a third, played two days after it came out
                     if (i == 1)
@@ -142,16 +180,22 @@ public static partial class Entities
         /// <see cref="ShowTable.Trailer"/>, and the episode count stays the fourteen numbered ones.</summary>
         static void StageTrailer(Staging s, long now0)
         {
-            string name = s_showNames[SerialShow];
-            ref var ep = ref s.Episodes.RowFor(Text(s, TrailerUri(SerialShow)), Authority.Seed, (uint)EpisodeFields.All);
+            StageTrailer(s, now0, SerialShow);
+            StageTrailer(s, now0, ColdSerialShow);
+        }
+
+        static void StageTrailer(Staging s, long now0, int sh)
+        {
+            string name = s_showNames[sh];
+            ref var ep = ref s.Episodes.RowFor(Text(s, TrailerUri(sh)), Authority.Seed, (uint)EpisodeFields.All);
             ep.Title = Text(s, "Hear what " + name + " is about");
-            ep.Image = Text(s, Cover(SerialShow + 2));
+            ep.Image = Text(s, Cover(sh + 2));
             ep.Description = Text(s, "Two minutes on what " + name + " is, and why it is best heard from episode one.");
             ep.HtmlDescription = ep.Description;
             ep.DurationMs = 2 * 60_000;
-            ep.PublishedAt = (int)(now0 - (SerialEpisodes * 7 + 3) * Day);
+            ep.PublishedAt = (int)(now0 - (EpisodesIn(sh) * 7 + 3) * Day);
             ep.Kind = (byte)EpisodeKind.Trailer;
-            ep.ShowUri = Text(s, ShowUri(SerialShow));
+            ep.ShowUri = Text(s, ShowUri(sh));
         }
     }
 }

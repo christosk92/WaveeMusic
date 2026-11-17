@@ -366,6 +366,8 @@ internal static partial class WinUiDetailFrame
     /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve
     /// when it lands. Each side is the words' own column (the info box's gap and alignment); the rows the data brings (a description) open with the swap
     /// (SmoothResize: the region's height eases through real layout, so the list bar and the rows under the hero ride it).</summary>
+    static readonly Func<bool> s_never = static () => false;
+
     static Element Words(WinUiHeroForm form, bool center, Element[] words, Func<bool> pending, Func<Element[]> shimmer)
     {
         Element Column(Element[] kids) => new BoxEl
