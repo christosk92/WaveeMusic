@@ -178,6 +178,9 @@ public static partial class Diagnostics
                 public double Flush, Layout, Anim, Record, Submit, Post, Jit, Gpu, LongestUnit, SlowestEffect;
                 public int Measures, ScopedMarks, Escapes, Components, ReactiveUnits, BindingWrites, TextShapes, Gc0, Gc1, Gc2;
                 public long HotAlloc;
+                /// <summary>Glyph quads the GPU backend dropped from this frame (its instance buffer was full): text missing from the
+                /// presented frame, a visible defect the gate fails on (<see cref="FluentGpu.Render.RenderDrops"/>).</summary>
+                public long GlyphsDropped;
                 public bool Animating, Rendered, Presented;
                 public string? Census, EffectOwner;
                 public List<(string Key, int Measures, string Kind)> Scopes = [];
@@ -188,9 +191,12 @@ public static partial class Diagnostics
                 public bool Steady => Animating && Components == 0 && ReactiveUnits == 0 && BindingWrites == 0 && Measures == 0;
             }
 
+            long _glyphDrops = FluentGpu.Render.RenderDrops.Glyphs;
+
             void OnFrame(FrameStats s)
             {
                 if (_host is not { } host) return;
+                long drops = FluentGpu.Render.RenderDrops.Glyphs;
                 var row = new Row
                 {
                     Index = Frames.Count, Label = Label,
@@ -200,7 +206,9 @@ public static partial class Diagnostics
                     ReactiveUnits = s.ReactiveUnits, BindingWrites = s.BindingWrites, TextShapes = s.TextShapes, Gc0 = s.Gc0Delta, Gc1 = s.Gc1Delta, Gc2 = s.Gc2Delta,
                     HotAlloc = s.HotPhaseAllocBytes, Animating = host.Animation.HasActive, Rendered = s.Rendered, Presented = s.Presented,
                     Census = s.Census, EffectOwner = s.SlowestEffectOwnerType?.Name,
+                    GlyphsDropped = drops - _glyphDrops,
                 };
+                _glyphDrops = drops;
                 if (_scopes.Count > 0)
                 {
                     _scopes.Sort(static (x, y) => y.Measures.CompareTo(x.Measures));
@@ -240,6 +248,7 @@ public static partial class Diagnostics
                 public List<Over> Over = [];
                 public List<Row> Alloc = [];
                 public List<Row> AllocOther = [];
+                public List<Row> Dropped = [];
             }
 
             public Report Judge(float? budgetArg)
@@ -256,6 +265,7 @@ public static partial class Diagnostics
                         r.Over.Add(new Over(f, cost, top, topMs, Why(f, top)));
                     }
                     if (f.HotAlloc > 0) (f.Steady ? r.Alloc : r.AllocOther).Add(f);
+                    if (f.GlyphsDropped > 0) r.Dropped.Add(f);
                 }
                 return r;
             }
@@ -326,8 +336,22 @@ public static partial class Diagnostics
                 w.WriteStartObject("gate");
                 w.WriteNumber("over", r.Over.Count);
                 w.WriteNumber("alloc", r.Alloc.Count);
-                w.WriteBoolean("failed", r.Over.Count > 0 || r.Alloc.Count > 0);
+                w.WriteNumber("dropped", r.Dropped.Count);
+                w.WriteBoolean("failed", r.Over.Count > 0 || r.Alloc.Count > 0 || r.Dropped.Count > 0);
                 w.WriteEndObject();
+                // A frame the GPU backend drew less than it was given (a full glyph instance buffer): text missing for a frame.
+                // glyphsDroppedSession: every glyph quad dropped since the process started (the mount's frames included).
+                w.WriteNumber("glyphsDroppedSession", FluentGpu.Render.RenderDrops.Glyphs);
+                w.WriteStartArray("dropped");
+                foreach (Row f in r.Dropped)
+                {
+                    w.WriteStartObject();
+                    w.WriteNumber("frame", f.Index);
+                    w.WriteString("verb", f.Label);
+                    w.WriteNumber("glyphs", f.GlyphsDropped);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
 
                 // per verb: frames, the worst judged frame, p95, presents, jit and hot alloc
                 w.WriteStartArray("verbs");
