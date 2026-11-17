@@ -62,7 +62,11 @@ public sealed record PodcastSmart(
 
 /// <summary>One group of the episode list: "New since your last visit" (<see cref="Fresh"/>, offers Mark all as played), a year, or a serial's "In order".
 /// <see cref="Count"/> is the group's stated size (the year's whole count when known). <see cref="Rows"/> index <see cref="PodcastShowView.Episodes"/>.</summary>
-public sealed record PodcastGroup(string Key, string Title, int Count, bool Fresh, ImmutableArray<int> Rows);
+public sealed record PodcastGroup(string Key, string Title, int Count, bool Fresh, ImmutableArray<int> Rows)
+{
+    /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
+    public string CountText { get; init; } = "";
+}
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
 public sealed record PodcastYear(int Year, string Label, string Count)
@@ -72,7 +76,11 @@ public sealed record PodcastYear(int Year, string Label, string Count)
 }
 
 /// <summary>A filter of the SelectorBar with its count (0 shows no count).</summary>
-public sealed record PodcastFilterVm(PodcastFilter Filter, string Label, int Count);
+public sealed record PodcastFilterVm(PodcastFilter Filter, string Label, int Count)
+{
+    /// <summary><see cref="Count"/> as the SelectorBar shows it ("" = none).</summary>
+    public string CountText { get; init; } = "";
+}
 
 /// <summary>A "More like this" card: a show or a book.</summary>
 public sealed record PodcastCardVm(string Uri, string Title, string Subtitle, string? ArtUrl);

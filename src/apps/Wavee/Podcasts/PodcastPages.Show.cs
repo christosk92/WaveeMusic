@@ -521,10 +521,10 @@ sealed class ShowModel
         var groups = GroupsOf(vms, view, serial, oldestCell, !q.IsEmpty, filter == PodcastFilter.All && q.IsEmpty, years);
 
         var filters = ImmutableArray.Create(
-            new PodcastFilterVm(PodcastFilter.All, Loc.Get(Strings.Podcast.Pages.FilterAll), total),
-            new PodcastFilterVm(PodcastFilter.Unplayed, Loc.Get(Strings.Podcast.Pages.FilterUnplayed), unplayed),
-            new PodcastFilterVm(PodcastFilter.InProgress, Loc.Get(Strings.Podcast.Pages.FilterInProgress), inProgress),
-            new PodcastFilterVm(PodcastFilter.Saved, Loc.Get(Strings.Podcast.Pages.FilterSaved), saved));
+            new PodcastFilterVm(PodcastFilter.All, Loc.Get(Strings.Podcast.Pages.FilterAll), total) { CountText = total > 0 ? FormatCache.Int(total) : "" },
+            new PodcastFilterVm(PodcastFilter.Unplayed, Loc.Get(Strings.Podcast.Pages.FilterUnplayed), unplayed) { CountText = unplayed > 0 ? FormatCache.Int(unplayed) : "" },
+            new PodcastFilterVm(PodcastFilter.InProgress, Loc.Get(Strings.Podcast.Pages.FilterInProgress), inProgress) { CountText = inProgress > 0 ? FormatCache.Int(inProgress) : "" },
+            new PodcastFilterVm(PodcastFilter.Saved, Loc.Get(Strings.Podcast.Pages.FilterSaved), saved) { CountText = saved > 0 ? FormatCache.Int(saved) : "" });
 
         var head = HeadOf(show, page, known, following, serial, total, cadence, published, trailer, trailerId);
         bool hasMore = page.CanLoadMore && filter == PodcastFilter.All && q.IsEmpty;
@@ -639,7 +639,7 @@ sealed class ShowModel
         {
             var all = ImmutableArray.CreateBuilder<int>(view.Count);
             for (int k = 0; k < view.Count; k++) all.Add(k);
-            groups.Add(new PodcastGroup("order", Loc.Get(Strings.Podcast.Pages.InOrder), view.Count, false, all.MoveToImmutable()));
+            groups.Add(new PodcastGroup("order", Loc.Get(Strings.Podcast.Pages.InOrder), view.Count, false, all.MoveToImmutable()) { CountText = FormatCache.Int(view.Count) });
             return groups.ToImmutable();
         }
         var inFresh = new bool[view.Count];
@@ -648,7 +648,7 @@ sealed class ShowModel
             for (int k = 0; k < view.Count; k++)
                 if (vms[view[k]].State == PodcastRowState.New) { freshRows.Add(k); inFresh[k] = true; }
         if (freshRows.Count > 0)
-            groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), freshRows.Count, true, freshRows.ToImmutable()));
+            groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), freshRows.Count, true, freshRows.ToImmutable()) { CountText = FormatCache.Int(freshRows.Count) });
         int currentYear = int.MinValue;
         ImmutableArray<int>.Builder? rows = null;
         for (int k = 0; k < view.Count; k++)
@@ -674,7 +674,7 @@ sealed class ShowModel
                 foreach (var y in years)
                     if (y.Year == year) { count = Math.Max(count, y.Episodes); break; }
             string title = year > 0 ? year.ToString(CultureInfo.InvariantCulture) : "";
-            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()));
+            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count) });
         }
     }
 

@@ -58,8 +58,9 @@ internal static class WinUiPodcastKit
 
     /// <summary>The page: the scroller (key <c>podcast-scroll:</c> + <paramref name="routeKey"/>) over the wash and <paramref name="content"/> (a column
     /// that already carries the gutters), and <paramref name="bar"/> over it while <paramref name="barOn"/> holds. <paramref name="scroll"/> is the page's
-    /// handle (the caller keeps it, e.g. to jump to a year).</summary>
-    public static Element Page(string routeKey, uint tone, IReadSignal<bool> barOn, Element content, Element bar, ScrollHandle? scroll = null)
+    /// handle (the caller keeps it, e.g. to jump to a year); <paramref name="viewport"/> receives the scroller's node (for <c>scene.BringIntoView</c>).</summary>
+    public static Element Page(string routeKey, uint tone, IReadSignal<bool> barOn, Element content, Element bar, ScrollHandle? scroll = null,
+        Action<NodeHandle>? viewport = null)
     {
         var wash = K.Wash(tone);
         Element body = new BoxEl
@@ -74,7 +75,7 @@ internal static class WinUiPodcastKit
         Element scroller = ScrollView(new BoxEl { Direction = 1, MinWidth = 0f, Children = [body] }) with
         {
             Key = "podcast-scroll:" + routeKey, Grow = 1f, ScrollKey = "podcast-scroll:" + routeKey, Handle = scroll,
-            EdgeCues = ScrollEdgeCues.None,
+            EdgeCues = ScrollEdgeCues.None, OnRealized = viewport,
         };
         Element barLayer = new BoxEl
         {

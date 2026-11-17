@@ -1189,6 +1189,7 @@
       "audioOnly": "Audio only",
       "notifyUnavailable": "New-episode notifications are not available yet",
       "rateUnavailable": "Rating a show is not available yet",
+      "loadMore": "Load more episodes",
       "play": "Play",
       "playAgain": "Play again",
       "pause": "Pause",

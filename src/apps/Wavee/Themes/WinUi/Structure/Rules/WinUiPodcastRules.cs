@@ -121,6 +121,13 @@ internal static class WinUiPodcastShowRules
     public const float RatingCardPad = 12f, RatingStar = 16f, FactsColGap = 16f, FactsRowGap = 6f, FactLabelW = 96f;
     /// <summary>The empty list's air.</summary>
     public const float EmptyPad = 32f;
+    /// <summary>A tag in the eyebrow (Video, Serial): 20 tall, 6 inside, r4.</summary>
+    public const float TagH = 20f, TagPadX = 6f, TagGap = 4f, TagGlyph = 12f;
+    /// <summary>The meta line's star, the gap after the commands' column, the compact filter ComboBox's least width.</summary>
+    public const float MetaStar = 14f, ComboW = 200f, SortW = 32f, HintPad = 24f, ChapterTimeW = 56f;
+    /// <summary>The rating card's five stars (a rating x100 rounds to whole stars); the semibold weight.</summary>
+    public const int Stars = 5, StarRound = 50, StarScale = 100;
+    public const ushort Strong = 600;
     public const string PageKey = "podcast-show";
 }
 
