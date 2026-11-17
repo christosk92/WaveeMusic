@@ -264,13 +264,19 @@ public sealed class SpotlightCard : Component, IPreviewOwner
             };
         }, DepKey.Empty);
 
-        return Tree(p, facts, this);
+        // The album's own menu joined to the Home tile's rows it stands in (right-click on the card): one menu, the album's verbs first.
+        var overlay = UseContext(Overlay.Service);
+        var tile = UseContext(HomeTileMenus.Current);
+        var tree = Tree(p, facts, this);
+        var card = item.Card;
+        var menu = item.IsBlank ? null : HomeTileMenus.Merge(HomeCardNav.MenuOf(in card), tile);
+        return menu is not null && overlay is not null && !Controls.IsNullOverlay(overlay) ? tree.WithContextMenu(overlay, menu) : tree;
     }
 
     /// <summary>The card's tree: what the mounted card renders (<paramref name="card"/> its instance: the pointer's handlers, the nodes it
     /// animates) and, with no card, its loading proxy (the same builders over the same facts, nothing wired): the skeleton derives the real
     /// card at its real size.</summary>
-    internal static Element Tree(SpotlightCardProps p, SpotlightFacts facts, SpotlightCard? card)
+    internal static BoxEl Tree(SpotlightCardProps p, SpotlightFacts facts, SpotlightCard? card)
     {
         var item = p.Item;
         var g = p.Geo;

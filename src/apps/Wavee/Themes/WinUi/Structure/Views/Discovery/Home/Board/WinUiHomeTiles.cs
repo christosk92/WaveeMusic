@@ -186,7 +186,8 @@ internal static class WinUiHomeTiles
             return new BoxEl
             {
                 Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [moreInContent ? content : HomeTileMenus.Host(f, s_rows, content)],
+                // Hosted either way: content with a menu of its own (a release spotlight's album) joins the tile's rows to it on a right-click.
+                Children = [HomeTileMenus.Host(f, s_rows, content)],
             };
         Element more = menu == MoreMenu.None ? new BoxEl() : More(ctx, f, menu, item);
         string id = f.Entry.Id;
