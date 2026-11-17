@@ -1122,6 +1122,9 @@ public static partial class Shell
             case "home-land": return Entities.StageHomeAnswer("");
             case "home-following": return Entities.StageHomeAnswer("music-following-chip");
             case "home-previews": return Entities.StageHomePreviews();
+            // A daylist rollover as the live feed serves it (Entities.Fake.Home.cs): the generic pre-title card, then the header's edition.
+            case "daylist-generic": return Entities.StageDaylistGeneric();
+            case "daylist-land": return Entities.StageDaylistLand();
             default: return false;
         }
     }

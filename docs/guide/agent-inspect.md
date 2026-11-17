@@ -612,6 +612,11 @@ forgets the All answer, the Following facet's answer and the baseline lookup the
 board shows its placeholders), each land step concludes one of them. Mount from another route (`route=browse`), stage `home-cold`, then
 `goto route=home`, and trace each step (`trace=90 prefix=home:tile:`): the proof that a load moves nothing at once.
 
+`state kind=daylist-generic`, then `daylist-land`, stage a daylist rollover as the live feed serves it: the All answer's daylist in its
+generic pre-title state (the name "daylist", no tags, no basis, a provisional window), then the playlist's own header read landing the
+edition (a descriptive name, tags with links, a basis and a window 8 minutes later). The card must follow the land (its row gate) and
+its countdown must name the header's window, the one the playlist page shows.
+
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
 `zzqx`, which the fake catalogue never answers: its request stays in flight, so the page stays on its skeleton (the chips, the top result and the

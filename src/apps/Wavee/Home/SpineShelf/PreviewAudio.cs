@@ -357,7 +357,7 @@ public static class PreviewAudio
         if (s_tile.Length > 0)
         {
             var owner = s_owner;
-            string why = owner is null ? "owner" : owner.HoldFails(s_code);
+            string why = owner is null ? "owner" : owner.HoldFails(s_code, s_tile);
             if (why.Length > 0)
             {
                 int code = s_code;

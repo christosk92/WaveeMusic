@@ -341,7 +341,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-cold", "home-land", "home-following", "home-previews", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -688,7 +688,14 @@ public static partial class Diagnostics
                 Args = Join([Arg("path", ArgType.List, "waypoints: key[@ms], at:x:y[@ms] or leave[@ms]"),
                              IntArg("steps", "frames each glide takes (one move per frame)", "6", 1, 600),
                              IntArg("dwell", "ms rested at a waypoint that names none", "0", 0, 60_000),
-                             Arg("ease", ArgType.Enum, "the glide's pace: linear (even steps) or inout (a hand's start and stop: cubic ease in-out, as the live driver records)", "linear", "linear|inout")], s_settleArgs),
+                             Arg("ease", ArgType.Enum, "the glide's pace: linear (even steps) or inout (a hand's start and stop: cubic ease in-out, as the live driver records)", "linear", "linear|inout"),
+                             Arg("film", ArgType.Path, "film the walk itself: a contact sheet (.png) of the path's frames and `tail` more, with film's every/cols/scale/crop and the keys'/prefixes' motion curves (each key waypoint is aimed when its leg starts, so a target that moved is followed)"),
+                             IntArg("tail", "with film: frames filmed after the last waypoint's rest", "30", 0, 600),
+                             Arg("keys", ArgType.List, "with film: exact keys whose motion curves to write"),
+                             Arg("prefix", ArgType.List, "with film: key prefixes whose motion curves to write"),
+                             IntArg("every", "with film: keep every Nth frame (the last always)", "2", 1, 600), IntArg("cols", "with film: cells per row", "6", 1, 20),
+                             Arg("scale", ArgType.Float, "with film: each cell's scale of the frame", "0.5"),
+                             Arg("crop", ArgType.Key, "with film: cells show only this node's drawn rect")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];

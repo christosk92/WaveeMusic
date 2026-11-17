@@ -1,9 +1,11 @@
 // ── Home/SpineShelf/ShelfPreview.cs — the Spine Shelf's hover media: ONE canvas player, ONE clip player, one policy ─────────────────────────
 //
 //   Live      the tile the pointer (or focus) is on, "<item key>#<song>" ("" none). Set at once on enter; the tile widens on it.
-//   Showing   the tile whose canvas video is presented. Set when the tile has finished widening AND its canvas file is on disk: the
-//             engine draws video in a DirectComposition hole that cannot follow a moving clip (Shell/Video.UI.cs rule 1), so the video
-//             takes over the still only on a settled tile, and leaves first (Showing clears before the tile narrows).
+//   Showing   the tile whose canvas video element is mounted (under its still, in the still's box). Set when the tile has come to rest
+//             AND its canvas file is on disk (the open's start cost lands on a still frame); the still fades out on the video's first
+//             frame. On a leave the tile keeps it while its still fades back in over it and the tile narrows (the video follows the
+//             tile's moving clip: the engine keeps a video's ancestor chain UI-owned), then the shelf releases it (Release); a tile that
+//             settles meanwhile waits for that release (one player).
 //
 // Only one video decodes: the one player is re-opened per hover. The player is built once, the first time a shelf mounts in a window
 // that composites video (MF startup and the engine pair are paid there, never on a hover), over its own MF backend as the canvas host's
@@ -33,6 +35,7 @@ public static class ShelfPreview
     static IMediaBackend? s_builtOver;
     static MediaPlayer? s_video;
     static string s_openFile = "";
+    static string s_waiting = "";   // a settled tile waiting for the previous tile's video to be released
     static ShelfSong s_song;
     static bool s_media, s_fake;
 
@@ -96,6 +99,7 @@ public static class ShelfPreview
         if (s_song.Clip is { } clip) PreviewAudio.Start(tile, clip);   // always (muted unless the sound button is on); a re-settle is a no-op
         if (Showing.Peek() == tile) return;
         if (!s_media || s_video is not { } player || s_song.Canvas is not { } url) return;
+        if (Showing.Peek().Length > 0) { s_waiting = tile; return; }   // the tile left is still handing its video back (Release)
         // The fake backend (the inspector) opens anything: it takes the url itself; a real one plays the cached file.
         string file = s_fake ? url : CanvasVideo.Files.Ensure(url, priority: true);
         if (file.Length == 0) return;
@@ -108,15 +112,32 @@ public static class ShelfPreview
         else _ = player.PlayAsync();
     }
 
-    /// <summary>The pointer left the live tile (or its card closed): the video stops now, the clip fades out (PreviewAudio).</summary>
-    public static void Leave()
+    /// <summary>The pointer left the live tile (or its card closed): the clip fades out (PreviewAudio), and the video stops now unless
+    /// <paramref name="release"/> is false (the tile keeps it under its still's fade back in, then calls <see cref="Release"/>).</summary>
+    public static void Leave(bool release = true)
     {
         string tile = Live.Peek();
         if (tile.Length == 0) return;
-        Showing.Value = "";
+        s_waiting = "";
+        if (release)
+        {
+            Showing.Value = "";
+            if (s_video is { } v) _ = v.PauseAsync();
+        }
         Live.Value = "";
-        if (s_video is { } v) _ = v.PauseAsync();
         PreviewAudio.Leave(tile);   // ignored when the pointer already moved on to another tile (that one holds the claim)
+    }
+
+    /// <summary>The tile the pointer left has covered its video with its still again: the video element goes, and a tile that settled meanwhile
+    /// gets the player now (else it pauses).</summary>
+    public static void Release(string tile)
+    {
+        if (Showing.Peek() != tile) return;
+        Showing.Value = "";
+        string waiting = s_waiting;
+        s_waiting = "";
+        if (waiting.Length > 0 && waiting == Live.Peek()) Settled(waiting);
+        else if (s_video is { } v) _ = v.PauseAsync();
     }
 
     static async void OpenVideo(MediaPlayer player, string file)

@@ -43,10 +43,27 @@ public sealed record DaylistProps(Zone Zone, IOverlayService? Overlay)
 [CoreHost]
 public sealed class DaylistCard : Component
 {
+    // The zone is a HANDLE: the card's words (title, tags, basis, window, count) live on the playlist row, which the playlist's own header
+    // read rewrites after the feed answer the zone came in (a daylist the feed served in its generic pre-title state, a later window). The
+    // gate below wakes this host when THAT row changes, and only then (a memo over the row's version, not the whole table's publication).
+    HomeCard _card;
+    readonly Func<uint> _rowStamp;
+
+    public DaylistCard() => _rowStamp = RowStamp;
+
+    uint RowStamp()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Playlists.Changed.Value;
+        return _card.PlaylistVersion;
+    }
+
     public override Element Render()
     {
         var p = UseProps<DaylistProps>();
         var zone = p.Zone;
+        _card = zone.Items.Count > 0 ? zone.Items[0] : default;
+        _ = UseComputed(_rowStamp).Value;                    // the card's playlist row changed: re-read its words
         string eyebrow = Eyebrow();                          // subscribing read (users table + scope) — hooks first
 
         var host = Controls.IsNullOverlay(p.Overlay) ? null : p.Overlay;
