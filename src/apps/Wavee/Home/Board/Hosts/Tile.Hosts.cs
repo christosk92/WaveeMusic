@@ -56,11 +56,16 @@ public sealed class HomeTileHost : Component
         var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay, p.View);
         if (p.Cell is not null) s_forms[p.Entry.Id] = form;
         var e = p.Entry;
-        if (e.Kind == BoardEntryKind.Placeholder || e.Kind == BoardEntryKind.FillCell && e.Feed == HomeFeedState.Loading)
+        // A feed placeholder, a shortcut cell or a section whose answer is on its way (each carries the feed's state): the vacancy, which while
+        // loading draws the tile's own view over its seed (a seed zone of the shape it drew last; a pin tile with no name and no cover).
+        if (e.Kind == BoardEntryKind.Placeholder || e.Feed != HomeFeedState.Ready)
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps
             {
                 Frame = frame, Name = e.Title,
                 Reason = e.Feed switch { HomeFeedState.Offline => HomeTileVacancy.Offline, HomeFeedState.Error => HomeTileVacancy.Failed, _ => HomeTileVacancy.Loading },
+                // A shortcut cell is a pin tile with no name and no cover; a feed shelf is a section over blank cards.
+                Skeleton = e.Feed != HomeFeedState.Loading ? null
+                    : e.Kind == BoardEntryKind.FillCell ? () => HomeTileSkeletons.Pin(frame) : () => HomeTileSkeletons.Section(frame),
             });
         if (e.Paused && e.Live && e.Raw is WidgetSource { Widget: "nowPlaying" })
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps { Frame = frame, Reason = HomeTileVacancy.Paused, Name = e.Title });
@@ -237,12 +242,12 @@ public sealed class ReleasesTileHost : Component
 {
     /// <summary>A widget whose data is not on hand: the vacancy the feed's own tiles show in that state (a flat placeholder shaped by
     /// <paramref name="seed"/> while it loads; the offline or failed face), or null once the data is here.</summary>
-    internal static Element? Pending(HomeTileFrame frame, HomeFeedState state, Zone seed) => state switch
+    internal static Element? Pending(HomeTileFrame frame, HomeFeedState state, Func<Element> skeleton) => state switch
     {
         HomeFeedState.Ready => null,
         _ => Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps
         {
-            Frame = frame, Seed = seed,
+            Frame = frame, Skeleton = state == HomeFeedState.Loading ? skeleton : null,
             Reason = state switch { HomeFeedState.Offline => HomeTileVacancy.Offline, HomeFeedState.Error => HomeTileVacancy.Failed, _ => HomeTileVacancy.Loading },
         }),
     };
@@ -251,7 +256,8 @@ public sealed class ReleasesTileHost : Component
     {
         var p = UseProps<WidgetTileProps>();
         // Its answers on their way: the loaded list's placeholder, never an empty band (owner rule 11-15: flat, at the loaded size).
-        if (Pending(p.Frame, HomeBoardZones.ReleasesState(), HomeBoardZones.ReleasesSeed) is { } vacant) return vacant;
+        var frame = p.Frame;
+        if (Pending(frame, HomeBoardZones.ReleasesState(), () => HomeTileSkeletons.Releases(frame)) is { } vacant) return vacant;
         var zone = HomeBoardZones.ReleasesZone(p.Frame.Entry);
         return Slots.View(ViewKeys.HomeTileReleases, new HomeReleasesTileProps { Frame = p.Frame, Zone = zone, SeeAll = HomeVerbs.SeeAll(zone) });
     }
@@ -264,18 +270,23 @@ public sealed class DaylistTileHost : Component
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
-        if (ReleasesTileHost.Pending(p.Frame, HomeBoardZones.DaylistState(), HomeBoardZones.DaylistSeed) is { } vacant) return vacant;
-        var zone = HomeBoardZones.DaylistZone(p.Frame.Entry);
-        var overlay = p.Frame.Overlay;
+        var frame = p.Frame;
+        if (ReleasesTileHost.Pending(frame, HomeBoardZones.DaylistState(), () => HomeTileSkeletons.Daylist(frame)) is { } vacant) return vacant;
+        return Slots.View(ViewKeys.HomeTileDaylist, PropsOf(frame, HomeBoardZones.DaylistZone(frame.Entry)));
+    }
+
+    /// <summary>The tile's props over <paramref name="zone"/> (today's daylist, or its blank seed).</summary>
+    internal static HomeDaylistTileProps PropsOf(HomeTileFrame frame, Zone zone)
+    {
         string uri = zone.Items.Count > 0 ? zone.Items[0].Uri : "";
-        return Slots.View(ViewKeys.HomeTileDaylist, new HomeDaylistTileProps
+        return new HomeDaylistTileProps
         {
-            Frame = p.Frame,
+            Frame = frame,
             Zone = zone,
-            Card = Embed.Comp(new DaylistProps(zone, overlay), static () => new DaylistCard()),
+            Card = Embed.Comp(new DaylistProps(zone, frame.Overlay), static () => new DaylistCard()),
             Eyebrow = DaylistCard.EyebrowText,
             Play = uri.Length > 0 ? () => Playback.PlayOrToggleContext(uri, "home.tile") : null,
-        });
+        };
     }
 }
 
@@ -338,4 +349,35 @@ public sealed class HomeTileOptionsHost : Component
         foreach (var o in source.Options) if (o.Key == key) return o.Default;
         return "";
     }
+}
+
+/// <summary>A loading tile's own view over its seed, for the theme's <c>Skel.Region</c> (<see cref="HomeTileVacantProps.Skeleton"/>): the real
+/// template, derivable, so its placeholder is the loaded tile's shape and size. Pure for its props: nothing registers, plays or fetches.</summary>
+internal static class HomeTileSkeletons
+{
+    static readonly Func<string> s_empty = static () => "";
+    static readonly Func<string?> s_noCover = static () => null;
+    static readonly Func<bool> s_no = static () => false;
+    static readonly Action s_none = static () => { };
+
+    /// <summary>Today's daylist card over its blank seed (each theme's daylist template draws its cold-load shape for a blank card).</summary>
+    public static Element Daylist(HomeTileFrame frame)
+        => Slots.DerivableView(ViewKeys.HomeTileDaylist, DaylistTileHost.PropsOf(frame, HomeBoardZones.DaylistSeed));
+
+    /// <summary>The release list over blank albums.</summary>
+    public static Element Releases(HomeTileFrame frame)
+        => Slots.DerivableView(ViewKeys.HomeTileReleases, new HomeReleasesTileProps { Frame = frame, Zone = HomeBoardZones.ReleasesSeed });
+
+    /// <summary>A shortcut cell: a pin tile with no name and no cover.</summary>
+    public static Element Pin(HomeTileFrame frame) => Slots.DerivableView(ViewKeys.HomeTilePin, new HomePinTileProps
+    {
+        Frame = frame, Name = s_empty, Line = s_empty, Cover = s_noCover, Playing = s_no, Open = s_none, UserPin = false,
+    });
+
+    /// <summary>A section whose answer is on its way: its template over the entry's seed zone (the shape it drew last; a cover shelf where none is on
+    /// record).</summary>
+    public static Element Section(HomeTileFrame frame) => Slots.DerivableView(ViewKeys.HomeTileSection, new HomeSectionTileProps
+    {
+        Frame = frame, Zone = HomeBoardZones.SectionZone(frame.Entry), Template = frame.Entry.Template,
+    });
 }

@@ -34,10 +34,30 @@ public sealed record WidgetSource(string Widget, string? Args) : HomeSource("wid
 /// and drawn as nothing.</summary>
 public sealed record UnknownSource(string RawKind, string RawJson) : HomeSource(RawKind);
 
+/// <summary>What one Spotify section drew as when its answer was last on hand: its key, the template its tile took (after the fold and the
+/// rhythm), how many items it showed, whether it was a member of a fold (a one-card baseline section the projection gathers into one shelf), and
+/// whether its header named an entity (the taller header: the entity's cover beside the lead words and its name), and whether it carried a
+/// subtitle (the header's second line).
+/// A launch draws a section whose answer is on its way as a flat skeleton of this shape, at its place and its loaded size.</summary>
+public readonly record struct SeedShape(string Key, SectionTemplate Template, int Count, bool Fold, bool Head = false, bool Sub = false);
+
 /// <summary>One item. <see cref="Options"/>: "live" = "0" | "1"; unknown keys are kept.</summary>
 public sealed record HomeItem(string Id, HomeSource Source, HomeSize Size,
     ImmutableSortedDictionary<string, string> Options)
 {
+    /// <summary>The shapes the item drew as when the answer was last on hand (the wire's <c>shape</c>): a placed section's one, the feed's every
+    /// section it expanded to, in order. Written by <see cref="HomeBoardStore.RecordShapes"/>, never by a command (no undo step); empty until the
+    /// first answer (a document written before shapes existed fills on its next answer). An older build keeps the member as an unknown one.</summary>
+    public ImmutableArray<SeedShape> Shape { get; init; } = ImmutableArray<SeedShape>.Empty;
+
+    /// <inheritdoc/>
+    public bool Equals(HomeItem? o)
+        => o is not null && Id == o.Id && Source.Equals(o.Source) && Size == o.Size && ReferenceEquals(Options, o.Options)
+           && ReferenceEquals(Extra, o.Extra) && Shape.AsSpan().SequenceEqual(o.Shape.AsSpan());
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(Id, Source, Size);
+
     /// <summary>Unknown members of the item object, kept as raw JSON (name → value) so a newer build's fields
     /// survive a round trip.</summary>
     public ImmutableSortedDictionary<string, string> Extra { get; init; } = ImmutableSortedDictionary<string, string>.Empty;

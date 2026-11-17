@@ -344,7 +344,7 @@ internal static partial class ClassicHomeZones
             bool circular = c.Kind == HomeCardKind.Artist;
             items[i] = wide
                 ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl,
-                                        meta: CardMeta.Of(c.OwnerName, c.TrackCount))
+                                        meta: c.IsBlank ? " " : CardMeta.Of(c.OwnerName, c.TrackCount))
                 : leadWide && i == 0
                     // The lead's "{n} songs" rides INLINE at the tail of its two-line caption (the prototype's
                     // `.lead-meta` span inside `.g-cap`): a cover shelf never grows a separate meta line.

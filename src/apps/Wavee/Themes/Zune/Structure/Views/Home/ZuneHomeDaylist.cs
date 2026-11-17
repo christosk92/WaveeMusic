@@ -61,7 +61,8 @@ internal static class ZuneHomeDaylist
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
         string uri = card.Uri;
-        if (uri.Length == 0) return new BoxEl();
+        // The blank seed card (a board tile whose answer is on its way): the cold-load shape, which the tile's loading region derives.
+        if (uri.Length == 0) return Skeleton(lay);
 
         var c = card;
         string title = card.Title;
@@ -133,8 +134,13 @@ internal static class ZuneHomeDaylist
                               lay.ClockInline);
         string eyebrow = Loc.Get(Strings.Home.YourDaylist);
         return Swap(Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay,
-                     lay.DaylistBleed ? float.NaN : lay.DaylistArtW, null, wordsIn: null), lay, rendered: false);
+                     SkeletonArtWidth(lay), null, wordsIn: null), lay, rendered: false);
     }
+
+    /// <summary>The skeleton's art width: the loaded strip's (<see cref="ArtWidth"/>) at the strip's floor height (<see cref="Extent"/>), the height a
+    /// strip stands at until a longer title grows it.</summary>
+    static float SkeletonArtWidth(ZuneHomeLayout lay)
+        => lay.DaylistBleed ? float.NaN : lay.DaylistArtAspect <= 0f ? lay.DaylistArtW : lay.DaylistArtWidthAt(Extent(lay));
 
     /// <summary>The art's width: the strip's height times the tier's aspect, between the board's width and the tier's cap (a fixed width where the
     /// tier has no aspect). A bound prop: a strip that grows with its title re-lays the art, nothing re-renders.</summary>

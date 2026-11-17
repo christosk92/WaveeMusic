@@ -190,7 +190,9 @@ internal static partial class WinUiHomeZones
         for (int i = 0; i < items.Length; i++)
         {
             var c = zone.Items[i];
-            items[i] = new BookItem(c, c.Title, c.Author ?? HomeCards.PlainText(c.Subtitle), SectionCopy.BookFacts(in c, culture), c.Signifier ?? "", c.ImageUrl);
+            // A blank seed card holds every line a book shows (author, facts, plan), so its skeleton is the loaded card's height.
+            items[i] = c.IsBlank ? new BookItem(c, " ", " ", " ", " ", null)
+                : new BookItem(c, c.Title, c.Author ?? HomeCards.PlainText(c.Subtitle), SectionCopy.BookFacts(in c, culture), c.Signifier ?? "", c.ImageUrl);
         }
         var host = HostOf(overlay);
         return GridFill.Balanced(zone.Key, items.Length, band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,

@@ -59,6 +59,9 @@ public static class HomeProjection
     /// <summary>How many placeholder sections the feed slot holds while its answer is still coming (a failed or offline answer is one).</summary>
     public const int FeedPlaceholders = 4;
 
+    /// <summary>The blank cards of a placeholder shelf: more than any theme's shelf shows in one row.</summary>
+    const int PlaceholderCards = 12;
+
     /// <summary>The id part of a shortcut fill cell that holds a place while the answer naming the shortcuts is on its way.</summary>
     public const string PendingFill = "pending:";
 
@@ -82,7 +85,7 @@ public static class HomeProjection
 
     public static BoardModel Project(HomeDoc doc, IReadOnlyList<SectionInput> answer,
         IReadOnlyList<SectionInput>? followingReleases, ChartTilesModel? charts,
-        HomeSourceRegistry sources, ZoneTitles? titles, long nowMs, HomeFeedState feedState = HomeFeedState.Ready)
+        HomeSourceRegistry sources, ZoneTitles? titles, long nowMs, HomeFeedState feedState = HomeFeedState.Ready, bool followingLoading = false)
     {
         // An answer that is not on hand (or that the inspector says failed) draws nothing of it: the feed slot holds placeholders.
         if (feedState != HomeFeedState.Ready) { answer = []; followingReleases = null; }
@@ -115,6 +118,13 @@ public static class HomeProjection
                 feed.Insert(wideAt >= 0 ? wideAt + 1 : Math.Min(1, feed.Count),
                     new FeedCandidate(new SectionRef(FollowingReleasesKey, Fnv(FollowingReleasesKey), FollowingReleasesKey), releases.Title ?? "",
                         SectionTemplate.ReleaseList, releases.SectionSlot, releases, false, null, []));
+            // Its answer still on the way after All's landed, and the list drew last time: its skeleton at its place, at the shape it drew (it lands
+            // there; never a list that appears and pushes the feed down).
+            else if (!HasWidget(doc, "releases") && followingLoading && ShapeOf(doc, FollowingReleasesKey) is { } fr)
+                feed.Insert(wideAt >= 0 ? wideAt + 1 : Math.Min(1, feed.Count),
+                    new FeedCandidate(new SectionRef(FollowingReleasesKey, Fnv(FollowingReleasesKey), FollowingReleasesKey), titles.FromArtistsYouFollow,
+                        SectionTemplate.ReleaseList, -1, SeedZone(SectionTemplate.ReleaseList, fr.Count, "home:section:" + FollowingReleasesKey, titles.FromArtistsYouFollow),
+                        false, null, []) { Seed = true });
             // Synthetic: the Charts block, last.
             if (charts is not null)
                 feed.Add(new FeedCandidate(new SectionRef(ChartsKey, Fnv(ChartsKey), ChartsKey), "", SectionTemplate.CoverShelf, -1, null, false, null, []));
@@ -162,11 +172,20 @@ public static class HomeProjection
                 var def = sources.Of(it.Source);
                 switch (it.Source)
                 {
+                    case SpotifyFeedSource when feedState == HomeFeedState.Loading && it.Shape.Length > 0:
+                        // Loading, the feed's shape known from the last answer: each section it drew, at its place, as a flat skeleton of its template
+                        // at its loaded size (the entry's id is the loaded one: the answer landing swaps each skeleton for its section where it stands).
+                        foreach (var sh in it.Shape)
+                            if (!placedKeys.Contains(sh.Key))
+                                run.Add(SeedEntry(HomeCommands.FeedPrefix + sh.Key, BoardEntryKind.FeedSection, g.Id, def, sh, "", HomeSize.Auto, it.Options));
+                        break;
                     case SpotifyFeedSource when feedState != HomeFeedState.Ready:
-                        // Loading: shelves at their boxes; failed or offline: one line that says so (not one per missing shelf).
+                        // Loading with no shape on record (a first launch): shelves at their boxes; failed or offline: one line that says so (not one
+                        // per missing shelf).
                         for (int k = 0, places = feedState == HomeFeedState.Loading ? FeedPlaceholders : 1; k < places; k++)
                             run.Add(new BoardEntry("placeholder:" + k.ToString(System.Globalization.CultureInfo.InvariantCulture), BoardEntryKind.Placeholder,
-                                g.Id, def, null, HomeSize.Full, SectionTemplate.CoverShelf, "", false, false, false, false, false, -1) { Feed = feedState });
+                                g.Id, def, null, HomeSize.Full, SectionTemplate.CoverShelf, "", false, false, false, false, false, -1)
+                                { Feed = feedState, Zone = SeedZone(SectionTemplate.CoverShelf, PlaceholderCards, "home:placeholder:" + k.ToString(System.Globalization.CultureInfo.InvariantCulture), "") });
                         break;
                     case SpotifyFeedSource:
                         foreach (var f in feed)
@@ -181,6 +200,10 @@ public static class HomeProjection
                     {
                         if (feedByKey.TryGetValue(ss.Ref.Key, out var f))
                             run.Add(FeedEntry(it.Id, BoardEntryKind.Item, g.Id, def, f, it.Size, it.Options));
+                        else if (feedState == HomeFeedState.Loading && it.Shape.Length > 0)
+                            // Its answer on the way: a flat skeleton of the shape it drew last, at its place (never a hidden entry that appears).
+                            run.Add(SeedEntry(it.Id, BoardEntryKind.Item, g.Id, def, it.Shape[0] with { Key = ss.Ref.Key }, ss.TitleHint, it.Size, it.Options) with
+                            { Raw = ss });
                         else
                             run.Add(new BoardEntry(it.Id, BoardEntryKind.Item, g.Id, def, ss, it.Size, SectionTemplate.CoverShelf,
                                 ss.TitleHint, false, false, false, false, false, -1) { Hidden = true, Options = it.Options });
@@ -230,7 +253,21 @@ public static class HomeProjection
     }
 
     readonly record struct FeedCandidate(SectionRef Ref, string Title, SectionTemplate Template, int Slot, Zone? Zone, bool OneCardBaseline,
-        SectionInput? Input, ImmutableArray<SectionTemplate> Alternates);
+        SectionInput? Input, ImmutableArray<SectionTemplate> Alternates)
+    {
+        /// <summary>A section whose answer is still on its way (its zone a seed): its entry draws the loading skeleton.</summary>
+        public bool Seed { get; init; }
+    }
+
+    /// <summary>The shape the document recorded for the section <paramref name="key"/> (a placed item's or the feed's), or null.</summary>
+    static SeedShape? ShapeOf(HomeDoc doc, string key)
+    {
+        foreach (var g in doc.Groups)
+            foreach (var it in g.Items)
+                foreach (var sh in it.Shape)
+                    if (sh.Key == key) return sh;
+        return null;
+    }
 
     /// <summary>The zones the three data widgets draw, from the All answer by the chooser (the sections they take room from in the feed):
     /// the daylist (the section a daylist leads, its lead card), Recently played (the recently played section, capped at the planner's RecentsCap) and New releases (the release-window sections' albums, then the Following answer's, deduped).</summary>
@@ -317,7 +354,10 @@ public static class HomeProjection
         ImmutableSortedDictionary<string, string> options)
         => new(id, kind, groupId, def, new SpotifySectionSource(f.Ref, f.Title), size, f.Template, f.Title, false, false, false, false,
             kind == BoardEntryKind.FeedSection, f.Slot)
-        { Zone = f.Zone, Options = options, Members = f.OneCardBaseline ? [f.Ref] : [], Alternates = f.Alternates.IsDefault ? [] : f.Alternates };
+        {
+            Zone = f.Zone, Options = options, Members = f.OneCardBaseline ? [f.Ref] : [], Alternates = f.Alternates.IsDefault ? [] : f.Alternates,
+            Feed = f.Seed ? HomeFeedState.Loading : HomeFeedState.Ready,
+        };
 
     /// <summary>Emit a run of section entries, folding two or more neighbouring one-card baseline sections (at their auto
     /// size) into one Spine Shelf, then keeping two neighbours from drawing one template (<see cref="SectionRhythm"/>).
@@ -355,7 +395,8 @@ public static class HomeProjection
                     members.Add(r);
                     if (t_inputs is not null && t_inputs.TryGetValue(r.Key, out var input)) inputs.Add(input);
                 }
-                Zone? zone = titles is not null && inputs.Count == foldable ? FoldZone(members[0].Key, inputs, titles) : first.Zone;
+                Zone? zone = titles is not null && inputs.Count == foldable ? FoldZone(members[0].Key, inputs, titles)
+                    : first.Feed == HomeFeedState.Loading ? SeedFold(members[0].Key, foldable) : first.Zone;
                 into.Add(first with
                 {
                     Id = HomeCommands.FoldPrefix + members[0].Key, Kind = BoardEntryKind.Fold,
@@ -382,6 +423,112 @@ public static class HomeProjection
                 if (SectionRoles.IsUsable(c) && seen.Add(c.DedupeKey)) { cards.Add(c); break; }
         return new Zone(ZoneKind.CoverShelf, "home:fold:" + firstKey, titles.BecauseYouLike, null, cards, SectionSlot: inputs[0].Slot, TotalCount: cards.Count);
     }
+
+    /// <summary>A section whose answer is on its way, as the shape it drew last (<see cref="SeedShape"/>): its template over a seed zone of blank
+    /// cards of the template's kind, as many as it showed (a fold member: one blank card the fold gathers).</summary>
+    static BoardEntry SeedEntry(string id, BoardEntryKind kind, string groupId, HomeSourceDef? def, in SeedShape sh, string title, HomeSize size,
+        ImmutableSortedDictionary<string, string> options)
+    {
+        var r = new SectionRef(sh.Key, 0, "");
+        var template = sh.Fold ? SectionTemplate.SpineShelf : sh.Template;
+        return new BoardEntry(id, kind, groupId, def, new SpotifySectionSource(r, title), size, template, title,
+            false, false, false, false, kind == BoardEntryKind.FeedSection, -1)
+        {
+            Zone = SeedZone(template, sh.Fold ? 1 : sh.Count, "home:section:" + sh.Key, title, sh.Head, sh.Sub),
+            Options = options, Members = sh.Fold ? [r] : [], Feed = HomeFeedState.Loading,
+        };
+    }
+
+    /// <summary>The seed of a fold whose members' answer is on its way: one blank item per member.</summary>
+    static Zone SeedFold(string firstKey, int members) => SeedZone(SectionTemplate.SpineShelf, members, "home:fold:" + firstKey, "");
+
+    /// <summary>A zone of <paramref name="template"/>'s kind over <paramref name="count"/> blank cards of the kind it draws (a Spine Shelf's items are
+    /// blank cards with no preview songs yet: flat placeholders at their size).</summary>
+    public static Zone SeedZone(SectionTemplate template, int count, string key, string title, bool head = false, bool sub = false)
+    {
+        var kind = template switch
+        {
+            SectionTemplate.ArtistCircles => HomeCardKind.Artist,
+            SectionTemplate.ShowGrid => HomeCardKind.Podcast,
+            SectionTemplate.BookShelf => HomeCardKind.Audiobook,
+            SectionTemplate.VideoTiles or SectionTemplate.EpisodeRows => HomeCardKind.Episode,
+            SectionTemplate.ReleaseList => HomeCardKind.Album,
+            _ => HomeCardKind.Playlist,
+        };
+        int n = Math.Max(1, count);
+        var cards = new HomeCard[n];
+        for (int i = 0; i < n; i++) cards[i] = HomeCard.Blank(kind, i);
+        // A title the deriver draws as its bar (an empty one would draw no header, and the loaded section has one).
+        string heading = title.Length > 0 ? title : " ";
+        var zoneKind = SectionChooser.KindOf(template);
+        if (zoneKind == ZoneKind.SpineShelf)
+        {
+            var clusters = new ZoneCluster[n];
+            for (int i = 0; i < n; i++) clusters[i] = new ZoneCluster(" ", " ", [], Header: cards[i]);
+            return new Zone(ZoneKind.SpineShelf, key, heading, null, [], Clusters: clusters, TotalCount: n);
+        }
+        // A header that named an entity: the same header over blank words and no cover (its cover slot and two lines derive at their size).
+        return new Zone(zoneKind, key, heading, sub ? " " : null, cards, TotalCount: n) { Header = head ? new HeaderEntity("", " ", null, " ") : null };
+    }
+
+    /// <summary>The document with every placed section's and the feed's <see cref="HomeItem.Shape"/> as <paramref name="shown"/> (a model over an
+    /// answer on hand) draws them; <paramref name="doc"/> itself when nothing changed or the model is not over an answer.</summary>
+    public static HomeDoc WithShapes(HomeDoc doc, BoardModel shown)
+    {
+        var byId = new Dictionary<string, BoardEntry>(StringComparer.Ordinal);
+        var folded = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var e in shown.Entries)
+        {
+            if (e.Kind == BoardEntryKind.Placeholder || e.Feed != HomeFeedState.Ready) return doc;
+            byId[e.Id] = e;
+            if (e.Kind == BoardEntryKind.Fold) foreach (var m in e.Members) folded.Add(m.Key);
+        }
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var g in doc.Groups) foreach (var it in g.Items) if (it.Source is SpotifySectionSource ps) placed.Add(ps.Ref.Key);
+
+        var groups = doc.Groups;
+        bool changed = false;
+        for (int gi = 0; gi < doc.Groups.Length; gi++)
+        {
+            var g = doc.Groups[gi];
+            var items = g.Items;
+            for (int i = 0; i < g.Items.Length; i++)
+            {
+                var it = g.Items[i];
+                ImmutableArray<SeedShape>? shape = null;
+                switch (it.Source)
+                {
+                    case SpotifySectionSource ss when byId.TryGetValue(it.Id, out var e) && !e.Hidden:
+                        shape = [new SeedShape(ss.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null, e.Zone?.Subtitle is { Length: > 0 })];
+                        break;
+                    case SpotifySectionSource ss when folded.Contains(ss.Ref.Key):
+                        shape = [new SeedShape(ss.Ref.Key, SectionTemplate.SpineShelf, 1, true)];
+                        break;
+                    case SpotifyFeedSource:
+                    {
+                        var b = ImmutableArray.CreateBuilder<SeedShape>();
+                        foreach (var e in shown.Entries)
+                        {
+                            if (e.GroupId != g.Id || e.Hidden) continue;
+                            if (e.Kind == BoardEntryKind.FeedSection && e.Raw is SpotifySectionSource fs)
+                                b.Add(new SeedShape(fs.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null, e.Zone?.Subtitle is { Length: > 0 }));
+                            else if (e.Kind == BoardEntryKind.Fold)
+                                foreach (var m in e.Members)
+                                    if (!placed.Contains(m.Key)) b.Add(new SeedShape(m.Key, SectionTemplate.SpineShelf, 1, true));
+                        }
+                        shape = b.ToImmutable();
+                        break;
+                    }
+                }
+                if (shape is not { } sh || sh.AsSpan().SequenceEqual(it.Shape.AsSpan())) continue;
+                items = items.SetItem(i, it with { Shape = sh });
+            }
+            if (items != g.Items) { groups = groups.SetItem(gi, g with { Items = items }); changed = true; }
+        }
+        return changed ? doc with { Groups = groups } : doc;
+    }
+
+    static int CountOf(Zone? z) => z is null ? 0 : z.Clusters is { Count: > 0 } c ? c.Count : z.Items.Count;
 
     /// <summary>A shelf zone with no item to draw (no usable card) draws its cards as a cover shelf instead.</summary>
     static Zone Drawable(Zone z)
